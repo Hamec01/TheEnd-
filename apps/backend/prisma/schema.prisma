@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           String      @id @default(cuid())
+  login        String      @unique
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  characters   Character[]
+}
+
+model Character {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String
+  race        String
+  level       Int      @default(0)
+  exp         Int      @default(0)
+  freePoints  Int      @default(5)
+  gold        Int      @default(500)
+
+  hpBase          Int
+  mpBase          Int
+  staminaBase     Int
+  strength        Int
+  endurance       Int
+  dexterity       Int
+  intelligence    Int
+  luck            Int
+  speed           Int
+  willpower       Int
+
+  createdAt DateTime @default(now())
+  inventoryItems CharacterInventoryItem[]
+  equipment CharacterEquipment?
+
+  @@index([accountId])
+}
+
+model CharacterInventoryItem {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  itemId      String
+  quantity    Int       @default(1)
+
+  @@unique([characterId, itemId])
+  @@index([characterId])
+}
+
+model CharacterEquipment {
+  characterId String    @id
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  weapon String?
+  helmet String?
+  armor  String?
+  boots  String?
+  gloves String?
+  shield String?
+}

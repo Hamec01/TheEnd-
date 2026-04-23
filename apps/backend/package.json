@@ -1,0 +1,35 @@
+{
+  "name": "@theend/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean:domain-js": "node -e \"const fs=require('fs');const p=require('path');const dir=p.resolve(process.cwd(),'../../packages/rpg-domain/src');if(fs.existsSync(dir)){for(const f of fs.readdirSync(dir)){if(f.endsWith('.js')){fs.unlinkSync(p.join(dir,f));}}}\"",
+    "prestart:dev": "npm run clean:domain-js",
+    "start:dev": "ts-node-dev --respawn --transpile-only --prefer-ts-exts src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "@prisma/client": "^5.16.2",
+    "@theend/rpg-domain": "0.1.0",
+    "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^22.7.5",
+    "prisma": "^5.16.2",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.2"
+  }
+}

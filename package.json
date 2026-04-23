@@ -1,0 +1,16 @@
+{
+  "name": "theend-rpg",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @theend/frontend",
+    "dev:frontend": "npm run dev --workspace @theend/frontend",
+    "dev:backend": "npm run start:dev --workspace @theend/backend",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

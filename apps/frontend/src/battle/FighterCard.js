@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+export function FighterCard({ fighter, highlighted = false }) {
+    const hpPercent = Math.max(0, Math.min(100, Math.round((fighter.currentHp / fighter.maxHp) * 100)));
+    const staminaPercent = Math.max(0, Math.min(100, Math.round((fighter.currentStamina / fighter.maxStamina) * 100)));
+    return (_jsxs("div", { className: `fighter-card ${highlighted ? 'is-highlighted' : ''} ${fighter.isAlive ? '' : 'is-dead'}`, children: [_jsxs("div", { className: "fighter-name-row", children: [_jsx("strong", { children: fighter.name }), _jsx("span", { className: `fighter-state ${fighter.isAlive ? 'alive' : 'dead'}`, children: fighter.isAlive ? 'Жив' : 'Пал' })] }), _jsxs("div", { className: "bar-label-row", children: [_jsx("span", { children: "HP" }), _jsxs("span", { children: [fighter.currentHp, "/", fighter.maxHp] })] }), _jsx("div", { className: "meter hp-meter", children: _jsx("span", { style: { width: `${hpPercent}%` } }) }), _jsxs("div", { className: "bar-label-row", children: [_jsx("span", { children: "STA" }), _jsxs("span", { children: [fighter.currentStamina, "/", fighter.maxStamina] })] }), _jsx("div", { className: "meter stamina-meter", children: _jsx("span", { style: { width: `${staminaPercent}%` } }) })] }));
+}
