@@ -40,6 +40,8 @@ import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
+import { InventoryPanel } from './components/InventoryPanel';
+import { MerchantPanel } from './components/MerchantPanel';
 
 const RACES = [Race.Human, Race.Dwarf, Race.HighElf, Race.WoodElf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -192,6 +194,59 @@ function formatSignedValue(value: number): string {
   return `${value >= 0 ? '+' : ''}${value}`;
 }
 
+function titleCase(input: string): string {
+  return input.length > 0 ? `${input[0].toUpperCase()}${input.slice(1)}` : input;
+}
+
+function getWeaponDamagePreview(item: ItemDefinition): string {
+  const baseBySubtype: Record<string, { min: number; max: number }> = {
+    sword: { min: 18, max: 26 },
+    axe: { min: 20, max: 30 },
+    hammer: { min: 24, max: 34 },
+    spear: { min: 19, max: 28 },
+    bow: { min: 16, max: 24 },
+    daggers: { min: 14, max: 20 },
+    staff: { min: 17, max: 25 },
+  };
+
+  const base = baseBySubtype[item.itemSubType] ?? { min: 16, max: 24 };
+  const str = item.bonuses.strength ?? 0;
+  const dex = item.bonuses.dexterity ?? 0;
+  const int = item.bonuses.intelligence ?? 0;
+  const scaling = Math.max(0, str * 1.5 + dex + int * 1.3);
+  return `${Math.round(base.min + scaling)}-${Math.round(base.max + scaling)}`;
+}
+
+function getItemTooltipRows(item: ItemDefinition, quantity?: number, sellPrice?: number): string[] {
+  const req = formatStatLines(item.requiredStats).join(', ') || 'none';
+  const bonus = formatStatLines(item.bonuses).join(', ') || 'none';
+  const rows: string[] = [
+    `Type: ${titleCase(item.itemType)} / ${titleCase(item.itemSubType)}`,
+    `Rarity: ${titleCase(item.rarity)}`,
+    `Requirements: ${req}`,
+    `Bonuses: ${bonus}`,
+    `Buy price: ${item.price}g`,
+  ];
+
+  if (item.itemType === 'weapon') {
+    rows.unshift(`Damage: ${getWeaponDamagePreview(item)}`);
+  }
+
+  if (item.itemType === 'consumable') {
+    rows.unshift(`Effect: ${item.description}`);
+  }
+
+  if (typeof quantity === 'number') {
+    rows.push(`In bag: x${quantity}`);
+  }
+
+  if (typeof sellPrice === 'number') {
+    rows.push(`Sell price: ${sellPrice}g`);
+  }
+
+  return rows;
+}
+
 function getStatComparisonRows(
   candidateStats: Partial<Record<PrimaryStat, number>>,
   equippedStats: Partial<Record<PrimaryStat, number>>,
@@ -304,6 +359,13 @@ export function App() {
 
   const [pendingStatAllocation, setPendingStatAllocation] = useState<StatAllocation>({});
   const [allocatingStats, setAllocatingStats] = useState(false);
+
+  // Drag-drop and trade modal states
+  const [draggedItem, setDraggedItem] = useState<ItemDefinition | null>(null);
+  const [dragSource, setDragSource] = useState<'inventory' | 'merchant' | null>(null);
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
+  const [tradeItem, setTradeItem] = useState<ItemDefinition | null>(null);
 
   const raceDef = RACE_DEFINITIONS[race];
   const remaining = STARTING_FREE_POINTS - getAllocationCost(allocation);
@@ -994,102 +1056,19 @@ export function App() {
           </div>
         ) : null}
 
-        {overlayPanel === 'inventory' ? (
-          <div className="battle-overlay" role="dialog" aria-modal="true">
-            <section className="card battle-window wm-modal">
-              <div className="battle-window-head">
-                <h2>Inventory</h2>
-                <button onClick={() => setOverlayPanel(null)}>✕</button>
-              </div>
-              <p className="gold" style={{ display: 'inline-flex', marginBottom: '10px' }}>🪙 {inventory.gold}</p>
-
-              <div className="inventory-layout">
-                <section className="inner-card inventory-paperdoll-card">
-                  <h3>Экипировка</h3>
-                  <div className="paper-doll">
-                    <div className="paper-doll-figure">
-                      <div className="paper-doll-portrait">{character.name.trim().charAt(0).toUpperCase() || 'H'}</div>
-                      <strong>{character.name}</strong>
-                      <span className="muted">Lvl {character.level} {RACE_DEFINITIONS[character.race].label}</span>
-                    </div>
-                    {EQUIPMENT_SLOT_ORDER.map((slot) => {
-                      const itemId = equipment[slot];
-                      return (
-                        <div key={slot} className={`paper-doll-slot paper-doll-slot-${slot}`}>
-                          <span>{EQUIPMENT_SLOT_LABELS[slot]}</span>
-                          <strong>{itemId ? getItemById(itemId).name : 'Пусто'}</strong>
-                          {itemId ? <button onClick={() => handleUnequip(slot)}>Снять</button> : <em>Empty</em>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="inner-card inventory-browser-card">
-                  <h3>Рюкзак</h3>
-                  <div className="inventory-list tall-list inventory-card-list">
-                    {inventoryEntries.length === 0 ? <p>Inventory is empty.</p> : null}
-                    {inventoryEntries.map((entry) => (
-                      <button
-                        key={entry.itemId}
-                        className={`inventory-card ${selectedInventoryEntry?.itemId === entry.itemId ? 'is-active' : ''}`}
-                        onClick={() => setSelectedInventoryItemId(entry.itemId)}
-                      >
-                        <div>
-                          <strong>{entry.item.name}</strong>
-                          <p className="muted">{entry.item.itemSubType} • {entry.item.rarity}</p>
-                        </div>
-                        <div className="inventory-card-meta">
-                          <span className="inventory-count">x{entry.quantity}</span>
-                          {entry.isEquipped ? <span className="inventory-badge equipped">Equipped</span> : null}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="inner-card inventory-detail-card">
-                  <h3>Предмет</h3>
-                  {selectedInventoryEntry ? (
-                    <>
-                      <div className="inventory-detail-head">
-                        <strong>{selectedInventoryEntry.item.name}</strong>
-                        <div className="inventory-detail-badges">
-                          <span className="inventory-badge rarity">{selectedInventoryEntry.item.rarity}</span>
-                          {selectedInventoryEntry.equippedSlot ? (
-                            <span className="inventory-badge equipped">On {EQUIPMENT_SLOT_LABELS[selectedInventoryEntry.equippedSlot]}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <p>{selectedInventoryEntry.item.description}</p>
-                      <div className="inventory-detail-stats">
-                        <p className="muted">Тип: {selectedInventoryEntry.item.itemType} / {selectedInventoryEntry.item.itemSubType}</p>
-                        <p className="muted">В рюкзаке: {selectedInventoryEntry.quantity}</p>
-                        <p className="muted">Требования: {formatStatLines(selectedInventoryEntry.item.requiredStats).join(', ') || 'нет'}</p>
-                        <p className="muted">Бонусы: {formatStatLines(selectedInventoryEntry.item.bonuses).join(', ') || 'нет'}</p>
-                        <p className="muted">Цена продажи: {Math.max(1, Math.floor(selectedInventoryEntry.item.price * 0.6))} золота</p>
-                      </div>
-                      <div className="inventory-actions inventory-actions-row">
-                        {selectedInventoryEntry.item.itemType !== 'consumable' ? (
-                          <button onClick={() => handleEquip(selectedInventoryEntry.itemId)}>Надеть</button>
-                        ) : (
-                          <button disabled={!combatState || combatState.isFinished} onClick={() => handleUseConsumable(selectedInventoryEntry.itemId)}>
-                            Использовать
-                          </button>
-                        )}
-                        {selectedInventoryEntry.equippedSlot ? (() => {
-                          const equippedSlot = selectedInventoryEntry.equippedSlot;
-                          return <button onClick={() => handleUnequip(equippedSlot)}>Снять</button>;
-                        })() : null}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="muted">Выберите предмет из рюкзака.</p>
-                  )}
-                </section>
-              </div>
-            </section>
-          </div>
+        {overlayPanel === 'inventory' && character ? (
+          <InventoryPanel
+            character={character}
+            inventory={inventory}
+            equipment={equipment}
+            onClose={() => setOverlayPanel(null)}
+            onEquipItem={async (itemId) => {
+              await handleEquip(itemId);
+            }}
+            onUnequipSlot={async (slot) => {
+              await handleUnequip(slot);
+            }}
+          />
         ) : null}
 
         {overlayPanel === 'arenaNpc' ? (
@@ -1283,212 +1262,30 @@ export function App() {
           </div>
         ) : null}
 
-        {overlayPanel === 'merchant' ? (
-          <div className="battle-overlay" role="dialog" aria-modal="true">
-            <section className="card battle-window wm-modal">
-              <div className="battle-window-head">
-                <h2>Торговцы Арены</h2>
-                <button onClick={() => setOverlayPanel(null)}>✕</button>
-              </div>
-              <p className="gold" style={{ display: 'inline-flex', marginBottom: '10px' }}>🪙 {inventory.gold}</p>
-
-              <div className="shop-layout">
-                <div className="shop-list">
-                  {MERCHANTS.map((merchant) => (
-                    <button
-                      key={merchant.id}
-                      className={`shop-merchant-card ${merchant.id === selectedMerchantId ? 'is-active' : ''}`}
-                      onClick={() => {
-                        setSelectedMerchantId(merchant.id);
-                        const first = getMerchantItems(merchant.id)[0] ?? null;
-                        setSelectedMerchantItemId(first?.id ?? null);
-                      }}
-                    >
-                      <span className="shop-merchant-name">{merchant.name}</span>
-                      <span className="muted">{MERCHANT_TYPE_LABELS[merchant.merchantType]}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="shop-detail">
-                  {selectedMerchant ? (
-                    <section className="inner-card shop-merchant-banner">
-                      <div>
-                        <p className="eyebrow">{MERCHANT_TYPE_LABELS[selectedMerchant.merchantType]}</p>
-                        <h3>{selectedMerchant.name}</h3>
-                      </div>
-                      <p className="muted">{MERCHANT_TYPE_DESCRIPTIONS[selectedMerchant.merchantType]}</p>
-                    </section>
-                  ) : null}
-
-                  <div className="shop-mode-row">
-                    <div className="shop-mode-tabs">
-                      <button
-                        className={merchantMode === 'buy' ? 'is-active' : ''}
-                        onClick={() => setMerchantMode('buy')}
-                      >
-                        Покупка
-                      </button>
-                      <button
-                        className={merchantMode === 'sell' ? 'is-active' : ''}
-                        onClick={() => setMerchantMode('sell')}
-                      >
-                        Продажа
-                      </button>
-                    </div>
-                    {merchantMode === 'sell' ? (
-                      <label className="shop-filter-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={sellOnlyAvailable}
-                          onChange={(e) => setSellOnlyAvailable(e.target.checked)}
-                        />
-                        Показать только продаваемые
-                      </label>
-                    ) : null}
-                  </div>
-
-                  {merchantMode === 'buy' ? (
-                    <>
-                      {selectedMerchantItem ? (
-                        <>
-                          <div className="inventory-detail-head">
-                            <strong>{selectedMerchantItem.name}</strong>
-                            <div className="inventory-detail-badges">
-                              <span className="inventory-badge rarity">{selectedMerchantItem.rarity}</span>
-                              <span className="inventory-badge owned">Owned x{selectedMerchantOwnedCount}</span>
-                            </div>
-                          </div>
-                          <p>{selectedMerchantItem.description}</p>
-                          <p className="muted">Тип: {selectedMerchantItem.itemSubType}</p>
-                          <p className="muted">Редкость: {selectedMerchantItem.rarity}</p>
-                          <p className="muted">Цена: {selectedMerchantItem.price} золота</p>
-                          <div className="shop-stats">
-                            <div>
-                              <strong>Требования</strong>
-                              {formatStatLines(selectedMerchantItem.requiredStats).length > 0 ? (
-                                <ul>
-                                  {formatStatLines(selectedMerchantItem.requiredStats).map((line) => (
-                                    <li key={`req-${line}`}>{line}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="muted">Нет требований</p>
-                              )}
-                            </div>
-                            <div>
-                              <strong>Характеристики</strong>
-                              {formatStatLines(selectedMerchantItem.bonuses).length > 0 ? (
-                                <ul>
-                                  {formatStatLines(selectedMerchantItem.bonuses).map((line) => (
-                                    <li key={`bonus-${line}`}>{line}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="muted">Без бонусов</p>
-                              )}
-                            </div>
-                          </div>
-                          {selectedMerchantItem.itemType !== 'consumable' ? (
-                            <section className="inner-card shop-compare-card">
-                              <h3>Сравнение со слотом</h3>
-                              {selectedMerchantEquippedItem ? (
-                                <>
-                                  <p><strong>Сейчас надето:</strong> {selectedMerchantEquippedItem.name}</p>
-                                  <p className="muted">Бонусы: {formatStatLines(selectedMerchantEquippedItem.bonuses).join(', ') || 'нет'}</p>
-                                  <p className="muted">Требования: {formatStatLines(selectedMerchantEquippedItem.requiredStats).join(', ') || 'нет'}</p>
-                                  {selectedMerchantCompareRows.length > 0 ? (
-                                    <ul className="shop-compare-stats">
-                                      {selectedMerchantCompareRows.map((row) => (
-                                        <li key={row.stat}>
-                                          <span>{STAT_LABELS[row.stat]}</span>
-                                          <span className={`shop-delta ${row.delta > 0 ? 'is-positive' : row.delta < 0 ? 'is-negative' : 'is-neutral'}`}>
-                                            {row.equippedValue} {'->'} {row.candidateValue} ({formatSignedValue(row.delta)})
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <p className="muted">По бонусам слот не меняется: предметы отличаются типом применения или требованиями.</p>
-                                  )}
-                                </>
-                              ) : (
-                                <p className="muted">Этот слот сейчас пуст. Предмет можно купить как прямое улучшение.</p>
-                              )}
-                            </section>
-                          ) : null}
-                          <div className="inventory-card-meta shop-action-row">
-                            <button onClick={() => handleBuy(selectedMerchantItem.id)}>Купить</button>
-                            <button
-                              disabled={selectedMerchantItem.itemType === 'consumable'}
-                              onClick={() => handleBuyAndEquip(selectedMerchantItem.id)}
-                            >
-                              Купить и надеть
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <p>У этого торговца пока нет товаров.</p>
-                      )}
-
-                      <div className="merchant-items">
-                        {merchantItems.map((item) => (
-                          <button
-                            key={item.id}
-                            className={`inventory-card shop-item-card ${selectedMerchantItemId === item.id ? 'is-active' : ''}`}
-                            onClick={() => setSelectedMerchantItemId(item.id)}
-                          >
-                            <span className="shop-item-main">
-                              <strong>{item.name}</strong>
-                              <span className="muted">{item.itemSubType} • {item.rarity}</span>
-                            </span>
-                            <span className="shop-item-meta">
-                              <span className="inventory-badge owned">x{inventory.items.find((entry) => entry.itemId === item.id)?.quantity ?? 0}</span>
-                              <span className="inventory-count">{item.price}g</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {selectedSellEntry ? (
-                        <>
-                          <h3>{selectedSellEntry.item.name}</h3>
-                          <p>{selectedSellEntry.item.description}</p>
-                          <p className="muted">В инвентаре: {selectedSellEntry.quantity}</p>
-                          <p className="muted">Цена продажи: {selectedSellEntry.sellPrice} золота</p>
-                          {selectedSellEntry.sellLocked ? (
-                            <p className="warn">Нельзя продать последнюю копию экипированного предмета. Сначала снимите его.</p>
-                          ) : null}
-                          <button
-                            disabled={selectedSellEntry.sellLocked}
-                            onClick={() => handleSell(selectedSellEntry.item.id)}
-                          >
-                            Продать 1 шт.
-                          </button>
-                        </>
-                      ) : (
-                        <p>Нет предметов для продажи.</p>
-                      )}
-
-                      <div className="merchant-items">
-                        {visibleSellEntries.map((entry) => (
-                          <button
-                            key={entry.item.id}
-                            className={entry.sellLocked ? 'is-locked' : ''}
-                            onClick={() => setSelectedSellItemId(entry.item.id)}
-                          >
-                            {entry.item.name} x{entry.quantity} ({entry.sellPrice}g)
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </section>
-          </div>
+        {overlayPanel === 'merchant' && character && selectedMerchant ? (
+          <MerchantPanel
+            merchant={selectedMerchant}
+            inventory={inventory}
+            onClose={() => setOverlayPanel(null)}
+            onBuyItem={async (itemId) => {
+              try {
+                const updated = await buyArenaItem(character.id, itemId);
+                setInventory(updated.inventory);
+                setStatus(`Bought ${getItemById(itemId)?.name || 'item'}`);
+              } catch (err: any) {
+                setStatus(`Failed to buy: ${err.message}`);
+              }
+            }}
+            onSellItem={async (itemId) => {
+              try {
+                const updated = await sellArenaItem(character.id, itemId);
+                setInventory(updated.inventory);
+                setStatus(`Sold ${getItemById(itemId)?.name || 'item'}`);
+              } catch (err: any) {
+                setStatus(`Failed to sell: ${err.message}`);
+              }
+            }}
+          />
         ) : null}
 
         {exitDialogOpen ? (

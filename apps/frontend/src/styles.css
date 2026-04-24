@@ -578,6 +578,7 @@ h3 {
   justify-content: space-between;
   gap: 10px;
   align-items: center;
+  position: relative;
   width: 100%;
   text-align: left;
   padding: 9px 10px;
@@ -683,6 +684,7 @@ h3 {
 .paper-doll-slot {
   display: grid;
   gap: 4px;
+  position: relative;
   padding: 8px;
   border-radius: 10px;
   border: 1px solid rgba(138, 112, 73, 0.34);
@@ -923,6 +925,58 @@ h3 {
 
 .merchant-items button.is-locked {
   opacity: 0.72;
+}
+
+.slot-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(320px, 62vw);
+  padding: 10px 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(214, 178, 108, 0.64);
+  background:
+    linear-gradient(150deg, rgba(67, 50, 31, 0.96), rgba(23, 18, 13, 0.98));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+}
+
+.slot-tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.slot-tooltip p {
+  margin: 0 0 6px;
+  line-height: 1.35;
+}
+
+.slot-tooltip ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-card:hover .slot-tooltip,
+.paper-doll-slot:hover .slot-tooltip,
+.shop-item-card:hover .slot-tooltip {
+  opacity: 1;
+}
+
+@media (max-width: 1060px) {
+  .slot-tooltip {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform: none;
+    width: auto;
+  }
 }
 
 .battle-layout {
@@ -1883,7 +1937,7 @@ h3 {
 
 .wm-grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1.65fr) 300px;
+  grid-template-columns: 220px minmax(0, 1.65fr) 220px;
   gap: 0;
   min-height: 640px;
 }
@@ -1913,15 +1967,155 @@ h3 {
 }
 
 .wm-avatar {
-  width: 92px;
-  height: 92px;
+  width: 64px;
+  height: 64px;
   justify-self: center;
   border-radius: 50%;
   border: 2px solid #cdb48a;
   display: grid;
   place-items: center;
-  font-size: 2.2rem;
+  font-size: 1.4rem;
   font-weight: 700;
+}
+
+/* Item Slot Cards */
+.item-slot {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 104px;
+  border: 2px solid var(--panel-border);
+  background: var(--bg-2);
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.item-slot:hover {
+  border-color: var(--accent);
+  background: var(--panel-soft);
+  box-shadow: 0 0 12px rgba(210, 170, 102, 0.3);
+}
+
+.item-slot-icon {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  margin-bottom: 4px;
+}
+
+.item-slot-name {
+  font-size: 10px;
+  color: var(--accent);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+/* Item Tooltip */
+.item-tooltip {
+  position: absolute;
+  bottom: 110px;
+  left: -50px;
+  background: var(--panel);
+  border: 2px solid var(--panel-border-strong);
+  border-radius: 4px;
+  padding: 12px;
+  min-width: 220px;
+  max-width: 320px;
+  font-size: 11px;
+  color: var(--text-muted);
+  z-index: 1000;
+  display: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.item-tooltip-right {
+  left: 0;
+}
+
+.item-tooltip-left {
+  right: 0;
+  left: auto;
+}
+
+.item-tooltip-top {
+  bottom: 110px;
+  top: auto;
+}
+
+.item-tooltip-bottom {
+  top: 104px;
+  bottom: auto;
+}
+
+.item-slot:hover .item-tooltip {
+  display: block;
+  animation: tooltipSlideIn 0.2s ease;
+}
+
+@keyframes tooltipSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tooltip-title {
+  color: var(--accent);
+  font-weight: bold;
+  margin-bottom: 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 4px;
+}
+
+.tooltip-stat {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 0;
+  padding: 2px 0;
+}
+
+.tooltip-label {
+  color: var(--text-muted);
+}
+
+.tooltip-value {
+  color: var(--text-main);
+  font-weight: bold;
+}
+
+.tooltip-rarity {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 10px;
+  text-align: center;
+}
+
+.rarity-common { color: var(--text-main); }
+.rarity-uncommon { color: var(--ok); }
+.rarity-rare { color: var(--mana); }
+.rarity-legendary { color: var(--accent);
   background: radial-gradient(circle at 40% 35%, #7c5f34, #261e15 70%);
 }
 
@@ -1980,8 +2174,8 @@ h3 {
 .wm-mini-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  font-size: 0.82rem;
+  gap: 6px;
+  font-size: 0.70rem;
   color: #d7bf91;
 }
 
@@ -1993,11 +2187,11 @@ h3 {
 .wm-equip-row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid rgba(102, 82, 54, 0.7);
   background: rgba(25, 21, 16, 0.78);
-  padding: 4px 6px;
-  font-size: 0.8rem;
+  padding: 3px 5px;
+  font-size: 0.68rem;
 }
 
 .wm-inventory-grid {
@@ -2091,41 +2285,49 @@ h3 {
 }
 
 .wm-city-surface {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   padding: 52px 18px 18px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-.wm-city-panel {
-  width: min(520px, 100%);
-  display: grid;
-  gap: 14px;
-  padding: 16px 18px;
-  background: linear-gradient(180deg, rgba(40, 32, 23, 0.96), rgba(22, 18, 14, 0.98));
-  border: 1px solid rgba(169, 139, 87, 0.45);
-  box-shadow: inset 0 0 0 1px rgba(255, 224, 176, 0.04);
+.wm-city-hotspots {
+  position: absolute;
+  inset: 0;
 }
 
-.wm-city-copy {
-  display: grid;
-  gap: 8px;
+.wm-city-hotspot {
+  position: absolute;
+  min-width: 100px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 220, 160, 0.9);
+  background: linear-gradient(180deg, rgba(62, 44, 24, 0.92), rgba(30, 22, 14, 0.94));
+  color: #f2dfbc;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 8px 14px rgba(0, 0, 0, 0.35);
 }
 
-.wm-city-copy h2 {
-  margin: 0;
+.wm-city-hotspot:hover {
+  border-color: #ffe2ae;
+  background: linear-gradient(180deg, rgba(97, 70, 39, 0.94), rgba(48, 34, 19, 0.96));
 }
 
-.wm-city-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+.hotspot-market {
+  left: 37%;
+  top: 46%;
 }
 
-.wm-city-actions button {
-  min-height: 36px;
-  padding: 5px 8px;
-  font-size: 0.8rem;
+.hotspot-arena {
+  left: 52%;
+  top: 23%;
+}
+
+.hotspot-skills {
+  left: 9%;
+  top: 71%;
 }
 
 .wm-city-back {
@@ -2288,6 +2490,314 @@ h3 {
   }
 
   .wm-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .wm-city-hotspot {
+    min-width: 90px;
+    padding: 5px 8px;
+    font-size: 0.65rem;
+  }
+
+  .hotspot-market {
+    left: 34%;
+    top: 50%;
+  }
+
+  .hotspot-arena {
+    left: 50%;
+    top: 25%;
+  }
+
+  .hotspot-skills {
+    left: 6%;
+    top: 74%;
+  }
+}
+
+/* Inventory Grid */
+.inventory-grid-container {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.inventory-title {
+  color: var(--accent);
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.inventory-grid {
+  display: grid;
+  gap: 8px;
+  grid-auto-rows: max-content;
+  overflow-x: hidden;
+}
+
+.inventory-layout-modal {
+  width: min(1120px, 98vw);
+}
+
+.inventory-layout-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 250px;
+  gap: 14px;
+}
+
+.inventory-avatar-panel,
+.inventory-item-panel {
+  border: 1px solid rgba(169, 139, 87, 0.45);
+  background: rgba(24, 19, 14, 0.88);
+  padding: 10px;
+}
+
+.inventory-avatar-figure {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #e9dbc0;
+  border: 2px solid rgba(210, 170, 102, 0.6);
+  background: radial-gradient(circle at 40% 35%, #6a5132, #251d14 70%);
+}
+
+.inventory-paperdoll {
+  position: relative;
+  min-height: 430px;
+  border: 1px solid rgba(169, 139, 87, 0.35);
+  background: rgba(20, 16, 12, 0.86);
+}
+
+.inventory-paperdoll .inventory-avatar-figure {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+}
+
+.inventory-equip-slot {
+  position: absolute;
+  width: 120px;
+  border: 1px solid rgba(169, 139, 87, 0.35);
+  background: rgba(28, 23, 18, 0.86);
+  padding: 6px;
+  display: grid;
+  gap: 5px;
+}
+
+.inventory-equip-slot-label {
+  margin: 0;
+  font-size: 0.76rem;
+  color: #cdb48a;
+}
+
+.inventory-equip-slot-item {
+  margin: 0;
+  min-height: 32px;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.slot-helmet {
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+}
+
+.slot-weapon {
+  right: 10px;
+  top: 115px;
+}
+
+.slot-shield {
+  left: 10px;
+  top: 115px;
+}
+
+.slot-armor {
+  left: 50%;
+  top: 145px;
+  transform: translateX(-50%);
+}
+
+.slot-gloves {
+  left: 10px;
+  bottom: 88px;
+}
+
+.slot-boots {
+  right: 10px;
+  bottom: 88px;
+}
+
+.inventory-bag-panel .inventory-grid {
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.inventory-item-panel {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.merchant-page {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(207, 168, 102, 0.18), transparent 40%),
+    radial-gradient(circle at 84% 20%, rgba(157, 111, 82, 0.2), transparent 36%),
+    linear-gradient(145deg, #322617 0%, #20170f 65%, #18110b 100%);
+}
+
+.merchant-page-window {
+  width: min(1180px, 97vw);
+  max-height: 94vh;
+  overflow: auto;
+}
+
+.merchant-page-head button {
+  min-width: 110px;
+}
+
+.item-slot {
+  cursor: grab;
+  user-select: none;
+}
+
+.item-slot:active {
+  cursor: grabbing;
+}
+
+.item-slot.dragging {
+  opacity: 0.6;
+  border-color: var(--mana);
+}
+
+.item-slot.empty {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Trade Modal */
+.trade-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.trade-modal-content {
+  background: var(--panel);
+  border: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
+}
+
+.trade-modal-title {
+  color: var(--accent);
+  font-size: 18px;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+}
+
+.trade-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.trade-modal-item-name {
+  color: var(--text-main);
+  font-weight: bold;
+  flex: 1;
+  text-align: left;
+}
+
+.trade-modal-item-price {
+  color: var(--ok);
+  font-weight: bold;
+}
+
+.trade-modal-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.trade-modal-btn {
+  padding: 10px 20px;
+  border: 2px solid var(--panel-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.trade-modal-btn.confirm {
+  background: rgba(132, 203, 148, 0.2);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.trade-modal-btn.confirm:hover {
+  background: rgba(132, 203, 148, 0.4);
+  box-shadow: 0 0 12px rgba(132, 203, 148, 0.3);
+}
+
+.trade-modal-btn.confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trade-modal-btn.cancel {
+  background: rgba(208, 109, 104, 0.2);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.trade-modal-btn.cancel:hover {
+  background: rgba(208, 109, 104, 0.4);
+  box-shadow: 0 0 12px rgba(208, 109, 104, 0.3);
+}
+
+.trade-modal-gold {
+  color: #ffd700;
+  font-weight: bold;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 880px) {
+  .inventory-layout-grid {
     grid-template-columns: 1fr;
   }
 }

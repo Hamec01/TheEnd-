@@ -90,8 +90,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     if (kind === 'trade') {
-      onOpenInventory();
-      onStatus(`Trade panel opened for ${selectedLocationName}.`);
+      onOpenMerchant();
+      onStatus(`Открыт торговец в ${selectedLocationName}.`);
       return;
     }
 
@@ -182,28 +182,44 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <WorldMapCanvas onOpenLocation={handleOpenLocation} />
         ) : (
           <section className="wm-map card">
-            <div className="wm-map-surface wm-city-surface">
+            <div
+              className="wm-map-surface wm-city-surface"
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgba(24, 17, 12, 0.38), rgba(24, 17, 12, 0.62)), url('/map/City_Arclain.png')",
+              }}
+            >
               <div className="wm-map-title">Арклейн</div>
 
-              <div className="wm-city-panel">
-                <div className="wm-city-copy">
-                  <h2>Городская заглушка</h2>
-                  <p className="muted">Сейчас здесь работают городской торговец, учитель навыков и вход на арену. Остальные точки пока закрыты.</p>
-                </div>
+              <div className="wm-city-hotspots">
+                <button
+                  type="button"
+                  className="wm-city-hotspot hotspot-market"
+                  onClick={handleOpenArkleinMerchant}
+                >
+                  Рынок / Торговец
+                </button>
 
-                <div className="wm-city-actions">
-                  <button onClick={handleOpenArkleinMerchant}>Торговец</button>
-                  <button onClick={handleOpenSkillsTeacher}>Учитель навыков</button>
-                  <button onClick={() => { void handleEnterArena(); }}>Арена</button>
-                  <button disabled>Таверна</button>
-                  <button disabled>Кузница</button>
-                  <button disabled>Гильдия</button>
-                </div>
+                <button
+                  type="button"
+                  className="wm-city-hotspot hotspot-arena"
+                  onClick={() => { void handleEnterArena(); }}
+                >
+                  Арена
+                </button>
+
+                <button
+                  type="button"
+                  className="wm-city-hotspot hotspot-skills"
+                  onClick={handleOpenSkillsTeacher}
+                >
+                  МАГИЧЕСКАЯ БИБЛИОТЕКА
+                </button>
               </div>
             </div>
 
             <footer className="wm-map-legend">
-              <span>Арклейн | Работают: торговец, учитель навыков и арена | Остальные точки закрыты</span>
+              <span>Арклейн | Нажимайте на точки на карте: Рынок, Арена, Купить навыки</span>
               <button className="wm-city-back" onClick={handleReturnToMap}>Назад к карте</button>
             </footer>
           </section>
