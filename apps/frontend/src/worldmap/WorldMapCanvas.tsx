@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import '../styles.css';
 
-const REGION_GRID_COLUMNS = 15;
-const REGION_GRID_ROWS = 12;
+const REGION_GRID_COLUMNS = 45;
+const REGION_GRID_ROWS = 34;
 
-const GRID_ORIGIN_X = 0.5;
-const GRID_ORIGIN_Y = 0.09;
-const GRID_HALF_WIDTH = 0.071;
-const GRID_HALF_HEIGHT = 0.051;
+const GRID_HORIZONTAL_OFFSET = 0;
+const GRID_VERTICAL_OFFSET = 0;
 
 const REGION_LABELS: Record<number, string> = {
   1: 'Сольеймaр',
@@ -32,11 +30,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function getGridMetrics(width: number, height: number) {
+  // Exact isometric transform for CxR grid that spans the full canvas with zero offsets.
+  const diagonalCount = Math.max(1, REGION_GRID_COLUMNS + REGION_GRID_ROWS - 2);
+  const halfWidth = width / diagonalCount;
+  const halfHeight = height / diagonalCount;
+  const originX = ((REGION_GRID_ROWS - 1) * halfWidth) + GRID_HORIZONTAL_OFFSET;
+  const originY = GRID_VERTICAL_OFFSET;
+
+  return {
+    originX,
+    originY,
+    halfWidth,
+    halfHeight,
+  };
+}
+
 function getGridCenter(column: number, row: number, width: number, height: number) {
-  const halfWidth = width * GRID_HALF_WIDTH;
-  const halfHeight = height * GRID_HALF_HEIGHT;
-  const originX = width * GRID_ORIGIN_X;
-  const originY = height * GRID_ORIGIN_Y;
+  const {
+    halfWidth,
+    halfHeight,
+    originX,
+    originY,
+  } = getGridMetrics(width, height);
 
   return {
     x: originX + (column - row) * halfWidth,
@@ -47,18 +63,26 @@ function getGridCenter(column: number, row: number, width: number, height: numbe
 }
 
 function snapToGrid(x: number, y: number, width: number, height: number) {
-  const halfWidth = width * GRID_HALF_WIDTH;
-  const halfHeight = height * GRID_HALF_HEIGHT;
-  const originX = width * GRID_ORIGIN_X;
-  const originY = height * GRID_ORIGIN_Y;
+  let nearestColumn = 0;
+  let nearestRow = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
 
-  const normalizedX = (x - originX) / halfWidth;
-  const normalizedY = (y - originY) / halfHeight;
+  for (let column = 0; column < REGION_GRID_COLUMNS; column += 1) {
+    for (let row = 0; row < REGION_GRID_ROWS; row += 1) {
+      const center = getGridCenter(column, row, width, height);
+      const deltaX = center.x - x;
+      const deltaY = center.y - y;
+      const distance = (deltaX * deltaX) + (deltaY * deltaY);
 
-  const column = clamp(Math.round((normalizedY + normalizedX) / 2), 0, REGION_GRID_COLUMNS - 1);
-  const row = clamp(Math.round((normalizedY - normalizedX) / 2), 0, REGION_GRID_ROWS - 1);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestColumn = column;
+        nearestRow = row;
+      }
+    }
+  }
 
-  return { column, row };
+  return { column: nearestColumn, row: nearestRow };
 }
 
 function drawDiamond(
@@ -84,7 +108,7 @@ export function WorldMapCanvas(props: WorldMapCanvasProps) {
   const { onOpenLocation } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const [playerPos, setPlayerPos] = useState<{ column: number; row: number }>({ column: 7, row: 6 });
+  const [playerPos, setPlayerPos] = useState<{ column: number; row: number }>({ column: 22, row: 17 });
   const [currentRegionId, setCurrentRegionId] = useState(5);
   const [regionImage, setRegionImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 920, height: 736 });
@@ -98,7 +122,7 @@ export function WorldMapCanvas(props: WorldMapCanvasProps) {
     const resizeCanvas = () => {
       const availableWidth = Math.max(320, surface.clientWidth - 16);
       const availableHeight = Math.max(320, surface.clientHeight - 20);
-      const aspectRatio = 5 / 4;
+      const aspectRatio = regionImage ? (regionImage.naturalWidth / regionImage.naturalHeight) : (5 / 4);
 
       let width = availableWidth;
       let height = Math.round(width / aspectRatio);
@@ -119,7 +143,7 @@ export function WorldMapCanvas(props: WorldMapCanvasProps) {
 
     observer.observe(surface);
     return () => observer.disconnect();
-  }, []);
+  }, [regionImage]);
 
   useEffect(() => {
     const img = new Image();
@@ -227,7 +251,7 @@ export function WorldMapCanvas(props: WorldMapCanvasProps) {
       </div>
 
       <footer className="wm-map-legend">
-        <span>Клетка: ({playerPos.column}, {playerPos.row}) | Регион {currentRegionId} | Двойной клик по Арклейну открывает город</span>
+        <span>Клетка: ({playerPos.column}, {playerPos.row}) | Сетка: {REGION_GRID_COLUMNS}x{REGION_GRID_ROWS} | Регион {currentRegionId} | Двойной клик по Арклейну открывает город</span>
       </footer>
     </section>
   );

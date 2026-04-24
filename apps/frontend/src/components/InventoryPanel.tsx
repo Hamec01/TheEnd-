@@ -4,6 +4,18 @@ import type { Equipment, InventoryState, ItemDefinition } from '@theend/rpg-doma
 import { getItemById } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 
+function getRacePortraitPath(race: ArenaCharacter['race']): string {
+  if (race === 'DWARF') {
+    return '/art/races/dwarf.png';
+  }
+
+  if (race === 'HIGH_ELF' || race === 'WOOD_ELF') {
+    return '/art/races/elf.png';
+  }
+
+  return '/art/races/human.png';
+}
+
 interface InventoryPanelProps {
   character: ArenaCharacter;
   inventory: InventoryState;
@@ -61,6 +73,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onUnequipSlot,
 }) => {
   const [selectedItem, setSelectedItem] = useState<ItemDefinition | null>(null);
+  const [portraitBroken, setPortraitBroken] = useState(false);
 
   const inventoryItems = useMemo(
     () => inventory.items.map((entry) => getItemById(entry.itemId)).filter(Boolean) as ItemDefinition[],
@@ -79,6 +92,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedAlreadyEquipped = Boolean(
     selectedSlot && equipment[selectedSlot] && equipment[selectedSlot] === selectedItem?.id,
   );
+  const racePortraitPath = getRacePortraitPath(character.race);
 
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
@@ -96,7 +110,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
           <section className="inventory-avatar-panel">
             <div className="inventory-paperdoll">
               <div className="inventory-avatar-figure">
-                <span>{character.name.charAt(0).toUpperCase() || 'H'}</span>
+                {!portraitBroken ? (
+                  <img
+                    src={racePortraitPath}
+                    alt={`Облик расы ${character.race}`}
+                    className="inventory-avatar-image"
+                    onError={() => setPortraitBroken(true)}
+                  />
+                ) : (
+                  <span>{character.name.charAt(0).toUpperCase() || 'H'}</span>
+                )}
               </div>
 
               {SLOT_ORDER.map((slot) => {
@@ -123,29 +146,28 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               columns={5}
               onItemClick={(item) => setSelectedItem(item)}
             />
-          </section>
-
-          <section className="inventory-item-panel">
-            <h3>Предмет</h3>
-            {selectedItem ? (
-              <>
-                <p><strong>{selectedItem.name}</strong></p>
-                <p className="muted">Тип: {selectedItem.itemType} / {selectedItem.itemSubType}</p>
-                <p className="muted">Редкость: {selectedItem.rarity}</p>
-                {selectedItem.itemType !== 'consumable' && selectedSlot ? (
-                  <button
-                    disabled={selectedAlreadyEquipped}
-                    onClick={() => void onEquipItem(selectedItem.id)}
-                  >
-                    {selectedAlreadyEquipped ? 'Уже надето' : 'Надеть'}
-                  </button>
-                ) : (
-                  <p className="muted">Расходники не надеваются.</p>
-                )}
-              </>
-            ) : (
-              <p className="muted">Выберите предмет в рюкзаке.</p>
-            )}
+            <section className="inventory-selected-item-panel">
+              <h3>Выбранный предмет</h3>
+              {selectedItem ? (
+                <>
+                  <p><strong>{selectedItem.name}</strong></p>
+                  <p className="muted">Тип: {selectedItem.itemType} / {selectedItem.itemSubType}</p>
+                  <p className="muted">Редкость: {selectedItem.rarity}</p>
+                  {selectedItem.itemType !== 'consumable' && selectedSlot ? (
+                    <button
+                      disabled={selectedAlreadyEquipped}
+                      onClick={() => void onEquipItem(selectedItem.id)}
+                    >
+                      {selectedAlreadyEquipped ? 'Уже надето' : 'Надеть'}
+                    </button>
+                  ) : (
+                    <p className="muted">Расходники не надеваются.</p>
+                  )}
+                </>
+              ) : (
+                <p className="muted">Выберите предмет в рюкзаке.</p>
+              )}
+            </section>
           </section>
         </div>
       </section>

@@ -2545,21 +2545,21 @@ h3 {
 
 .inventory-layout-grid {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 250px;
+  grid-template-columns: 360px minmax(0, 1fr);
   gap: 14px;
 }
 
 .inventory-avatar-panel,
-.inventory-item-panel {
+.inventory-selected-item-panel {
   border: 1px solid rgba(169, 139, 87, 0.45);
   background: rgba(24, 19, 14, 0.88);
   padding: 10px;
 }
 
 .inventory-avatar-figure {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
+  width: 220px;
+  height: 330px;
+  border-radius: 14px;
   margin: 0;
   display: grid;
   place-items: center;
@@ -2568,11 +2568,22 @@ h3 {
   color: #e9dbc0;
   border: 2px solid rgba(210, 170, 102, 0.6);
   background: radial-gradient(circle at 40% 35%, #6a5132, #251d14 70%);
+  overflow: hidden;
+  z-index: 1;
+}
+
+.inventory-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  padding: 8px;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
 }
 
 .inventory-paperdoll {
   position: relative;
-  min-height: 430px;
+  min-height: 620px;
   border: 1px solid rgba(169, 139, 87, 0.35);
   background: rgba(20, 16, 12, 0.86);
 }
@@ -2580,75 +2591,87 @@ h3 {
 .inventory-paperdoll .inventory-avatar-figure {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: 52%;
   transform: translate(-50%, -50%);
 }
 
 .inventory-equip-slot {
   position: absolute;
-  width: 120px;
+  width: 108px;
   border: 1px solid rgba(169, 139, 87, 0.35);
   background: rgba(28, 23, 18, 0.86);
-  padding: 6px;
+  padding: 5px;
   display: grid;
-  gap: 5px;
+  gap: 4px;
+  z-index: 2;
 }
 
 .inventory-equip-slot-label {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   color: #cdb48a;
 }
 
 .inventory-equip-slot-item {
   margin: 0;
-  min-height: 32px;
+  min-height: 20px;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.74rem;
+}
+
+.inventory-equip-slot button {
+  font-size: 0.72rem;
+  padding: 4px 6px;
 }
 
 .slot-helmet {
   left: 50%;
-  top: 12px;
+  top: 10px;
   transform: translateX(-50%);
 }
 
 .slot-weapon {
-  right: 10px;
-  top: 115px;
+  right: 8px;
+  top: 178px;
 }
 
 .slot-shield {
-  left: 10px;
-  top: 115px;
+  left: 8px;
+  top: 178px;
 }
 
 .slot-armor {
   left: 50%;
-  top: 145px;
+  top: 312px;
   transform: translateX(-50%);
 }
 
 .slot-gloves {
-  left: 10px;
-  bottom: 88px;
+  left: 8px;
+  bottom: 92px;
 }
 
 .slot-boots {
-  right: 10px;
-  bottom: 88px;
+  right: 8px;
+  bottom: 10px;
+}
+
+.inventory-bag-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
 }
 
 .inventory-bag-panel .inventory-grid {
-  max-height: 65vh;
+  max-height: 52vh;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-.inventory-item-panel {
+.inventory-selected-item-panel {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .merchant-page {
