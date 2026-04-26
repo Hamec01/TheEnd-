@@ -187,7 +187,7 @@ export class ArenaService {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = canEquipItem(state.character.baseStats, itemId);
+    const check = canEquipItem(state.character.baseStats, itemId, state.equipment);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }

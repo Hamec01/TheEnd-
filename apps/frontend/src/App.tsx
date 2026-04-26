@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CombatSkillType,
   EMPTY_EQUIPMENT,
   ITEMS,
-  MERCHANTS,
   RACE_DEFINITIONS,
   STARTING_FREE_POINTS,
   applyAllocation,
-  getMerchantItems,
+  getItemHandsRequired,
   getAllocationCost,
-  getItemById,
   type ItemDefinition,
   type Merchant,
   type ArenaBattleState,
@@ -40,8 +38,17 @@ import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
-import { InventoryPanel } from './components/InventoryPanel';
+import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
+import type { AdminItem, AdminMerchant, StoredImage } from './services/content/models';
+import type { PlayerPath } from './RootApp';
+import {
+  getRuntimeMerchantItems,
+  getRuntimeMerchants,
+  loadRuntimeAdminContent,
+} from './services/content/runtimeContentService';
+import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource } from './services/content/runtimeImageService';
+import { getDomainItemWithFallback } from './services/content/seedService';
 
 const RACES = [Race.Human, Race.Dwarf, Race.HighElf, Race.WoodElf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -84,7 +91,7 @@ const STAT_HINTS: Record<PrimaryStat, string> = {
 };
 
 type Phase = 'setup' | 'hub';
-type OverlayPanel = 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
+type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
 
@@ -145,6 +152,7 @@ const DEFAULT_NPC_STATS: StatBlock = {
 };
 
 const NPC_STORAGE_KEY = 'theend.arenaNpcTemplates';
+const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
 
 const SKILL_OFFERS: SkillOffer[] = [
   {
@@ -196,6 +204,19 @@ function formatSignedValue(value: number): string {
 
 function titleCase(input: string): string {
   return input.length > 0 ? `${input[0].toUpperCase()}${input.slice(1)}` : input;
+}
+
+function normalizeCityName(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ');
+}
+
+function isArkleinCity(value: string | null | undefined): boolean {
+  const normalized = normalizeCityName(value);
+  return normalized === 'арклейн' || normalized === 'arklein' || normalized === 'arclein';
 }
 
 function getWeaponDamagePreview(item: ItemDefinition): string {
@@ -315,9 +336,57 @@ function toCustomNpcPayload(template: ArenaNpcTemplate): CustomArenaNpcPayload {
   };
 }
 
-export function App() {
+interface AppProps {
+  currentPlayerRoute?: PlayerPath;
+  onNavigate?: (path: PlayerPath, options?: { replace?: boolean }) => void;
+}
+
+function createUnknownItem(itemId: string): ItemDefinition {
+  return {
+    id: itemId,
+    name: `Unknown item (${itemId})`,
+    itemType: 'consumable',
+    itemSubType: 'unknown',
+    price: 0,
+    requiredStats: {},
+    bonuses: {},
+    stackable: true,
+    description: 'Item definition unavailable.',
+    icon: 'unknown',
+    rarity: 'common',
+  };
+}
+
+function getPlayerRouteFromState(
+  phase: Phase,
+  overlayPanel: OverlayPanel,
+  isBattleWindowOpen: boolean,
+  combatRoutePending: boolean,
+): PlayerPath {
+  if (phase !== 'hub') {
+    return '/';
+  }
+
+  if (isBattleWindowOpen || combatRoutePending) {
+    return '/combat';
+  }
+
+  if (overlayPanel === 'merchant') {
+    return '/merchant';
+  }
+
+  if (overlayPanel === 'character') {
+    return '/inventory';
+  }
+
+  return '/map';
+}
+
+export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
+  const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
   const [phase, setPhase] = useState<Phase>('setup');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
+  const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
 
   const [login, setLogin] = useState('');
@@ -330,7 +399,7 @@ export function App() {
 
   const [status, setStatus] = useState('Create a fighter directly or use account login if needed.');
 
-  const [selectedMerchantId, setSelectedMerchantId] = useState<string>(MERCHANTS[0]?.id ?? 'merchant_weaponsmith');
+  const [selectedMerchantId, setSelectedMerchantId] = useState<string>('merchant_weaponsmith');
   const [selectedMerchantItemId, setSelectedMerchantItemId] = useState<string | null>(null);
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
   const [merchantMode, setMerchantMode] = useState<MerchantMode>('buy');
@@ -355,10 +424,16 @@ export function App() {
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
   const [combatState, setCombatState] = useState<ArenaBattleState | null>(null);
   const [isBattleWindowOpen, setBattleWindowOpen] = useState(false);
+  const [combatRoutePending, setCombatRoutePending] = useState(false);
   const [learnedSkills, setLearnedSkills] = useState<CombatSkillType[]>([]);
 
   const [pendingStatAllocation, setPendingStatAllocation] = useState<StatAllocation>({});
   const [allocatingStats, setAllocatingStats] = useState(false);
+  const [runtimeAdminItems, setRuntimeAdminItems] = useState<AdminItem[]>([]);
+  const [runtimeAdminMerchants, setRuntimeAdminMerchants] = useState<AdminMerchant[]>([]);
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+
+  const [restoringSession, setRestoringSession] = useState(true);
 
   // Drag-drop and trade modal states
   const [draggedItem, setDraggedItem] = useState<ItemDefinition | null>(null);
@@ -369,13 +444,37 @@ export function App() {
 
   const raceDef = RACE_DEFINITIONS[race];
   const remaining = STARTING_FREE_POINTS - getAllocationCost(allocation);
+  const runtimeMerchants = useMemo(() => getRuntimeMerchants(runtimeAdminMerchants), [runtimeAdminMerchants]);
+
+  function resolveItem(itemId: string): ItemDefinition {
+    const resolved = getDomainItemWithFallback(itemId, runtimeAdminItems);
+    return resolved ?? createUnknownItem(itemId);
+  }
+
+  const resolveItemImage = useCallback(
+    (item: ItemDefinition | null | undefined) => resolveItemImageSource(item, runtimeImages),
+    [runtimeImages],
+  );
+  const resolveMerchantImage = useCallback(
+    (merchant: AdminMerchant | null | undefined) => resolveMerchantImageSource(merchant, runtimeImages),
+    [runtimeImages],
+  );
+  const arkleinMerchants = useMemo(
+    () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled && isArkleinCity(merchant.city)),
+    [runtimeAdminMerchants],
+  );
+
   const selectedMerchant = useMemo<Merchant | null>(
-    () => MERCHANTS.find((merchant) => merchant.id === selectedMerchantId) ?? null,
-    [selectedMerchantId],
+    () => runtimeMerchants.find((merchant) => merchant.id === selectedMerchantId) ?? null,
+    [runtimeMerchants, selectedMerchantId],
+  );
+  const selectedAdminMerchant = useMemo(
+    () => runtimeAdminMerchants.find((merchant) => merchant.id === selectedMerchantId) ?? null,
+    [runtimeAdminMerchants, selectedMerchantId],
   );
   const merchantItems = useMemo<ItemDefinition[]>(
-    () => (selectedMerchant ? getMerchantItems(selectedMerchant.id) : []),
-    [selectedMerchant],
+    () => (selectedMerchant ? getRuntimeMerchantItems(selectedMerchant.id, runtimeAdminMerchants, runtimeAdminItems) : []),
+    [runtimeAdminItems, runtimeAdminMerchants, selectedMerchant],
   );
   const selectedMerchantItem = useMemo<ItemDefinition | null>(
     () => merchantItems.find((item) => item.id === selectedMerchantItemId) ?? merchantItems[0] ?? null,
@@ -392,7 +491,7 @@ export function App() {
     return new Map<string, EquipmentSlot>(entries);
   }, [equipment]);
   const inventoryEntries = useMemo(() => inventory.items.map((entry) => {
-    const item = getItemById(entry.itemId);
+    const item = resolveItem(entry.itemId);
     const equippedSlot = equippedSlotByItemId.get(entry.itemId) ?? null;
     return {
       ...entry,
@@ -400,10 +499,10 @@ export function App() {
       equippedSlot,
       isEquipped: Boolean(equippedSlot),
     };
-  }), [equippedSlotByItemId, inventory.items]);
+  }), [equippedSlotByItemId, inventory.items, runtimeAdminItems]);
   const sellEntries = useMemo(() => {
     return inventory.items.map((entry) => {
-      const item = getItemById(entry.itemId);
+      const item = resolveItem(entry.itemId);
       const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
       const sellLocked = equippedItemIds.has(entry.itemId) && entry.quantity <= 1;
       return {
@@ -413,7 +512,7 @@ export function App() {
         sellLocked,
       };
     });
-  }, [equippedItemIds, inventory.items]);
+  }, [equippedItemIds, inventory.items, runtimeAdminItems]);
   const visibleSellEntries = useMemo(
     () => (sellOnlyAvailable ? sellEntries.filter((entry) => !entry.sellLocked) : sellEntries),
     [sellEntries, sellOnlyAvailable],
@@ -429,8 +528,8 @@ export function App() {
 
     const slot = selectedMerchantItem.itemType as EquipmentSlot;
     const equippedId = equipment[slot] ?? null;
-    return equippedId ? getItemById(equippedId) : null;
-  }, [equipment, selectedMerchantItem]);
+    return equippedId ? resolveItem(equippedId) : null;
+  }, [equipment, runtimeAdminItems, selectedMerchantItem]);
   const selectedMerchantOwnedCount = useMemo(
     () => (selectedMerchantItem ? inventory.items.find((entry) => entry.itemId === selectedMerchantItem.id)?.quantity ?? 0 : 0),
     [inventory.items, selectedMerchantItem],
@@ -460,11 +559,70 @@ export function App() {
     }
     return combatState.entities.find((entity) => entity.id === playerCombatId) ?? null;
   }, [combatState, playerCombatId]);
+  const activePlayerRoute = useMemo(
+    () => getPlayerRouteFromState(phase, overlayPanel, isBattleWindowOpen, combatRoutePending),
+    [combatRoutePending, isBattleWindowOpen, overlayPanel, phase],
+  );
+  const requestedPlayerRoute = useMemo<PlayerPath>(
+    () => (phase === 'hub' && currentPlayerRoute === '/' ? '/map' : currentPlayerRoute),
+    [currentPlayerRoute, phase],
+  );
 
   const chatLines = useMemo(() => {
     const logs = combatState?.logs?.slice(-7).map((entry) => entry.text) ?? [];
     return [status, ...logs].filter((line) => line.trim().length > 0).slice(-8);
   }, [status, combatState?.logs]);
+
+  useEffect(() => {
+    const savedCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
+    if (!savedCharacterId) {
+      setRestoringSession(false);
+      return;
+    }
+
+    void getArenaHubState(savedCharacterId)
+      .then((hub) => {
+        applyHubState(hub);
+        setPhase('hub');
+        setStatus(`Сессия восстановлена: ${hub.character.name}.`);
+      })
+      .catch(() => {
+        window.localStorage.removeItem(LAST_CHARACTER_STORAGE_KEY);
+      })
+      .finally(() => {
+        setRestoringSession(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    void loadRuntimeAdminContent()
+      .then((content) => {
+        setRuntimeAdminItems(content.items);
+        setRuntimeAdminMerchants(content.merchants);
+      })
+      .catch(() => {
+        // Keep hardcoded fallback content.
+      });
+  }, []);
+
+  useEffect(() => {
+    void loadRuntimeImages()
+      .then((images) => {
+        setRuntimeImages(images);
+      })
+      .catch(() => {
+        // Keep UI fallback icons if image DB is unavailable.
+      });
+  }, []);
+
+  useEffect(() => {
+    if (runtimeMerchants.length === 0) {
+      return;
+    }
+    if (!runtimeMerchants.some((merchant) => merchant.id === selectedMerchantId)) {
+      setSelectedMerchantId(runtimeMerchants[0].id);
+    }
+  }, [runtimeMerchants, selectedMerchantId]);
 
   useEffect(() => {
     if (!character) {
@@ -600,10 +758,98 @@ export function App() {
     };
   }, [phase, character?.id]);
 
+  useEffect(() => {
+    if (restoringSession) {
+      return;
+    }
+
+    if (currentPlayerRoute === activePlayerRoute) {
+      if (pendingRouteSyncRef.current?.to === currentPlayerRoute) {
+        pendingRouteSyncRef.current = null;
+      }
+      return;
+    }
+
+    pendingRouteSyncRef.current = { from: currentPlayerRoute, to: activePlayerRoute };
+    onNavigate?.(activePlayerRoute, { replace: activePlayerRoute === '/' });
+  }, [activePlayerRoute, currentPlayerRoute, onNavigate, restoringSession]);
+
+  useEffect(() => {
+    if (restoringSession || phase !== 'hub') {
+      return;
+    }
+
+    const pendingRouteSync = pendingRouteSyncRef.current;
+    if (pendingRouteSync) {
+      if (currentPlayerRoute === pendingRouteSync.to) {
+        pendingRouteSyncRef.current = null;
+        return;
+      }
+
+      if (currentPlayerRoute === pendingRouteSync.from && activePlayerRoute === pendingRouteSync.to) {
+        return;
+      }
+
+      pendingRouteSyncRef.current = null;
+    }
+
+    if (requestedPlayerRoute === activePlayerRoute) {
+      return;
+    }
+
+    if (requestedPlayerRoute === '/inventory') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setCharacterPageFocus('inventory');
+      setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/map') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setOverlayPanel(null);
+      return;
+    }
+
+    if (requestedPlayerRoute === '/merchant') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      openMerchantOverlay();
+      return;
+    }
+
+    if (requestedPlayerRoute === '/combat') {
+      setOverlayPanel(null);
+
+      if (combatState && combatId) {
+        setBattleWindowOpen(true);
+        return;
+      }
+
+      void openCombat();
+    }
+  }, [
+    activePlayerRoute,
+    combatId,
+    combatState,
+    isBattleWindowOpen,
+    phase,
+    requestedPlayerRoute,
+    restoringSession,
+    runtimeAdminItems,
+    runtimeAdminMerchants,
+    runtimeMerchants,
+  ]);
+
   function applyHubState(hub: HubStatePayload): void {
     setCharacter(hub.character);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
+    window.localStorage.setItem(LAST_CHARACTER_STORAGE_KEY, hub.character.id);
   }
 
   async function onRegister(): Promise<void> {
@@ -661,12 +907,21 @@ export function App() {
       return;
     }
 
+    const item = resolveItem(itemId);
+    const previousShieldId = equipment.shield;
+    const isTwoHandedWeapon = item.itemType === 'weapon' && getItemHandsRequired(item) === 2;
+
     try {
       const hub = await equipArenaItem(character.id, itemId);
       applyHubState(hub);
-      setStatus(`Equipped ${getItemById(itemId).name}.`);
+      if (isTwoHandedWeapon && previousShieldId && !hub.equipment.shield) {
+        setStatus(`Экипировано: ${item.name}. Предмет из левой руки снят и остался в инвентаре, потому что оружие двуручное.`);
+        return;
+      }
+
+      setStatus(`Экипировано: ${item.name}.`);
     } catch (error) {
-      setStatus(`Equip error: ${(error as Error).message}`);
+      setStatus(`Ошибка экипировки: ${(error as Error).message}`);
     }
   }
 
@@ -692,9 +947,9 @@ export function App() {
     try {
       const hub = await buyArenaItem(character.id, itemId);
       applyHubState(hub);
-      setStatus(`Куплено: ${getItemById(itemId).name}`);
+      setStatus(`Куплено: ${resolveItem(itemId).name}`);
     } catch (error) {
-      const item = getItemById(itemId);
+      const item = resolveItem(itemId);
       setStatus(`Ошибка покупки: ${(error as Error).message} У вас ${inventory.gold} золота, предмет стоит ${item.price}.`);
     }
   }
@@ -704,7 +959,8 @@ export function App() {
       return;
     }
 
-    const item = getItemById(itemId);
+    const item = resolveItem(itemId);
+    const previousShieldId = equipment.shield;
     if (item.itemType === 'consumable') {
       await handleBuy(itemId);
       return;
@@ -719,6 +975,10 @@ export function App() {
 
       const equippedHub = await equipArenaItem(character.id, itemId);
       applyHubState(equippedHub);
+      if (item.itemType === 'weapon' && getItemHandsRequired(item) === 2 && previousShieldId && !equippedHub.equipment.shield) {
+        setStatus(`Куплено и экипировано: ${item.name}. Предмет из левой руки снят и остался в инвентаре.`);
+        return;
+      }
       setStatus(`Куплено и экипировано: ${item.name}`);
     } catch (error) {
       if (purchased) {
@@ -738,7 +998,7 @@ export function App() {
     try {
       const hub = await sellArenaItem(character.id, itemId, 1);
       applyHubState(hub);
-      const item = getItemById(itemId);
+      const item = resolveItem(itemId);
       const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
       setStatus(`Продано: ${item.name} (+${sellPrice} золота)`);
     } catch (error) {
@@ -746,14 +1006,14 @@ export function App() {
     }
   }
 
-  function openMerchantOverlay(merchantId = 'merchant_weaponsmith'): void {
-    const merchant = MERCHANTS.find((item) => item.id === merchantId);
+  function openMerchantOverlay(merchantId = runtimeMerchants[0]?.id ?? 'merchant_weaponsmith'): void {
+    const merchant = runtimeMerchants.find((item) => item.id === merchantId);
     if (!merchant) {
       return;
     }
 
     setSelectedMerchantId(merchant.id);
-    const defaultItem = getMerchantItems(merchant.id)[0] ?? null;
+    const defaultItem = getRuntimeMerchantItems(merchant.id, runtimeAdminMerchants, runtimeAdminItems)[0] ?? null;
     setSelectedMerchantItemId(defaultItem?.id ?? null);
     setMerchantMode('buy');
     setOverlayPanel('merchant');
@@ -761,8 +1021,9 @@ export function App() {
   }
 
   function openSkillsOverlay(): void {
-    setOverlayPanel('skills');
-    setStatus('Открыт учитель навыков.');
+    setCharacterPageFocus('skills');
+    setOverlayPanel('character');
+    setStatus('Открыта страница персонажа: раздел навыков.');
   }
 
   function openArenaOverlay(): void {
@@ -820,6 +1081,8 @@ export function App() {
       return;
     }
 
+    setCombatRoutePending(true);
+
     try {
       const started = activeArenaNpcs.length > 0
         ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload))
@@ -832,6 +1095,8 @@ export function App() {
       setStatus(activeArenaNpcs.length > 0 ? `Battle started against ${activeArenaNpcs.length} arena NPC.` : 'Battle started.');
     } catch (error) {
       setStatus(`Battle error: ${(error as Error).message}`);
+    } finally {
+      setCombatRoutePending(false);
     }
   }
 
@@ -872,7 +1137,7 @@ export function App() {
         gold: result.gold,
         items: result.inventory,
       }));
-      setStatus(`${getItemById(itemId).name} used.`);
+      setStatus(`${resolveItem(itemId).name} used.`);
     } catch (error) {
       setStatus(`Consumable error: ${(error as Error).message}`);
     }
@@ -904,6 +1169,19 @@ export function App() {
   }
 
   if (phase === 'setup') {
+    if (restoringSession) {
+      return (
+        <div className="page">
+          <main className="shell setup-shell">
+            <section className="card status-card setup-status-card">
+              <h2>Status</h2>
+              <p>Восстанавливаем сохранённого персонажа...</p>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
     return (
       <div className="page">
         <main className="shell setup-shell">
@@ -992,20 +1270,55 @@ export function App() {
             stamina: battlePlayer?.currentStamina ?? character.activeStats.stamina,
           }}
           chatLines={chatLines}
-          onOpenStats={() => setOverlayPanel('stats')}
+          onOpenStats={() => {
+            setCharacterPageFocus('stats');
+            setOverlayPanel('character');
+            setStatus('Открыта страница персонажа: раздел характеристик.');
+          }}
           onOpenInventory={() => {
-            setOverlayPanel('inventory');
-            setStatus('Открыт инвентарь: здесь можно надеть и снять экипировку.');
+            setCharacterPageFocus('inventory');
+            setOverlayPanel('character');
+            setStatus('Открыта страница персонажа: раздел инвентаря.');
           }}
           onOpenClan={() => setOverlayPanel('clan')}
           onExit={() => setExitDialogOpen(true)}
           onOpenArena={openArenaOverlay}
-          onOpenMerchant={() => openMerchantOverlay()}
+          onOpenMerchant={openMerchantOverlay}
           onOpenArenaNpc={openArenaNpcOverlay}
           onOpenSkills={openSkillsOverlay}
           onStartCombat={openCombat}
           onStatus={setStatus}
+          cityMerchants={arkleinMerchants}
+          resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+          resolveItemImage={resolveItemImage}
+          resolveMerchantImage={resolveMerchantImage}
         />
+
+        {overlayPanel === 'character' && character ? (
+          <InventoryPanel
+            character={character}
+            inventory={inventory}
+            equipment={equipment}
+            learnedSkills={learnedSkills}
+            pendingStatAllocation={pendingStatAllocation}
+            freePointsLeft={freePointsLeft}
+            allocatingStats={allocatingStats}
+            focusSection={characterPageFocus}
+            onClose={() => setOverlayPanel(null)}
+            onStatus={setStatus}
+            onEquipItem={async (itemId) => {
+              await handleEquip(itemId);
+            }}
+            onUnequipSlot={async (slot) => {
+              await handleUnequip(slot);
+            }}
+            onAdjustStat={adjustPendingStat}
+            onApplyStatAllocation={applyStatAllocation}
+            onUseItem={handleUseConsumable}
+            resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+            resolveItemImage={resolveItemImage}
+          />
+        ) : null}
 
         {overlayPanel === 'stats' ? (
           <div className="battle-overlay" role="dialog" aria-modal="true">
@@ -1054,21 +1367,6 @@ export function App() {
               </div>
             </section>
           </div>
-        ) : null}
-
-        {overlayPanel === 'inventory' && character ? (
-          <InventoryPanel
-            character={character}
-            inventory={inventory}
-            equipment={equipment}
-            onClose={() => setOverlayPanel(null)}
-            onEquipItem={async (itemId) => {
-              await handleEquip(itemId);
-            }}
-            onUnequipSlot={async (slot) => {
-              await handleUnequip(slot);
-            }}
-          />
         ) : null}
 
         {overlayPanel === 'arenaNpc' ? (
@@ -1266,12 +1564,18 @@ export function App() {
           <MerchantPanel
             merchant={selectedMerchant}
             inventory={inventory}
+            merchantItems={merchantItems}
+            resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+            resolveItemImage={resolveItemImage}
+            merchantDescription={selectedAdminMerchant?.description}
+            merchantLocation={selectedAdminMerchant?.location}
+            merchantPortrait={resolveMerchantImage(selectedAdminMerchant)}
             onClose={() => setOverlayPanel(null)}
             onBuyItem={async (itemId) => {
               try {
                 const updated = await buyArenaItem(character.id, itemId);
                 setInventory(updated.inventory);
-                setStatus(`Bought ${getItemById(itemId)?.name || 'item'}`);
+                setStatus(`Bought ${resolveItem(itemId).name || 'item'}`);
               } catch (err: any) {
                 setStatus(`Failed to buy: ${err.message}`);
               }
@@ -1280,7 +1584,7 @@ export function App() {
               try {
                 const updated = await sellArenaItem(character.id, itemId);
                 setInventory(updated.inventory);
-                setStatus(`Sold ${getItemById(itemId)?.name || 'item'}`);
+                setStatus(`Sold ${resolveItem(itemId).name || 'item'}`);
               } catch (err: any) {
                 setStatus(`Failed to sell: ${err.message}`);
               }
@@ -1295,7 +1599,29 @@ export function App() {
               <p>Choose what to do:</p>
               <div className="wm-exit-actions">
                 <button onClick={() => { setOverlayPanel(null); setExitDialogOpen(false); setPhase('setup'); }}>Return to main menu</button>
-                <button onClick={() => { setOverlayPanel(null); setExitDialogOpen(false); setPhase('setup'); }}>Log out</button>
+                <button
+                  onClick={() => {
+                    setOverlayPanel(null);
+                    setExitDialogOpen(false);
+                    setPhase('setup');
+                    setCharacter(null);
+                    setAccountId(null);
+                    setInventory({ gold: 0, items: [] });
+                    setEquipment({
+                      weapon: null,
+                      helmet: null,
+                      armor: null,
+                      boots: null,
+                      gloves: null,
+                      shield: null,
+                    });
+                    setPendingStatAllocation({});
+                    window.localStorage.removeItem(LAST_CHARACTER_STORAGE_KEY);
+                    setStatus('Вы вышли из аккаунта.');
+                  }}
+                >
+                  Log out
+                </button>
                 <button onClick={() => setExitDialogOpen(false)}>Cancel</button>
               </div>
             </section>
@@ -1313,11 +1639,14 @@ export function App() {
                 combatId={combatId!}
                 playerId={playerCombatId!}
                 state={combatState}
+                inventory={inventory}
                 selectedSkill={selectedCombatSkill}
                 learnedSkills={learnedSkills}
                 onSkillChange={setSelectedCombatSkill}
                 onStateChange={setCombatState}
                 onStatus={setStatus}
+                onClose={() => setBattleWindowOpen(false)}
+                resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
               />
             </section>
           </div>

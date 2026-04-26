@@ -1,6 +1,7 @@
 import type {
   ActionType,
   ArenaBattleState,
+  ArenaCombatEntity,
   CombatSkillType,
   Equipment,
   InventoryState,
@@ -9,9 +10,14 @@ import type {
   StatBlock,
   DistanceBand,
   TargetZone,
+  TeamSide,
 } from '@theend/rpg-domain';
 
 const API_BASE = 'http://localhost:3001';
+
+// Type aliases for battle UI components
+export type CombatState = ArenaBattleState;
+export type Fighter = ArenaCombatEntity;
 
 export interface RegisterRequest {
   login: string;
@@ -67,7 +73,7 @@ export async function registerAccount(payload: RegisterRequest): Promise<Registe
   });
 
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
 
   return res.json();
@@ -85,7 +91,7 @@ export async function createCharacter(
   });
 
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
 
   return res.json();
@@ -99,7 +105,7 @@ export async function loginAccount(payload: RegisterRequest): Promise<RegisterRe
   });
 
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
 
   return res.json();
@@ -109,7 +115,7 @@ export async function listCharacters(accountId: string): Promise<CharacterSummar
   const res = await fetch(`${API_BASE}/characters?accountId=${encodeURIComponent(accountId)}`);
 
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
 
   return res.json();
@@ -118,7 +124,7 @@ export async function listCharacters(accountId: string): Promise<CharacterSummar
 export async function getArenaHubState(characterId: string): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/hub/${encodeURIComponent(characterId)}`);
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return res.json();
 }
@@ -172,7 +178,7 @@ export async function equipArenaItem(characterId: string, itemId: string): Promi
     body: JSON.stringify({ characterId, itemId }),
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return res.json();
 }
@@ -187,7 +193,7 @@ export async function unequipArenaItem(
     body: JSON.stringify({ characterId, slot }),
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return res.json();
 }

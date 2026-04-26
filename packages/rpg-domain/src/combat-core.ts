@@ -1,6 +1,7 @@
 import type { CombatReadyEntity } from './combat';
+import { calculateFinalDamage, type DamageCategory } from './damage';
 
-export type DamageType = 'physical' | 'magic' | 'element';
+export type DamageType = 'physical' | 'magic' | 'element' | 'elemental' | 'shamanic' | 'runic' | 'true';
 export type CombatActionType = 'BASIC_ATTACK' | 'DEFEND' | 'SKIP_TURN';
 
 export interface ActiveEffect {
@@ -61,14 +62,17 @@ function findEntity(state: CombatState, id: string): CombatEntity {
 }
 
 function applyDamage(target: CombatEntity, amount: number, damageType: DamageType): void {
-  let effective = amount;
+  const normalizedCategory: DamageCategory = damageType === 'element' ? 'elemental' : damageType;
+  const result = calculateFinalDamage({
+    attacker: target,
+    defender: target,
+    damagePayload: {
+      category: normalizedCategory,
+      amount,
+    },
+  });
+  let effective = result.finalDamage;
 
-  if (damageType === 'magic') {
-    effective = Math.round(effective * target.raceModifiers.magicDamageTakenMultiplier);
-  }
-  if (damageType === 'element') {
-    effective = Math.round(effective * target.raceModifiers.elementDamageTakenMultiplier);
-  }
   if (target.defending) {
     effective = Math.round(effective * 0.5);
   }

@@ -9,11 +9,14 @@ export type ItemType =
   | 'shield'
   | 'consumable';
 
+export type HandsRequired = 1 | 2;
+
 export interface ItemDefinition {
   id: string;
   name: string;
   itemType: ItemType;
   itemSubType: string;
+  handsRequired?: HandsRequired;
   price: number;
   requiredStats: Partial<Record<PrimaryStat, number>>;
   bonuses: Partial<Record<PrimaryStat, number>>;
@@ -21,6 +24,9 @@ export interface ItemDefinition {
   description: string;
   icon: string;
   rarity: 'common' | 'uncommon' | 'rare';
+  runeSlots?: number;
+  runeIds?: string[];
+  runeComplexId?: string;
 }
 
 export const ITEMS: Record<string, ItemDefinition> = {
@@ -59,6 +65,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { dexterity: 7 },
     bonuses: { dexterity: 2, perception: 1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Легкий лук для точных ударов.',
     icon: 'bow',
     rarity: 'common',
@@ -72,6 +79,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { intelligence: 7 },
     bonuses: { intelligence: 2, willpower: 1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Базовый посох для практики магии.',
     icon: 'staff',
     rarity: 'common',
@@ -85,6 +93,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { dexterity: 9 },
     bonuses: { dexterity: 3, perception: 1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Дальнобойный лук с высокой точностью.',
     icon: 'bow',
     rarity: 'uncommon',
@@ -98,6 +107,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { strength: 7, dexterity: 6 },
     bonuses: { strength: 2, dexterity: 1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Копье для контроля дистанции.',
     icon: 'spear',
     rarity: 'uncommon',
@@ -111,6 +121,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { strength: 10 },
     bonuses: { strength: 4, perception: -1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Молот с сильным пробивающим ударом.',
     icon: 'hammer',
     rarity: 'rare',
@@ -150,6 +161,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { strength: 11 },
     bonuses: { strength: 5, perception: -1 },
     stackable: false,
+    handsRequired: 2,
     description: 'Тяжелая кувалда для проламывания строя и щитов.',
     icon: 'hammer',
     rarity: 'rare',
@@ -163,6 +175,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { dexterity: 8, perception: 6 },
     bonuses: { dexterity: 2, perception: 2 },
     stackable: false,
+    handsRequired: 2,
     description: 'Лук разведчика для быстрого маневренного боя.',
     icon: 'bow',
     rarity: 'uncommon',
@@ -176,6 +189,7 @@ export const ITEMS: Record<string, ItemDefinition> = {
     requiredStats: { intelligence: 9, willpower: 6 },
     bonuses: { intelligence: 3, willpower: 2 },
     stackable: false,
+    handsRequired: 2,
     description: 'Жезл боевого мага, усиливающий урон и контроль.',
     icon: 'staff',
     rarity: 'rare',
@@ -383,4 +397,16 @@ export function getItemById(itemId: string): ItemDefinition {
     throw new Error(`Unknown item id: ${itemId}`);
   }
   return item;
+}
+
+export function getItemHandsRequired(item: Pick<ItemDefinition, 'itemType' | 'handsRequired'>): HandsRequired {
+  if (item.itemType !== 'weapon') {
+    return 1;
+  }
+
+  return item.handsRequired === 2 ? 2 : 1;
+}
+
+export function isTwoHandedItem(item: Pick<ItemDefinition, 'itemType' | 'handsRequired'>): boolean {
+  return getItemHandsRequired(item) === 2;
 }

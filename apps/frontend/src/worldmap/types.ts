@@ -1,5 +1,22 @@
 export type ContextMode = 'empty' | 'location' | 'npc' | 'combat';
 
+export type ChatType = 'local' | 'private' | 'system';
+
+export type PlayerWorldState = 'moving' | 'idle' | 'in_zone' | 'in_city' | 'in_combat';
+
+export type WorldMapMode = 'play' | 'editor';
+
+export type EditorSizeMode = 'normal' | 'editor';
+
+export type {
+  ZoneShape,
+  ZoneType as WorldZoneType,
+  ZoneEditorTool,
+  WorldMapZone as EditorWorldZone,
+  ZoneEditorDraft,
+  ZoneEditorSettings,
+} from './zoneEditorTypes';
+
 export interface MapAction {
   id: string;
   label: string;
@@ -19,4 +36,10 @@ export interface MapNodeData {
   x: number;
   y: number;
   actions: MapAction[];
+}
+
+export interface ChatMessage {
+  id: string;
+  text: string;
+  type: ChatType;
 }

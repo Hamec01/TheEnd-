@@ -10,6 +10,7 @@ interface InventoryGridProps {
   onDrop?: (item: ItemDefinition) => void;
   columns?: number;
   isDraggingFrom?: string;
+  resolveItemImage?: (item: ItemDefinition) => string | undefined;
 }
 
 export const InventoryGrid: React.FC<InventoryGridProps> = ({
@@ -20,11 +21,12 @@ export const InventoryGrid: React.FC<InventoryGridProps> = ({
   onDrop,
   columns = 4,
   isDraggingFrom,
+  resolveItemImage,
 }) => {
   return (
     <div className="inventory-grid-container">
       <h3 className="inventory-title">{title}</h3>
-      <div 
+      <div
         className="inventory-grid"
         style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
       >
@@ -32,7 +34,8 @@ export const InventoryGrid: React.FC<InventoryGridProps> = ({
           <ItemSlot
             key={index}
             item={item}
-            iconEmoji={['⚔️', '🛡️', '🧪', '💎'][index % 4]}
+            iconEmoji={['вљ”пёЏ', 'рџ›ЎпёЏ', 'рџ§Є', 'рџ’Ћ'][index % 4]}
+            iconImage={item ? resolveItemImage?.(item) : undefined}
             onClick={() => item && onItemClick?.(item, index)}
             onDragStart={onDragStart}
             onDrop={onDrop}

@@ -6,7 +6,7 @@ export async function registerAccount(payload) {
         body: JSON.stringify(payload),
     });
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
@@ -18,7 +18,7 @@ export async function createCharacter(payload, accountId) {
         body: JSON.stringify(payload),
     });
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
@@ -29,21 +29,21 @@ export async function loginAccount(payload) {
         body: JSON.stringify(payload),
     });
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
 export async function listCharacters(accountId) {
     const res = await fetch(`${API_BASE}/characters?accountId=${encodeURIComponent(accountId)}`);
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
 export async function getArenaHubState(characterId) {
     const res = await fetch(`${API_BASE}/arena/hub/${encodeURIComponent(characterId)}`);
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
@@ -92,7 +92,7 @@ export async function equipArenaItem(characterId, itemId) {
         body: JSON.stringify({ characterId, itemId }),
     });
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }
@@ -103,7 +103,7 @@ export async function unequipArenaItem(characterId, slot) {
         body: JSON.stringify({ characterId, slot }),
     });
     if (!res.ok) {
-        throw new Error(await res.text());
+        throw new Error(await readErrorMessage(res));
     }
     return res.json();
 }

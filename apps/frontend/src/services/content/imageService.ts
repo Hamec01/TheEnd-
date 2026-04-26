@@ -1,0 +1,137 @@
+import type { StoredImage } from './models';
+import { IMAGE_PRESETS, type ImagePresetId } from './imagePresets';
+import { nowIso, readCollection, uid, writeCollection } from './storage';
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load image for resize'));
+    image.src = dataUrl;
+  });
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function resizeDataUrl(dataUrl: string, width: number, height: number): Promise<string> {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas context unavailable');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const srcRatio = image.width / image.height;
+  const dstRatio = width / height;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = image.width;
+  let sh = image.height;
+
+  if (srcRatio > dstRatio) {
+    sw = image.height * dstRatio;
+    sx = (image.width - sw) / 2;
+  } else if (srcRatio < dstRatio) {
+    sh = image.width / dstRatio;
+    sy = (image.height - sh) / 2;
+  }
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
+  return canvas.toDataURL('image/png');
+}
+
+async function createStoredImage(
+  fileName: string,
+  mimeType: string,
+  dataUrl: string,
+  width: number,
+  height: number,
+): Promise<StoredImage> {
+  return {
+    id: uid('img'),
+    name: fileName,
+    mimeType,
+    width,
+    height,
+    dataUrl,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+}
+
+export const imageService = {
+  async getAll(): Promise<StoredImage[]> {
+    return readCollection<StoredImage>('images');
+  },
+
+  async get(id: string): Promise<StoredImage | null> {
+    const all = await this.getAll();
+    return all.find((entry) => entry.id === id) ?? null;
+  },
+
+  async upload(file: File): Promise<StoredImage> {
+    const all = await this.getAll();
+    const dataUrl = await fileToDataUrl(file);
+    const image = await loadImage(dataUrl);
+    const next = await createStoredImage(file.name, file.type || 'image/png', dataUrl, image.width, image.height);
+    writeCollection('images', [...all, next]);
+    return next;
+  },
+
+  async uploadResized(file: File, width: number, height: number, options?: { name?: string }): Promise<StoredImage> {
+    const all = await this.getAll();
+    const originalDataUrl = await fileToDataUrl(file);
+    const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
+    const next = await createStoredImage(
+      options?.name?.trim() || file.name,
+      'image/png',
+      resizedDataUrl,
+      width,
+      height,
+    );
+    writeCollection('images', [...all, next]);
+    return next;
+  },
+
+  async uploadPreset(file: File, presetId: ImagePresetId, options?: { name?: string }): Promise<StoredImage> {
+    const preset = IMAGE_PRESETS[presetId];
+    return this.uploadResized(file, preset.width, preset.height, options);
+  },
+
+  async resize(imageId: string, width: number, height: number): Promise<StoredImage> {
+    const all = await this.getAll();
+    const found = all.find((entry) => entry.id === imageId);
+    if (!found) {
+      throw new Error(`Image not found: ${imageId}`);
+    }
+    const dataUrl = await resizeDataUrl(found.dataUrl, width, height);
+    const next: StoredImage = {
+      ...found,
+      dataUrl,
+      width,
+      height,
+      updatedAt: nowIso(),
+    };
+    writeCollection('images', all.map((entry) => (entry.id === imageId ? next : entry)));
+    return next;
+  },
+
+  async delete(imageId: string): Promise<void> {
+    const all = await this.getAll();
+    writeCollection('images', all.filter((entry) => entry.id !== imageId));
+  },
+};

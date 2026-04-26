@@ -20,7 +20,52 @@ import {
   getBattlefieldTilePlacements,
   resolveRound,
 } from './arena-battle';
-import { Race } from './races';
+import { RACE_DEFINITIONS, Race, ensureRaceBaseStatsAreValid } from './races';
+import { PRIMARY_STATS } from './stats';
+
+describe('race definitions', () => {
+  it('contains exactly all playable races and no AncientElf', () => {
+    const races = Object.values(Race);
+    expect(races).toEqual([Race.Human, Race.Dwarf, Race.HighElf, Race.WoodElf]);
+    expect(races).not.toContain('ANCIENT_ELF');
+    expect(Object.keys(RACE_DEFINITIONS)).toHaveLength(4);
+  });
+
+  it('has valid base stats for all races', () => {
+    expect(() => ensureRaceBaseStatsAreValid()).not.toThrow();
+
+    for (const race of Object.values(Race)) {
+      const stats = RACE_DEFINITIONS[race].baseStats;
+      expect(stats.hp).toBeGreaterThanOrEqual(65);
+      expect(stats.mp).toBeGreaterThanOrEqual(0);
+      expect(stats.stamina).toBeGreaterThanOrEqual(0);
+
+      for (const stat of PRIMARY_STATS) {
+        expect(typeof stats[stat]).toBe('number');
+      }
+    }
+  });
+
+  it('applies race-specific combat and mp-cost modifiers', () => {
+    const human = RACE_DEFINITIONS[Race.Human].modifiers;
+    const dwarf = RACE_DEFINITIONS[Race.Dwarf].modifiers;
+    const highElf = RACE_DEFINITIONS[Race.HighElf].modifiers;
+    const woodElf = RACE_DEFINITIONS[Race.WoodElf].modifiers;
+
+    expect(dwarf.canUseMagic).toBe(false);
+    expect(dwarf.canUseElements).toBe(false);
+    expect(dwarf.magicDamageTakenMultiplier).toBe(0.5);
+    expect(dwarf.elementDamageTakenMultiplier).toBe(0.5);
+
+    expect(human.elementMpCostMultiplier).toBe(2);
+
+    expect(highElf.magicMpCostMultiplier).toBe(2);
+    expect(highElf.elementMpCostMultiplier).toBe(1);
+
+    expect(woodElf.magicMpCostMultiplier).toBe(2);
+    expect(woodElf.elementMpCostMultiplier).toBe(1);
+  });
+});
 
 describe('shop', () => {
   it('deducts gold and adds inventory item on purchase', () => {
@@ -74,6 +119,52 @@ describe('equipment', () => {
     );
 
     expect(equipment.weapon).toBe('iron_sword');
+  });
+
+  it('clears shield when equipping a two-handed weapon', () => {
+    const equipment = equipItem(
+      {
+        weapon: 'iron_sword',
+        helmet: null,
+        armor: null,
+        boots: null,
+        gloves: null,
+        shield: 'kite_shield',
+      },
+      'hunter_bow',
+    );
+
+    expect(equipment.weapon).toBe('hunter_bow');
+    expect(equipment.shield).toBeNull();
+  });
+
+  it('prevents equipping a shield while a two-handed weapon is equipped', () => {
+    const check = canEquipItem(
+      {
+        hp: 50,
+        mp: 60,
+        stamina: 60,
+        strength: 6,
+        constitution: 6,
+        dexterity: 8,
+        intelligence: 5,
+        luck: 5,
+        perception: 6,
+        willpower: 5,
+      },
+      'kite_shield',
+      {
+        weapon: 'hunter_bow',
+        helmet: null,
+        armor: null,
+        boots: null,
+        gloves: null,
+        shield: null,
+      },
+    );
+
+    expect(check.ok).toBe(false);
+    expect(check.reason).toBeDefined();
   });
 });
 
