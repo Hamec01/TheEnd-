@@ -7,13 +7,14 @@ import { WorldMapCanvas, type WorldMapCanvasHandle } from './WorldMapCanvas';
 import { ContextActionPanel } from './ContextActionPanel';
 import { ZoneEditorPanel } from './ZoneEditorPanel';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory, type ZoneEditorHistoryState } from './zoneEditorHistory';
-import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromStorage, loadEditorSettings, saveEditorDataToStorage, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
+import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft, type PaintedRegion, type RegionBrushSize, type RegionToolMode, type RegionType, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import type { ChatMessage, ChatType, ContextMode, MapNodeData, PlayerWorldState, WorldMapMode } from './types';
 import { getNearbyPlayers, canAttackNearbyPlayer, type NearbyPlayer } from './nearbyPlayersSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import { getZoneCenter, moveZone } from './zoneGeometry';
 import type { AdminMerchant } from '../services/content/models';
+import { subscribeToContentSync } from '../services/content/contentSync';
 
 type LocationView = 'map' | 'arklein';
 
@@ -167,8 +168,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   } = props;
 
   const canvasRef = useRef<WorldMapCanvasHandle>(null);
-  const skipNextZonePersistRef = useRef(false);
+  const skipNextZonePersistRef = useRef(true);
   const skipNextSettingsPersistRef = useRef(false);
+  const worldMapRefreshRef = useRef<Promise<void> | null>(null);
+  const lastWorldMapRefreshAtRef = useRef(0);
 
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>('play');
   const [contextMode, setContextMode] = useState<ContextMode>('empty');
@@ -183,22 +186,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
 
-  const [zones, setZones] = useState<WorldMapZone[]>(() => {
-    if (typeof window === 'undefined') {
-      return cloneZones(WORLD_MAP_ZONES);
-    }
-
-    const loaded = loadEditorDataFromStorage(cloneZones(WORLD_MAP_ZONES));
-    return loaded.zones;
-  });
-  const [regions, setRegions] = useState<PaintedRegion[]>(() => {
-    if (typeof window === 'undefined') {
-      return [];
-    }
-
-    const loaded = loadEditorDataFromStorage(cloneZones(WORLD_MAP_ZONES));
-    return loaded.regions;
-  });
+  const [zones, setZones] = useState<WorldMapZone[]>(() => cloneZones(WORLD_MAP_ZONES));
+  const [regions, setRegions] = useState<PaintedRegion[]>([]);
   const [regionToolMode, setRegionToolMode] = useState<RegionToolMode>('circle');
   const [regionType, setRegionType] = useState<RegionType>('blocked');
   const [regionBrushSize, setRegionBrushSize] = useState<RegionBrushSize>(1);
@@ -232,6 +221,38 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     brushSize: regionBrushSize,
   }), [regionBrushSize, regionToolMode, regionType]);
 
+  const reloadWorldMapFromBackend = useCallback(async (options?: { force?: boolean }) => {
+    if (worldMapMode === 'editor') {
+      return;
+    }
+
+    const now = Date.now();
+    if (!options?.force && worldMapRefreshRef.current && now - lastWorldMapRefreshAtRef.current < 1200) {
+      return worldMapRefreshRef.current;
+    }
+
+    lastWorldMapRefreshAtRef.current = now;
+    const refreshPromise = loadEditorDataFromBackend(cloneZones(WORLD_MAP_ZONES))
+      .then((loaded) => {
+        skipNextZonePersistRef.current = true;
+        setZones(loaded.zones);
+        setRegions(loaded.regions);
+        setCurrentZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
+        setHoverZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
+      })
+      .catch(() => {
+        // Keep the current in-memory map if backend content is unavailable.
+      })
+      .finally(() => {
+        if (worldMapRefreshRef.current === refreshPromise) {
+          worldMapRefreshRef.current = null;
+        }
+      });
+
+    worldMapRefreshRef.current = refreshPromise;
+    return refreshPromise;
+  }, [worldMapMode]);
+
   useEffect(() => {
     setEditorJson(exportEditorDataJson(zones, regions));
   }, [regions, zones]);
@@ -243,6 +264,49 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.id]);
 
   useEffect(() => {
+    if (worldMapMode !== 'play') {
+      return;
+    }
+
+    void reloadWorldMapFromBackend({ force: true });
+  }, [reloadWorldMapFromBackend, worldMapMode]);
+
+  useEffect(() => {
+    if (worldMapMode !== 'play') {
+      return;
+    }
+
+    const refreshVisibleWorldMap = () => {
+      void reloadWorldMapFromBackend();
+    };
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'worldMap' || payload.scope === 'all') {
+        void reloadWorldMapFromBackend({ force: true });
+      }
+    });
+
+    const handleFocus = () => {
+      refreshVisibleWorldMap();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshVisibleWorldMap();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [reloadWorldMapFromBackend, worldMapMode]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -251,18 +315,30 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.id, playerPosition]);
 
   useEffect(() => {
+    if (worldMapMode !== 'editor') {
+      return;
+    }
+
     if (skipNextZonePersistRef.current) {
       skipNextZonePersistRef.current = false;
       return;
     }
 
-    if (zones.length === 0 && regions.length === 0) {
-      clearZoneStorage();
-    } else {
-      saveEditorDataToStorage(zones, regions);
-    }
-    setAutosaveStatus('autosaved');
-  }, [regions, zones]);
+    setAutosaveStatus('saving');
+    void (async () => {
+      try {
+        if (zones.length === 0 && regions.length === 0) {
+          clearZoneStorage();
+          await saveEditorDataToBackend([], []);
+        } else {
+          await saveEditorDataToBackend(zones, regions);
+        }
+        setAutosaveStatus('autosaved');
+      } catch {
+        setAutosaveStatus('save failed');
+      }
+    })();
+  }, [regions, worldMapMode, zones]);
 
   useEffect(() => {
     if (skipNextSettingsPersistRef.current) {
@@ -581,6 +657,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setEditorDraft(null);
     setEditorJson('');
     clearZoneStorage();
+    void saveEditorDataToBackend([], []);
     onStatus('Editor: all zones and regions cleared.');
   }
 
@@ -588,6 +665,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     skipNextZonePersistRef.current = true;
     skipNextSettingsPersistRef.current = true;
     clearZoneStorage();
+    void saveEditorDataToBackend([], []);
     clearEditorSettingsStorage();
     setZones(cloneZones(WORLD_MAP_ZONES));
     setRegions([]);
@@ -761,10 +839,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleSaveShortcut() {
-    saveEditorDataToStorage(zones, regions);
+    void saveEditorDataToBackend(zones, regions);
     saveEditorSettings(editorSettings);
     setAutosaveStatus('autosaved');
-    onStatus('Editor: saved to localStorage.');
+    onStatus('Editor: saved to backend content store.');
   }
 
   async function handleAction(actionId: string, kind: string): Promise<void> {
