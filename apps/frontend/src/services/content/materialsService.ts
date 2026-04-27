@@ -1,5 +1,6 @@
 import type { Material } from './models';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 
 export function validateMaterial(material: Material): string[] {
   const errors: string[] = [];
@@ -17,29 +18,25 @@ export function validateMaterial(material: Material): string[] {
 
 export const materialsService = {
   async getAll(): Promise<Material[]> {
-    return readCollection<Material>('materials');
+    return getContentCollection<Material>('materials');
   },
 
   async getById(id: string): Promise<Material | null> {
-    const all = await this.getAll();
-    return all.find((entry) => entry.id === id) ?? null;
+    return getContentEntry<Material>('materials', id);
   },
 
   async create(payload: Omit<Material, 'createdAt' | 'updatedAt'>): Promise<Material> {
-    const all = await this.getAll();
     const next: Material = {
       ...payload,
       id: payload.id?.trim() || uid('material'),
       createdAt: nowIso(),
       updatedAt: nowIso(),
     };
-    writeCollection('materials', [...all, next]);
-    return next;
+    return createContentEntry<Material>('materials', next);
   },
 
   async update(id: string, patch: Partial<Material>): Promise<Material> {
-    const all = await this.getAll();
-    const found = all.find((entry) => entry.id === id);
+    const found = await this.getById(id);
     if (!found) {
       throw new Error(`Material not found: ${id}`);
     }
@@ -49,8 +46,7 @@ export const materialsService = {
       id: found.id,
       updatedAt: nowIso(),
     };
-    writeCollection('materials', all.map((entry) => (entry.id === id ? merged : entry)));
-    return merged;
+    return updateContentEntry<Material>('materials', id, merged);
   },
 
   async disable(id: string): Promise<Material> {
@@ -58,7 +54,6 @@ export const materialsService = {
   },
 
   async delete(id: string): Promise<void> {
-    const all = await this.getAll();
-    writeCollection('materials', all.filter((entry) => entry.id !== id));
+    await deleteContentEntry('materials', id);
   },
 };

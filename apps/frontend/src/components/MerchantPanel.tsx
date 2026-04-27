@@ -14,7 +14,7 @@ interface MerchantPanelProps {
   merchantLocation?: string;
   merchantPortrait?: string;
   onClose: () => void;
-  onBuyItem: (itemId: string) => Promise<void>;
+  onBuyItem: (itemId: string, merchantId: string) => Promise<void>;
   onSellItem: (itemId: string) => Promise<void>;
 }
 
@@ -50,7 +50,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   const handleBuy = async () => {
     if (selectedItem) {
       try {
-        await onBuyItem(selectedItem.id);
+        await onBuyItem(selectedItem.id, merchant.id);
         setTradeModalOpen(false);
         setSelectedItem(null);
       } catch (err) {
@@ -161,6 +161,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           action={mode}
           item={selectedItem}
           playerGold={inventory.gold}
+          price={mode === 'buy' ? selectedItem?.price : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : undefined}
           onConfirm={mode === 'buy' ? handleBuy : handleSell}
           onCancel={() => {
             setTradeModalOpen(false);

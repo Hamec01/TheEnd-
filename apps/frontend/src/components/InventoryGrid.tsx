@@ -1,6 +1,6 @@
 import React from 'react';
-import { ItemSlot } from './ItemSlot';
 import type { ItemDefinition } from '@theend/rpg-domain';
+import { ItemSlot } from './ItemSlot';
 
 interface InventoryGridProps {
   title: string;
@@ -11,6 +11,31 @@ interface InventoryGridProps {
   columns?: number;
   isDraggingFrom?: string;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
+}
+
+function getFallbackIcon(item: ItemDefinition | undefined): string {
+  if (!item) {
+    return '';
+  }
+
+  switch (item.itemType) {
+    case 'weapon':
+      return 'W';
+    case 'shield':
+      return 'S';
+    case 'helmet':
+      return 'H';
+    case 'armor':
+      return 'A';
+    case 'boots':
+      return 'B';
+    case 'gloves':
+      return 'G';
+    case 'consumable':
+      return 'P';
+    default:
+      return item.name.trim().charAt(0).toUpperCase() || '?';
+  }
 }
 
 export const InventoryGrid: React.FC<InventoryGridProps> = ({
@@ -34,7 +59,7 @@ export const InventoryGrid: React.FC<InventoryGridProps> = ({
           <ItemSlot
             key={index}
             item={item}
-            iconEmoji={['вљ”пёЏ', 'рџ›ЎпёЏ', 'рџ§Є', 'рџ’Ћ'][index % 4]}
+            iconEmoji={getFallbackIcon(item)}
             iconImage={item ? resolveItemImage?.(item) : undefined}
             onClick={() => item && onItemClick?.(item, index)}
             onDragStart={onDragStart}

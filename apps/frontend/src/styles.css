@@ -5363,3 +5363,37 @@ h3 {
     grid-template-columns: 1fr;
   }
 }
+
+.admin-item-preview-layout {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.admin-item-preview-icon-shell {
+  width: 88px;
+  min-width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(153, 124, 75, 0.8);
+  background: rgba(25, 20, 15, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 224, 170, 0.05);
+}
+
+.admin-item-preview-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.admin-item-preview-icon-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-size: 2rem;
+  font-weight: 700;
+}

@@ -42,6 +42,7 @@ import { InventoryPanel, type CharacterPageFocus } from './components/InventoryP
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, StoredImage } from './services/content/models';
 import type { PlayerPath } from './RootApp';
+import { subscribeToContentSync } from './services/content/contentSync';
 import {
   getRuntimeMerchantItems,
   getRuntimeMerchants,
@@ -384,6 +385,8 @@ function getPlayerRouteFromState(
 
 export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
+  const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
+  const lastRuntimeContentRefreshAtRef = useRef(0);
   const [phase, setPhase] = useState<Phase>('setup');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
   const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
@@ -573,6 +576,35 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return [status, ...logs].filter((line) => line.trim().length > 0).slice(-8);
   }, [status, combatState?.logs]);
 
+  const refreshRuntimeContent = useCallback(async (options?: { force?: boolean }) => {
+    const now = Date.now();
+    if (!options?.force && runtimeContentRefreshRef.current && now - lastRuntimeContentRefreshAtRef.current < 1200) {
+      return runtimeContentRefreshRef.current;
+    }
+
+    lastRuntimeContentRefreshAtRef.current = now;
+    const refreshPromise = Promise.all([
+      loadRuntimeAdminContent(),
+      loadRuntimeImages(),
+    ])
+      .then(([content, images]) => {
+        setRuntimeAdminItems(content.items);
+        setRuntimeAdminMerchants(content.merchants);
+        setRuntimeImages(images);
+      })
+      .catch(() => {
+        // Keep hardcoded fallback content if backend content is unavailable.
+      })
+      .finally(() => {
+        if (runtimeContentRefreshRef.current === refreshPromise) {
+          runtimeContentRefreshRef.current = null;
+        }
+      });
+
+    runtimeContentRefreshRef.current = refreshPromise;
+    return refreshPromise;
+  }, []);
+
   useEffect(() => {
     const savedCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
     if (!savedCharacterId) {
@@ -595,25 +627,39 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, []);
 
   useEffect(() => {
-    void loadRuntimeAdminContent()
-      .then((content) => {
-        setRuntimeAdminItems(content.items);
-        setRuntimeAdminMerchants(content.merchants);
-      })
-      .catch(() => {
-        // Keep hardcoded fallback content.
-      });
-  }, []);
+    void refreshRuntimeContent({ force: true });
+  }, [refreshRuntimeContent]);
 
   useEffect(() => {
-    void loadRuntimeImages()
-      .then((images) => {
-        setRuntimeImages(images);
-      })
-      .catch(() => {
-        // Keep UI fallback icons if image DB is unavailable.
-      });
-  }, []);
+    const refreshVisibleContent = () => {
+      void refreshRuntimeContent();
+    };
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'content' || payload.scope === 'all') {
+        void refreshRuntimeContent({ force: true });
+      }
+    });
+
+    const handleFocus = () => {
+      refreshVisibleContent();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshVisibleContent();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshRuntimeContent]);
 
   useEffect(() => {
     if (runtimeMerchants.length === 0) {
@@ -939,13 +985,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function handleBuy(itemId: string): Promise<void> {
+  async function handleBuy(itemId: string, merchantId = selectedMerchantId): Promise<void> {
     if (!character) {
       return;
     }
 
     try {
-      const hub = await buyArenaItem(character.id, itemId);
+      const hub = await buyArenaItem(character.id, itemId, merchantId);
       applyHubState(hub);
       setStatus(`Куплено: ${resolveItem(itemId).name}`);
     } catch (error) {
@@ -954,7 +1000,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function handleBuyAndEquip(itemId: string): Promise<void> {
+  async function handleBuyAndEquip(itemId: string, merchantId = selectedMerchantId): Promise<void> {
     if (!character) {
       return;
     }
@@ -962,14 +1008,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const item = resolveItem(itemId);
     const previousShieldId = equipment.shield;
     if (item.itemType === 'consumable') {
-      await handleBuy(itemId);
+      await handleBuy(itemId, merchantId);
       return;
     }
 
     let purchased = false;
 
     try {
-      const boughtHub = await buyArenaItem(character.id, itemId);
+      const boughtHub = await buyArenaItem(character.id, itemId, merchantId);
       purchased = true;
       applyHubState(boughtHub);
 
@@ -1571,9 +1617,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             merchantLocation={selectedAdminMerchant?.location}
             merchantPortrait={resolveMerchantImage(selectedAdminMerchant)}
             onClose={() => setOverlayPanel(null)}
-            onBuyItem={async (itemId) => {
+            onBuyItem={async (itemId, merchantId) => {
               try {
-                const updated = await buyArenaItem(character.id, itemId);
+                const updated = await buyArenaItem(character.id, itemId, merchantId);
                 setInventory(updated.inventory);
                 setStatus(`Bought ${resolveItem(itemId).name || 'item'}`);
               } catch (err: any) {

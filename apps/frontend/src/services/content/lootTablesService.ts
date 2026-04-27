@@ -1,5 +1,6 @@
 import type { LootTable } from './models';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 
 export function validateLootTable(table: LootTable): string[] {
   const errors: string[] = [];
@@ -19,16 +20,14 @@ export function validateLootTable(table: LootTable): string[] {
 
 export const lootTablesService = {
   async getAll(): Promise<LootTable[]> {
-    return readCollection<LootTable>('lootTables');
+    return getContentCollection<LootTable>('lootTables');
   },
 
   async getById(id: string): Promise<LootTable | null> {
-    const all = await this.getAll();
-    return all.find((entry) => entry.id === id) ?? null;
+    return getContentEntry<LootTable>('lootTables', id);
   },
 
   async create(payload: Omit<LootTable, 'createdAt' | 'updatedAt'>): Promise<LootTable> {
-    const all = await this.getAll();
     const next: LootTable = {
       ...payload,
       id: payload.id?.trim() || uid('loot'),
@@ -39,13 +38,11 @@ export const lootTablesService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    writeCollection('lootTables', [...all, next]);
-    return next;
+    return createContentEntry<LootTable>('lootTables', next);
   },
 
   async update(id: string, patch: Partial<LootTable>): Promise<LootTable> {
-    const all = await this.getAll();
-    const found = all.find((entry) => entry.id === id);
+    const found = await this.getById(id);
     if (!found) {
       throw new Error(`Loot table not found: ${id}`);
     }
@@ -59,12 +56,10 @@ export const lootTablesService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    writeCollection('lootTables', all.map((entry) => (entry.id === id ? merged : entry)));
-    return merged;
+    return updateContentEntry<LootTable>('lootTables', id, merged);
   },
 
   async delete(id: string): Promise<void> {
-    const all = await this.getAll();
-    writeCollection('lootTables', all.filter((entry) => entry.id !== id));
+    await deleteContentEntry('lootTables', id);
   },
 };

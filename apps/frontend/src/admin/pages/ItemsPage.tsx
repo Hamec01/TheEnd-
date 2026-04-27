@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AdminItem, DamageCategory, ElementType, HandsRequired, ItemRarity, ItemSlot, ItemType, MagicSchool, PhysicalType, StatKey } from '../../services/content/models';
+import type { AdminItem, DamageCategory, ElementType, HandsRequired, ItemRarity, ItemSlot, ItemType, MagicSchool, PhysicalType, StatKey, StoredImage } from '../../services/content/models';
+import { imageService } from '../../services/content/imageService';
 import { itemsService, validateItem } from '../../services/content/itemsService';
+import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
 import {
@@ -59,6 +61,10 @@ function parseNumber(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function isDirectImageSource(value: string): boolean {
+  return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
+}
+
 export function ItemsPage() {
   const [items, setItems] = useState<AdminItem[]>([]);
   const [query, setQuery] = useState('');
@@ -67,6 +73,8 @@ export function ItemsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
+
+  const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
 
   async function refresh() {
     const all = await itemsService.getAll();
@@ -141,6 +149,41 @@ export function ItemsPage() {
       patch({ handsRequired: 1 });
     }
   }, [draft.handsRequired, draft.type]);
+
+  useEffect(() => {
+    const normalized = draft.imagePath?.trim();
+    if (!normalized || isDirectImageSource(normalized)) {
+      setPreviewImage(null);
+      return;
+    }
+
+    let disposed = false;
+    void imageService.get(normalized).then((image) => {
+      if (!disposed) {
+        setPreviewImage(image);
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [draft.imagePath]);
+
+  const draftImageSrc = useMemo(() => {
+    const normalized = draft.imagePath?.trim();
+    if (!normalized) {
+      return null;
+    }
+    if (isDirectImageSource(normalized)) {
+      return normalized;
+    }
+    return resolveStoredImageSource(normalized, previewImage ? [previewImage] : []) ?? null;
+  }, [draft.imagePath, previewImage]);
+
+  const draftPreviewLabel = useMemo(() => {
+    const source = draft.name.trim() || draft.subtype?.trim() || draft.type;
+    return source.charAt(0).toUpperCase() || '?';
+  }, [draft.name, draft.subtype, draft.type]);
 
   async function createOrUpdate() {
     const id = draft.id.trim() || uid('item');
@@ -391,6 +434,17 @@ export function ItemsPage() {
         </div>
 
         <section className="card admin-item-preview">
+          <div className="admin-item-preview-layout">
+            <div className="admin-item-preview-icon-shell" aria-hidden="true">
+              {draftImageSrc ? (
+                <img className="admin-item-preview-icon" src={draftImageSrc} alt={draft.name || 'preview'} />
+              ) : (
+                <div className="admin-item-preview-icon admin-item-preview-icon-fallback">
+                  {draftPreviewLabel}
+                </div>
+              )}
+            </div>
+          </div>
           <h4>Предпросмотр предмета</h4>
           {draft.imagePath ? <p className="muted">Иконка: {draft.imagePath}</p> : null}
           <p><strong>{draft.name || '(без названия)'}</strong> ({draft.id || 'ID ещё не задан'})</p>

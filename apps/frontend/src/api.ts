@@ -147,11 +147,11 @@ async function readErrorMessage(res: Response): Promise<string> {
   return raw;
 }
 
-export async function buyArenaItem(characterId: string, itemId: string): Promise<ArenaHubState> {
+export async function buyArenaItem(characterId: string, itemId: string, merchantId: string): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/buy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, itemId }),
+    body: JSON.stringify({ characterId, itemId, merchantId }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));

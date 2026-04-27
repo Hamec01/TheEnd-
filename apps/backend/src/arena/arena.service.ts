@@ -1,19 +1,109 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import {
-  buyItem,
-  canEquipItem,
-  equipItem,
-  getItemById,
-  getStatsWithEquipment,
   type Equipment,
   type InventoryState,
   type StatBlock,
 } from '@theend/rpg-domain';
+import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
-export class ArenaService {
-  constructor(private readonly prisma: PrismaService) {}
+export class ArenaService implements OnModuleInit {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contentService: ContentService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.sanitizeAllCharactersInventoryAndEquipment();
+  }
+
+  private async sanitizeAllCharactersInventoryAndEquipment(): Promise<void> {
+    const characters = await this.prisma.character.findMany({
+      include: {
+        inventoryItems: true,
+        equipment: true,
+      },
+    });
+
+    for (const character of characters) {
+      await this.sanitizeCharacterInventoryAndEquipment({
+        characterId: character.id,
+        inventoryItems: character.inventoryItems.map((entry) => ({
+          id: entry.id,
+          itemId: entry.itemId,
+          quantity: entry.quantity,
+        })),
+        equipment: {
+          weapon: character.equipment?.weapon ?? null,
+          helmet: character.equipment?.helmet ?? null,
+          armor: character.equipment?.armor ?? null,
+          boots: character.equipment?.boots ?? null,
+          gloves: character.equipment?.gloves ?? null,
+          shield: character.equipment?.shield ?? null,
+        },
+      });
+    }
+  }
+
+  private async sanitizeCharacterInventoryAndEquipment(params: {
+    characterId: string;
+    inventoryItems: Array<{ id: string; itemId: string; quantity: number }>;
+    equipment: Equipment;
+  }): Promise<{
+    inventoryItems: Array<{ id: string; itemId: string; quantity: number }>;
+    equipment: Equipment;
+  }> {
+    const canonicalItemIds = new Set(this.contentService.getCanonicalItemIds({ enabledOnly: true }));
+    const invalidInventoryItemIds = params.inventoryItems
+      .filter((entry) => !canonicalItemIds.has(entry.itemId))
+      .map((entry) => entry.id);
+
+    const nextEquipment: Equipment = { ...params.equipment };
+    let equipmentChanged = false;
+    for (const slot of Object.keys(nextEquipment) as Array<keyof Equipment>) {
+      const itemId = nextEquipment[slot];
+      if (itemId && !canonicalItemIds.has(itemId)) {
+        nextEquipment[slot] = null;
+        equipmentChanged = true;
+      }
+    }
+
+    if (invalidInventoryItemIds.length === 0 && !equipmentChanged) {
+      return {
+        inventoryItems: params.inventoryItems,
+        equipment: params.equipment,
+      };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (invalidInventoryItemIds.length > 0) {
+        await tx.characterInventoryItem.deleteMany({
+          where: {
+            id: {
+              in: invalidInventoryItemIds,
+            },
+          },
+        });
+      }
+
+      if (equipmentChanged) {
+        await tx.characterEquipment.upsert({
+          where: { characterId: params.characterId },
+          update: nextEquipment,
+          create: {
+            characterId: params.characterId,
+            ...nextEquipment,
+          },
+        });
+      }
+    });
+
+    return {
+      inventoryItems: params.inventoryItems.filter((entry) => canonicalItemIds.has(entry.itemId)),
+      equipment: nextEquipment,
+    };
+  }
 
   private toBaseStats(character: {
     hpBase: number;
@@ -54,7 +144,7 @@ export class ArenaService {
       throw new NotFoundException('Character not found.');
     }
 
-    const equipment: Equipment = {
+    const rawEquipment: Equipment = {
       weapon: character.equipment?.weapon ?? null,
       helmet: character.equipment?.helmet ?? null,
       armor: character.equipment?.armor ?? null,
@@ -63,16 +153,27 @@ export class ArenaService {
       shield: character.equipment?.shield ?? null,
     };
 
+    const sanitized = await this.sanitizeCharacterInventoryAndEquipment({
+      characterId,
+      inventoryItems: character.inventoryItems.map((entry) => ({
+        id: entry.id,
+        itemId: entry.itemId,
+        quantity: entry.quantity,
+      })),
+      equipment: rawEquipment,
+    });
+
+    const equipment = sanitized.equipment;
     const inventory: InventoryState = {
       gold: character.gold,
-      items: character.inventoryItems.map((entry) => ({
+      items: sanitized.inventoryItems.map((entry) => ({
         itemId: entry.itemId,
         quantity: entry.quantity,
       })),
     };
 
     const baseStats = this.toBaseStats(character);
-    const activeStats = getStatsWithEquipment(baseStats, equipment);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
 
     return {
       character: {
@@ -94,19 +195,18 @@ export class ArenaService {
     return this.getCharacterArenaState(characterId);
   }
 
-  async buyItem(characterId: string, itemId: string) {
-    getItemById(itemId);
+  async buyItem(characterId: string, itemId: string, merchantId: string) {
     const state = await this.getCharacterArenaState(characterId);
-    const result = buyItem(state.inventory, itemId);
+    const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
 
-    if (!result.ok) {
-      throw new BadRequestException(result.reason ?? 'Purchase failed.');
+    if (state.inventory.gold < price) {
+      throw new BadRequestException('Недостаточно золота.');
     }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.character.update({
         where: { id: characterId },
-        data: { gold: result.inventory.gold },
+        data: { gold: state.inventory.gold - price },
       });
 
       const existing = await tx.characterInventoryItem.findUnique({
@@ -129,7 +229,7 @@ export class ArenaService {
   }
 
   async sellItem(characterId: string, itemId: string, quantity = 1) {
-    const item = getItemById(itemId);
+    const item = this.contentService.resolveItemById(itemId);
     const safeQuantity = Math.max(1, Math.floor(quantity));
     const state = await this.getCharacterArenaState(characterId);
 
@@ -187,12 +287,12 @@ export class ArenaService {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = canEquipItem(state.character.baseStats, itemId, state.equipment);
+    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }
 
-    const nextEquipment = equipItem(state.equipment, itemId);
+    const nextEquipment = this.contentService.equipItem(state.equipment, itemId);
 
     await this.prisma.characterEquipment.upsert({
       where: { characterId },

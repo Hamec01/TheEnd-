@@ -3,14 +3,11 @@ import {
   ActionType,
   CombatSkillType,
   DistanceBand,
-  EMPTY_EQUIPMENT,
   TargetZone,
   TeamSide,
   createArenaCombatEntity,
   createInitialBattleState,
   createNpcAction,
-  getStatsWithEquipment,
-  getItemById,
   resolveRound,
   type ArenaBattleState,
   type ArenaCombatAction,
@@ -19,6 +16,7 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import { randomUUID } from 'crypto';
+import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CustomCombatNpcDto } from './dto.start-combat.dto';
 
@@ -51,17 +49,12 @@ interface CombatSession {
 
 @Injectable()
 export class CombatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contentService: ContentService,
+  ) {}
 
   private readonly sessions = new Map<string, CombatSession>();
-  private readonly combatLootPool = [
-    'potion_hp_small',
-    'potion_mp_small',
-    'tonic_focus',
-    'iron_sword',
-    'leather_helmet',
-    'traveler_boots',
-  ];
 
   private toBaseStats(character: CharacterRecord): StatBlock {
     return {
@@ -218,12 +211,17 @@ export class CombatService {
       return null;
     }
 
-    const index = Math.floor(Math.random() * this.combatLootPool.length);
-    return this.combatLootPool[index] ?? null;
+    const combatLootPool = this.contentService.getCombatLootPool();
+    if (combatLootPool.length === 0) {
+      return null;
+    }
+
+    const index = Math.floor(Math.random() * combatLootPool.length);
+    return combatLootPool[index] ?? null;
   }
 
   private async grantCombatLoot(characterId: string, itemId: string): Promise<string | null> {
-    const item = getItemById(itemId);
+    const item = this.contentService.resolveItemById(itemId);
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await tx.characterInventoryItem.findUnique({
@@ -262,7 +260,7 @@ export class CombatService {
   private toCombatEntity(character: CharacterRecord, team: TeamSide, position: number) {
     const baseStats = this.toBaseStats(character);
     const equipment = this.normalizeEquipment(character.equipment);
-    const activeStats = getStatsWithEquipment(baseStats, equipment);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
 
     return this.toCombatEntityFromStats({
       id: character.id,
@@ -275,15 +273,7 @@ export class CombatService {
   }
 
   private normalizeEquipment(equipment?: CombatEquipmentPayload): Equipment {
-    return {
-      ...EMPTY_EQUIPMENT,
-      weapon: equipment?.weapon ?? null,
-      helmet: equipment?.helmet ?? null,
-      armor: equipment?.armor ?? null,
-      boots: equipment?.boots ?? null,
-      gloves: equipment?.gloves ?? null,
-      shield: equipment?.shield ?? null,
-    };
+    return this.contentService.normalizeEquipment(equipment);
   }
 
   private toCombatEntityFromStats(params: {
@@ -340,7 +330,7 @@ export class CombatService {
 
   private createCustomEnemy(template: CustomCombatNpcDto, position: number) {
     const equipment = this.normalizeEquipment(template.equipment);
-    const activeStats = getStatsWithEquipment(template.stats, equipment);
+    const activeStats = this.contentService.getStatsWithEquipment(template.stats, equipment);
 
     return this.toCombatEntityFromStats({
       id: `npc-${randomUUID()}`,
@@ -425,7 +415,7 @@ export class CombatService {
       throw new BadRequestException('Only the player can use combat items.');
     }
 
-    const item = getItemById(payload.itemId);
+    const item = this.contentService.resolveItemById(payload.itemId);
     if (item.itemType !== 'consumable') {
       throw new BadRequestException('Only consumables can be used in combat.');
     }

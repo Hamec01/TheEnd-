@@ -10,7 +10,7 @@ import {
 } from 'react';
 import '../styles.css';
 import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
-import { detectCurrentZone, detectHoverZone, isInsideZone } from './zoneSystem';
+import { detectCurrentZone, detectHoverZone } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
 import { ZONE_COLORS, EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, ZONE_DUNGEON_OUTLINE, withAlpha } from './zoneColors';
@@ -821,10 +821,18 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     const [x, y] = getNormalizedPoint(event);
     const clickedZone = detectHoverZone(zones as Zone[], x, y) as WorldMapZone | null;
-    setPlayer((prev) => setPlayerTarget(prev, x, y));
-    if (clickedZone?.type === 'city' && isInsideZone(clickedZone as Zone, x, y)) {
+    if (clickedZone?.type === 'city') {
       onOpenLocation?.(clickedZone.id);
+      return;
     }
+
+    if (clickedZone) {
+      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
+      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
+      return;
+    }
+
+    setPlayer((prev) => setPlayerTarget(prev, x, y));
   }
 
   function handleMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {

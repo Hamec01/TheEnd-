@@ -1,4 +1,17 @@
 import { getZoneCenter, isPointInZone } from './zoneGeometry';
+function getZoneInteractionPadding(zone) {
+    switch (zone.type) {
+        case 'city':
+            return 0.035;
+        case 'settlement':
+            return 0.025;
+        case 'profession':
+        case 'resource':
+            return 0.015;
+        default:
+            return 0;
+    }
+}
 export function getDistanceToZoneCenter(zone, x, y) {
     const [centerX, centerY] = getZoneCenter(zone);
     return Math.hypot(centerX - x, centerY - y);
@@ -14,7 +27,7 @@ export function detectCurrentZone(zones, x, y) {
     let nearest = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
     for (const zone of zones) {
-        if (!isInsideZone(zone, x, y)) {
+        if (!isInsideZone(zone, x, y, getZoneInteractionPadding(zone))) {
             continue;
         }
         const distance = getDistanceToZoneCenter(zone, x, y);
@@ -29,7 +42,7 @@ export function detectHoverZone(zones, x, y) {
     let nearest = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
     for (const zone of zones) {
-        if (!isInsideZone(zone, x, y, 0.01)) {
+        if (!isInsideZone(zone, x, y, 0.01 + getZoneInteractionPadding(zone))) {
             continue;
         }
         const distance = getDistanceToZoneCenter(zone, x, y);

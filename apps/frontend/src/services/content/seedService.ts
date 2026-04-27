@@ -6,9 +6,7 @@ import {
   type Merchant,
 } from '@theend/rpg-domain';
 import type { AdminItem, AdminMerchant } from './models';
-import { itemsService } from './itemsService';
-import { merchantsService } from './merchantsService';
-import { nowIso } from './storage';
+import { seedDefaultContent } from './contentApi';
 
 const RARITY_MAP: Record<ItemDefinition['rarity'], AdminItem['rarity']> = {
   common: 'common',
@@ -127,26 +125,7 @@ function seedMerchantFromDomain(merchant: Merchant): Omit<AdminMerchant, 'create
 }
 
 export async function seedDefaultContentIfEmpty(): Promise<{ seeded: boolean; message: string }> {
-  const currentItems = await itemsService.getAll();
-  const currentMerchants = await merchantsService.getAll();
-  if (currentItems.length > 0 || currentMerchants.length > 0) {
-    return { seeded: false, message: 'Content already exists, seed skipped.' };
-  }
-
-  const itemSeeds = Object.values(ITEMS).map(seedItemFromDomain);
-  for (const item of itemSeeds) {
-    await itemsService.create(item);
-  }
-
-  const merchantSeeds = MERCHANTS.map(seedMerchantFromDomain);
-  for (const merchant of merchantSeeds) {
-    await merchantsService.create(merchant);
-  }
-
-  return {
-    seeded: true,
-    message: `Seeded ${itemSeeds.length} items and ${merchantSeeds.length} merchants at ${nowIso()}`,
-  };
+  return seedDefaultContent();
 }
 
 export function toDomainItemDefinition(adminItem: AdminItem): ItemDefinition {

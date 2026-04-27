@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, } from 'react';
 import '../styles.css';
 import { tickPlayerMovement, setPlayerTarget } from './movementSystem';
-import { detectCurrentZone, detectHoverZone, isInsideZone } from './zoneSystem';
+import { detectCurrentZone, detectHoverZone } from './zoneSystem';
 import { WORLD_MAP_ZONES } from './worldMapNodes';
 import { ZONE_COLORS, EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, ZONE_DUNGEON_OUTLINE, withAlpha } from './zoneColors';
 import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScreen, movePolygonPoint, moveZone, resizeCircle, screenToMapNormalized } from './zoneGeometry';
@@ -590,10 +590,16 @@ export const WorldMapCanvas = forwardRef(function WorldMapCanvas(props, ref) {
         }
         const [x, y] = getNormalizedPoint(event);
         const clickedZone = detectHoverZone(zones, x, y);
-        setPlayer((prev) => setPlayerTarget(prev, x, y));
-        if (clickedZone?.type === 'city' && isInsideZone(clickedZone, x, y)) {
+        if (clickedZone?.type === 'city') {
             onOpenLocation?.(clickedZone.id);
+            return;
         }
+        if (clickedZone) {
+            const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
+            setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
+            return;
+        }
+        setPlayer((prev) => setPlayerTarget(prev, x, y));
     }
     function handleMouseMove(event) {
         const [canvasX, canvasY] = getCanvasPoint(event);

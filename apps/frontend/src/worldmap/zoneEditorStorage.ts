@@ -1,3 +1,4 @@
+import { getWorldMapContent, saveWorldMapContent } from '../services/content/contentApi';
 import type { PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
 
@@ -270,6 +271,25 @@ export function saveZonesToStorage(zones: WorldMapZone[]): void {
 
 export function clearZoneStorage(): void {
   window.localStorage.removeItem(DEV_ZONE_STORAGE_KEY);
+}
+
+export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): Promise<EditorDataPayload> {
+  const remote = await getWorldMapContent();
+  if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0)) {
+    return {
+      zones: initialZones,
+      regions: [],
+    };
+  }
+
+  return {
+    zones: remote.zones.length > 0 ? remote.zones : initialZones,
+    regions: remote.regions ?? [],
+  };
+}
+
+export async function saveEditorDataToBackend(zones: WorldMapZone[], regions: PaintedRegion[]): Promise<void> {
+  await saveWorldMapContent({ zones, regions });
 }
 
 export function loadEditorSettings(): ZoneEditorSettings {

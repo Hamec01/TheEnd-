@@ -1,5 +1,6 @@
 import type { AdminMerchant } from './models';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 
 export function validateMerchant(merchant: AdminMerchant): string[] {
   const errors: string[] = [];
@@ -20,16 +21,14 @@ export function validateMerchant(merchant: AdminMerchant): string[] {
 
 export const merchantsService = {
   async getAll(): Promise<AdminMerchant[]> {
-    return readCollection<AdminMerchant>('merchants');
+    return getContentCollection<AdminMerchant>('merchants');
   },
 
   async getById(id: string): Promise<AdminMerchant | null> {
-    const all = await this.getAll();
-    return all.find((entry) => entry.id === id) ?? null;
+    return getContentEntry<AdminMerchant>('merchants', id);
   },
 
   async create(payload: Omit<AdminMerchant, 'createdAt' | 'updatedAt'>): Promise<AdminMerchant> {
-    const all = await this.getAll();
     const nextEntry: AdminMerchant = {
       ...payload,
       id: payload.id?.trim() || uid('merchant'),
@@ -40,16 +39,11 @@ export const merchantsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    if (all.some((entry) => entry.id === nextEntry.id)) {
-      throw new Error(`Duplicate merchant id: ${nextEntry.id}`);
-    }
-    writeCollection('merchants', [...all, nextEntry]);
-    return nextEntry;
+    return createContentEntry<AdminMerchant>('merchants', nextEntry);
   },
 
   async update(id: string, patch: Partial<AdminMerchant>): Promise<AdminMerchant> {
-    const all = await this.getAll();
-    const found = all.find((entry) => entry.id === id);
+    const found = await this.getById(id);
     if (!found) {
       throw new Error(`Merchant not found: ${id}`);
     }
@@ -63,8 +57,7 @@ export const merchantsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    writeCollection('merchants', all.map((entry) => (entry.id === id ? merged : entry)));
-    return merged;
+    return updateContentEntry<AdminMerchant>('merchants', id, merged);
   },
 
   async disable(id: string): Promise<AdminMerchant> {
@@ -72,7 +65,6 @@ export const merchantsService = {
   },
 
   async delete(id: string): Promise<void> {
-    const all = await this.getAll();
-    writeCollection('merchants', all.filter((entry) => entry.id !== id));
+    await deleteContentEntry('merchants', id);
   },
 };

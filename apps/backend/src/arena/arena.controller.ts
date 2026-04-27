@@ -16,7 +16,7 @@ export class ArenaController {
 
   @Post('buy')
   buy(@Body() dto: BuyItemDto) {
-    return this.arenaService.buyItem(dto.characterId, dto.itemId);
+    return this.arenaService.buyItem(dto.characterId, dto.itemId, dto.merchantId);
   }
 
   @Post('sell')

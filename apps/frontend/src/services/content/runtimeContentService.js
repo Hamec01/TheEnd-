@@ -36,6 +36,18 @@ export function getRuntimeMerchantItems(merchantId, adminMerchants, adminItems) 
     }
     return adminMerchant.items
         .filter((entry) => entry.isEnabled)
-        .map((entry) => getDomainItemWithFallback(entry.itemId, adminItems))
+        .map((entry) => {
+        const item = getDomainItemWithFallback(entry.itemId, adminItems);
+        if (!item) {
+            return null;
+        }
+        const basePrice = entry.priceOverride ?? item.price;
+        const merchantMultiplier = adminMerchant.priceMultiplier > 0 ? adminMerchant.priceMultiplier : 1;
+        const entryMultiplier = entry.priceMultiplier && entry.priceMultiplier > 0 ? entry.priceMultiplier : 1;
+        return {
+            ...item,
+            price: Math.max(0, Math.round(basePrice * merchantMultiplier * entryMultiplier)),
+        };
+    })
         .filter((item) => Boolean(item));
 }

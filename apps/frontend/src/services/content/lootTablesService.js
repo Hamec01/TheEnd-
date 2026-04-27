@@ -1,4 +1,5 @@
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 export function validateLootTable(table) {
     const errors = [];
     for (const entry of table.entries) {
@@ -16,14 +17,12 @@ export function validateLootTable(table) {
 }
 export const lootTablesService = {
     async getAll() {
-        return readCollection('lootTables');
+        return getContentCollection('lootTables');
     },
     async getById(id) {
-        const all = await this.getAll();
-        return all.find((entry) => entry.id === id) ?? null;
+        return getContentEntry('lootTables', id);
     },
     async create(payload) {
-        const all = await this.getAll();
         const next = {
             ...payload,
             id: payload.id?.trim() || uid('loot'),
@@ -34,12 +33,10 @@ export const lootTablesService = {
         if (errors.length > 0) {
             throw new Error(errors.join(', '));
         }
-        writeCollection('lootTables', [...all, next]);
-        return next;
+        return createContentEntry('lootTables', next);
     },
     async update(id, patch) {
-        const all = await this.getAll();
-        const found = all.find((entry) => entry.id === id);
+        const found = await this.getById(id);
         if (!found) {
             throw new Error(`Loot table not found: ${id}`);
         }
@@ -53,11 +50,9 @@ export const lootTablesService = {
         if (errors.length > 0) {
             throw new Error(errors.join(', '));
         }
-        writeCollection('lootTables', all.map((entry) => (entry.id === id ? merged : entry)));
-        return merged;
+        return updateContentEntry('lootTables', id, merged);
     },
     async delete(id) {
-        const all = await this.getAll();
-        writeCollection('lootTables', all.filter((entry) => entry.id !== id));
+        await deleteContentEntry('lootTables', id);
     },
 };

@@ -1,6 +1,7 @@
 import type { StoredImage } from './models';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { IMAGE_PRESETS, type ImagePresetId } from './imagePresets';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { nowIso, uid } from './storage';
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -75,25 +76,21 @@ async function createStoredImage(
 
 export const imageService = {
   async getAll(): Promise<StoredImage[]> {
-    return readCollection<StoredImage>('images');
+    return getContentCollection<StoredImage>('images');
   },
 
   async get(id: string): Promise<StoredImage | null> {
-    const all = await this.getAll();
-    return all.find((entry) => entry.id === id) ?? null;
+    return getContentEntry<StoredImage>('images', id);
   },
 
   async upload(file: File): Promise<StoredImage> {
-    const all = await this.getAll();
     const dataUrl = await fileToDataUrl(file);
     const image = await loadImage(dataUrl);
     const next = await createStoredImage(file.name, file.type || 'image/png', dataUrl, image.width, image.height);
-    writeCollection('images', [...all, next]);
-    return next;
+    return createContentEntry<StoredImage>('images', next);
   },
 
   async uploadResized(file: File, width: number, height: number, options?: { name?: string }): Promise<StoredImage> {
-    const all = await this.getAll();
     const originalDataUrl = await fileToDataUrl(file);
     const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
     const next = await createStoredImage(
@@ -103,8 +100,7 @@ export const imageService = {
       width,
       height,
     );
-    writeCollection('images', [...all, next]);
-    return next;
+    return createContentEntry<StoredImage>('images', next);
   },
 
   async uploadPreset(file: File, presetId: ImagePresetId, options?: { name?: string }): Promise<StoredImage> {
@@ -113,8 +109,7 @@ export const imageService = {
   },
 
   async resize(imageId: string, width: number, height: number): Promise<StoredImage> {
-    const all = await this.getAll();
-    const found = all.find((entry) => entry.id === imageId);
+    const found = await this.get(imageId);
     if (!found) {
       throw new Error(`Image not found: ${imageId}`);
     }
@@ -126,12 +121,10 @@ export const imageService = {
       height,
       updatedAt: nowIso(),
     };
-    writeCollection('images', all.map((entry) => (entry.id === imageId ? next : entry)));
-    return next;
+    return updateContentEntry<StoredImage>('images', imageId, next);
   },
 
   async delete(imageId: string): Promise<void> {
-    const all = await this.getAll();
-    writeCollection('images', all.filter((entry) => entry.id !== imageId));
+    await deleteContentEntry('images', imageId);
   },
 };

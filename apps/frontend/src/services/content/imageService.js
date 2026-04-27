@@ -1,5 +1,6 @@
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { IMAGE_PRESETS } from './imagePresets';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { nowIso, uid } from './storage';
 function loadImage(dataUrl) {
     return new Promise((resolve, reject) => {
         const image = new Image();
@@ -59,35 +60,29 @@ async function createStoredImage(fileName, mimeType, dataUrl, width, height) {
 }
 export const imageService = {
     async getAll() {
-        return readCollection('images');
+        return getContentCollection('images');
     },
     async get(id) {
-        const all = await this.getAll();
-        return all.find((entry) => entry.id === id) ?? null;
+        return getContentEntry('images', id);
     },
     async upload(file) {
-        const all = await this.getAll();
         const dataUrl = await fileToDataUrl(file);
         const image = await loadImage(dataUrl);
         const next = await createStoredImage(file.name, file.type || 'image/png', dataUrl, image.width, image.height);
-        writeCollection('images', [...all, next]);
-        return next;
+        return createContentEntry('images', next);
     },
     async uploadResized(file, width, height, options) {
-        const all = await this.getAll();
         const originalDataUrl = await fileToDataUrl(file);
         const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
         const next = await createStoredImage(options?.name?.trim() || file.name, 'image/png', resizedDataUrl, width, height);
-        writeCollection('images', [...all, next]);
-        return next;
+        return createContentEntry('images', next);
     },
     async uploadPreset(file, presetId, options) {
         const preset = IMAGE_PRESETS[presetId];
         return this.uploadResized(file, preset.width, preset.height, options);
     },
     async resize(imageId, width, height) {
-        const all = await this.getAll();
-        const found = all.find((entry) => entry.id === imageId);
+        const found = await this.get(imageId);
         if (!found) {
             throw new Error(`Image not found: ${imageId}`);
         }
@@ -99,11 +94,9 @@ export const imageService = {
             height,
             updatedAt: nowIso(),
         };
-        writeCollection('images', all.map((entry) => (entry.id === imageId ? next : entry)));
-        return next;
+        return updateContentEntry('images', imageId, next);
     },
     async delete(imageId) {
-        const all = await this.getAll();
-        writeCollection('images', all.filter((entry) => entry.id !== imageId));
+        await deleteContentEntry('images', imageId);
     },
 };

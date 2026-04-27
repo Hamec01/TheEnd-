@@ -8,6 +8,7 @@ interface PaperDollProps {
   slotItems: Partial<Record<EquipmentSlotId, ItemDefinition | null>>;
   slotLabels: Partial<Record<EquipmentSlotId, string>>;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
+  canDropItemInSlot?: (slotId: EquipmentSlotId, itemId: string) => boolean;
   onSlotClick: (slotId: EquipmentSlotId) => void;
   onSlotDrop: (slotId: EquipmentSlotId, itemId: string) => void;
   onSlotContextMenu?: (slotId: EquipmentSlotId) => void;
@@ -46,6 +47,7 @@ export function PaperDoll({
   slotItems,
   slotLabels,
   resolveItemImage,
+  canDropItemInSlot,
   onSlotClick,
   onSlotDrop,
   onSlotContextMenu,
@@ -151,11 +153,23 @@ export function PaperDoll({
                   event.preventDefault();
                   onSlotContextMenu?.(slot.id);
                 }}
-                onDragOver={(event) => event.preventDefault()}
+                onDragOver={(event) => {
+                  const itemId = event.dataTransfer.getData('text/theend-item-id');
+                  if (itemId && canDropItemInSlot && !canDropItemInSlot(slot.id, itemId)) {
+                    event.dataTransfer.dropEffect = 'none';
+                    return;
+                  }
+
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
                   const itemId = event.dataTransfer.getData('text/theend-item-id');
                   if (!itemId) {
+                    return;
+                  }
+                  if (canDropItemInSlot && !canDropItemInSlot(slot.id, itemId)) {
                     return;
                   }
                   onSlotDrop(slot.id, itemId);

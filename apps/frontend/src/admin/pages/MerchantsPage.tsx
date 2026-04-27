@@ -41,14 +41,24 @@ export function MerchantsPage() {
   const [itemSearch, setItemSearch] = useState('');
   const [status, setStatus] = useState('Готово');
 
-  async function refresh() {
+  async function refresh(nextSelectedId: string | null = selectedId) {
     const [allMerchants, allItems] = await Promise.all([merchantsService.getAll(), itemsService.getAll()]);
     setMerchants(allMerchants);
     setItems(allItems.filter((item) => item.isEnabled));
-    if (selectedId && !allMerchants.some((merchant) => merchant.id === selectedId)) {
-      setSelectedId(null);
-      setDraft(emptyMerchant());
+
+    if (!nextSelectedId) {
+      return;
     }
+
+    const selectedMerchant = allMerchants.find((merchant) => merchant.id === nextSelectedId);
+    if (selectedMerchant) {
+      setSelectedId(selectedMerchant.id);
+      setDraft(selectedMerchant);
+      return;
+    }
+
+    setSelectedId(null);
+    setDraft(emptyMerchant());
   }
 
   useEffect(() => {
@@ -142,14 +152,15 @@ export function MerchantsPage() {
     try {
       if (selectedId) {
         await merchantsService.update(selectedId, normalized);
+        await refresh(selectedId);
         setStatus(`Торговец обновлён: ${selectedId}`);
       } else {
         await merchantsService.create(normalized);
         setSelectedId(id);
+        await refresh(id);
         setStatus(`Торговец создан: ${id}`);
       }
 
-      await refresh();
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
     }

@@ -7,6 +7,7 @@ import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { InventoryPanel } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
+import { subscribeToContentSync } from './services/content/contentSync';
 import { getRuntimeMerchantItems, getRuntimeMerchants, loadRuntimeAdminContent, } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource } from './services/content/runtimeImageService';
 import { getDomainItemWithFallback } from './services/content/seedService';
@@ -266,6 +267,8 @@ function getPlayerRouteFromState(phase, overlayPanel, isBattleWindowOpen, combat
 }
 export function App({ currentPlayerRoute = '/', onNavigate }) {
     const pendingRouteSyncRef = useRef(null);
+    const runtimeContentRefreshRef = useRef(null);
+    const lastRuntimeContentRefreshAtRef = useRef(0);
     const [phase, setPhase] = useState('setup');
     const [overlayPanel, setOverlayPanel] = useState(null);
     const [characterPageFocus, setCharacterPageFocus] = useState('character');
@@ -385,6 +388,32 @@ export function App({ currentPlayerRoute = '/', onNavigate }) {
         const logs = combatState?.logs?.slice(-7).map((entry) => entry.text) ?? [];
         return [status, ...logs].filter((line) => line.trim().length > 0).slice(-8);
     }, [status, combatState?.logs]);
+    const refreshRuntimeContent = useCallback(async (options) => {
+        const now = Date.now();
+        if (!options?.force && runtimeContentRefreshRef.current && now - lastRuntimeContentRefreshAtRef.current < 1200) {
+            return runtimeContentRefreshRef.current;
+        }
+        lastRuntimeContentRefreshAtRef.current = now;
+        const refreshPromise = Promise.all([
+            loadRuntimeAdminContent(),
+            loadRuntimeImages(),
+        ])
+            .then(([content, images]) => {
+            setRuntimeAdminItems(content.items);
+            setRuntimeAdminMerchants(content.merchants);
+            setRuntimeImages(images);
+        })
+            .catch(() => {
+            // Keep hardcoded fallback content if backend content is unavailable.
+        })
+            .finally(() => {
+            if (runtimeContentRefreshRef.current === refreshPromise) {
+                runtimeContentRefreshRef.current = null;
+            }
+        });
+        runtimeContentRefreshRef.current = refreshPromise;
+        return refreshPromise;
+    }, []);
     useEffect(() => {
         const savedCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
         if (!savedCharacterId) {
@@ -405,24 +434,33 @@ export function App({ currentPlayerRoute = '/', onNavigate }) {
         });
     }, []);
     useEffect(() => {
-        void loadRuntimeAdminContent()
-            .then((content) => {
-            setRuntimeAdminItems(content.items);
-            setRuntimeAdminMerchants(content.merchants);
-        })
-            .catch(() => {
-            // Keep hardcoded fallback content.
-        });
-    }, []);
+        void refreshRuntimeContent({ force: true });
+    }, [refreshRuntimeContent]);
     useEffect(() => {
-        void loadRuntimeImages()
-            .then((images) => {
-            setRuntimeImages(images);
-        })
-            .catch(() => {
-            // Keep UI fallback icons if image DB is unavailable.
+        const refreshVisibleContent = () => {
+            void refreshRuntimeContent();
+        };
+        const unsubscribe = subscribeToContentSync((payload) => {
+            if (payload.scope === 'content' || payload.scope === 'all') {
+                void refreshRuntimeContent({ force: true });
+            }
         });
-    }, []);
+        const handleFocus = () => {
+            refreshVisibleContent();
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refreshVisibleContent();
+            }
+        };
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            unsubscribe();
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [refreshRuntimeContent]);
     useEffect(() => {
         if (runtimeMerchants.length === 0) {
             return;
@@ -705,12 +743,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }) {
             setStatus(`Ошибка снятия: ${error.message}`);
         }
     }
-    async function handleBuy(itemId) {
+    async function handleBuy(itemId, merchantId = selectedMerchantId) {
         if (!character) {
             return;
         }
         try {
-            const hub = await buyArenaItem(character.id, itemId);
+            const hub = await buyArenaItem(character.id, itemId, merchantId);
             applyHubState(hub);
             setStatus(`Куплено: ${resolveItem(itemId).name}`);
         }
@@ -719,19 +757,19 @@ export function App({ currentPlayerRoute = '/', onNavigate }) {
             setStatus(`Ошибка покупки: ${error.message} У вас ${inventory.gold} золота, предмет стоит ${item.price}.`);
         }
     }
-    async function handleBuyAndEquip(itemId) {
+    async function handleBuyAndEquip(itemId, merchantId = selectedMerchantId) {
         if (!character) {
             return;
         }
         const item = resolveItem(itemId);
         const previousShieldId = equipment.shield;
         if (item.itemType === 'consumable') {
-            await handleBuy(itemId);
+            await handleBuy(itemId, merchantId);
             return;
         }
         let purchased = false;
         try {
-            const boughtHub = await buyArenaItem(character.id, itemId);
+            const boughtHub = await buyArenaItem(character.id, itemId, merchantId);
             purchased = true;
             applyHubState(boughtHub);
             const equippedHub = await equipArenaItem(character.id, itemId);
@@ -962,9 +1000,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }) {
                                                     }) })] })) : (_jsx("p", { className: "muted", children: "\u0414\u043E\u0431\u0430\u0432\u044C\u0442\u0435 NPC, \u0447\u0442\u043E\u0431\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440." })) })] }), _jsxs("p", { className: "muted", children: ["\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0445 NPC \u0434\u043B\u044F \u0430\u0440\u0435\u043D\u044B: ", activeArenaNpcs.length, ". \u041A\u043D\u043E\u043F\u043A\u0430 \u00AB\u041D\u0430\u0447\u0430\u0442\u044C \u0431\u043E\u0439\u00BB \u0432 \u0430\u0440\u0435\u043D\u0435 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442 \u0431\u043E\u0439 \u0438\u043C\u0435\u043D\u043D\u043E \u0441 \u043D\u0438\u043C\u0438."] })] }) })) : null, overlayPanel === 'skills' ? (_jsx("div", { className: "battle-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("section", { className: "card battle-window wm-modal", children: [_jsxs("div", { className: "battle-window-head", children: [_jsx("h2", { children: "\u0423\u0447\u0438\u0442\u0435\u043B\u044C \u043D\u0430\u0432\u044B\u043A\u043E\u0432" }), _jsx("button", { onClick: () => setOverlayPanel(null), children: "\u2715" })] }), _jsxs("p", { className: "gold", style: { display: 'inline-flex', marginBottom: '10px' }, children: ["\uD83E\uDE99 ", inventory.gold] }), _jsx("div", { className: "profile-grid", children: _jsxs("section", { className: "inner-card full-width-skills", children: [_jsx("h3", { children: "\u041D\u0430\u0432\u044B\u043A\u0438 \u0443\u0447\u0438\u0442\u0435\u043B\u044F" }), _jsx("p", { className: "muted", children: "\u041A\u0443\u043F\u043B\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0432\u044B\u043A \u0441\u0440\u0430\u0437\u0443 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0432 \u0431\u043E\u044E. \u041C\u0430\u0433\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u043D\u0430\u0432\u044B\u043A\u0438 \u0441\u0435\u0439\u0447\u0430\u0441 \u0440\u0430\u0431\u043E\u0442\u0430\u044E\u0442 \u0441 \u0448\u0442\u0440\u0430\u0444\u043E\u043C 50% \u043A \u0441\u0438\u043B\u0435." }), SKILL_OFFERS.map((skill) => {
                                             const learned = learnedSkills.includes(skill.id);
                                             return (_jsxs("div", { className: `skill-entry ${learned ? 'is-selected' : ''}`, children: [_jsxs("div", { children: [_jsx("strong", { children: skill.name }), _jsxs("p", { className: "muted", children: [skill.resource, ". ", skill.description] }), _jsxs("p", { className: "muted", children: ["\u0426\u0435\u043D\u0430 \u043E\u0431\u0443\u0447\u0435\u043D\u0438\u044F: ", skill.cost, " \u0437\u043E\u043B\u043E\u0442\u0430"] })] }), _jsx("div", { className: "skill-entry-actions", children: learned ? (_jsx("span", { className: "inventory-badge enabled", children: "\u0418\u0437\u0443\u0447\u0435\u043D" })) : (_jsx("button", { onClick: () => handleBuySkill(skill.id), children: "\u041A\u0443\u043F\u0438\u0442\u044C" })) })] }, skill.id));
-                                        })] }) }), _jsxs("div", { className: "profile-actions", children: [_jsx("p", { className: "muted", children: "\u041A\u0443\u043F\u043B\u0435\u043D\u043D\u044B\u0435 \u043D\u0430\u0432\u044B\u043A\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043F\u043E\u044F\u0432\u043B\u044F\u044E\u0442\u0441\u044F \u0432 \u0431\u043E\u044E \u0432 \u0441\u0435\u043B\u0435\u043A\u0442\u043E\u0440\u0435 Skill." }), _jsx("p", { className: "muted", children: "\u0412 \u0440\u0430\u0443\u043D\u0434\u0435 \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043E\u0431\u044B\u0447\u043D\u0443\u044E \u0430\u0442\u0430\u043A\u0443 \u0438\u043B\u0438 \u043B\u044E\u0431\u043E\u0439 \u0438\u0437\u0443\u0447\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0432\u044B\u043A." })] })] }) })) : null, overlayPanel === 'clan' ? (_jsx("div", { className: "battle-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("section", { className: "card battle-window wm-modal", children: [_jsxs("div", { className: "battle-window-head", children: [_jsx("h2", { children: "Clan" }), _jsx("button", { onClick: () => setOverlayPanel(null), children: "\u2715" })] }), _jsx("p", { children: "Clan membership: none" }), _jsx("p", { className: "muted", children: "Feature coming later: members, invites, wars, storage." })] }) })) : null, overlayPanel === 'merchant' && character && selectedMerchant ? (_jsx(MerchantPanel, { merchant: selectedMerchant, inventory: inventory, merchantItems: merchantItems, resolveItemById: (itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems), resolveItemImage: resolveItemImage, merchantDescription: selectedAdminMerchant?.description, merchantLocation: selectedAdminMerchant?.location, merchantPortrait: resolveMerchantImage(selectedAdminMerchant), onClose: () => setOverlayPanel(null), onBuyItem: async (itemId) => {
+                                        })] }) }), _jsxs("div", { className: "profile-actions", children: [_jsx("p", { className: "muted", children: "\u041A\u0443\u043F\u043B\u0435\u043D\u043D\u044B\u0435 \u043D\u0430\u0432\u044B\u043A\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043F\u043E\u044F\u0432\u043B\u044F\u044E\u0442\u0441\u044F \u0432 \u0431\u043E\u044E \u0432 \u0441\u0435\u043B\u0435\u043A\u0442\u043E\u0440\u0435 Skill." }), _jsx("p", { className: "muted", children: "\u0412 \u0440\u0430\u0443\u043D\u0434\u0435 \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043E\u0431\u044B\u0447\u043D\u0443\u044E \u0430\u0442\u0430\u043A\u0443 \u0438\u043B\u0438 \u043B\u044E\u0431\u043E\u0439 \u0438\u0437\u0443\u0447\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0432\u044B\u043A." })] })] }) })) : null, overlayPanel === 'clan' ? (_jsx("div", { className: "battle-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("section", { className: "card battle-window wm-modal", children: [_jsxs("div", { className: "battle-window-head", children: [_jsx("h2", { children: "Clan" }), _jsx("button", { onClick: () => setOverlayPanel(null), children: "\u2715" })] }), _jsx("p", { children: "Clan membership: none" }), _jsx("p", { className: "muted", children: "Feature coming later: members, invites, wars, storage." })] }) })) : null, overlayPanel === 'merchant' && character && selectedMerchant ? (_jsx(MerchantPanel, { merchant: selectedMerchant, inventory: inventory, merchantItems: merchantItems, resolveItemById: (itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems), resolveItemImage: resolveItemImage, merchantDescription: selectedAdminMerchant?.description, merchantLocation: selectedAdminMerchant?.location, merchantPortrait: resolveMerchantImage(selectedAdminMerchant), onClose: () => setOverlayPanel(null), onBuyItem: async (itemId, merchantId) => {
                         try {
-                            const updated = await buyArenaItem(character.id, itemId);
+                            const updated = await buyArenaItem(character.id, itemId, merchantId);
                             setInventory(updated.inventory);
                             setStatus(`Bought ${resolveItem(itemId).name || 'item'}`);
                         }

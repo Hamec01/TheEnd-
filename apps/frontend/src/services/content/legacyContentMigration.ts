@@ -191,13 +191,13 @@ function hasNewerEntries<T extends { id: string; updatedAt?: unknown }>(
 }
 
 function shouldImportLegacy(remote: ContentSnapshot, legacy: Partial<ContentSnapshot>): boolean {
-  if ((legacy.items?.length ?? 0) > 0 && remote.items.length > (legacy.items?.length ?? 0)) {
+  if ((legacy.items?.length ?? 0) > remote.items.length) {
     return true;
   }
   if (hasMissingIds(remote.items, legacy.items) || hasNewerEntries(remote.items, legacy.items)) {
     return true;
   }
-  if ((legacy.merchants?.length ?? 0) > 0 && remote.merchants.length > (legacy.merchants?.length ?? 0)) {
+  if ((legacy.merchants?.length ?? 0) > remote.merchants.length) {
     return true;
   }
   if (hasMissingIds(remote.merchants, legacy.merchants) || hasNewerEntries(remote.merchants, legacy.merchants)) {

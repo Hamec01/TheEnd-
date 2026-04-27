@@ -66,32 +66,6 @@ const SLOT_LABELS: Record<EquipmentSlotId, string> = {
   quick10: 'Quick 10',
 };
 
-const SLOT_ACCEPTED_TYPES: Record<EquipmentSlotId, string[]> = {
-  helmet: ['helmet', 'hat', 'hood', 'crown'],
-  necklace: ['necklace', 'amulet', 'pendant', 'chain', 'small_accessory'],
-  armor: ['armor', 'chest_armor', 'robe'],
-  cloak: ['cloak', 'cape', 'fur_cloak', 'mantle', 'small_accessory'],
-  belt: ['belt', 'small_accessory'],
-  leftHand: ['shield', 'offhand'],
-  gloves: ['gloves', 'bracers'],
-  rightHand: ['one_handed_weapon', 'two_handed_weapon', 'sword', 'axe', 'mace', 'bow', 'staff', 'hammer', 'spear', 'dagger'],
-  ring1: ['ring', 'small_accessory'],
-  ring2: ['ring', 'small_accessory'],
-  ring3: ['ring', 'small_accessory'],
-  knees: ['kneepads', 'leg_armor', 'pants'],
-  boots: ['boots', 'shoes'],
-  quick1: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick2: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick3: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick4: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick5: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick6: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick7: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick8: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick9: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-  quick10: ['quick_item', 'consumable', 'consumable_combat', 'small_accessory'],
-};
-
 const ALL_SLOT_IDS = Object.keys(SLOT_LABELS) as EquipmentSlotId[];
 
 const STATS_ORDER: PrimaryStat[] = [
@@ -139,46 +113,23 @@ const FOCUS_SECTION_COLUMN: Record<CharacterPageFocus, 'left' | 'center' | 'righ
   skills: 'right',
 };
 
-function getItemCategories(item: ItemDefinition): string[] {
-  const categories = new Set<string>([item.itemType, item.itemSubType, 'small_accessory']);
-
-  if (item.itemType === 'weapon') {
-    if (getItemHandsRequired(item) === 2) {
-      categories.add('two_handed_weapon');
-    } else {
-      categories.add('one_handed_weapon');
-    }
-    if (item.itemSubType === 'daggers') {
-      categories.add('dagger');
-      categories.add('knife');
-    }
-    categories.add(item.itemSubType);
-  }
-
-  if (item.itemType === 'consumable') {
-    categories.add('quick_item');
-    categories.add('consumable_combat');
-  }
-
-  if (item.itemType === 'shield') {
-    categories.add('offhand');
-  }
-
-  if (item.itemType === 'armor') {
-    categories.add('chest_armor');
-  }
-
-  return [...categories];
-}
-
 export function canEquipItemInSlot(item: ItemDefinition, slotId: EquipmentSlotId): boolean {
-  const accepted = SLOT_ACCEPTED_TYPES[slotId];
-  if (!accepted) {
-    return false;
+  switch (slotId) {
+    case 'rightHand':
+      return item.itemType === 'weapon';
+    case 'leftHand':
+      return item.itemType === 'shield';
+    case 'helmet':
+      return item.itemType === 'helmet';
+    case 'armor':
+      return item.itemType === 'armor';
+    case 'boots':
+      return item.itemType === 'boots';
+    case 'gloves':
+      return item.itemType === 'gloves';
+    default:
+      return false;
   }
-
-  const categories = getItemCategories(item);
-  return accepted.some((itemType) => categories.includes(itemType));
 }
 
 export function getAcceptedSlotsForItem(item: ItemDefinition): EquipmentSlotId[] {
@@ -207,7 +158,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
-  const [virtualEquipment, setVirtualEquipment] = useState<Partial<Record<EquipmentSlotId, string>>>({});
   const [silhouetteBroken, setSilhouetteBroken] = useState(false);
   const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
 
@@ -262,17 +212,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     for (const slotId of ALL_SLOT_IDS) {
       const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
-      if (coreSlot) {
-        const itemId = equipment[coreSlot];
-        full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
-      } else {
-        const itemId = virtualEquipment[slotId] ?? null;
-        full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
-      }
+      const itemId = coreSlot ? equipment[coreSlot] : null;
+      full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
     }
 
     return full;
-  }, [equipment, resolveItemById, virtualEquipment]);
+  }, [equipment, resolveItemById]);
 
   useEffect(() => {
     if (!selectedItemId && inventoryEntries.length > 0) {
@@ -302,6 +247,13 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     () => new Set(Object.values(equippedByLayoutSlot).filter((item): item is ItemDefinition => Boolean(item)).map((item) => item.id)),
     [equippedByLayoutSlot],
   );
+  const selectedEquippedSlotId = useMemo(() => {
+    if (!selectedItem) {
+      return null;
+    }
+
+    return ALL_SLOT_IDS.find((slotId) => equippedByLayoutSlot[slotId]?.id === selectedItem.id) ?? null;
+  }, [equippedByLayoutSlot, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
 
   useEffect(() => {
@@ -322,23 +274,22 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedSkill = skillItems.find((skill) => skill.id === selectedSkillId) ?? null;
 
   async function equipToSlot(slotId: EquipmentSlotId, item: ItemDefinition): Promise<void> {
-    if (!canEquipItemInSlot(item, slotId)) {
-      onStatus('Item cannot be equipped in this slot');
-      return;
-    }
-
     const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
-    if (coreSlot) {
-      try {
-        await onEquipItem(item.id);
-      } catch {
-        // parent already reports error status
-      }
+    if (!coreSlot) {
+      onStatus('Этот слот пока декоративный и не поддерживает экипировку.');
       return;
     }
 
-    setVirtualEquipment((current) => ({ ...current, [slotId]: item.id }));
-    onStatus(`${item.name} assigned to ${slotId}`);
+    if (!canEquipItemInSlot(item, slotId)) {
+      onStatus('Этот предмет нельзя надеть в выбранный слот.');
+      return;
+    }
+
+    try {
+      await onEquipItem(item.id);
+    } catch {
+      // parent already reports error status
+    }
   }
 
   async function equipSelectedItem(): Promise<void> {
@@ -353,7 +304,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     const acceptedSlots = getAcceptedSlotsForItem(selectedItem);
     if (acceptedSlots.length === 0) {
-      onStatus('This item has no valid equipment slot mapping.');
+      onStatus('Этот предмет нельзя экипировать.');
       return;
     }
 
@@ -363,20 +314,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   async function unequipFromSlot(slotId: EquipmentSlotId): Promise<void> {
     const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
-    if (coreSlot) {
-      try {
-        await onUnequipSlot(coreSlot);
-      } catch {
-        // parent already reports error status
-      }
+    if (!coreSlot) {
+      onStatus('Этот слот пока декоративный и не поддерживает снятие предметов.');
       return;
     }
 
-    setVirtualEquipment((current) => {
-      const next = { ...current };
-      delete next[slotId];
-      return next;
-    });
+    try {
+      await onUnequipSlot(coreSlot);
+    } catch {
+      // parent already reports error status
+    }
   }
 
   const focusedColumnClass = FOCUS_SECTION_COLUMN[focusSection];
@@ -416,6 +363,14 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     slotItems={equippedByLayoutSlot}
                     slotLabels={SLOT_LABELS}
                     resolveItemImage={resolveItemImage}
+                    canDropItemInSlot={(slotId, itemId) => {
+                      try {
+                        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                        return Boolean(item && canEquipItemInSlot(item, slotId));
+                      } catch {
+                        return false;
+                      }
+                    }}
                     debug={paperDollDebug}
                     onImageError={() => {
                       const fallback = getRaceSilhouetteFallback(paperDollRace as any);
@@ -530,6 +485,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       }}
                     >
                       {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
+                    </button>
+                    <button
+                      disabled={!selectedEquippedSlotId}
+                      onClick={() => {
+                        if (selectedEquippedSlotId) {
+                          void unequipFromSlot(selectedEquippedSlotId);
+                        }
+                      }}
+                    >
+                      Unequip
                     </button>
                     <button
                       disabled={selectedItem.itemType !== 'consumable'}

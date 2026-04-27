@@ -31,31 +31,32 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
   if (!item) {
     return (
       <div className="item-slot empty" onClick={onClick}>
-        <div className="item-slot-icon">⬜</div>
+        <div className="item-slot-icon">+</div>
         <div className="item-slot-name">Empty</div>
       </div>
     );
   }
 
-  const getDamage = (item: ItemDefinition): number => {
+  const getDamage = (definition: ItemDefinition): number => {
     let damage = 0;
-    if (item.bonuses) {
-      if (item.bonuses.strength) damage += item.bonuses.strength * 1.5;
-      if (item.bonuses.dexterity) damage += item.bonuses.dexterity * 1.2;
+    if (definition.bonuses) {
+      if (definition.bonuses.strength) damage += definition.bonuses.strength * 1.5;
+      if (definition.bonuses.dexterity) damage += definition.bonuses.dexterity * 1.2;
     }
     return Math.round(damage);
   };
 
-  const getDefense = (item: ItemDefinition): number => {
+  const getDefense = (definition: ItemDefinition): number => {
     let defense = 0;
-    if (item.bonuses) {
-      if (item.bonuses.constitution) defense += item.bonuses.constitution * 0.8;
+    if (definition.bonuses?.constitution) {
+      defense += definition.bonuses.constitution * 0.8;
     }
     return Math.round(defense);
   };
 
   const damage = getDamage(item);
   const defense = getDefense(item);
+  const fallbackIcon = iconEmoji || item.name.trim().charAt(0).toUpperCase() || '?';
 
   const handleDragStart = (e: React.DragEvent) => {
     if (item && onDragStart) {
@@ -98,20 +99,24 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      title={item.name}
     >
-      <div 
+      <div
         className="item-slot-icon"
-        style={iconImage ? { backgroundImage: `url('${iconImage}')`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } : {}}
+        style={iconImage ? {
+          backgroundImage: `url('${iconImage}')`,
+          backgroundSize: 'contain',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+        } : {}}
       >
-        {!iconImage && (iconEmoji || '📦')}
+        {!iconImage && fallbackIcon}
       </div>
-      <div className="item-slot-name">{item.name.substring(0, 10)}</div>
+      <div className="item-slot-name">{item.name}</div>
 
       {showTooltip && (
         <div className={`item-tooltip item-tooltip-${tooltipHorizontal} item-tooltip-${tooltipVertical}`}>
           <div className="tooltip-title">{item.name}</div>
-
-
 
           {damage > 0 && (
             <div className="tooltip-stat">
@@ -153,7 +158,6 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
                   <span className="tooltip-value">+{item.bonuses.intelligence}</span>
                 </div>
               )}
-
             </>
           )}
 
@@ -161,7 +165,7 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
             <div className="tooltip-rarity">
               <div className="tooltip-stat">
                 <span className="tooltip-label">Price:</span>
-                <span className="tooltip-value">{price} 💰</span>
+                <span className="tooltip-value">{price} gold</span>
               </div>
             </div>
           )}

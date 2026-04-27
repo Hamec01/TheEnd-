@@ -15,7 +15,7 @@ export const MerchantPanel = ({ merchant, inventory, merchantItems: merchantItem
     const handleBuy = async () => {
         if (selectedItem) {
             try {
-                await onBuyItem(selectedItem.id);
+                await onBuyItem(selectedItem.id, merchant.id);
                 setTradeModalOpen(false);
                 setSelectedItem(null);
             }
@@ -56,7 +56,7 @@ export const MerchantPanel = ({ merchant, inventory, merchantItems: merchantItem
                     } })) : (_jsx(InventoryGrid, { title: "\u0412\u0430\u0448\u0438 \u043F\u0440\u0435\u0434\u043C\u0435\u0442\u044B \u043D\u0430 \u043F\u0440\u043E\u0434\u0430\u0436\u0443", items: inventoryItems, columns: 5, resolveItemImage: resolveItemImage, onItemClick: (item) => {
                         setSelectedItem(item);
                         setTradeModalOpen(true);
-                    } })), _jsx(TradeModal, { isOpen: tradeModalOpen, action: mode, item: selectedItem, playerGold: inventory.gold, onConfirm: mode === 'buy' ? handleBuy : handleSell, onCancel: () => {
+                    } })), _jsx(TradeModal, { isOpen: tradeModalOpen, action: mode, item: selectedItem, playerGold: inventory.gold, price: mode === 'buy' ? selectedItem?.price : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : undefined, onConfirm: mode === 'buy' ? handleBuy : handleSell, onCancel: () => {
                         setTradeModalOpen(false);
                         setSelectedItem(null);
                     } })] }) }));

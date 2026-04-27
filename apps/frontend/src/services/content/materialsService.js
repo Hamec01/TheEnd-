@@ -1,4 +1,5 @@
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 export function validateMaterial(material) {
     const errors = [];
     if (!material.id.trim()) {
@@ -14,26 +15,22 @@ export function validateMaterial(material) {
 }
 export const materialsService = {
     async getAll() {
-        return readCollection('materials');
+        return getContentCollection('materials');
     },
     async getById(id) {
-        const all = await this.getAll();
-        return all.find((entry) => entry.id === id) ?? null;
+        return getContentEntry('materials', id);
     },
     async create(payload) {
-        const all = await this.getAll();
         const next = {
             ...payload,
             id: payload.id?.trim() || uid('material'),
             createdAt: nowIso(),
             updatedAt: nowIso(),
         };
-        writeCollection('materials', [...all, next]);
-        return next;
+        return createContentEntry('materials', next);
     },
     async update(id, patch) {
-        const all = await this.getAll();
-        const found = all.find((entry) => entry.id === id);
+        const found = await this.getById(id);
         if (!found) {
             throw new Error(`Material not found: ${id}`);
         }
@@ -43,14 +40,12 @@ export const materialsService = {
             id: found.id,
             updatedAt: nowIso(),
         };
-        writeCollection('materials', all.map((entry) => (entry.id === id ? merged : entry)));
-        return merged;
+        return updateContentEntry('materials', id, merged);
     },
     async disable(id) {
         return this.update(id, { isEnabled: false });
     },
     async delete(id) {
-        const all = await this.getAll();
-        writeCollection('materials', all.filter((entry) => entry.id !== id));
+        await deleteContentEntry('materials', id);
     },
 };

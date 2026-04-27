@@ -6,6 +6,7 @@ interface TradeModalProps {
   action: 'buy' | 'sell';
   item: ItemDefinition | null;
   playerGold: number;
+  price?: number;
   merchantGold?: number;
   onConfirm: () => void;
   onCancel: () => void;
@@ -16,15 +17,19 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   action,
   item,
   playerGold,
+  price,
   merchantGold,
   onConfirm,
   onCancel,
 }) => {
   if (!isOpen || !item) return null;
 
-  const basePrice = 100; // Default price, can be customized per item
-  const price = action === 'buy' ? basePrice : Math.floor(basePrice * 0.5);
-  const canAfford = playerGold >= price;
+  const resolvedPrice = typeof price === 'number'
+    ? price
+    : action === 'buy'
+      ? item.price
+      : Math.max(1, Math.floor(item.price * 0.6));
+  const canAfford = playerGold >= resolvedPrice;
   const title = action === 'buy' ? `Buy ${item.name}?` : `Sell ${item.name}?`;
 
   return (
@@ -38,16 +43,16 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
         <div className="trade-modal-item">
           <span className="trade-modal-item-name">Price:</span>
-          <span className="trade-modal-item-price">{price} 💰</span>
+          <span className="trade-modal-item-price">{resolvedPrice} gold</span>
         </div>
 
         {action === 'buy' ? (
           <div className="trade-modal-gold">
-            Your Gold: {playerGold} 💰 {!canAfford && <span style={{ color: '#d06d68' }}>Not enough!</span>}
+            Your Gold: {playerGold} {!canAfford && <span style={{ color: '#d06d68' }}>Not enough!</span>}
           </div>
         ) : (
           <div className="trade-modal-gold">
-            You will receive: {price} 💰
+            You will receive: {resolvedPrice} gold
           </div>
         )}
 

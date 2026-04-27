@@ -519,6 +519,21 @@ export class ContentService {
     return clone(this.ensureLoaded().worldMap);
   }
 
+  getCanonicalItemIds(options?: { enabledOnly?: boolean }): string[] {
+    const enabledOnly = options?.enabledOnly === true;
+    return this.ensureLoaded().items
+      .filter((item) => (enabledOnly ? item.isEnabled : true))
+      .map((item) => item.id);
+  }
+
+  isCanonicalItemId(itemId: string, options?: { enabledOnly?: boolean }): boolean {
+    return this.getCanonicalItemIds(options).includes(itemId);
+  }
+
+  getCombatLootPool(): string[] {
+    return this.getCanonicalItemIds({ enabledOnly: true });
+  }
+
   saveWorldMap(payload: WorldMapContent): WorldMapContent {
     const db = this.ensureLoaded();
     db.worldMap = {

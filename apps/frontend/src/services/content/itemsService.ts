@@ -1,5 +1,6 @@
 import type { AdminItem } from './models';
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 
 function normalize(item: AdminItem): AdminItem {
   const normalized: AdminItem = {
@@ -61,16 +62,15 @@ export function validateItem(item: AdminItem): string[] {
 
 export const itemsService = {
   async getAll(): Promise<AdminItem[]> {
-    return readCollection<AdminItem>('items').map(normalize);
+    return (await getContentCollection<AdminItem>('items')).map(normalize);
   },
 
   async getById(id: string): Promise<AdminItem | null> {
-    const all = await this.getAll();
-    return all.find((item) => item.id === id) ?? null;
+    const item = await getContentEntry<AdminItem>('items', id);
+    return item ? normalize(item) : null;
   },
 
   async create(payload: Omit<AdminItem, 'createdAt' | 'updatedAt'>): Promise<AdminItem> {
-    const all = await this.getAll();
     const base: AdminItem = normalize({
       ...payload,
       id: payload.id?.trim() || uid('item'),
@@ -81,17 +81,11 @@ export const itemsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    if (all.some((item) => item.id === base.id)) {
-      throw new Error(`Duplicate item id: ${base.id}`);
-    }
-    const next = [...all, base];
-    writeCollection('items', next);
-    return base;
+    return normalize(await createContentEntry<AdminItem>('items', base));
   },
 
   async update(id: string, patch: Partial<AdminItem>): Promise<AdminItem> {
-    const all = await this.getAll();
-    const found = all.find((item) => item.id === id);
+    const found = await this.getById(id);
     if (!found) {
       throw new Error(`Item not found: ${id}`);
     }
@@ -100,9 +94,7 @@ export const itemsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    const next = all.map((item) => (item.id === id ? merged : item));
-    writeCollection('items', next);
-    return merged;
+    return normalize(await updateContentEntry<AdminItem>('items', id, merged));
   },
 
   async disable(id: string): Promise<AdminItem> {
@@ -110,7 +102,6 @@ export const itemsService = {
   },
 
   async delete(id: string): Promise<void> {
-    const all = await this.getAll();
-    writeCollection('items', all.filter((item) => item.id !== id));
+    await deleteContentEntry('items', id);
   },
 };

@@ -6,11 +6,12 @@ import { WorldMapCanvas } from './WorldMapCanvas';
 import { ContextActionPanel } from './ContextActionPanel';
 import { ZoneEditorPanel } from './ZoneEditorPanel';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory } from './zoneEditorHistory';
-import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromStorage, loadEditorSettings, saveEditorDataToStorage, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
+import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft } from './zoneEditorTypes';
 import { getNearbyPlayers, canAttackNearbyPlayer } from './nearbyPlayersSystem';
 import { WORLD_MAP_ZONES } from './worldMapNodes';
 import { getZoneCenter, moveZone } from './zoneGeometry';
+import { subscribeToContentSync } from '../services/content/contentSync';
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const ARKLEIN_MERCHANT_SLOTS = [
     { left: '37%', top: '46%', keywords: ['рынок', 'market', 'bazaar', 'лавка', 'торг'] },
@@ -102,8 +103,10 @@ function normalizeClipboardText(text) {
 export function WorldMapScreen(props) {
     const { character, inventory, equipment, battleStats, chatLines, onOpenStats, onOpenInventory, onOpenClan, onExit, onOpenArena, onStartCombat, onOpenMerchant, onOpenSkills, onStatus, cityMerchants = [], resolveItemById, resolveItemImage, resolveMerchantImage, } = props;
     const canvasRef = useRef(null);
-    const skipNextZonePersistRef = useRef(false);
+    const skipNextZonePersistRef = useRef(true);
     const skipNextSettingsPersistRef = useRef(false);
+    const worldMapRefreshRef = useRef(null);
+    const lastWorldMapRefreshAtRef = useRef(0);
     const [worldMapMode, setWorldMapMode] = useState('play');
     const [contextMode, setContextMode] = useState('empty');
     const [locationView, setLocationView] = useState('map');
@@ -116,20 +119,8 @@ export function WorldMapScreen(props) {
     const [chatType, setChatType] = useState('local');
     const [chatDraft, setChatDraft] = useState('');
     const [systemChat, setSystemChat] = useState([]);
-    const [zones, setZones] = useState(() => {
-        if (typeof window === 'undefined') {
-            return cloneZones(WORLD_MAP_ZONES);
-        }
-        const loaded = loadEditorDataFromStorage(cloneZones(WORLD_MAP_ZONES));
-        return loaded.zones;
-    });
-    const [regions, setRegions] = useState(() => {
-        if (typeof window === 'undefined') {
-            return [];
-        }
-        const loaded = loadEditorDataFromStorage(cloneZones(WORLD_MAP_ZONES));
-        return loaded.regions;
-    });
+    const [zones, setZones] = useState(() => cloneZones(WORLD_MAP_ZONES));
+    const [regions, setRegions] = useState([]);
     const [regionToolMode, setRegionToolMode] = useState('circle');
     const [regionType, setRegionType] = useState('blocked');
     const [regionBrushSize, setRegionBrushSize] = useState(1);
@@ -155,6 +146,34 @@ export function WorldMapScreen(props) {
         regionType,
         brushSize: regionBrushSize,
     }), [regionBrushSize, regionToolMode, regionType]);
+    const reloadWorldMapFromBackend = useCallback(async (options) => {
+        if (worldMapMode === 'editor') {
+            return;
+        }
+        const now = Date.now();
+        if (!options?.force && worldMapRefreshRef.current && now - lastWorldMapRefreshAtRef.current < 1200) {
+            return worldMapRefreshRef.current;
+        }
+        lastWorldMapRefreshAtRef.current = now;
+        const refreshPromise = loadEditorDataFromBackend(cloneZones(WORLD_MAP_ZONES))
+            .then((loaded) => {
+            skipNextZonePersistRef.current = true;
+            setZones(loaded.zones);
+            setRegions(loaded.regions);
+            setCurrentZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
+            setHoverZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
+        })
+            .catch(() => {
+            // Keep the current in-memory map if backend content is unavailable.
+        })
+            .finally(() => {
+            if (worldMapRefreshRef.current === refreshPromise) {
+                worldMapRefreshRef.current = null;
+            }
+        });
+        worldMapRefreshRef.current = refreshPromise;
+        return refreshPromise;
+    }, [worldMapMode]);
     useEffect(() => {
         setEditorJson(exportEditorDataJson(zones, regions));
     }, [regions, zones]);
@@ -163,6 +182,40 @@ export function WorldMapScreen(props) {
         setPlayerPosition(restored);
         setPlaySpawnPosition(restored);
     }, [character.id]);
+    useEffect(() => {
+        if (worldMapMode !== 'play') {
+            return;
+        }
+        void reloadWorldMapFromBackend({ force: true });
+    }, [reloadWorldMapFromBackend, worldMapMode]);
+    useEffect(() => {
+        if (worldMapMode !== 'play') {
+            return;
+        }
+        const refreshVisibleWorldMap = () => {
+            void reloadWorldMapFromBackend();
+        };
+        const unsubscribe = subscribeToContentSync((payload) => {
+            if (payload.scope === 'worldMap' || payload.scope === 'all') {
+                void reloadWorldMapFromBackend({ force: true });
+            }
+        });
+        const handleFocus = () => {
+            refreshVisibleWorldMap();
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refreshVisibleWorldMap();
+            }
+        };
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            unsubscribe();
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [reloadWorldMapFromBackend, worldMapMode]);
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
@@ -174,13 +227,22 @@ export function WorldMapScreen(props) {
             skipNextZonePersistRef.current = false;
             return;
         }
-        if (zones.length === 0 && regions.length === 0) {
-            clearZoneStorage();
-        }
-        else {
-            saveEditorDataToStorage(zones, regions);
-        }
-        setAutosaveStatus('autosaved');
+        setAutosaveStatus('saving');
+        void (async () => {
+            try {
+                if (zones.length === 0 && regions.length === 0) {
+                    clearZoneStorage();
+                    await saveEditorDataToBackend([], []);
+                }
+                else {
+                    await saveEditorDataToBackend(zones, regions);
+                }
+                setAutosaveStatus('autosaved');
+            }
+            catch {
+                setAutosaveStatus('save failed');
+            }
+        })();
     }, [regions, zones]);
     useEffect(() => {
         if (skipNextSettingsPersistRef.current) {
@@ -459,12 +521,14 @@ export function WorldMapScreen(props) {
         setEditorDraft(null);
         setEditorJson('');
         clearZoneStorage();
+        void saveEditorDataToBackend([], []);
         onStatus('Editor: all zones and regions cleared.');
     }
     function handleResetStorage() {
         skipNextZonePersistRef.current = true;
         skipNextSettingsPersistRef.current = true;
         clearZoneStorage();
+        void saveEditorDataToBackend([], []);
         clearEditorSettingsStorage();
         setZones(cloneZones(WORLD_MAP_ZONES));
         setRegions([]);
@@ -620,10 +684,10 @@ export function WorldMapScreen(props) {
         setEditorSettings((prev) => ({ ...prev, ...patch }));
     }
     function handleSaveShortcut() {
-        saveEditorDataToStorage(zones, regions);
+        void saveEditorDataToBackend(zones, regions);
         saveEditorSettings(editorSettings);
         setAutosaveStatus('autosaved');
-        onStatus('Editor: saved to localStorage.');
+        onStatus('Editor: saved to backend content store.');
     }
     async function handleAction(actionId, kind) {
         if (worldMapMode === 'editor') {

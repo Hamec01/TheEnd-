@@ -63,11 +63,11 @@ async function readErrorMessage(res) {
     }
     return raw;
 }
-export async function buyArenaItem(characterId, itemId) {
+export async function buyArenaItem(characterId, itemId, merchantId) {
     const res = await fetch(`${API_BASE}/arena/buy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ characterId, itemId }),
+        body: JSON.stringify({ characterId, itemId, merchantId }),
     });
     if (!res.ok) {
         throw new Error(await readErrorMessage(res));

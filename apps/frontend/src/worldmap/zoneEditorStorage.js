@@ -1,3 +1,4 @@
+import { getWorldMapContent, saveWorldMapContent } from '../services/content/contentApi';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
 export const DEV_ZONE_STORAGE_KEY = 'theend.worldMap.zones.dev';
 export const EDITOR_SETTINGS_STORAGE_KEY = 'theend.worldMap.editor.settings';
@@ -227,6 +228,22 @@ export function saveZonesToStorage(zones) {
 }
 export function clearZoneStorage() {
     window.localStorage.removeItem(DEV_ZONE_STORAGE_KEY);
+}
+export async function loadEditorDataFromBackend(initialZones) {
+    const remote = await getWorldMapContent();
+    if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0)) {
+        return {
+            zones: initialZones,
+            regions: [],
+        };
+    }
+    return {
+        zones: remote.zones.length > 0 ? remote.zones : initialZones,
+        regions: remote.regions ?? [],
+    };
+}
+export async function saveEditorDataToBackend(zones, regions) {
+    await saveWorldMapContent({ zones, regions });
 }
 export function loadEditorSettings() {
     const raw = window.localStorage.getItem(EDITOR_SETTINGS_STORAGE_KEY);

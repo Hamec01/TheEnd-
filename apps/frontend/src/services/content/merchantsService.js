@@ -1,4 +1,5 @@
-import { nowIso, readCollection, uid, writeCollection } from './storage';
+import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { nowIso, uid } from './storage';
 export function validateMerchant(merchant) {
     const errors = [];
     if (!merchant.id.trim()) {
@@ -17,14 +18,12 @@ export function validateMerchant(merchant) {
 }
 export const merchantsService = {
     async getAll() {
-        return readCollection('merchants');
+        return getContentCollection('merchants');
     },
     async getById(id) {
-        const all = await this.getAll();
-        return all.find((entry) => entry.id === id) ?? null;
+        return getContentEntry('merchants', id);
     },
     async create(payload) {
-        const all = await this.getAll();
         const nextEntry = {
             ...payload,
             id: payload.id?.trim() || uid('merchant'),
@@ -35,15 +34,10 @@ export const merchantsService = {
         if (errors.length > 0) {
             throw new Error(errors.join(', '));
         }
-        if (all.some((entry) => entry.id === nextEntry.id)) {
-            throw new Error(`Duplicate merchant id: ${nextEntry.id}`);
-        }
-        writeCollection('merchants', [...all, nextEntry]);
-        return nextEntry;
+        return createContentEntry('merchants', nextEntry);
     },
     async update(id, patch) {
-        const all = await this.getAll();
-        const found = all.find((entry) => entry.id === id);
+        const found = await this.getById(id);
         if (!found) {
             throw new Error(`Merchant not found: ${id}`);
         }
@@ -57,14 +51,12 @@ export const merchantsService = {
         if (errors.length > 0) {
             throw new Error(errors.join(', '));
         }
-        writeCollection('merchants', all.map((entry) => (entry.id === id ? merged : entry)));
-        return merged;
+        return updateContentEntry('merchants', id, merged);
     },
     async disable(id) {
         return this.update(id, { isEnabled: false });
     },
     async delete(id) {
-        const all = await this.getAll();
-        writeCollection('merchants', all.filter((entry) => entry.id !== id));
+        await deleteContentEntry('merchants', id);
     },
 };
