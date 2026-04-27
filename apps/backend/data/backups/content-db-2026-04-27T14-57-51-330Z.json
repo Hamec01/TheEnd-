@@ -540,7 +540,27 @@
         "updatedAt": 1713484800000
       }
     ],
-    "regions": [],
-    "updatedAt": "2026-04-27T14:59:53.662Z"
+    "regions": [
+      {
+        "id": "region-blocked",
+        "name": "Blocked Regions",
+        "type": "blocked",
+        "cells": [
+          {
+            "x": 103,
+            "y": 130
+          },
+          {
+            "x": 103,
+            "y": 131
+          },
+          {
+            "x": 102,
+            "y": 130
+          }
+        ]
+      }
+    ],
+    "updatedAt": "2026-04-27T14:57:51.061Z"
   }
 }

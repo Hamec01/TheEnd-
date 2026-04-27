@@ -92,6 +92,170 @@ class BlockedTileDto {
   y!: number;
 }
 
+class RuntimeBattleMapCellDto {
+  @IsInt()
+  @Min(0)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  y!: number;
+
+  @IsString()
+  type!: string;
+
+  @IsOptional()
+  @IsString()
+  trapId?: string;
+
+  @IsOptional()
+  @IsInt()
+  movementCost?: number;
+
+  @IsOptional()
+  blocksMovement?: boolean;
+
+  @IsOptional()
+  blocksLineOfSight?: boolean;
+}
+
+class RuntimeBattleMapPointDto {
+  @IsInt()
+  @Min(0)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  y!: number;
+}
+
+class RuntimeBattleMapSpawnZoneDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  type!: string;
+
+  @IsString()
+  name!: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapPointDto)
+  cells!: RuntimeBattleMapPointDto[];
+}
+
+class RuntimeBattleMapObjectDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  type!: string;
+
+  @IsString()
+  name!: string;
+
+  @IsInt()
+  @Min(0)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  y!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  width?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  height?: number;
+
+  @IsOptional()
+  blocksMovement?: boolean;
+
+  @IsOptional()
+  blocksLineOfSight?: boolean;
+}
+
+class RuntimeBattleMapTrapDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  name!: string;
+
+  @IsInt()
+  @Min(0)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  y!: number;
+
+  @IsOptional()
+  @IsInt()
+  damage?: number;
+
+  @IsOptional()
+  @IsInt()
+  staminaCost?: number;
+
+  @IsOptional()
+  triggerOnce?: boolean;
+}
+
+export class RuntimeBattleMapDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsInt()
+  @Min(12)
+  width!: number;
+
+  @IsInt()
+  @Min(12)
+  height!: number;
+
+  @IsInt()
+  @Min(6)
+  viewportWidth!: number;
+
+  @IsInt()
+  @Min(6)
+  viewportHeight!: number;
+
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapCellDto)
+  cells!: RuntimeBattleMapCellDto[];
+
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapSpawnZoneDto)
+  spawnZones!: RuntimeBattleMapSpawnZoneDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapObjectDto)
+  objects?: RuntimeBattleMapObjectDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapTrapDto)
+  traps?: RuntimeBattleMapTrapDto[];
+}
+
 export class CustomCombatNpcDto {
   @IsString()
   @Length(1, 60)
@@ -137,4 +301,9 @@ export class StartCombatDto {
   @ValidateNested({ each: true })
   @Type(() => BlockedTileDto)
   blockedTiles?: BlockedTileDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RuntimeBattleMapDto)
+  battleMap?: RuntimeBattleMapDto;
 }

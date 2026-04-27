@@ -58,6 +58,7 @@ export function FighterCard({
       <div className="fighter-header">
         <div className="fighter-name-title">
           <strong>{fighter.name}</strong>
+          <span className="fighter-race-line">Race: {fighter.race}</span>
           {subtitle && <span className="fighter-subtitle">{subtitle}</span>}
         </div>
         <span className={`fighter-state-badge ${fighter.isAlive ? 'alive' : 'dead'}`}>
@@ -66,18 +67,14 @@ export function FighterCard({
       </div>
 
       <div className="fighter-avatar-section">
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={fighter.name} className="fighter-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-        ) : (
-          <div className="fighter-avatar">{fighter.name.slice(0, 2).toUpperCase()}</div>
-        )}
-        <div className="fighter-silhouette-grid" aria-label="Combat silhouette">
-          <span className="slot-head" title="Helmet">H</span>
-          <span className="slot-weapon" title="Weapon">W</span>
-          <span className="slot-chest" title="Armor">C</span>
-          <span className="slot-shield" title="Shield">S</span>
-          <span className="slot-gloves" title="Gloves">G</span>
-          <span className="slot-boots" title="Boots">B</span>
+        <div className={`combat-avatar ${fighter.isAlive ? '' : 'is-dead'}`} style={{ ['--hp-percent' as string]: `${hpPercent}%` }}>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={fighter.name} className="combat-avatar-image" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            <div className="combat-avatar-fallback">{fighter.name.slice(0, 2).toUpperCase()}</div>
+          )}
+          <div className="combat-avatar-base" />
+          <div className="combat-avatar-hp-fill" />
         </div>
         {floatingText && <div className="fighter-floating-text">{floatingText}</div>}
       </div>
@@ -118,11 +115,6 @@ export function FighterCard({
             <span style={{ width: `${staminaPercent}%` }} />
           </div>
         </div>
-      </div>
-
-      <div className="fighter-weapon-row">
-        <span>Weapon:</span>
-        <strong>{fighter.dexterity >= fighter.strength ? 'Light / Ranged' : 'Melee'}</strong>
       </div>
     </div>
   );

@@ -34,7 +34,8 @@ export function detectCurrentZone(zones: Zone[], x: number, y: number): Zone | n
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const zone of zones) {
-    if (!isInsideZone(zone, x, y, getZoneInteractionPadding(zone))) {
+    const extraRadius = zone.type === 'city' ? 0 : getZoneInteractionPadding(zone);
+    if (!isInsideZone(zone, x, y, extraRadius)) {
       continue;
     }
 
@@ -53,7 +54,8 @@ export function detectHoverZone(zones: Zone[], x: number, y: number): Zone | nul
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const zone of zones) {
-    if (!isInsideZone(zone, x, y, 0.01 + getZoneInteractionPadding(zone))) {
+    const extraRadius = zone.type === 'city' ? 0.002 : 0.01 + getZoneInteractionPadding(zone);
+    if (!isInsideZone(zone, x, y, extraRadius)) {
       continue;
     }
 

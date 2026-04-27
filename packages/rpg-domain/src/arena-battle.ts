@@ -116,14 +116,38 @@ export interface BattlefieldTile {
   x: number;
   y: number;
   type: BattlefieldTileType;
+  movementCost?: number;
+  blocksMovement?: boolean;
+  blocksLineOfSight?: boolean;
+  trapId?: string;
+}
+
+export interface BattlefieldTrapState {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  damage?: number;
+  staminaCost?: number;
+  triggerOnce?: boolean;
+  revealedByDefault?: boolean;
+  detectionDifficulty?: number;
+  description?: string;
+  isActive?: boolean;
 }
 
 export interface ArenaBattleState {
   combatId: string;
+  battleMapId?: string;
+  battleMapWidth: number;
+  battleMapHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
   roundNumber: number;
   distance: DistanceBand;
   entities: ArenaCombatEntity[];
   battlefieldTiles: BattlefieldTile[];
+  battlefieldTraps: BattlefieldTrapState[];
   logs: CombatLogEntry[];
   lastRound?: ArenaCombatRound;
   isFinished: boolean;
@@ -151,16 +175,28 @@ const ACTION_STAMINA_COSTS = {
 type GuardMode = 'RECKLESS' | 'AGGRESSIVE' | 'NORMAL';
 type CombatStyle = 'MELEE' | 'RANGED' | 'MAGIC';
 
-function getDistanceColumns(distance: DistanceBand): { left: number; right: number } {
+function getBattleMapWidth(source?: Pick<ArenaBattleState, 'battleMapWidth'> | null): number {
+  return source?.battleMapWidth ?? BATTLEFIELD_GRID_SIZE;
+}
+
+function getBattleMapHeight(source?: Pick<ArenaBattleState, 'battleMapHeight'> | null): number {
+  return source?.battleMapHeight ?? BATTLEFIELD_GRID_SIZE;
+}
+
+function getDistanceColumns(distance: DistanceBand, width: number): { left: number; right: number } {
+  const safeWidth = Math.max(2, width);
   if (distance === DistanceBand.Far) {
-    return { left: 1, right: 10 };
+    return { left: 1, right: Math.max(1, safeWidth - 2) };
   }
 
   if (distance === DistanceBand.Near) {
-    return { left: 3, right: 7 };
+    const left = Math.max(1, Math.floor(safeWidth * 0.28));
+    const right = Math.max(left + 1, Math.min(safeWidth - 2, safeWidth - 1 - left));
+    return { left, right };
   }
 
-  return { left: 5, right: 6 };
+  const left = Math.max(0, Math.floor(safeWidth / 2) - 1);
+  return { left, right: Math.min(safeWidth - 1, left + 1) };
 }
 
 function classifyGapDistance(gap: number): DistanceBand {
@@ -179,41 +215,43 @@ export function getDistanceBandForGap(gap: number): DistanceBand {
   return classifyGapDistance(gap);
 }
 
-function distributeRows(count: number): number[] {
+function distributeRows(count: number, height: number): number[] {
   if (count <= 0) {
     return [];
   }
 
   return Array.from({ length: count }, (_, index) =>
-    Math.max(0, Math.min(BATTLEFIELD_GRID_SIZE - 1, Math.round(((index + 1) * (BATTLEFIELD_GRID_SIZE - 1)) / (count + 1)))),
+    Math.max(0, Math.min(height - 1, Math.round(((index + 1) * (height - 1)) / (count + 1)))),
   );
 }
 
 function getDefaultBattlefieldTilePlacements(
   entities: ArenaCombatEntity[],
   distance: DistanceBand,
+  width: number,
+  height: number,
 ): BattlefieldTilePlacement[] {
-  const columns = getDistanceColumns(distance);
+  const columns = getDistanceColumns(distance, width);
   const leftTeam = entities
     .filter((entity) => entity.isAlive && entity.team === TeamSide.Left)
     .sort((left, right) => left.position - right.position);
   const rightTeam = entities
     .filter((entity) => entity.isAlive && entity.team === TeamSide.Right)
     .sort((left, right) => left.position - right.position);
-  const leftRows = distributeRows(leftTeam.length);
-  const rightRows = distributeRows(rightTeam.length);
+  const leftRows = distributeRows(leftTeam.length, height);
+  const rightRows = distributeRows(rightTeam.length, height);
 
   return [
     ...leftTeam.map((entity, index) => ({
       entityId: entity.id,
       x: columns.left,
-      y: leftRows[index] ?? Math.floor(BATTLEFIELD_GRID_SIZE / 2),
+      y: leftRows[index] ?? Math.floor(height / 2),
       team: entity.team,
     })),
     ...rightTeam.map((entity, index) => ({
       entityId: entity.id,
       x: columns.right,
-      y: rightRows[index] ?? Math.floor(BATTLEFIELD_GRID_SIZE / 2),
+      y: rightRows[index] ?? Math.floor(height / 2),
       team: entity.team,
     })),
   ];
@@ -225,12 +263,12 @@ function hasStoredBattlefieldPositions(entities: ArenaCombatEntity[]): boolean {
     .every((entity) => Number.isInteger(entity.battlefieldX) && Number.isInteger(entity.battlefieldY));
 }
 
-function syncBattlefieldPositions(entities: ArenaCombatEntity[], distance: DistanceBand): void {
+function syncBattlefieldPositions(entities: ArenaCombatEntity[], distance: DistanceBand, width: number, height: number): void {
   if (hasStoredBattlefieldPositions(entities)) {
     return;
   }
 
-  const placements = getDefaultBattlefieldTilePlacements(entities, distance);
+  const placements = getDefaultBattlefieldTilePlacements(entities, distance, width, height);
   const placementById = new Map(placements.map((placement) => [placement.entityId, placement]));
 
   for (const entity of entities) {
@@ -244,16 +282,16 @@ function syncBattlefieldPositions(entities: ArenaCombatEntity[], distance: Dista
   }
 }
 
-function createDefaultBattlefieldTiles(): BattlefieldTile[] {
-  return Array.from({ length: BATTLEFIELD_GRID_SIZE * BATTLEFIELD_GRID_SIZE }, (_, index) => ({
-    x: index % BATTLEFIELD_GRID_SIZE,
-    y: Math.floor(index / BATTLEFIELD_GRID_SIZE),
+function createDefaultBattlefieldTiles(width = BATTLEFIELD_GRID_SIZE, height = BATTLEFIELD_GRID_SIZE): BattlefieldTile[] {
+  return Array.from({ length: width * height }, (_, index) => ({
+    x: index % width,
+    y: Math.floor(index / width),
     type: BattlefieldTileType.Empty,
   }));
 }
 
-function isWithinBattlefield(x: number, y: number): boolean {
-  return x >= 0 && x < BATTLEFIELD_GRID_SIZE && y >= 0 && y < BATTLEFIELD_GRID_SIZE;
+function isWithinBattlefield(state: Pick<ArenaBattleState, 'battleMapWidth' | 'battleMapHeight'>, x: number, y: number): boolean {
+  return x >= 0 && x < getBattleMapWidth(state) && y >= 0 && y < getBattleMapHeight(state);
 }
 
 function getBattlefieldTileType(state: ArenaBattleState, x: number, y: number): BattlefieldTileType {
@@ -261,12 +299,20 @@ function getBattlefieldTileType(state: ArenaBattleState, x: number, y: number): 
 }
 
 function isTileWalkBlocked(state: ArenaBattleState, x: number, y: number): boolean {
-  const tileType = getBattlefieldTileType(state, x, y);
+  const tile = state.battlefieldTiles.find((entry) => entry.x === x && entry.y === y);
+  if (tile?.blocksMovement !== undefined) {
+    return tile.blocksMovement;
+  }
+  const tileType = tile?.type ?? BattlefieldTileType.Empty;
   return tileType === BattlefieldTileType.Blocked || tileType === BattlefieldTileType.HighCover || tileType === BattlefieldTileType.Summon;
 }
 
 function isTileSightBlocked(state: ArenaBattleState, x: number, y: number): boolean {
-  const tileType = getBattlefieldTileType(state, x, y);
+  const tile = state.battlefieldTiles.find((entry) => entry.x === x && entry.y === y);
+  if (tile?.blocksLineOfSight !== undefined) {
+    return tile.blocksLineOfSight;
+  }
+  const tileType = tile?.type ?? BattlefieldTileType.Empty;
   return tileType === BattlefieldTileType.Blocked || tileType === BattlefieldTileType.HighCover || tileType === BattlefieldTileType.Summon;
 }
 
@@ -412,7 +458,7 @@ function buildDistanceMap(state: ArenaBattleState, actor: ArenaCombatEntity, max
       const nextX = current.x + dx;
       const nextY = current.y + dy;
       const key = `${nextX}:${nextY}`;
-      if (!isWithinBattlefield(nextX, nextY) || distances.has(key)) {
+      if (!isWithinBattlefield(state, nextX, nextY) || distances.has(key)) {
         continue;
       }
 
@@ -455,7 +501,7 @@ export function getThreatenedTiles(state: ArenaBattleState, team: TeamSide): Arr
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const x = (entity.battlefieldX ?? 0) + dx;
       const y = (entity.battlefieldY ?? 0) + dy;
-      if (isWithinBattlefield(x, y)) {
+      if (isWithinBattlefield(state, x, y)) {
         threatened.push({ x, y, enemyId: entity.id });
       }
     }
@@ -467,9 +513,11 @@ export function getThreatenedTiles(state: ArenaBattleState, team: TeamSide): Arr
 export function getBattlefieldTilePlacements(
   entities: ArenaCombatEntity[],
   distance: DistanceBand,
+  width = BATTLEFIELD_GRID_SIZE,
+  height = BATTLEFIELD_GRID_SIZE,
 ): BattlefieldTilePlacement[] {
   if (!hasStoredBattlefieldPositions(entities)) {
-    return getDefaultBattlefieldTilePlacements(entities, distance);
+    return getDefaultBattlefieldTilePlacements(entities, distance, width, height);
   }
 
   return entities
@@ -511,18 +559,32 @@ export function createInitialBattleState(params: {
   entities: ArenaCombatEntity[];
   distance?: DistanceBand;
   battlefieldTiles?: BattlefieldTile[];
+  battlefieldTraps?: BattlefieldTrapState[];
+  battleMapId?: string;
+  battleMapWidth?: number;
+  battleMapHeight?: number;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }): ArenaBattleState {
+  const battleMapWidth = Math.max(1, params.battleMapWidth ?? BATTLEFIELD_GRID_SIZE);
+  const battleMapHeight = Math.max(1, params.battleMapHeight ?? BATTLEFIELD_GRID_SIZE);
   const state: ArenaBattleState = {
     combatId: params.combatId,
+    battleMapId: params.battleMapId,
+    battleMapWidth,
+    battleMapHeight,
+    viewportWidth: Math.max(1, Math.min(params.viewportWidth ?? BATTLEFIELD_GRID_SIZE, battleMapWidth)),
+    viewportHeight: Math.max(1, Math.min(params.viewportHeight ?? BATTLEFIELD_GRID_SIZE, battleMapHeight)),
     roundNumber: 0,
     distance: params.distance ?? DistanceBand.Melee,
     entities: params.entities,
-    battlefieldTiles: params.battlefieldTiles ?? createDefaultBattlefieldTiles(),
+    battlefieldTiles: params.battlefieldTiles ?? createDefaultBattlefieldTiles(battleMapWidth, battleMapHeight),
+    battlefieldTraps: params.battlefieldTraps ?? [],
     logs: [],
     isFinished: false,
   };
 
-  syncBattlefieldPositions(state.entities, state.distance);
+  syncBattlefieldPositions(state.entities, state.distance, battleMapWidth, battleMapHeight);
   updateBattleDistance(state);
   return state;
 }
@@ -787,7 +849,7 @@ function applyMovement(
     return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'No destination available.' };
   }
 
-  if (!isWithinBattlefield(destination.x, destination.y)) {
+  if (!isWithinBattlefield(state, destination.x, destination.y)) {
     return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'Destination is outside battlefield.' };
   }
 
@@ -1162,9 +1224,12 @@ export function resolveRound(params: {
     return state;
   }
 
-  syncBattlefieldPositions(state.entities, state.distance);
+  syncBattlefieldPositions(state.entities, state.distance, getBattleMapWidth(state), getBattleMapHeight(state));
   if (!state.battlefieldTiles || state.battlefieldTiles.length === 0) {
-    state.battlefieldTiles = createDefaultBattlefieldTiles();
+    state.battlefieldTiles = createDefaultBattlefieldTiles(getBattleMapWidth(state), getBattleMapHeight(state));
+  }
+  if (!state.battlefieldTraps) {
+    state.battlefieldTraps = [];
   }
   updateBattleDistance(state);
 
@@ -1259,6 +1324,39 @@ export function resolveRound(params: {
           type: 'INFO',
           text: `${actor.name} moves to (${(actor.battlefieldX ?? 0) + 1}, ${(actor.battlefieldY ?? 0) + 1})`,
         });
+        const triggeredTrap = state.battlefieldTraps.find((trap) => trap.isActive !== false && trap.x === actor.battlefieldX && trap.y === actor.battlefieldY);
+        if (triggeredTrap) {
+          logs.push({
+            round: state.roundNumber,
+            actorId,
+            type: 'INFO',
+            text: `${actor.name} stepped onto a trap.`,
+          });
+          if ((triggeredTrap.damage ?? 3) > 0) {
+            const amount = triggeredTrap.damage ?? 3;
+            actor.currentHp = Math.max(0, actor.currentHp - amount);
+            actor.isAlive = actor.currentHp > 0;
+            logs.push({
+              round: state.roundNumber,
+              actorId,
+              type: 'HIT',
+              amount,
+              text: `${actor.name} takes ${amount} damage from trap ${triggeredTrap.name}`,
+            });
+          } else {
+            const amount = triggeredTrap.staminaCost ?? 5;
+            actor.currentStamina = Math.max(0, actor.currentStamina - amount);
+            logs.push({
+              round: state.roundNumber,
+              actorId,
+              type: 'INFO',
+              text: `${actor.name} loses ${amount} stamina from trap ${triggeredTrap.name}`,
+            });
+          }
+          if (triggeredTrap.triggerOnce) {
+            triggeredTrap.isActive = false;
+          }
+        }
         if (movement.opportunityEnemies.length > 0) {
           resolveOpportunityAttacks({
             state,

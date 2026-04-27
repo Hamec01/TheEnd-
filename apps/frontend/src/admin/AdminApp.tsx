@@ -3,21 +3,31 @@ import { isAdminAuthenticated, loginAdmin, logoutAdmin } from '../services/admin
 import { AdminLayout } from './AdminLayout';
 import { AdminLogin } from './AdminLogin';
 import { DashboardPage } from './pages/DashboardPage';
+import { BattleMapsPage } from './pages/BattleMapsPage';
 import { ImagesPage } from './pages/ImagesPage';
 import { ItemsPage } from './pages/ItemsPage';
 import { LootTablesPage } from './pages/LootTablesPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { MerchantsPage } from './pages/MerchantsPage';
+import { ZoneEditorPage } from './pages/ZoneEditorPage';
 
 interface AdminAppProps {
   currentPath: string;
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/merchants' | '/admin/materials' | '/admin/loot-tables' | '/admin/images';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/merchants' | '/admin/materials' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor';
 
 function normalizeAdminPath(path: string): AdminRoute {
-  if (path === '/admin/items' || path === '/admin/merchants' || path === '/admin/materials' || path === '/admin/loot-tables' || path === '/admin/images') {
+  if (
+    path === '/admin/items'
+    || path === '/admin/merchants'
+    || path === '/admin/materials'
+    || path === '/admin/loot-tables'
+    || path === '/admin/images'
+    || path === '/admin/battle-maps'
+    || path === '/admin/zone-editor'
+  ) {
     return path;
   }
   return '/admin';
@@ -39,6 +49,10 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Таблицы добычи';
       case '/admin/images':
         return 'Изображения';
+      case '/admin/battle-maps':
+        return 'Battle Maps';
+      case '/admin/zone-editor':
+        return 'Zone Editor';
       default:
         return 'Обзор';
     }
@@ -76,13 +90,25 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     case '/admin/images':
       page = <ImagesPage />;
       break;
+    case '/admin/battle-maps':
+      page = <BattleMapsPage />;
+      break;
+    case '/admin/zone-editor':
+      page = <ZoneEditorPage />;
+      break;
     default:
       page = <DashboardPage />;
       break;
   }
 
   return (
-    <AdminLayout title={title} currentPath={route} onNavigate={onNavigate} onLogout={logout}>
+    <AdminLayout
+      title={title}
+      currentPath={route}
+      onNavigate={onNavigate}
+      onLogout={logout}
+      isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor'}
+    >
       {page}
     </AdminLayout>
   );

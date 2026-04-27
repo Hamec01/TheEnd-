@@ -12,3 +12,13 @@ export * from './merchants';
 export * from './inventory';
 export * from './equipment';
 export * from './shop';
+export * from './battle-map';
+export type { DerivedStatLine, DerivedStatsResult } from './derived-stats';
+export {
+	calculateTotalDefense,
+	calculateMinDamage,
+	calculateMaxDamage,
+	calculateCritChance,
+	calculateInitiative as calculateCharacterInitiative,
+	calculateDerivedStats,
+} from './derived-stats';

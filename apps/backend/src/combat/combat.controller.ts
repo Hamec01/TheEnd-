@@ -10,7 +10,7 @@ export class CombatController {
 
   @Post('start')
   async start(@Body() dto: StartCombatDto) {
-    return this.combatService.startCombat(dto.characterId, dto.enemyCount ?? 1, dto.customEnemies ?? [], dto.blockedTiles ?? []);
+    return this.combatService.startCombat(dto.characterId, dto.enemyCount ?? 1, dto.customEnemies ?? [], dto.battleMap, dto.blockedTiles ?? []);
   }
 
   @Post('action')

@@ -38,7 +38,6 @@ import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
-import { ArenaMapEditor, type ArenaBlockedTile } from './components/ArenaMapEditor';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, StoredImage } from './services/content/models';
@@ -51,6 +50,8 @@ import {
 } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource } from './services/content/runtimeImageService';
 import { getDomainItemWithFallback } from './services/content/seedService';
+import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps } from './services/battleMaps/battleMapStorage';
+import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 
 const RACES = [Race.Human, Race.Dwarf, Race.HighElf, Race.WoodElf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -93,7 +94,7 @@ const STAT_HINTS: Record<PrimaryStat, string> = {
 };
 
 type Phase = 'setup' | 'hub';
-type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | 'arenaEditor' | null;
+type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
 
@@ -119,13 +120,6 @@ interface ArenaNpcTemplate {
   equipment: Equipment;
   enabled: boolean;
   avatarUrl?: string;
-}
-
-interface ArenaMapPreset {
-  id: string;
-  name: string;
-  mapImageUrl: string;
-  blockedTiles: ArenaBlockedTile[];
 }
 
 const EQUIPMENT_SLOT_ORDER: EquipmentSlot[] = ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'shield'];
@@ -164,10 +158,7 @@ const DEFAULT_NPC_STATS: StatBlock = {
 const NPC_STORAGE_KEY = 'theend.arenaNpcTemplates';
 const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
-const ARENA_MAP_IMAGE_STORAGE_KEY = 'theend.arenaMapImageUrl';
-const ARENA_BLOCKED_TILES_STORAGE_KEY = 'theend.arenaBlockedTiles';
-const ARENA_MAP_PRESETS_STORAGE_KEY = 'theend.arenaMapPresets';
-const DEFAULT_ARENA_MAP_IMAGE = '/map/battle-map_arena.png';
+const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
 
 const SKILL_OFFERS: SkillOffer[] = [
   {
@@ -414,6 +405,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [name, setName] = useState('');
   const [race, setRace] = useState<Race>(Race.Human);
   const [allocation, setAllocation] = useState<StatAllocation>({});
+  const [setupAvatarUrl, setSetupAvatarUrl] = useState<string>('');
+  const setupAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const [status, setStatus] = useState('Create a fighter directly or use account login if needed.');
 
@@ -428,11 +421,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
 
   const [playerAvatarUrl, setPlayerAvatarUrl] = useState<string>('');
-  const [arenaMapImageUrl, setArenaMapImageUrl] = useState<string>(DEFAULT_ARENA_MAP_IMAGE);
-  const [arenaBlockedTiles, setArenaBlockedTiles] = useState<ArenaBlockedTile[]>([]);
-  const [arenaMapPresets, setArenaMapPresets] = useState<ArenaMapPreset[]>([]);
-  const [selectedArenaMapPresetId, setSelectedArenaMapPresetId] = useState<string | null>(null);
-  const [arenaMapDraftName, setArenaMapDraftName] = useState('Новая карта');
+  const [selectedBattleMapId, setSelectedBattleMapId] = useState<string>(() => DEFAULT_BATTLE_MAP_ID);
 
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
@@ -597,6 +586,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const logs = combatState?.logs?.slice(-7).map((entry) => entry.text) ?? [];
     return [status, ...logs].filter((line) => line.trim().length > 0).slice(-8);
   }, [status, combatState?.logs]);
+  const selectedBattleMap = useMemo(
+    () => resolveBattleMapForCombat(selectedBattleMapId || DEFAULT_BATTLE_MAP_ID),
+    [selectedBattleMapId],
+  );
+  const activeCombatBattleMap = useMemo(
+    () => resolveBattleMapForCombat(combatState?.battleMapId ?? selectedBattleMap.id),
+    [combatState?.battleMapId, selectedBattleMap.id],
+  );
 
   const refreshRuntimeContent = useCallback(async (options?: { force?: boolean }) => {
     const now = Date.now();
@@ -793,64 +790,18 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [npcTemplates, selectedNpcId]);
 
   useEffect(() => {
-    const savedMap = window.localStorage.getItem(ARENA_MAP_IMAGE_STORAGE_KEY);
-    if (savedMap && savedMap.trim().length > 0) {
-      setArenaMapImageUrl(savedMap);
-    }
-
-    const savedBlocked = window.localStorage.getItem(ARENA_BLOCKED_TILES_STORAGE_KEY);
-    if (!savedBlocked) {
+    const maps = loadBattleMaps();
+    const savedBattleMapId = window.localStorage.getItem(SELECTED_BATTLE_MAP_STORAGE_KEY);
+    if (savedBattleMapId && maps.some((map) => map.id === savedBattleMapId)) {
+      setSelectedBattleMapId(savedBattleMapId);
       return;
     }
-
-    try {
-      const parsed = JSON.parse(savedBlocked) as ArenaBlockedTile[];
-      const normalized = parsed
-        .filter((tile) => Number.isInteger(tile.x) && Number.isInteger(tile.y))
-        .filter((tile) => tile.x >= 0 && tile.x < 12 && tile.y >= 0 && tile.y < 12);
-      setArenaBlockedTiles(normalized);
-    } catch {
-      setArenaBlockedTiles([]);
-    }
-
-    const savedPresets = window.localStorage.getItem(ARENA_MAP_PRESETS_STORAGE_KEY);
-    if (!savedPresets) {
-      return;
-    }
-
-    try {
-      const parsedPresets = JSON.parse(savedPresets) as ArenaMapPreset[];
-      const normalizedPresets = parsedPresets
-        .filter((preset) => typeof preset.id === 'string' && typeof preset.name === 'string')
-        .map((preset) => ({
-          ...preset,
-          mapImageUrl: preset.mapImageUrl || DEFAULT_ARENA_MAP_IMAGE,
-          blockedTiles: (preset.blockedTiles ?? [])
-            .filter((tile) => Number.isInteger(tile.x) && Number.isInteger(tile.y))
-            .filter((tile) => tile.x >= 0 && tile.x < 12 && tile.y >= 0 && tile.y < 12),
-        }));
-
-      setArenaMapPresets(normalizedPresets);
-      if (normalizedPresets.length > 0) {
-        setSelectedArenaMapPresetId(normalizedPresets[0].id);
-        setArenaMapDraftName(normalizedPresets[0].name);
-      }
-    } catch {
-      setArenaMapPresets([]);
-    }
+    setSelectedBattleMapId(maps[0]?.id ?? DEFAULT_BATTLE_MAP_ID);
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(ARENA_MAP_IMAGE_STORAGE_KEY, arenaMapImageUrl || DEFAULT_ARENA_MAP_IMAGE);
-  }, [arenaMapImageUrl]);
-
-  useEffect(() => {
-    window.localStorage.setItem(ARENA_BLOCKED_TILES_STORAGE_KEY, JSON.stringify(arenaBlockedTiles));
-  }, [arenaBlockedTiles]);
-
-  useEffect(() => {
-    window.localStorage.setItem(ARENA_MAP_PRESETS_STORAGE_KEY, JSON.stringify(arenaMapPresets));
-  }, [arenaMapPresets]);
+    window.localStorage.setItem(SELECTED_BATTLE_MAP_STORAGE_KEY, selectedBattleMapId);
+  }, [selectedBattleMapId]);
 
   useEffect(() => {
     if (phase !== 'hub' || !character || !combatState) {
@@ -1047,11 +998,40 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       }, accountId);
       const hub = await getArenaHubState(saved.id);
       applyHubState(hub);
+      if (setupAvatarUrl) {
+        setPlayerAvatarUrl(setupAvatarUrl);
+        window.localStorage.setItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${saved.id}`, setupAvatarUrl);
+      }
       setPhase('hub');
       setStatus(`${saved.name} entered the hub.`);
     } catch (error) {
       setStatus(`Character creation error: ${(error as Error).message}`);
     }
+  }
+
+  function handleSetupAvatarChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setStatus('Avatar format: PNG, JPEG or WEBP only.');
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setStatus('Avatar max size: 2MB.');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSetupAvatarUrl(typeof reader.result === 'string' ? reader.result : '');
+    };
+    reader.readAsDataURL(file);
   }
 
   async function handleEquip(itemId: string, preferredHand?: 'weapon' | 'shield'): Promise<void> {
@@ -1179,86 +1159,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }
 
   function openArenaOverlay(): void {
-    openArenaEditorOverlay();
+    setOverlayPanel('arena');
+    setStatus('Открыта арена. Настройте NPC и начинайте бой. Tactical Battle Map Editor доступен в боковой панели карты мира.');
   }
 
   function openArenaNpcOverlay(): void {
     setOverlayPanel('arenaNpc');
     setStatus('Открыт редактор arena NPC. Здесь можно собрать бойцов для арены и выдать им вещи.');
-  }
-
-  function openArenaEditorOverlay(): void {
-    setOverlayPanel('arenaEditor');
-    setStatus('Открыт редактор арены. Разметьте непроходимые клетки и сохраните карту боя.');
-  }
-
-  function saveArenaMapPreset(): void {
-    const normalizedName = arenaMapDraftName.trim();
-    if (!normalizedName) {
-      setStatus('Укажите имя карты перед сохранением.');
-      return;
-    }
-
-    const presetId = selectedArenaMapPresetId ?? `arena-map-${crypto.randomUUID()}`;
-    const nextPreset: ArenaMapPreset = {
-      id: presetId,
-      name: normalizedName,
-      mapImageUrl: arenaMapImageUrl || DEFAULT_ARENA_MAP_IMAGE,
-      blockedTiles: arenaBlockedTiles,
-    };
-
-    setArenaMapPresets((current) => {
-      const existingIndex = current.findIndex((preset) => preset.id === presetId);
-      if (existingIndex >= 0) {
-        const next = [...current];
-        next[existingIndex] = nextPreset;
-        return next;
-      }
-      return [...current, nextPreset];
-    });
-
-    setSelectedArenaMapPresetId(presetId);
-    setStatus(`Карта сохранена: ${normalizedName}`);
-  }
-
-  function loadArenaMapPreset(presetId: string): void {
-    const preset = arenaMapPresets.find((item) => item.id === presetId);
-    if (!preset) {
-      return;
-    }
-
-    setSelectedArenaMapPresetId(preset.id);
-    setArenaMapDraftName(preset.name);
-    setArenaMapImageUrl(preset.mapImageUrl || DEFAULT_ARENA_MAP_IMAGE);
-    setArenaBlockedTiles(preset.blockedTiles ?? []);
-    setStatus(`Загружена карта: ${preset.name}`);
-  }
-
-  function createNewArenaMapDraft(): void {
-    setSelectedArenaMapPresetId(null);
-    setArenaMapDraftName(`Новая карта ${arenaMapPresets.length + 1}`);
-    setArenaMapImageUrl(DEFAULT_ARENA_MAP_IMAGE);
-    setArenaBlockedTiles([]);
-    setStatus('Создан новый черновик карты.');
-  }
-
-  function deleteArenaMapPreset(): void {
-    if (!selectedArenaMapPresetId) {
-      setStatus('Выберите сохраненную карту для удаления.');
-      return;
-    }
-
-    const target = arenaMapPresets.find((preset) => preset.id === selectedArenaMapPresetId);
-    if (!target) {
-      return;
-    }
-
-    setArenaMapPresets((current) => current.filter((preset) => preset.id !== selectedArenaMapPresetId));
-    setSelectedArenaMapPresetId(null);
-    setArenaMapDraftName('Новая карта');
-    setArenaMapImageUrl(DEFAULT_ARENA_MAP_IMAGE);
-    setArenaBlockedTiles([]);
-    setStatus(`Карта удалена: ${target.name}`);
   }
 
   function updateNpcTemplate(npcId: string, updater: (current: ArenaNpcTemplate) => ArenaNpcTemplate): void {
@@ -1309,10 +1216,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCombatRoutePending(true);
 
     try {
-      const blockedTilesPayload = arenaBlockedTiles.map((tile) => ({ x: tile.x, y: tile.y }));
+      const battleMapPayload = toRuntimeBattleMapPayload(selectedBattleMap);
       const started = activeArenaNpcs.length > 0
-        ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload), blockedTilesPayload)
-        : await startCombat(character.id, 1, blockedTilesPayload);
+        ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload), battleMapPayload)
+        : await startCombat(character.id, 1, battleMapPayload);
       setOverlayPanel(null);
       setCombatId(started.combatId);
       setPlayerCombatId(started.playerId);
@@ -1462,6 +1369,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <strong>{RACE_DEFINITIONS[race].label}</strong>
                 <p>{RACE_DEFINITIONS[race].description}</p>
               </div>
+              <div className="setup-avatar-upload">
+                <input ref={setupAvatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleSetupAvatarChange} />
+                <button type="button" onClick={() => setupAvatarInputRef.current?.click()}>{setupAvatarUrl ? 'Change Avatar' : 'Upload Avatar (optional)'}</button>
+                {setupAvatarUrl ? <img src={setupAvatarUrl} alt="Avatar preview" className="setup-avatar-preview" /> : null}
+              </div>
               <button className="setup-enter-button" onClick={onCreateCharacter} disabled={name.trim().length < 3}>
                 Enter Hub
               </button>
@@ -1484,8 +1396,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const freePointsLeft = character.freePoints - getAllocationCost(pendingStatAllocation);
 
   return (
-    <div className="page">
-      <main className="shell game-shell world-shell">
+    <div className="page game-root">
+      <main className="shell game-shell world-shell game-main">
         <WorldMapScreen
           character={character}
           inventory={inventory}
@@ -1518,18 +1430,6 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
           resolveItemImage={resolveItemImage}
           resolveMerchantImage={resolveMerchantImage}
-          battleMapImageUrl={arenaMapImageUrl}
-          battleBlockedTiles={arenaBlockedTiles}
-          battleMapDraftName={arenaMapDraftName}
-          battleMapPresets={arenaMapPresets.map((preset) => ({ id: preset.id, name: preset.name }))}
-          selectedBattleMapPresetId={selectedArenaMapPresetId}
-          onBattleMapImageUrlChange={setArenaMapImageUrl}
-          onBattleBlockedTilesChange={setArenaBlockedTiles}
-          onBattleMapDraftNameChange={setArenaMapDraftName}
-          onBattleMapSelect={loadArenaMapPreset}
-          onBattleMapSave={saveArenaMapPreset}
-          onBattleMapDelete={deleteArenaMapPreset}
-          onBattleMapNew={createNewArenaMapDraft}
         />
 
         {overlayPanel === 'character' && character ? (
@@ -1552,6 +1452,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             }}
             onAdjustStat={adjustPendingStat}
             onApplyStatAllocation={applyStatAllocation}
+            onResetStatAllocation={() => setPendingStatAllocation({})}
             onUseItem={handleUseConsumable}
             playerAvatarUrl={playerAvatarUrl}
             onPlayerAvatarUrlChange={setPlayerAvatarUrl}
@@ -1603,65 +1504,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
               </div>
               <div className="profile-actions">
                 <button onClick={openArenaNpcOverlay}>Настроить NPC</button>
-                <button onClick={openArenaEditorOverlay}>Редактор карты</button>
+                <button onClick={() => setStatus('Tactical Battle Map Editor находится в боковой панели карты мира под Zone Editor.')}>Где редактор карты</button>
                 <button onClick={() => { void openCombat(); }}>Начать бой</button>
               </div>
-            </section>
-          </div>
-        ) : null}
-
-        {overlayPanel === 'arenaEditor' ? (
-          <div className="battle-overlay" role="dialog" aria-modal="true">
-            <section className="card battle-window wm-modal arena-editor-modal">
-              <div className="battle-window-head">
-                <h2>Редактор карты арены</h2>
-                <button onClick={() => setOverlayPanel(null)}>✕</button>
-              </div>
-              <section className="inner-card arena-map-library-panel">
-                <div className="row">
-                  <label>Сохраненные карты</label>
-                  <select
-                    value={selectedArenaMapPresetId ?? ''}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (!value) {
-                        setSelectedArenaMapPresetId(null);
-                        return;
-                      }
-                      loadArenaMapPreset(value);
-                    }}
-                  >
-                    <option value="">Черновик (не сохранен)</option>
-                    {arenaMapPresets.map((preset) => (
-                      <option key={preset.id} value={preset.id}>{preset.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="row">
-                  <label>Имя карты</label>
-                  <input
-                    value={arenaMapDraftName}
-                    placeholder="Например: Подземелье Арклейна"
-                    onChange={(event) => setArenaMapDraftName(event.target.value)}
-                  />
-                </div>
-
-                <div className="profile-actions">
-                  <button onClick={saveArenaMapPreset}>Сохранить карту</button>
-                  <button onClick={createNewArenaMapDraft}>Новая карта</button>
-                  <button onClick={deleteArenaMapPreset} disabled={!selectedArenaMapPresetId}>Удалить карту</button>
-                  <button onClick={openArenaNpcOverlay}>Настроить NPC</button>
-                  <button onClick={() => { void openCombat(); }}>Начать бой с этой картой</button>
-                </div>
-              </section>
-
-              <ArenaMapEditor
-                mapImageUrl={arenaMapImageUrl}
-                blockedTiles={arenaBlockedTiles}
-                onMapImageUrlChange={setArenaMapImageUrl}
-                onBlockedTilesChange={setArenaBlockedTiles}
-              />
             </section>
           </div>
         ) : null}
@@ -1963,7 +1808,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 playerId={playerCombatId!}
                 state={combatState}
                 inventory={inventory}
-                mapImageUrl={arenaMapImageUrl}
+                mapImageUrl={activeCombatBattleMap.imageUrl}
+                mapCalibration={{
+                  cellSizePx: activeCombatBattleMap.cellSizePx,
+                  gridOffsetX: activeCombatBattleMap.gridOffsetX,
+                  gridOffsetY: activeCombatBattleMap.gridOffsetY,
+                }}
                 selectedSkill={selectedCombatSkill}
                 learnedSkills={learnedSkills}
                 onSkillChange={setSelectedCombatSkill}
@@ -1972,6 +1822,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 onClose={() => setBattleWindowOpen(false)}
                 playerAvatarUrl={playerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+                playerEquipment={equipment}
               />
             </section>
           </div>

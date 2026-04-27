@@ -392,23 +392,35 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </div>
       </div>
 
-      <div className="zone-editor-section zone-json-area">
-        <h3>Import / Export</h3>
+      <details className="zone-editor-section zone-editor-collapsible">
+        <summary>Import / Export JSON</summary>
         <div className="zone-editor-actions">
           <button onClick={onExport}>Export JSON</button>
           <button onClick={onCopyJson}>Copy JSON</button>
           <button onClick={onImportJson}>Import JSON</button>
           <button onClick={onValidateJson}>Validate JSON</button>
         </div>
-        <textarea value={jsonValue} rows={12} onChange={(event) => onJsonChange(event.target.value)} />
+        <div className="zone-json-area">
+          <textarea value={jsonValue} rows={12} onChange={(event) => onJsonChange(event.target.value)} />
+        </div>
+      </details>
+
+      <details className="zone-editor-section zone-editor-collapsible">
+        <summary>Debug</summary>
+        <div className="wm-meta-row">
+          <span>Validation messages: {validationErrors.length}</span>
+          <span>Saved zones: {zones.length}</span>
+        </div>
         {validationErrors.length > 0 ? (
           <div className="zone-validation-errors">
             {validationErrors.map((error) => (
               <p key={error}>{error}</p>
             ))}
           </div>
-        ) : null}
-      </div>
+        ) : (
+          <div className="muted">No validation errors.</div>
+        )}
+      </details>
     </aside>
   );
 }

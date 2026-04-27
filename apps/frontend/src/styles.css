@@ -15,8 +15,8 @@
   --hp: #4aa165;
   --mana: #5f7fcb;
   --stamina: #4b94b2;
-  font-size: 12px;
-  font-family: Cambria, "Palatino Linotype", "Book Antiqua", serif;
+  font-size: clamp(12px, 1vw, 16px);
+  font-family: "Inter", "Roboto", "Segoe UI", "Arial", sans-serif;
   color: var(--text-main);
   background: var(--bg-0);
 }
@@ -50,6 +50,13 @@ select {
   color: var(--text-main);
 }
 
+button,
+input,
+select,
+textarea {
+  min-height: 32px;
+}
+
 button {
   cursor: pointer;
   text-transform: uppercase;
@@ -76,13 +83,16 @@ select {
 }
 
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .shell {
   width: min(1180px, 94vw);
   margin: 0 auto;
   padding: 8px 0 10px;
+  min-height: 0;
 }
 
 .game-shell,
@@ -289,6 +299,19 @@ h3 {
 .setup-status-card p {
   margin-bottom: 0;
   line-height: 1.5;
+}
+
+.setup-avatar-upload {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-avatar-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid rgba(191, 155, 92, 0.75);
+  object-fit: cover;
 }
 
 .race-box {
@@ -1125,31 +1148,57 @@ h3 {
   opacity: 0.55;
 }
 
-.fighter-avatar-shell {
+.fighter-avatar-section {
   position: relative;
-  min-height: 56px;
+  min-height: 64px;
   display: grid;
   place-items: center;
 }
 
-.fighter-avatar {
-  width: 54px;
-  height: 54px;
+.combat-avatar {
+  position: relative;
+  width: 56px;
+  height: 56px;
   border-radius: 999px;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
   border: 1px solid rgba(205, 164, 95, 0.62);
-  background: radial-gradient(circle at 30% 30%, rgba(217, 188, 142, 0.3), rgba(51, 37, 21, 0.88));
-  font-weight: 700;
+  background: rgba(24, 19, 14, 0.86);
 }
 
-.fighter-avatar-img {
-  width: 54px;
-  height: 54px;
-  border-radius: 999px;
-  border: 1px solid rgba(205, 164, 95, 0.62);
+.combat-avatar.is-dead {
+  filter: grayscale(1);
+}
+
+.combat-avatar-image,
+.combat-avatar-fallback,
+.combat-avatar-base,
+.combat-avatar-hp-fill {
+  position: absolute;
+  inset: 0;
+}
+
+.combat-avatar-image {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  background: rgba(25, 20, 16, 0.8);
+}
+
+.combat-avatar-fallback {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #f2e0bc;
+}
+
+.combat-avatar-base {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.combat-avatar-hp-fill {
+  top: auto;
+  height: var(--hp-percent);
+  opacity: 0.5;
+  background: linear-gradient(180deg, rgba(95, 201, 127, 0.78), rgba(40, 124, 68, 0.92));
 }
 
 .fighter-floating-text {
@@ -1946,6 +1995,18 @@ h3 {
   gap: 6px;
 }
 
+.admin-nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-nav-group h3 {
+  margin: 8px 0 2px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
 .admin-sidebar button.is-active,
 .admin-scroll-list button.is-active {
   border-color: var(--panel-border-strong);
@@ -1980,6 +2041,25 @@ h3 {
 .admin-content {
   min-height: 0;
   overflow: hidden;
+}
+
+.admin-content.is-editor-route {
+  padding: 0;
+}
+
+.admin-editor-page {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.admin-editor-status {
+  padding: 6px 10px;
+  border-top: 1px solid rgba(122, 95, 56, 0.45);
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .admin-page-grid {
@@ -2535,13 +2615,13 @@ h3 {
   min-height: 72px;
 }
 
-.battle-window:not(.wm-modal) .fighter-avatar {
+.battle-window:not(.wm-modal) .combat-avatar {
   width: 54px;
   height: 54px;
   font-size: 0.95rem;
 }
 
-.battle-window:not(.wm-modal) .fighter-avatar-img {
+.battle-window:not(.wm-modal) .combat-avatar-image {
   width: 54px;
   height: 54px;
 }
@@ -3121,7 +3201,7 @@ h3 {
 
 .battle-fullscreen-root .battle-main-grid {
   display: grid;
-  grid-template-columns: clamp(300px, 24vw, 360px) minmax(0, 1fr) clamp(300px, 24vw, 360px);
+  grid-template-columns: 340px minmax(760px, 1fr) 300px;
   gap: 10px;
   min-height: 0;
   overflow: hidden;
@@ -3159,8 +3239,8 @@ h3 {
 .battle-fullscreen-root .battle-center-log {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-height: 140px;
-  max-height: 220px;
+  min-height: 150px;
+  max-height: 200px;
   overflow: hidden;
   padding: 8px;
 }
@@ -3178,7 +3258,7 @@ h3 {
 .battle-fullscreen-root .battle-field.tactical-field {
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
-  height: 100%;
+  min-height: 55vh;
 }
 
 .tactical-board-container {
@@ -3188,85 +3268,135 @@ h3 {
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid rgba(166, 132, 82, 0.45);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
   padding: 8px;
+  display: grid;
+  place-items: center;
 }
 
 .tactical-board {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.tactical-scene {
+  position: relative;
+}
+
+.tactical-scene-image {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+}
+
+.tactical-scene-grid {
+  position: absolute;
+  background-image:
+    linear-gradient(to right, rgba(242, 210, 143, 0.75) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(242, 210, 143, 0.75) 1px, transparent 1px);
 }
 
 .tactical-tile {
+  position: absolute;
   min-width: 26px;
   min-height: 26px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
+  border-radius: 2px;
+  border: 1px solid rgba(229, 197, 138, 0.05);
+  background: rgba(13, 10, 8, 0.01);
 }
 
 .tactical-tile:hover {
-  border-color: rgba(224, 178, 96, 0.35);
-  box-shadow: 0 0 0 1px rgba(224, 178, 96, 0.12);
+  border-color: rgba(224, 178, 96, 0.18);
+  box-shadow: 0 0 0 1px rgba(224, 178, 96, 0.05);
 }
 
 .tactical-tile.tile-movable {
-  border-color: rgba(98, 170, 114, 0.78);
-  background: rgba(38, 84, 44, 0.3);
+  border-color: rgba(165, 189, 112, 0.26);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(175, 196, 110, 0.18), transparent 62%),
+    linear-gradient(180deg, rgba(80, 98, 45, 0.14), rgba(29, 42, 18, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(175, 196, 110, 0.14);
 }
 
 .tactical-tile.tile-dash {
-  border-color: rgba(83, 133, 193, 0.82);
-  background: rgba(31, 57, 82, 0.34);
+  border-color: rgba(189, 154, 88, 0.28);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(214, 170, 96, 0.16), transparent 62%),
+    linear-gradient(180deg, rgba(96, 71, 35, 0.14), rgba(48, 31, 16, 0.06));
 }
 
 .tactical-tile.tile-attackable {
-  border-color: rgba(212, 97, 80, 0.74);
-  background: rgba(102, 40, 33, 0.3);
+  border-color: rgba(212, 97, 80, 0.36);
+  background: rgba(102, 40, 33, 0.08);
 }
 
 .tactical-tile.tile-threat {
-  box-shadow: inset 0 0 0 1px rgba(122, 34, 29, 0.38);
-  background: rgba(87, 28, 24, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(122, 34, 29, 0.18);
+  background: rgba(87, 28, 24, 0.06);
 }
 
 .tactical-tile.tile-blocked {
-  border-color: rgba(166, 116, 84, 0.56);
-  background: rgba(26, 18, 14, 0.55);
+  border-color: rgba(166, 116, 84, 0.22);
+  background: rgba(26, 18, 14, 0.22);
 }
 
 .tactical-tile.tile-selected {
-  box-shadow: inset 0 0 0 2px rgba(238, 197, 117, 0.86), 0 0 12px rgba(238, 197, 117, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(238, 197, 117, 0.76), 0 0 8px rgba(238, 197, 117, 0.14);
 }
 
 .tactical-token {
   width: 100%;
   height: 100%;
-  border-radius: 999px;
   display: grid;
   place-items: center;
   position: relative;
 }
 
-.tile-player .tactical-token {
-  background: radial-gradient(circle at 35% 30%, rgba(120, 167, 224, 0.95), rgba(34, 61, 95, 0.92));
-  border: 1px solid rgba(212, 184, 124, 0.9);
+.token-avatar-shell {
+  position: relative;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 184, 124, 0.8);
+  background: rgba(23, 19, 14, 0.92);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
-.tile-enemy .tactical-token {
-  background: radial-gradient(circle at 35% 30%, rgba(215, 122, 91, 0.96), rgba(103, 38, 28, 0.94));
-  border: 1px solid rgba(233, 163, 91, 0.88);
+.token-avatar-shell.is-dead {
+  filter: grayscale(1);
 }
 
 .token-avatar {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   font-size: 0.64rem;
   font-weight: 700;
   color: #f2e0bc;
+}
+
+.token-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.token-avatar-base {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.32));
+  z-index: 2;
+}
+
+.token-avatar-hp-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(98, 196, 124, 0.55), rgba(43, 124, 68, 0.7));
+  z-index: 3;
 }
 
 .token-hp {
@@ -3285,58 +3415,70 @@ h3 {
 }
 
 .battle-center-controls {
-  display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
   padding: 8px;
 }
 
 .battle-confirm-large {
   min-height: 52px;
   font-size: 1rem;
-  width: 100%;
+  width: min(280px, 100%);
 }
 
-.battle-round-summary {
-  overflow: auto;
+.fighter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 8px;
 }
 
-.battle-round-summary p {
-  font-size: 0.75rem;
-}
-
-.fighter-silhouette-grid {
+.fighter-name-title {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  min-width: 0;
+}
+
+.fighter-name-title strong {
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.fighter-race-line,
+.fighter-subtitle {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.fighter-state-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(134, 175, 223, 0.42);
+  background: rgba(59, 76, 100, 0.26);
+  font-size: 0.7rem;
+}
+
+.bar-row {
+  display: grid;
   gap: 4px;
-  min-width: 120px;
 }
 
-.fighter-silhouette-grid span {
-  display: grid;
-  place-items: center;
-  min-height: 20px;
-  border-radius: 4px;
-  border: 1px solid rgba(141, 112, 66, 0.64);
-  background: rgba(26, 20, 15, 0.72);
-  font-size: 0.62rem;
-  color: #d8c196;
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.bar-value {
+  color: var(--text-main);
 }
 
 .fighter-bars .mana-meter span {
   background: linear-gradient(90deg, #2f5fae, #7ca9ff);
-}
-
-.fighter-weapon-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid rgba(129, 102, 63, 0.5);
-  padding-top: 6px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
 }
 
 .battle-side-panel-tabs {
@@ -3353,6 +3495,25 @@ h3 {
 .battle-side-panel-tabs button.is-active {
   border-color: rgba(231, 185, 104, 0.86);
   box-shadow: 0 0 0 1px rgba(231, 185, 104, 0.28);
+}
+
+.planner-status-rows {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(117, 92, 57, 0.45);
+  background: rgba(18, 15, 11, 0.45);
+  padding: 6px;
+}
+
+.planner-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.planner-status-row span {
+  color: var(--text-muted);
 }
 
 .battle-side-panel-content {
@@ -3417,6 +3578,327 @@ h3 {
   background: rgba(101, 38, 29, 0.55);
 }
 
+.editor-help-tooltip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.editor-help-tooltip-icon {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  margin-left: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 167, 106, 0.58);
+  background: rgba(52, 40, 24, 0.9);
+  color: #ead6af;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.editor-help-tooltip-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: 240px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(170, 133, 76, 0.8);
+  background: rgba(15, 11, 8, 0.96);
+  color: #e5d0a7;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+
+.battle-map-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.battle-map-editor-page {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.battle-map-editor-main {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.battle-map-editor-canvas-section {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.battle-map-editor-main .battle-map-editor-side-section {
+  overflow-y: auto;
+}
+
+.battle-map-editor-canvas-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(166, 132, 82, 0.45);
+  background: rgba(10, 9, 7, 0.68);
+}
+
+.battle-map-editor-canvas-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.battle-map-editor-image-layer {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.battle-map-editor-grid-overlay {
+  position: absolute;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(242, 210, 143, 0.7) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(242, 210, 143, 0.7) 1px, transparent 1px);
+}
+
+.battle-map-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.battle-map-editor-head h3,
+.battle-map-editor-section-head h4,
+.battle-map-editor-list-card h5 {
+  margin: 0;
+}
+
+.battle-map-editor-section {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(117, 92, 57, 0.5);
+  background: rgba(18, 15, 11, 0.52);
+  padding: 8px;
+}
+
+.battle-map-editor-actions,
+.battle-map-editor-layer-tabs,
+.battle-map-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.battle-map-editor-layer-tabs button.is-active,
+.battle-map-editor-toolbar button.is-active,
+.battle-map-editor-list-card button.is-active {
+  border-color: rgba(231, 185, 104, 0.86);
+  box-shadow: 0 0 0 1px rgba(231, 185, 104, 0.2);
+}
+
+.battle-map-editor-dimensions,
+.battle-map-editor-side-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.battle-map-editor-board {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.battle-map-editor-tile {
+  position: absolute;
+  aspect-ratio: 1 / 1;
+  min-width: 16px;
+  min-height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(230, 193, 138, 0.14);
+  background: rgba(0, 0, 0, 0.02);
+  color: rgba(240, 225, 195, 0.9);
+  font-size: 0.5rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.battle-map-editor-tile.is-walkable {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.battle-map-editor-tile.is-blocked {
+  background: rgba(93, 28, 22, 0.58);
+  border-color: rgba(208, 126, 92, 0.45);
+}
+
+.battle-map-editor-tile.is-difficult {
+  background: rgba(111, 86, 34, 0.42);
+}
+
+.battle-map-editor-tile.is-water {
+  background: rgba(27, 57, 105, 0.42);
+}
+
+.battle-map-editor-tile.is-lowCover {
+  background: rgba(67, 93, 57, 0.36);
+}
+
+.battle-map-editor-tile.is-highCover {
+  background: rgba(54, 76, 44, 0.54);
+}
+
+.battle-map-editor-tile.is-trap {
+  background: rgba(117, 57, 24, 0.52);
+}
+
+.battle-map-editor-tile.has-spawn-player {
+  box-shadow: inset 0 0 0 1px rgba(97, 150, 224, 0.85);
+}
+
+.battle-map-editor-tile.has-spawn-enemy {
+  box-shadow: inset 0 0 0 1px rgba(213, 111, 88, 0.85);
+}
+
+.battle-map-editor-tile.has-spawn-neutralNpc {
+  box-shadow: inset 0 0 0 1px rgba(158, 158, 158, 0.72);
+}
+
+.battle-map-editor-tile.has-spawn-reinforcement {
+  box-shadow: inset 0 0 0 1px rgba(210, 191, 103, 0.82);
+}
+
+.battle-map-editor-tile.has-object,
+.battle-map-editor-tile.has-trap,
+.battle-map-editor-tile.has-npc,
+.battle-map-editor-tile.has-trigger {
+  border-color: rgba(239, 210, 150, 0.26);
+}
+
+.battle-map-editor-tile-markers {
+  display: inline-flex;
+  gap: 1px;
+  opacity: 0.92;
+}
+
+.battle-map-editor-list-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid rgba(117, 92, 57, 0.42);
+  background: rgba(18, 15, 11, 0.4);
+  padding: 8px;
+}
+
+.battle-map-editor-list-card button {
+  width: 100%;
+  text-align: left;
+}
+
+.battle-map-editor-form-grid,
+.battle-map-editor-validation-list {
+  display: grid;
+  gap: 6px;
+}
+
+.battle-map-editor-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.battle-map-editor-validation-list .is-error {
+  color: #eea097;
+}
+
+.battle-map-editor-validation-list .is-warning {
+  color: #d7c289;
+}
+
+.battle-map-editor-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(117, 92, 57, 0.45);
+  padding-top: 6px;
+}
+
+.battle-inspect-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  width: min(360px, calc(100vw - 32px));
+  border: 1px solid rgba(150, 120, 73, 0.5);
+  background: linear-gradient(180deg, rgba(43, 34, 24, 0.9), rgba(17, 13, 10, 0.94));
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.46);
+}
+
+.battle-inspect-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 6, 5, 0.48);
+}
+
+.battle-inspect-dialog {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.battle-inspect-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.battle-inspect-head h3 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.battle-inspect-identity {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.battle-inspect-bars,
+.battle-inspect-stats {
+  display: grid;
+  gap: 3px;
+}
+
+.battle-inspect-bars p,
+.battle-inspect-stats p,
+.battle-inspect-identity p,
+.battle-inspect-stats h4 {
+  margin: 0;
+}
+
 .skill-icon-grid,
 .item-icon-grid {
   display: grid;
@@ -3475,13 +3957,8 @@ h3 {
   font-size: 0.72rem;
 }
 
-.battle-enemy-details {
-  padding: 8px;
-}
-
-.battle-enemy-details p {
-  margin: 0 0 6px;
-  font-size: 0.76rem;
+.battle-right-column {
+  align-content: start;
 }
 
 @media (max-width: 1320px) {
@@ -4512,6 +4989,17 @@ h3 {
   min-height: calc(100vh - 24px);
 }
 
+.wm-shell-admin-editor {
+  height: 100%;
+  min-height: 0;
+}
+
+.wm-editor-shell.is-admin-editor {
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .wm-editor-toolbar {
   display: flex;
   justify-content: space-between;
@@ -4540,11 +5028,21 @@ h3 {
   min-height: calc(100vh - 150px);
 }
 
+.wm-editor-shell.is-admin-editor .wm-editor-main {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 0;
+  height: 100%;
+}
+
 .wm-editor-map-area {
   min-height: 0;
   padding: 0;
   overflow: hidden;
   height: calc(100vh - 150px);
+}
+
+.wm-editor-shell.is-admin-editor .wm-editor-map-area {
+  height: 100%;
 }
 
 .wm-editor-sidebar {
@@ -4557,6 +5055,15 @@ h3 {
   padding: 12px;
 }
 
+.wm-editor-shell.is-admin-editor .wm-editor-sidebar {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  width: 360px;
+  max-width: 360px;
+  min-width: 320px;
+}
+
 .zone-editor-section {
   display: grid;
   gap: 8px;
@@ -4567,6 +5074,13 @@ h3 {
 
 .zone-editor-section h3 {
   margin-bottom: 0;
+}
+
+.zone-editor-collapsible summary {
+  cursor: pointer;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .zone-editor-section label {
@@ -4824,12 +5338,302 @@ h3 {
   display: grid;
   place-items: center;
   font-size: 2.2rem;
-  font-weight: 700;
-  color: #e9dbc0;
-  border: 2px solid rgba(210, 170, 102, 0.6);
-  background: radial-gradient(circle at 40% 35%, #6a5132, #251d14 70%);
+}
+
+/* === UI Stabilization Overrides (no gameplay logic changes) === */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  z-index: 1;
+}
+
+.game-root {
+  height: 100vh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.game-main {
+  width: min(1720px, calc(100vw - 16px));
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.setup-shell {
+  overflow: auto;
+}
+
+.wm-shell,
+.wm-grid,
+.wm-left,
+.wm-map,
+.wm-context,
+.wm-right-stack,
+.wm-chat,
+.world-main,
+.world-map,
+.world-side-panel,
+.admin-main,
+.admin-content,
+.wm-editor-shell,
+.wm-editor-main,
+.wm-editor-map-area,
+.wm-editor-sidebar,
+.battle-fullscreen,
+.battle-main-grid,
+.battle-center-column,
+.battle-left-column,
+.battle-right-column,
+.battle-field,
+.tactical-board-container,
+.battle-map-editor,
+.battle-map-editor-main,
+.battle-map-editor-canvas-section,
+.battle-map-editor-canvas-viewport,
+.battle-map-editor-side-section {
+  min-width: 0;
+  min-height: 0;
+}
+
+.wm-shell {
+  height: 100%;
+  overflow: hidden;
+}
+
+.wm-grid {
+  height: 100%;
+  grid-template-columns: 300px minmax(0, 1fr) 340px;
+}
+
+.wm-left,
+.wm-context {
+  overflow: auto;
+}
+
+.wm-map {
+  overflow: hidden;
+}
+
+.wm-chat {
+  overflow: hidden;
+}
+
+.wm-chat-log {
+  overflow: auto;
+}
+
+.battle-overlay {
+  overflow: hidden;
+  padding: 0;
+}
+
+.battle-window {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+  margin: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.battle-window:not(.wm-modal) {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.battle-fullscreen-root .battle-main-grid,
+.battle-window:not(.wm-modal) .battle-main-grid {
+  grid-template-columns: 320px minmax(600px, 1fr) 320px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.battle-center-log {
+  max-height: 180px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.battle-center-log .combat-log-body {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.battle-left-column,
+.battle-center-column,
+.battle-right-column {
+  gap: 8px;
+  overflow: hidden;
+}
+
+.battle-left-column {
+  overflow: auto;
+}
+
+.battle-right-column {
+  overflow: auto;
+}
+
+.battle-center-column {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.battle-center-controls {
+  padding: 6px;
+}
+
+.battle-round-summary {
+  overflow: auto;
+}
+
+.tactical-board-container {
+  width: 100%;
+  height: 55vh;
+  min-height: 380px;
+  max-height: 65vh;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.tactical-scene {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.admin-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-content.is-editor-route {
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.wm-shell-admin-editor,
+.wm-editor-shell.is-admin-editor {
+  height: 100%;
+  overflow: hidden;
+}
+
+.wm-editor-shell.is-admin-editor .wm-editor-main {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.wm-editor-shell.is-admin-editor .wm-editor-sidebar {
+  width: 360px;
+  max-width: 360px;
+  overflow: auto;
+}
+
+.battle-map-editor-page {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.battle-map-editor-main {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-auto-rows: minmax(min-content, max-content);
+  height: 100%;
+  overflow: hidden;
+}
+
+.battle-map-editor-main > .battle-map-editor-section:nth-child(1),
+.battle-map-editor-main > .battle-map-editor-section:nth-child(3),
+.battle-map-editor-main > .battle-map-editor-section:nth-child(4) {
+  grid-column: 2;
+}
+
+.battle-map-editor-main > .battle-map-editor-section:nth-child(2) {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+}
+
+.battle-map-editor-side-section {
+  overflow: auto;
+  align-content: start;
+}
+
+.battle-map-editor-canvas-section {
+  overflow: hidden;
+}
+
+.battle-map-editor-canvas-viewport {
+  height: 100%;
+}
+
+.battle-map-editor-actions button,
+.battle-map-editor-toolbar button,
+.battle-map-editor-layer-tabs button,
+.battle-map-editor-list-card button,
+.zone-editor-section button,
+.zone-editor-section input,
+.zone-editor-section select,
+.zone-editor-section textarea,
+.battle-map-editor-section input,
+.battle-map-editor-section select,
+.battle-map-editor-section textarea {
+  min-height: 32px;
+}
+
+@media (max-width: 1360px) {
+  .battle-fullscreen-root .battle-main-grid,
+  .battle-window:not(.wm-modal) .battle-main-grid {
+    grid-template-columns: 280px minmax(0, 1fr) 300px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .wm-grid,
+  .world-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+
+  .battle-fullscreen-root .battle-main-grid,
+  .battle-window:not(.wm-modal) .battle-main-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .tactical-board-container {
+    min-height: 320px;
+    height: 50vh;
+  }
+
+  .wm-editor-shell.is-admin-editor .wm-editor-main,
+  .battle-map-editor-main {
+    grid-template-columns: 1fr;
+  }
+
+  .battle-map-editor-main > .battle-map-editor-section:nth-child(1),
+  .battle-map-editor-main > .battle-map-editor-section:nth-child(2),
+  .battle-map-editor-main > .battle-map-editor-section:nth-child(3),
+  .battle-map-editor-main > .battle-map-editor-section:nth-child(4) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .wm-editor-shell.is-admin-editor .wm-editor-sidebar,
+  .battle-map-editor-side-section {
+    width: 100%;
+    max-width: none;
+    max-height: 40vh;
+  }
 }
 
 .inventory-avatar-image {
@@ -4997,10 +5801,11 @@ h3 {
   background: rgba(23, 18, 12, 0.9);
 }
 
-.character-avatar-url-row {
+.character-avatar-upload-row {
   margin-top: 8px;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .character-status-bars {

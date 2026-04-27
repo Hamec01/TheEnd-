@@ -64,9 +64,9 @@ const BODY_ZONES: BodyZoneConfig[] = [
 ];
 
 const DISTANCE_LABELS: Record<DistanceBand, string> = {
-  [DistanceBand.Far]: 'Far',
-  [DistanceBand.Near]: 'Near',
-  [DistanceBand.Melee]: 'Melee',
+  [DistanceBand.Far]: 'ДАЛЕКО',
+  [DistanceBand.Near]: 'СРЕДНЯЯ',
+  [DistanceBand.Melee]: 'БЛИЖНЯЯ',
 };
 
 const MOVEMENT_LABELS: Record<MovementType, string> = {
@@ -106,12 +106,12 @@ const SKILL_STAMINA_COSTS: Partial<Record<CombatSkillType, number>> = {
 
 function getGuardLabel(defenseZones: TargetZone[]): string {
   if (defenseZones.length === 0) {
-    return 'Reckless Attack';
+    return 'Без защиты';
   }
   if (defenseZones.length === 1) {
-    return 'Aggressive Guard';
+    return 'Агрессивная';
   }
-  return 'Normal Guard';
+  return 'Нормальная';
 }
 
 function getEstimatedTotalCost(actionType: ActionType, movementType: MovementType | null): number {
@@ -227,7 +227,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
             props.onSkillChange(CombatSkillType.None);
           }
         }}>
-          Attack
+          Атаковать
         </button>
         <button type="button" className={props.actionType === ActionType.Attack && props.selectedSkill !== CombatSkillType.None ? 'is-active' : ''} onClick={() => {
           props.onActionTypeChange(ActionType.Attack);
@@ -235,22 +235,22 @@ export function ActionPlanner(props: ActionPlannerProps) {
             props.onSkillChange(skillOptions[0]!.id);
           }
         }}>
-          Skill
+          Навык
         </button>
         <button type="button" className={props.actionType === ActionType.Defend ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Defend)}>
-          Defend
+          Защита
         </button>
         <button type="button" className={props.actionType === ActionType.Move ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Move)}>
-          Move
+          Движение
         </button>
         <button type="button" className={props.actionType === ActionType.Wait ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Wait)}>
-          Wait
+          Ожидание
         </button>
       </div>
 
       <div className="planner-selects-row">
         <div className="planner-select-item">
-          <label htmlFor="target-select">Enemy</label>
+          <label htmlFor="target-select">Враг</label>
           <select id="target-select" value={props.selectedTargetId} onChange={(event) => props.onTargetChange(event.target.value)} className="compact-select">
             {props.enemies.map((enemy) => (
               <option key={enemy.id} value={enemy.id}>{enemy.name}</option>
@@ -259,7 +259,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
         </div>
 
         <div className="planner-select-item">
-          <label htmlFor="skill-select">Skill</label>
+          <label htmlFor="skill-select">Навык</label>
           <select
             id="skill-select"
             value={props.selectedSkill}
@@ -279,13 +279,13 @@ export function ActionPlanner(props: ActionPlannerProps) {
         </div>
       </div>
 
-      <div className="planner-status-chips">
-        <span className="status-chip">Distance: <strong>{DISTANCE_LABELS[props.currentDistance]}</strong></span>
-        <span className="status-chip">Guard: <strong>{getGuardLabel(props.defenseZones)}</strong></span>
-        <span className="status-chip">STA load: <strong>{totalStaminaLoad}</strong></span>
-        <span className="status-chip">STA: <strong>{props.currentStamina}/{props.maxStamina}</strong></span>
-        <span className="status-chip">MP: <strong>{props.currentMp}/{props.maxMp}</strong></span>
-        {props.movementType ? <span className="status-chip">Move: <strong>{MOVEMENT_LABELS[props.movementType]}</strong>{props.selectedMoveTile ? ` → ${props.selectedMoveTile.x + 1}:${props.selectedMoveTile.y + 1}` : ''}</span> : null}
+      <div className="planner-status-rows">
+        <div className="planner-status-row"><span>Дистанция:</span><strong>{DISTANCE_LABELS[props.currentDistance]}</strong></div>
+        <div className="planner-status-row"><span>Защита:</span><strong>{getGuardLabel(props.defenseZones)}</strong></div>
+        <div className="planner-status-row"><span>STA Load:</span><strong>{totalStaminaLoad}</strong></div>
+        <div className="planner-status-row"><span>STA:</span><strong>{props.currentStamina} / {props.maxStamina}</strong></div>
+        <div className="planner-status-row"><span>MP:</span><strong>{props.currentMp} / {props.maxMp}</strong></div>
+        {props.movementType ? <div className="planner-status-row"><span>Движение:</span><strong>{MOVEMENT_LABELS[props.movementType]}{props.selectedMoveTile ? ` → ${props.selectedMoveTile.x + 1}:${props.selectedMoveTile.y + 1}` : ''}</strong></div> : null}
       </div>
 
       <div className="planner-targeting-layout compact-zones">
@@ -295,7 +295,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
           selectedZones={[props.attackZone]}
           onChange={(zones) => zones[0] && props.onAttackZoneChange(zones[0])}
           disabled={props.actionType !== ActionType.Attack}
-          title="Attack Zone"
+          title="Зона атаки"
           recentHitZone={props.recentHitZone}
         />
 
@@ -306,11 +306,11 @@ export function ActionPlanner(props: ActionPlannerProps) {
             selectedZones={selectedDefenseZones}
             onChange={(zones) => props.onDefenseZonesChange(zones)}
             disabled={false}
-            title="Defense Zones"
+            title="Зоны защиты"
             recentBlockedZone={props.recentBlockedZone}
           />
           <button type="button" className="secondary-button" onClick={() => props.onDefenseZonesChange([])}>
-            Clear Defense for Reckless Attack
+            Сбросить защиту
           </button>
         </div>
       </div>

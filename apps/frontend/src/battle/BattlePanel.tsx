@@ -8,6 +8,7 @@ import {
   getItemById,
   type ItemDefinition,
   type ArenaBattleState,
+  type Equipment,
   type InventoryState,
 } from '@theend/rpg-domain';
 import { useEffect, useMemo, useState } from 'react';
@@ -16,6 +17,7 @@ import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
 import { FighterCard } from './FighterCard';
+import { InspectPanel } from './InspectPanel';
 
 interface BattlePanelProps {
   combatId: string;
@@ -23,6 +25,11 @@ interface BattlePanelProps {
   state: ArenaBattleState;
   inventory: InventoryState;
   mapImageUrl?: string;
+  mapCalibration?: {
+    cellSizePx?: number;
+    gridOffsetX?: number;
+    gridOffsetY?: number;
+  };
   selectedSkill: CombatSkillType;
   learnedSkills: CombatSkillType[];
   onSkillChange: (skill: CombatSkillType) => void;
@@ -31,6 +38,7 @@ interface BattlePanelProps {
   onClose?: () => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
+  playerEquipment?: Equipment;
 }
 
 function parseZoneFromLogText(text: string): TargetZone | null {
@@ -78,6 +86,7 @@ export function BattlePanel({
   state,
   inventory,
   mapImageUrl,
+  mapCalibration,
   selectedSkill,
   learnedSkills,
   onSkillChange,
@@ -86,6 +95,7 @@ export function BattlePanel({
   onClose,
   playerAvatarUrl,
   resolveItemById,
+  playerEquipment,
 }: BattlePanelProps) {
   const player = useMemo(() => state.entities.find((item) => item.id === playerId), [state, playerId]);
   const enemies = useMemo(() => state.entities.filter((item) => item.team === TeamSide.Right && item.isAlive), [state]);
@@ -96,6 +106,7 @@ export function BattlePanel({
   const [defenseZones, setDefenseZones] = useState<TargetZone[]>([TargetZone.Chest, TargetZone.Abdomen]);
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [selectedMoveTile, setSelectedMoveTile] = useState<{ x: number; y: number } | null>(null);
+  const [inspectEntityId, setInspectEntityId] = useState<string | null>(null);
 
   const availableSkills = useMemo(
     () => [
@@ -162,6 +173,10 @@ export function BattlePanel({
     };
   }, [playerPlacement, selectedMoveTile]);
   const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
+  const inspectedEntity = useMemo(
+    () => state.entities.find((entity) => entity.id === inspectEntityId) ?? null,
+    [inspectEntityId, state.entities],
+  );
   const targetInRange = useMemo(() => {
     if (!pendingPlayerPlacement || !selectedEnemyPlacement) {
       return false;
@@ -378,10 +393,16 @@ export function BattlePanel({
             <BattleField
               entities={state.entities}
               battlefieldTiles={state.battlefieldTiles}
+              battleMapWidth={state.battleMapWidth}
+              battleMapHeight={state.battleMapHeight}
+              viewportWidth={state.viewportWidth}
+              viewportHeight={state.viewportHeight}
               mapImageUrl={mapImageUrl}
+              mapCalibration={mapCalibration}
               distance={state.distance}
               selectedTargetId={selectedTargetId}
               playerId={playerId}
+              playerAvatarUrl={playerAvatarUrl}
               movementType={movementType}
               selectedMoveTile={selectedMoveTile}
               onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
@@ -407,6 +428,7 @@ export function BattlePanel({
                 }
               }}
               onCancelSelection={() => setSelectedMoveTile(null)}
+              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
               playerVisualState={feedback.playerVisualState}
               enemyVisualState={feedback.enemyVisualState}
               floatingText={feedback.floatingText}
@@ -423,18 +445,6 @@ export function BattlePanel({
               >
                 СДЕЛАТЬ ХОД
               </button>
-
-              <div className="battle-round-summary">
-                <h4>Round Summary</h4>
-                <p>Target: {selectedEnemy?.name ?? 'none'}</p>
-                <p>Action: {actionType}</p>
-                <p>Attack: {attackZone}</p>
-                <p>Blocks: {defenseZones.length > 0 ? defenseZones.slice(0, 2).join(', ') : 'none / reckless'}</p>
-                <p>Skill: {selectedSkill}</p>
-                <p>Move: {movementType ? `${movementType}${selectedMoveTile ? ` to ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}` : ''}` : 'none'}</p>
-                <p>Cost: {getActionCost(actionType, movementType)} STA</p>
-                <p>Last event: {lastLog?.text ?? 'none'}</p>
-              </div>
             </div>
           </div>
 
@@ -454,20 +464,22 @@ export function BattlePanel({
                 <div className="no-enemy-placeholder">No target</div>
               )}
             </div>
-
-            <div className="column-log-section card battle-enemy-details">
-              <div className="combat-log-header">
-                <h3>Enemy Details</h3>
-              </div>
-              <p>Status: {selectedEnemy?.isAlive ? 'Alive' : 'Down'}</p>
-              <p>Distance: {selectedEnemyPlacement && pendingPlayerPlacement ? getBattlefieldDistance(pendingPlayerPlacement, selectedEnemyPlacement) : 'n/a'} cells</p>
-              <p>In range: {targetInRange ? 'yes' : 'no'}</p>
-              <p>HP: {selectedEnemy ? `${selectedEnemy.currentHp}/${selectedEnemy.maxHp}` : '0/0'}</p>
-              <p>MP: {selectedEnemy ? `${selectedEnemy.currentMp}/${selectedEnemy.maxMp}` : '0/0'}</p>
-              <p>STA: {selectedEnemy ? `${selectedEnemy.currentStamina}/${selectedEnemy.maxStamina}` : '0/0'}</p>
-            </div>
           </div>
         </div>
+
+        {inspectedEntity ? (
+          <div className="battle-inspect-backdrop" onClick={() => setInspectEntityId(null)} role="presentation">
+            <div className="battle-inspect-dialog" onClick={(event) => event.stopPropagation()} role="presentation">
+              <InspectPanel
+                entity={inspectedEntity}
+                playerId={playerId}
+                onClose={() => setInspectEntityId(null)}
+                resolveItemById={resolveItemById}
+                playerEquipment={playerEquipment}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

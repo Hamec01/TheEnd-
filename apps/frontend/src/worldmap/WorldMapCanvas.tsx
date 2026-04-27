@@ -10,7 +10,7 @@ import {
 } from 'react';
 import '../styles.css';
 import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
-import { detectCurrentZone, detectHoverZone } from './zoneSystem';
+import { detectCurrentZone, detectHoverZone, getDistanceToZoneCenter, isInsideZone } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
 import { ZONE_COLORS, EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, ZONE_DUNGEON_OUTLINE, withAlpha } from './zoneColors';
@@ -27,7 +27,7 @@ const PLAY_PLAYER: MapPlayer = {
   y: 0.83,
   targetX: null,
   targetY: null,
-  speed: 0.0005,
+  speed: 0.00025,
 };
 
 interface TooltipState {
@@ -69,6 +69,13 @@ interface DragStateCircleDraft {
   center: [number, number];
 }
 
+interface DragStateMoveCircleDraft {
+  kind: 'move-circle-draft';
+  startPoint: [number, number];
+  originX: number;
+  originY: number;
+}
+
 interface DragStateRectDraft {
   kind: 'rect-draft';
   start: [number, number];
@@ -91,6 +98,7 @@ type DragState =
   | DragStateResizeCircle
   | DragStateMovePoint
   | DragStateCircleDraft
+  | DragStateMoveCircleDraft
   | DragStateRectDraft
   | DragStateMeasure
   | DragStateRegionPaint;
@@ -172,6 +180,25 @@ function polygonFromRect(start: [number, number], end: [number, number]): [numbe
     [Math.max(start[0], end[0]), Math.max(start[1], end[1])],
     [Math.min(start[0], end[0]), Math.max(start[1], end[1])],
   ];
+}
+
+function detectStrictZone(zones: Zone[], x: number, y: number): WorldMapZone | null {
+  let nearest: WorldMapZone | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const zone of zones) {
+    if (!isInsideZone(zone, x, y, 0)) {
+      continue;
+    }
+
+    const distance = getDistanceToZoneCenter(zone, x, y);
+    if (distance < nearestDistance) {
+      nearest = zone as WorldMapZone;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearest;
 }
 
 function getClampedPan(zoom: number, panX: number, panY: number, canvasWidth: number, canvasHeight: number, imageWidth: number, imageHeight: number): { panX: number; panY: number } {
@@ -284,6 +311,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   const surfaceRef = useRef<HTMLDivElement>(null);
   const prevZoneRef = useRef<WorldMapZone | null>(null);
   const playerStateRef = useRef<PlayerWorldState>('idle');
+  const pendingCityEntryRef = useRef<string | null>(null);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
   const [player, setPlayer] = useState<MapPlayer>(() => ({
@@ -504,6 +532,32 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       onEnterZone?.(currentZone as Zone | null);
     }
   }, [currentZone, mode, onEnterZone]);
+
+  useEffect(() => {
+    if (mode !== 'play') {
+      return;
+    }
+
+    const pendingCityId = pendingCityEntryRef.current;
+    if (!pendingCityId) {
+      return;
+    }
+
+    if (currentZone?.id !== pendingCityId) {
+      return;
+    }
+
+    if (player.targetX !== null || player.targetY !== null) {
+      return;
+    }
+
+    if (!currentZone || !isInsideZone(currentZone, player.x, player.y, 0)) {
+      return;
+    }
+
+    pendingCityEntryRef.current = null;
+    onOpenLocation?.(pendingCityId);
+  }, [currentZone, mode, onOpenLocation, player.targetX, player.targetY, player.x, player.y]);
 
   useEffect(() => {
     if (mode !== 'editor') {
@@ -745,6 +799,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (selectedTool === 'circle') {
+      if (event.shiftKey && draft?.shape === 'circle' && draft.x !== null && draft.y !== null) {
+        setDragState({
+          kind: 'move-circle-draft',
+          startPoint: mapPoint,
+          originX: draft.x,
+          originY: draft.y,
+        });
+        return;
+      }
+
       onSelectZone?.(null);
       const baseDraft = draft ? { ...draft, shape: 'circle', points: [], radius: draft.radius ?? 0.0025 } : createEmptyZoneDraft('circle');
       const nextDraft = {
@@ -820,18 +884,22 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     const [x, y] = getNormalizedPoint(event);
-    const clickedZone = detectHoverZone(zones as Zone[], x, y) as WorldMapZone | null;
+    const clickedZone = detectStrictZone(zones as Zone[], x, y);
     if (clickedZone?.type === 'city') {
-      onOpenLocation?.(clickedZone.id);
+      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
+      pendingCityEntryRef.current = clickedZone.id;
+      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
       return;
     }
 
     if (clickedZone) {
+      pendingCityEntryRef.current = null;
       const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
       setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
       return;
     }
 
+    pendingCityEntryRef.current = null;
     setPlayer((prev) => setPlayerTarget(prev, x, y));
   }
 
@@ -911,6 +979,22 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
+    if (dragState.kind === 'move-circle-draft') {
+      if (draft?.shape !== 'circle') {
+        return;
+      }
+
+      const deltaX = point[0] - dragState.startPoint[0];
+      const deltaY = point[1] - dragState.startPoint[1];
+      onDraftChange?.({
+        ...draft,
+        shape: 'circle',
+        x: clamp(dragState.originX + deltaX, 0, 1),
+        y: clamp(dragState.originY + deltaY, 0, 1),
+      });
+      return;
+    }
+
     if (dragState.kind === 'rect-draft') {
       const baseDraft = draft ?? createEmptyZoneDraft('rectangle');
       onDraftChange?.({ ...baseDraft, shape: 'rect', points: polygonFromRect(dragState.start, point) });
@@ -926,6 +1010,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setDragState((current) => {
       if (current?.kind === 'circle-draft') {
         onStatusMessage?.('Draft circle created. Press Enter or Save New Zone.');
+      }
+      if (current?.kind === 'move-circle-draft') {
+        onStatusMessage?.('Circle draft moved.');
       }
       if (current?.kind === 'rect-draft') {
         onStatusMessage?.('Draft rectangle created. Press Enter or Save New Zone.');
@@ -977,6 +1064,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
+    if (!event.altKey) {
+      return;
+    }
+
     event.preventDefault();
     const [canvasX, canvasY] = getCanvasPoint(event);
     const factor = event.deltaY < 0 ? 1.12 : 0.9;
@@ -1016,7 +1107,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       for (const zone of zones) {
         const isHovered = hoverZone?.id === zone.id;
-        if (!isHovered && !(zone.isDiscovered && zone.isVisibleToPlayer && currentZone?.id === zone.id)) {
+        if (!isHovered) {
           continue;
         }
 

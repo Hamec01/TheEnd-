@@ -6,7 +6,6 @@ import { PlayerQuickPanel } from './PlayerQuickPanel';
 import { WorldMapCanvas, type WorldMapCanvasHandle } from './WorldMapCanvas';
 import { ContextActionPanel } from './ContextActionPanel';
 import { ZoneEditorPanel } from './ZoneEditorPanel';
-import { ArenaMapEditor, type ArenaBlockedTile } from '../components/ArenaMapEditor';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory, type ZoneEditorHistoryState } from './zoneEditorHistory';
 import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft, type PaintedRegion, type RegionBrushSize, type RegionToolMode, type RegionType, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
@@ -144,18 +143,9 @@ interface WorldMapScreenProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
   resolveMerchantImage?: (merchant: AdminMerchant | null | undefined) => string | undefined;
-  battleMapImageUrl: string;
-  battleBlockedTiles: ArenaBlockedTile[];
-  battleMapDraftName: string;
-  battleMapPresets: Array<{ id: string; name: string }>;
-  selectedBattleMapPresetId: string | null;
-  onBattleMapImageUrlChange: (value: string) => void;
-  onBattleBlockedTilesChange: (tiles: ArenaBlockedTile[]) => void;
-  onBattleMapDraftNameChange: (name: string) => void;
-  onBattleMapSelect: (presetId: string) => void;
-  onBattleMapSave: () => void;
-  onBattleMapDelete: () => void;
-  onBattleMapNew: () => void;
+  initialMode?: WorldMapMode;
+  adminEditorOnly?: boolean;
+  showAdminShortcuts?: boolean;
 }
 
 export function WorldMapScreen(props: WorldMapScreenProps) {
@@ -178,18 +168,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     resolveItemById,
     resolveItemImage,
     resolveMerchantImage,
-    battleMapImageUrl,
-    battleBlockedTiles,
-    battleMapDraftName,
-    battleMapPresets,
-    selectedBattleMapPresetId,
-    onBattleMapImageUrlChange,
-    onBattleBlockedTilesChange,
-    onBattleMapDraftNameChange,
-    onBattleMapSelect,
-    onBattleMapSave,
-    onBattleMapDelete,
-    onBattleMapNew,
+    initialMode = 'play',
+    adminEditorOnly = false,
+    showAdminShortcuts = false,
     onOpenArenaNpc,
   } = props;
 
@@ -199,7 +180,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const worldMapRefreshRef = useRef<Promise<void> | null>(null);
   const lastWorldMapRefreshAtRef = useRef(0);
 
-  const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>('play');
+  const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(adminEditorOnly ? 'editor' : initialMode);
   const [contextMode, setContextMode] = useState<ContextMode>('empty');
   const [locationView, setLocationView] = useState<LocationView>('map');
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
@@ -211,7 +192,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatType, setChatType] = useState<ChatType>('local');
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
-  const [showBattleMapEditor, setShowBattleMapEditor] = useState(false);
 
   const [zones, setZones] = useState<WorldMapZone[]>(() => cloneZones(WORLD_MAP_ZONES));
   const [regions, setRegions] = useState<PaintedRegion[]>([]);
@@ -990,8 +970,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleEnterArena() {
-    setShowBattleMapEditor(true);
-    onStatus('Открыт редактор баттл-карт под Zone Editor. Сохраните карту и запускайте бой отсюда.');
+    onOpenArena();
   }
 
   const playLayout = (
@@ -1098,68 +1077,39 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         )}
 
         <div className="wm-right-stack">
-          <div className="wm-editor-launch card">
-            <button onClick={() => setMode('editor')}>Zone Editor</button>
-          </div>
+          {showAdminShortcuts ? (
+            <>
+              <div className="wm-editor-launch card">
+                <button
+                  onClick={() => {
+                    window.open('/admin/zone-editor', '_blank', 'noopener,noreferrer');
+                    onStatus('Zone Editor открыт в отдельном окне админки.');
+                  }}
+                >
+                  Zone Editor (Admin)
+                </button>
+              </div>
 
-          <section className="wm-battle-map-panel card">
-            <div className="wm-battle-map-head">
-              <h3>Battle Map Editor</h3>
-              <button type="button" onClick={() => setShowBattleMapEditor((prev) => !prev)}>
-                {showBattleMapEditor ? 'Свернуть' : 'Открыть'}
-              </button>
-            </div>
-
-            {showBattleMapEditor ? (
-              <>
-                <div className="row">
-                  <label>Сохраненные карты</label>
-                  <select
-                    value={selectedBattleMapPresetId ?? ''}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (!value) {
-                        return;
-                      }
-                      onBattleMapSelect(value);
-                    }}
-                  >
-                    <option value="">Черновик (не сохранен)</option>
-                    {battleMapPresets.map((preset) => (
-                      <option key={preset.id} value={preset.id}>{preset.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="row">
-                  <label>Имя карты</label>
-                  <input
-                    value={battleMapDraftName}
-                    placeholder="Например: Подземелье Арклейна"
-                    onChange={(event) => onBattleMapDraftNameChange(event.target.value)}
-                  />
+              <section className="wm-battle-map-panel card">
+                <div className="wm-battle-map-head">
+                  <h3>Battle Map Editor</h3>
                 </div>
 
                 <div className="wm-action-grid">
-                  <button onClick={onBattleMapSave}>Сохранить карту</button>
-                  <button onClick={onBattleMapNew}>Новая карта</button>
-                  <button onClick={onBattleMapDelete} disabled={!selectedBattleMapPresetId}>Удалить карту</button>
-                  <button onClick={() => { void onStartCombat(); }}>Начать бой</button>
-                </div>
-
-                <div className="wm-action-grid" style={{ marginTop: '6px' }}>
+                  <button
+                    onClick={() => {
+                      window.open('/admin/battle-maps', '_blank', 'noopener,noreferrer');
+                      onStatus('Battle Map Editor открыт в отдельном окне админки.');
+                    }}
+                  >
+                    Открыть редактор баттл-карт
+                  </button>
                   <button onClick={onOpenArenaNpc}>Настроить NPC</button>
+                  <button onClick={() => { void onStartCombat(); }}>Начать бой в арене</button>
                 </div>
-
-                <ArenaMapEditor
-                  mapImageUrl={battleMapImageUrl}
-                  blockedTiles={battleBlockedTiles}
-                  onMapImageUrlChange={onBattleMapImageUrlChange}
-                  onBlockedTilesChange={onBattleBlockedTilesChange}
-                />
-              </>
-            ) : null}
-          </section>
+              </section>
+            </>
+          ) : null}
 
           <ContextActionPanel mode={contextMode} selectedNode={selectedNode} onAction={(actionId, kind) => { void handleAction(actionId, kind); }} />
           <section className="wm-context card" style={{ borderTop: 'none' }}>
@@ -1215,10 +1165,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
 
   const editorLayout = (
-    <section className="wm-editor-shell">
+    <section className={`wm-editor-shell ${adminEditorOnly ? 'is-admin-editor' : ''}`}>
       <div className="wm-editor-toolbar card">
         <div className="wm-editor-toolbar-group">
-          <button onClick={() => setMode('play')}>Play Mode</button>
+          {!adminEditorOnly ? <button onClick={() => setMode('play')}>Play Mode</button> : null}
           <button className="is-active" onClick={() => setMode('editor')}>Editor Mode</button>
         </div>
         <div className="wm-editor-toolbar-group">
@@ -1319,6 +1269,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       </div>
     </section>
   );
+
+  if (adminEditorOnly) {
+    return <section className="wm-shell wm-shell-admin-editor">{editorLayout}</section>;
+  }
 
   return <section className="wm-shell">{worldMapMode === 'play' ? playLayout : editorLayout}</section>;
 }

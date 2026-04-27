@@ -1,5 +1,4 @@
 import {
-  BATTLEFIELD_GRID_SIZE,
   BattlefieldTileType,
   DistanceBand,
   MovementType,
@@ -13,16 +12,29 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 interface BattleFieldProps {
   entities: ArenaCombatEntity[];
   battlefieldTiles: BattlefieldTile[];
+  battleMapWidth: number;
+  battleMapHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
   mapImageUrl?: string;
+  mapCalibration?: {
+    cellSizePx?: number;
+    gridOffsetX?: number;
+    gridOffsetY?: number;
+    showEditorGrid?: boolean;
+    gridOpacity?: number;
+  };
   distance: DistanceBand;
   selectedTargetId: string | null;
   playerId: string;
+  playerAvatarUrl?: string;
   movementType?: MovementType | null;
   selectedMoveTile?: { x: number; y: number } | null;
   onMoveTileSelect?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
   onTargetSelect?: (targetId: string) => void;
   onQuickAttack?: (targetId: string) => void;
   onQuickMove?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
+  onInspectEntity?: (entityId: string) => void;
   onCancelSelection?: () => void;
   onStatusMessage?: (text: string) => void;
   playerVisualState?: 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
@@ -122,24 +134,60 @@ function hasLineOfSightOnTiles(
 export function BattleField({
   entities,
   battlefieldTiles,
+  battleMapWidth,
+  battleMapHeight,
+  viewportWidth,
+  viewportHeight,
   mapImageUrl,
+  mapCalibration,
   distance,
   selectedTargetId,
   playerId,
+  playerAvatarUrl,
   movementType = null,
   selectedMoveTile,
   onMoveTileSelect,
   onTargetSelect,
   onQuickAttack,
   onQuickMove,
+  onInspectEntity,
   onCancelSelection,
   onStatusMessage,
 }: BattleFieldProps) {
+    function getRacePortrait(entity: ArenaCombatEntity): string {
+      if (entity.avatarUrl) {
+        return entity.avatarUrl;
+      }
+
+      if (entity.id === playerId && playerAvatarUrl) {
+        return playerAvatarUrl;
+      }
+
+      const raceKey = String(entity.race).toLowerCase();
+      if (raceKey.includes('dwarf')) {
+        return '/art/races/dwarf.png';
+      }
+      if (raceKey.includes('elf')) {
+        return '/art/races/elf.png';
+      }
+      return '/art/races/human.png';
+    }
+
   const boardRef = useRef<HTMLDivElement | null>(null);
+    const sceneCellSize = Math.max(34, Math.min(96, mapCalibration?.cellSizePx ?? 64));
+    const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
+    const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
+    const showVisualGrid = Boolean(mapCalibration?.showEditorGrid);
+    const visualGridOpacity = mapCalibration?.gridOpacity ?? 0.12;
+    const tokenSizePx = Math.max(34, Math.min(Math.floor(sceneCellSize * 0.8), Math.floor(sceneCellSize * 0.72)));
+
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, type: 'cell', show: false });
 
-  const placements = useMemo(() => getBattlefieldTilePlacements(entities, distance), [distance, entities]);
+  const placements = useMemo(
+    () => getBattlefieldTilePlacements(entities, distance, battleMapWidth, battleMapHeight),
+    [battleMapHeight, battleMapWidth, distance, entities],
+  );
   const entityById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity])), [entities]);
   const placementByTile = useMemo(() => new Map(placements.map((placement) => [`${placement.x}:${placement.y}`, placement])), [placements]);
   const tileTypeByKey = useMemo(() => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile.type])), [battlefieldTiles]);
@@ -148,6 +196,21 @@ export function BattleField({
   const selectedEnemy = entities.find((entity) => entity.id === selectedTargetId) ?? entities.find((entity) => entity.team === TeamSide.Right && entity.isAlive);
   const playerPlacement = placements.find((p) => p.entityId === playerId);
   const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
+  const viewport = useMemo(() => {
+    const width = Math.min(viewportWidth, battleMapWidth);
+    const height = Math.min(viewportHeight, battleMapHeight);
+    const playerX = playerPlacement?.x ?? 0;
+    const playerY = playerPlacement?.y ?? 0;
+    const maxOffsetX = Math.max(0, battleMapWidth - width);
+    const maxOffsetY = Math.max(0, battleMapHeight - height);
+    return {
+      width,
+      height,
+      offsetX: Math.max(0, Math.min(maxOffsetX, playerX - Math.floor(width / 2))),
+      offsetY: Math.max(0, Math.min(maxOffsetY, playerY - Math.floor(height / 2))),
+    };
+  }, [battleMapHeight, battleMapWidth, playerPlacement?.x, playerPlacement?.y, viewportHeight, viewportWidth]);
+
   const adjacentMeleeEnemies = useMemo(() => {
     if (!playerPlacement) {
       return [] as ArenaCombatEntity[];
@@ -191,7 +254,7 @@ export function BattleField({
           const nx = current.x + dx;
           const ny = current.y + dy;
           const nextKey = `${nx}:${ny}`;
-          if (nx < 0 || nx >= BATTLEFIELD_GRID_SIZE || ny < 0 || ny >= BATTLEFIELD_GRID_SIZE) {
+          if (nx < 0 || nx >= battleMapWidth || ny < 0 || ny >= battleMapHeight) {
             continue;
           }
           if (placementByTile.has(nextKey) || isBlockingTile(tileTypeByKey.get(nextKey) ?? BattlefieldTileType.Empty)) {
@@ -217,8 +280,8 @@ export function BattleField({
     }
 
     const positions = new Set<string>();
-    for (let x = 0; x < BATTLEFIELD_GRID_SIZE; x += 1) {
-      for (let y = 0; y < BATTLEFIELD_GRID_SIZE; y += 1) {
+    for (let x = 0; x < battleMapWidth; x += 1) {
+      for (let y = 0; y < battleMapHeight; y += 1) {
         const dist = Math.abs(x - enemyPlacement.x) + Math.abs(y - enemyPlacement.y);
         if (playerStyle === 'MELEE' && dist <= 1) {
           positions.add(`${x}:${y}`);
@@ -247,13 +310,13 @@ export function BattleField({
       for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
         const nx = placement.x + dx;
         const ny = placement.y + dy;
-        if (nx >= 0 && nx < BATTLEFIELD_GRID_SIZE && ny >= 0 && ny < BATTLEFIELD_GRID_SIZE) {
+        if (nx >= 0 && nx < battleMapWidth && ny >= 0 && ny < battleMapHeight) {
           set.add(`${nx}:${ny}`);
         }
       }
     }
     return set;
-  }, [entityById, placements]);
+  }, [battleMapHeight, battleMapWidth, entityById, placements]);
 
   const getTileState = (x: number, y: number): TileState => {
     const key = `${x}:${y}`;
@@ -441,25 +504,54 @@ export function BattleField({
     return <div className="battle-field tactical-field">Battlefield not ready</div>;
   }
 
+  const contextEntity = contextMenu.targetId ? entityById.get(contextMenu.targetId) : null;
+
+  const visibleMapPixelWidth = gridOffsetX * 2 + viewport.width * sceneCellSize;
+  const visibleMapPixelHeight = gridOffsetY * 2 + viewport.height * sceneCellSize;
+  const fullMapPixelWidth = gridOffsetX * 2 + battleMapWidth * sceneCellSize;
+  const fullMapPixelHeight = gridOffsetY * 2 + battleMapHeight * sceneCellSize;
+  const backgroundOffsetX = gridOffsetX - viewport.offsetX * sceneCellSize;
+  const backgroundOffsetY = gridOffsetY - viewport.offsetY * sceneCellSize;
+
   return (
     <div className="battle-field tactical-field">
       <div className="tactical-header">
         <h3>Tactical Battlefield</h3>
-        <div className="tactical-distance-indicator">Distance: {distance}</div>
+        <div className="tactical-distance-indicator">Distance: {distance} | View {viewport.offsetX + 1}:{viewport.offsetY + 1}</div>
       </div>
 
       <div
         className="tactical-board-container"
         ref={boardRef}
-        style={{
-          backgroundImage: `linear-gradient(180deg, rgba(12, 10, 8, 0.38), rgba(8, 6, 5, 0.5)), url('${mapImageUrl || '/map/battle-map_arena.png'}')`,
-        }}
       >
-        <div className="tactical-board">
-          {Array.from({ length: BATTLEFIELD_GRID_SIZE }, (_, row) =>
-            Array.from({ length: BATTLEFIELD_GRID_SIZE }, (_, col) => {
-              const x = col;
-              const y = row;
+        <div className="tactical-scene" style={{ width: `${visibleMapPixelWidth}px`, height: `${visibleMapPixelHeight}px` }}>
+          <div
+            className="tactical-scene-image"
+            style={{
+              backgroundImage: `linear-gradient(180deg, rgba(12, 10, 8, 0.28), rgba(8, 6, 5, 0.36)), url('${mapImageUrl || '/map/battle-map_arena.png'}')`,
+              backgroundSize: `${fullMapPixelWidth}px ${fullMapPixelHeight}px`,
+              backgroundPosition: `${backgroundOffsetX}px ${backgroundOffsetY}px`,
+            }}
+          />
+          {showVisualGrid ? (
+            <div
+              className="tactical-scene-grid"
+              style={{
+                left: `${gridOffsetX}px`,
+                top: `${gridOffsetY}px`,
+                width: `${viewport.width * sceneCellSize}px`,
+                height: `${viewport.height * sceneCellSize}px`,
+                backgroundSize: `${sceneCellSize}px ${sceneCellSize}px`,
+                opacity: visualGridOpacity,
+              }}
+            />
+          ) : null}
+
+          <div className="tactical-board">
+          {Array.from({ length: viewport.height }, (_, row) =>
+            Array.from({ length: viewport.width }, (_, col) => {
+              const x = viewport.offsetX + col;
+              const y = viewport.offsetY + row;
               const placement = placementByTile.get(`${x}:${y}`);
               const entity = placement ? entityById.get(placement.entityId) : null;
               const tileState = getTileState(x, y);
@@ -468,14 +560,22 @@ export function BattleField({
                 <div
                   key={`tile-${x}-${y}`}
                   className={`tactical-tile ${placement ? `tile-occupied tile-${placement.entityId === playerId ? 'player' : 'enemy'}` : ''} ${tileState.moveType === 'step' ? 'tile-movable' : ''} ${tileState.moveType === 'dash' ? 'tile-movable tile-dash' : ''} ${tileState.isAttackable ? 'tile-attackable' : ''} ${tileState.isThreat ? 'tile-threat' : ''} ${tileState.isBlocked ? 'tile-blocked' : ''} ${tileState.isSelected ? 'tile-selected' : ''} ${tileState.triggersOpportunity ? 'tile-danger' : ''}`}
+                  style={{
+                    left: `${gridOffsetX + col * sceneCellSize}px`,
+                    top: `${gridOffsetY + row * sceneCellSize}px`,
+                    width: `${sceneCellSize}px`,
+                    height: `${sceneCellSize}px`,
+                  }}
                   onClick={(e) => handleTileClick(x, y, e)}
                   onDoubleClick={(e) => handleTileDoubleClick(x, y, e)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     const placementInfo = placementByTile.get(`${x}:${y}`);
                     const entityInfo = placementInfo ? entityById.get(placementInfo.entityId) : null;
-                    if (entityInfo && entityInfo.team === TeamSide.Right && entityInfo.isAlive) {
-                      onTargetSelect?.(entityInfo.id);
+                    if (entityInfo && entityInfo.isAlive) {
+                      if (entityInfo.team === TeamSide.Right) {
+                        onTargetSelect?.(entityInfo.id);
+                      }
                       openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
                     } else if (movablePositions.has(`${x}:${y}`)) {
                       openContextMenu(e.clientX, e.clientY, 'cell', x, y);
@@ -488,24 +588,31 @@ export function BattleField({
                 >
                   {entity ? (
                     <div className="tactical-token" title={entity.name}>
-                      <div className="token-avatar">{entity.name.slice(0, 2).toUpperCase()}</div>
-                      <div className="token-hp" style={{ width: `${(entity.currentHp / entity.maxHp) * 100}%` }} />
+                      <div
+                        className={`token-avatar-shell ${entity.isAlive ? '' : 'is-dead'}`}
+                        style={{ width: `${tokenSizePx}px`, height: `${tokenSizePx}px` }}
+                      >
+                        <img src={getRacePortrait(entity)} alt={entity.name} className="token-avatar-img" />
+                        <div className="token-avatar-base" />
+                        <div className="token-avatar-hp-fill" style={{ height: `${Math.max(0, Math.min(100, Math.round((entity.currentHp / Math.max(1, entity.maxHp)) * 100)))}%` }} />
+                      </div>
                     </div>
                   ) : null}
                 </div>
               );
             }),
           )}
+          </div>
         </div>
 
         {contextMenu.show && (
           <div ref={menuRef} className="tactical-context-menu" style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}>
             {contextMenu.type === 'enemy' && (
               <>
-                <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Attack</button>
-                <button type="button" onClick={closeContextMenu}>🔍 Inspect</button>
-                <button type="button" onClick={() => handleContextMenuAction('move-closer')}>⇢ Move closer</button>
-                <button type="button" onClick={closeContextMenu}>✕ Cancel</button>
+                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Атаковать</button> : null}
+                <button type="button" onClick={() => { if (contextMenu.targetId) { onInspectEntity?.(contextMenu.targetId); } closeContextMenu(); }}>🔍 Осмотреть</button>
+                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('move-closer')}>⇢ Подойти ближе</button> : null}
+                <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
               </>
             )}
             {contextMenu.type === 'cell' && (() => {
@@ -517,12 +624,12 @@ export function BattleField({
               return (
                 <>
                   <button type="button" onClick={() => handleContextMenuAction('move')}>
-                    {isDash ? '💨 Dash here (14 STA, no atk)' : '👣 Step here (6 STA)'}
+                    {isDash ? '💨 Рывок сюда (14 STA)' : '👣 Шаг сюда (6 STA)'}
                   </button>
                   {canDisengage && (
-                    <button type="button" onClick={() => handleContextMenuAction('disengage')}>🛡 Disengage (10 STA, safe)</button>
+                    <button type="button" onClick={() => handleContextMenuAction('disengage')}>🛡 Отход (10 STA)</button>
                   )}
-                  <button type="button" onClick={closeContextMenu}>✕ Cancel</button>
+                  <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
                 </>
               );
             })()}

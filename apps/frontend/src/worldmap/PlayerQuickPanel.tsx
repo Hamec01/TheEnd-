@@ -28,7 +28,7 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
 
   return (
     <aside className="wm-left card">
-      <h3>РџРµСЂСЃРѕРЅР°Р¶</h3>
+      <h3>Персонаж</h3>
 
       <div className="wm-avatar-wrap" title={`${name} status`}>
         <button className="wm-avatar" title={`Name: ${name}`}>
@@ -57,12 +57,12 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
       </div>
 
       <div className="wm-mini-stats">
-        <span className="gold">рџЄ™ {inventory.gold}</span>
-        <span>вљ” {activeStats.strength}</span>
-        <span>рџ›Ў {activeStats.constitution}</span>
-        <span>рџЋЇ {activeStats.perception}</span>
-        <span>рџ§  {activeStats.intelligence}</span>
-        <span>в {activeStats.luck}</span>
+        <span className="gold">Золото: {inventory.gold}</span>
+        <span>СИЛ: {activeStats.strength}</span>
+        <span>ТЕЛ: {activeStats.constitution}</span>
+        <span>ВОСП: {activeStats.perception}</span>
+        <span>ИНТ: {activeStats.intelligence}</span>
+        <span>УДАЧА: {activeStats.luck}</span>
       </div>
 
       <div className="wm-equipment">
@@ -74,7 +74,7 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
         ))}
       </div>
 
-      <h3>РРЅРІРµРЅС‚Р°СЂСЊ</h3>
+      <h3>Инвентарь</h3>
       <div className="wm-inventory-grid">
         {inventory.items.slice(0, 16).map((entry) => {
           const item = resolveItemById?.(entry.itemId) ?? null;

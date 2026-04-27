@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { Equipment, InventoryState, ItemDefinition, PrimaryStat } from '@theend/rpg-domain';
-import { getItemById, getItemHandsRequired } from '@theend/rpg-domain';
+import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
+import { calculateDerivedStats, getItemById, getItemHandsRequired } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
@@ -26,6 +26,7 @@ interface InventoryPanelProps {
   onUnequipSlot: (slot: keyof Equipment) => Promise<void>;
   onAdjustStat: (stat: PrimaryStat, delta: number) => void;
   onApplyStatAllocation: () => Promise<void>;
+  onResetStatAllocation?: () => void;
   onUseItem?: (itemId: string) => Promise<void>;
   playerAvatarUrl?: string;
   onPlayerAvatarUrlChange?: (url: string) => void;
@@ -153,6 +154,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onUnequipSlot,
   onAdjustStat,
   onApplyStatAllocation,
+  onResetStatAllocation,
   onUseItem,
   playerAvatarUrl,
   onPlayerAvatarUrlChange,
@@ -164,10 +166,30 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
   const [silhouetteBroken, setSilhouetteBroken] = useState(false);
   const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
   const rightColumnRef = useRef<HTMLElement | null>(null);
+
+  const previewStats = useMemo<StatBlock>(() => {
+    const next = { ...character.activeStats };
+    for (const stat of STATS_ORDER) {
+      const points = pendingStatAllocation[stat] ?? 0;
+      if (points <= 0) {
+        continue;
+      }
+      if (stat === 'hp' || stat === 'mp' || stat === 'stamina') {
+        next[stat] += points * 10;
+      } else {
+        next[stat] += points;
+      }
+    }
+    return next;
+  }, [character.activeStats, pendingStatAllocation]);
+
+  const derivedBase = useMemo(() => calculateDerivedStats(character.activeStats, equipment), [character.activeStats, equipment]);
+  const derivedPreview = useMemo(() => calculateDerivedStats(previewStats, equipment), [equipment, previewStats]);
 
   const inventoryEntries = useMemo(
     () => inventory.items
@@ -199,17 +221,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const shieldBlockedByTwoHandedWeapon = Boolean(selectedItem?.itemType === 'shield' && equippedWeapon && getItemHandsRequired(equippedWeapon) === 2);
 
   const paperDollRace = (character.race in PAPER_DOLL_ASSETS ? character.race : 'HUMAN') as PaperDollRace;
-  const paperDollDebug = useMemo(() => {
-    if (!import.meta.env.DEV) {
-      return false;
-    }
-
-    try {
-      return window.localStorage.getItem('paperDoll.debug') === '1';
-    } catch {
-      return false;
-    }
-  }, []);
+  const paperDollDebug = false;
 
   const equippedByLayoutSlot = useMemo(() => {
     const full: Partial<Record<EquipmentSlotId, ItemDefinition | null>> = {};
@@ -333,6 +345,39 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   const focusedColumnClass = FOCUS_SECTION_COLUMN[focusSection];
 
+  const hasPendingAllocation = Object.keys(pendingStatAllocation).length > 0;
+
+  function handleAvatarUploadClick() {
+    avatarInputRef.current?.click();
+  }
+
+  function handleAvatarFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      onStatus('Допустимые форматы: PNG, JPEG, WEBP.');
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      onStatus('Максимальный размер аватара: 2MB.');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      onPlayerAvatarUrlChange?.(result);
+      onStatus('Аватар обновлен.');
+    };
+    reader.readAsDataURL(file);
+  }
+
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
       <section className="card battle-window wm-modal character-page-modal">
@@ -360,15 +405,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <p>Mana {character.activeStats.mp}</p>
                 <p>Stamina {character.activeStats.stamina}</p>
                 <p>Gold {inventory.gold}</p>
+                <p>Total Defense {derivedPreview.totalDefense}</p>
+                <p>Min Damage {derivedPreview.minDamage}</p>
               </div>
-              <div className="character-avatar-url-row">
-                <label>Avatar URL</label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={playerAvatarUrl ?? ''}
-                  onChange={(event) => onPlayerAvatarUrlChange?.(event.target.value)}
-                />
+              <div className="character-avatar-upload-row">
+                <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
+                <button type="button" onClick={handleAvatarUploadClick}>{playerAvatarUrl ? 'Change Avatar' : 'Upload Avatar'}</button>
               </div>
             </section>
 
@@ -543,7 +585,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 {STATS_ORDER.map((stat) => (
                   <div key={stat} className="character-stat-row">
                     <span>{STAT_LABELS[stat]}</span>
-                    <strong>{character.activeStats[stat]}</strong>
+                    <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` -> ${previewStats[stat]}` : ''}</strong>
                     <div className="mini-stepper">
                       <button disabled={freePointsLeft <= 0} onClick={() => onAdjustStat(stat, 1)}>+</button>
                       <button disabled={(pendingStatAllocation[stat] ?? 0) <= 0} onClick={() => onAdjustStat(stat, -1)}>-</button>
@@ -551,9 +593,37 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   </div>
                 ))}
               </div>
-              <button disabled={allocatingStats || Object.keys(pendingStatAllocation).length === 0} onClick={() => void onApplyStatAllocation()}>
-                {allocatingStats ? 'Applying...' : 'Apply'}
-              </button>
+              <div className="character-item-actions">
+                <button disabled={allocatingStats || !hasPendingAllocation || freePointsLeft < 0} onClick={() => void onApplyStatAllocation()}>
+                  {allocatingStats ? 'Applying...' : 'Apply'}
+                </button>
+                <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Revert</button>
+              </div>
+            </section>
+
+            <section className="character-meta-card">
+              <h3>Combat Statistics</h3>
+              <p>HP: {character.activeStats.hp}{' -> '}{previewStats.hp}</p>
+              <p>Mana: {character.activeStats.mp}{' -> '}{previewStats.mp}</p>
+              <p>Stamina: {character.activeStats.stamina}{' -> '}{previewStats.stamina}</p>
+              <p>Total Defense: {derivedBase.totalDefense}{' -> '}{derivedPreview.totalDefense}</p>
+              <p>Min Damage: {derivedBase.minDamage}{' -> '}{derivedPreview.minDamage}</p>
+              <p>Max Damage: {derivedBase.maxDamage}{' -> '}{derivedPreview.maxDamage}</p>
+              <p>Crit Chance: {derivedBase.critChance}%{' -> '}{derivedPreview.critChance}%</p>
+              <p>Initiative: {derivedBase.initiative}{' -> '}{derivedPreview.initiative}</p>
+              <p>Hit Chance: {derivedPreview.hitChance}%</p>
+              <p>Evasion: {derivedPreview.evasion}%</p>
+              <p>Block Chance: {derivedPreview.blockChance}%</p>
+              <p>Physical Resistance: {derivedPreview.physicalResistance}</p>
+              <p>Magic Resistance: {derivedPreview.magicResistance}</p>
+              <p>STA Load: {derivedPreview.staminaLoad}</p>
+            </section>
+
+            <section className="character-meta-card">
+              <h3>Breakdown</h3>
+              <p>Defense: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Damage: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Crit: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
             </section>
 
             <section className="character-meta-card">

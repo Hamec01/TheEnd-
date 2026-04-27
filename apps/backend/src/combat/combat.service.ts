@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   ActionType,
   BATTLEFIELD_GRID_SIZE,
+  BattlefieldTrapState,
   BattlefieldTileType,
   CombatSkillType,
   DistanceBand,
@@ -22,7 +23,7 @@ import {
 import { randomUUID } from 'crypto';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CustomCombatNpcDto } from './dto.start-combat.dto';
+import type { CustomCombatNpcDto, RuntimeBattleMapDto } from './dto.start-combat.dto';
 
 interface CharacterRecord {
   id: string;
@@ -349,29 +350,223 @@ export class CombatService {
     });
   }
 
-  private buildBattlefieldTiles(blockedTiles: Array<{ x: number; y: number }>): BattlefieldTile[] {
-    const blockedSet = new Set(
-      blockedTiles
-        .filter((tile) => Number.isInteger(tile.x) && Number.isInteger(tile.y))
-        .filter((tile) => tile.x >= 0 && tile.x < BATTLEFIELD_GRID_SIZE && tile.y >= 0 && tile.y < BATTLEFIELD_GRID_SIZE)
-        .map((tile) => `${tile.x}:${tile.y}`),
-    );
+  private cellKey(x: number, y: number): string {
+    return `${x}:${y}`;
+  }
 
-    return Array.from({ length: BATTLEFIELD_GRID_SIZE * BATTLEFIELD_GRID_SIZE }, (_, index) => {
-      const x = index % BATTLEFIELD_GRID_SIZE;
-      const y = Math.floor(index / BATTLEFIELD_GRID_SIZE);
-      return {
-        x,
-        y,
-        type: blockedSet.has(`${x}:${y}`) ? BattlefieldTileType.Blocked : BattlefieldTileType.Empty,
-      };
-    });
+  private mapCellTypeToTileType(type: string): BattlefieldTileType {
+    switch (type) {
+      case 'blocked':
+        return BattlefieldTileType.Blocked;
+      case 'lowCover':
+        return BattlefieldTileType.LowCover;
+      case 'highCover':
+        return BattlefieldTileType.HighCover;
+      case 'trap':
+        return BattlefieldTileType.Hazard;
+      default:
+        return BattlefieldTileType.Empty;
+    }
+  }
+
+  private isMovementBlocked(tile: BattlefieldTile | undefined): boolean {
+    if (!tile) {
+      return false;
+    }
+    if (tile.blocksMovement !== undefined) {
+      return tile.blocksMovement;
+    }
+    return tile.type === BattlefieldTileType.Blocked || tile.type === BattlefieldTileType.HighCover || tile.type === BattlefieldTileType.Summon;
+  }
+
+  private buildBattlefieldTiles(
+    battleMap?: RuntimeBattleMapDto,
+    blockedTiles: Array<{ x: number; y: number }> = [],
+  ): BattlefieldTile[] {
+    const width = Math.max(1, battleMap?.width ?? BATTLEFIELD_GRID_SIZE);
+    const height = Math.max(1, battleMap?.height ?? BATTLEFIELD_GRID_SIZE);
+    const tileByKey = new Map<string, BattlefieldTile>();
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        tileByKey.set(this.cellKey(x, y), {
+          x,
+          y,
+          type: BattlefieldTileType.Empty,
+          blocksMovement: false,
+          blocksLineOfSight: false,
+        });
+      }
+    }
+
+    if (battleMap) {
+      for (const cell of battleMap.cells) {
+        const key = this.cellKey(cell.x, cell.y);
+        const current = tileByKey.get(key);
+        if (!current) {
+          continue;
+        }
+        tileByKey.set(key, {
+          ...current,
+          type: this.mapCellTypeToTileType(cell.type),
+          movementCost: cell.movementCost,
+          trapId: cell.trapId,
+          blocksMovement: cell.blocksMovement ?? (cell.type === 'blocked' || cell.type === 'highCover'),
+          blocksLineOfSight: cell.blocksLineOfSight ?? (cell.type === 'blocked' || cell.type === 'highCover'),
+        });
+      }
+
+      for (const object of battleMap.objects ?? []) {
+        const objectWidth = Math.max(1, object.width ?? 1);
+        const objectHeight = Math.max(1, object.height ?? 1);
+        for (let offsetY = 0; offsetY < objectHeight; offsetY += 1) {
+          for (let offsetX = 0; offsetX < objectWidth; offsetX += 1) {
+            const x = object.x + offsetX;
+            const y = object.y + offsetY;
+            const key = this.cellKey(x, y);
+            const current = tileByKey.get(key);
+            if (!current) {
+              continue;
+            }
+            tileByKey.set(key, {
+              ...current,
+              type: object.blocksLineOfSight ? BattlefieldTileType.HighCover : object.blocksMovement ? BattlefieldTileType.Blocked : current.type,
+              blocksMovement: object.blocksMovement ?? current.blocksMovement,
+              blocksLineOfSight: object.blocksLineOfSight ?? current.blocksLineOfSight,
+            });
+          }
+        }
+      }
+    } else {
+      for (const blockedTile of blockedTiles) {
+        const key = this.cellKey(blockedTile.x, blockedTile.y);
+        const current = tileByKey.get(key);
+        if (!current) {
+          continue;
+        }
+        tileByKey.set(key, {
+          ...current,
+          type: BattlefieldTileType.Blocked,
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        });
+      }
+    }
+
+    return [...tileByKey.values()];
+  }
+
+  private buildBattlefieldTraps(battleMap?: RuntimeBattleMapDto): BattlefieldTrapState[] {
+    return (battleMap?.traps ?? []).map((trap) => ({
+      id: trap.id,
+      name: trap.name,
+      x: trap.x,
+      y: trap.y,
+      damage: trap.damage,
+      staminaCost: trap.staminaCost,
+      triggerOnce: trap.triggerOnce,
+      isActive: true,
+    }));
+  }
+
+  private shuffleCells(cells: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    const next = [...cells];
+    for (let index = next.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [next[index], next[swapIndex]] = [next[swapIndex]!, next[index]!];
+    }
+    return next;
+  }
+
+  private findNearestValidCell(
+    seeds: Array<{ x: number; y: number }>,
+    width: number,
+    height: number,
+    tileByKey: Map<string, BattlefieldTile>,
+    occupied: Set<string>,
+  ): { x: number; y: number } | null {
+    const visited = new Set<string>();
+    const queue = this.shuffleCells(seeds)
+      .filter((cell) => cell.x >= 0 && cell.x < width && cell.y >= 0 && cell.y < height)
+      .map((cell) => ({ ...cell }));
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = this.cellKey(current.x, current.y);
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+      const tile = tileByKey.get(key);
+      if (!occupied.has(key) && !this.isMovementBlocked(tile)) {
+        return current;
+      }
+
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nextX = current.x + dx;
+        const nextY = current.y + dy;
+        if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) {
+          continue;
+        }
+        queue.push({ x: nextX, y: nextY });
+      }
+    }
+
+    return null;
+  }
+
+  private assignSpawnPositions(
+    entities: ReturnType<typeof createArenaCombatEntity>[],
+    battleMap: RuntimeBattleMapDto | undefined,
+    battlefieldTiles: BattlefieldTile[],
+  ): void {
+    const width = Math.max(1, battleMap?.width ?? BATTLEFIELD_GRID_SIZE);
+    const height = Math.max(1, battleMap?.height ?? BATTLEFIELD_GRID_SIZE);
+    const tileByKey = new Map(battlefieldTiles.map((tile) => [this.cellKey(tile.x, tile.y), tile]));
+    const occupied = new Set<string>();
+
+    const distributedRows = (count: number) => Array.from({ length: count }, (_, index) =>
+      Math.max(0, Math.min(height - 1, Math.round(((index + 1) * (height - 1)) / (count + 1)))));
+
+    const fallbackSeedsByTeam = (team: TeamSide, count: number) => {
+      const rows = distributedRows(count);
+      const column = team === TeamSide.Left ? Math.min(1, width - 1) : Math.max(0, width - 2);
+      return rows.map((row) => ({ x: column, y: row }));
+    };
+
+    const playerSeeds = battleMap?.spawnZones.filter((zone) => zone.type === 'player').flatMap((zone) => zone.cells) ?? [];
+    const enemySeeds = battleMap?.spawnZones.filter((zone) => zone.type === 'enemy').flatMap((zone) => zone.cells) ?? [];
+
+    const leftTeam = entities.filter((entity) => entity.team === TeamSide.Left && entity.isAlive).sort((left, right) => left.position - right.position);
+    const rightTeam = entities.filter((entity) => entity.team === TeamSide.Right && entity.isAlive).sort((left, right) => left.position - right.position);
+
+    for (const [teamEntities, seeds, team] of [
+      [leftTeam, playerSeeds, TeamSide.Left],
+      [rightTeam, enemySeeds, TeamSide.Right],
+    ] as const) {
+      for (const entity of teamEntities) {
+        const candidate = this.findNearestValidCell(
+          seeds.length > 0 ? seeds : fallbackSeedsByTeam(team, teamEntities.length),
+          width,
+          height,
+          tileByKey,
+          occupied,
+        );
+        if (!candidate) {
+          continue;
+        }
+        entity.battlefieldX = candidate.x;
+        entity.battlefieldY = candidate.y;
+        occupied.add(this.cellKey(candidate.x, candidate.y));
+      }
+    }
   }
 
   async startCombat(
     characterId: string,
     enemyCount = 1,
     customEnemies: CustomCombatNpcDto[] = [],
+    battleMap?: RuntimeBattleMapDto,
     blockedTiles: Array<{ x: number; y: number }> = [],
   ) {
     const character = await this.prisma.character.findUnique({
@@ -406,12 +601,21 @@ export class CombatService {
       ? normalizedCustomEnemies.map((enemy, index) => this.createCustomEnemy(enemy, 3 + index))
       : Array.from({ length: count }, (_, index) => this.createGeneratedEnemy(playerStats, character.race as Race, 3 + index, index, count));
 
+    const battlefieldTiles = this.buildBattlefieldTiles(battleMap, blockedTiles);
+    this.assignSpawnPositions([player, ...enemies], battleMap, battlefieldTiles);
+
     const combatId = randomUUID();
     const state = createInitialBattleState({
       combatId,
+      battleMapId: battleMap?.id,
+      battleMapWidth: battleMap?.width ?? BATTLEFIELD_GRID_SIZE,
+      battleMapHeight: battleMap?.height ?? BATTLEFIELD_GRID_SIZE,
+      viewportWidth: battleMap?.viewportWidth ?? BATTLEFIELD_GRID_SIZE,
+      viewportHeight: battleMap?.viewportHeight ?? BATTLEFIELD_GRID_SIZE,
       distance: DistanceBand.Melee,
       entities: [player, ...enemies],
-      battlefieldTiles: this.buildBattlefieldTiles(blockedTiles),
+      battlefieldTiles,
+      battlefieldTraps: this.buildBattlefieldTraps(battleMap),
     });
 
     this.sessions.set(combatId, {

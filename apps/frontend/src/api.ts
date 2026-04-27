@@ -72,6 +72,70 @@ export interface ArenaBlockedTilePayload {
   y: number;
 }
 
+export interface RuntimeBattleMapCellPayload {
+  x: number;
+  y: number;
+  type: string;
+  trapId?: string;
+  movementCost?: number;
+  blocksMovement?: boolean;
+  blocksLineOfSight?: boolean;
+}
+
+export interface RuntimeBattleMapSpawnZonePayload {
+  id: string;
+  type: string;
+  name: string;
+  cells: Array<{ x: number; y: number }>;
+}
+
+export interface RuntimeBattleMapObjectPayload {
+  id: string;
+  type: string;
+  name: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  blocksMovement?: boolean;
+  blocksLineOfSight?: boolean;
+  interactable?: boolean;
+  iconUrl?: string;
+  imageUrl?: string;
+  lootTableId?: string;
+  questId?: string;
+  triggerId?: string;
+  description?: string;
+}
+
+export interface RuntimeBattleMapTrapPayload {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  damage?: number;
+  staminaCost?: number;
+  triggerOnce?: boolean;
+  revealedByDefault?: boolean;
+  detectionDifficulty?: number;
+  description?: string;
+}
+
+export interface RuntimeBattleMapPayload {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  cells: RuntimeBattleMapCellPayload[];
+  spawnZones: RuntimeBattleMapSpawnZonePayload[];
+  objects: RuntimeBattleMapObjectPayload[];
+  traps: RuntimeBattleMapTrapPayload[];
+}
+
 export async function registerAccount(payload: RegisterRequest): Promise<RegisterResponse> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
@@ -212,7 +276,7 @@ export async function unequipArenaItem(
 export async function startCombat(
   characterId: string,
   enemyCount = 1,
-  blockedTiles: ArenaBlockedTilePayload[] = [],
+  battleMap?: RuntimeBattleMapPayload,
 ): Promise<{
   combatId: string;
   playerId: string;
@@ -221,7 +285,7 @@ export async function startCombat(
   const res = await fetch(`${API_BASE}/combat/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, enemyCount, blockedTiles }),
+    body: JSON.stringify({ characterId, enemyCount, battleMap }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -232,7 +296,7 @@ export async function startCombat(
 export async function startCustomCombat(
   characterId: string,
   customEnemies: CustomArenaNpcPayload[],
-  blockedTiles: ArenaBlockedTilePayload[] = [],
+  battleMap?: RuntimeBattleMapPayload,
 ): Promise<{
   combatId: string;
   playerId: string;
@@ -245,7 +309,7 @@ export async function startCustomCombat(
       characterId,
       enemyCount: Math.max(1, customEnemies.length),
       customEnemies,
-      blockedTiles,
+      battleMap,
     }),
   });
   if (!res.ok) {
