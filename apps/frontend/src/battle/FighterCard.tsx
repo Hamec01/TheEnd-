@@ -9,6 +9,7 @@ interface FighterCardProps {
   visualState?: FighterVisualState;
   floatingText?: string | null;
   subtitle?: string;
+  avatarUrl?: string;
 }
 
 function stateLabel(state: FighterVisualState): string {
@@ -34,6 +35,7 @@ export function FighterCard({
   visualState = 'idle',
   floatingText,
   subtitle,
+  avatarUrl,
 }: FighterCardProps) {
   const hpPercent = Math.max(0, Math.min(100, Math.round((fighter.currentHp / fighter.maxHp) * 100)));
   const mpPercent = Math.max(0, Math.min(100, Math.round((fighter.currentMp / Math.max(1, fighter.maxMp)) * 100)));
@@ -64,7 +66,11 @@ export function FighterCard({
       </div>
 
       <div className="fighter-avatar-section">
-        <div className="fighter-avatar">{fighter.name.slice(0, 2).toUpperCase()}</div>
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={fighter.name} className="fighter-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        ) : (
+          <div className="fighter-avatar">{fighter.name.slice(0, 2).toUpperCase()}</div>
+        )}
         <div className="fighter-silhouette-grid" aria-label="Combat silhouette">
           <span className="slot-head" title="Helmet">H</span>
           <span className="slot-weapon" title="Weapon">W</span>

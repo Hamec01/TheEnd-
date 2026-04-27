@@ -9,7 +9,7 @@ import {
   type Merchant,
   type StatBlock,
 } from '@theend/rpg-domain';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type {
   AdminItem,
@@ -27,6 +27,8 @@ import type {
 const CONTENT_DB_VERSION = 1 as const;
 const CONTENT_COLLECTIONS: ContentCollectionName[] = ['items', 'merchants', 'materials', 'lootTables', 'images'];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
+const CONTENT_DB_BACKUP_DIR = 'backups';
+const CONTENT_DB_MAX_BACKUPS = 40;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -315,12 +317,124 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
   return [...merged.values()];
 }
 
+function findDuplicateIds<T extends { id: string }>(entries: T[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const entry of entries) {
+    const id = String(entry.id ?? '').trim();
+    if (!id) {
+      continue;
+    }
+    if (seen.has(id)) {
+      duplicates.add(id);
+      continue;
+    }
+    seen.add(id);
+  }
+
+  return [...duplicates];
+}
+
+function hasMojibakeQuestionMarks(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return /\?{3,}/.test(value);
+}
+
 @Injectable()
 export class ContentService {
   private readonly dataDir = join(process.cwd(), 'data');
   private readonly dbFile = join(this.dataDir, 'content-db.json');
   private readonly templateFile = join(this.dataDir, 'content-template.json');
+  private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
   private dbCache: ContentDatabase | null = null;
+
+  private validateDatabaseIntegrity(db: ContentDatabase): string[] {
+    const errors: string[] = [];
+
+    const duplicateItems = findDuplicateIds(db.items);
+    if (duplicateItems.length > 0) {
+      errors.push(`Duplicate item ids: ${duplicateItems.join(', ')}`);
+    }
+
+    const duplicateMerchants = findDuplicateIds(db.merchants);
+    if (duplicateMerchants.length > 0) {
+      errors.push(`Duplicate merchant ids: ${duplicateMerchants.join(', ')}`);
+    }
+
+    const duplicateImages = findDuplicateIds(db.images);
+    if (duplicateImages.length > 0) {
+      errors.push(`Duplicate image ids: ${duplicateImages.join(', ')}`);
+    }
+
+    const itemIds = new Set(db.items.map((item) => item.id));
+    const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
+
+    for (const item of db.items) {
+      if (item.imagePath && !imageIds.has(item.imagePath)) {
+        errors.push(`Item '${item.id}' references missing image '${item.imagePath}'.`);
+      }
+
+      if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
+        errors.push(`Item '${item.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    for (const merchant of db.merchants) {
+      if (merchant.portraitPath && !imageIds.has(merchant.portraitPath)) {
+        errors.push(`Merchant '${merchant.id}' references missing portrait image '${merchant.portraitPath}'.`);
+      }
+
+      if (hasMojibakeQuestionMarks(merchant.name) || hasMojibakeQuestionMarks(merchant.city) || hasMojibakeQuestionMarks(merchant.location) || hasMojibakeQuestionMarks(merchant.description)) {
+        errors.push(`Merchant '${merchant.id}' contains suspicious mojibake text ('???').`);
+      }
+
+      for (const entry of merchant.items) {
+        if (!itemIds.has(entry.itemId)) {
+          errors.push(`Merchant '${merchant.id}' references missing item '${entry.itemId}'.`);
+        }
+      }
+    }
+
+    for (const zone of db.worldMap.zones ?? []) {
+      if (hasMojibakeQuestionMarks(zone.name) || hasMojibakeQuestionMarks(zone.description)) {
+        errors.push(`World zone '${zone.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    for (const region of db.worldMap.regions ?? []) {
+      if (hasMojibakeQuestionMarks(region.name) || hasMojibakeQuestionMarks(region.description)) {
+        errors.push(`World region '${region.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    return errors;
+  }
+
+  private createBackupSnapshot(): void {
+    if (!existsSync(this.dbFile)) {
+      return;
+    }
+
+    if (!existsSync(this.backupDir)) {
+      mkdirSync(this.backupDir, { recursive: true });
+    }
+
+    const timestamp = nowIso().replace(/[:.]/g, '-');
+    const backupFile = join(this.backupDir, `content-db-${timestamp}.json`);
+    copyFileSync(this.dbFile, backupFile);
+
+    const backups = readdirSync(this.backupDir)
+      .filter((file) => file.startsWith('content-db-') && file.endsWith('.json'))
+      .sort();
+
+    const toDelete = backups.slice(0, Math.max(0, backups.length - CONTENT_DB_MAX_BACKUPS));
+    for (const file of toDelete) {
+      unlinkSync(join(this.backupDir, file));
+    }
+  }
 
   private normalizeDatabase(raw: Partial<ContentDatabase>): ContentDatabase {
     return {
@@ -375,7 +489,7 @@ export class ContentService {
     try {
       const raw = JSON.parse(readFileSync(this.dbFile, 'utf8')) as Partial<ContentDatabase>;
       const next = this.normalizeDatabase(raw);
-      this.persist(next);
+      this.dbCache = clone(next);
       return this.dbCache!;
     } catch {
       const template = this.loadTemplateDatabase();
@@ -385,13 +499,48 @@ export class ContentService {
   }
 
   private persist(db: ContentDatabase): ContentDatabase {
-    this.dbCache = clone(db);
+    const next = clone(db);
+    const integrityErrors = this.validateDatabaseIntegrity(next);
+    if (integrityErrors.length > 0) {
+      throw new BadRequestException(`Content integrity check failed:\n- ${integrityErrors.join('\n- ')}`);
+    }
+
+    if (!existsSync(this.dataDir)) {
+      mkdirSync(this.dataDir, { recursive: true });
+    }
+
+    this.createBackupSnapshot();
+    this.dbCache = next;
     writeFileSync(this.dbFile, JSON.stringify(this.dbCache, null, 2), 'utf8');
     return clone(this.dbCache);
   }
 
   getSnapshot(): ContentDatabase {
     return clone(this.ensureLoaded());
+  }
+
+  reloadFromDisk(): ContentDatabase {
+    if (!existsSync(this.dbFile)) {
+      const template = this.loadTemplateDatabase();
+      return this.persist(template ?? createEmptyDatabase());
+    }
+
+    try {
+      const raw = JSON.parse(readFileSync(this.dbFile, 'utf8')) as Partial<ContentDatabase>;
+      return this.persist(this.normalizeDatabase(raw));
+    } catch {
+      const template = this.loadTemplateDatabase();
+      return this.persist(template ?? createEmptyDatabase());
+    }
+  }
+
+  validateIntegrity(): { ok: boolean; errors: string[] } {
+    const db = this.ensureLoaded();
+    const errors = this.validateDatabaseIntegrity(db);
+    return {
+      ok: errors.length === 0,
+      errors,
+    };
   }
 
   listCollection<K extends ContentCollectionName>(name: K | string): ContentCollectionMap[K][] {
@@ -603,7 +752,7 @@ export class ContentService {
     return next;
   }
 
-  canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment): { ok: boolean; reason?: string } {
+  canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment, preferredHand?: 'weapon' | 'shield'): { ok: boolean; reason?: string } {
     const item = this.resolveItemById(itemId);
 
     if (item.itemType === 'consumable') {
@@ -614,6 +763,17 @@ export class ContentService {
       const current = baseStats[stat as keyof StatBlock];
       if (required !== undefined && current < required) {
         return { ok: false, reason: `Недостаточно ${stat}: нужно ${required}` };
+      }
+    }
+
+    if (item.itemType === 'weapon' && getItemHandsRequired(item) === 1 && preferredHand === 'shield' && equipment?.weapon) {
+      try {
+        const equippedWeapon = this.resolveItemById(equipment.weapon);
+        if (equippedWeapon.itemType === 'weapon' && getItemHandsRequired(equippedWeapon) === 2) {
+          return { ok: false, reason: 'Левая рука занята двуручным оружием.' };
+        }
+      } catch {
+        // Ignore broken legacy equipment records.
       }
     }
 
@@ -631,7 +791,7 @@ export class ContentService {
     return { ok: true };
   }
 
-  equipItem(equipment: Equipment, itemId: string): Equipment {
+  equipItem(equipment: Equipment, itemId: string, preferredHand?: 'weapon' | 'shield'): Equipment {
     const item = this.resolveItemById(itemId);
 
     if (item.itemType === 'consumable') {
@@ -646,7 +806,12 @@ export class ContentService {
       gloves: 'gloves',
       shield: 'shield',
     };
-    const slot = slotByType[item.itemType];
+    let slot = slotByType[item.itemType];
+
+    if (item.itemType === 'weapon' && getItemHandsRequired(item) === 1) {
+      slot = preferredHand ?? 'weapon';
+    }
+
     if (!slot) {
       throw new BadRequestException(`Unsupported equipment slot for item type: ${item.itemType}`);
     }

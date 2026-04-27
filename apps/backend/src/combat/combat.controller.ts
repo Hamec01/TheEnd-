@@ -10,7 +10,7 @@ export class CombatController {
 
   @Post('start')
   async start(@Body() dto: StartCombatDto) {
-    return this.combatService.startCombat(dto.characterId, dto.enemyCount ?? 1, dto.customEnemies ?? []);
+    return this.combatService.startCombat(dto.characterId, dto.enemyCount ?? 1, dto.customEnemies ?? [], dto.blockedTiles ?? []);
   }
 
   @Post('action')
@@ -23,6 +23,7 @@ export class CombatController {
       attackPointsSpent: dto.attackPointsSpent,
       defensePointsSpent: dto.defensePointsSpent,
       actionType: dto.actionType,
+      movementType: dto.movementType,
       preferredDistance: dto.preferredDistance,
       destinationX: dto.destinationX,
       destinationY: dto.destinationY,

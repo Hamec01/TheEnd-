@@ -26,7 +26,7 @@ export class ArenaController {
 
   @Post('equip')
   equip(@Body() dto: EquipItemDto) {
-    return this.arenaService.equipItem(dto.characterId, dto.itemId);
+    return this.arenaService.equipItem(dto.characterId, dto.itemId, dto.slot);
   }
 
   @Post('unequip')

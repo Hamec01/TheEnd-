@@ -6,6 +6,7 @@ import { PlayerQuickPanel } from './PlayerQuickPanel';
 import { WorldMapCanvas, type WorldMapCanvasHandle } from './WorldMapCanvas';
 import { ContextActionPanel } from './ContextActionPanel';
 import { ZoneEditorPanel } from './ZoneEditorPanel';
+import { ArenaMapEditor, type ArenaBlockedTile } from '../components/ArenaMapEditor';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory, type ZoneEditorHistoryState } from './zoneEditorHistory';
 import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft, type PaintedRegion, type RegionBrushSize, type RegionToolMode, type RegionType, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
@@ -143,6 +144,18 @@ interface WorldMapScreenProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
   resolveMerchantImage?: (merchant: AdminMerchant | null | undefined) => string | undefined;
+  battleMapImageUrl: string;
+  battleBlockedTiles: ArenaBlockedTile[];
+  battleMapDraftName: string;
+  battleMapPresets: Array<{ id: string; name: string }>;
+  selectedBattleMapPresetId: string | null;
+  onBattleMapImageUrlChange: (value: string) => void;
+  onBattleBlockedTilesChange: (tiles: ArenaBlockedTile[]) => void;
+  onBattleMapDraftNameChange: (name: string) => void;
+  onBattleMapSelect: (presetId: string) => void;
+  onBattleMapSave: () => void;
+  onBattleMapDelete: () => void;
+  onBattleMapNew: () => void;
 }
 
 export function WorldMapScreen(props: WorldMapScreenProps) {
@@ -165,6 +178,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     resolveItemById,
     resolveItemImage,
     resolveMerchantImage,
+    battleMapImageUrl,
+    battleBlockedTiles,
+    battleMapDraftName,
+    battleMapPresets,
+    selectedBattleMapPresetId,
+    onBattleMapImageUrlChange,
+    onBattleBlockedTilesChange,
+    onBattleMapDraftNameChange,
+    onBattleMapSelect,
+    onBattleMapSave,
+    onBattleMapDelete,
+    onBattleMapNew,
+    onOpenArenaNpc,
   } = props;
 
   const canvasRef = useRef<WorldMapCanvasHandle>(null);
@@ -185,6 +211,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatType, setChatType] = useState<ChatType>('local');
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
+  const [showBattleMapEditor, setShowBattleMapEditor] = useState(false);
 
   const [zones, setZones] = useState<WorldMapZone[]>(() => cloneZones(WORLD_MAP_ZONES));
   const [regions, setRegions] = useState<PaintedRegion[]>([]);
@@ -963,7 +990,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleEnterArena() {
-    onOpenArena();
+    setShowBattleMapEditor(true);
+    onStatus('Открыт редактор баттл-карт под Zone Editor. Сохраните карту и запускайте бой отсюда.');
   }
 
   const playLayout = (
@@ -1073,6 +1101,66 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <div className="wm-editor-launch card">
             <button onClick={() => setMode('editor')}>Zone Editor</button>
           </div>
+
+          <section className="wm-battle-map-panel card">
+            <div className="wm-battle-map-head">
+              <h3>Battle Map Editor</h3>
+              <button type="button" onClick={() => setShowBattleMapEditor((prev) => !prev)}>
+                {showBattleMapEditor ? 'Свернуть' : 'Открыть'}
+              </button>
+            </div>
+
+            {showBattleMapEditor ? (
+              <>
+                <div className="row">
+                  <label>Сохраненные карты</label>
+                  <select
+                    value={selectedBattleMapPresetId ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        return;
+                      }
+                      onBattleMapSelect(value);
+                    }}
+                  >
+                    <option value="">Черновик (не сохранен)</option>
+                    {battleMapPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="row">
+                  <label>Имя карты</label>
+                  <input
+                    value={battleMapDraftName}
+                    placeholder="Например: Подземелье Арклейна"
+                    onChange={(event) => onBattleMapDraftNameChange(event.target.value)}
+                  />
+                </div>
+
+                <div className="wm-action-grid">
+                  <button onClick={onBattleMapSave}>Сохранить карту</button>
+                  <button onClick={onBattleMapNew}>Новая карта</button>
+                  <button onClick={onBattleMapDelete} disabled={!selectedBattleMapPresetId}>Удалить карту</button>
+                  <button onClick={() => { void onStartCombat(); }}>Начать бой</button>
+                </div>
+
+                <div className="wm-action-grid" style={{ marginTop: '6px' }}>
+                  <button onClick={onOpenArenaNpc}>Настроить NPC</button>
+                </div>
+
+                <ArenaMapEditor
+                  mapImageUrl={battleMapImageUrl}
+                  blockedTiles={battleBlockedTiles}
+                  onMapImageUrlChange={onBattleMapImageUrlChange}
+                  onBlockedTilesChange={onBattleBlockedTilesChange}
+                />
+              </>
+            ) : null}
+          </section>
+
           <ContextActionPanel mode={contextMode} selectedNode={selectedNode} onAction={(actionId, kind) => { void handleAction(actionId, kind); }} />
           <section className="wm-context card" style={{ borderTop: 'none' }}>
             <section className="wm-context-block">

@@ -16,6 +16,13 @@ export enum ActionType {
   Wait = 'WAIT',
 }
 
+export enum MovementType {
+  Step = 'STEP',
+  Extra = 'EXTRA',
+  Dash = 'DASH',
+  Disengage = 'DISENGAGE',
+}
+
 export enum CombatSkillType {
   None = 'NONE',
   PowerStrike = 'POWER_STRIKE',
@@ -36,6 +43,15 @@ export enum DistanceBand {
   Melee = 'MELEE',
   Near = 'NEAR',
   Far = 'FAR',
+}
+
+export enum BattlefieldTileType {
+  Empty = 'empty',
+  Blocked = 'blocked',
+  LowCover = 'lowCover',
+  HighCover = 'highCover',
+  Hazard = 'hazard',
+  Summon = 'summon',
 }
 
 export const BATTLEFIELD_GRID_SIZE = 12;
@@ -63,6 +79,7 @@ export interface ArenaCombatEntity {
   position: number;
   battlefieldX?: number;
   battlefieldY?: number;
+  avatarUrl?: string;
 }
 
 export interface ArenaCombatAction {
@@ -73,6 +90,7 @@ export interface ArenaCombatAction {
   attackPointsSpent: number;
   defensePointsSpent: number;
   actionType: ActionType;
+  movementType?: MovementType;
   preferredDistance?: DistanceBand;
   destinationX?: number;
   destinationY?: number;
@@ -94,11 +112,18 @@ export interface ArenaCombatRound {
   logs: CombatLogEntry[];
 }
 
+export interface BattlefieldTile {
+  x: number;
+  y: number;
+  type: BattlefieldTileType;
+}
+
 export interface ArenaBattleState {
   combatId: string;
   roundNumber: number;
   distance: DistanceBand;
   entities: ArenaCombatEntity[];
+  battlefieldTiles: BattlefieldTile[];
   logs: CombatLogEntry[];
   lastRound?: ArenaCombatRound;
   isFinished: boolean;
@@ -113,14 +138,18 @@ export interface BattlefieldTilePlacement {
 }
 
 const DEFENSIVE_ZONES: TargetZone[] = [TargetZone.Chest, TargetZone.Abdomen];
-const ALL_TARGET_ZONES: TargetZone[] = [
-  TargetZone.Head,
-  TargetZone.Chest,
-  TargetZone.Abdomen,
-  TargetZone.LeftArm,
-  TargetZone.RightArm,
-  TargetZone.Legs,
-];
+const ACTION_STAMINA_COSTS = {
+  attack: 10,
+  defend: 8,
+  move: 6,
+  extraMove: 16,
+  dash: 14,
+  disengage: 10,
+  opportunity: 6,
+} as const;
+
+type GuardMode = 'RECKLESS' | 'AGGRESSIVE' | 'NORMAL';
+type CombatStyle = 'MELEE' | 'RANGED' | 'MAGIC';
 
 function getDistanceColumns(distance: DistanceBand): { left: number; right: number } {
   if (distance === DistanceBand.Far) {
@@ -128,7 +157,7 @@ function getDistanceColumns(distance: DistanceBand): { left: number; right: numb
   }
 
   if (distance === DistanceBand.Near) {
-    return { left: 3, right: 8 };
+    return { left: 3, right: 7 };
   }
 
   return { left: 5, right: 6 };
@@ -139,7 +168,7 @@ function classifyGapDistance(gap: number): DistanceBand {
     return DistanceBand.Melee;
   }
 
-  if (gap <= 5) {
+  if (gap <= 4) {
     return DistanceBand.Near;
   }
 
@@ -215,8 +244,83 @@ function syncBattlefieldPositions(entities: ArenaCombatEntity[], distance: Dista
   }
 }
 
-function getHorizontalGap(left: ArenaCombatEntity, right: ArenaCombatEntity): number {
-  return Math.abs((left.battlefieldX ?? 0) - (right.battlefieldX ?? 0));
+function createDefaultBattlefieldTiles(): BattlefieldTile[] {
+  return Array.from({ length: BATTLEFIELD_GRID_SIZE * BATTLEFIELD_GRID_SIZE }, (_, index) => ({
+    x: index % BATTLEFIELD_GRID_SIZE,
+    y: Math.floor(index / BATTLEFIELD_GRID_SIZE),
+    type: BattlefieldTileType.Empty,
+  }));
+}
+
+function isWithinBattlefield(x: number, y: number): boolean {
+  return x >= 0 && x < BATTLEFIELD_GRID_SIZE && y >= 0 && y < BATTLEFIELD_GRID_SIZE;
+}
+
+function getBattlefieldTileType(state: ArenaBattleState, x: number, y: number): BattlefieldTileType {
+  return state.battlefieldTiles.find((tile) => tile.x === x && tile.y === y)?.type ?? BattlefieldTileType.Empty;
+}
+
+function isTileWalkBlocked(state: ArenaBattleState, x: number, y: number): boolean {
+  const tileType = getBattlefieldTileType(state, x, y);
+  return tileType === BattlefieldTileType.Blocked || tileType === BattlefieldTileType.HighCover || tileType === BattlefieldTileType.Summon;
+}
+
+function isTileSightBlocked(state: ArenaBattleState, x: number, y: number): boolean {
+  const tileType = getBattlefieldTileType(state, x, y);
+  return tileType === BattlefieldTileType.Blocked || tileType === BattlefieldTileType.HighCover || tileType === BattlefieldTileType.Summon;
+}
+
+function bresenhamLine(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): Array<{ x: number; y: number }> {
+  const points: Array<{ x: number; y: number }> = [];
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+
+  let x = x0;
+  let y = y0;
+  while (true) {
+    points.push({ x, y });
+    if (x === x1 && y === y1) {
+      break;
+    }
+
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+
+  return points;
+}
+
+function hasLineOfSight(state: ArenaBattleState, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  const points = bresenhamLine(fromX, fromY, toX, toY);
+  for (let i = 1; i < points.length - 1; i += 1) {
+    if (isTileSightBlocked(state, points[i].x, points[i].y)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function getBattlefieldDistance(left: ArenaCombatEntity, right: ArenaCombatEntity): number {
+  return Math.abs((left.battlefieldX ?? 0) - (right.battlefieldX ?? 0)) + Math.abs((left.battlefieldY ?? 0) - (right.battlefieldY ?? 0));
+}
+
+export function getDistanceBandBetweenEntities(left: ArenaCombatEntity, right: ArenaCombatEntity): DistanceBand {
+  return classifyGapDistance(getBattlefieldDistance(left, right));
 }
 
 function deriveBattleDistance(entities: ArenaCombatEntity[], fallback: DistanceBand): DistanceBand {
@@ -230,7 +334,7 @@ function deriveBattleDistance(entities: ArenaCombatEntity[], fallback: DistanceB
   let minimumGap = Number.POSITIVE_INFINITY;
   for (const left of leftAlive) {
     for (const right of rightAlive) {
-      minimumGap = Math.min(minimumGap, getHorizontalGap(left, right));
+      minimumGap = Math.min(minimumGap, getBattlefieldDistance(left, right));
     }
   }
 
@@ -242,11 +346,23 @@ function deriveBattleDistance(entities: ArenaCombatEntity[], fallback: DistanceB
 }
 
 function getTacticalDistance(left: ArenaCombatEntity, right: ArenaCombatEntity): number {
-  return getHorizontalGap(left, right) + Math.abs((left.battlefieldY ?? 0) - (right.battlefieldY ?? 0));
+  return getBattlefieldDistance(left, right);
 }
 
 function selectNearestEnemy(actor: ArenaCombatEntity, enemies: ArenaCombatEntity[]): ArenaCombatEntity {
   return [...enemies].sort((left, right) => getTacticalDistance(actor, left) - getTacticalDistance(actor, right))[0] ?? enemies[0]!;
+}
+
+function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
+  if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
+    return 'MAGIC';
+  }
+
+  if (actor.dexterity > actor.strength) {
+    return 'RANGED';
+  }
+
+  return 'MELEE';
 }
 
 function selectNpcAttackZone(actor: ArenaCombatEntity, currentBand: DistanceBand): TargetZone {
@@ -280,94 +396,72 @@ function isTileOccupied(state: ArenaBattleState, x: number, y: number, ignoredEn
   );
 }
 
-function findOpenRow(state: ArenaBattleState, x: number, preferredY: number, actorId: string): number | null {
-  for (let offset = 0; offset < BATTLEFIELD_GRID_SIZE; offset += 1) {
-    const candidates = offset === 0 ? [preferredY] : [preferredY - offset, preferredY + offset];
-    for (const y of candidates) {
-      if (y < 0 || y >= BATTLEFIELD_GRID_SIZE) {
+function buildDistanceMap(state: ArenaBattleState, actor: ArenaCombatEntity, maxDistance: number): Map<string, number> {
+  const originX = actor.battlefieldX ?? 0;
+  const originY = actor.battlefieldY ?? 0;
+  const distances = new Map<string, number>([[`${originX}:${originY}`, 0]]);
+  const queue: Array<{ x: number; y: number; distance: number }> = [{ x: originX, y: originY, distance: 0 }];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.distance >= maxDistance) {
+      continue;
+    }
+
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nextX = current.x + dx;
+      const nextY = current.y + dy;
+      const key = `${nextX}:${nextY}`;
+      if (!isWithinBattlefield(nextX, nextY) || distances.has(key)) {
         continue;
       }
 
-      if (!isTileOccupied(state, x, y, actorId)) {
-        return y;
+      if (isTileWalkBlocked(state, nextX, nextY) || isTileOccupied(state, nextX, nextY, actor.id)) {
+        continue;
+      }
+
+      distances.set(key, current.distance + 1);
+      queue.push({ x: nextX, y: nextY, distance: current.distance + 1 });
+    }
+  }
+
+  return distances;
+}
+
+export function getReachableBattlefieldTiles(
+  state: ArenaBattleState,
+  actorId: string,
+  maxDistance: number,
+): Array<{ x: number; y: number; distance: number }> {
+  const actor = getEntity(state, actorId);
+  const distances = buildDistanceMap(state, actor, maxDistance);
+
+  return [...distances.entries()]
+    .filter(([, distance]) => distance > 0 && distance <= maxDistance)
+    .map(([key, distance]) => {
+      const [x, y] = key.split(':').map(Number);
+      return { x, y, distance };
+    });
+}
+
+export function getThreatenedTiles(state: ArenaBattleState, team: TeamSide): Array<{ x: number; y: number; enemyId: string }> {
+  const threatened: Array<{ x: number; y: number; enemyId: string }> = [];
+
+  for (const entity of state.entities) {
+    if (!entity.isAlive || entity.team === team || classifyCombatStyle(entity) !== 'MELEE') {
+      continue;
+    }
+
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const x = (entity.battlefieldX ?? 0) + dx;
+      const y = (entity.battlefieldY ?? 0) + dy;
+      if (isWithinBattlefield(x, y)) {
+        threatened.push({ x, y, enemyId: entity.id });
       }
     }
   }
 
-  return null;
-}
-
-function findClosestTileForBand(
-  state: ArenaBattleState,
-  actor: ArenaCombatEntity,
-  target: ArenaCombatEntity,
-  desiredBand: DistanceBand,
-): { x: number; y: number } | null {
-  const actorX = actor.battlefieldX ?? 0;
-  const actorY = actor.battlefieldY ?? Math.floor(BATTLEFIELD_GRID_SIZE / 2);
-  const targetX = target.battlefieldX ?? 0;
-  const candidateColumns = Array.from({ length: BATTLEFIELD_GRID_SIZE }, (_, index) => index)
-    .filter((column) => (actor.team === TeamSide.Left ? column < targetX : column > targetX))
-    .filter((column) => classifyGapDistance(Math.abs(column - targetX)) === desiredBand)
-    .sort((left, right) => Math.abs(left - actorX) - Math.abs(right - actorX));
-
-  for (const column of candidateColumns) {
-    const row = findOpenRow(state, column, actorY, actor.id);
-    if (row !== null) {
-      return { x: column, y: row };
-    }
-  }
-
-  return null;
-}
-
-function moveActorOnBattlefield(
-  state: ArenaBattleState,
-  actor: ArenaCombatEntity,
-  target: ArenaCombatEntity,
-  preferredDistance: DistanceBand,
-  destinationX?: number,
-  destinationY?: number,
-): boolean {
-  const currentBand = classifyGapDistance(getHorizontalGap(actor, target));
-  const nextBand = stepDistanceToward(currentBand, preferredDistance);
-
-  if (nextBand === currentBand) {
-    return false;
-  }
-
-  if (Number.isInteger(destinationX) && Number.isInteger(destinationY)) {
-    const x = destinationX as number;
-    const y = destinationY as number;
-    const targetX = target.battlefieldX ?? 0;
-    const destinationBand = classifyGapDistance(Math.abs(x - targetX));
-    const staysOnOwnSide = actor.team === TeamSide.Left ? x < targetX : x > targetX;
-
-    if (
-      x >= 0
-      && x < BATTLEFIELD_GRID_SIZE
-      && y >= 0
-      && y < BATTLEFIELD_GRID_SIZE
-      && staysOnOwnSide
-      && destinationBand === nextBand
-      && !isTileOccupied(state, x, y, actor.id)
-    ) {
-      actor.battlefieldX = x;
-      actor.battlefieldY = y;
-      updateBattleDistance(state);
-      return true;
-    }
-  }
-
-  const nextTile = findClosestTileForBand(state, actor, target, nextBand);
-  if (!nextTile) {
-    return false;
-  }
-
-  actor.battlefieldX = nextTile.x;
-  actor.battlefieldY = nextTile.y;
-  updateBattleDistance(state);
-  return true;
+  return threatened;
 }
 
 export function getBattlefieldTilePlacements(
@@ -396,6 +490,14 @@ export function clampHitChance(chance: number): number {
   return Math.max(25, Math.min(95, chance));
 }
 
+export function getStaminaRegen(entity: Pick<ArenaCombatEntity, 'constitution'>): number {
+  return 10 + Math.floor(entity.constitution / 4);
+}
+
+export function getManaRegen(entity: Pick<ArenaCombatEntity, 'willpower'>): number {
+  return 6 + Math.floor(entity.willpower / 4);
+}
+
 export function createArenaCombatEntity(input: Omit<ArenaCombatEntity, 'initiative' | 'isAlive'>): ArenaCombatEntity {
   return {
     ...input,
@@ -408,12 +510,14 @@ export function createInitialBattleState(params: {
   combatId: string;
   entities: ArenaCombatEntity[];
   distance?: DistanceBand;
+  battlefieldTiles?: BattlefieldTile[];
 }): ArenaBattleState {
   const state: ArenaBattleState = {
     combatId: params.combatId,
     roundNumber: 0,
     distance: params.distance ?? DistanceBand.Melee,
     entities: params.entities,
+    battlefieldTiles: params.battlefieldTiles ?? createDefaultBattlefieldTiles(),
     logs: [],
     isFinished: false,
   };
@@ -423,43 +527,34 @@ export function createInitialBattleState(params: {
   return state;
 }
 
-function ensureActionPoints(entity: ArenaCombatEntity, action: ArenaCombatAction): ArenaCombatAction {
-  const available = Math.max(0, entity.currentStamina);
+function normalizeMovementType(action: ArenaCombatAction): MovementType | undefined {
+  if (action.movementType) {
+    return action.movementType;
+  }
+
+  if (action.actionType === ActionType.Move) {
+    return MovementType.Step;
+  }
+
+  if (Number.isInteger(action.destinationX) && Number.isInteger(action.destinationY)) {
+    return MovementType.Step;
+  }
+
+  return undefined;
+}
+
+function ensureActionPoints(_entity: ArenaCombatEntity, action: ArenaCombatAction): ArenaCombatAction {
   const attack = Math.max(0, action.attackPointsSpent);
   const defense = Math.max(0, action.defensePointsSpent);
   const defenseZones = action.defenseZones.filter((zone, index, zones) => zones.indexOf(zone) === index).slice(0, 2);
 
-  if (attack + defense <= available) {
-    return {
-      ...action,
-      defenseZones: defenseZones.length > 0 ? defenseZones : DEFENSIVE_ZONES,
-      attackPointsSpent: attack,
-      defensePointsSpent: defense,
-      preferredDistance: action.preferredDistance,
-    };
-  }
-
-  const normalizedAttack = Math.min(attack, available);
-  const normalizedDefense = Math.max(0, available - normalizedAttack);
   return {
     ...action,
-    defenseZones: defenseZones.length > 0 ? defenseZones : DEFENSIVE_ZONES,
-    attackPointsSpent: normalizedAttack,
-    defensePointsSpent: normalizedDefense,
-    preferredDistance: action.preferredDistance,
+    defenseZones,
+    attackPointsSpent: attack,
+    defensePointsSpent: defense,
+    movementType: normalizeMovementType(action),
   };
-}
-
-function stepDistanceToward(current: DistanceBand, target: DistanceBand): DistanceBand {
-  const order = [DistanceBand.Melee, DistanceBand.Near, DistanceBand.Far];
-  const currentIndex = order.indexOf(current);
-  const targetIndex = order.indexOf(target);
-
-  if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) {
-    return current;
-  }
-
-  return order[currentIndex + (targetIndex > currentIndex ? 1 : -1)] ?? current;
 }
 
 function classifyPreferredDistance(actor: ArenaCombatEntity): DistanceBand {
@@ -472,18 +567,6 @@ function classifyPreferredDistance(actor: ArenaCombatEntity): DistanceBand {
   }
 
   return DistanceBand.Melee;
-}
-
-function classifyCombatStyle(actor: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
-  if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
-    return 'MAGIC';
-  }
-
-  if (actor.dexterity > actor.strength) {
-    return 'RANGED';
-  }
-
-  return 'MELEE';
 }
 
 function getEntity(state: ArenaBattleState, id: string): ArenaCombatEntity {
@@ -514,6 +597,301 @@ function checkVictory(state: ArenaBattleState): void {
   }
 }
 
+function getGuardMode(defenseZones: TargetZone[]): GuardMode {
+  if (defenseZones.length === 0) {
+    return 'RECKLESS';
+  }
+
+  if (defenseZones.length === 1) {
+    return 'AGGRESSIVE';
+  }
+
+  return 'NORMAL';
+}
+
+function getOutgoingDamageMultiplier(mode: GuardMode): number {
+  if (mode === 'RECKLESS') {
+    return 1.2;
+  }
+
+  if (mode === 'AGGRESSIVE') {
+    return 1.1;
+  }
+
+  return 1;
+}
+
+function getIncomingDamageMultiplier(mode: GuardMode): number {
+  return mode === 'RECKLESS' ? 1.2 : 1;
+}
+
+function getHitChanceBonus(mode: GuardMode): number {
+  return mode === 'RECKLESS' ? 15 : 0;
+}
+
+function getCritChanceBonus(mode: GuardMode): number {
+  return mode === 'RECKLESS' ? 10 : 0;
+}
+
+function getEnemyCritBonusAgainst(mode: GuardMode): number {
+  return mode === 'RECKLESS' ? 10 : 0;
+}
+
+function getMovementDistanceAllowance(movementType?: MovementType): number {
+  if (!movementType) {
+    return 0;
+  }
+
+  if (movementType === MovementType.Step || movementType === MovementType.Disengage) {
+    return 1;
+  }
+
+  if (movementType === MovementType.Extra) {
+    return 2;
+  }
+
+  if (movementType === MovementType.Dash) {
+    return 3;
+  }
+
+  return 0;
+}
+
+function getMovementStaminaCost(movementType?: MovementType): number {
+  if (!movementType) {
+    return 0;
+  }
+
+  if (movementType === MovementType.Step) {
+    return ACTION_STAMINA_COSTS.move;
+  }
+
+  if (movementType === MovementType.Extra) {
+    return ACTION_STAMINA_COSTS.extraMove;
+  }
+
+  if (movementType === MovementType.Dash) {
+    return ACTION_STAMINA_COSTS.dash;
+  }
+
+  if (movementType === MovementType.Disengage) {
+    return ACTION_STAMINA_COSTS.disengage;
+  }
+
+  return 0;
+}
+
+function getActionStaminaCost(actionType: ActionType): number {
+  if (actionType === ActionType.Attack) {
+    return ACTION_STAMINA_COSTS.attack;
+  }
+
+  if (actionType === ActionType.Defend) {
+    return ACTION_STAMINA_COSTS.defend;
+  }
+
+  return 0;
+}
+
+function canAttackAtDistance(state: ArenaBattleState, actor: ArenaCombatEntity, target: ArenaCombatEntity): boolean {
+  const style = classifyCombatStyle(actor);
+  const distance = getBattlefieldDistance(actor, target);
+
+  if (style === 'MELEE') {
+    return distance <= 1;
+  }
+
+  if (style === 'RANGED') {
+    // Ranged attacks need distance >= 2
+    if (distance < 2) {
+      return false;
+    }
+    // Check line of sight for ranged attacks
+    const fromX = actor.battlefieldX ?? 0;
+    const fromY = actor.battlefieldY ?? 0;
+    const toX = target.battlefieldX ?? 0;
+    const toY = target.battlefieldY ?? 0;
+    return hasLineOfSight(state, fromX, fromY, toX, toY);
+  }
+
+  return true;
+}
+
+function spendStamina(actor: ArenaCombatEntity, amount: number): boolean {
+  if (amount <= 0) {
+    return true;
+  }
+
+  if (actor.currentStamina < amount) {
+    return false;
+  }
+
+  actor.currentStamina -= amount;
+  return true;
+}
+
+function resolveDestinationForAction(
+  state: ArenaBattleState,
+  actor: ArenaCombatEntity,
+  target: ArenaCombatEntity,
+  action: ArenaCombatAction,
+): { x: number; y: number } | null {
+  if (Number.isInteger(action.destinationX) && Number.isInteger(action.destinationY)) {
+    return { x: action.destinationX as number, y: action.destinationY as number };
+  }
+
+  if (!action.movementType) {
+    return null;
+  }
+
+  const candidates = getReachableBattlefieldTiles(state, actor.id, getMovementDistanceAllowance(action.movementType));
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const style = classifyCombatStyle(actor);
+  const preferRetreat = action.actionType === ActionType.Move
+    && (((style === 'RANGED' || style === 'MAGIC') && getBattlefieldDistance(actor, target) < 3) || action.movementType === MovementType.Disengage);
+
+  candidates.sort((left, right) => {
+    const leftDistance = Math.abs(left.x - (target.battlefieldX ?? 0)) + Math.abs(left.y - (target.battlefieldY ?? 0));
+    const rightDistance = Math.abs(right.x - (target.battlefieldX ?? 0)) + Math.abs(right.y - (target.battlefieldY ?? 0));
+
+    if (preferRetreat) {
+      if (leftDistance !== rightDistance) {
+        return rightDistance - leftDistance;
+      }
+    } else if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+
+    return left.distance - right.distance;
+  });
+
+  return { x: candidates[0]!.x, y: candidates[0]!.y };
+}
+
+function applyMovement(
+  state: ArenaBattleState,
+  actor: ArenaCombatEntity,
+  action: ArenaCombatAction,
+  target: ArenaCombatEntity,
+): { moved: boolean; cellsMoved: number; opportunityEnemies: ArenaCombatEntity[]; reason?: string } {
+  const movementType = action.movementType;
+  if (!movementType) {
+    return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'No movement selected.' };
+  }
+
+  const destination = resolveDestinationForAction(state, actor, target, action);
+  if (!destination) {
+    return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'No destination available.' };
+  }
+
+  if (!isWithinBattlefield(destination.x, destination.y)) {
+    return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'Destination is outside battlefield.' };
+  }
+
+  if (isTileWalkBlocked(state, destination.x, destination.y) || isTileOccupied(state, destination.x, destination.y, actor.id)) {
+    return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'Destination is blocked.' };
+  }
+
+  const maxDistance = getMovementDistanceAllowance(movementType);
+  const distances = buildDistanceMap(state, actor, maxDistance);
+  const key = `${destination.x}:${destination.y}`;
+  const cellsMoved = distances.get(key) ?? Number.POSITIVE_INFINITY;
+  if (!Number.isFinite(cellsMoved) || cellsMoved > maxDistance) {
+    return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'Destination is not reachable.' };
+  }
+
+  const adjacentMeleeEnemies = state.entities.filter((entity) =>
+    entity.isAlive && entity.team !== actor.team && classifyCombatStyle(entity) === 'MELEE' && getBattlefieldDistance(actor, entity) <= 1,
+  );
+
+  actor.battlefieldX = destination.x;
+  actor.battlefieldY = destination.y;
+  updateBattleDistance(state);
+
+  const opportunityEnemies = movementType === MovementType.Disengage
+    ? []
+    : adjacentMeleeEnemies.filter((enemy) => getBattlefieldDistance(actor, enemy) > 1);
+
+  return { moved: true, cellsMoved, opportunityEnemies };
+}
+
+function canAttackAfterMovement(action: ArenaCombatAction, cellsMoved: number): boolean {
+  if (action.actionType !== ActionType.Attack) {
+    return false;
+  }
+
+  if (!action.movementType) {
+    return true;
+  }
+
+  if (action.movementType === MovementType.Dash || action.movementType === MovementType.Disengage) {
+    return false;
+  }
+
+  return cellsMoved <= 1;
+}
+
+function resolveOpportunityAttacks(params: {
+  state: ArenaBattleState;
+  mover: ArenaCombatEntity;
+  moverAction: ArenaCombatAction;
+  enemies: ArenaCombatEntity[];
+  logs: CombatLogEntry[];
+  random: () => number;
+}): void {
+  const { state, mover, moverAction, enemies, logs, random } = params;
+  const guardMode = getGuardMode(moverAction.defenseZones);
+
+  for (const enemy of enemies) {
+    if (!enemy.isAlive || !spendStamina(enemy, ACTION_STAMINA_COSTS.opportunity)) {
+      continue;
+    }
+
+    const hitChance = clampHitChance(55 + enemy.perception * 2 - mover.dexterity);
+    const roll = Math.floor(random() * 100) + 1;
+    if (roll > hitChance) {
+      logs.push({
+        round: state.roundNumber,
+        actorId: enemy.id,
+        targetId: mover.id,
+        type: 'MISS',
+        text: `${enemy.name} misses a free strike on ${mover.name}`,
+      });
+      continue;
+    }
+
+    const damage = Math.max(
+      1,
+      Math.round((enemy.strength + Math.floor(enemy.perception * 0.4)) * 0.6 * getIncomingDamageMultiplier(guardMode) - Math.floor(mover.constitution * 0.35)),
+    );
+
+    mover.currentHp = Math.max(0, mover.currentHp - damage);
+    mover.isAlive = mover.currentHp > 0;
+
+    logs.push({
+      round: state.roundNumber,
+      actorId: enemy.id,
+      targetId: mover.id,
+      type: 'HIT',
+      amount: damage,
+      text: `${enemy.name} lands a free strike on ${mover.name} for ${damage}`,
+    });
+
+    if (!mover.isAlive) {
+      logs.push({
+        round: state.roundNumber,
+        actorId: mover.id,
+        type: 'DEATH',
+        text: `${mover.name} dies`,
+      });
+      break;
+    }
+  }
+}
+
 function resolveAttack(params: {
   state: ArenaBattleState;
   actor: ArenaCombatEntity;
@@ -524,40 +902,50 @@ function resolveAttack(params: {
   random: () => number;
 }): void {
   const { state, actor, target, actorAction, targetAction, logs, random } = params;
-
   const combatStyle = classifyCombatStyle(actor);
-  const actualDistance = classifyGapDistance(getHorizontalGap(actor, target));
-  const canAttackAtDistance =
-    combatStyle === 'MELEE'
-      ? actualDistance === DistanceBand.Melee
-      : combatStyle === 'RANGED'
-        ? actualDistance === DistanceBand.Near || actualDistance === DistanceBand.Far
-        : true;
+  const actualCells = getBattlefieldDistance(actor, target);
+  const actualBand = classifyGapDistance(actualCells);
 
-  if (!canAttackAtDistance) {
+  if (!canAttackAtDistance(state, actor, target)) {
+    let reason = 'target is out of effective range';
+    
+    if (combatStyle === 'RANGED' && actualCells >= 2) {
+      // Range is OK but line of sight is blocked
+      const fromX = actor.battlefieldX ?? 0;
+      const fromY = actor.battlefieldY ?? 0;
+      const toX = target.battlefieldX ?? 0;
+      const toY = target.battlefieldY ?? 0;
+      if (!hasLineOfSight(state, fromX, fromY, toX, toY)) {
+        reason = 'target is behind a wall (line of sight blocked)';
+      }
+    }
+    
     logs.push({
       round: state.roundNumber,
       actorId: actor.id,
       targetId: target.id,
       type: 'INFO',
-      text: `${actor.name} cannot hit ${target.name}: target is out of effective range`,
+      text: `${actor.name} cannot hit ${target.name}: ${reason}`,
     });
     return;
   }
 
+  const actorGuardMode = getGuardMode(actorAction.defenseZones);
+  const targetGuardMode = getGuardMode(targetAction.defenseZones);
   const distancePenalty =
     combatStyle === 'MELEE'
       ? 0
       : combatStyle === 'RANGED'
-        ? actualDistance === DistanceBand.Near
+        ? actualCells <= 6
           ? 0
           : 6
-        : actualDistance === DistanceBand.Melee
+        : actualBand === DistanceBand.Melee
           ? 4
-          : actualDistance === DistanceBand.Near
+          : actualBand === DistanceBand.Near
             ? 0
             : 2;
-  const hitChance = clampHitChance(58 + actor.perception * 3 + actor.luck - target.dexterity * 2 - distancePenalty);
+
+  const hitChance = clampHitChance(58 + actor.perception * 3 + actor.luck - target.dexterity * 2 - distancePenalty + getHitChanceBonus(actorGuardMode));
   const roll = Math.floor(random() * 100) + 1;
   if (roll > hitChance) {
     logs.push({
@@ -576,24 +964,29 @@ function resolveAttack(params: {
       : combatStyle === 'RANGED'
         ? actor.dexterity + Math.floor(actor.perception * 0.4) + actorAction.attackPointsSpent
         : actor.strength + actorAction.attackPointsSpent;
+
   const criticalChance = clampHitChance(
-    actor.luck + (combatStyle === 'MAGIC' ? actor.intelligence : actor.perception) + (actorAction.attackZone === TargetZone.Head ? 18 : 4),
+    actor.luck
+      + (combatStyle === 'MAGIC' ? actor.intelligence : actor.perception)
+      + (actorAction.attackZone === TargetZone.Head ? 18 : 4)
+      + getCritChanceBonus(actorGuardMode)
+      + getEnemyCritBonusAgainst(targetGuardMode),
   );
   const isCritical = Math.floor(random() * 100) + 1 <= criticalChance;
   const criticalMultiplier = isCritical ? 1.5 : 1;
-  let finalDamage = 0;
-  let blocked = 0;
+  const outgoingMultiplier = getOutgoingDamageMultiplier(actorGuardMode);
+  const incomingMultiplier = getIncomingDamageMultiplier(targetGuardMode);
   const matchedDefense = targetAction.defenseZones.includes(actorAction.attackZone);
 
+  let finalDamage = 0;
+  let blocked = 0;
   if (matchedDefense) {
-    const mitigation = Math.round(
-      (combatStyle === 'MAGIC' ? target.willpower : target.constitution) + targetAction.defensePointsSpent * 1.5,
-    );
-    finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier) - mitigation);
+    const mitigation = Math.round((combatStyle === 'MAGIC' ? target.willpower : target.constitution) + targetAction.defensePointsSpent * 1.5);
+    finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier * outgoingMultiplier * incomingMultiplier) - mitigation);
     blocked = Math.max(0, Math.round(baseDamage * criticalMultiplier) - finalDamage);
   } else {
     const mitigation = Math.floor((combatStyle === 'MAGIC' ? target.willpower : target.constitution) * 0.5);
-    finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier) - mitigation);
+    finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier * outgoingMultiplier * incomingMultiplier) - mitigation);
     blocked = Math.max(0, Math.round(baseDamage * criticalMultiplier) - finalDamage);
   }
 
@@ -661,7 +1054,7 @@ function defaultWaitAction(actor: ArenaCombatEntity, enemy: ArenaCombatEntity): 
     actorId: actor.id,
     targetId: enemy.id,
     attackZone: TargetZone.Chest,
-    defenseZones: DEFENSIVE_ZONES,
+    defenseZones: [...DEFENSIVE_ZONES],
     attackPointsSpent: 0,
     defensePointsSpent: 0,
     actionType: ActionType.Wait,
@@ -678,38 +1071,60 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
   const target = selectNearestEnemy(actor, enemies);
   const lowHpRatio = actor.currentHp / Math.max(1, actor.maxHp);
   const combatStyle = classifyCombatStyle(actor);
-  const attackBias = lowHpRatio < 0.4 ? 0.35 : 0.65;
-  const attackPoints = Math.max(0, Math.round(actor.maxStamina * attackBias));
-  const defensePoints = Math.max(0, actor.maxStamina - attackPoints);
   const preferredDefense = lowHpRatio < 0.5
-    ? [TargetZone.Head, TargetZone.Chest]
+    ? [TargetZone.Head]
     : [TargetZone.Chest, TargetZone.Abdomen];
-  const preferredDistance = classifyPreferredDistance(actor);
-  const currentBand = classifyGapDistance(getHorizontalGap(actor, target));
-  const canReposition = currentBand !== DistanceBand.Melee;
+  const currentDistance = getBattlefieldDistance(actor, target);
 
-  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentBand === DistanceBand.Melee) {
+  if (lowHpRatio < 0.25 && currentDistance <= 1) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
       attackZone: TargetZone.Chest,
       defenseZones: preferredDefense,
       attackPointsSpent: 0,
-      defensePointsSpent: actor.maxStamina,
-      actionType: ActionType.Defend,
+      defensePointsSpent: 0,
+      actionType: ActionType.Move,
+      movementType: MovementType.Disengage,
     });
   }
 
-  if (canReposition && currentBand !== preferredDistance) {
+  if (combatStyle === 'MELEE' && currentDistance > 1) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
       attackZone: TargetZone.Chest,
       defenseZones: preferredDefense,
       attackPointsSpent: 0,
-      defensePointsSpent: Math.max(0, Math.round(actor.maxStamina * 0.5)),
+      defensePointsSpent: 0,
       actionType: ActionType.Move,
-      preferredDistance,
+      movementType: MovementType.Step,
+    });
+  }
+
+  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance < 3) {
+    return ensureActionPoints(actor, {
+      actorId,
+      targetId: target.id,
+      attackZone: TargetZone.Chest,
+      defenseZones: preferredDefense,
+      attackPointsSpent: 0,
+      defensePointsSpent: 0,
+      actionType: ActionType.Move,
+      movementType: currentDistance <= 1 ? MovementType.Disengage : MovementType.Step,
+    });
+  }
+
+  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance > 6) {
+    return ensureActionPoints(actor, {
+      actorId,
+      targetId: target.id,
+      attackZone: TargetZone.Chest,
+      defenseZones: preferredDefense,
+      attackPointsSpent: 0,
+      defensePointsSpent: 0,
+      actionType: ActionType.Move,
+      movementType: MovementType.Step,
     });
   }
 
@@ -720,7 +1135,7 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
       attackZone: TargetZone.Chest,
       defenseZones: preferredDefense,
       attackPointsSpent: 0,
-      defensePointsSpent: actor.maxStamina,
+      defensePointsSpent: 0,
       actionType: ActionType.Defend,
     });
   }
@@ -728,10 +1143,10 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
   return ensureActionPoints(actor, {
     actorId,
     targetId: target.id,
-    attackZone: selectNpcAttackZone(actor, currentBand),
+    attackZone: selectNpcAttackZone(actor, getDistanceBandBetweenEntities(actor, target)),
     defenseZones: preferredDefense,
-    attackPointsSpent: attackPoints,
-    defensePointsSpent: defensePoints,
+    attackPointsSpent: Math.max(0, Math.round(actor.maxStamina * 0.35)),
+    defensePointsSpent: Math.max(0, Math.round(actor.maxStamina * 0.15)),
     actionType: ActionType.Attack,
   });
 }
@@ -748,6 +1163,9 @@ export function resolveRound(params: {
   }
 
   syncBattlefieldPositions(state.entities, state.distance);
+  if (!state.battlefieldTiles || state.battlefieldTiles.length === 0) {
+    state.battlefieldTiles = createDefaultBattlefieldTiles();
+  }
   updateBattleDistance(state);
 
   state.roundNumber += 1;
@@ -755,7 +1173,8 @@ export function resolveRound(params: {
     if (!entity.isAlive) {
       continue;
     }
-    entity.currentStamina = entity.maxStamina;
+    entity.currentStamina = Math.min(entity.maxStamina, entity.currentStamina + getStaminaRegen(entity));
+    entity.currentMp = Math.min(entity.maxMp, entity.currentMp + getManaRegen(entity));
     entity.initiative = calculateInitiative(entity);
   }
 
@@ -783,9 +1202,19 @@ export function resolveRound(params: {
       break;
     }
 
-    const fallback = defaultWaitAction(actor, enemies[0]);
+    if (actor.currentStamina <= 0) {
+      logs.push({
+        round: state.roundNumber,
+        actorId,
+        type: 'INFO',
+        text: `${actor.name} is exhausted and skips turn`,
+      });
+      continue;
+    }
+
+    const fallback = defaultWaitAction(actor, enemies[0]!);
     const actorAction = byActor.get(actorId) ?? fallback;
-    const target = enemies.find((item) => item.id === actorAction.targetId) ?? enemies[0];
+    const target = enemies.find((item) => item.id === actorAction.targetId) ?? enemies[0]!;
     const targetAction = byActor.get(target.id) ?? defaultWaitAction(target, actor);
 
     if (actorAction.actionType === ActionType.Wait) {
@@ -798,42 +1227,102 @@ export function resolveRound(params: {
       continue;
     }
 
-    if (actorAction.actionType === ActionType.Defend) {
-      logs.push({
-        round: state.roundNumber,
-        actorId,
-        type: 'INFO',
-        text: `${actor.name} guards ${actorAction.defenseZones.join(' & ')}`,
-      });
-      continue;
-    }
-
-    if (actorAction.actionType === ActionType.Move) {
-      const desiredDistance = actorAction.preferredDistance ?? classifyPreferredDistance(actor);
-      const moved = moveActorOnBattlefield(
-        state,
-        actor,
-        target,
-        desiredDistance,
-        actorAction.destinationX,
-        actorAction.destinationY,
-      );
-
-      if (!moved) {
+    let movedCells = 0;
+    if (actorAction.movementType) {
+      if (!spendStamina(actor, getMovementStaminaCost(actorAction.movementType))) {
         logs.push({
           round: state.roundNumber,
           actorId,
           type: 'INFO',
-          text: `${actor.name} holds position at ${state.distance}`,
+          text: `${actor.name} lacks stamina to move`,
         });
+        continue;
+      }
+
+      const movement = applyMovement(state, actor, actorAction, target);
+      movedCells = movement.cellsMoved;
+
+      if (!movement.moved) {
+        logs.push({
+          round: state.roundNumber,
+          actorId,
+          type: 'INFO',
+          text: `${actor.name} cannot move: ${movement.reason ?? 'movement failed'}`,
+        });
+        if (actorAction.actionType === ActionType.Move) {
+          continue;
+        }
       } else {
         logs.push({
           round: state.roundNumber,
           actorId,
           type: 'INFO',
-          text: `${actor.name} moves to (${(actor.battlefieldX ?? 0) + 1}, ${(actor.battlefieldY ?? 0) + 1}) and shifts the battle to ${state.distance}`,
+          text: `${actor.name} moves to (${(actor.battlefieldX ?? 0) + 1}, ${(actor.battlefieldY ?? 0) + 1})`,
         });
+        if (movement.opportunityEnemies.length > 0) {
+          resolveOpportunityAttacks({
+            state,
+            mover: actor,
+            moverAction: actorAction,
+            enemies: movement.opportunityEnemies,
+            logs,
+            random,
+          });
+          checkVictory(state);
+          if (!actor.isAlive || state.isFinished) {
+            if (state.isFinished) {
+              break;
+            }
+            continue;
+          }
+        }
       }
+    }
+
+    if (actorAction.actionType === ActionType.Move) {
+      continue;
+    }
+
+    if (actorAction.actionType === ActionType.Defend) {
+      if (!spendStamina(actor, getActionStaminaCost(ActionType.Defend))) {
+        logs.push({
+          round: state.roundNumber,
+          actorId,
+          type: 'INFO',
+          text: `${actor.name} lacks stamina to defend`,
+        });
+        continue;
+      }
+
+      const guardMode = getGuardMode(actorAction.defenseZones);
+      logs.push({
+        round: state.roundNumber,
+        actorId,
+        type: 'INFO',
+        text: guardMode === 'RECKLESS'
+          ? `${actor.name} drops all defense and fights recklessly`
+          : `${actor.name} guards ${actorAction.defenseZones.join(' & ')}`,
+      });
+      continue;
+    }
+
+    if (!canAttackAfterMovement(actorAction, movedCells)) {
+      logs.push({
+        round: state.roundNumber,
+        actorId,
+        type: 'INFO',
+        text: `${actor.name} cannot attack after that movement`,
+      });
+      continue;
+    }
+
+    if (!spendStamina(actor, getActionStaminaCost(ActionType.Attack))) {
+      logs.push({
+        round: state.roundNumber,
+        actorId,
+        type: 'INFO',
+        text: `${actor.name} lacks stamina to attack`,
+      });
       continue;
     }
 
@@ -862,6 +1351,7 @@ export function resolveRound(params: {
 
   state.lastRound = round;
   state.logs = [...state.logs, ...logs];
+  updateBattleDistance(state);
   checkVictory(state);
   return state;
 }

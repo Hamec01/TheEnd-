@@ -12,8 +12,22 @@ export class ContentController {
   }
 
   @Post('import-local')
-  importLocal(@Body() payload: Partial<ContentDatabase>): ContentDatabase {
+  importLocal(@Body() payload?: Partial<ContentDatabase>): ContentDatabase {
+    if (!payload || Object.keys(payload).length === 0) {
+      return this.contentService.reloadFromDisk();
+    }
+
     return this.contentService.importLegacy(payload);
+  }
+
+  @Post('reload-local')
+  reloadLocal(): ContentDatabase {
+    return this.contentService.reloadFromDisk();
+  }
+
+  @Get('validate')
+  validateContent() {
+    return this.contentService.validateIntegrity();
   }
 
   @Post('seed-defaults')

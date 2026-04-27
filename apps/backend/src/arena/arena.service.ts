@@ -61,11 +61,41 @@ export class ArenaService implements OnModuleInit {
 
     const nextEquipment: Equipment = { ...params.equipment };
     let equipmentChanged = false;
+
+    const isItemAllowedInSlot = (slot: keyof Equipment, itemId: string): boolean => {
+      try {
+        const item = this.contentService.resolveItemById(itemId);
+        if (slot === 'weapon') {
+          return item.itemType === 'weapon';
+        }
+
+        if (slot === 'shield') {
+          return item.itemType === 'shield' || (item.itemType === 'weapon' && (item.handsRequired ?? 1) === 1);
+        }
+
+        return item.itemType === slot;
+      } catch {
+        return false;
+      }
+    };
+
     for (const slot of Object.keys(nextEquipment) as Array<keyof Equipment>) {
       const itemId = nextEquipment[slot];
-      if (itemId && !canonicalItemIds.has(itemId)) {
+      if (itemId && (!canonicalItemIds.has(itemId) || !isItemAllowedInSlot(slot, itemId))) {
         nextEquipment[slot] = null;
         equipmentChanged = true;
+      }
+    }
+
+    if (nextEquipment.weapon) {
+      try {
+        const weapon = this.contentService.resolveItemById(nextEquipment.weapon);
+        if (weapon.itemType === 'weapon' && (weapon.handsRequired ?? 1) === 2 && nextEquipment.shield) {
+          nextEquipment.shield = null;
+          equipmentChanged = true;
+        }
+      } catch {
+        // Ignore stale records here; previous checks already cleaned invalid ids.
       }
     }
 
@@ -280,19 +310,19 @@ export class ArenaService implements OnModuleInit {
     return this.getCharacterArenaState(characterId);
   }
 
-  async equipItem(characterId: string, itemId: string) {
+  async equipItem(characterId: string, itemId: string, preferredHand?: 'weapon' | 'shield') {
     const state = await this.getCharacterArenaState(characterId);
     const hasItem = state.inventory.items.find((entry) => entry.itemId === itemId && entry.quantity > 0);
     if (!hasItem) {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment);
+    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment, preferredHand);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }
 
-    const nextEquipment = this.contentService.equipItem(state.equipment, itemId);
+    const nextEquipment = this.contentService.equipItem(state.equipment, itemId, preferredHand);
 
     await this.prisma.characterEquipment.upsert({
       where: { characterId },

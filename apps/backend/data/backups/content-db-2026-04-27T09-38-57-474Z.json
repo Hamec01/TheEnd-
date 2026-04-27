@@ -276,28 +276,6 @@
       "createdAt": "2026-04-27T09:37:13.739Z",
       "updatedAt": "2026-04-27T09:37:13.739Z",
       "armorValue": 2
-    },
-    {
-      "id": "wpn_spear_iron_01",
-      "name": "Копьё крестьянина",
-      "type": "weapon",
-      "subtype": "Копьё",
-      "slot": "rightHand",
-      "handsRequired": 1,
-      "rarity": "common",
-      "price": 10,
-      "stackable": false,
-      "maxStack": 1,
-      "requiredStats": {},
-      "bonuses": {},
-      "gameplayDescription": "Длинное копьё с простым наконечником.",
-      "loreDescription": "Используется крестьянами для защиты и охоты, позволяя держать врага на расстоянии.",
-      "imagePath": "img_1777282710271_arqsam74",
-      "isEnabled": true,
-      "createdAt": "2026-04-27T09:38:57.468Z",
-      "updatedAt": "2026-04-27T09:38:57.468Z",
-      "damageMin": 6,
-      "damageMax": 10
     }
   ],
   "merchants": [

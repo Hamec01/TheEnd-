@@ -22,11 +22,13 @@ interface InventoryPanelProps {
   focusSection: CharacterPageFocus;
   onClose: () => void;
   onStatus: (text: string) => void;
-  onEquipItem: (itemId: string) => Promise<void>;
+  onEquipItem: (itemId: string, slot?: 'weapon' | 'shield') => Promise<void>;
   onUnequipSlot: (slot: keyof Equipment) => Promise<void>;
   onAdjustStat: (stat: PrimaryStat, delta: number) => void;
   onApplyStatAllocation: () => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
+  playerAvatarUrl?: string;
+  onPlayerAvatarUrlChange?: (url: string) => void;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
 }
@@ -118,7 +120,7 @@ export function canEquipItemInSlot(item: ItemDefinition, slotId: EquipmentSlotId
     case 'rightHand':
       return item.itemType === 'weapon';
     case 'leftHand':
-      return item.itemType === 'shield';
+      return item.itemType === 'shield' || (item.itemType === 'weapon' && getItemHandsRequired(item) === 1);
     case 'helmet':
       return item.itemType === 'helmet';
     case 'armor':
@@ -152,6 +154,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onAdjustStat,
   onApplyStatAllocation,
   onUseItem,
+  playerAvatarUrl,
+  onPlayerAvatarUrlChange,
   resolveItemById,
   resolveItemImage,
 }) => {
@@ -286,7 +290,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
 
     try {
-      await onEquipItem(item.id);
+      const preferredHand = coreSlot === 'weapon' || coreSlot === 'shield' ? coreSlot : undefined;
+      await onEquipItem(item.id, preferredHand);
     } catch {
       // parent already reports error status
     }
@@ -340,7 +345,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
           <section ref={leftColumnRef} className={`character-column character-left ${focusedColumnClass === 'left' ? 'is-focused' : ''}`}>
             <section className="character-status-card">
               <div className="character-status-head">
-                <div className="character-avatar-circle">{character.name.charAt(0).toUpperCase()}</div>
+                {playerAvatarUrl ? (
+                  <img src={playerAvatarUrl} alt={character.name} className="character-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <div className="character-avatar-circle">{character.name.charAt(0).toUpperCase()}</div>
+                )}
                 <div>
                   <strong>{character.name}</strong>
                   <p className="muted">Race: {character.race}</p>
@@ -351,6 +360,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <p>Mana {character.activeStats.mp}</p>
                 <p>Stamina {character.activeStats.stamina}</p>
                 <p>Gold {inventory.gold}</p>
+              </div>
+              <div className="character-avatar-url-row">
+                <label>Avatar URL</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={playerAvatarUrl ?? ''}
+                  onChange={(event) => onPlayerAvatarUrlChange?.(event.target.value)}
+                />
               </div>
             </section>
 

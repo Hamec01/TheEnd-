@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { getItemById, getMerchantItems, type InventoryState, type Merchant } from '@theend/rpg-domain';
+import { getItemById, getMerchantItems, type Equipment, type InventoryState, type Merchant } from '@theend/rpg-domain';
 import type { ItemDefinition } from '@theend/rpg-domain';
+import type { AdminItem } from '../services/content/models';
 import { InventoryGrid } from './InventoryGrid';
 import { TradeModal } from './TradeModal';
 
 interface MerchantPanelProps {
   merchant: Merchant;
   inventory: InventoryState;
+  equipment: Equipment;
   merchantItems?: ItemDefinition[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
+  resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
   merchantDescription?: string;
   merchantLocation?: string;
@@ -21,8 +24,10 @@ interface MerchantPanelProps {
 export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   merchant,
   inventory,
+  equipment,
   merchantItems: merchantItemsOverride,
   resolveItemById,
+  resolveAdminItemById,
   resolveItemImage,
   merchantDescription,
   merchantLocation,
@@ -45,6 +50,51 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
       .map((entry) => (resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId)))
       .filter(Boolean) as ItemDefinition[],
     [inventory.items, resolveItemById],
+  );
+  const selectedAdminItem = useMemo(
+    () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
+    [resolveAdminItemById, selectedItem],
+  );
+  const equippedItemIdForSelected = useMemo(() => {
+    if (!selectedItem) {
+      return null;
+    }
+
+    switch (selectedItem.itemType) {
+      case 'weapon':
+        return equipment.weapon;
+      case 'helmet':
+        return equipment.helmet;
+      case 'armor':
+        return equipment.armor;
+      case 'boots':
+        return equipment.boots;
+      case 'gloves':
+        return equipment.gloves;
+      case 'shield':
+        return equipment.shield;
+      default:
+        return null;
+    }
+  }, [equipment.armor, equipment.boots, equipment.gloves, equipment.helmet, equipment.shield, equipment.weapon, selectedItem]);
+  const equippedItemForSelected = useMemo(() => {
+    if (!equippedItemIdForSelected) {
+      return null;
+    }
+
+    if (resolveItemById) {
+      return resolveItemById(equippedItemIdForSelected);
+    }
+
+    try {
+      return getItemById(equippedItemIdForSelected);
+    } catch {
+      return null;
+    }
+  }, [equippedItemIdForSelected, resolveItemById]);
+  const equippedAdminItemForSelected = useMemo(
+    () => (equippedItemIdForSelected && resolveAdminItemById ? resolveAdminItemById(equippedItemIdForSelected) : null),
+    [equippedItemIdForSelected, resolveAdminItemById],
   );
 
   const handleBuy = async () => {
@@ -160,6 +210,11 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           isOpen={tradeModalOpen}
           action={mode}
           item={selectedItem}
+          adminItem={selectedAdminItem}
+          itemImage={selectedItem && resolveItemImage ? resolveItemImage(selectedItem) : undefined}
+          equippedItem={equippedItemForSelected}
+          equippedAdminItem={equippedAdminItemForSelected}
+          equippedItemImage={equippedItemForSelected && resolveItemImage ? resolveItemImage(equippedItemForSelected) : undefined}
           playerGold={inventory.gold}
           price={mode === 'buy' ? selectedItem?.price : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : undefined}
           onConfirm={mode === 'buy' ? handleBuy : handleSell}

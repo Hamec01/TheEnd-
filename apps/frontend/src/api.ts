@@ -5,6 +5,7 @@ import type {
   CombatSkillType,
   Equipment,
   InventoryState,
+  MovementType,
   PrimaryStat,
   Race,
   StatBlock,
@@ -63,6 +64,12 @@ export interface CustomArenaNpcPayload {
   race: Race;
   stats: StatBlock;
   equipment?: Partial<Equipment>;
+  avatarUrl?: string;
+}
+
+export interface ArenaBlockedTilePayload {
+  x: number;
+  y: number;
 }
 
 export async function registerAccount(payload: RegisterRequest): Promise<RegisterResponse> {
@@ -171,11 +178,15 @@ export async function sellArenaItem(characterId: string, itemId: string, quantit
   return res.json();
 }
 
-export async function equipArenaItem(characterId: string, itemId: string): Promise<ArenaHubState> {
+export async function equipArenaItem(
+  characterId: string,
+  itemId: string,
+  slot?: 'weapon' | 'shield',
+): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/equip`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, itemId }),
+    body: JSON.stringify({ characterId, itemId, slot }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -198,7 +209,11 @@ export async function unequipArenaItem(
   return res.json();
 }
 
-export async function startCombat(characterId: string, enemyCount = 1): Promise<{
+export async function startCombat(
+  characterId: string,
+  enemyCount = 1,
+  blockedTiles: ArenaBlockedTilePayload[] = [],
+): Promise<{
   combatId: string;
   playerId: string;
   state: ArenaBattleState;
@@ -206,7 +221,7 @@ export async function startCombat(characterId: string, enemyCount = 1): Promise<
   const res = await fetch(`${API_BASE}/combat/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, enemyCount }),
+    body: JSON.stringify({ characterId, enemyCount, blockedTiles }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -217,6 +232,7 @@ export async function startCombat(characterId: string, enemyCount = 1): Promise<
 export async function startCustomCombat(
   characterId: string,
   customEnemies: CustomArenaNpcPayload[],
+  blockedTiles: ArenaBlockedTilePayload[] = [],
 ): Promise<{
   combatId: string;
   playerId: string;
@@ -229,6 +245,7 @@ export async function startCustomCombat(
       characterId,
       enemyCount: Math.max(1, customEnemies.length),
       customEnemies,
+      blockedTiles,
     }),
   });
   if (!res.ok) {
@@ -246,6 +263,7 @@ export async function sendCombatAction(payload: {
   attackPointsSpent: number;
   defensePointsSpent: number;
   actionType: ActionType;
+  movementType?: MovementType;
   preferredDistance?: DistanceBand;
   destinationX?: number;
   destinationY?: number;

@@ -80,6 +80,18 @@ class CombatStatBlockDto {
   willpower!: number;
 }
 
+class BlockedTileDto {
+  @IsInt()
+  @Min(0)
+  @Max(11)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(11)
+  y!: number;
+}
+
 export class CustomCombatNpcDto {
   @IsString()
   @Length(1, 60)
@@ -96,6 +108,11 @@ export class CustomCombatNpcDto {
   @ValidateNested()
   @Type(() => EquipmentPayloadDto)
   equipment?: EquipmentPayloadDto;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  avatarUrl?: string;
 }
 
 export class StartCombatDto {
@@ -114,4 +131,10 @@ export class StartCombatDto {
   @ValidateNested({ each: true })
   @Type(() => CustomCombatNpcDto)
   customEnemies?: CustomCombatNpcDto[];
+
+  @IsOptional()
+  @ArrayMaxSize(144)
+  @ValidateNested({ each: true })
+  @Type(() => BlockedTileDto)
+  blockedTiles?: BlockedTileDto[];
 }

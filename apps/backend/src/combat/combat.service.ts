@@ -1,8 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   ActionType,
+  BATTLEFIELD_GRID_SIZE,
+  BattlefieldTileType,
   CombatSkillType,
   DistanceBand,
+  MovementType,
   TargetZone,
   TeamSide,
   createArenaCombatEntity,
@@ -11,6 +14,7 @@ import {
   resolveRound,
   type ArenaBattleState,
   type ArenaCombatAction,
+  type BattlefieldTile,
   type Equipment,
   type Race,
   type StatBlock,
@@ -283,6 +287,7 @@ export class CombatService {
     team: TeamSide;
     position: number;
     stats: StatBlock;
+    avatarUrl?: string;
   }) {
     return createArenaCombatEntity({
       id: params.id,
@@ -303,6 +308,7 @@ export class CombatService {
       perception: params.stats.perception,
       willpower: params.stats.willpower,
       position: params.position,
+      avatarUrl: params.avatarUrl,
     });
   }
 
@@ -339,10 +345,35 @@ export class CombatService {
       team: TeamSide.Right,
       position,
       stats: activeStats,
+      avatarUrl: template.avatarUrl,
     });
   }
 
-  async startCombat(characterId: string, enemyCount = 1, customEnemies: CustomCombatNpcDto[] = []) {
+  private buildBattlefieldTiles(blockedTiles: Array<{ x: number; y: number }>): BattlefieldTile[] {
+    const blockedSet = new Set(
+      blockedTiles
+        .filter((tile) => Number.isInteger(tile.x) && Number.isInteger(tile.y))
+        .filter((tile) => tile.x >= 0 && tile.x < BATTLEFIELD_GRID_SIZE && tile.y >= 0 && tile.y < BATTLEFIELD_GRID_SIZE)
+        .map((tile) => `${tile.x}:${tile.y}`),
+    );
+
+    return Array.from({ length: BATTLEFIELD_GRID_SIZE * BATTLEFIELD_GRID_SIZE }, (_, index) => {
+      const x = index % BATTLEFIELD_GRID_SIZE;
+      const y = Math.floor(index / BATTLEFIELD_GRID_SIZE);
+      return {
+        x,
+        y,
+        type: blockedSet.has(`${x}:${y}`) ? BattlefieldTileType.Blocked : BattlefieldTileType.Empty,
+      };
+    });
+  }
+
+  async startCombat(
+    characterId: string,
+    enemyCount = 1,
+    customEnemies: CustomCombatNpcDto[] = [],
+    blockedTiles: Array<{ x: number; y: number }> = [],
+  ) {
     const character = await this.prisma.character.findUnique({
       where: { id: characterId },
       include: { equipment: true },
@@ -380,6 +411,7 @@ export class CombatService {
       combatId,
       distance: DistanceBand.Melee,
       entities: [player, ...enemies],
+      battlefieldTiles: this.buildBattlefieldTiles(blockedTiles),
     });
 
     this.sessions.set(combatId, {
@@ -488,6 +520,7 @@ export class CombatService {
       attackPointsSpent: number;
       defensePointsSpent: number;
       actionType: ActionType;
+      movementType?: MovementType;
       preferredDistance?: DistanceBand;
       destinationX?: number;
       destinationY?: number;
@@ -607,6 +640,7 @@ export class CombatService {
         ? Math.max(0, Math.ceil(normalizedPoints.defensePointsSpent * 1.4))
         : normalizedPoints.defensePointsSpent,
       actionType: playerAction.actionType,
+      movementType: playerAction.movementType,
       preferredDistance: playerAction.preferredDistance,
       destinationX: playerAction.destinationX,
       destinationY: playerAction.destinationY,

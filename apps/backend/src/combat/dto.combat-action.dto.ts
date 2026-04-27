@@ -1,4 +1,4 @@
-import { ActionType, CombatSkillType, DistanceBand, TargetZone } from '@theend/rpg-domain';
+import { ActionType, CombatSkillType, DistanceBand, MovementType, TargetZone } from '@theend/rpg-domain';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export class CombatActionDto {
@@ -31,6 +31,10 @@ export class CombatActionDto {
 
   @IsEnum(ActionType)
   actionType!: ActionType;
+
+  @IsOptional()
+  @IsEnum(MovementType)
+  movementType?: MovementType;
 
   @IsOptional()
   @IsEnum(DistanceBand)

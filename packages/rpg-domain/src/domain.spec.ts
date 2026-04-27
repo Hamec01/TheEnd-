@@ -11,13 +11,18 @@ import {
 import {
   ActionType,
   BATTLEFIELD_GRID_SIZE,
+  BattlefieldTileType,
   DistanceBand,
+  MovementType,
   TargetZone,
   TeamSide,
   createNpcAction,
   createArenaCombatEntity,
   createInitialBattleState,
+  getBattlefieldDistance,
   getBattlefieldTilePlacements,
+  getManaRegen,
+  getStaminaRegen,
   resolveRound,
 } from './arena-battle';
 import { RACE_DEFINITIONS, Race, ensureRaceBaseStatsAreValid } from './races';
@@ -166,6 +171,54 @@ describe('equipment', () => {
     expect(check.ok).toBe(false);
     expect(check.reason).toBeDefined();
   });
+
+  it('allows equipping a one-handed weapon into offhand for dual-wield', () => {
+    const equipment = equipItem(
+      {
+        weapon: 'iron_sword',
+        helmet: null,
+        armor: null,
+        boots: null,
+        gloves: null,
+        shield: null,
+      },
+      'raider_axe',
+      'shield',
+    );
+
+    expect(equipment.weapon).toBe('iron_sword');
+    expect(equipment.shield).toBe('raider_axe');
+  });
+
+  it('blocks offhand one-handed weapon when a two-handed weapon is equipped', () => {
+    const check = canEquipItem(
+      {
+        hp: 50,
+        mp: 60,
+        stamina: 60,
+        strength: 9,
+        constitution: 6,
+        dexterity: 8,
+        intelligence: 5,
+        luck: 5,
+        perception: 6,
+        willpower: 5,
+      },
+      'iron_sword',
+      {
+        weapon: 'hunter_bow',
+        helmet: null,
+        armor: null,
+        boots: null,
+        gloves: null,
+        shield: null,
+      },
+      'shield',
+    );
+
+    expect(check.ok).toBe(false);
+    expect(check.reason).toBeDefined();
+  });
 });
 
 describe('combat core', () => {
@@ -237,8 +290,8 @@ describe('arena battle round resolver', () => {
       maxHp: 50,
       currentMp: 10,
       maxMp: 10,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 8,
       constitution: 5,
       dexterity: 6,
@@ -258,8 +311,8 @@ describe('arena battle round resolver', () => {
       maxHp: 42,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 7,
       constitution: 4,
       dexterity: 5,
@@ -315,8 +368,8 @@ describe('arena battle round resolver', () => {
       maxHp: 50,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 8,
-      maxStamina: 8,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 6,
       constitution: 7,
       dexterity: 4,
@@ -336,8 +389,8 @@ describe('arena battle round resolver', () => {
       maxHp: 40,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 8,
-      maxStamina: 8,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 5,
       constitution: 4,
       dexterity: 4,
@@ -373,7 +426,7 @@ describe('arena battle round resolver', () => {
     expect(next.logs.some((entry) => entry.text.includes('guards'))).toBe(true);
   });
 
-  it('moves battle one distance band toward preferred distance', () => {
+  it('moves one cell on the tactical grid', () => {
     const player = createArenaCombatEntity({
       id: 'p1',
       name: 'Scout',
@@ -383,8 +436,8 @@ describe('arena battle round resolver', () => {
       maxHp: 45,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 8,
-      maxStamina: 8,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 4,
       constitution: 4,
       dexterity: 7,
@@ -404,8 +457,8 @@ describe('arena battle round resolver', () => {
       maxHp: 42,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 7,
       constitution: 4,
       dexterity: 5,
@@ -433,7 +486,9 @@ describe('arena battle round resolver', () => {
           attackPointsSpent: 0,
           defensePointsSpent: 2,
           actionType: ActionType.Move,
-          preferredDistance: DistanceBand.Far,
+          movementType: MovementType.Step,
+          destinationX: 4,
+          destinationY: 6,
         },
       ],
       random: () => 0.1,
@@ -443,9 +498,10 @@ describe('arena battle round resolver', () => {
 
     expect(next.distance).toBe(DistanceBand.Near);
     expect(placement?.x).toBe(4);
+    expect(placement?.y).toBe(6);
   });
 
-  it('keeps melee fighters engaged unless someone explicitly moves', () => {
+  it('lets ranged fighters disengage when trapped in melee', () => {
     const player = createArenaCombatEntity({
       id: 'p1',
       name: 'Warrior',
@@ -455,8 +511,8 @@ describe('arena battle round resolver', () => {
       maxHp: 55,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 8,
       constitution: 5,
       dexterity: 5,
@@ -469,15 +525,15 @@ describe('arena battle round resolver', () => {
 
     const evasiveBandit = createArenaCombatEntity({
       id: 'e1',
-      name: 'Bandit',
+      name: 'Bandit Archer',
       team: TeamSide.Right,
       race: Race.Dwarf,
       currentHp: 45,
       maxHp: 45,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 4,
       constitution: 4,
       dexterity: 7,
@@ -495,7 +551,8 @@ describe('arena battle round resolver', () => {
     });
 
     const npcAction = createNpcAction(state, 'e1');
-    expect(npcAction.actionType).not.toBe(ActionType.Move);
+    expect(npcAction.actionType).toBe(ActionType.Move);
+    expect(npcAction.movementType).toBe(MovementType.Disengage);
 
     const next = resolveRound({
       state,
@@ -514,8 +571,8 @@ describe('arena battle round resolver', () => {
       random: () => 0.1,
     });
 
-    expect(next.distance).toBe(DistanceBand.Melee);
-    expect(next.logs.some((entry) => entry.text.includes('repositions the battle'))).toBe(false);
+    expect(next.distance).not.toBe(DistanceBand.Melee);
+    expect(next.logs.some((entry) => entry.text.includes('moves to'))).toBe(true);
   });
 
   it('lets ranged fighters attack from far distance', () => {
@@ -528,8 +585,8 @@ describe('arena battle round resolver', () => {
       maxHp: 45,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 8,
-      maxStamina: 8,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 3,
       constitution: 4,
       dexterity: 8,
@@ -549,8 +606,8 @@ describe('arena battle round resolver', () => {
       maxHp: 42,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 7,
       constitution: 4,
       dexterity: 4,
@@ -596,8 +653,8 @@ describe('arena battle round resolver', () => {
       maxHp: 50,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 8,
-      maxStamina: 8,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 8,
       constitution: 5,
       dexterity: 4,
@@ -617,8 +674,8 @@ describe('arena battle round resolver', () => {
       maxHp: 40,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 6,
-      maxStamina: 6,
+      currentStamina: 20,
+      maxStamina: 20,
       strength: 3,
       constitution: 4,
       dexterity: 4,
@@ -653,6 +710,465 @@ describe('arena battle round resolver', () => {
 
     expect(next.entities.find((x) => x.id === 'e1')!.currentHp).toBe(40);
     expect(next.logs.some((entry) => entry.text.includes('out of effective range'))).toBe(true);
+  });
+
+  it('derives grid distance from battlefield coordinates', () => {
+    const left = createArenaCombatEntity({
+      id: 'left',
+      name: 'Left',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 10,
+      maxHp: 10,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 10,
+      maxStamina: 10,
+      strength: 4,
+      constitution: 4,
+      dexterity: 4,
+      intelligence: 4,
+      luck: 1,
+      perception: 4,
+      willpower: 4,
+      position: 1,
+      battlefieldX: 1,
+      battlefieldY: 1,
+    });
+
+    const right = createArenaCombatEntity({
+      id: 'right',
+      name: 'Right',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 10,
+      maxHp: 10,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 10,
+      maxStamina: 10,
+      strength: 4,
+      constitution: 4,
+      dexterity: 4,
+      intelligence: 4,
+      luck: 1,
+      perception: 4,
+      willpower: 4,
+      position: 2,
+      battlefieldX: 4,
+      battlefieldY: 3,
+    });
+
+    expect(getBattlefieldDistance(left, right)).toBe(5);
+  });
+
+  it('regenerates stamina and mana at round start instead of full refill', () => {
+    expect(getStaminaRegen({ constitution: 9 })).toBe(12);
+    expect(getManaRegen({ willpower: 11 })).toBe(8);
+
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 40,
+      maxHp: 40,
+      currentMp: 3,
+      maxMp: 20,
+      currentStamina: 2,
+      maxStamina: 30,
+      strength: 6,
+      constitution: 9,
+      dexterity: 5,
+      intelligence: 5,
+      luck: 2,
+      perception: 5,
+      willpower: 11,
+      position: 1,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 30,
+      maxHp: 30,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 10,
+      maxStamina: 20,
+      strength: 4,
+      constitution: 6,
+      dexterity: 4,
+      intelligence: 2,
+      luck: 1,
+      perception: 3,
+      willpower: 3,
+      position: 2,
+    });
+
+    const next = resolveRound({
+      state: createInitialBattleState({ combatId: 'regen', entities: [player, enemy] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest, TargetZone.Abdomen],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Wait,
+        },
+      ],
+      random: () => 0.5,
+    });
+
+    expect(next.entities.find((x) => x.id === 'p1')!.currentStamina).toBe(14);
+    expect(next.entities.find((x) => x.id === 'p1')!.currentMp).toBe(11);
+  });
+
+  it('allows attack after one-cell movement', () => {
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 40,
+      maxHp: 40,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 25,
+      maxStamina: 25,
+      strength: 8,
+      constitution: 6,
+      dexterity: 5,
+      intelligence: 2,
+      luck: 2,
+      perception: 6,
+      willpower: 4,
+      position: 1,
+      battlefieldX: 4,
+      battlefieldY: 5,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 40,
+      maxHp: 40,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 20,
+      maxStamina: 20,
+      strength: 5,
+      constitution: 5,
+      dexterity: 4,
+      intelligence: 2,
+      luck: 1,
+      perception: 4,
+      willpower: 3,
+      position: 2,
+      battlefieldX: 6,
+      battlefieldY: 5,
+    });
+
+    const next = resolveRound({
+      state: createInitialBattleState({ combatId: 'move-attack', entities: [player, enemy] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Attack,
+          movementType: MovementType.Step,
+          destinationX: 5,
+          destinationY: 5,
+        },
+      ],
+      random: () => 0.1,
+    });
+
+    expect(next.entities.find((x) => x.id === 'e1')!.currentHp).toBeLessThan(40);
+  });
+
+  it('prevents attack after dash', () => {
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 40,
+      maxHp: 40,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 30,
+      maxStamina: 30,
+      strength: 8,
+      constitution: 6,
+      dexterity: 5,
+      intelligence: 2,
+      luck: 2,
+      perception: 6,
+      willpower: 4,
+      position: 1,
+      battlefieldX: 2,
+      battlefieldY: 5,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 40,
+      maxHp: 40,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 20,
+      maxStamina: 20,
+      strength: 5,
+      constitution: 5,
+      dexterity: 4,
+      intelligence: 2,
+      luck: 1,
+      perception: 4,
+      willpower: 3,
+      position: 2,
+      battlefieldX: 6,
+      battlefieldY: 5,
+    });
+
+    const next = resolveRound({
+      state: createInitialBattleState({ combatId: 'dash-no-attack', entities: [player, enemy] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Attack,
+          movementType: MovementType.Dash,
+          destinationX: 5,
+          destinationY: 5,
+        },
+      ],
+      random: () => 0.1,
+    });
+
+    expect(next.entities.find((x) => x.id === 'e1')!.currentHp).toBe(40);
+    expect(next.logs.some((entry) => entry.text.includes('cannot attack after that movement'))).toBe(true);
+  });
+
+  it('applies reckless attack modifiers when no defense zones are selected', () => {
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 50,
+      maxHp: 50,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 25,
+      maxStamina: 25,
+      strength: 8,
+      constitution: 6,
+      dexterity: 6,
+      intelligence: 2,
+      luck: 3,
+      perception: 8,
+      willpower: 4,
+      position: 1,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 50,
+      maxHp: 50,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 25,
+      maxStamina: 25,
+      strength: 8,
+      constitution: 6,
+      dexterity: 5,
+      intelligence: 2,
+      luck: 3,
+      perception: 7,
+      willpower: 4,
+      position: 2,
+    });
+
+    const safeResult = resolveRound({
+      state: createInitialBattleState({ combatId: 'safe-hit', entities: [{ ...player }, { ...enemy }] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest, TargetZone.Abdomen],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Attack,
+        },
+      ],
+      random: () => 0.1,
+    });
+
+    const recklessResult = resolveRound({
+      state: createInitialBattleState({ combatId: 'reckless-hit', entities: [{ ...player }, { ...enemy }] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Attack,
+        },
+      ],
+      random: () => 0.1,
+    });
+
+    expect(recklessResult.entities.find((x) => x.id === 'e1')!.currentHp).toBeLessThan(safeResult.entities.find((x) => x.id === 'e1')!.currentHp);
+  });
+
+  it('triggers opportunity attack when leaving melee without disengage', () => {
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 50,
+      maxHp: 50,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 25,
+      maxStamina: 25,
+      strength: 6,
+      constitution: 6,
+      dexterity: 6,
+      intelligence: 2,
+      luck: 2,
+      perception: 6,
+      willpower: 4,
+      position: 1,
+      battlefieldX: 5,
+      battlefieldY: 5,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 50,
+      maxHp: 50,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 25,
+      maxStamina: 25,
+      strength: 8,
+      constitution: 6,
+      dexterity: 4,
+      intelligence: 2,
+      luck: 2,
+      perception: 6,
+      willpower: 4,
+      position: 2,
+      battlefieldX: 6,
+      battlefieldY: 5,
+    });
+
+    const next = resolveRound({
+      state: createInitialBattleState({ combatId: 'opportunity', entities: [player, enemy] }),
+      plannedActions: [
+        {
+          actorId: 'p1',
+          targetId: 'e1',
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Move,
+          movementType: MovementType.Step,
+          destinationX: 4,
+          destinationY: 5,
+        },
+      ],
+      random: () => 0.1,
+    });
+
+    expect(next.entities.find((x) => x.id === 'p1')!.currentHp).toBeLessThan(50);
+    expect(next.logs.some((entry) => entry.text.includes('free strike'))).toBe(true);
+  });
+
+  it('supports battlefield tile data in combat state', () => {
+    const player = createArenaCombatEntity({
+      id: 'p1',
+      name: 'Player',
+      team: TeamSide.Left,
+      race: Race.Human,
+      currentHp: 10,
+      maxHp: 10,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 10,
+      maxStamina: 10,
+      strength: 4,
+      constitution: 4,
+      dexterity: 4,
+      intelligence: 4,
+      luck: 1,
+      perception: 4,
+      willpower: 4,
+      position: 1,
+    });
+
+    const enemy = createArenaCombatEntity({
+      id: 'e1',
+      name: 'Enemy',
+      team: TeamSide.Right,
+      race: Race.Dwarf,
+      currentHp: 10,
+      maxHp: 10,
+      currentMp: 0,
+      maxMp: 0,
+      currentStamina: 10,
+      maxStamina: 10,
+      strength: 4,
+      constitution: 4,
+      dexterity: 4,
+      intelligence: 4,
+      luck: 1,
+      perception: 4,
+      willpower: 4,
+      position: 2,
+    });
+
+    const state = createInitialBattleState({
+      combatId: 'tiles',
+      entities: [player, enemy],
+      battlefieldTiles: [
+        { x: 0, y: 0, type: BattlefieldTileType.Blocked },
+        { x: 1, y: 0, type: BattlefieldTileType.LowCover },
+      ],
+    });
+
+    expect(state.battlefieldTiles[0]?.type).toBe(BattlefieldTileType.Blocked);
+    expect(state.battlefieldTiles[1]?.type).toBe(BattlefieldTileType.LowCover);
   });
 
   it('maps fighters onto a 12x12 tactical grid', () => {

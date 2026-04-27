@@ -2,6 +2,7 @@ import {
   ActionType,
   CombatSkillType,
   DistanceBand,
+  MovementType,
   TargetZone,
   type ArenaCombatEntity,
 } from '@theend/rpg-domain';
@@ -14,10 +15,12 @@ interface ActionPlannerProps {
   attackZone: TargetZone;
   defenseZones: TargetZone[];
   currentDistance: DistanceBand;
-  preferredDistance: DistanceBand;
+  movementType: MovementType | null;
   selectedMoveTile?: { x: number; y: number } | null;
   currentStamina: number;
   maxStamina: number;
+  currentMp: number;
+  maxMp: number;
   availableSkills: Array<{ id: CombatSkillType; label: string }>;
   inventoryItems: Array<{
     id: string;
@@ -28,12 +31,12 @@ interface ActionPlannerProps {
     quantity: number;
   }>;
   selectedSkill: CombatSkillType;
+  actionWarning?: string | null;
   onActionTypeChange: (actionType: ActionType) => void;
   onSkillChange: (skill: CombatSkillType) => void;
   onTargetChange: (id: string) => void;
   onAttackZoneChange: (zone: TargetZone) => void;
   onDefenseZonesChange: (zones: TargetZone[]) => void;
-  onPreferredDistanceChange: (distance: DistanceBand) => void;
   onSubmit: () => void;
   disabled: boolean;
   showSubmitButton?: boolean;
@@ -48,58 +51,71 @@ interface BodyZoneConfig {
   zone: TargetZone;
   title: string;
   label: string;
-  oldCode: 'H' | 'C' | 'A' | 'LA' | 'RA' | 'L';
   hint: string;
 }
 
 const BODY_ZONES: BodyZoneConfig[] = [
-  { id: 'head', zone: TargetZone.Head, title: 'Head / Голова', label: 'Голова', oldCode: 'H', hint: 'High crit chance, possible stun in future.' },
-  { id: 'left_arm', zone: TargetZone.LeftArm, title: 'Left Arm / Левая рука', label: 'Левая рука', oldCode: 'LA', hint: 'May reduce attack control and disarm in future.' },
-  { id: 'right_arm', zone: TargetZone.RightArm, title: 'Right Arm / Правая рука', label: 'Правая рука', oldCode: 'RA', hint: 'May reduce weapon control and disarm in future.' },
-  { id: 'chest', zone: TargetZone.Chest, title: 'Chest / Грудь', label: 'Грудь', oldCode: 'C', hint: 'Can pressure stamina and breathing in future.' },
-  { id: 'stomach', zone: TargetZone.Abdomen, title: 'Stomach / Живот / Тело', label: 'Живот / Тело', oldCode: 'A', hint: 'Can enable bleed and internal damage in future.' },
-  { id: 'legs', zone: TargetZone.Legs, title: 'Legs / Ноги', label: 'Ноги', oldCode: 'L', hint: 'Can reduce dodge and initiative in future.' },
+  { id: 'head', zone: TargetZone.Head, title: 'Head / Голова', label: 'Голова', hint: 'Криты и давление.' },
+  { id: 'left_arm', zone: TargetZone.LeftArm, title: 'Left Arm / Левая рука', label: 'Левая рука', hint: 'Сбивает темп и контроль.' },
+  { id: 'right_arm', zone: TargetZone.RightArm, title: 'Right Arm / Правая рука', label: 'Правая рука', hint: 'Давление на оружейную руку.' },
+  { id: 'chest', zone: TargetZone.Chest, title: 'Chest / Грудь', label: 'Грудь', hint: 'Надежная атакующая зона.' },
+  { id: 'stomach', zone: TargetZone.Abdomen, title: 'Abdomen / Живот', label: 'Живот', hint: 'Рискованная центральная зона.' },
+  { id: 'legs', zone: TargetZone.Legs, title: 'Legs / Ноги', label: 'Ноги', hint: 'Замедляет и срывает отход.' },
 ];
 
-const LEGACY_ZONE_TO_BODY: Record<BodyZoneConfig['oldCode'], TargetZone> = {
-  H: TargetZone.Head,
-  C: TargetZone.Chest,
-  A: TargetZone.Abdomen,
-  LA: TargetZone.LeftArm,
-  RA: TargetZone.RightArm,
-  L: TargetZone.Legs,
-};
-
-const BODY_TO_LEGACY_ZONE: Record<TargetZone, BodyZoneConfig['oldCode']> = {
-  [TargetZone.Head]: 'H',
-  [TargetZone.Chest]: 'C',
-  [TargetZone.Abdomen]: 'A',
-  [TargetZone.LeftArm]: 'LA',
-  [TargetZone.RightArm]: 'RA',
-  [TargetZone.Legs]: 'L',
-};
-
 const DISTANCE_LABELS: Record<DistanceBand, string> = {
-  [DistanceBand.Far]: 'Ranged',
-  [DistanceBand.Near]: 'Medium',
+  [DistanceBand.Far]: 'Far',
+  [DistanceBand.Near]: 'Near',
   [DistanceBand.Melee]: 'Melee',
 };
 
-function zoneLabel(zone: TargetZone): string {
-  return BODY_ZONES.find((item) => item.zone === zone)?.label ?? zone;
+const MOVEMENT_LABELS: Record<MovementType, string> = {
+  [MovementType.Step]: 'Move 1 cell',
+  [MovementType.Extra]: 'Extra move 2 cells',
+  [MovementType.Dash]: 'Dash up to 3 cells',
+  [MovementType.Disengage]: 'Disengage 1 cell',
+};
+
+const MOVEMENT_COSTS: Record<MovementType, number> = {
+  [MovementType.Step]: 6,
+  [MovementType.Extra]: 16,
+  [MovementType.Dash]: 14,
+  [MovementType.Disengage]: 10,
+};
+
+const ACTION_COSTS: Record<ActionType, number> = {
+  [ActionType.Attack]: 10,
+  [ActionType.Defend]: 8,
+  [ActionType.Move]: 0,
+  [ActionType.Wait]: 0,
+};
+
+const SKILL_MANA_COSTS: Partial<Record<CombatSkillType, number>> = {
+  [CombatSkillType.None]: 0,
+  [CombatSkillType.PowerStrike]: 15,
+  [CombatSkillType.CrushingBlock]: 20,
+  [CombatSkillType.Rage]: 25,
+  [CombatSkillType.Fireball]: 18,
+  [CombatSkillType.FrostLance]: 16,
+};
+
+const SKILL_STAMINA_COSTS: Partial<Record<CombatSkillType, number>> = {
+  [CombatSkillType.ShieldBash]: 14,
+  [CombatSkillType.Whirlwind]: 22,
+};
+
+function getGuardLabel(defenseZones: TargetZone[]): string {
+  if (defenseZones.length === 0) {
+    return 'Reckless Attack';
+  }
+  if (defenseZones.length === 1) {
+    return 'Aggressive Guard';
+  }
+  return 'Normal Guard';
 }
 
-function estimateStaminaCost(actionType: ActionType): number {
-  if (actionType === ActionType.Attack) {
-    return 12;
-  }
-  if (actionType === ActionType.Defend) {
-    return 8;
-  }
-  if (actionType === ActionType.Move) {
-    return 6;
-  }
-  return 0;
+function getEstimatedTotalCost(actionType: ActionType, movementType: MovementType | null): number {
+  return ACTION_COSTS[actionType] + (movementType ? MOVEMENT_COSTS[movementType] : 0);
 }
 
 interface BodyTargetSelectorProps {
@@ -172,7 +188,7 @@ function BodyTargetSelector({
               type="button"
               className={zoneClassName}
               onClick={() => toggleZone(item.zone)}
-              title={`${item.title} | Legacy: ${item.oldCode} | ${item.hint}`}
+              title={`${item.title} | ${item.hint}`}
               disabled={disabled}
             >
               <span>{item.label}</span>
@@ -187,7 +203,6 @@ function BodyTargetSelector({
 export function ActionPlanner(props: ActionPlannerProps) {
   const [activePanelTab, setActivePanelTab] = useState<'skills' | 'inventory'>('skills');
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<string | null>(null);
-  const selectedEnemy = props.enemies.find((enemy) => enemy.id === props.selectedTargetId) ?? null;
   const selectedDefenseZones = props.defenseZones.slice(0, 2);
   const skillOptions = props.availableSkills.filter((skill) => skill.id !== CombatSkillType.None);
   const selectedInventoryEntry = useMemo(
@@ -195,80 +210,50 @@ export function ActionPlanner(props: ActionPlannerProps) {
     [props.inventoryItems, selectedInventoryItem],
   );
 
-  const currentActionLabel =
-    props.actionType === ActionType.Move
-      ? 'Retreat'
-      : props.actionType === ActionType.Defend
-        ? 'Potion / Defend'
-        : props.selectedSkill !== CombatSkillType.None
-          ? 'Skill'
-          : 'Attack';
-
-  const estimatedCost = estimateStaminaCost(props.actionType);
+  const estimatedCost = getEstimatedTotalCost(props.actionType, props.movementType);
+  const manaCost = SKILL_MANA_COSTS[props.selectedSkill] ?? 0;
+  const skillStaminaCost = SKILL_STAMINA_COSTS[props.selectedSkill] ?? 0;
+  const totalStaminaLoad = estimatedCost + skillStaminaCost;
+  const selectedEnemy = props.enemies.find((enemy) => enemy.id === props.selectedTargetId) ?? null;
 
   return (
     <div className="action-planner compact-planner inner-card">
       <h3>Actions</h3>
 
       <div className="planner-main-actions" role="group" aria-label="Main actions">
-        <button
-          type="button"
-          className={currentActionLabel === 'Attack' ? 'is-active' : ''}
-          onClick={() => {
-            props.onActionTypeChange(ActionType.Attack);
+        <button type="button" className={props.actionType === ActionType.Attack && props.selectedSkill === CombatSkillType.None ? 'is-active' : ''} onClick={() => {
+          props.onActionTypeChange(ActionType.Attack);
+          if (props.selectedSkill !== CombatSkillType.None) {
             props.onSkillChange(CombatSkillType.None);
-          }}
-          title="Basic Attack"
-        >
+          }
+        }}>
           Attack
         </button>
-        <button
-          type="button"
-          className={currentActionLabel === 'Skill' ? 'is-active' : ''}
-          onClick={() => {
-            props.onActionTypeChange(ActionType.Attack);
-            if (props.selectedSkill === CombatSkillType.None && skillOptions.length > 0) {
-              props.onSkillChange(skillOptions[0].id);
-            }
-          }}
-          title="Use Combat Skill"
-        >
+        <button type="button" className={props.actionType === ActionType.Attack && props.selectedSkill !== CombatSkillType.None ? 'is-active' : ''} onClick={() => {
+          props.onActionTypeChange(ActionType.Attack);
+          if (props.selectedSkill === CombatSkillType.None && skillOptions.length > 0) {
+            props.onSkillChange(skillOptions[0]!.id);
+          }
+        }}>
           Skill
         </button>
-        <button
-          type="button"
-          className={currentActionLabel === 'Potion / Defend' ? 'is-active' : ''}
-          onClick={() => props.onActionTypeChange(ActionType.Defend)}
-          title="Defend / Use Potion"
-        >
+        <button type="button" className={props.actionType === ActionType.Defend ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Defend)}>
           Defend
         </button>
-        <button
-          type="button"
-          className={currentActionLabel === 'Retreat' ? 'is-active' : ''}
-          onClick={() => {
-            props.onActionTypeChange(ActionType.Move);
-            props.onPreferredDistanceChange(DistanceBand.Far);
-          }}
-          title="Retreat to Ranged"
-        >
-          Retreat
+        <button type="button" className={props.actionType === ActionType.Move ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Move)}>
+          Move
+        </button>
+        <button type="button" className={props.actionType === ActionType.Wait ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Wait)}>
+          Wait
         </button>
       </div>
 
       <div className="planner-selects-row">
         <div className="planner-select-item">
           <label htmlFor="target-select">Enemy</label>
-          <select
-            id="target-select"
-            value={props.selectedTargetId}
-            onChange={(event) => props.onTargetChange(event.target.value)}
-            className="compact-select"
-          >
+          <select id="target-select" value={props.selectedTargetId} onChange={(event) => props.onTargetChange(event.target.value)} className="compact-select">
             {props.enemies.map((enemy) => (
-              <option key={enemy.id} value={enemy.id}>
-                {enemy.name}
-              </option>
+              <option key={enemy.id} value={enemy.id}>{enemy.name}</option>
             ))}
           </select>
         </div>
@@ -288,19 +273,19 @@ export function ActionPlanner(props: ActionPlannerProps) {
           >
             <option value={CombatSkillType.None}>None</option>
             {skillOptions.map((skill) => (
-              <option key={skill.id} value={skill.id}>
-                {skill.label}
-              </option>
+              <option key={skill.id} value={skill.id}>{skill.label}</option>
             ))}
           </select>
         </div>
       </div>
 
       <div className="planner-status-chips">
-        <span className="status-chip">Action: <strong>{currentActionLabel}</strong></span>
-        <span className="status-chip">Cost: <strong>{estimatedCost}</strong></span>
-        <span className="status-chip">Dist: <strong>{DISTANCE_LABELS[props.currentDistance]}</strong></span>
+        <span className="status-chip">Distance: <strong>{DISTANCE_LABELS[props.currentDistance]}</strong></span>
+        <span className="status-chip">Guard: <strong>{getGuardLabel(props.defenseZones)}</strong></span>
+        <span className="status-chip">STA load: <strong>{totalStaminaLoad}</strong></span>
         <span className="status-chip">STA: <strong>{props.currentStamina}/{props.maxStamina}</strong></span>
+        <span className="status-chip">MP: <strong>{props.currentMp}/{props.maxMp}</strong></span>
+        {props.movementType ? <span className="status-chip">Move: <strong>{MOVEMENT_LABELS[props.movementType]}</strong>{props.selectedMoveTile ? ` → ${props.selectedMoveTile.x + 1}:${props.selectedMoveTile.y + 1}` : ''}</span> : null}
       </div>
 
       <div className="planner-targeting-layout compact-zones">
@@ -308,59 +293,35 @@ export function ActionPlanner(props: ActionPlannerProps) {
           mode="attack"
           maxSelections={1}
           selectedZones={[props.attackZone]}
-          onChange={(zones) => {
-            if (zones[0]) {
-              props.onAttackZoneChange(zones[0]);
-            }
-          }}
+          onChange={(zones) => zones[0] && props.onAttackZoneChange(zones[0])}
           disabled={props.actionType !== ActionType.Attack}
-          title="Attack"
+          title="Attack Zone"
           recentHitZone={props.recentHitZone}
         />
 
-        <BodyTargetSelector
-          mode="defense"
-          maxSelections={2}
-          selectedZones={selectedDefenseZones}
-          onChange={(zones) => props.onDefenseZonesChange(zones)}
-          disabled={props.actionType === ActionType.Move}
-          title="Defend"
-          recentBlockedZone={props.recentBlockedZone}
-        />
+        <div>
+          <BodyTargetSelector
+            mode="defense"
+            maxSelections={2}
+            selectedZones={selectedDefenseZones}
+            onChange={(zones) => props.onDefenseZonesChange(zones)}
+            disabled={false}
+            title="Defense Zones"
+            recentBlockedZone={props.recentBlockedZone}
+          />
+          <button type="button" className="secondary-button" onClick={() => props.onDefenseZonesChange([])}>
+            Clear Defense for Reckless Attack
+          </button>
+        </div>
       </div>
 
-      {props.actionType === ActionType.Move && (
-        <div className="planner-move-section">
-          <label htmlFor="distance-select">Retreat to:</label>
-          <select
-            id="distance-select"
-            value={props.preferredDistance}
-            onChange={(event) => props.onPreferredDistanceChange(event.target.value as DistanceBand)}
-            className="compact-select"
-          >
-            <option value={DistanceBand.Far}>Ranged</option>
-            <option value={DistanceBand.Near}>Medium</option>
-            <option value={DistanceBand.Melee}>Melee</option>
-          </select>
-          <div className="move-tile-display">
-            {props.selectedMoveTile ? `Target: ${props.selectedMoveTile.x + 1}:${props.selectedMoveTile.y + 1}` : 'Click on board'}
-          </div>
-        </div>
-      )}
+      {props.actionWarning ? <div className="battle-detail-popover"><p>{props.actionWarning}</p></div> : null}
 
       <div className="battle-side-panel-tabs">
-        <button
-          type="button"
-          className={activePanelTab === 'skills' ? 'is-active' : ''}
-          onClick={() => setActivePanelTab('skills')}
-        >
+        <button type="button" className={activePanelTab === 'skills' ? 'is-active' : ''} onClick={() => setActivePanelTab('skills')}>
           Skills
         </button>
-        <button
-          type="button"
-          className={activePanelTab === 'inventory' ? 'is-active' : ''}
-          onClick={() => setActivePanelTab('inventory')}
-        >
+        <button type="button" className={activePanelTab === 'inventory' ? 'is-active' : ''} onClick={() => setActivePanelTab('inventory')}>
           Inventory
         </button>
       </div>
@@ -387,11 +348,10 @@ export function ActionPlanner(props: ActionPlannerProps) {
 
           <div className="battle-detail-popover">
             <strong>{props.availableSkills.find((item) => item.id === props.selectedSkill)?.label ?? 'Basic Attack'}</strong>
-            <p>Damage type: Physical</p>
-            <p>Mana cost: {props.selectedSkill === CombatSkillType.None ? 0 : 8}</p>
-            <p>Stamina cost: {estimateStaminaCost(ActionType.Attack)}</p>
-            <p>Range: melee</p>
-            <p>Target: single enemy</p>
+            <p>Target: {selectedEnemy?.name ?? 'None'}</p>
+            <p>Mana cost: {manaCost}</p>
+            <p>Stamina cost: {skillStaminaCost + ACTION_COSTS[props.actionType]}</p>
+            <p>Move cost: {props.movementType ? MOVEMENT_COSTS[props.movementType] : 0}</p>
           </div>
         </div>
       )}

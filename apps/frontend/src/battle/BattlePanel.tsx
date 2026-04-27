@@ -1,9 +1,10 @@
 import {
   ActionType,
   CombatSkillType,
-  DistanceBand,
+  MovementType,
   TargetZone,
   TeamSide,
+  getBattlefieldDistance,
   getItemById,
   type ItemDefinition,
   type ArenaBattleState,
@@ -21,12 +22,14 @@ interface BattlePanelProps {
   playerId: string;
   state: ArenaBattleState;
   inventory: InventoryState;
+  mapImageUrl?: string;
   selectedSkill: CombatSkillType;
   learnedSkills: CombatSkillType[];
   onSkillChange: (skill: CombatSkillType) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
   onClose?: () => void;
+  playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
 }
 
@@ -36,43 +39,37 @@ function parseZoneFromLogText(text: string): TargetZone | null {
   if (!token) {
     return null;
   }
-  if (token === 'HEAD') {
-    return TargetZone.Head;
-  }
-  if (token === 'CHEST') {
-    return TargetZone.Chest;
-  }
-  if (token === 'ABDOMEN') {
-    return TargetZone.Abdomen;
-  }
-  if (token === 'LEFT_ARM') {
-    return TargetZone.LeftArm;
-  }
-  if (token === 'RIGHT_ARM') {
-    return TargetZone.RightArm;
-  }
-  if (token === 'LEGS') {
-    return TargetZone.Legs;
-  }
-  if (token === 'H') {
-    return TargetZone.Head;
-  }
-  if (token === 'C') {
-    return TargetZone.Chest;
-  }
-  if (token === 'A') {
-    return TargetZone.Abdomen;
-  }
-  if (token === 'LA') {
-    return TargetZone.LeftArm;
-  }
-  if (token === 'RA') {
-    return TargetZone.RightArm;
-  }
-  if (token === 'L') {
-    return TargetZone.Legs;
-  }
+  if (token === 'HEAD' || token === 'H') return TargetZone.Head;
+  if (token === 'CHEST' || token === 'C') return TargetZone.Chest;
+  if (token === 'ABDOMEN' || token === 'A') return TargetZone.Abdomen;
+  if (token === 'LEFT_ARM' || token === 'LA') return TargetZone.LeftArm;
+  if (token === 'RIGHT_ARM' || token === 'RA') return TargetZone.RightArm;
+  if (token === 'LEGS' || token === 'L') return TargetZone.Legs;
   return null;
+}
+
+function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number }): 'MELEE' | 'RANGED' | 'MAGIC' {
+  if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
+    return 'MAGIC';
+  }
+  if (entity.dexterity > entity.strength) {
+    return 'RANGED';
+  }
+  return 'MELEE';
+}
+
+function getActionCost(actionType: ActionType, movementType: MovementType | null): number {
+  const actionCost = actionType === ActionType.Attack ? 10 : actionType === ActionType.Defend ? 8 : 0;
+  const moveCost = movementType === MovementType.Step
+    ? 6
+    : movementType === MovementType.Extra
+      ? 16
+      : movementType === MovementType.Dash
+        ? 14
+        : movementType === MovementType.Disengage
+          ? 10
+          : 0;
+  return actionCost + moveCost;
 }
 
 export function BattlePanel({
@@ -80,25 +77,24 @@ export function BattlePanel({
   playerId,
   state,
   inventory,
+  mapImageUrl,
   selectedSkill,
   learnedSkills,
   onSkillChange,
   onStateChange,
   onStatus,
   onClose,
+  playerAvatarUrl,
   resolveItemById,
 }: BattlePanelProps) {
   const player = useMemo(() => state.entities.find((item) => item.id === playerId), [state, playerId]);
-  const enemies = useMemo(
-    () => state.entities.filter((item) => item.team === TeamSide.Right && item.isAlive),
-    [state],
-  );
+  const enemies = useMemo(() => state.entities.filter((item) => item.team === TeamSide.Right && item.isAlive), [state]);
 
   const [selectedTargetId, setSelectedTargetId] = useState(enemies[0]?.id ?? '');
   const [actionType, setActionType] = useState<ActionType>(ActionType.Attack);
   const [attackZone, setAttackZone] = useState(TargetZone.Chest);
   const [defenseZones, setDefenseZones] = useState<TargetZone[]>([TargetZone.Chest, TargetZone.Abdomen]);
-  const [preferredDistance, setPreferredDistance] = useState<DistanceBand>(state.distance);
+  const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [selectedMoveTile, setSelectedMoveTile] = useState<{ x: number; y: number } | null>(null);
 
   const availableSkills = useMemo(
@@ -141,28 +137,6 @@ export function BattlePanel({
     [inventory.items, resolveItemById],
   );
 
-  const battleRewardSummary = useMemo(() => {
-    const expGain = state.logs.reduce((sum, entry) => {
-      const match = entry.text.match(/Battle reward:\s*\+(\d+)\s+EXP/i);
-      return sum + (match ? Number(match[1]) : 0);
-    }, 0);
-
-    const goldGain = state.logs.reduce((sum, entry) => {
-      const match = entry.text.match(/Battle reward:\s*\+(\d+)\s+gold/i);
-      return sum + (match ? Number(match[1]) : 0);
-    }, 0);
-
-    const lootItems = state.logs
-      .map((entry) => entry.text.match(/Battle reward:\s*loot\s+(.+)/i)?.[1])
-      .filter((value): value is string => Boolean(value));
-
-    return {
-      expGain,
-      goldGain,
-      lootText: lootItems.length > 0 ? lootItems.join(', ') : 'none',
-    };
-  }, [state.logs]);
-
   const lastLog = state.logs.at(-1);
   const lastHitZone = useMemo(() => (lastLog ? parseZoneFromLogText(lastLog.text) : null), [lastLog]);
   const selectedEnemy = useMemo(
@@ -170,41 +144,49 @@ export function BattlePanel({
     [enemies, selectedTargetId],
   );
   const selectedEnemyPlacement = useMemo(
-    () => state.entities.find((item) => item.id === selectedTargetId),
+    () => state.entities.find((item) => item.id === selectedTargetId) ?? null,
     [selectedTargetId, state.entities],
   );
   const playerPlacement = useMemo(
-    () => state.entities.find((item) => item.id === playerId),
+    () => state.entities.find((item) => item.id === playerId) ?? null,
     [playerId, state.entities],
   );
+  const pendingPlayerPlacement = useMemo(() => {
+    if (!playerPlacement) {
+      return null;
+    }
+    return {
+      ...playerPlacement,
+      battlefieldX: selectedMoveTile?.x ?? playerPlacement.battlefieldX,
+      battlefieldY: selectedMoveTile?.y ?? playerPlacement.battlefieldY,
+    };
+  }, [playerPlacement, selectedMoveTile]);
+  const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
   const targetInRange = useMemo(() => {
-    if (!playerPlacement || !selectedEnemyPlacement) {
+    if (!pendingPlayerPlacement || !selectedEnemyPlacement) {
       return false;
     }
 
-    const px = playerPlacement.battlefieldX ?? 0;
-    const py = playerPlacement.battlefieldY ?? 0;
-    const ex = selectedEnemyPlacement.battlefieldX ?? 0;
-    const ey = selectedEnemyPlacement.battlefieldY ?? 0;
-    return Math.abs(px - ex) + Math.abs(py - ey) <= 1;
-  }, [playerPlacement, selectedEnemyPlacement]);
+    const dist = getBattlefieldDistance(pendingPlayerPlacement, selectedEnemyPlacement);
+    if (playerStyle === 'MELEE') {
+      return dist <= 1;
+    }
+    if (playerStyle === 'RANGED') {
+      return dist >= 2;
+    }
+    return dist <= 5;
+  }, [pendingPlayerPlacement, playerStyle, selectedEnemyPlacement]);
 
   const feedback = useMemo(() => {
     if (!lastLog) {
-      return {
-        playerVisualState: 'idle' as const,
-        enemyVisualState: 'idle' as const,
-        floatingText: null as string | null,
-      };
+      return { playerVisualState: 'idle' as const, enemyVisualState: 'idle' as const, floatingText: null as string | null };
     }
 
     const playerIsActor = lastLog.actorId === playerId;
     const playerIsTarget = lastLog.targetId === playerId;
 
     if (lastLog.type === 'HIT') {
-      const floatingText = /critical/i.test(lastLog.text)
-        ? `CRIT -${lastLog.amount ?? 0}`
-        : `-${lastLog.amount ?? 0}`;
+      const floatingText = /critical/i.test(lastLog.text) ? `CRIT -${lastLog.amount ?? 0}` : `-${lastLog.amount ?? 0}`;
       return {
         playerVisualState: playerIsActor ? 'attack' as const : playerIsTarget ? 'hit' as const : 'idle' as const,
         enemyVisualState: playerIsActor ? 'hit' as const : playerIsTarget ? 'attack' as const : 'idle' as const,
@@ -228,20 +210,42 @@ export function BattlePanel({
       };
     }
 
-    return {
-      playerVisualState: 'idle' as const,
-      enemyVisualState: 'idle' as const,
-      floatingText: null as string | null,
-    };
+    return { playerVisualState: 'idle' as const, enemyVisualState: 'idle' as const, floatingText: null as string | null };
   }, [lastLog, playerId]);
 
   const recentBlockedZone = useMemo(() => {
     if (!lastLog || lastLog.type !== 'BLOCK') {
       return null;
     }
-
     return defenseZones[0] ?? null;
   }, [defenseZones, lastLog]);
+
+  const actionWarning = useMemo(() => {
+    if (actionType === ActionType.Attack && movementType === MovementType.Dash) {
+      return 'После Dash атака недоступна.';
+    }
+    if (actionType === ActionType.Attack && movementType === MovementType.Disengage) {
+      return 'После Disengage атака недоступна.';
+    }
+    if (actionType === ActionType.Attack && movementType === MovementType.Extra) {
+      return 'После 2 клеток движения атака по базовым правилам недоступна.';
+    }
+    if (getActionCost(actionType, movementType) > (player?.currentStamina ?? 0)) {
+      return 'Недостаточно stamina для выбранной комбинации действий.';
+    }
+    return null;
+  }, [actionType, movementType, player?.currentStamina]);
+
+  // Soft hint — shown in UI but does NOT disable the button
+  const actionHint = useMemo(() => {
+    if (actionType === ActionType.Attack && selectedMoveTile && !targetInRange) {
+      return 'Цель вне досягаемости даже после перемещения.';
+    }
+    if (actionType === ActionType.Attack && !selectedMoveTile && !targetInRange) {
+      return 'Цель далеко — подойди к ней на карте или просто атакуй (сервер проверит дистанцию).';
+    }
+    return null;
+  }, [actionType, selectedMoveTile, targetInRange]);
 
   useEffect(() => {
     if (!enemies.some((enemy) => enemy.id === selectedTargetId)) {
@@ -250,26 +254,25 @@ export function BattlePanel({
   }, [enemies, selectedTargetId]);
 
   useEffect(() => {
-    setPreferredDistance(state.distance);
-  }, [state.distance]);
-
-  useEffect(() => {
-    if (actionType !== ActionType.Move) {
+    if (!movementType) {
       setSelectedMoveTile(null);
     }
-  }, [actionType]);
+  }, [movementType]);
 
   async function submitRound(): Promise<void> {
-    if (!player || !selectedTargetId || (actionType === ActionType.Move && !selectedMoveTile)) {
+    if (!player || !selectedTargetId) {
+      return;
+    }
+    if (movementType && !selectedMoveTile) {
+      onStatus('Выберите клетку движения.');
+      return;
+    }
+    if (actionWarning) {
+      onStatus(actionWarning);
       return;
     }
 
     try {
-      if (actionType === ActionType.Attack && !targetInRange) {
-        onStatus('Target out of range. Select move or use Move closer.');
-        return;
-      }
-
       const nextState = await sendCombatAction({
         combatId,
         actorId: player.id,
@@ -279,13 +282,15 @@ export function BattlePanel({
         attackPointsSpent: 0,
         defensePointsSpent: 0,
         actionType,
-        preferredDistance: actionType === ActionType.Move ? preferredDistance : undefined,
-        destinationX: actionType === ActionType.Move ? selectedMoveTile?.x : undefined,
-        destinationY: actionType === ActionType.Move ? selectedMoveTile?.y : undefined,
+        movementType: movementType ?? undefined,
+        destinationX: selectedMoveTile?.x,
+        destinationY: selectedMoveTile?.y,
         skillType: actionType === ActionType.Attack ? selectedSkill : undefined,
       });
 
       onStateChange(nextState);
+      setSelectedMoveTile(null);
+      setMovementType(null);
 
       if (nextState.isFinished) {
         onStatus(`Battle finished. Winner: ${nextState.winner ?? 'none'}.`);
@@ -325,6 +330,7 @@ export function BattlePanel({
                 fighter={player}
                 highlighted
                 side="player"
+                avatarUrl={player.avatarUrl ?? playerAvatarUrl}
                 visualState={feedback.playerVisualState}
                 floatingText={feedback.floatingText}
                 subtitle="You"
@@ -339,22 +345,24 @@ export function BattlePanel({
                 attackZone={attackZone}
                 defenseZones={defenseZones}
                 currentDistance={state.distance}
-                preferredDistance={preferredDistance}
+                movementType={movementType}
                 selectedMoveTile={selectedMoveTile}
                 currentStamina={player.currentStamina}
                 maxStamina={player.maxStamina}
+                currentMp={player.currentMp}
+                maxMp={player.maxMp}
                 availableSkills={availableSkills}
                 inventoryItems={battleInventoryItems}
                 selectedSkill={selectedSkill}
+                actionWarning={actionWarning ?? actionHint}
                 onActionTypeChange={setActionType}
                 onSkillChange={onSkillChange}
                 onTargetChange={setSelectedTargetId}
                 onAttackZoneChange={setAttackZone}
                 onDefenseZonesChange={setDefenseZones}
-                onPreferredDistanceChange={setPreferredDistance}
                 onSubmit={submitRound}
                 showSubmitButton={false}
-                disabled={state.isFinished || enemies.length === 0 || (actionType === ActionType.Move && !selectedMoveTile)}
+                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
                 recentHitZone={lastHitZone}
                 recentBlockedZone={recentBlockedZone}
               />
@@ -369,10 +377,12 @@ export function BattlePanel({
 
             <BattleField
               entities={state.entities}
+              battlefieldTiles={state.battlefieldTiles}
+              mapImageUrl={mapImageUrl}
               distance={state.distance}
               selectedTargetId={selectedTargetId}
               playerId={playerId}
-              moveSelectionEnabled={actionType === ActionType.Move}
+              movementType={movementType}
               selectedMoveTile={selectedMoveTile}
               onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
               onStatusMessage={onStatus}
@@ -381,14 +391,20 @@ export function BattlePanel({
                 setActionType(ActionType.Attack);
               }}
               onQuickMove={(tile) => {
-                setActionType(ActionType.Move);
+                setMovementType(tile.movementType);
+                if (actionType === ActionType.Wait) {
+                  setActionType(ActionType.Move);
+                }
                 setSelectedMoveTile({ x: tile.x, y: tile.y });
-                setPreferredDistance(tile.distanceBand);
               }}
               onMoveTileSelect={(tile) => {
+                setMovementType(tile.movementType);
                 setSelectedMoveTile({ x: tile.x, y: tile.y });
-                setPreferredDistance(tile.distanceBand);
-                onStatus(`Move planned to ${tile.x + 1}:${tile.y + 1}`);
+                if (tile.willTriggerOpportunity) {
+                  onStatus('Маршрут опасен: будет удар вслед.');
+                } else {
+                  onStatus(`Move planned to ${tile.x + 1}:${tile.y + 1}`);
+                }
               }}
               onCancelSelection={() => setSelectedMoveTile(null)}
               playerVisualState={feedback.playerVisualState}
@@ -401,7 +417,8 @@ export function BattlePanel({
               <button
                 type="button"
                 className="confirm-turn-button battle-confirm-large"
-                disabled={state.isFinished || enemies.length === 0 || (actionType === ActionType.Move && !selectedMoveTile)}
+                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
+                title={actionWarning ?? actionHint ?? undefined}
                 onClick={submitRound}
               >
                 СДЕЛАТЬ ХОД
@@ -412,10 +429,10 @@ export function BattlePanel({
                 <p>Target: {selectedEnemy?.name ?? 'none'}</p>
                 <p>Action: {actionType}</p>
                 <p>Attack: {attackZone}</p>
-                <p>Blocks: {defenseZones.slice(0, 2).join(', ')}</p>
+                <p>Blocks: {defenseZones.length > 0 ? defenseZones.slice(0, 2).join(', ') : 'none / reckless'}</p>
                 <p>Skill: {selectedSkill}</p>
-                <p>Move: {selectedMoveTile ? `${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}` : 'none'}</p>
-                <p>Cost: {actionType === ActionType.Attack ? 12 : actionType === ActionType.Defend ? 8 : actionType === ActionType.Move ? 6 : 0} STA</p>
+                <p>Move: {movementType ? `${movementType}${selectedMoveTile ? ` to ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}` : ''}` : 'none'}</p>
+                <p>Cost: {getActionCost(actionType, movementType)} STA</p>
                 <p>Last event: {lastLog?.text ?? 'none'}</p>
               </div>
             </div>
@@ -428,6 +445,7 @@ export function BattlePanel({
                   key={`enemy-${state.logs.length}`}
                   fighter={selectedEnemy}
                   side="enemy"
+                  avatarUrl={selectedEnemy.avatarUrl}
                   visualState={feedback.enemyVisualState}
                   floatingText={feedback.floatingText}
                   subtitle="Target"
@@ -442,7 +460,8 @@ export function BattlePanel({
                 <h3>Enemy Details</h3>
               </div>
               <p>Status: {selectedEnemy?.isAlive ? 'Alive' : 'Down'}</p>
-              <p>Distance: {targetInRange ? 'Melee range' : 'Out of range'}</p>
+              <p>Distance: {selectedEnemyPlacement && pendingPlayerPlacement ? getBattlefieldDistance(pendingPlayerPlacement, selectedEnemyPlacement) : 'n/a'} cells</p>
+              <p>In range: {targetInRange ? 'yes' : 'no'}</p>
               <p>HP: {selectedEnemy ? `${selectedEnemy.currentHp}/${selectedEnemy.maxHp}` : '0/0'}</p>
               <p>MP: {selectedEnemy ? `${selectedEnemy.currentMp}/${selectedEnemy.maxMp}` : '0/0'}</p>
               <p>STA: {selectedEnemy ? `${selectedEnemy.currentStamina}/${selectedEnemy.maxStamina}` : '0/0'}</p>
