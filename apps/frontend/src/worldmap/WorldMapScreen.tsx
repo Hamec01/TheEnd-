@@ -1361,6 +1361,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           quickActions={quickButtons}
           resolveItemById={resolveItemById}
           resolveItemImage={resolveItemImage}
+          worldStatusLines={[
+            `Локация: ${selectedLocationName}`,
+            `Коорд: ${playerPosition.x.toFixed(3)}, ${playerPosition.y.toFixed(3)}`,
+            `Состояние: ${playerState}`,
+            `Под курсором: ${hoverZone?.name ?? '-'}`,
+            'Онлайн: 124',
+            '22:41',
+          ]}
         />
 
         <div className="wm-main-column">
@@ -1560,13 +1568,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
       </section>
 
-      <footer className="wm-footer card">
-        <span>Локация: {selectedLocationName} | Коорд: {playerPosition.x.toFixed(3)}, {playerPosition.y.toFixed(3)}</span>
-        <span>Состояние: {playerState}</span>
-        <span>Под курсором: {hoverZone?.name ?? '-'}</span>
-        <span>Онлайн: 124</span>
-        <span>22:41</span>
-      </footer>
     </>
   );
 

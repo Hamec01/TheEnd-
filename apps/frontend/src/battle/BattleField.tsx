@@ -529,7 +529,7 @@ export function BattleField({
         return;
       }
 
-      if (!e.ctrlKey) {
+      if (!e.altKey || e.ctrlKey || e.metaKey) {
         return;
       }
 

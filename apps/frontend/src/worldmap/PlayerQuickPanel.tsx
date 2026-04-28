@@ -22,10 +22,11 @@ interface PlayerQuickPanelProps {
   quickActions: QuickActionButton[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  worldStatusLines?: string[];
 }
 
 export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
-  const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage } = props;
+  const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage, worldStatusLines = [] } = props;
 
   return (
     <aside className="wm-left card">
@@ -102,6 +103,15 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
           );
         })}
       </div>
+
+      {worldStatusLines.length > 0 ? (
+        <section className="wm-left-mini-module">
+          <h4>Статус мира</h4>
+          {worldStatusLines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </section>
+      ) : null}
     </aside>
   );
 }

@@ -280,15 +280,20 @@ export function BattlePanel({
   }, [movementType]);
 
 
-  const submitRound = useCallback(async (): Promise<void> => {
+  const submitRoundWithAction = useCallback(async (actionTypeOverride?: ActionType): Promise<void> => {
+    const effectiveActionType = actionTypeOverride ?? actionType;
+    const effectiveMovementType = effectiveActionType === ActionType.Wait ? undefined : movementType ?? undefined;
+    const effectiveDestinationX = effectiveActionType === ActionType.Wait ? undefined : selectedMoveTile?.x;
+    const effectiveDestinationY = effectiveActionType === ActionType.Wait ? undefined : selectedMoveTile?.y;
+
     if (!player || !selectedTargetId) {
       return;
     }
-    if (movementType && !selectedMoveTile) {
+    if (effectiveMovementType && !selectedMoveTile) {
       onStatus('Выберите клетку движения.');
       return;
     }
-    if (actionWarning) {
+    if (!actionTypeOverride && actionWarning) {
       onStatus(actionWarning);
       return;
     }
@@ -302,11 +307,11 @@ export function BattlePanel({
         defenseZones,
         attackPointsSpent: 0,
         defensePointsSpent: 0,
-        actionType,
-        movementType: movementType ?? undefined,
-        destinationX: selectedMoveTile?.x,
-        destinationY: selectedMoveTile?.y,
-        skillType: actionType === ActionType.Attack ? selectedSkill : undefined,
+        actionType: effectiveActionType,
+        movementType: effectiveMovementType,
+        destinationX: effectiveDestinationX,
+        destinationY: effectiveDestinationY,
+        skillType: effectiveActionType === ActionType.Attack ? selectedSkill : undefined,
       });
 
       onStateChange(nextState);
@@ -323,7 +328,6 @@ export function BattlePanel({
       onStatus(`Round error: ${(error as Error).message}`);
     }
   }, [
-    actionType,
     actionWarning,
     attackZone,
     combatId,
@@ -336,6 +340,10 @@ export function BattlePanel({
     selectedSkill,
     selectedTargetId,
   ]);
+
+  const submitRound = useCallback(async (): Promise<void> => {
+    await submitRoundWithAction();
+  }, [submitRoundWithAction]);
 
   const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
     setMovementType(tile.movementType);
@@ -361,7 +369,7 @@ export function BattlePanel({
         return;
       }
 
-      if (event.ctrlKey && event.key === 'Enter') {
+      if (event.shiftKey && !event.ctrlKey && !event.altKey && event.key === 'Enter') {
         event.preventDefault();
         if (!event.repeat) {
           void submitRound();
@@ -373,17 +381,15 @@ export function BattlePanel({
         if (event.repeat) {
           return;
         }
-        if (actionType === ActionType.Wait || (actionType !== ActionType.Attack && actionType !== ActionType.Defend)) {
-          event.preventDefault();
-          setActionType(ActionType.Wait);
-          void submitRound();
-        }
+        event.preventDefault();
+        setActionType(ActionType.Wait);
+        void submitRoundWithAction(ActionType.Wait);
       }
     };
 
     window.addEventListener('keydown', handleHotkeys);
     return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [actionType, submitRound]);
+  }, [submitRound, submitRoundWithAction]);
 
   if (!player) {
     return <p>Player entity not found.</p>;

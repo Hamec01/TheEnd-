@@ -786,21 +786,6 @@ export class CombatService {
       throw new BadRequestException('Player cannot act.');
     }
 
-    const selectedEnemyTarget = state.entities.find(
-      (item) => item.id === playerAction.targetId && item.isAlive && item.team !== playerEntity.team,
-    );
-
-    if (playerAction.actionType === ActionType.Attack && playerEntity.combatStyleHint === 'MELEE') {
-      if (!selectedEnemyTarget) {
-        throw new BadRequestException('Target is not available for attack.');
-      }
-
-      const distance = this.getBattlefieldCellDistance(playerEntity, selectedEnemyTarget);
-      if (distance > 1) {
-        throw new BadRequestException('Melee attack is out of range. Move closer first.');
-      }
-    }
-
     const requestedTotalSpent = Math.max(0, playerAction.attackPointsSpent) + Math.max(0, playerAction.defensePointsSpent);
     if (requestedTotalSpent > playerEntity.currentStamina) {
       throw new BadRequestException('Not enough stamina for selected action points.');
