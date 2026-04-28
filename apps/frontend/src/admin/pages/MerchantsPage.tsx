@@ -104,6 +104,24 @@ export function MerchantsPage() {
       });
   }, [itemSearch, items, selectedItemIds]);
 
+  const selectedMerchant = useMemo(
+    () => (selectedId ? merchants.find((entry) => entry.id === selectedId) ?? null : null),
+    [merchants, selectedId],
+  );
+
+  function getMerchantCardAccent(merchant: AdminMerchant): string {
+    if (!merchant.isEnabled) {
+      return 'is-crimson';
+    }
+    if (merchant.type === 'rare_goods' || merchant.type === 'rune_master') {
+      return 'is-gold';
+    }
+    if (merchant.type === 'alchemist' || merchant.type === 'material_trader') {
+      return 'is-olive';
+    }
+    return 'is-sky';
+  }
+
   function select(merchant: AdminMerchant) {
     setSelectedId(merchant.id);
     setDraft(merchant);
@@ -189,23 +207,7 @@ export function MerchantsPage() {
   }
 
   return (
-    <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <input placeholder="Поиск торговцев" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
-        </div>
-
-        <div className="admin-scroll-list">
-          {visibleMerchants.map((merchant) => (
-            <button key={merchant.id} className={selectedId === merchant.id ? 'is-active' : ''} onClick={() => select(merchant)}>
-              <strong>{merchant.name}</strong>
-              <span>{merchant.id} | {merchant.city} | {merchant.items.length} позиций | {translateEnabledState(merchant.isEnabled)}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
+    <div className="admin-page-grid">
       <section className="admin-form-panel">
         <div className="admin-form-grid">
           <label>
@@ -318,6 +320,49 @@ export function MerchantsPage() {
         </div>
 
         <p className="muted">{status}</p>
+      </section>
+
+      <section className="admin-items-catalog card">
+        <div className="admin-catalog-header">
+          <div>
+            <p className="admin-catalog-kicker">City Services</p>
+            <h3>Все торговцы</h3>
+            <p className="muted">Выбирай торговца снизу, как обычный значок, и редактируй его в форме выше.</p>
+          </div>
+          <div className="admin-catalog-metrics">
+            <span>{visibleMerchants.length} в выдаче</span>
+            <span>{merchants.filter((entry) => entry.isEnabled).length} активных</span>
+          </div>
+        </div>
+
+        <div className="admin-list-tools admin-catalog-toolbar">
+          <input placeholder="Поиск по id, имени или городу" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
+        </div>
+
+        <div className="admin-items-selected-row">
+          <strong>Сейчас редактируется:</strong>
+          <span>{selectedMerchant ? `${selectedMerchant.name} (${selectedMerchant.id})` : 'новый торговец'}</span>
+        </div>
+
+        <div className="admin-items-icons-grid">
+          {visibleMerchants.map((merchant) => (
+            <button
+              key={merchant.id}
+              className={`admin-item-icon-card ${selectedId === merchant.id ? 'is-active' : ''}`}
+              onClick={() => select(merchant)}
+              title={`${merchant.name} (${merchant.id})`}
+            >
+              <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMerchantCardAccent(merchant)}`}>
+                {(merchant.name.trim() || merchant.type).charAt(0).toUpperCase()}
+              </div>
+              <strong>{merchant.name || '(без названия)'}</strong>
+              <span>{merchant.id || 'ID ещё не задан'}</span>
+              <span>{merchant.city || '-'} | {merchant.items.length} позиций</span>
+              <span>{translateEnabledState(merchant.isEnabled)}</span>
+            </button>
+          ))}
+        </div>
       </section>
     </div>
   );

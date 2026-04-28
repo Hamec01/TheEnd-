@@ -12,6 +12,7 @@ interface QuickActionButton {
 interface PlayerQuickPanelProps {
   name: string;
   avatarLetter: string;
+  avatarUrl?: string;
   hpText: string;
   mpText: string;
   staminaText: string;
@@ -24,7 +25,7 @@ interface PlayerQuickPanelProps {
 }
 
 export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
-  const { name, avatarLetter, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage } = props;
+  const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage } = props;
 
   return (
     <aside className="wm-left card">
@@ -32,7 +33,11 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
 
       <div className="wm-avatar-wrap" title={`${name} status`}>
         <button className="wm-avatar" title={`Name: ${name}`}>
-          {avatarLetter}
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={name} className="wm-avatar-img" onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            avatarLetter
+          )}
         </button>
 
         <div className="wm-orbs">

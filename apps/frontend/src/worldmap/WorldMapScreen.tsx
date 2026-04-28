@@ -6,6 +6,7 @@ import { PlayerQuickPanel } from './PlayerQuickPanel';
 import { WorldMapCanvas, type WorldMapCanvasHandle } from './WorldMapCanvas';
 import { ContextActionPanel } from './ContextActionPanel';
 import { ZoneEditorPanel } from './ZoneEditorPanel';
+import { NpcInteractionPanel } from './NpcInteractionPanel';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory, type ZoneEditorHistoryState } from './zoneEditorHistory';
 import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft, type PaintedRegion, type RegionBrushSize, type RegionToolMode, type RegionType, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
@@ -15,6 +16,16 @@ import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import { getZoneCenter, moveZone } from './zoneGeometry';
 import type { AdminMerchant } from '../services/content/models';
 import { subscribeToContentSync } from '../services/content/contentSync';
+import { getAllPlayerQuestStates, getAllQuests } from '../services/questRepository';
+import { deleteQuestMarker, getQuestMarkers, saveQuestMarker } from '../services/questMapRepository';
+import { tryStartRandomQuestFromZone } from '../services/questRuntime';
+import type { PlayerQuestState, QuestDefinition, QuestMarkerDefinition } from '../types/quest';
+import { getAllNpcs, saveNpc } from '../services/npcRepository';
+import { getDialoguesByNpc } from '../services/dialogueRepository';
+import { chooseDialogueOption, getStartNode } from '../services/dialogueRuntime';
+import { getNearbyMappedNpcs } from '../services/npcMapRuntime';
+import type { DialogueDefinition, DialogueNode } from '../types/dialogue';
+import type { NpcDefinition } from '../types/npc';
 
 type LocationView = 'map' | 'arklein';
 
@@ -143,6 +154,7 @@ interface WorldMapScreenProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
   resolveMerchantImage?: (merchant: AdminMerchant | null | undefined) => string | undefined;
+  playerAvatarUrl?: string;
   initialMode?: WorldMapMode;
   adminEditorOnly?: boolean;
   showAdminShortcuts?: boolean;
@@ -168,6 +180,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     resolveItemById,
     resolveItemImage,
     resolveMerchantImage,
+    playerAvatarUrl,
     initialMode = 'play',
     adminEditorOnly = false,
     showAdminShortcuts = false,
@@ -179,6 +192,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const skipNextSettingsPersistRef = useRef(false);
   const worldMapRefreshRef = useRef<Promise<void> | null>(null);
   const lastWorldMapRefreshAtRef = useRef(0);
+  const lastAggroNpcRef = useRef<{ id: string; at: number } | null>(null);
 
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(adminEditorOnly ? 'editor' : initialMode);
   const [contextMode, setContextMode] = useState<ContextMode>('empty');
@@ -192,6 +206,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatType, setChatType] = useState<ChatType>('local');
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
+  const [questDefinitions, setQuestDefinitions] = useState<QuestDefinition[]>([]);
+  const [playerQuestStates, setPlayerQuestStates] = useState<PlayerQuestState[]>([]);
+  const [questMarkers, setQuestMarkers] = useState<QuestMarkerDefinition[]>([]);
+  const [selectedQuestMarkerId, setSelectedQuestMarkerId] = useState<string | null>(null);
+  const [questMarkerDraft, setQuestMarkerDraft] = useState<QuestMarkerDefinition | null>(null);
+  const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
+  const [selectedNpcIdForPlacement, setSelectedNpcIdForPlacement] = useState('');
+  const [selectedNpcForInteractionId, setSelectedNpcForInteractionId] = useState<string | null>(null);
+  const [activeDialogue, setActiveDialogue] = useState<DialogueDefinition | null>(null);
+  const [activeDialogueNode, setActiveDialogueNode] = useState<DialogueNode | null>(null);
+  const [dialogueLogs, setDialogueLogs] = useState<string[]>([]);
 
   const [zones, setZones] = useState<WorldMapZone[]>(() => cloneZones(WORLD_MAP_ZONES));
   const [regions, setRegions] = useState<PaintedRegion[]>([]);
@@ -211,6 +236,42 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const selectedLocationName = currentZone?.name ?? 'Пустоши';
   const nearbyPlayers = useMemo(() => getNearbyPlayers(), []);
+  const nearbyNpcs = useMemo(
+    () => getNearbyMappedNpcs('worldmap-main', playerPosition.x, playerPosition.y, 0.09),
+    [playerPosition.x, playerPosition.y],
+  );
+  const playQuestMarkers = useMemo(
+    () => questMarkers.filter((entry) => entry.mapId === 'worldmap-main' && entry.visibleToPlayer),
+    [questMarkers],
+  );
+  const playNpcMarkers = useMemo(() => {
+    const out: Array<{ id: string; name: string; kind: string; x: number; y: number; isHostile: boolean; hasQuest: boolean }> = [];
+    for (const npc of npcs) {
+      if (npc.status === 'disabled' || npc.status === 'archived') {
+        continue;
+      }
+      const binding = npc.mapBindings.find((entry) => entry.mapId === 'worldmap-main' && typeof entry.x === 'number' && typeof entry.y === 'number' && entry.visibleToPlayer !== false);
+      if (!binding || typeof binding.x !== 'number' || typeof binding.y !== 'number') {
+        continue;
+      }
+      out.push({
+        id: npc.id,
+        name: npc.name,
+        kind: npc.kind,
+        x: binding.x,
+        y: binding.y,
+        isHostile: npc.defaultDisposition === 'hostile' || npc.defaultDisposition === 'aggressive_on_sight',
+        hasQuest: npc.canGiveQuests || npc.questBindings.length > 0,
+      });
+    }
+    return out;
+  }, [npcs]);
+  const selectedNpcForInteraction = useMemo(() => {
+    if (selectedNpcForInteractionId) {
+      return npcs.find((entry) => entry.id === selectedNpcForInteractionId) ?? null;
+    }
+    return nearbyNpcs[0]?.npc ?? null;
+  }, [nearbyNpcs, npcs, selectedNpcForInteractionId]);
   const selectedNearbyPlayer = useMemo(
     () => nearbyPlayers.find((entry) => entry.id === selectedNearbyPlayerId) ?? nearbyPlayers[0] ?? null,
     [nearbyPlayers, selectedNearbyPlayerId],
@@ -263,6 +324,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   useEffect(() => {
     setEditorJson(exportEditorDataJson(zones, regions));
   }, [regions, zones]);
+
+  useEffect(() => {
+    setQuestDefinitions(getAllQuests());
+    setPlayerQuestStates(getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id));
+    setQuestMarkers(getQuestMarkers());
+    setNpcs(getAllNpcs());
+  }, [character.id]);
 
   useEffect(() => {
     const restored = loadPlayerPosition(character.id);
@@ -516,7 +584,227 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       type: 'system',
     };
     setSystemChat((prev) => [...prev, entry].slice(-12));
-  }, [worldMapMode]);
+
+    const questPool = (zone.randomQuestPoolIds ?? []).filter(Boolean);
+    if (questPool.length > 0) {
+      const triggered = tryStartRandomQuestFromZone(
+        {
+          id: character.id,
+          level: character.level,
+          race: character.race,
+        },
+        zone.id,
+        questPool,
+        zone.chancePercent ?? 10,
+        zone.cooldownSeconds ?? 120,
+      );
+
+      if (triggered) {
+        const questEntry: ChatMessage = {
+          id: `sys-quest-${Date.now()}-${triggered.id}`,
+          text: `Новый квест: ${triggered.title}`,
+          type: 'system',
+        };
+        setSystemChat((prev) => [...prev, questEntry].slice(-12));
+        setPlayerQuestStates(getAllPlayerQuestStates().filter((state) => state.playerId === character.id));
+      }
+    }
+  }, [character.id, character.level, character.race, worldMapMode]);
+
+  const handleSelectQuestMarker = useCallback((id: string | null) => {
+    setSelectedQuestMarkerId(id);
+    if (!id) {
+      setQuestMarkerDraft(null);
+      return;
+    }
+
+    const existing = questMarkers.find((entry) => entry.id === id) ?? null;
+    setQuestMarkerDraft(existing ? { ...existing } : null);
+  }, [questMarkers]);
+
+  const handleSaveQuestMarker = useCallback(() => {
+    const draft = questMarkerDraft ?? {
+      id: `marker_${Date.now()}`,
+      title: 'Новый маркер',
+      mapId: 'worldmap-main',
+      x: mouseCoords.x ?? 0.5,
+      y: mouseCoords.y ?? 0.5,
+      type: 'quest_start' as const,
+      visibleToPlayer: true,
+      conditionIds: [],
+    };
+
+    if (!draft.id.trim() || !draft.title.trim()) {
+      onStatus('Quest marker: id и title обязательны.');
+      return;
+    }
+
+    const saved = saveQuestMarker(draft);
+    const all = getQuestMarkers();
+    setQuestMarkers(all);
+    setSelectedQuestMarkerId(saved.id);
+    setQuestMarkerDraft({ ...saved });
+    onStatus(`Quest marker сохранен: ${saved.title}.`);
+  }, [mouseCoords.x, mouseCoords.y, onStatus, questMarkerDraft]);
+
+  const handleDeleteQuestMarker = useCallback(() => {
+    if (!selectedQuestMarkerId) {
+      return;
+    }
+    deleteQuestMarker(selectedQuestMarkerId);
+    const all = getQuestMarkers();
+    setQuestMarkers(all);
+    setSelectedQuestMarkerId(null);
+    setQuestMarkerDraft(null);
+    onStatus('Quest marker удален.');
+  }, [onStatus, selectedQuestMarkerId]);
+
+  useEffect(() => {
+    if (!selectedNpcForInteractionId && nearbyNpcs[0]?.npc.id) {
+      setSelectedNpcForInteractionId(nearbyNpcs[0].npc.id);
+    }
+  }, [nearbyNpcs, selectedNpcForInteractionId]);
+
+  useEffect(() => {
+    if (worldMapMode !== 'play') {
+      return;
+    }
+    const hostile = nearbyNpcs.find((entry) => (entry.npc.defaultDisposition === 'hostile' || entry.npc.defaultDisposition === 'aggressive_on_sight') && entry.npc.canFight);
+    if (!hostile) {
+      return;
+    }
+    const now = Date.now();
+    if (lastAggroNpcRef.current && lastAggroNpcRef.current.id === hostile.npc.id && now - lastAggroNpcRef.current.at < 12000) {
+      return;
+    }
+    lastAggroNpcRef.current = { id: hostile.npc.id, at: now };
+    setSelectedNpcForInteractionId(hostile.npc.id);
+    setContextMode('combat');
+    onStatus(`${hostile.npc.name} атакует вас при приближении.`);
+    void onStartCombat();
+  }, [nearbyNpcs, onStartCombat, onStatus, worldMapMode]);
+
+  const handlePlaceNpcAtCursor = useCallback(() => {
+    if (!selectedNpcIdForPlacement) {
+      onStatus('Выберите NPC для размещения.');
+      return;
+    }
+    if (mouseCoords.x === null || mouseCoords.y === null) {
+      onStatus('Наведите курсор на карту, чтобы получить координаты.');
+      return;
+    }
+
+    const npc = npcs.find((entry) => entry.id === selectedNpcIdForPlacement);
+    if (!npc) {
+      onStatus('NPC не найден.');
+      return;
+    }
+
+    const binding = {
+      id: `npc_map_${Date.now()}`,
+      mapId: 'worldmap-main',
+      x: mouseCoords.x,
+      y: mouseCoords.y,
+      spawnType: 'fixed' as const,
+      visibleToPlayer: true,
+    };
+
+    const saved = saveNpc({
+      ...npc,
+      mapBindings: [...npc.mapBindings, binding],
+      updatedAt: new Date().toISOString(),
+    });
+
+    const all = getAllNpcs();
+    setNpcs(all);
+    setSelectedNpcForInteractionId(saved.id);
+    onStatus(`NPC размещен: ${saved.name} (${binding.x.toFixed(3)}, ${binding.y.toFixed(3)}).`);
+  }, [mouseCoords.x, mouseCoords.y, npcs, onStatus, selectedNpcIdForPlacement]);
+
+  const handleNpcTalk = useCallback(() => {
+    if (!selectedNpcForInteraction) {
+      return;
+    }
+    const dialogues = getDialoguesByNpc(selectedNpcForInteraction.id).filter((entry) => entry.status !== 'disabled');
+    const first = dialogues[0] ?? null;
+    if (!first) {
+      onStatus('У этого NPC пока нет диалогов.');
+      setActiveDialogue(null);
+      setActiveDialogueNode(null);
+      return;
+    }
+    setActiveDialogue(first);
+    setActiveDialogueNode(getStartNode(first));
+    setDialogueLogs((prev) => [...prev, `Open dialogue: ${first.id}`].slice(-12));
+  }, [onStatus, selectedNpcForInteraction]);
+
+  const handleNpcTrade = useCallback(() => {
+    if (!selectedNpcForInteraction?.traderId) {
+      onStatus('У NPC не настроен trader profile.');
+      return;
+    }
+    onOpenMerchant(selectedNpcForInteraction.traderId);
+  }, [onOpenMerchant, onStatus, selectedNpcForInteraction]);
+
+  const handleNpcTrain = useCallback(() => {
+    if (!selectedNpcForInteraction?.canTrain) {
+      onStatus('Этот NPC не обучает навыкам.');
+      return;
+    }
+    onOpenSkills();
+    const trainerCount = selectedNpcForInteraction.trainer?.skillIds?.length ?? 0;
+    onStatus(`Открыто обучение у NPC: ${selectedNpcForInteraction.name}. Доступно навыков: ${trainerCount}.`);
+  }, [onOpenSkills, onStatus, selectedNpcForInteraction]);
+
+  const handleNpcAttack = useCallback(async () => {
+    if (!selectedNpcForInteraction?.canFight) {
+      onStatus('Этот NPC не доступен для боя.');
+      return;
+    }
+    await onStartCombat();
+  }, [onStartCombat, onStatus, selectedNpcForInteraction]);
+
+  const handleNpcQuest = useCallback(() => {
+    if (!selectedNpcForInteraction) {
+      return;
+    }
+    setContextMode('npc');
+    if (!selectedNpcForInteraction.canGiveQuests && selectedNpcForInteraction.questBindings.length === 0) {
+      onStatus('У NPC нет активных квестовых связок.');
+      return;
+    }
+    handleNpcTalk();
+    onStatus(`Квестовый диалог с NPC: ${selectedNpcForInteraction.name}.`);
+  }, [handleNpcTalk, onStatus, selectedNpcForInteraction]);
+
+  const handleNpcInspect = useCallback(() => {
+    if (!selectedNpcForInteraction) {
+      return;
+    }
+    onStatus(`${selectedNpcForInteraction.name}: ${selectedNpcForInteraction.description || 'без описания'}`);
+  }, [onStatus, selectedNpcForInteraction]);
+
+  const handleSelectDialogueChoice = useCallback((choiceId: string) => {
+    if (!selectedNpcForInteraction || !activeDialogue || !activeDialogueNode) {
+      return;
+    }
+    try {
+      const result = chooseDialogueOption(
+        character.id,
+        selectedNpcForInteraction.id,
+        activeDialogue.id,
+        activeDialogueNode.id,
+        choiceId,
+      );
+      setDialogueLogs((prev) => [...prev, ...result.logs].slice(-20));
+      setActiveDialogueNode(result.nextNode);
+      if (result.ended) {
+        setDialogueLogs((prev) => [...prev, 'Dialogue ended.'].slice(-20));
+      }
+    } catch (error) {
+      onStatus((error as Error).message);
+    }
+  }, [activeDialogue, activeDialogueNode, character.id, onStatus, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== 'play') {
@@ -1005,6 +1293,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         <PlayerQuickPanel
           name={character.name}
           avatarLetter={avatarLetter}
+          avatarUrl={playerAvatarUrl}
           hpText={`${battleStats.hp}/${character.activeStats.hp}`}
           mpText={`${battleStats.mp}/${character.activeStats.mp}`}
           staminaText={`${battleStats.stamina}/${character.activeStats.stamina}`}
@@ -1022,6 +1311,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             playerStartPosition={playSpawnPosition}
             zones={zones}
             regions={regions}
+            playQuestMarkers={playQuestMarkers}
+            playNpcMarkers={playNpcMarkers}
             onOpenLocation={handleOpenLocation}
             onEnterZone={handleZoneEnterMemoized}
             onHoverZone={handleHoverZone}
@@ -1111,8 +1402,40 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             </>
           ) : null}
 
-          <ContextActionPanel mode={contextMode} selectedNode={selectedNode} onAction={(actionId, kind) => { void handleAction(actionId, kind); }} />
+          <ContextActionPanel
+            mode={contextMode}
+            selectedNode={selectedNode}
+            quests={questDefinitions}
+            playerQuestStates={playerQuestStates}
+            onAction={(actionId, kind) => { void handleAction(actionId, kind); }}
+          />
+          <NpcInteractionPanel
+            npc={selectedNpcForInteraction}
+            dialogue={activeDialogue}
+            node={activeDialogueNode}
+            logs={dialogueLogs}
+            onTalk={handleNpcTalk}
+            onTrade={handleNpcTrade}
+            onTrain={handleNpcTrain}
+            onAttack={() => { void handleNpcAttack(); }}
+            onQuest={handleNpcQuest}
+            onInspect={handleNpcInspect}
+            onSelectChoice={handleSelectDialogueChoice}
+          />
           <section className="wm-context card" style={{ borderTop: 'none' }}>
+            <section className="wm-context-block">
+              <h3>NPC рядом</h3>
+              {nearbyNpcs.length > 0 ? nearbyNpcs.map((entry) => (
+                <button
+                  key={entry.npc.id}
+                  style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNpcForInteraction?.id === entry.npc.id ? 1 : 0.82 }}
+                  onClick={() => setSelectedNpcForInteractionId(entry.npc.id)}
+                >
+                  {entry.npc.name} [{entry.npc.kind}] ({entry.distance.toFixed(3)})
+                </button>
+              )) : <p className="muted">Нет NPC в радиусе взаимодействия.</p>}
+            </section>
+
             <section className="wm-context-block">
               <h3>Игроки рядом</h3>
               {nearbyPlayers.map((entry) => (
@@ -1254,6 +1577,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onJsonChange={setEditorJson}
           onDeleteSelectedPoint={handleDeleteSelectedPoint}
           onReversePoints={handleReversePoints}
+          questMarkers={questMarkers}
+          selectedQuestMarkerId={selectedQuestMarkerId}
+          questMarkerDraft={questMarkerDraft}
+          onSelectQuestMarker={handleSelectQuestMarker}
+          onQuestMarkerDraftChange={setQuestMarkerDraft}
+          onSaveQuestMarker={handleSaveQuestMarker}
+          onDeleteQuestMarker={handleDeleteQuestMarker}
+          npcOptions={npcs}
+          selectedNpcIdForPlacement={selectedNpcIdForPlacement}
+          onSelectNpcForPlacement={setSelectedNpcIdForPlacement}
+          onPlaceNpcAtCursor={handlePlaceNpcAtCursor}
         />
       </div>
 

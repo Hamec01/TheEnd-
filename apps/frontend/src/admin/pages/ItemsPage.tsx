@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AdminItem, DamageCategory, ElementType, HandsRequired, ItemRarity, ItemSlot, ItemType, MagicSchool, PhysicalType, StatKey, StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { itemsService, validateItem } from '../../services/content/itemsService';
-import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
 import {
@@ -75,10 +75,12 @@ export function ItemsPage() {
   const [status, setStatus] = useState('Готово');
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
 
   async function refresh() {
-    const all = await itemsService.getAll();
+    const [all, images] = await Promise.all([itemsService.getAll(), loadRuntimeImages()]);
     setItems(all);
+    setRuntimeImages(images);
     if (selectedId && !all.some((item) => item.id === selectedId)) {
       setSelectedId(null);
       setDraft(emptyItem());
@@ -104,6 +106,30 @@ export function ItemsPage() {
       return true;
     });
   }, [items, query, rarityFilter, typeFilter]);
+
+  const selectedItem = useMemo(
+    () => (selectedId ? items.find((item) => item.id === selectedId) ?? null : null),
+    [items, selectedId],
+  );
+
+  function resolveItemImage(item: AdminItem): string | undefined {
+    return resolveStoredImageSource(item.imagePath?.trim(), runtimeImages);
+  }
+
+  function getItemCardAccent(item: AdminItem): string {
+    switch (item.rarity) {
+      case 'legendary':
+      case 'mythic':
+        return 'is-gold';
+      case 'epic':
+      case 'forbidden':
+        return 'is-crimson';
+      case 'rare':
+        return 'is-sky';
+      default:
+        return 'is-olive';
+    }
+  }
 
   function select(item: AdminItem) {
     setSelectedId(item.id);
@@ -257,31 +283,7 @@ export function ItemsPage() {
   }
 
   return (
-    <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <input placeholder="Поиск по ID или названию" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | ItemType)}>
-            <option value="all">Все типы</option>
-            {ITEM_TYPES.map((type) => <option key={type} value={type}>{translateItemType(type)}</option>)}
-          </select>
-          <select value={rarityFilter} onChange={(event) => setRarityFilter(event.target.value as 'all' | ItemRarity)}>
-            <option value="all">Любая редкость</option>
-            {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
-          </select>
-          <button onClick={() => { setSelectedId(null); setDraft(emptyItem()); }}>Новый предмет</button>
-        </div>
-
-        <div className="admin-scroll-list">
-          {visibleItems.map((item) => (
-            <button key={item.id} className={selectedId === item.id ? 'is-active' : ''} onClick={() => select(item)}>
-              <strong>{item.name}</strong>
-              <span>{item.id} | {translateItemType(item.type)} | {translateRarity(item.rarity)} | {translateEnabledState(item.isEnabled)}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
+    <div className="admin-items-page admin-page-grid">
       <section className="admin-form-panel">
         <div className="admin-form-grid">
           <label>
@@ -455,6 +457,57 @@ export function ItemsPage() {
         </section>
 
         <p className="muted">{status}</p>
+      </section>
+
+      <section className="admin-items-catalog card">
+        <div className="admin-catalog-header">
+          <div>
+            <p className="admin-catalog-kicker">Asset Library</p>
+            <h3>Все предметы</h3>
+            <p className="muted">Режим как в проводнике Windows: обычные значки. Нажми на иконку предмета, чтобы снова редактировать его выше.</p>
+          </div>
+          <div className="admin-catalog-metrics">
+            <span>{visibleItems.length} в выдаче</span>
+            <span>{items.filter((item) => item.isEnabled).length} активных</span>
+          </div>
+        </div>
+
+        <div className="admin-list-tools admin-catalog-toolbar">
+          <input placeholder="Поиск по ID или названию" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | ItemType)}>
+            <option value="all">Все типы</option>
+            {ITEM_TYPES.map((type) => <option key={type} value={type}>{translateItemType(type)}</option>)}
+          </select>
+          <select value={rarityFilter} onChange={(event) => setRarityFilter(event.target.value as 'all' | ItemRarity)}>
+            <option value="all">Любая редкость</option>
+            {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
+          </select>
+          <button onClick={() => { setSelectedId(null); setDraft(emptyItem()); }}>Новый предмет</button>
+        </div>
+
+        {selectedItem ? (
+          <section className="admin-items-selected-row">
+            <strong>Сейчас редактируется:</strong>
+            <span>{selectedItem.name} ({selectedItem.id})</span>
+          </section>
+        ) : null}
+
+        <div className="admin-items-icons-grid">
+          {visibleItems.map((item) => (
+            <button
+              key={item.id}
+              className={`admin-item-icon-card ${selectedId === item.id ? 'is-active' : ''}`}
+              onClick={() => select(item)}
+              title={`${item.name} (${item.id})`}
+            >
+              <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getItemCardAccent(item)}`}>
+                {resolveItemImage(item) ? <img src={resolveItemImage(item)} alt={item.name} /> : (item.name.trim() || item.type).charAt(0).toUpperCase()}
+              </div>
+              <strong>{item.name || '(без названия)'}</strong>
+              <span>{item.id || 'ID ещё не задан'}</span>
+            </button>
+          ))}
+        </div>
       </section>
     </div>
   );

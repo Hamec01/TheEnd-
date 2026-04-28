@@ -174,6 +174,7 @@ export function BattleField({
     }
 
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const [boardSize, setBoardSize] = useState({ width: 0, height: 0 });
     const sceneCellSize = Math.max(34, Math.min(96, mapCalibration?.cellSizePx ?? 64));
     const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
     const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
@@ -473,6 +474,24 @@ export function BattleField({
   };
 
   useEffect(() => {
+    const node = boardRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      const next = entry.contentRect;
+      setBoardSize({
+        width: next.width,
+        height: next.height,
+      });
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onCancelSelection?.();
@@ -512,6 +531,13 @@ export function BattleField({
   const fullMapPixelHeight = gridOffsetY * 2 + battleMapHeight * sceneCellSize;
   const backgroundOffsetX = gridOffsetX - viewport.offsetX * sceneCellSize;
   const backgroundOffsetY = gridOffsetY - viewport.offsetY * sceneCellSize;
+  const availableBoardWidth = Math.max(1, boardSize.width - 16);
+  const availableBoardHeight = Math.max(1, boardSize.height - 16);
+  const sceneScale = Math.min(
+    1,
+    availableBoardWidth / Math.max(1, visibleMapPixelWidth),
+    availableBoardHeight / Math.max(1, visibleMapPixelHeight),
+  );
 
   return (
     <div className="battle-field tactical-field">
@@ -524,7 +550,14 @@ export function BattleField({
         className="tactical-board-container"
         ref={boardRef}
       >
-        <div className="tactical-scene" style={{ width: `${visibleMapPixelWidth}px`, height: `${visibleMapPixelHeight}px` }}>
+        <div
+          className="tactical-scene"
+          style={{
+            width: `${visibleMapPixelWidth}px`,
+            height: `${visibleMapPixelHeight}px`,
+            transform: `scale(${sceneScale})`,
+          }}
+        >
           <div
             className="tactical-scene-image"
             style={{

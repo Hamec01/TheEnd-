@@ -9,6 +9,11 @@ import { ItemsPage } from './pages/ItemsPage';
 import { LootTablesPage } from './pages/LootTablesPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { MerchantsPage } from './pages/MerchantsPage';
+import { QuestItemsPage } from './pages/QuestItemsPage';
+import { QuestsPage } from './pages/QuestsPage';
+import { SkillsPage } from './pages/SkillsPage';
+import { NpcsPage } from './pages/NpcsPage';
+import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
 
 interface AdminAppProps {
@@ -16,13 +21,18 @@ interface AdminAppProps {
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/merchants' | '/admin/materials' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
     path === '/admin/items'
+    || path === '/admin/skills'
+    || path === '/admin/quests'
+    || path === '/admin/quest-items'
     || path === '/admin/merchants'
     || path === '/admin/materials'
+    || path === '/admin/npcs'
+    || path === '/admin/dialogues'
     || path === '/admin/loot-tables'
     || path === '/admin/images'
     || path === '/admin/battle-maps'
@@ -41,10 +51,20 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     switch (route) {
       case '/admin/items':
         return 'Предметы';
+      case '/admin/skills':
+        return 'Skills';
+      case '/admin/quests':
+        return 'Квесты';
+      case '/admin/quest-items':
+        return 'Квестовые предметы';
       case '/admin/merchants':
         return 'Торговцы';
       case '/admin/materials':
         return 'Материалы';
+      case '/admin/npcs':
+        return 'Персонажи';
+      case '/admin/dialogues':
+        return 'Диалоги';
       case '/admin/loot-tables':
         return 'Таблицы добычи';
       case '/admin/images':
@@ -78,11 +98,26 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     case '/admin/items':
       page = <ItemsPage />;
       break;
+    case '/admin/skills':
+      page = <SkillsPage />;
+      break;
+    case '/admin/quests':
+      page = <QuestsPage />;
+      break;
+    case '/admin/quest-items':
+      page = <QuestItemsPage />;
+      break;
     case '/admin/merchants':
       page = <MerchantsPage />;
       break;
     case '/admin/materials':
       page = <MaterialsPage />;
+      break;
+    case '/admin/npcs':
+      page = <NpcsPage />;
+      break;
+    case '/admin/dialogues':
+      page = <DialoguesPage />;
       break;
     case '/admin/loot-tables':
       page = <LootTablesPage />;

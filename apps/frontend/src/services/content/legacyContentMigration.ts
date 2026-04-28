@@ -1,5 +1,5 @@
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
-import type { AdminItem, AdminMerchant, LootTable, Material, StoredImage } from './models';
+import type { AdminItem, AdminMerchant, AdminSkill, LootTable, Material, StoredImage } from './models';
 import { readCollection } from './storage';
 import type { ContentSnapshot } from './contentApi';
 
@@ -127,6 +127,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
 
   const items = readCollection<AdminItem>('items');
   const merchants = readCollection<AdminMerchant>('merchants');
+  const skills = readCollection<AdminSkill>('skills');
   const materials = readCollection<Material>('materials');
   const lootTables = readCollection<LootTable>('lootTables');
   const images = readCollection<StoredImage>('images');
@@ -134,6 +135,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
 
   const hasAnyContent = items.length > 0
     || merchants.length > 0
+    || skills.length > 0
     || materials.length > 0
     || lootTables.length > 0
     || images.length > 0
@@ -146,6 +148,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
   return {
     items,
     merchants,
+    skills,
     materials,
     lootTables,
     images,

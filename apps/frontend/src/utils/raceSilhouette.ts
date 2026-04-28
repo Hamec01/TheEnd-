@@ -3,15 +3,15 @@ import { Race } from '@theend/rpg-domain';
 export function getRaceSilhouette(race: Race): string {
   switch (race) {
     case 'HUMAN':
-      return '/Resurse/Human.png';
+      return '/art/races/human.png';
     case 'HIGH_ELF':
-      return '/Resurse/ELF.png';
+      return '/art/races/elf.png';
     case 'WOOD_ELF':
-      return '/Resurse/ELF.png';
+      return '/art/races/elf.png';
     case 'DWARF':
-      return '/Resurse/Dwarf.png';
+      return '/art/races/dwarf.png';
     default:
-      return '/Resurse/Human.png';
+      return '/art/races/human.png';
   }
 }
 

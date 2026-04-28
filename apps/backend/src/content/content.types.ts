@@ -1,4 +1,4 @@
-import type { PrimaryStat } from '@theend/rpg-domain';
+import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -176,6 +176,7 @@ export interface PaintedRegion {
   id: string;
   name: string;
   type: RegionType;
+  description?: string;
   cells: RegionCell[];
 }
 
@@ -221,6 +222,7 @@ export interface WorldMapContent {
 export interface ContentDatabase {
   version: 1;
   items: AdminItem[];
+  skills: AdminSkillDefinition[];
   merchants: AdminMerchant[];
   materials: Material[];
   lootTables: LootTable[];
@@ -228,10 +230,11 @@ export interface ContentDatabase {
   worldMap: WorldMapContent;
 }
 
-export type ContentCollectionName = 'items' | 'merchants' | 'materials' | 'lootTables' | 'images';
+export type ContentCollectionName = 'items' | 'skills' | 'merchants' | 'materials' | 'lootTables' | 'images';
 
 export interface ContentCollectionMap {
   items: AdminItem;
+  skills: AdminSkillDefinition;
   merchants: AdminMerchant;
   materials: Material;
   lootTables: LootTable;

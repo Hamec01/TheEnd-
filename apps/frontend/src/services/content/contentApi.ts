@@ -1,11 +1,11 @@
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
-import type { AdminItem, AdminMerchant, LootTable, Material, StoredImage } from './models';
+import type { AdminItem, AdminMerchant, AdminSkill, LootTable, Material, StoredImage } from './models';
 import { notifyContentSync } from './contentSync';
 import { ensureLegacyContentMigrated } from './legacyContentMigration';
 
 const API_BASE = 'http://localhost:3001';
 
-export type ContentCollectionName = 'items' | 'merchants' | 'materials' | 'lootTables' | 'images';
+export type ContentCollectionName = 'items' | 'skills' | 'merchants' | 'materials' | 'lootTables' | 'images';
 
 export interface WorldMapContent {
   zones: WorldMapZone[];
@@ -15,6 +15,7 @@ export interface WorldMapContent {
 
 export interface ContentSnapshot {
   items: AdminItem[];
+  skills: AdminSkill[];
   merchants: AdminMerchant[];
   materials: Material[];
   lootTables: LootTable[];

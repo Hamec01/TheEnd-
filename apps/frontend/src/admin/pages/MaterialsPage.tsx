@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Material } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { materialsService, validateMaterial } from '../../services/content/materialsService';
@@ -35,6 +35,7 @@ function emptyMaterial(): Material {
 
 export function MaterialsPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Material>(emptyMaterial());
   const [status, setStatus] = useState('Готово');
@@ -51,6 +52,36 @@ export function MaterialsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  const visibleMaterials = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return materials.filter((entry) => {
+      if (!q) {
+        return true;
+      }
+      return entry.id.toLowerCase().includes(q)
+        || entry.name.toLowerCase().includes(q)
+        || entry.region.toLowerCase().includes(q);
+    });
+  }, [materials, query]);
+
+  const selectedMaterial = useMemo(
+    () => (selectedId ? materials.find((entry) => entry.id === selectedId) ?? null : null),
+    [materials, selectedId],
+  );
+
+  function getMaterialCardAccent(material: Material): string {
+    if (!material.isEnabled) {
+      return 'is-crimson';
+    }
+    if (material.rarity === 'legendary' || material.rarity === 'mythic' || material.rarity === 'forbidden') {
+      return 'is-gold';
+    }
+    if (material.rarity === 'epic' || material.rarity === 'rare') {
+      return 'is-sky';
+    }
+    return 'is-olive';
+  }
 
   async function createOrUpdate() {
     const id = draft.id.trim() || uid('mat');
@@ -128,21 +159,7 @@ export function MaterialsPage() {
   }
 
   return (
-    <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <button onClick={() => { setSelectedId(null); setDraft(emptyMaterial()); }}>Новый материал</button>
-        </div>
-        <div className="admin-scroll-list">
-          {materials.map((material) => (
-            <button key={material.id} className={selectedId === material.id ? 'is-active' : ''} onClick={() => { setSelectedId(material.id); setDraft(material); }}>
-              <strong>{material.name}</strong>
-              <span>{material.id} | {translateMaterialCategory(material.category)} | {translateRarity(material.rarity)} | {translateEnabledState(material.isEnabled)}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
+    <div className="admin-page-grid">
       <section className="admin-form-panel">
         <div className="admin-form-grid">
           <label>
@@ -214,6 +231,49 @@ export function MaterialsPage() {
           <button disabled={!selectedId} onClick={() => { void deleteSelected(); }}>Удалить</button>
         </div>
         <p className="muted">{status}</p>
+      </section>
+
+      <section className="admin-items-catalog card">
+        <div className="admin-catalog-header">
+          <div>
+            <p className="admin-catalog-kicker">Crafting Assets</p>
+            <h3>Все материалы</h3>
+            <p className="muted">Список материалов перенесен вниз: выбирай материал как значок и редактируй его в форме выше.</p>
+          </div>
+          <div className="admin-catalog-metrics">
+            <span>{visibleMaterials.length} в выдаче</span>
+            <span>{materials.filter((entry) => entry.isEnabled).length} активных</span>
+          </div>
+        </div>
+
+        <div className="admin-list-tools admin-catalog-toolbar">
+          <input placeholder="Поиск по id, имени или региону" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <button onClick={() => { setSelectedId(null); setDraft(emptyMaterial()); }}>Новый материал</button>
+        </div>
+
+        <div className="admin-items-selected-row">
+          <strong>Сейчас редактируется:</strong>
+          <span>{selectedMaterial ? `${selectedMaterial.name} (${selectedMaterial.id})` : 'новый материал'}</span>
+        </div>
+
+        <div className="admin-items-icons-grid">
+          {visibleMaterials.map((material) => (
+            <button
+              key={material.id}
+              className={`admin-item-icon-card ${selectedId === material.id ? 'is-active' : ''}`}
+              onClick={() => { setSelectedId(material.id); setDraft(material); }}
+              title={`${material.name} (${material.id})`}
+            >
+              <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMaterialCardAccent(material)}`}>
+                {(material.name.trim() || material.category).charAt(0).toUpperCase()}
+              </div>
+              <strong>{material.name || '(без названия)'}</strong>
+              <span>{material.id || 'ID ещё не задан'}</span>
+              <span>{translateMaterialCategory(material.category)} | {translateRarity(material.rarity)}</span>
+              <span>{translateEnabledState(material.isEnabled)}</span>
+            </button>
+          ))}
+        </div>
       </section>
     </div>
   );

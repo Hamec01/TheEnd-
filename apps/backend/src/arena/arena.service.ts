@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import {
   type Equipment,
   type InventoryState,
@@ -99,7 +100,34 @@ export class ArenaService implements OnModuleInit {
       }
     }
 
-    if (invalidInventoryItemIds.length === 0 && !equipmentChanged) {
+    const equippedItemCounts = new Map<string, number>();
+    for (const itemId of Object.values(nextEquipment)) {
+      if (!itemId) {
+        continue;
+      }
+      equippedItemCounts.set(itemId, (equippedItemCounts.get(itemId) ?? 0) + 1);
+    }
+
+    const inventoryAdjustments: Array<{ id: string; quantity: number }> = [];
+    const sanitizedInventoryItems: Array<{ id: string; itemId: string; quantity: number }> = [];
+
+    for (const entry of params.inventoryItems) {
+      if (!canonicalItemIds.has(entry.itemId)) {
+        continue;
+      }
+
+      const equippedCount = equippedItemCounts.get(entry.itemId) ?? 0;
+      const nextQuantity = Math.max(0, entry.quantity - equippedCount);
+      if (nextQuantity !== entry.quantity) {
+        inventoryAdjustments.push({ id: entry.id, quantity: nextQuantity });
+      }
+
+      if (nextQuantity > 0) {
+        sanitizedInventoryItems.push({ ...entry, quantity: nextQuantity });
+      }
+    }
+
+    if (invalidInventoryItemIds.length === 0 && inventoryAdjustments.length === 0 && !equipmentChanged) {
       return {
         inventoryItems: params.inventoryItems,
         equipment: params.equipment,
@@ -117,6 +145,19 @@ export class ArenaService implements OnModuleInit {
         });
       }
 
+      for (const adjustment of inventoryAdjustments) {
+        if (adjustment.quantity <= 0) {
+          await tx.characterInventoryItem.delete({
+            where: { id: adjustment.id },
+          });
+        } else {
+          await tx.characterInventoryItem.update({
+            where: { id: adjustment.id },
+            data: { quantity: adjustment.quantity },
+          });
+        }
+      }
+
       if (equipmentChanged) {
         await tx.characterEquipment.upsert({
           where: { characterId: params.characterId },
@@ -130,9 +171,60 @@ export class ArenaService implements OnModuleInit {
     });
 
     return {
-      inventoryItems: params.inventoryItems.filter((entry) => canonicalItemIds.has(entry.itemId)),
+      inventoryItems: sanitizedInventoryItems,
       equipment: nextEquipment,
     };
+  }
+
+  private async incrementInventoryItem(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    itemId: string,
+    quantity = 1,
+  ): Promise<void> {
+    const existing = await tx.characterInventoryItem.findUnique({
+      where: { characterId_itemId: { characterId, itemId } },
+    });
+
+    if (existing) {
+      await tx.characterInventoryItem.update({
+        where: { id: existing.id },
+        data: { quantity: existing.quantity + quantity },
+      });
+      return;
+    }
+
+    await tx.characterInventoryItem.create({
+      data: { characterId, itemId, quantity },
+    });
+  }
+
+  private async decrementInventoryItem(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    itemId: string,
+    quantity = 1,
+  ): Promise<void> {
+    const existing = await tx.characterInventoryItem.findUnique({
+      where: { characterId_itemId: { characterId, itemId } },
+    });
+
+    if (!existing || existing.quantity < quantity) {
+      throw new BadRequestException('Item is not in inventory.');
+    }
+
+    const nextQuantity = existing.quantity - quantity;
+    if (nextQuantity <= 0) {
+      await tx.characterInventoryItem.delete({
+        where: { id: existing.id },
+      });
+      return;
+    }
+
+    await tx.characterInventoryItem.update({
+      where: { id: existing.id },
+      data: { quantity: nextQuantity },
+    });
   }
 
   private toBaseStats(character: {
@@ -268,12 +360,6 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('Недостаточно предметов для продажи.');
     }
 
-    const isEquipped = Object.values(state.equipment).some((equippedItemId) => equippedItemId === itemId);
-    const remainingQuantity = inventoryEntry.quantity - safeQuantity;
-    if (isEquipped && remainingQuantity < 1) {
-      throw new BadRequestException('Сначала снимите экипированный предмет.');
-    }
-
     const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
     const goldGain = sellPrice * safeQuantity;
 
@@ -323,26 +409,41 @@ export class ArenaService implements OnModuleInit {
     }
 
     const nextEquipment = this.contentService.equipItem(state.equipment, itemId, preferredHand);
+    const returnedItems = new Map<string, number>();
+    for (const slot of Object.keys(state.equipment) as Array<keyof Equipment>) {
+      const previousItemId = state.equipment[slot];
+      if (previousItemId && previousItemId !== nextEquipment[slot]) {
+        returnedItems.set(previousItemId, (returnedItems.get(previousItemId) ?? 0) + 1);
+      }
+    }
 
-    await this.prisma.characterEquipment.upsert({
-      where: { characterId },
-      update: {
-        weapon: nextEquipment.weapon,
-        helmet: nextEquipment.helmet,
-        armor: nextEquipment.armor,
-        boots: nextEquipment.boots,
-        gloves: nextEquipment.gloves,
-        shield: nextEquipment.shield,
-      },
-      create: {
-        characterId,
-        weapon: nextEquipment.weapon,
-        helmet: nextEquipment.helmet,
-        armor: nextEquipment.armor,
-        boots: nextEquipment.boots,
-        gloves: nextEquipment.gloves,
-        shield: nextEquipment.shield,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await this.decrementInventoryItem(tx, characterId, itemId);
+
+      for (const [returnedItemId, quantity] of returnedItems) {
+        await this.incrementInventoryItem(tx, characterId, returnedItemId, quantity);
+      }
+
+      await tx.characterEquipment.upsert({
+        where: { characterId },
+        update: {
+          weapon: nextEquipment.weapon,
+          helmet: nextEquipment.helmet,
+          armor: nextEquipment.armor,
+          boots: nextEquipment.boots,
+          gloves: nextEquipment.gloves,
+          shield: nextEquipment.shield,
+        },
+        create: {
+          characterId,
+          weapon: nextEquipment.weapon,
+          helmet: nextEquipment.helmet,
+          armor: nextEquipment.armor,
+          boots: nextEquipment.boots,
+          gloves: nextEquipment.gloves,
+          shield: nextEquipment.shield,
+        },
+      });
     });
 
     return this.getCharacterArenaState(characterId);
@@ -360,25 +461,29 @@ export class ArenaService implements OnModuleInit {
       [slot]: null,
     };
 
-    await this.prisma.characterEquipment.upsert({
-      where: { characterId },
-      update: {
-        weapon: nextEquipment.weapon,
-        helmet: nextEquipment.helmet,
-        armor: nextEquipment.armor,
-        boots: nextEquipment.boots,
-        gloves: nextEquipment.gloves,
-        shield: nextEquipment.shield,
-      },
-      create: {
-        characterId,
-        weapon: nextEquipment.weapon,
-        helmet: nextEquipment.helmet,
-        armor: nextEquipment.armor,
-        boots: nextEquipment.boots,
-        gloves: nextEquipment.gloves,
-        shield: nextEquipment.shield,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.characterEquipment.upsert({
+        where: { characterId },
+        update: {
+          weapon: nextEquipment.weapon,
+          helmet: nextEquipment.helmet,
+          armor: nextEquipment.armor,
+          boots: nextEquipment.boots,
+          gloves: nextEquipment.gloves,
+          shield: nextEquipment.shield,
+        },
+        create: {
+          characterId,
+          weapon: nextEquipment.weapon,
+          helmet: nextEquipment.helmet,
+          armor: nextEquipment.armor,
+          boots: nextEquipment.boots,
+          gloves: nextEquipment.gloves,
+          shield: nextEquipment.shield,
+        },
+      });
+
+      await this.incrementInventoryItem(tx, characterId, currentItem);
     });
 
     return this.getCharacterArenaState(characterId);

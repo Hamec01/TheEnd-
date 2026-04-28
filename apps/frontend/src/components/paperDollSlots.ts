@@ -40,7 +40,7 @@ export interface PaperDollAsset {
   slots: PaperDollSlotRect[];
 }
 
-export const HUMAN_SLOT_RECTS: PaperDollSlotRect[] = [
+const SOURCE_SLOT_RECTS: PaperDollSlotRect[] = [
   { id: 'helmet', x: 691, y: 68, w: 220, h: 220 },
   { id: 'necklace', x: 744, y: 307, w: 108, h: 108 },
   { id: 'armor', x: 700, y: 471, w: 205, h: 205 },
@@ -66,35 +66,47 @@ export const HUMAN_SLOT_RECTS: PaperDollSlotRect[] = [
   { id: 'quick10', x: 1484, y: 1863, w: 137, h: 137 },
 ];
 
-// Temporary calibration baseline copied from human layout; tune independently per race.
-export const DWARF_SLOT_RECTS: PaperDollSlotRect[] = HUMAN_SLOT_RECTS.map((slot) => ({ ...slot }));
+function scaleSlotRects(slots: PaperDollSlotRect[], scaleX: number, scaleY: number): PaperDollSlotRect[] {
+  return slots.map((slot) => ({
+    id: slot.id,
+    x: Math.round(slot.x * scaleX),
+    y: Math.round(slot.y * scaleY),
+    w: Math.round(slot.w * scaleX),
+    h: Math.round(slot.h * scaleY),
+  }));
+}
+
+export const HUMAN_SLOT_RECTS: PaperDollSlotRect[] = scaleSlotRects(SOURCE_SLOT_RECTS, 1107 / 1595, 1421 / 2048);
 
 // Temporary calibration baseline copied from human layout; tune independently per race.
-export const ELF_SLOT_RECTS: PaperDollSlotRect[] = HUMAN_SLOT_RECTS.map((slot) => ({ ...slot }));
+export const DWARF_SLOT_RECTS: PaperDollSlotRect[] = scaleSlotRects(SOURCE_SLOT_RECTS, 1163 / 1595, 1353 / 2048);
+
+// Temporary calibration baseline copied from human layout; tune independently per race.
+export const ELF_SLOT_RECTS: PaperDollSlotRect[] = scaleSlotRects(SOURCE_SLOT_RECTS, 1144 / 1595, 1375 / 2048);
 
 export const PAPER_DOLL_ASSETS: Record<PaperDollRace, PaperDollAsset> = {
   HUMAN: {
-    image: '/Resurse/Human.png',
-    naturalWidth: 1595,
-    naturalHeight: 2048,
+    image: '/art/races/human.png',
+    naturalWidth: 1107,
+    naturalHeight: 1421,
     slots: HUMAN_SLOT_RECTS,
   },
   DWARF: {
-    image: '/Resurse/Dwarf.png',
-    naturalWidth: 1760,
-    naturalHeight: 2048,
+    image: '/art/races/dwarf.png',
+    naturalWidth: 1163,
+    naturalHeight: 1353,
     slots: DWARF_SLOT_RECTS,
   },
   HIGH_ELF: {
-    image: '/Resurse/ELF.png',
-    naturalWidth: 1703,
-    naturalHeight: 2047,
+    image: '/art/races/elf.png',
+    naturalWidth: 1144,
+    naturalHeight: 1375,
     slots: ELF_SLOT_RECTS,
   },
   WOOD_ELF: {
-    image: '/Resurse/ELF.png',
-    naturalWidth: 1703,
-    naturalHeight: 2047,
+    image: '/art/races/elf.png',
+    naturalWidth: 1144,
+    naturalHeight: 1375,
     slots: ELF_SLOT_RECTS,
   },
 };

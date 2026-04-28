@@ -4,6 +4,14 @@ export type ZoneType =
   | 'city'
   | 'settlement'
   | 'quest'
+  | 'quest_area'
+  | 'random_event_area'
+  | 'danger_area'
+  | 'faction_area'
+  | 'kingdom_area'
+  | 'city_area'
+  | 'resource_area'
+  | 'hidden_area'
   | 'story'
   | 'landmark'
   | 'danger'
@@ -75,6 +83,12 @@ export interface WorldMapZone {
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;
+  layerPriority?: number;
+  randomQuestPoolIds?: string[];
+  chancePercent?: number;
+  biome?: string;
+  kingdomId?: string;
+  cityId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -108,6 +122,12 @@ export interface ZoneEditorDraft {
   professionId: string;
   respawnSeconds: number | null;
   cooldownSeconds: number | null;
+  layerPriority: number;
+  randomQuestPoolIds: string;
+  chancePercent: number | null;
+  biome: string;
+  kingdomId: string;
+  cityId: string;
   createdAt: number;
   updatedAt: number;
   selectedPointIndex: number | null;
@@ -175,6 +195,12 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     professionId: '',
     respawnSeconds: null,
     cooldownSeconds: null,
+    layerPriority: 0,
+    randomQuestPoolIds: '',
+    chancePercent: null,
+    biome: '',
+    kingdomId: '',
+    cityId: '',
     createdAt: now,
     updatedAt: now,
     selectedPointIndex: null,
@@ -211,6 +237,12 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     professionId: zone.professionId ?? '',
     respawnSeconds: zone.respawnSeconds ?? null,
     cooldownSeconds: zone.cooldownSeconds ?? null,
+    layerPriority: zone.layerPriority ?? 0,
+    randomQuestPoolIds: (zone.randomQuestPoolIds ?? []).join(', '),
+    chancePercent: zone.chancePercent ?? null,
+    biome: zone.biome ?? '',
+    kingdomId: zone.kingdomId ?? '',
+    cityId: zone.cityId ?? '',
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
     selectedPointIndex: null,
@@ -244,6 +276,15 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     professionId: draft.professionId.trim() || undefined,
     respawnSeconds: draft.respawnSeconds ?? undefined,
     cooldownSeconds: draft.cooldownSeconds ?? undefined,
+    layerPriority: draft.layerPriority || undefined,
+    randomQuestPoolIds: draft.randomQuestPoolIds
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    chancePercent: draft.chancePercent ?? undefined,
+    biome: draft.biome.trim() || undefined,
+    kingdomId: draft.kingdomId.trim() || undefined,
+    cityId: draft.cityId.trim() || undefined,
     createdAt: existingCreatedAt ?? draft.createdAt ?? now,
     updatedAt: now,
   };

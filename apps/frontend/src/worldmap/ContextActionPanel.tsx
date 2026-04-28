@@ -1,13 +1,16 @@
 import type { MapNodeData, ContextMode } from './types';
+import type { QuestDefinition, PlayerQuestState } from '../types/quest';
 
 interface ContextActionPanelProps {
   mode: ContextMode;
   selectedNode: MapNodeData | null;
   onAction: (actionId: string, kind: string) => void;
+  quests?: QuestDefinition[];
+  playerQuestStates?: PlayerQuestState[];
 }
 
 export function ContextActionPanel(props: ContextActionPanelProps) {
-  const { mode, selectedNode, onAction } = props;
+  const { mode, selectedNode, onAction, quests = [], playerQuestStates = [] } = props;
 
   const recentEvents = [
     'Вы получили 120 опыта',
@@ -17,20 +20,25 @@ export function ContextActionPanel(props: ContextActionPanelProps) {
     'Бой начался',
   ];
 
-  const quests = [
-    'Гибель каравана',
-    'Доставка в Брейнхольд',
-    'Охота на волков',
-  ];
+  const activeQuestRows = playerQuestStates
+    .filter((entry) => entry.status === 'active')
+    .map((state) => {
+      const quest = quests.find((entry) => entry.id === state.questId);
+      return {
+        id: state.questId,
+        title: quest?.title ?? state.questId,
+      };
+    })
+    .slice(0, 5);
 
   if (!selectedNode || mode === 'empty') {
     return (
       <aside className="wm-context card">
         <section className="wm-context-block">
           <h3>Задания</h3>
-          {quests.map((quest) => (
-            <p key={quest}>{quest}</p>
-          ))}
+          {activeQuestRows.length > 0 ? activeQuestRows.map((quest) => (
+            <p key={quest.id}>{quest.title}</p>
+          )) : <p className="muted">Активных квестов пока нет.</p>}
         </section>
         <section className="wm-context-block">
           <h3>Последние события</h3>

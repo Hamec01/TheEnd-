@@ -6,7 +6,31 @@ export const DEV_ZONE_STORAGE_KEY = 'theend.worldMap.zones.dev';
 export const EDITOR_SETTINGS_STORAGE_KEY = 'theend.worldMap.editor.settings';
 
 const ZONE_TYPES: ZoneType[] = [
-  'city', 'settlement', 'quest', 'story', 'landmark', 'danger', 'grind', 'resource', 'profession', 'dungeon', 'transition', 'safe', 'event', 'faction', 'locked', 'fast_travel', 'rest',
+  'city',
+  'settlement',
+  'quest',
+  'quest_area',
+  'random_event_area',
+  'danger_area',
+  'faction_area',
+  'kingdom_area',
+  'city_area',
+  'resource_area',
+  'hidden_area',
+  'story',
+  'landmark',
+  'danger',
+  'grind',
+  'resource',
+  'profession',
+  'dungeon',
+  'transition',
+  'safe',
+  'event',
+  'faction',
+  'locked',
+  'fast_travel',
+  'rest',
 ];
 
 const REGION_TYPES: RegionType[] = ['walkable', 'blocked', 'water', 'road', 'danger', 'trigger'];
@@ -118,6 +142,14 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     professionId: zone.professionId ? String(zone.professionId) : undefined,
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,
+    layerPriority: isFiniteNumber(zone.layerPriority) ? zone.layerPriority : undefined,
+    randomQuestPoolIds: Array.isArray(zone.randomQuestPoolIds)
+      ? zone.randomQuestPoolIds.filter((entry): entry is string => typeof entry === 'string')
+      : undefined,
+    chancePercent: isFiniteNumber(zone.chancePercent) ? zone.chancePercent : undefined,
+    biome: typeof zone.biome === 'string' ? zone.biome : undefined,
+    kingdomId: typeof zone.kingdomId === 'string' ? zone.kingdomId : undefined,
+    cityId: typeof zone.cityId === 'string' ? zone.cityId : undefined,
     createdAt: isFiniteNumber(zone.createdAt) ? zone.createdAt : Date.now(),
     updatedAt: isFiniteNumber(zone.updatedAt) ? zone.updatedAt : Date.now(),
   };

@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   EMPTY_EQUIPMENT,
+  CastType,
   ITEMS,
   MERCHANTS,
+  SkillType,
+  validateSkillDefinition,
   getItemHandsRequired,
+  type AdminSkillDefinition,
   type Equipment,
   type ItemDefinition,
   type Merchant,
@@ -25,7 +29,7 @@ import type {
 } from './content.types';
 
 const CONTENT_DB_VERSION = 1 as const;
-const CONTENT_COLLECTIONS: ContentCollectionName[] = ['items', 'merchants', 'materials', 'lootTables', 'images'];
+const CONTENT_COLLECTIONS: ContentCollectionName[] = ['items', 'skills', 'merchants', 'materials', 'lootTables', 'images'];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
@@ -149,6 +153,7 @@ function createEmptyDatabase(): ContentDatabase {
   return {
     version: CONTENT_DB_VERSION,
     items: [],
+    skills: [],
     merchants: [],
     materials: [],
     lootTables: [],
@@ -166,6 +171,7 @@ function createSeedDatabase(): ContentDatabase {
   return {
     version: CONTENT_DB_VERSION,
     items: Object.values(ITEMS).map((item) => seedItemFromDomain(item, timestamp)),
+    skills: [],
     merchants: MERCHANTS.map((merchant) => seedMerchantFromDomain(merchant, timestamp)),
     materials: [],
     lootTables: [],
@@ -230,6 +236,87 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
   };
+}
+
+function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition {
+  const now = nowIso();
+  const normalized: AdminSkillDefinition = {
+    ...input,
+    id: input.id.trim(),
+    name: input.name.trim(),
+    slug: input.slug?.trim() || input.id.trim(),
+    type: input.type ?? SkillType.PHYSICAL,
+    subtypes: Array.isArray(input.subtypes) ? input.subtypes : [],
+    iconUrl: input.iconUrl?.trim() || undefined,
+    shortDescription: input.shortDescription ?? '',
+    gameplayDescription: input.gameplayDescription ?? '',
+    loreDescription: input.loreDescription?.trim() || undefined,
+    isActive: input.isActive !== false,
+    isPassive: Boolean(input.isPassive),
+    isToggleable: Boolean(input.isToggleable),
+    maxLevel: Math.min(5, Math.max(1, Math.round(input.maxLevel || 1))) as AdminSkillDefinition['maxLevel'],
+    levels: Array.isArray(input.levels) ? input.levels : [],
+    target: input.target,
+    costs: {
+      resources: Array.isArray(input.costs?.resources) ? input.costs.resources : [],
+      allowClassModifiers: input.costs?.allowClassModifiers !== false,
+      allowRaceModifiers: input.costs?.allowRaceModifiers !== false,
+      allowEquipmentModifiers: input.costs?.allowEquipmentModifiers !== false,
+      isFree: Boolean(input.costs?.isFree),
+    },
+    damage: Array.isArray(input.damage) ? input.damage : [],
+    healing: Array.isArray(input.healing) ? input.healing : [],
+    effects: Array.isArray(input.effects) ? input.effects : [],
+    summons: Array.isArray(input.summons) ? input.summons : [],
+    transformations: Array.isArray(input.transformations) ? input.transformations : [],
+    risks: Array.isArray(input.risks) ? input.risks : [],
+    rune: input.rune ?? {
+      usesRunes: false,
+      runeIds: [],
+      requiredRuneIds: [],
+      bindingRuneIds: [],
+      runeCosts: [],
+      removable: true,
+      canDestroyHost: false,
+    },
+    shamanism: input.shamanism ?? {
+      requiresSpirit: false,
+      requiresContract: false,
+      canSummonEntity: false,
+      canMakeContract: false,
+      canLoseControl: false,
+    },
+    requirements: input.requirements ?? {},
+    acquisition: input.acquisition ?? {
+      methods: [],
+      isStarterSkill: false,
+      isQuestReward: false,
+      isBuyable: false,
+      isDiscoverable: false,
+      isAdminOnly: true,
+    },
+    classScaling: Array.isArray(input.classScaling) ? input.classScaling : [],
+    raceRules: Array.isArray(input.raceRules) ? input.raceRules : [],
+    cooldown: input.cooldown ?? { cooldownTurns: 0 },
+    cast: input.cast ?? {
+      castType: CastType.INSTANT,
+      requiresLineOfSight: true,
+      canBeInterrupted: false,
+    },
+    tags: Array.isArray(input.tags) ? input.tags : [],
+    isPublished: Boolean(input.isPublished),
+    isHidden: Boolean(input.isHidden),
+    adminNotes: input.adminNotes?.trim() || undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+
+  const errors = validateSkillDefinition(normalized);
+  if (errors.length > 0) {
+    throw new BadRequestException(errors.join(', '));
+  }
+
+  return normalized;
 }
 
 function normalizeMerchantItem(entry: MerchantItem): MerchantItem {
@@ -359,6 +446,19 @@ export class ContentService {
       errors.push(`Duplicate item ids: ${duplicateItems.join(', ')}`);
     }
 
+    const duplicateSkills = findDuplicateIds(db.skills);
+    if (duplicateSkills.length > 0) {
+      errors.push(`Duplicate skill ids: ${duplicateSkills.join(', ')}`);
+    }
+
+    const skillSlugs = new Set<string>();
+    for (const skill of db.skills) {
+      if (skillSlugs.has(skill.slug)) {
+        errors.push(`Duplicate skill slug: ${skill.slug}`);
+      }
+      skillSlugs.add(skill.slug);
+    }
+
     const duplicateMerchants = findDuplicateIds(db.merchants);
     if (duplicateMerchants.length > 0) {
       errors.push(`Duplicate merchant ids: ${duplicateMerchants.join(', ')}`);
@@ -379,6 +479,15 @@ export class ContentService {
 
       if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
         errors.push(`Item '${item.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    for (const skill of db.skills) {
+      if (skill.iconUrl && !skill.iconUrl.startsWith('/') && !skill.iconUrl.startsWith('http') && !imageIds.has(skill.iconUrl)) {
+        errors.push(`Skill '${skill.id}' references missing image '${skill.iconUrl}'.`);
+      }
+      for (const validationError of validateSkillDefinition(skill)) {
+        errors.push(`Skill '${skill.id}': ${validationError}`);
       }
     }
 
@@ -440,6 +549,7 @@ export class ContentService {
     return {
       version: CONTENT_DB_VERSION,
       items: Array.isArray(raw.items) ? raw.items.map((item) => normalizeItemInput(item as AdminItem)) : [],
+      skills: Array.isArray(raw.skills) ? raw.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition)) : [],
       merchants: Array.isArray(raw.merchants) ? raw.merchants.map((merchant) => normalizeMerchantInput(merchant as AdminMerchant)) : [],
       materials: Array.isArray(raw.materials) ? clone(raw.materials as Material[]) : [],
       lootTables: Array.isArray(raw.lootTables) ? clone(raw.lootTables) : [],
@@ -569,6 +679,8 @@ export class ContentService {
     let nextEntry: ContentCollectionMap[K];
     if (collectionName === 'items') {
       nextEntry = normalizeItemInput(payload as ContentCollectionMap['items']) as ContentCollectionMap[K];
+    } else if (collectionName === 'skills') {
+      nextEntry = normalizeSkillInput(payload as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else {
@@ -593,6 +705,8 @@ export class ContentService {
     let merged: ContentCollectionMap[K];
     if (collectionName === 'items') {
       merged = normalizeItemInput(mergedBase as ContentCollectionMap['items']) as ContentCollectionMap[K];
+    } else if (collectionName === 'skills') {
+      merged = normalizeSkillInput(mergedBase as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else {
@@ -623,6 +737,10 @@ export class ContentService {
       db.items = shouldReplaceItemsFromLegacy(db.items, normalizedItems)
         ? clone(normalizedItems)
         : mergeById(db.items, normalizedItems);
+    }
+    if (Array.isArray(payload.skills) && payload.skills.length > 0) {
+      const normalizedSkills = payload.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition));
+      db.skills = mergeById(db.skills, normalizedSkills);
     }
     if (Array.isArray(payload.merchants) && payload.merchants.length > 0) {
       const normalizedMerchants = payload.merchants.map((merchant) => normalizeMerchantInput(merchant as AdminMerchant));
@@ -670,9 +788,10 @@ export class ContentService {
 
   getCanonicalItemIds(options?: { enabledOnly?: boolean }): string[] {
     const enabledOnly = options?.enabledOnly === true;
-    return this.ensureLoaded().items
+    const contentItemIds = this.ensureLoaded().items
       .filter((item) => (enabledOnly ? item.isEnabled : true))
       .map((item) => item.id);
+    return Array.from(new Set([...Object.keys(ITEMS), ...contentItemIds]));
   }
 
   isCanonicalItemId(itemId: string, options?: { enabledOnly?: boolean }): boolean {

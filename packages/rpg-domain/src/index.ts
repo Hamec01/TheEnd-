@@ -13,6 +13,57 @@ export * from './inventory';
 export * from './equipment';
 export * from './shop';
 export * from './battle-map';
+export {
+	AcquisitionType,
+	CastType,
+	DamageKind,
+	EffectStackMode,
+	EffectType,
+	ElementType,
+	HealType,
+	MagicSchoolType,
+	PhysicalDamageType,
+	RiskSeverity,
+	SkillAreaShape,
+	SkillClassRole,
+	SkillResourceType,
+	SkillRiskType,
+	SkillSubtype,
+	SkillTargetType,
+	SkillType,
+	SpiritType,
+	StatType,
+	SummonControlType,
+	SummonType,
+} from './skills/index';
+export type {
+	SkillAcquisitionConfig,
+	SkillAcquisitionMethod,
+	SkillAreaConfig,
+	SkillCastConfig,
+	SkillClassScalingConfig,
+	SkillCooldownConfig,
+	SkillCostConfig,
+	SkillDamageComponent,
+	SkillDefinition as AdminSkillDefinition,
+	SkillEffectComponent,
+	SkillHealingComponent,
+	SkillLevelData,
+	SkillRaceRuleConfig,
+	SkillRequirementConfig,
+	SkillRiskComponent,
+	SkillRuneConfig,
+	SkillShamanismConfig,
+	SkillSummonComponent,
+	SkillTargetConfig,
+	SkillTransformationComponent,
+} from './skills/index';
+export {
+	getSkillCostSummary,
+	getSkillLevelData,
+	getSkillPowerAtLevel,
+	validateSkillDefinition,
+} from './skills/index';
 export type { DerivedStatLine, DerivedStatsResult } from './derived-stats';
 export {
 	calculateTotalDefense,

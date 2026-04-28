@@ -29,7 +29,6 @@ interface InventoryPanelProps {
   onResetStatAllocation?: () => void;
   onUseItem?: (itemId: string) => Promise<void>;
   playerAvatarUrl?: string;
-  onPlayerAvatarUrlChange?: (url: string) => void;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
 }
@@ -157,16 +156,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onResetStatAllocation,
   onUseItem,
   playerAvatarUrl,
-  onPlayerAvatarUrlChange,
   resolveItemById,
   resolveItemImage,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemDetailOpen, setItemDetailOpen] = useState(false);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
   const [silhouetteBroken, setSilhouetteBroken] = useState(false);
   const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -211,7 +209,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     [inventoryByItemId, selectedItemId],
   );
 
-  const selectedItem = selectedInventoryEntry?.item ?? null;
+  const selectedItem = useMemo(
+    () => (selectedItemId ? selectedInventoryEntry?.item ?? (resolveItemById ? resolveItemById(selectedItemId) : getItemById(selectedItemId)) : null),
+    [resolveItemById, selectedInventoryEntry, selectedItemId],
+  );
   const equippedWeapon = useMemo(
     () => (equipment.weapon ? (resolveItemById ? resolveItemById(equipment.weapon) : getItemById(equipment.weapon)) : null),
     [equipment.weapon, resolveItemById],
@@ -234,17 +235,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     return full;
   }, [equipment, resolveItemById]);
-
-  useEffect(() => {
-    if (!selectedItemId && inventoryEntries.length > 0) {
-      setSelectedItemId(inventoryEntries[0].item.id);
-      return;
-    }
-
-    if (selectedItemId && !inventoryEntries.some((entry) => entry.item.id === selectedItemId)) {
-      setSelectedItemId(inventoryEntries[0]?.item.id ?? null);
-    }
-  }, [inventoryEntries, selectedItemId]);
 
   useEffect(() => {
     const target = FOCUS_SECTION_COLUMN[focusSection];
@@ -271,6 +261,65 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return ALL_SLOT_IDS.find((slotId) => equippedByLayoutSlot[slotId]?.id === selectedItem.id) ?? null;
   }, [equippedByLayoutSlot, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
+
+  useEffect(() => {
+    if (!selectedItemId && inventoryEntries.length > 0) {
+      setSelectedItemId(inventoryEntries[0].item.id);
+      return;
+    }
+
+    if (
+      selectedItemId
+      && !inventoryEntries.some((entry) => entry.item.id === selectedItemId)
+      && !equippedItemIds.has(selectedItemId)
+    ) {
+      setSelectedItemId(inventoryEntries[0]?.item.id ?? null);
+      setItemDetailOpen(false);
+    }
+  }, [equippedItemIds, inventoryEntries, selectedItemId]);
+
+  const comparisonSlotId = useMemo(() => {
+    if (!selectedItem) {
+      return null;
+    }
+
+    return selectedEquippedSlotId
+      ?? getAcceptedSlotsForItem(selectedItem).find((slotId) => Boolean(CORE_SLOT_BY_LAYOUT[slotId]))
+      ?? null;
+  }, [selectedEquippedSlotId, selectedItem]);
+
+  const comparisonCoreSlot = comparisonSlotId ? CORE_SLOT_BY_LAYOUT[comparisonSlotId] ?? null : null;
+  const comparisonCurrentItem = comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null;
+  const selectedPreviewEquipment = useMemo<Equipment>(() => {
+    if (!selectedItem || !comparisonCoreSlot || selectedAlreadyEquipped) {
+      return equipment;
+    }
+
+    const next: Equipment = {
+      ...equipment,
+      [comparisonCoreSlot]: selectedItem.id,
+    };
+
+    if (selectedItem.itemType === 'weapon' && getItemHandsRequired(selectedItem) === 2) {
+      next.shield = null;
+    }
+
+    return next;
+  }, [comparisonCoreSlot, equipment, selectedAlreadyEquipped, selectedItem]);
+
+  const derivedItemPreview = useMemo(
+    () => calculateDerivedStats(character.activeStats, selectedPreviewEquipment),
+    [character.activeStats, selectedPreviewEquipment],
+  );
+
+  const itemComparisonRows = [
+    ['Defense', derivedBase.totalDefense, derivedItemPreview.totalDefense],
+    ['Min Damage', derivedBase.minDamage, derivedItemPreview.minDamage],
+    ['Max Damage', derivedBase.maxDamage, derivedItemPreview.maxDamage],
+    ['Crit', derivedBase.critChance, derivedItemPreview.critChance],
+    ['Block', derivedBase.blockChance, derivedItemPreview.blockChance],
+    ['STA Load', derivedBase.staminaLoad, derivedItemPreview.staminaLoad],
+  ] as const;
 
   useEffect(() => {
     setSilhouetteBroken(false);
@@ -314,6 +363,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
+    if (!selectedInventoryEntry) {
+      onStatus('This item is already equipped. Unequip it first if you want it back in the backpack.');
+      return;
+    }
+
     if (shieldBlockedByTwoHandedWeapon) {
       onStatus('Левая рука занята двуручным оружием. Сначала снимите его.');
       return;
@@ -347,37 +401,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   const hasPendingAllocation = Object.keys(pendingStatAllocation).length > 0;
 
-  function handleAvatarUploadClick() {
-    avatarInputRef.current?.click();
-  }
-
-  function handleAvatarFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      onStatus('Допустимые форматы: PNG, JPEG, WEBP.');
-      event.target.value = '';
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      onStatus('Максимальный размер аватара: 2MB.');
-      event.target.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      onPlayerAvatarUrlChange?.(result);
-      onStatus('Аватар обновлен.');
-    };
-    reader.readAsDataURL(file);
-  }
-
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
       <section className="card battle-window wm-modal character-page-modal">
@@ -401,16 +424,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 </div>
               </div>
               <div className="character-status-bars">
-                <p>HP {character.activeStats.hp}</p>
-                <p>Mana {character.activeStats.mp}</p>
-                <p>Stamina {character.activeStats.stamina}</p>
-                <p>Gold {inventory.gold}</p>
-                <p>Total Defense {derivedPreview.totalDefense}</p>
-                <p>Min Damage {derivedPreview.minDamage}</p>
-              </div>
-              <div className="character-avatar-upload-row">
-                <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
-                <button type="button" onClick={handleAvatarUploadClick}>{playerAvatarUrl ? 'Change Avatar' : 'Upload Avatar'}</button>
+                <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
+                <p><span>Mana</span><strong>{character.activeStats.mp}</strong></p>
+                <p><span>Stamina</span><strong>{character.activeStats.stamina}</strong></p>
+                <p><span>Gold</span><strong>{inventory.gold}</strong></p>
+                <p><span>Total Defense</span><strong>{derivedPreview.totalDefense}</strong></p>
+                <p><span>Min Damage</span><strong>{derivedPreview.minDamage}</strong></p>
               </div>
             </section>
 
@@ -444,6 +463,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       const equippedItem = equippedByLayoutSlot[slotId] ?? null;
                       if (equippedItem) {
                         setSelectedItemId(equippedItem.id);
+                        setItemDetailOpen(true);
                         return;
                       }
 
@@ -486,7 +506,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       key={entry.item.id}
                       type="button"
                       className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
-                      onClick={() => setSelectedItemId(entry.item.id)}
+                      onClick={() => {
+                        setSelectedItemId(entry.item.id);
+                        setItemDetailOpen(true);
+                      }}
                       draggable
                       onDragStart={(event) => {
                         event.dataTransfer.setData('text/theend-item-id', entry.item.id);
@@ -504,7 +527,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                             }
                           : undefined}
                       >
-                        {!resolveItemImage?.(entry.item) ? entry.item.name.slice(0, 1).toUpperCase() : null}
                       </span>
                       <span className="character-item-name">{entry.item.name}</span>
                       <span className="character-item-qty">x{entry.quantity}</span>
@@ -680,6 +702,125 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             </section>
           </section>
         </div>
+
+        {itemDetailOpen && selectedItem ? (
+          <div
+            className="character-item-popup-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setItemDetailOpen(false);
+              }
+            }}
+          >
+            <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Item details">
+              <div className="character-item-popup-head">
+                <div className="character-item-popup-title">
+                  <span
+                    className="character-item-popup-icon"
+                    style={resolveItemImage?.(selectedItem)
+                      ? {
+                          backgroundImage: `url("${resolveItemImage(selectedItem)}")`,
+                          backgroundSize: 'contain',
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'center',
+                        }
+                      : undefined}
+                  />
+                  <div>
+                    <h3>{selectedItem.name}</h3>
+                    <p className="muted">{selectedItem.itemType} / {selectedItem.itemSubType} / {selectedItem.rarity}</p>
+                  </div>
+                </div>
+                <button type="button" className="character-item-popup-close" onClick={() => setItemDetailOpen(false)}>×</button>
+              </div>
+
+              <div className="character-item-popup-body">
+                <section className="character-item-popup-main">
+                  {selectedItem.itemType === 'weapon' ? (
+                    <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed' : 'One-handed'}</p>
+                  ) : null}
+                  <p>{selectedItem.description}</p>
+                  {selectedIsTwoHandedWeapon && equipment.shield ? (
+                    <p className="muted">Equipping this weapon will move the offhand item back to the backpack.</p>
+                  ) : null}
+                  {shieldBlockedByTwoHandedWeapon ? (
+                    <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
+                  ) : null}
+                  <p className="muted">
+                    Bonuses: {Object.entries(selectedItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                  </p>
+                  <p className="muted">
+                    Requirements: {Object.entries(selectedItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                  </p>
+                </section>
+
+                <section className="character-item-compare">
+                  <div className="character-item-compare-items">
+                    <div>
+                      <span>Equipped</span>
+                      <strong>{comparisonCurrentItem?.name ?? 'Empty slot'}</strong>
+                      <small>{comparisonSlotId ? SLOT_LABELS[comparisonSlotId] : 'No slot'}</small>
+                    </div>
+                    <div>
+                      <span>Selected</span>
+                      <strong>{selectedItem.name}</strong>
+                      <small>{selectedAlreadyEquipped ? 'Already equipped' : selectedInventoryEntry ? 'In backpack' : 'Equipped'}</small>
+                    </div>
+                  </div>
+                  <div className="character-item-compare-grid">
+                    {itemComparisonRows.map(([label, before, after]) => {
+                      const delta = Number((after - before).toFixed(1));
+                      return (
+                        <p key={label}>
+                          <span>{label}</span>
+                          <strong>{before} → {after}</strong>
+                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </em>
+                        </p>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <div className="character-item-actions character-item-popup-actions">
+                <button
+                  disabled={selectedAlreadyEquipped || !selectedInventoryEntry}
+                  onClick={() => {
+                    void equipSelectedItem();
+                  }}
+                >
+                  {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
+                </button>
+                <button
+                  disabled={!selectedEquippedSlotId}
+                  onClick={() => {
+                    if (selectedEquippedSlotId) {
+                      void unequipFromSlot(selectedEquippedSlotId);
+                    }
+                  }}
+                >
+                  Unequip
+                </button>
+                <button
+                  disabled={selectedItem.itemType !== 'consumable'}
+                  onClick={() => {
+                    if (onUseItem) {
+                      void onUseItem(selectedItem.id);
+                    } else {
+                      onStatus('Use action is not available in this context.');
+                    }
+                  }}
+                >
+                  Use
+                </button>
+                <button disabled>Drop</button>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </section>
     </div>
   );

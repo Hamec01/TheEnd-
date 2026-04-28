@@ -1,4 +1,4 @@
-import type { PrimaryStat } from '@theend/rpg-domain';
+import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -143,3 +143,5 @@ export interface StoredImage {
   createdAt: string;
   updatedAt: string;
 }
+
+export type AdminSkill = AdminSkillDefinition;

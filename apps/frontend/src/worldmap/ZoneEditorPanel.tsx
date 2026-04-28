@@ -1,11 +1,21 @@
 import { ZONE_COLORS } from './zoneColors';
 import { REGION_TYPE_COLORS } from './regionPaintSystem';
 import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
+import type { QuestMarkerDefinition } from '../types/quest';
+import type { NpcDefinition } from '../types/npc';
 
 const ZONE_TYPE_OPTIONS: ZoneType[] = [
   'city',
   'settlement',
   'quest',
+  'quest_area',
+  'random_event_area',
+  'danger_area',
+  'faction_area',
+  'kingdom_area',
+  'city_area',
+  'resource_area',
+  'hidden_area',
   'story',
   'landmark',
   'danger',
@@ -72,6 +82,17 @@ interface ZoneEditorPanelProps {
   onJsonChange: (value: string) => void;
   onDeleteSelectedPoint: () => void;
   onReversePoints: () => void;
+  questMarkers: QuestMarkerDefinition[];
+  selectedQuestMarkerId: string | null;
+  questMarkerDraft: QuestMarkerDefinition | null;
+  onSelectQuestMarker: (id: string | null) => void;
+  onQuestMarkerDraftChange: (draft: QuestMarkerDefinition | null) => void;
+  onSaveQuestMarker: () => void;
+  onDeleteQuestMarker: () => void;
+  npcOptions?: NpcDefinition[];
+  selectedNpcIdForPlacement?: string;
+  onSelectNpcForPlacement?: (id: string) => void;
+  onPlaceNpcAtCursor?: () => void;
 }
 
 function parseNumber(value: string): number | null {
@@ -115,10 +136,31 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     onJsonChange,
     onDeleteSelectedPoint,
     onReversePoints,
+    questMarkers,
+    selectedQuestMarkerId,
+    questMarkerDraft,
+    onSelectQuestMarker,
+    onQuestMarkerDraftChange,
+    onSaveQuestMarker,
+    onDeleteQuestMarker,
+    npcOptions = [],
+    selectedNpcIdForPlacement = '',
+    onSelectNpcForPlacement,
+    onPlaceNpcAtCursor,
   } = props;
 
   const hasDraft = Boolean(draft);
   const hasSelectedZone = Boolean(selectedZoneId);
+  const baseMarkerDraft: QuestMarkerDefinition = questMarkerDraft ?? {
+    id: '',
+    title: '',
+    mapId: 'worldmap-main',
+    x: 0.5,
+    y: 0.5,
+    type: 'quest_start',
+    visibleToPlayer: true,
+    conditionIds: [],
+  };
 
   function updateDraft(patch: Partial<ZoneEditorDraft>) {
     if (!draft) {
@@ -210,6 +252,97 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         <div className="zone-editor-color-row">
           <span>Region color preview</span>
           <div className="zone-editor-color-preview" style={{ background: REGION_TYPE_COLORS[regionType] }} />
+        </div>
+      </div>
+
+      <div className="zone-editor-section">
+        <h3>Quest Markers</h3>
+        <label>
+          <span>Marker</span>
+          <select
+            value={selectedQuestMarkerId ?? ''}
+            onChange={(event) => onSelectQuestMarker(event.target.value || null)}
+          >
+            <option value="">-</option>
+            {questMarkers.map((marker) => (
+              <option key={marker.id} value={marker.id}>{marker.title || marker.id}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Id</span>
+          <input
+            value={baseMarkerDraft.id}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, id: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Title</span>
+          <input
+            value={baseMarkerDraft.title}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, title: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Quest Id</span>
+          <input
+            value={baseMarkerDraft.linkedQuestId ?? ''}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, linkedQuestId: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Objective Id</span>
+          <input
+            value={baseMarkerDraft.linkedObjectiveId ?? ''}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, linkedObjectiveId: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Step Id</span>
+          <input
+            value={baseMarkerDraft.linkedStepId ?? ''}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, linkedStepId: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Marker Type</span>
+          <select
+            value={baseMarkerDraft.type}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, type: event.target.value as QuestMarkerDefinition['type'] })}
+          >
+            <option value="quest_start">quest_start</option>
+            <option value="quest_objective">quest_objective</option>
+            <option value="quest_finish">quest_finish</option>
+            <option value="npc_quest">npc_quest</option>
+            <option value="item_spawn">item_spawn</option>
+            <option value="enemy_spawn">enemy_spawn</option>
+            <option value="inspect_object">inspect_object</option>
+            <option value="hidden_location">hidden_location</option>
+          </select>
+        </label>
+        <div className="wm-meta-row">
+          <span>Markers: {questMarkers.length}</span>
+          <span>{questMarkerDraft ? 'ready' : 'new marker'}</span>
+        </div>
+        <div className="zone-editor-actions compact">
+          <button onClick={onSaveQuestMarker}>Save Marker</button>
+          <button disabled={!selectedQuestMarkerId} onClick={onDeleteQuestMarker}>Delete Marker</button>
+        </div>
+      </div>
+
+      <div className="zone-editor-section">
+        <h3>NPC Placement</h3>
+        <label>
+          <span>NPC</span>
+          <select value={selectedNpcIdForPlacement} onChange={(event) => onSelectNpcForPlacement?.(event.target.value)}>
+            <option value="">-</option>
+            {npcOptions.map((npc) => (
+              <option key={npc.id} value={npc.id}>{npc.name || npc.id}</option>
+            ))}
+          </select>
+        </label>
+        <div className="zone-editor-actions compact">
+          <button disabled={!selectedNpcIdForPlacement} onClick={onPlaceNpcAtCursor}>Place NPC At Cursor</button>
         </div>
       </div>
 
@@ -326,6 +459,30 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         <label>
           <span>Cooldown Seconds</span>
           <input disabled={!draft} type="number" value={draft?.cooldownSeconds ?? ''} onChange={(event) => updateDraft({ cooldownSeconds: parseNumber(event.target.value) })} />
+        </label>
+        <label>
+          <span>Layer Priority</span>
+          <input disabled={!draft} type="number" value={draft?.layerPriority ?? 0} onChange={(event) => updateDraft({ layerPriority: Number(event.target.value) || 0 })} />
+        </label>
+        <label>
+          <span>Random Quest Pool IDs</span>
+          <input disabled={!draft} value={draft?.randomQuestPoolIds ?? ''} onChange={(event) => updateDraft({ randomQuestPoolIds: event.target.value })} placeholder="q_whisper_mist, q_oath_border" />
+        </label>
+        <label>
+          <span>Chance Percent</span>
+          <input disabled={!draft} type="number" min={0} max={100} value={draft?.chancePercent ?? ''} onChange={(event) => updateDraft({ chancePercent: parseNumber(event.target.value) })} />
+        </label>
+        <label>
+          <span>Biome</span>
+          <input disabled={!draft} value={draft?.biome ?? ''} onChange={(event) => updateDraft({ biome: event.target.value })} />
+        </label>
+        <label>
+          <span>Kingdom ID</span>
+          <input disabled={!draft} value={draft?.kingdomId ?? ''} onChange={(event) => updateDraft({ kingdomId: event.target.value })} />
+        </label>
+        <label>
+          <span>City ID</span>
+          <input disabled={!draft} value={draft?.cityId ?? ''} onChange={(event) => updateDraft({ cityId: event.target.value })} />
         </label>
       </div>
 

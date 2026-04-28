@@ -2,6 +2,7 @@ const PREFIX = 'theend.content.';
 
 interface DbShape {
   items: unknown[];
+  skills: unknown[];
   merchants: unknown[];
   materials: unknown[];
   lootTables: unknown[];
@@ -10,6 +11,7 @@ interface DbShape {
 
 const DEFAULT_DB: DbShape = {
   items: [],
+  skills: [],
   merchants: [],
   materials: [],
   lootTables: [],

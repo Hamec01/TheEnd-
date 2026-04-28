@@ -17,6 +17,7 @@ import { ZONE_COLORS, EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA
 import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScreen, movePolygonPoint, moveZone, resizeCircle, screenToMapNormalized, type EditorViewport, type ZoneHandleHit } from './zoneGeometry';
 import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
+import type { QuestMarkerDefinition } from '../types/quest';
 
 const PLAY_ZOOM = 5.2;
 const MIN_ZOOM = 0.25;
@@ -150,6 +151,16 @@ interface WorldMapCanvasProps {
   onHoverZone?: (zone: Zone | null) => void;
   onPlayerPosition?: (x: number, y: number) => void;
   onPlayerState?: (state: 'moving' | 'idle' | 'in_zone' | 'in_city') => void;
+  playQuestMarkers?: QuestMarkerDefinition[];
+  playNpcMarkers?: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    x: number;
+    y: number;
+    isHostile?: boolean;
+    hasQuest?: boolean;
+  }>;
 }
 
 function isFormElement(target: EventTarget | null): boolean {
@@ -305,6 +316,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onHoverZone,
     onPlayerPosition,
     onPlayerState,
+    playQuestMarkers = [],
+    playNpcMarkers = [],
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1125,6 +1138,61 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         }
       }
 
+      for (const marker of playQuestMarkers) {
+        if (marker.mapId !== 'worldmap-main') {
+          continue;
+        }
+        const markerX = ((marker.x - camera.left) / camera.width) * canvas.width;
+        const markerY = ((marker.y - camera.top) / camera.height) * canvas.height;
+        if (markerX < -20 || markerY < -20 || markerX > canvas.width + 20 || markerY > canvas.height + 20) {
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.fillStyle = marker.type === 'quest_finish' ? '#7de59b' : '#f0d68a';
+        ctx.moveTo(markerX, markerY - 9);
+        ctx.lineTo(markerX + 8, markerY + 8);
+        ctx.lineTo(markerX - 8, markerY + 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#2b2016';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = '#f8edd8';
+        ctx.font = '600 10px Georgia';
+        ctx.fillText(marker.title || marker.id, markerX + 10, markerY - 6);
+      }
+
+      for (const npc of playNpcMarkers) {
+        const npcX = ((npc.x - camera.left) / camera.width) * canvas.width;
+        const npcY = ((npc.y - camera.top) / camera.height) * canvas.height;
+        if (npcX < -20 || npcY < -20 || npcX > canvas.width + 20 || npcY > canvas.height + 20) {
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.fillStyle = npc.isHostile ? '#cf6760' : '#8fb9de';
+        ctx.arc(npcX, npcY, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = '#1f1712';
+        ctx.stroke();
+
+        if (npc.hasQuest) {
+          ctx.beginPath();
+          ctx.fillStyle = '#f1d28a';
+          ctx.arc(npcX + 7, npcY - 6, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#2b2016';
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#f8edd8';
+        ctx.font = '600 10px Georgia';
+        ctx.fillText(npc.name || npc.id, npcX + 10, npcY + 3);
+      }
+
       const playerRadius = Math.max(5, canvas.width * 0.0075);
       const playerX = ((player.x - camera.left) / camera.width) * canvas.width;
       const playerY = ((player.y - camera.top) / camera.height) * canvas.height;
@@ -1283,7 +1351,25 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       ctx.font = '10px Consolas';
       ctx.fillText(`x:${cursorPoint[0].toFixed(4)} y:${cursorPoint[1].toFixed(4)}`, 10, canvas.height - 12);
     }
-  }, [canvasSize.height, canvasSize.width, currentZone, cursorPoint, draft, dragState, editorSettings, editorViewport, hoverZone, mode, player, regions, selectedZone, worldImage, zones]);
+  }, [
+    canvasSize.height,
+    canvasSize.width,
+    currentZone,
+    cursorPoint,
+    draft,
+    dragState,
+    editorSettings,
+    editorViewport,
+    hoverZone,
+    mode,
+    playNpcMarkers,
+    playQuestMarkers,
+    player,
+    regions,
+    selectedZone,
+    worldImage,
+    zones,
+  ]);
 
   function distanceLabel(a: [number, number], b: [number, number]): string {
     return `d=${Math.hypot(a[0] - b[0], a[1] - b[1]).toFixed(4)}`;

@@ -4,7 +4,6 @@ import {
   EMPTY_EQUIPMENT,
   ITEMS,
   RACE_DEFINITIONS,
-  STARTING_FREE_POINTS,
   applyAllocation,
   getItemHandsRequired,
   getAllocationCost,
@@ -41,6 +40,16 @@ import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, StoredImage } from './services/content/models';
+import {
+  HUMAN_ORIGINS,
+  STARTING_ELEMENT_SKILLS,
+  getCharacterCreationRaceConfig,
+  getDefaultAvatarFor,
+  getRandomStartingElements,
+  type CharacterElement,
+  type CharacterGender,
+  type CharacterOrigin,
+} from './config/characterCreation';
 import type { PlayerPath } from './RootApp';
 import { subscribeToContentSync } from './services/content/contentSync';
 import {
@@ -53,7 +62,7 @@ import { getDomainItemWithFallback } from './services/content/seedService';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 
-const RACES = [Race.Human, Race.Dwarf, Race.HighElf, Race.WoodElf] as const;
+const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
   'hp',
   'mp',
@@ -69,29 +78,42 @@ const PROFILE_STATS: PrimaryStat[] = [
 
 const STAT_LABELS: Record<PrimaryStat, string> = {
   hp: 'HP',
-  mp: 'Mana',
-  stamina: 'Stamina',
-  strength: 'Strength',
-  constitution: 'Constitution',
-  dexterity: 'Dexterity',
-  intelligence: 'Intelligence',
-  luck: 'Luck',
-  perception: 'Perception',
-  willpower: 'Willpower',
+  mp: 'MP',
+  stamina: 'Выносливость',
+  strength: 'Сила',
+  constitution: 'Телосложение',
+  dexterity: 'Ловкость',
+  intelligence: 'Интеллект',
+  luck: 'Удача',
+  perception: 'Восприятие',
+  willpower: 'Сила воли',
 };
 
 const STAT_HINTS: Record<PrimaryStat, string> = {
-  hp: '+10 HP/pt',
-  mp: '+10 MP/pt',
-  stamina: '+10 STA/pt',
-  strength: 'Melee/penetration',
-  constitution: 'Physical defense',
-  dexterity: 'Dodge/ranged',
-  intelligence: 'Magic power',
-  luck: 'Crit/loot',
-  perception: 'Accuracy/anti-dodge',
-  willpower: 'Magic/control resist',
+  hp: 'Живучесть персонажа',
+  mp: 'Ресурс магии',
+  stamina: 'Ресурс боевых действий',
+  strength: 'Физический урон',
+  constitution: 'Выживаемость и защита',
+  dexterity: 'Точность и уклонение',
+  intelligence: 'Сила заклинаний',
+  luck: 'Криты и удачные события',
+  perception: 'Наблюдательность',
+  willpower: 'Сопротивление магии/контролю',
 };
+
+interface CharacterCreationProfile {
+  id: string;
+  name: string;
+  gender: CharacterGender;
+  raceId: string;
+  originId: string | null;
+  avatarUrl: string;
+  stats: StatBlock;
+  elements: string[];
+  skills: string[];
+  traits: Record<string, number | boolean>;
+}
 
 type Phase = 'setup' | 'hub';
 type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
@@ -158,6 +180,7 @@ const DEFAULT_NPC_STATS: StatBlock = {
 const NPC_STORAGE_KEY = 'theend.arenaNpcTemplates';
 const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
+const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
 
 const SKILL_OFFERS: SkillOffer[] = [
@@ -389,6 +412,26 @@ function getPlayerRouteFromState(
   return '/map';
 }
 
+function getCharacterProfileStorageKey(characterId: string): string {
+  return `${CHARACTER_PROFILE_STORAGE_PREFIX}.${characterId}`;
+}
+
+function saveCharacterProfile(profile: CharacterCreationProfile): void {
+  window.localStorage.setItem(getCharacterProfileStorageKey(profile.id), JSON.stringify(profile));
+}
+
+function loadCharacterProfile(characterId: string): CharacterCreationProfile | null {
+  const raw = window.localStorage.getItem(getCharacterProfileStorageKey(characterId));
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as CharacterCreationProfile;
+  } catch {
+    return null;
+  }
+}
+
 export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
   const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
@@ -403,8 +446,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [accountId, setAccountId] = useState<string | null>(null);
 
   const [name, setName] = useState('');
+  const [gender, setGender] = useState<CharacterGender>('male');
   const [race, setRace] = useState<Race>(Race.Human);
-  const [allocation, setAllocation] = useState<StatAllocation>({});
+  const [originId, setOriginId] = useState<string>(HUMAN_ORIGINS[0].id);
+  const [setupElements, setSetupElements] = useState<CharacterElement[]>([]);
   const [setupAvatarUrl, setSetupAvatarUrl] = useState<string>('');
   const setupAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -456,8 +501,27 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
   const [tradeItem, setTradeItem] = useState<ItemDefinition | null>(null);
 
-  const raceDef = RACE_DEFINITIONS[race];
-  const remaining = STARTING_FREE_POINTS - getAllocationCost(allocation);
+  const raceConfig = useMemo(() => getCharacterCreationRaceConfig(race), [race]);
+  const selectedOrigin = useMemo<CharacterOrigin | null>(
+    () => HUMAN_ORIGINS.find((entry) => entry.id === originId) ?? null,
+    [originId],
+  );
+  const setupSkills = useMemo(
+    () => setupElements.map((entry) => STARTING_ELEMENT_SKILLS[entry.id]?.skillId).filter((entry): entry is string => Boolean(entry)),
+    [setupElements],
+  );
+  const setupAvatarFallback = useMemo(() => getDefaultAvatarFor(race, gender), [gender, race]);
+  const setupAvatarResolved = setupAvatarUrl || setupAvatarFallback;
+  const setupStatsPreview = useMemo<StatBlock>(() => {
+    const base = { ...raceConfig.stats };
+    if (race === Race.Human && selectedOrigin) {
+      for (const [key, value] of Object.entries(selectedOrigin.bonuses)) {
+        const stat = key as PrimaryStat;
+        base[stat] += value ?? 0;
+      }
+    }
+    return base;
+  }, [race, raceConfig.stats, selectedOrigin]);
   const runtimeMerchants = useMemo(() => getRuntimeMerchants(runtimeAdminMerchants), [runtimeAdminMerchants]);
 
   function resolveItem(itemId: string): ItemDefinition {
@@ -648,6 +712,23 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   useEffect(() => {
     void refreshRuntimeContent({ force: true });
   }, [refreshRuntimeContent]);
+
+  useEffect(() => {
+    if (race === Race.Human) {
+      setSetupElements([]);
+      return;
+    }
+
+    setOriginId(HUMAN_ORIGINS[0].id);
+
+    if (race === Race.Dwarf) {
+      setSetupElements([]);
+      return;
+    }
+
+    const elementCount = race === Race.HighElf ? 2 : 1;
+    setSetupElements(getRandomStartingElements(elementCount));
+  }, [race]);
 
   useEffect(() => {
     const refreshVisibleContent = () => {
@@ -952,6 +1033,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCharacter(hub.character);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
+    const profile = loadCharacterProfile(hub.character.id);
+    if (profile?.avatarUrl) {
+      setPlayerAvatarUrl(profile.avatarUrl);
+      window.localStorage.setItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${hub.character.id}`, profile.avatarUrl);
+    }
     window.localStorage.setItem(LAST_CHARACTER_STORAGE_KEY, hub.character.id);
   }
 
@@ -989,21 +1075,57 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }
 
   async function onCreateCharacter(): Promise<void> {
-    setStatus(accountId ? 'Creating character...' : 'Creating character without registration...');
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setStatus('Имя персонажа обязательно.');
+      return;
+    }
+    if (race === Race.Human && !originId) {
+      setStatus('Для человека обязательно выбрать подданство.');
+      return;
+    }
+    if (race === Race.Dwarf && setupElements.length > 0) {
+      setStatus('Гном не может получить стартовые стихии.');
+      return;
+    }
+
+    setStatus(accountId ? 'Создаем персонажа...' : 'Создаем персонажа без привязки к аккаунту...');
     try {
       const saved = await createCharacter({
-        name: name.trim(),
+        name: trimmedName,
         race,
         allocation: {},
       }, accountId);
+
+      const profile: CharacterCreationProfile = {
+        id: saved.id,
+        name: trimmedName,
+        gender,
+        raceId: raceConfig.id,
+        originId: race === Race.Human ? originId : null,
+        avatarUrl: setupAvatarResolved,
+        stats: setupStatsPreview,
+        elements: race === Race.Dwarf ? [] : setupElements.map((entry) => entry.id),
+        skills: race === Race.Dwarf ? [] : setupSkills,
+        traits: {
+          ...(raceConfig.traits.experienceGainMultiplier !== undefined ? { experienceGainMultiplier: raceConfig.traits.experienceGainMultiplier } : {}),
+          ...(raceConfig.traits.elementalMagicCostMultiplier !== undefined ? { elementalMagicCostMultiplier: raceConfig.traits.elementalMagicCostMultiplier } : {}),
+          ...(raceConfig.traits.normalMagicCostMultiplier !== undefined ? { normalMagicCostMultiplier: raceConfig.traits.normalMagicCostMultiplier } : {}),
+          ...(raceConfig.traits.magicDamageTakenMultiplier !== undefined ? { magicDamageTakenMultiplier: raceConfig.traits.magicDamageTakenMultiplier } : {}),
+          canUseMagic: raceConfig.traits.canUseMagic,
+          canUseElementalMagic: raceConfig.traits.canUseElementalMagic,
+        },
+      };
+      saveCharacterProfile(profile);
+
       const hub = await getArenaHubState(saved.id);
       applyHubState(hub);
-      if (setupAvatarUrl) {
-        setPlayerAvatarUrl(setupAvatarUrl);
-        window.localStorage.setItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${saved.id}`, setupAvatarUrl);
-      }
+
+      setPlayerAvatarUrl(setupAvatarResolved);
+      window.localStorage.setItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${saved.id}`, setupAvatarResolved);
+
       setPhase('hub');
-      setStatus(`${saved.name} entered the hub.`);
+      setStatus(`${saved.name} вошел в мир.`);
     } catch (error) {
       setStatus(`Character creation error: ${(error as Error).message}`);
     }
@@ -1015,21 +1137,40 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       return;
     }
 
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setStatus('Avatar format: PNG, JPEG or WEBP only.');
+    if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.type)) {
+      setStatus('Формат аватара: PNG, JPG, JPEG или WEBP.');
       event.target.value = '';
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      setStatus('Avatar max size: 2MB.');
+      setStatus('Максимальный размер аватара: 2 MB.');
       event.target.value = '';
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
-      setSetupAvatarUrl(typeof reader.result === 'string' ? reader.result : '');
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        return;
+      }
+
+      const image = new Image();
+      image.onload = () => {
+        if (image.width < 128 || image.height < 128) {
+          setStatus('Минимальный размер аватара: 128x128.');
+          event.target.value = '';
+          return;
+        }
+        setSetupAvatarUrl(result);
+        if (image.width < 256 || image.height < 256) {
+          setStatus('Аватар загружен. Рекомендуемый размер: 256x256 или больше.');
+        } else {
+          setStatus('Аватар загружен.');
+        }
+      };
+      image.src = result;
     };
     reader.readAsDataURL(file);
   }
@@ -1153,6 +1294,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }
 
   function openSkillsOverlay(): void {
+    onNavigate?.('/inventory');
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
     setStatus('Открыта страница персонажа: раздел навыков.');
@@ -1301,6 +1443,31 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setPendingStatAllocation(next);
   }
 
+  const setupOriginRequired = race === Race.Human;
+  const setupElementsText = setupElements.map((entry) => entry.name).join(', ');
+  const setupSkillNames = setupElements
+    .map((entry) => STARTING_ELEMENT_SKILLS[entry.id]?.name)
+    .filter((entry): entry is string => Boolean(entry));
+  const setupCharacterPreview = useMemo(() => ({
+    id: 'char_generated_uuid',
+    name: name.trim() || '(имя не задано)',
+    gender,
+    raceId: raceConfig.id,
+    originId: setupOriginRequired ? originId : null,
+    avatarUrl: setupAvatarResolved,
+    stats: setupStatsPreview,
+    elements: race === Race.Dwarf ? [] : setupElements.map((entry) => entry.id),
+    skills: race === Race.Dwarf ? [] : setupSkills,
+    traits: {
+      ...(raceConfig.traits.experienceGainMultiplier !== undefined ? { experienceGainMultiplier: raceConfig.traits.experienceGainMultiplier } : {}),
+      ...(raceConfig.traits.elementalMagicCostMultiplier !== undefined ? { elementalMagicCostMultiplier: raceConfig.traits.elementalMagicCostMultiplier } : {}),
+      ...(raceConfig.traits.normalMagicCostMultiplier !== undefined ? { normalMagicCostMultiplier: raceConfig.traits.normalMagicCostMultiplier } : {}),
+      ...(raceConfig.traits.magicDamageTakenMultiplier !== undefined ? { magicDamageTakenMultiplier: raceConfig.traits.magicDamageTakenMultiplier } : {}),
+      canUseMagic: raceConfig.traits.canUseMagic,
+      canUseElementalMagic: raceConfig.traits.canUseElementalMagic,
+    },
+  }), [gender, name, originId, race, raceConfig.id, raceConfig.traits, setupAvatarResolved, setupElements, setupOriginRequired, setupSkills, setupStatsPreview]);
+
   if (phase === 'setup') {
     if (restoringSession) {
       return (
@@ -1316,68 +1483,145 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
 
     return (
-      <div className="page">
+      <div className="page page--scroll">
         <main className="shell setup-shell">
           <section className="card compact-hero setup-hero-card">
             <div className="setup-hero-copy">
               <p className="eyebrow">TheEnd RPG</p>
-              <h1>Quick start</h1>
-              <p className="muted setup-hero-text">Создайте персонажа и сразу входите в мир. Аккаунт можно подключить позже, если он вам вообще нужен.</p>
+              <h1>Создание персонажа</h1>
+              <p className="muted setup-hero-text">Выберите имя, пол, расу, подданство и аватар. Справа сразу видно итоговые статы, расовые особенности и стартовые стихии.</p>
             </div>
             <div className="setup-hero-side">
-              <div className="level-pill">{remaining} pts</div>
-              <p className="muted">Свободные стартовые очки готовы к распределению позже в игре.</p>
+              <div className="level-pill">4 расы</div>
+              <p className="muted">Люди, Лесные эльфы, Высшие эльфы, Гномы.</p>
             </div>
           </section>
 
-          <section className="setup-grid">
-            <section className="card setup-panel setup-panel-secondary">
-              <h2>Account (optional)</h2>
-              <p className="muted setup-panel-copy">Если хотите сохранять персонажей под логином, используйте этот блок. Для быстрого старта он не нужен.</p>
-              <div className="row">
-                <label>Login</label>
-                <input value={login} onChange={(event) => setLogin(event.target.value)} />
-              </div>
-              <div className="row">
-                <label>Password</label>
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-              </div>
-              <div className="hud-actions setup-actions-row">
-                <button onClick={onRegister}>Register</button>
-                <button onClick={onLogin}>Login</button>
-              </div>
-            </section>
-
+          <section className="setup-grid setup-creation-grid">
             <section className="card setup-panel setup-panel-primary">
-              <h2>Character</h2>
-              <p className="muted setup-panel-copy">Имя и раса обязательны. После этого можно сразу зайти в хаб и продолжить уже внутри игры.</p>
-              <div className="row">
-                <label>Name</label>
-                <input value={name} onChange={(event) => setName(event.target.value)} />
+              <h2>Персонаж</h2>
+              <p className="muted setup-panel-copy">Левая панель: аватар, имя, пол, раса, подданство (только для людей).</p>
+
+              <div className="setup-avatar-upload setup-avatar-upload-large">
+                <input ref={setupAvatarInputRef} type="file" accept="image/png,image/jpg,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleSetupAvatarChange} />
+                <img src={setupAvatarResolved} alt="Character avatar" className="setup-avatar-preview setup-avatar-preview-xl" />
+                <div className="setup-avatar-actions">
+                  <button type="button" onClick={() => setupAvatarInputRef.current?.click()}>{setupAvatarUrl ? 'Заменить аватар' : 'Загрузить аватар'}</button>
+                  {setupAvatarUrl ? <button type="button" onClick={() => setSetupAvatarUrl('')}>Сбросить</button> : null}
+                </div>
+                <p className="muted">PNG/JPG/JPEG/WEBP, минимум 128x128, рекомендуется 256x256, до 2 MB.</p>
               </div>
+
               <div className="row">
-                <label>Race</label>
-                <select value={race} onChange={(event) => setRace(event.target.value as Race)}>
-                  {RACES.map((option) => (
-                    <option key={option} value={option}>
-                      {RACE_DEFINITIONS[option].label}
-                    </option>
-                  ))}
+                <label>Имя</label>
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Введите имя персонажа" />
+              </div>
+
+              <div className="row">
+                <label>Пол</label>
+                <select value={gender} onChange={(event) => setGender(event.target.value as CharacterGender)}>
+                  <option value="male">Мужской</option>
+                  <option value="female">Женский</option>
                 </select>
               </div>
-              <div className="inner-card setup-race-note">
-                <strong>{RACE_DEFINITIONS[race].label}</strong>
-                <p>{RACE_DEFINITIONS[race].description}</p>
+
+              <div className="row">
+                <label>Раса</label>
+                <select value={race} onChange={(event) => setRace(event.target.value as Race)}>
+                  {RACES.map((option) => {
+                    const optionConfig = getCharacterCreationRaceConfig(option);
+                    return (
+                      <option key={option} value={option}>
+                        {optionConfig.name}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
-              <div className="setup-avatar-upload">
-                <input ref={setupAvatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleSetupAvatarChange} />
-                <button type="button" onClick={() => setupAvatarInputRef.current?.click()}>{setupAvatarUrl ? 'Change Avatar' : 'Upload Avatar (optional)'}</button>
-                {setupAvatarUrl ? <img src={setupAvatarUrl} alt="Avatar preview" className="setup-avatar-preview" /> : null}
-              </div>
-              <button className="setup-enter-button" onClick={onCreateCharacter} disabled={name.trim().length < 3}>
-                Enter Hub
-              </button>
+
+              {setupOriginRequired ? (
+                <div className="row">
+                  <label>Подданство</label>
+                  <select value={originId} onChange={(event) => setOriginId(event.target.value)}>
+                    {HUMAN_ORIGINS.map((option) => (
+                      <option key={option.id} value={option.id}>{option.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              <section className="inner-card setup-race-note">
+                <strong>{raceConfig.name}</strong>
+                <p>{raceConfig.description}</p>
+                {setupOriginRequired && selectedOrigin ? (
+                  <p><strong>Подданство:</strong> {selectedOrigin.name} - {selectedOrigin.description}</p>
+                ) : null}
+              </section>
             </section>
+
+            <section className="card setup-panel setup-panel-secondary">
+              <h2>Предпросмотр</h2>
+              <p className="muted setup-panel-copy">Правая панель: описание расы, особенности, итоговые статы, стихии и стартовые навыки.</p>
+
+              <section className="inner-card setup-race-note">
+                <strong>Расовые особенности</strong>
+                {raceConfig.traitHighlights.map((entry) => <p key={entry}>{entry}</p>)}
+              </section>
+
+              <section className="inner-card setup-race-note">
+                <strong>Итоговые статы</strong>
+                <div className="compact-stat-list">
+                  {PROFILE_STATS.map((stat) => (
+                    <div key={stat} className="compact-stat-row">
+                      <span>{STAT_LABELS[stat]}</span>
+                      <strong>{setupStatsPreview[stat]}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="inner-card setup-race-note">
+                <strong>Стартовые стихии</strong>
+                <p>
+                  {race === Race.Human || race === Race.Dwarf
+                    ? 'Стартовые стихии не выдаются.'
+                    : (setupElementsText || 'Подбираются автоматически.')}
+                </p>
+                <strong>Стартовые стихийные навыки</strong>
+                <p>{setupSkillNames.length > 0 ? setupSkillNames.join(', ') : 'Нет'}</p>
+              </section>
+
+              <section className="inner-card setup-race-note">
+                <strong>Итоговый объект персонажа</strong>
+                <pre className="setup-preview-json">{JSON.stringify(setupCharacterPreview, null, 2)}</pre>
+              </section>
+
+              <section className="inner-card setup-race-note">
+                <strong>Аккаунт (опционально)</strong>
+                <div className="row">
+                  <label>Login</label>
+                  <input value={login} onChange={(event) => setLogin(event.target.value)} />
+                </div>
+                <div className="row">
+                  <label>Password</label>
+                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                </div>
+                <div className="hud-actions setup-actions-row">
+                  <button onClick={onRegister}>Register</button>
+                  <button onClick={onLogin}>Login</button>
+                </div>
+              </section>
+            </section>
+          </section>
+
+          <section className="card setup-bottom-actions">
+            <button
+              className="setup-enter-button"
+              onClick={onCreateCharacter}
+              disabled={!name.trim() || (setupOriginRequired && !originId)}
+            >
+              Создать персонажа
+            </button>
           </section>
 
           <section className="card status-card setup-status-card">
@@ -1402,6 +1646,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           character={character}
           inventory={inventory}
           equipment={equipment}
+          playerAvatarUrl={playerAvatarUrl}
           battleStats={{
             hp: battlePlayer?.currentHp ?? character.activeStats.hp,
             mp: battlePlayer?.currentMp ?? character.activeStats.mp,
@@ -1409,11 +1654,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           }}
           chatLines={chatLines}
           onOpenStats={() => {
+            onNavigate?.('/inventory');
             setCharacterPageFocus('stats');
             setOverlayPanel('character');
             setStatus('Открыта страница персонажа: раздел характеристик.');
           }}
           onOpenInventory={() => {
+            onNavigate?.('/inventory');
             setCharacterPageFocus('inventory');
             setOverlayPanel('character');
             setStatus('Открыта страница персонажа: раздел инвентаря.');
@@ -1455,7 +1702,6 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onResetStatAllocation={() => setPendingStatAllocation({})}
             onUseItem={handleUseConsumable}
             playerAvatarUrl={playerAvatarUrl}
-            onPlayerAvatarUrlChange={setPlayerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveItemImage={resolveItemImage}
           />

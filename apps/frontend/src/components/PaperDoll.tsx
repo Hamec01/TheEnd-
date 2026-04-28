@@ -191,7 +191,6 @@ export function PaperDoll({
                           event.currentTarget.style.display = 'none';
                         }}
                       />
-                      <span className="paper-doll-slot-item-fallback">{equippedItem.name.charAt(0).toUpperCase()}</span>
                     </span>
                     <span className="paper-doll-slot-tooltip" role="tooltip">
                       <strong>{label}</strong>
