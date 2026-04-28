@@ -574,8 +574,16 @@ export function BattleField({
 
   const contextEntity = contextMenu.targetId ? entityById.get(contextMenu.targetId) : null;
 
+  const availableBoardHeight = Math.max(1, boardSize.height);
   const availableBoardWidth = Math.max(1, boardSize.width);
-  const sceneCellSize = Math.max(22, Math.floor(availableBoardWidth / viewportCellCount));
+
+  const cellByWidth = Math.floor(availableBoardWidth / viewport.width);
+  const cellByHeight = Math.floor(availableBoardHeight / viewport.height);
+
+  const sceneCellSize = Math.max(
+    22,
+    Math.min(cellByWidth, cellByHeight)
+  );
   const tokenSizePx = Math.max(24, Math.floor(sceneCellSize * 0.72));
 
   const visibleMapPixelWidth = viewport.width * sceneCellSize;
