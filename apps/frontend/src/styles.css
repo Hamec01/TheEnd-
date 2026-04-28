@@ -5709,6 +5709,17 @@ body,
   overflow: auto;
 }
 
+/* Allow setup onboarding page to scroll even with global root overflow lock. */
+body:has(.page.page--scroll) {
+  overflow-y: auto;
+}
+
+.page.page--scroll {
+  height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .wm-shell,
 .wm-grid,
 .wm-left,

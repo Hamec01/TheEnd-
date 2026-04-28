@@ -120,6 +120,7 @@ interface CharacterCreationProfile {
 }
 
 type Phase = 'setup' | 'hub';
+type SetupStep = 'account' | 'character';
 type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
@@ -183,6 +184,8 @@ const DEFAULT_NPC_STATS: StatBlock = {
 
 const NPC_STORAGE_KEY = 'theend.arenaNpcTemplates';
 const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
+const LAST_ACCOUNT_ID_STORAGE_KEY = 'theend.lastAccountId';
+const LAST_ACCOUNT_LOGIN_STORAGE_KEY = 'theend.lastAccountLogin';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
 const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
@@ -441,6 +444,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
   const lastRuntimeContentRefreshAtRef = useRef(0);
   const [phase, setPhase] = useState<Phase>('setup');
+  const [setupStep, setSetupStep] = useState<SetupStep>('account');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
   const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
@@ -457,7 +461,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [setupAvatarUrl, setSetupAvatarUrl] = useState<string>('');
   const setupAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [status, setStatus] = useState('Create a fighter directly or use account login if needed.');
+  const [status, setStatus] = useState('Сначала зарегистрируйтесь или войдите, затем создайте персонажа и начните игру.');
 
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>('merchant_weaponsmith');
   const [selectedMerchantItemId, setSelectedMerchantItemId] = useState<string | null>(null);
@@ -697,6 +701,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, []);
 
   useEffect(() => {
+    const savedAccountId = window.localStorage.getItem(LAST_ACCOUNT_ID_STORAGE_KEY);
+    const savedAccountLogin = window.localStorage.getItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY);
+    if (savedAccountId) {
+      setAccountId(savedAccountId);
+      setSetupStep('character');
+    }
+    if (savedAccountLogin) {
+      setLogin(savedAccountLogin);
+    }
+
     const savedCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
     if (!savedCharacterId) {
       setRestoringSession(false);
@@ -1054,6 +1068,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     try {
       const account = await registerAccount({ login, password });
       setAccountId(account.id);
+      window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
+      window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
+      setLogin(account.login);
+      setSetupStep('character');
       setStatus(`Account created for ${account.login}.`);
     } catch (error) {
       setStatus(`Registration error: ${(error as Error).message}`);
@@ -1065,6 +1083,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     try {
       const account = await loginAccount({ login, password });
       setAccountId(account.id);
+      window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
+      window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
+      setLogin(account.login);
       const characters = await listCharacters(account.id);
 
       if (characters.length > 0) {
@@ -1076,6 +1097,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         return;
       }
 
+      setSetupStep('character');
       setStatus(`Welcome, ${account.login}. Create your first character.`);
     } catch (error) {
       setStatus(`Login error: ${(error as Error).message}`);
@@ -1083,6 +1105,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }
 
   async function onCreateCharacter(): Promise<void> {
+    if (!accountId) {
+      setSetupStep('account');
+      setStatus('Сначала зарегистрируйтесь или войдите в аккаунт.');
+      return;
+    }
+
     const trimmedName = name.trim();
     if (!trimmedName) {
       setStatus('Имя персонажа обязательно.');
@@ -1097,7 +1125,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       return;
     }
 
-    setStatus(accountId ? 'Создаем персонажа...' : 'Создаем персонажа без привязки к аккаунту...');
+    setStatus('Создаем персонажа...');
     try {
       const saved = await createCharacter({
         name: trimmedName,
@@ -1496,16 +1524,60 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           <section className="card compact-hero setup-hero-card">
             <div className="setup-hero-copy">
               <p className="eyebrow">TheEnd RPG</p>
-              <h1>Создание персонажа</h1>
-              <p className="muted setup-hero-text">Выберите имя, пол, расу, подданство и аватар. Справа сразу видно итоговые статы, расовые особенности и стартовые стихии.</p>
+                  <h1>{setupStep === 'account' ? 'Регистрация' : 'Создание персонажа'}</h1>
+                  <p className="muted setup-hero-text">
+                    {setupStep === 'account'
+                      ? 'Шаг 1 из 2. Создайте аккаунт или войдите в существующий. Подтверждение почты пока не требуется.'
+                      : 'Шаг 2 из 2. Настройте персонажа: имя, пол, раса, подданство и аватар.'}
+                  </p>
             </div>
             <div className="setup-hero-side">
-              <div className="level-pill">4 расы</div>
-              <p className="muted">Люди, Лесные эльфы, Высшие эльфы, Гномы.</p>
+                  <div className="level-pill">{setupStep === 'account' ? 'Шаг 1/2' : 'Шаг 2/2'}</div>
+                  <p className="muted">
+                    {setupStep === 'account' ? 'После входа откроется создание персонажа.' : 'Люди, Лесные эльфы, Высшие эльфы, Гномы.'}
+                  </p>
             </div>
           </section>
 
-          <section className="setup-grid setup-creation-grid">
+              {setupStep === 'account' ? (
+                <section className="setup-grid setup-creation-grid">
+                  <section className="card setup-panel setup-panel-primary">
+                    <h2>Аккаунт</h2>
+                    <p className="muted setup-panel-copy">Введите логин и пароль, затем зарегистрируйтесь или войдите.</p>
+
+                    <div className="row">
+                      <label>Login</label>
+                      <input value={login} onChange={(event) => setLogin(event.target.value)} />
+                    </div>
+                    <div className="row">
+                      <label>Password</label>
+                      <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                    </div>
+
+                    <div className="hud-actions setup-actions-row">
+                      <button onClick={onRegister} disabled={!login.trim() || !password.trim()}>Register</button>
+                      <button onClick={onLogin} disabled={!login.trim() || !password.trim()}>Login</button>
+                    </div>
+                  </section>
+
+                  <section className="card setup-panel setup-panel-secondary">
+                    <h2>Дальше</h2>
+                    <p className="muted setup-panel-copy">После успешного входа будет доступно создание персонажа.</p>
+                    <section className="inner-card setup-race-note">
+                      <strong>Сохранение прогресса</strong>
+                      <p>Аккаунт и персонажи сохраняются. При следующем входе можно продолжить с последнего персонажа.</p>
+                    </section>
+                    {accountId ? (
+                      <section className="inner-card setup-race-note">
+                        <strong>Аккаунт подключен</strong>
+                        <p>Можно переходить к созданию персонажа.</p>
+                        <button type="button" onClick={() => setSetupStep('character')}>Перейти к созданию персонажа</button>
+                      </section>
+                    ) : null}
+                  </section>
+                </section>
+              ) : (
+                <section className="setup-grid setup-creation-grid">
             <section className="card setup-panel setup-panel-primary">
               <h2>Персонаж</h2>
               <p className="muted setup-panel-copy">Левая панель: аватар, имя, пол, раса, подданство (только для людей).</p>
@@ -1571,6 +1643,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
               <h2>Предпросмотр</h2>
               <p className="muted setup-panel-copy">Правая панель: описание расы, особенности, итоговые статы, стихии и стартовые навыки.</p>
 
+                  <section className="inner-card setup-race-note">
+                    <strong>Аккаунт</strong>
+                    <p>{login.trim() ? `Вы вошли как ${login}.` : 'Аккаунт подключен.'}</p>
+                    <button type="button" onClick={() => setSetupStep('account')}>Сменить аккаунт</button>
+                  </section>
+
               <section className="inner-card setup-race-note">
                 <strong>Расовые особенности</strong>
                 {raceConfig.traitHighlights.map((entry) => <p key={entry}>{entry}</p>)}
@@ -1603,34 +1681,21 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <strong>Итоговый объект персонажа</strong>
                 <pre className="setup-preview-json">{JSON.stringify(setupCharacterPreview, null, 2)}</pre>
               </section>
-
-              <section className="inner-card setup-race-note">
-                <strong>Аккаунт (опционально)</strong>
-                <div className="row">
-                  <label>Login</label>
-                  <input value={login} onChange={(event) => setLogin(event.target.value)} />
-                </div>
-                <div className="row">
-                  <label>Password</label>
-                  <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-                </div>
-                <div className="hud-actions setup-actions-row">
-                  <button onClick={onRegister}>Register</button>
-                  <button onClick={onLogin}>Login</button>
-                </div>
-              </section>
             </section>
-          </section>
+                </section>
+              )}
 
-          <section className="card setup-bottom-actions">
-            <button
-              className="setup-enter-button"
-              onClick={onCreateCharacter}
-              disabled={!name.trim() || (setupOriginRequired && !originId)}
-            >
-              Создать персонажа
-            </button>
-          </section>
+              {setupStep === 'character' ? (
+                <section className="card setup-bottom-actions">
+                  <button
+                    className="setup-enter-button"
+                    onClick={onCreateCharacter}
+                    disabled={!name.trim() || (setupOriginRequired && !originId)}
+                  >
+                    Создать персонажа
+                  </button>
+                </section>
+              ) : null}
 
           <section className="card status-card setup-status-card">
             <h2>Status</h2>
@@ -2026,8 +2091,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                     setOverlayPanel(null);
                     setExitDialogOpen(false);
                     setPhase('setup');
+                    setSetupStep('account');
                     setCharacter(null);
                     setAccountId(null);
+                    window.localStorage.removeItem(LAST_ACCOUNT_ID_STORAGE_KEY);
+                    window.localStorage.removeItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY);
+                    setLogin('');
+                    setPassword('');
                     setInventory({ gold: 0, items: [] });
                     setEquipment({
                       weapon: null,
