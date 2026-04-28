@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import {
   ActionType,
   BATTLEFIELD_GRID_SIZE,
@@ -21,7 +22,6 @@ import {
   type Race,
   type StatBlock,
 } from '@theend/rpg-domain';
-import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';

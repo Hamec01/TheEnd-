@@ -8,6 +8,8 @@ import {
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+type InventoryItemRow = { id: string; itemId: string; quantity: number };
+
 @Injectable()
 export class ArenaService implements OnModuleInit {
   constructor(
@@ -89,7 +91,7 @@ export class ArenaService implements OnModuleInit {
     for (const character of characters) {
       await this.sanitizeCharacterInventoryAndEquipment({
         characterId: character.id,
-        inventoryItems: character.inventoryItems.map((entry) => ({
+        inventoryItems: character.inventoryItems.map((entry: InventoryItemRow) => ({
           id: entry.id,
           itemId: entry.itemId,
           quantity: entry.quantity,
@@ -190,7 +192,7 @@ export class ArenaService implements OnModuleInit {
       };
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       if (invalidInventoryItemIds.length > 0) {
         await tx.characterInventoryItem.deleteMany({
           where: {
@@ -326,7 +328,7 @@ export class ArenaService implements OnModuleInit {
 
     const sanitized = await this.sanitizeCharacterInventoryAndEquipment({
       characterId,
-      inventoryItems: character.inventoryItems.map((entry) => ({
+      inventoryItems: character.inventoryItems.map((entry: InventoryItemRow) => ({
         id: entry.id,
         itemId: entry.itemId,
         quantity: entry.quantity,
@@ -374,7 +376,7 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('Недостаточно золота.');
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.character.update({
         where: { id: characterId },
         data: { gold: state.inventory.gold - price },
@@ -412,7 +414,7 @@ export class ArenaService implements OnModuleInit {
     const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
     const goldGain = sellPrice * safeQuantity;
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.character.update({
         where: { id: characterId },
         data: {
@@ -466,7 +468,7 @@ export class ArenaService implements OnModuleInit {
       }
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await this.decrementInventoryItem(tx, characterId, itemId);
 
       for (const [returnedItemId, quantity] of returnedItems) {
@@ -498,7 +500,7 @@ export class ArenaService implements OnModuleInit {
       [slot]: null,
     };
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.characterEquipment.upsert({
         where: { characterId },
         update: this.toEquipmentRecord(nextEquipment),
