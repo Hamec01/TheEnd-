@@ -398,10 +398,24 @@ export const ITEMS: Record<string, ItemDefinition> = {
 
 export function getItemById(itemId: string): ItemDefinition {
   const item = ITEMS[itemId];
-  if (!item) {
-    throw new Error(`Unknown item id: ${itemId}`);
+
+  if (item) {
+    return item;
   }
-  return item;
+
+  return {
+    id: itemId,
+    name: `Unknown item (${itemId})`,
+    itemType: 'consumable',
+    itemSubType: 'unknown',
+    price: 0,
+    requiredStats: {},
+    bonuses: {},
+    stackable: true,
+    description: 'Item definition is missing. Check admin content.',
+    icon: 'unknown',
+    rarity: 'common',
+  };
 }
 
 export function getItemHandsRequired(item: Pick<ItemDefinition, 'itemType' | 'handsRequired'>): HandsRequired {
