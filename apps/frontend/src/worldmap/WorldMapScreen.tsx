@@ -32,6 +32,11 @@ type LocationView = 'map' | 'arklein';
 type SidePanelKey = 'adminEditor' | 'adminBattle' | 'contextActions' | 'npcInteraction' | 'nearbyNpc' | 'nearbyPlayers';
 
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
+const UI_LEFT_PANEL_COLLAPSED_KEY = 'theend.worldMap.ui.leftPanelCollapsed';
+const UI_RIGHT_PANEL_COLLAPSED_KEY = 'theend.worldMap.ui.rightPanelCollapsed';
+const UI_CHAT_MINIMIZED_KEY = 'theend.worldMap.ui.chatMinimized';
+const POPUP_HIDE_DELAY_MS = 3000;
+const POPUP_FADE_DURATION_MS = 450;
 const ARKLEIN_MERCHANT_SLOTS = [
   { left: '37%', top: '46%', keywords: ['рынок', 'market', 'bazaar', 'лавка', 'торг'] },
   { left: '68%', top: '35%', keywords: ['куз', 'smith', 'forge', 'blacksmith'] },
@@ -60,6 +65,21 @@ function assignArkleinMerchantSlots(merchants: AdminMerchant[]) {
 
 function getPlayerPositionStorageKey(characterId: string): string {
   return `theend.worldMap.playerPosition.${characterId}`;
+}
+
+function loadUiBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  const raw = window.localStorage.getItem(key);
+  if (raw === 'true') {
+    return true;
+  }
+  if (raw === 'false') {
+    return false;
+  }
+  return fallback;
 }
 
 function loadPlayerPosition(characterId: string): { x: number; y: number } {
@@ -190,6 +210,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   } = props;
 
   const canvasRef = useRef<WorldMapCanvasHandle>(null);
+  const chatLogRef = useRef<HTMLDivElement | null>(null);
+  const popupTimeoutsRef = useRef<Map<string, { fadeTimer: number; removeTimer: number }>>(new Map());
+  const seenPopupMessageIdsRef = useRef<Set<string>>(new Set());
   const skipNextZonePersistRef = useRef(true);
   const skipNextSettingsPersistRef = useRef(false);
   const worldMapRefreshRef = useRef<Promise<void> | null>(null);
@@ -208,6 +231,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatType, setChatType] = useState<ChatType>('local');
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(() => loadUiBoolean(UI_LEFT_PANEL_COLLAPSED_KEY, false));
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() => loadUiBoolean(UI_RIGHT_PANEL_COLLAPSED_KEY, false));
+  const [chatMinimized, setChatMinimized] = useState(() => loadUiBoolean(UI_CHAT_MINIMIZED_KEY, false));
+  const [eventOverlayMessages, setEventOverlayMessages] = useState<Array<ChatMessage & { isFading: boolean }>>([]);
   const [collapsedSidePanels, setCollapsedSidePanels] = useState<Record<SidePanelKey, boolean>>({
     adminEditor: true,
     adminBattle: true,
@@ -255,27 +282,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [questMarkers],
   );
   const playNpcMarkers = useMemo(() => {
-    const out: Array<{ id: string; name: string; kind: string; x: number; y: number; isHostile: boolean; hasQuest: boolean }> = [];
-    for (const npc of npcs) {
-      if (npc.status === 'disabled' || npc.status === 'archived') {
-        continue;
-      }
-      const binding = npc.mapBindings.find((entry) => entry.mapId === 'worldmap-main' && typeof entry.x === 'number' && typeof entry.y === 'number' && entry.visibleToPlayer !== false);
-      if (!binding || typeof binding.x !== 'number' || typeof binding.y !== 'number') {
-        continue;
-      }
-      out.push({
-        id: npc.id,
-        name: npc.name,
-        kind: npc.kind,
-        x: binding.x,
-        y: binding.y,
-        isHostile: npc.defaultDisposition === 'hostile' || npc.defaultDisposition === 'aggressive_on_sight',
-        hasQuest: npc.canGiveQuests || npc.questBindings.length > 0,
-      });
-    }
-    return out;
-  }, [npcs]);
+    // NPC interactions stay available, but map labels/markers are intentionally hidden.
+    return [] as Array<{ id: string; name: string; kind: string; x: number; y: number; isHostile: boolean; hasQuest: boolean }>;
+  }, []);
   const selectedNpcForInteraction = useMemo(() => {
     if (selectedNpcForInteractionId) {
       return npcs.find((entry) => entry.id === selectedNpcForInteractionId) ?? null;
@@ -542,13 +551,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return [...localMessages, ...systemChat].slice(-24);
   }, [chatLines, systemChat]);
 
-  const eventOverlayMessages = useMemo<ChatMessage[]>(() => {
-    return chatMessages
-      .filter((message) => message.text.trim().length > 0)
-      .slice(-3)
-      .reverse();
-  }, [chatMessages]);
-
   const quickButtons = useMemo(() => [
     {
       id: 'combat',
@@ -640,6 +642,78 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
     }
   }, [character.id, character.level, character.race, worldMapMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(UI_LEFT_PANEL_COLLAPSED_KEY, String(leftPanelCollapsed));
+  }, [leftPanelCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(UI_RIGHT_PANEL_COLLAPSED_KEY, String(rightPanelCollapsed));
+  }, [rightPanelCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(UI_CHAT_MINIMIZED_KEY, String(chatMinimized));
+  }, [chatMinimized]);
+
+  useEffect(() => {
+    if (chatMinimized) {
+      return;
+    }
+    const element = chatLogRef.current;
+    if (!element) {
+      return;
+    }
+    element.scrollTop = element.scrollHeight;
+  }, [chatMessages, chatMinimized]);
+
+  useEffect(() => {
+    const freshMessages = chatMessages.filter(
+      (message) => message.type === 'system' && message.text.trim().length > 0 && !seenPopupMessageIdsRef.current.has(message.id),
+    );
+
+    if (freshMessages.length === 0) {
+      return;
+    }
+
+    for (const message of freshMessages) {
+      seenPopupMessageIdsRef.current.add(message.id);
+
+      setEventOverlayMessages((current) => {
+        const next = [...current, { ...message, isFading: false }];
+        return next.slice(-4);
+      });
+
+      const fadeTimer = window.setTimeout(() => {
+        setEventOverlayMessages((current) => current.map((entry) => (
+          entry.id === message.id ? { ...entry, isFading: true } : entry
+        )));
+      }, Math.max(0, POPUP_HIDE_DELAY_MS - POPUP_FADE_DURATION_MS));
+
+      const removeTimer = window.setTimeout(() => {
+        setEventOverlayMessages((current) => current.filter((entry) => entry.id !== message.id));
+        popupTimeoutsRef.current.delete(message.id);
+      }, POPUP_HIDE_DELAY_MS);
+
+      popupTimeoutsRef.current.set(message.id, { fadeTimer, removeTimer });
+    }
+  }, [chatMessages]);
+
+  useEffect(() => () => {
+    popupTimeoutsRef.current.forEach(({ fadeTimer, removeTimer }) => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    });
+    popupTimeoutsRef.current.clear();
+  }, []);
 
   const handleSelectQuestMarker = useCallback((id: string | null) => {
     setSelectedQuestMarkerId(id);
@@ -1348,28 +1422,39 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       />
 
       <section className="wm-grid">
-        <PlayerQuickPanel
-          name={character.name}
-          avatarLetter={avatarLetter}
-          avatarUrl={playerAvatarUrl}
-          hpText={`${battleStats.hp}/${character.activeStats.hp}`}
-          mpText={`${battleStats.mp}/${character.activeStats.mp}`}
-          staminaText={`${battleStats.stamina}/${character.activeStats.stamina}`}
-          activeStats={character.activeStats as StatBlock}
-          equipment={equipment}
-          inventory={inventory}
-          quickActions={quickButtons}
-          resolveItemById={resolveItemById}
-          resolveItemImage={resolveItemImage}
-          worldStatusLines={[
-            `Локация: ${selectedLocationName}`,
-            `Коорд: ${playerPosition.x.toFixed(3)}, ${playerPosition.y.toFixed(3)}`,
-            `Состояние: ${playerState}`,
-            `Под курсором: ${hoverZone?.name ?? '-'}`,
-            'Онлайн: 124',
-            '22:41',
-          ]}
-        />
+        <div className={`wm-left-panel ${leftPanelCollapsed ? 'is-collapsed' : ''}`}>
+          <button
+            type="button"
+            className="wm-panel-collapse-btn wm-panel-collapse-btn-left"
+            aria-label={leftPanelCollapsed ? 'Развернуть левую панель' : 'Свернуть левую панель'}
+            aria-expanded={!leftPanelCollapsed}
+            onClick={() => setLeftPanelCollapsed((current: boolean) => !current)}
+          >
+            {leftPanelCollapsed ? '▶' : '◀'}
+          </button>
+          <PlayerQuickPanel
+            name={character.name}
+            avatarLetter={avatarLetter}
+            avatarUrl={playerAvatarUrl}
+            hpText={`${battleStats.hp}/${character.activeStats.hp}`}
+            mpText={`${battleStats.mp}/${character.activeStats.mp}`}
+            staminaText={`${battleStats.stamina}/${character.activeStats.stamina}`}
+            activeStats={character.activeStats as StatBlock}
+            equipment={equipment}
+            inventory={inventory}
+            quickActions={quickButtons}
+            resolveItemById={resolveItemById}
+            resolveItemImage={resolveItemImage}
+            worldStatusLines={[
+              `Локация: ${selectedLocationName}`,
+              `Коорд: ${playerPosition.x.toFixed(3)}, ${playerPosition.y.toFixed(3)}`,
+              `Состояние: ${playerState}`,
+              `Под курсором: ${hoverZone?.name ?? '-'}`,
+              'Онлайн: 124',
+              '22:41',
+            ]}
+          />
+        </div>
 
         <div className="wm-main-column">
           {locationView === 'map' ? (
@@ -1437,13 +1522,24 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <div className="wm-chat-dock">
             <div className="wm-event-overlay" aria-live="polite">
               {eventOverlayMessages.map((line) => (
-                <p key={`overlay-${line.id}`} className={`wm-event-line type-${line.type}`}>{line.text}</p>
+                <p key={`overlay-${line.id}`} className={`wm-event-line type-${line.type} ${line.isFading ? 'is-fading' : ''}`}>{line.text}</p>
               ))}
             </div>
 
-            <section className="wm-chat card wm-chat-under-map">
-              <h3>Чат</h3>
-              <div className="wm-chat-log">
+            <section className={`wm-chat card wm-chat-under-map chat-container ${chatMinimized ? 'is-minimized' : ''}`}>
+              <div className="wm-chat-header">
+                <h3>Чат</h3>
+                <button
+                  type="button"
+                  className="wm-chat-minimize-btn"
+                  aria-label={chatMinimized ? 'Развернуть чат' : 'Свернуть чат'}
+                  aria-expanded={!chatMinimized}
+                  onClick={() => setChatMinimized((current: boolean) => !current)}
+                >
+                  {chatMinimized ? '▲' : '▼'}
+                </button>
+              </div>
+              <div ref={chatLogRef} className="wm-chat-log chat-messages">
                 {chatMessages.map((line) => (
                   <p key={line.id}><strong>[{line.type.toUpperCase()}]</strong> {line.text}</p>
                 ))}
@@ -1461,8 +1557,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           </div>
         </div>
 
-        <div className="wm-right-stack">
-          {showAdminShortcuts ? (
+        <div className={`wm-right-panel ${rightPanelCollapsed ? 'is-collapsed' : ''}`}>
+          <button
+            type="button"
+            className="wm-panel-collapse-btn wm-panel-collapse-btn-right"
+            aria-label={rightPanelCollapsed ? 'Развернуть правую панель' : 'Свернуть правую панель'}
+            aria-expanded={!rightPanelCollapsed}
+            onClick={() => setRightPanelCollapsed((current: boolean) => !current)}
+          >
+            {rightPanelCollapsed ? '◀' : '▶'}
+          </button>
+
+          <div className="wm-right-stack">
+            {showAdminShortcuts ? (
             <>
               {renderSidePanel('adminEditor', 'Admin инструменты', (
                 <div className="wm-editor-launch card">
@@ -1498,73 +1605,74 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 </section>
               ))}
             </>
-          ) : null}
+            ) : null}
 
-          {renderSidePanel('contextActions', 'Последние события и действия', (
-            <ContextActionPanel
-              mode={contextMode}
-              selectedNode={selectedNode}
-              quests={questDefinitions}
-              playerQuestStates={playerQuestStates}
-              onAction={(actionId, kind) => { void handleAction(actionId, kind); }}
-            />
-          ))}
+            {renderSidePanel('contextActions', 'Последние события и действия', (
+              <ContextActionPanel
+                mode={contextMode}
+                selectedNode={selectedNode}
+                quests={questDefinitions}
+                playerQuestStates={playerQuestStates}
+                onAction={(actionId, kind) => { void handleAction(actionId, kind); }}
+              />
+            ))}
 
-          {renderSidePanel('npcInteraction', 'NPC взаимодействие', (
-            <NpcInteractionPanel
-              npc={selectedNpcForInteraction}
-              dialogue={activeDialogue}
-              node={activeDialogueNode}
-              logs={dialogueLogs}
-              onTalk={handleNpcTalk}
-              onTrade={handleNpcTrade}
-              onTrain={handleNpcTrain}
-              onAttack={() => { void handleNpcAttack(); }}
-              onQuest={handleNpcQuest}
-              onInspect={handleNpcInspect}
-              onSelectChoice={handleSelectDialogueChoice}
-            />
-          ))}
+            {renderSidePanel('npcInteraction', 'NPC взаимодействие', (
+              <NpcInteractionPanel
+                npc={selectedNpcForInteraction}
+                dialogue={activeDialogue}
+                node={activeDialogueNode}
+                logs={dialogueLogs}
+                onTalk={handleNpcTalk}
+                onTrade={handleNpcTrade}
+                onTrain={handleNpcTrain}
+                onAttack={() => { void handleNpcAttack(); }}
+                onQuest={handleNpcQuest}
+                onInspect={handleNpcInspect}
+                onSelectChoice={handleSelectDialogueChoice}
+              />
+            ))}
 
-          {renderSidePanel('nearbyNpc', 'NPC рядом', (
-            <section className="wm-context card" style={{ borderTop: 'none' }}>
-              <section className="wm-context-block">
-                {nearbyNpcs.length > 0 ? nearbyNpcs.map((entry) => (
-                  <button
-                    key={entry.npc.id}
-                    style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNpcForInteraction?.id === entry.npc.id ? 1 : 0.82 }}
-                    onClick={() => setSelectedNpcForInteractionId(entry.npc.id)}
-                  >
-                    {entry.npc.name} [{entry.npc.kind}] ({entry.distance.toFixed(3)})
-                  </button>
-                )) : <p className="muted">Нет NPC в радиусе взаимодействия.</p>}
+            {renderSidePanel('nearbyNpc', 'NPC рядом', (
+              <section className="wm-context card" style={{ borderTop: 'none' }}>
+                <section className="wm-context-block">
+                  {nearbyNpcs.length > 0 ? nearbyNpcs.map((entry) => (
+                    <button
+                      key={entry.npc.id}
+                      style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNpcForInteraction?.id === entry.npc.id ? 1 : 0.82 }}
+                      onClick={() => setSelectedNpcForInteractionId(entry.npc.id)}
+                    >
+                      {entry.npc.name} [{entry.npc.kind}] ({entry.distance.toFixed(3)})
+                    </button>
+                  )) : <p className="muted">Нет NPC в радиусе взаимодействия.</p>}
+                </section>
               </section>
-            </section>
-          ))}
+            ))}
 
-          {renderSidePanel('nearbyPlayers', 'Игроки рядом', (
-            <section className="wm-context card" style={{ borderTop: 'none' }}>
-              <section className="wm-context-block">
-                {nearbyPlayers.map((entry) => (
-                  <button
-                    key={entry.id}
-                    style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNearbyPlayer?.id === entry.id ? 1 : 0.82 }}
-                    onClick={() => setSelectedNearbyPlayerId(entry.id)}
-                  >
-                    {entry.name} (ур.{entry.level}) [{entry.state}]
-                  </button>
-                ))}
-                {selectedNearbyPlayer ? (
-                  <div className="wm-action-grid" style={{ marginTop: '8px' }}>
-                    <button disabled={!canAttackPlayer} onClick={() => handleNearbyAction('attack', selectedNearbyPlayer)}>Напасть</button>
-                    <button onClick={() => handleNearbyAction('message', selectedNearbyPlayer)}>Написать</button>
-                    <button onClick={() => handleNearbyAction('trade', selectedNearbyPlayer)}>Торговать</button>
-                    <button onClick={() => handleNearbyAction('inspect', selectedNearbyPlayer)}>Осмотреть</button>
-                  </div>
-                ) : null}
+            {renderSidePanel('nearbyPlayers', 'Игроки рядом', (
+              <section className="wm-context card" style={{ borderTop: 'none' }}>
+                <section className="wm-context-block">
+                  {nearbyPlayers.map((entry) => (
+                    <button
+                      key={entry.id}
+                      style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNearbyPlayer?.id === entry.id ? 1 : 0.82 }}
+                      onClick={() => setSelectedNearbyPlayerId(entry.id)}
+                    >
+                      {entry.name} (ур.{entry.level}) [{entry.state}]
+                    </button>
+                  ))}
+                  {selectedNearbyPlayer ? (
+                    <div className="wm-action-grid" style={{ marginTop: '8px' }}>
+                      <button disabled={!canAttackPlayer} onClick={() => handleNearbyAction('attack', selectedNearbyPlayer)}>Напасть</button>
+                      <button onClick={() => handleNearbyAction('message', selectedNearbyPlayer)}>Написать</button>
+                      <button onClick={() => handleNearbyAction('trade', selectedNearbyPlayer)}>Торговать</button>
+                      <button onClick={() => handleNearbyAction('inspect', selectedNearbyPlayer)}>Осмотреть</button>
+                    </div>
+                  ) : null}
+                </section>
               </section>
-            </section>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 

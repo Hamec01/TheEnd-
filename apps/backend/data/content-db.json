@@ -322,8 +322,8 @@
       "loreDescription": "Issued to new fighters of Arklein militia.",
       "imagePath": "unknown",
       "isEnabled": true,
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
+      "createdAt": "2026-04-28T19:46:07.999Z",
+      "updatedAt": "2026-04-28T19:46:07.999Z"
     },
     {
       "id": "starter_leather_armor_01",
@@ -345,8 +345,8 @@
       "loreDescription": "Simple leather vest sold in Arklein market.",
       "imagePath": "unknown",
       "isEnabled": true,
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
+      "createdAt": "2026-04-28T19:46:07.999Z",
+      "updatedAt": "2026-04-28T19:46:07.999Z"
     },
     {
       "id": "starter_healing_potion_01",
@@ -365,8 +365,8 @@
       "loreDescription": "Brewed by local alchemists for recruits.",
       "imagePath": "unknown",
       "isEnabled": true,
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
+      "createdAt": "2026-04-28T19:46:07.999Z",
+      "updatedAt": "2026-04-28T19:46:07.999Z"
     }
   ],
   "skills": [
@@ -632,47 +632,21 @@
       ],
       "createdAt": "2026-04-26T09:17:38.452Z",
       "updatedAt": "2026-04-27T08:08:10.822Z"
-    },
-    {
-      "id": "merchant_arklein_starter",
-      "name": "Borin Ironhand",
-      "city": "Arklein",
-      "location": "Market Square",
-      "type": "general",
-      "description": "Starter gear merchant for new adventurers.",
-      "portraitPath": "",
-      "priceMultiplier": 1,
-      "isEnabled": true,
-      "items": [
-        {
-          "itemId": "starter_sword_01",
-          "stock": 20,
-          "infiniteStock": true,
-          "priceMultiplier": 1,
-          "isEnabled": true
-        },
-        {
-          "itemId": "starter_leather_armor_01",
-          "stock": 20,
-          "infiniteStock": true,
-          "priceMultiplier": 1,
-          "isEnabled": true
-        },
-        {
-          "itemId": "starter_healing_potion_01",
-          "stock": 20,
-          "infiniteStock": true,
-          "priceMultiplier": 1,
-          "isEnabled": true
-        }
-      ],
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
     }
   ],
   "materials": [],
   "lootTables": [],
   "images": [
+    {
+      "id": "unknown",
+      "name": "placeholder-unknown",
+      "mimeType": "image/png",
+      "width": 1,
+      "height": 1,
+      "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2p0Y4AAAAASUVORK5CYII=",
+      "createdAt": "2026-04-28T21:10:00.000Z",
+      "updatedAt": "2026-04-28T21:10:00.000Z"
+    },
     {
       "id": "img_1777165487565_qhgqamq4",
       "name": "training_sword_wood_01-icon",
@@ -1405,8 +1379,8 @@
       "questBindings": [
         "quest_arklein_first_step"
       ],
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
+      "createdAt": "2026-04-28T19:46:07.999Z",
+      "updatedAt": "2026-04-28T19:46:07.999Z"
     }
   ],
   "quests": [
@@ -1765,8 +1739,8 @@
       ],
       "failureConsequences": [],
       "flags": {},
-      "createdAt": "2026-04-28T14:39:50.904Z",
-      "updatedAt": "2026-04-28T14:39:50.904Z"
+      "createdAt": "2026-04-28T19:46:07.999Z",
+      "updatedAt": "2026-04-28T19:46:07.999Z"
     }
   ],
   "questItems": [
@@ -1836,11 +1810,11 @@
         "isVisibleToPlayer": true,
         "isSafeZone": true,
         "allowPvP": false,
-        "createdAt": 1777387190904,
-        "updatedAt": 1777387190904
+        "createdAt": 1777405567999,
+        "updatedAt": 1777405567999
       }
     ],
     "regions": [],
-    "updatedAt": "2026-04-28T14:39:50.904Z"
+    "updatedAt": "2026-04-28T19:46:07.999Z"
   }
 }
