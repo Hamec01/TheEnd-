@@ -12,6 +12,7 @@ import {
   createArenaCombatEntity,
   createInitialBattleState,
   createNpcAction,
+  getRequiredExpForNextLevel,
   resolveRound,
   type ArenaBattleState,
   type ArenaCombatAction,
@@ -137,10 +138,6 @@ export class CombatService {
     }
   }
 
-  private requiredExpForNextLevel(level: number): number {
-    return 100 * (level + 1);
-  }
-
   private async applyCombatExp(characterId: string, gainedExp: number): Promise<{ gainedExp: number; levelsGained: number }> {
     if (gainedExp <= 0) {
       return { gainedExp: 0, levelsGained: 0 };
@@ -159,7 +156,7 @@ export class CombatService {
     let nextExp = character.exp + gainedExp;
     let levelsGained = 0;
 
-    while (nextExp >= this.requiredExpForNextLevel(nextLevel)) {
+    while (nextExp >= getRequiredExpForNextLevel(nextLevel)) {
       nextLevel += 1;
       levelsGained += 1;
     }

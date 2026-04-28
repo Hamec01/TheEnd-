@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_EQUIPMENT,
   buyItem,
+  calculateDerivedStats,
   canEquipItem,
   equipItem,
+  getLevelProgress,
+  getRequiredExpForLevel,
+  getRequiredExpForNextLevel,
   initializeCombat,
   resolveAction,
   toCombatReadyEntity,
@@ -86,6 +91,73 @@ describe('shop', () => {
     expect(result.inventory.gold).toBe(60);
     expect(result.inventory.items[0].itemId).toBe('iron_sword');
     expect(result.inventory.items[0].quantity).toBe(1);
+  });
+});
+
+describe('progression', () => {
+  it('uses the configured experience thresholds for early levels', () => {
+    expect(getRequiredExpForLevel(0)).toBe(0);
+    expect(getRequiredExpForLevel(1)).toBe(100);
+    expect(getRequiredExpForLevel(2)).toBe(500);
+    expect(getRequiredExpForLevel(3)).toBe(2000);
+    expect(getRequiredExpForLevel(4)).toBe(5000);
+    expect(getRequiredExpForNextLevel(0)).toBe(100);
+    expect(getRequiredExpForNextLevel(1)).toBe(500);
+    expect(getRequiredExpForNextLevel(4)).toBe(10000);
+  });
+
+  it('tracks progress inside the current level band', () => {
+    expect(getLevelProgress(0, 80)).toMatchObject({
+      floor: 0,
+      next: 100,
+      gainedInsideLevel: 80,
+      totalInsideLevel: 100,
+    });
+
+    expect(getLevelProgress(2, 1100)).toMatchObject({
+      floor: 500,
+      next: 2000,
+      gainedInsideLevel: 600,
+      totalInsideLevel: 1500,
+    });
+  });
+});
+
+describe('derived stats', () => {
+  it('responds to the primary stats used by the combat model', () => {
+    const baseline = calculateDerivedStats({
+      hp: 80,
+      mp: 30,
+      stamina: 40,
+      strength: 5,
+      constitution: 5,
+      dexterity: 5,
+      intelligence: 5,
+      luck: 5,
+      perception: 5,
+      willpower: 5,
+    }, EMPTY_EQUIPMENT);
+
+    const boosted = calculateDerivedStats({
+      hp: 80,
+      mp: 30,
+      stamina: 40,
+      strength: 9,
+      constitution: 8,
+      dexterity: 8,
+      intelligence: 7,
+      luck: 8,
+      perception: 9,
+      willpower: 8,
+    }, EMPTY_EQUIPMENT);
+
+    expect(boosted.minDamage).toBeGreaterThan(baseline.minDamage);
+    expect(boosted.maxDamage).toBeGreaterThan(baseline.maxDamage);
+    expect(boosted.totalDefense).toBeGreaterThan(baseline.totalDefense);
+    expect(boosted.initiative).toBeGreaterThan(baseline.initiative);
+    expect(boosted.hitChance).toBeGreaterThan(baseline.hitChance);
+    expect(boosted.critChance).toBeGreaterThan(baseline.critChance);
+    expect(boosted.magicResistance).toBeGreaterThan(baseline.magicResistance);
   });
 });
 

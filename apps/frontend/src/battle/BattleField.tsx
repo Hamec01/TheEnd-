@@ -64,6 +64,9 @@ interface TileState {
   triggersOpportunity: boolean;
 }
 
+const CAMERA_TILE_BUDGET = 12;
+const MAX_SCENE_UPSCALE = 1.7;
+
 function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
     return 'MAGIC';
@@ -198,8 +201,8 @@ export function BattleField({
   const playerPlacement = placements.find((p) => p.entityId === playerId);
   const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
   const viewport = useMemo(() => {
-    const width = Math.min(viewportWidth, battleMapWidth);
-    const height = Math.min(viewportHeight, battleMapHeight);
+    const width = Math.min(viewportWidth, battleMapWidth, CAMERA_TILE_BUDGET);
+    const height = Math.min(viewportHeight, battleMapHeight, CAMERA_TILE_BUDGET);
     const playerX = playerPlacement?.x ?? 0;
     const playerY = playerPlacement?.y ?? 0;
     const maxOffsetX = Math.max(0, battleMapWidth - width);
@@ -582,7 +585,7 @@ export function BattleField({
   const availableBoardWidth = Math.max(1, boardSize.width - 16);
   const availableBoardHeight = Math.max(1, boardSize.height - 16);
   const sceneScale = Math.min(
-    1,
+    MAX_SCENE_UPSCALE,
     availableBoardWidth / Math.max(1, visibleMapPixelWidth),
     availableBoardHeight / Math.max(1, visibleMapPixelHeight),
   );
@@ -591,7 +594,7 @@ export function BattleField({
     <div className="battle-field tactical-field">
       <div className="tactical-header">
         <h3>Tactical Battlefield</h3>
-        <div className="tactical-distance-indicator">Distance: {distance} | View {viewport.offsetX + 1}:{viewport.offsetY + 1}</div>
+        <div className="tactical-distance-indicator">Distance: {distance} | Camera locked on player</div>
       </div>
 
       <div

@@ -13,6 +13,7 @@ export * from './inventory';
 export * from './equipment';
 export * from './shop';
 export * from './battle-map';
+export * from './progression';
 export { TargetZone } from './arena-battle';
 export {
 	AcquisitionType,

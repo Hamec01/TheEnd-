@@ -52,6 +52,67 @@ const stats_1 = require("./stats");
         (0, vitest_1.expect)(result.inventory.items[0].quantity).toBe(1);
     });
 });
+(0, vitest_1.describe)('progression', () => {
+    (0, vitest_1.it)('uses the configured experience thresholds for early levels', () => {
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForLevel)(0)).toBe(0);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForLevel)(1)).toBe(100);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForLevel)(2)).toBe(500);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForLevel)(3)).toBe(2000);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForLevel)(4)).toBe(5000);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForNextLevel)(0)).toBe(100);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForNextLevel)(1)).toBe(500);
+        (0, vitest_1.expect)((0, index_1.getRequiredExpForNextLevel)(4)).toBe(10000);
+    });
+    (0, vitest_1.it)('tracks progress inside the current level band', () => {
+        (0, vitest_1.expect)((0, index_1.getLevelProgress)(0, 80)).toMatchObject({
+            floor: 0,
+            next: 100,
+            gainedInsideLevel: 80,
+            totalInsideLevel: 100,
+        });
+        (0, vitest_1.expect)((0, index_1.getLevelProgress)(2, 1100)).toMatchObject({
+            floor: 500,
+            next: 2000,
+            gainedInsideLevel: 600,
+            totalInsideLevel: 1500,
+        });
+    });
+});
+(0, vitest_1.describe)('derived stats', () => {
+    (0, vitest_1.it)('responds to the primary stats used by the combat model', () => {
+        const baseline = (0, index_1.calculateDerivedStats)({
+            hp: 80,
+            mp: 30,
+            stamina: 40,
+            strength: 5,
+            constitution: 5,
+            dexterity: 5,
+            intelligence: 5,
+            luck: 5,
+            perception: 5,
+            willpower: 5,
+        }, index_1.EMPTY_EQUIPMENT);
+        const boosted = (0, index_1.calculateDerivedStats)({
+            hp: 80,
+            mp: 30,
+            stamina: 40,
+            strength: 9,
+            constitution: 8,
+            dexterity: 8,
+            intelligence: 7,
+            luck: 8,
+            perception: 9,
+            willpower: 8,
+        }, index_1.EMPTY_EQUIPMENT);
+        (0, vitest_1.expect)(boosted.minDamage).toBeGreaterThan(baseline.minDamage);
+        (0, vitest_1.expect)(boosted.maxDamage).toBeGreaterThan(baseline.maxDamage);
+        (0, vitest_1.expect)(boosted.totalDefense).toBeGreaterThan(baseline.totalDefense);
+        (0, vitest_1.expect)(boosted.initiative).toBeGreaterThan(baseline.initiative);
+        (0, vitest_1.expect)(boosted.hitChance).toBeGreaterThan(baseline.hitChance);
+        (0, vitest_1.expect)(boosted.critChance).toBeGreaterThan(baseline.critChance);
+        (0, vitest_1.expect)(boosted.magicResistance).toBeGreaterThan(baseline.magicResistance);
+    });
+});
 (0, vitest_1.describe)('equipment', () => {
     (0, vitest_1.it)('prevents equip when stat requirement is not met', () => {
         const check = (0, index_1.canEquipItem)({

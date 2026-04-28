@@ -4,6 +4,7 @@ import {
   EMPTY_EQUIPMENT,
   ITEMS,
   RACE_DEFINITIONS,
+  TeamSide,
   applyAllocation,
   getItemHandsRequired,
   getAllocationCost,
@@ -62,9 +63,10 @@ import { getDomainItemWithFallback } from './services/content/seedService';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 import { ensureDialoguesLoaded } from './services/dialogueRepository';
-import { ensureNpcsLoaded } from './services/npcRepository';
+import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npcRepository';
 import { ensureQuestsLoaded } from './services/questRepository';
 import { ensureQuestMarkersLoaded } from './services/questMapRepository';
+import type { NpcDefinition, NpcRace } from './types/npc';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -149,6 +151,28 @@ interface ArenaNpcTemplate {
   avatarUrl?: string;
 }
 
+interface BattleStartSnapshot {
+  level: number;
+  exp: number;
+  freePoints: number;
+}
+
+interface BattleSummary {
+  title: string;
+  expGained: number;
+  goldGained: number;
+  lootNames: string[];
+  damageDealt: number;
+  damageTaken: number;
+  damageBlocked: number;
+  levelBefore: number;
+  levelAfter: number;
+  freePointsAfter: number;
+}
+
+const ARENA_NPC_LOCATION_ID = 'arena:combat';
+const DEFAULT_ARENA_NPC_DESCRIPTION = 'Arena combat NPC managed from the arena editor.';
+
 const EQUIPMENT_SLOT_ORDER: EquipmentSlot[] = ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'shield'];
 
 const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
@@ -158,15 +182,6 @@ const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
   gloves: 'Hands',
   boots: 'Legs',
   shield: 'Offhand',
-};
-
-const EQUIPMENT_SLOT_ITEM_TYPES: Record<EquipmentSlot, ItemDefinition['itemType']> = {
-  weapon: 'weapon',
-  helmet: 'helmet',
-  armor: 'armor',
-  gloves: 'gloves',
-  boots: 'boots',
-  shield: 'shield',
 };
 
 const DEFAULT_NPC_STATS: StatBlock = {
@@ -182,7 +197,6 @@ const DEFAULT_NPC_STATS: StatBlock = {
   willpower: 4,
 };
 
-const NPC_STORAGE_KEY = 'theend.arenaNpcTemplates';
 const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
 const LAST_ACCOUNT_ID_STORAGE_KEY = 'theend.lastAccountId';
 const LAST_ACCOUNT_LOGIN_STORAGE_KEY = 'theend.lastAccountLogin';
@@ -344,23 +358,269 @@ function createDefaultNpcTemplate(index: number): ArenaNpcTemplate {
   };
 }
 
-function normalizeNpcRace(value: unknown): Race {
-  if (Object.values(Race).includes(value as Race)) {
-    return value as Race;
+function toNpcRace(race: Race): NpcRace {
+  switch (race) {
+    case Race.Dwarf:
+      return 'dwarf';
+    case Race.HighElf:
+      return 'high_elf';
+    case Race.WoodElf:
+      return 'forest_elf';
+    case Race.Human:
+    default:
+      return 'human';
   }
+}
 
-  switch (value) {
-    case 'Human':
-      return Race.Human;
-    case 'Dwarf':
+function toArenaRace(race: NpcRace | string | undefined): Race {
+  switch (race) {
+    case 'dwarf':
       return Race.Dwarf;
-    case 'HighElf':
+    case 'high_elf':
       return Race.HighElf;
-    case 'WoodElf':
+    case 'forest_elf':
       return Race.WoodElf;
+    case 'human':
     default:
       return Race.Human;
   }
+}
+
+function isArenaNpcDefinition(npc: NpcDefinition): boolean {
+  return npc.locationId === ARENA_NPC_LOCATION_ID;
+}
+
+function buildArenaEquipmentFromNpc(
+  npc: NpcDefinition,
+  resolveItemById: (itemId: string) => ItemDefinition | null,
+): Equipment {
+  const equipment: Equipment = { ...EMPTY_EQUIPMENT };
+  const armorIds = npc.combat?.armorItemIds ?? [];
+
+  if (npc.combat?.weaponItemId) {
+    equipment.weapon = npc.combat.weaponItemId;
+  }
+
+  for (const itemId of armorIds) {
+    const item = resolveItemById(itemId);
+    switch (item?.itemType) {
+      case 'helmet':
+        equipment.helmet = itemId;
+        break;
+      case 'armor':
+        equipment.armor = itemId;
+        break;
+      case 'gloves':
+        equipment.gloves = itemId;
+        break;
+      case 'boots':
+        equipment.boots = itemId;
+        break;
+      case 'shield':
+        equipment.shield = itemId;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return equipment;
+}
+
+function toArenaNpcTemplate(
+  npc: NpcDefinition,
+  resolveItemById: (itemId: string) => ItemDefinition | null,
+): ArenaNpcTemplate {
+  return {
+    id: npc.id,
+    name: npc.name,
+    race: toArenaRace(npc.race),
+    stats: {
+      hp: npc.combat?.hp ?? DEFAULT_NPC_STATS.hp,
+      mp: npc.combat?.mana ?? DEFAULT_NPC_STATS.mp,
+      stamina: npc.combat?.stamina ?? DEFAULT_NPC_STATS.stamina,
+      strength: npc.combat?.strength ?? DEFAULT_NPC_STATS.strength,
+      constitution: npc.combat?.endurance ?? DEFAULT_NPC_STATS.constitution,
+      dexterity: npc.combat?.agility ?? DEFAULT_NPC_STATS.dexterity,
+      intelligence: npc.combat?.intellect ?? DEFAULT_NPC_STATS.intelligence,
+      luck: npc.combat?.luck ?? DEFAULT_NPC_STATS.luck,
+      perception: npc.combat?.perception ?? DEFAULT_NPC_STATS.perception,
+      willpower: npc.combat?.wisdom ?? DEFAULT_NPC_STATS.willpower,
+    },
+    equipment: buildArenaEquipmentFromNpc(npc, resolveItemById),
+    enabled: npc.status === 'active' && npc.canFight !== false,
+    avatarUrl: npc.portraitUrl ?? npc.combatImageUrl ?? npc.iconUrl ?? undefined,
+  };
+}
+
+function deriveArenaNpcRole(
+  template: ArenaNpcTemplate,
+  resolveItemById: (itemId: string) => ItemDefinition | null,
+): NonNullable<NonNullable<NpcDefinition['combat']>['role']> {
+  const weaponId = template.equipment.weapon;
+  const weapon = weaponId ? resolveItemById(weaponId) : null;
+  const subtype = String(weapon?.itemSubType ?? '').toLowerCase();
+
+  if (subtype.includes('bow') || subtype.includes('crossbow') || subtype.includes('sling') || subtype.includes('throw')) {
+    return 'ranged';
+  }
+
+  if (subtype.includes('staff') || subtype.includes('wand') || subtype.includes('orb') || subtype.includes('tome')) {
+    return 'mage';
+  }
+
+  return 'melee';
+}
+
+function toArenaNpcDefinition(
+  template: ArenaNpcTemplate,
+  resolveItemById: (itemId: string) => ItemDefinition | null,
+  existing?: NpcDefinition | null,
+): NpcDefinition {
+  const now = new Date().toISOString();
+  const armorItemIds = [template.equipment.helmet, template.equipment.armor, template.equipment.gloves, template.equipment.boots, template.equipment.shield]
+    .filter((itemId): itemId is string => Boolean(itemId));
+  const base = existing ?? {
+    id: template.id,
+    name: template.name,
+    status: 'active' as const,
+    kind: 'enemy' as const,
+    race: toNpcRace(template.race),
+    description: DEFAULT_ARENA_NPC_DESCRIPTION,
+    mapBindings: [],
+    defaultDisposition: 'hostile' as const,
+    isUnique: true,
+    canRespawn: true,
+    canFight: true,
+    canTalk: false,
+    canTrade: false,
+    canTrain: false,
+    canGiveQuests: false,
+    canBeKilled: true,
+    dialogues: [],
+    questBindings: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  return {
+    ...base,
+    id: template.id,
+    name: template.name.trim() || base.name || 'Arena NPC',
+    status: template.enabled ? 'active' : 'disabled',
+    kind: 'enemy',
+    race: toNpcRace(template.race),
+    locationId: ARENA_NPC_LOCATION_ID,
+    description: base.description?.trim() || DEFAULT_ARENA_NPC_DESCRIPTION,
+    portraitUrl: template.avatarUrl,
+    combatImageUrl: template.avatarUrl,
+    iconUrl: template.avatarUrl,
+    defaultDisposition: 'hostile',
+    isUnique: true,
+    canRespawn: true,
+    canFight: true,
+    canTalk: false,
+    canTrade: false,
+    canTrain: false,
+    canGiveQuests: false,
+    canBeKilled: true,
+    traderId: undefined,
+    mapBindings: Array.isArray(base.mapBindings) ? base.mapBindings : [],
+    dialogues: Array.isArray(base.dialogues) ? base.dialogues : [],
+    questBindings: Array.isArray(base.questBindings) ? base.questBindings : [],
+    inventory: base.inventory ?? { itemIds: [], questItemIds: [] },
+    combat: {
+      ...base.combat,
+      level: Math.max(1, Math.round((template.stats.strength + template.stats.constitution + template.stats.dexterity + template.stats.perception) / 16)),
+      role: deriveArenaNpcRole(template, resolveItemById),
+      hp: template.stats.hp,
+      mana: template.stats.mp,
+      stamina: template.stats.stamina,
+      strength: template.stats.strength,
+      agility: template.stats.dexterity,
+      endurance: template.stats.constitution,
+      intellect: template.stats.intelligence,
+      wisdom: template.stats.willpower,
+      luck: template.stats.luck,
+      perception: template.stats.perception,
+      initiative: template.stats.perception + Math.floor(template.stats.dexterity * 0.5),
+      weaponItemId: template.equipment.weapon ?? undefined,
+      armorItemIds,
+      skillIds: base.combat?.skillIds ?? [],
+    },
+    createdAt: base.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+function buildBattleSummary(
+  state: ArenaBattleState,
+  playerId: string,
+  started: BattleStartSnapshot | null,
+  currentCharacter: ArenaCharacter,
+): BattleSummary {
+  let expGained = 0;
+  let goldGained = 0;
+  let damageDealt = 0;
+  let damageTaken = 0;
+  let damageBlocked = 0;
+  const lootNames: string[] = [];
+
+  for (const entry of state.logs) {
+    if (entry.type === 'HIT') {
+      if (entry.actorId === playerId) {
+        damageDealt += Math.max(0, entry.amount ?? 0);
+      }
+      if (entry.targetId === playerId) {
+        damageTaken += Math.max(0, entry.amount ?? 0);
+      }
+    }
+
+    if (entry.type === 'BLOCK' && entry.actorId === playerId) {
+      damageBlocked += Math.max(0, entry.amount ?? 0);
+    }
+
+    if (entry.type !== 'INFO' || entry.actorId !== playerId) {
+      continue;
+    }
+
+    const expMatch = entry.text.match(/Battle reward:\s*\+(\d+)\s*EXP/i);
+    if (expMatch) {
+      expGained += Number(expMatch[1] ?? 0);
+      continue;
+    }
+
+    const goldMatch = entry.text.match(/Battle reward:\s*\+(\d+)\s*gold/i);
+    if (goldMatch) {
+      goldGained += Number(goldMatch[1] ?? 0);
+      continue;
+    }
+
+    const lootMatch = entry.text.match(/Battle reward:\s*loot\s+(.+)/i);
+    if (lootMatch?.[1]) {
+      lootNames.push(lootMatch[1].trim());
+    }
+  }
+
+  const levelBefore = started?.level ?? currentCharacter.level;
+  const title = state.winner === TeamSide.Left
+    ? 'Победа'
+    : state.winner === TeamSide.Right
+      ? 'Поражение'
+      : 'Бой завершён';
+
+  return {
+    title,
+    expGained,
+    goldGained,
+    lootNames,
+    damageDealt,
+    damageTaken,
+    damageBlocked,
+    levelBefore,
+    levelAfter: currentCharacter.level,
+    freePointsAfter: currentCharacter.freePoints,
+  };
 }
 
 function toCustomNpcPayload(template: ArenaNpcTemplate): CustomArenaNpcPayload {
@@ -443,6 +703,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
   const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
   const lastRuntimeContentRefreshAtRef = useRef(0);
+  const battleStartSnapshotRef = useRef<BattleStartSnapshot | null>(null);
+  const arenaNpcInitializedRef = useRef(false);
+  const arenaNpcSyncedIdsRef = useRef<Set<string>>(new Set());
+  const arenaNpcSkipNextSyncRef = useRef(false);
+  const arenaNpcSyncTimerRef = useRef<number | null>(null);
   const [phase, setPhase] = useState<Phase>('setup');
   const [setupStep, setSetupStep] = useState<SetupStep>('account');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
@@ -491,6 +756,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
   const [combatState, setCombatState] = useState<ArenaBattleState | null>(null);
   const [isBattleWindowOpen, setBattleWindowOpen] = useState(false);
+  const [battleSummary, setBattleSummary] = useState<BattleSummary | null>(null);
   const [combatRoutePending, setCombatRoutePending] = useState(false);
   const [learnedSkills, setLearnedSkills] = useState<CombatSkillType[]>([]);
 
@@ -537,6 +803,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return resolved ?? createUnknownItem(itemId);
   }
 
+  const resolveArenaNpcItem = useCallback(
+    (itemId: string) => getDomainItemWithFallback(itemId, runtimeAdminItems),
+    [runtimeAdminItems],
+  );
+
   const resolveItemImage = useCallback(
     (item: ItemDefinition | null | undefined) => resolveItemImageSource(item, runtimeImages),
     [runtimeImages],
@@ -549,6 +820,48 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled && isArkleinCity(merchant.city)),
     [runtimeAdminMerchants],
   );
+  const arenaEquipmentOptionsBySlot = useMemo<Record<EquipmentSlot, ItemDefinition[]>>(() => {
+    const merged = new Map<string, ItemDefinition>();
+
+    for (const item of Object.values(ITEMS)) {
+      merged.set(item.id, item);
+    }
+
+    for (const entry of runtimeAdminItems) {
+      const resolved = getDomainItemWithFallback(entry.id, runtimeAdminItems);
+      if (resolved) {
+        merged.set(resolved.id, resolved);
+      }
+    }
+
+    const values = Array.from(merged.values());
+    return {
+      weapon: values.filter((item) => item.itemType === 'weapon'),
+      helmet: values.filter((item) => item.itemType === 'helmet'),
+      armor: values.filter((item) => item.itemType === 'armor'),
+      gloves: values.filter((item) => item.itemType === 'gloves'),
+      boots: values.filter((item) => item.itemType === 'boots'),
+      shield: values.filter((item) => item.itemType === 'shield'),
+    };
+  }, [runtimeAdminItems]);
+  const loadArenaNpcTemplatesFromBackend = useCallback(async (force = false) => {
+    await ensureNpcsLoaded(force);
+    const templates = getAllNpcs()
+      .filter(isArenaNpcDefinition)
+      .map((npc) => toArenaNpcTemplate(npc, (itemId) => resolveArenaNpcItem(itemId) ?? null))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    arenaNpcInitializedRef.current = true;
+    arenaNpcSkipNextSyncRef.current = true;
+    arenaNpcSyncedIdsRef.current = new Set(templates.map((entry) => entry.id));
+    setNpcTemplates(templates);
+    setSelectedNpcId((current) => {
+      if (current && templates.some((entry) => entry.id === current)) {
+        return current;
+      }
+      return templates[0]?.id ?? null;
+    });
+  }, [resolveArenaNpcItem]);
 
   const selectedMerchant = useMemo<Merchant | null>(
     () => runtimeMerchants.find((merchant) => merchant.id === selectedMerchantId) ?? null,
@@ -760,6 +1073,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const unsubscribe = subscribeToContentSync((payload) => {
       if (payload.scope === 'content' || payload.scope === 'all') {
         void refreshRuntimeContent({ force: true });
+        if (overlayPanel !== 'arenaNpc') {
+          void loadArenaNpcTemplatesFromBackend(true).catch(() => undefined);
+        }
       }
     });
 
@@ -781,7 +1097,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [refreshRuntimeContent]);
+  }, [loadArenaNpcTemplatesFromBackend, overlayPanel, refreshRuntimeContent]);
 
   useEffect(() => {
     if (runtimeMerchants.length === 0) {
@@ -843,43 +1159,60 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [inventoryEntries, selectedInventoryItemId]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(NPC_STORAGE_KEY);
-    if (!saved) {
-      const defaults = [createDefaultNpcTemplate(1)];
-      setNpcTemplates(defaults);
-      setSelectedNpcId(defaults[0].id);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as ArenaNpcTemplate[];
-      const normalized = parsed.length > 0
-        ? parsed.map((npc, index) => ({
-            ...createDefaultNpcTemplate(index + 1),
-            ...npc,
-            race: normalizeNpcRace(npc.race),
-            equipment: {
-              ...EMPTY_EQUIPMENT,
-              ...(npc.equipment ?? {}),
-            },
-          }))
-        : [createDefaultNpcTemplate(1)];
-      setNpcTemplates(normalized);
-      setSelectedNpcId(normalized[0]?.id ?? null);
-    } catch {
-      const defaults = [createDefaultNpcTemplate(1)];
-      setNpcTemplates(defaults);
-      setSelectedNpcId(defaults[0].id);
-    }
-  }, []);
+    void loadArenaNpcTemplatesFromBackend(true).catch(() => {
+      arenaNpcInitializedRef.current = true;
+      setNpcTemplates([]);
+      setSelectedNpcId(null);
+    });
+  }, [loadArenaNpcTemplatesFromBackend]);
 
   useEffect(() => {
-    if (npcTemplates.length === 0) {
+    if (!arenaNpcInitializedRef.current) {
+      return;
+    }
+    if (arenaNpcSkipNextSyncRef.current) {
+      arenaNpcSkipNextSyncRef.current = false;
       return;
     }
 
-    window.localStorage.setItem(NPC_STORAGE_KEY, JSON.stringify(npcTemplates));
-  }, [npcTemplates]);
+    if (arenaNpcSyncTimerRef.current !== null) {
+      window.clearTimeout(arenaNpcSyncTimerRef.current);
+    }
+
+    arenaNpcSyncTimerRef.current = window.setTimeout(() => {
+      const sync = async () => {
+        try {
+          await ensureNpcsLoaded();
+          const existingById = new Map(getAllNpcs().map((entry) => [entry.id, entry] as const));
+          const nextIds = new Set(npcTemplates.map((entry) => entry.id));
+          const previousIds = arenaNpcSyncedIdsRef.current;
+
+          for (const template of npcTemplates) {
+            await saveNpc(toArenaNpcDefinition(template, (itemId) => resolveArenaNpcItem(itemId) ?? null, existingById.get(template.id) ?? null));
+          }
+
+          for (const removedId of previousIds) {
+            if (!nextIds.has(removedId) && existingById.has(removedId)) {
+              await deleteNpc(removedId);
+            }
+          }
+
+          arenaNpcSyncedIdsRef.current = nextIds;
+        } catch (error) {
+          setStatus(`Arena NPC sync error: ${(error as Error).message}`);
+        }
+      };
+
+      void sync();
+    }, 350);
+
+    return () => {
+      if (arenaNpcSyncTimerRef.current !== null) {
+        window.clearTimeout(arenaNpcSyncTimerRef.current);
+        arenaNpcSyncTimerRef.current = null;
+      }
+    };
+  }, [npcTemplates, resolveArenaNpcItem]);
 
   useEffect(() => {
     if (!selectedNpcId && npcTemplates.length > 0) {
@@ -891,6 +1224,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setSelectedNpcId(npcTemplates[0]?.id ?? null);
     }
   }, [npcTemplates, selectedNpcId]);
+
+  useEffect(() => {
+    if (!arenaNpcInitializedRef.current) {
+      return;
+    }
+
+    void loadArenaNpcTemplatesFromBackend().catch(() => undefined);
+  }, [loadArenaNpcTemplatesFromBackend, runtimeAdminItems]);
 
   useEffect(() => {
     const maps = loadBattleMaps();
@@ -1386,12 +1727,38 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus(`Изучен навык: ${offer.name}`);
   }
 
+  async function handleBattleFinished(nextState: ArenaBattleState): Promise<void> {
+    if (!character || !playerCombatId) {
+      setBattleWindowOpen(false);
+      battleStartSnapshotRef.current = null;
+      return;
+    }
+
+    try {
+      const refreshedHub = await getArenaHubState(character.id);
+      applyHubState(refreshedHub);
+      setBattleSummary(buildBattleSummary(nextState, playerCombatId, battleStartSnapshotRef.current, refreshedHub.character));
+      setStatus('Бой завершён. Открылось окно итогов.');
+    } catch (error) {
+      setStatus(`Battle sync error: ${(error as Error).message}`);
+    } finally {
+      setBattleWindowOpen(false);
+      battleStartSnapshotRef.current = null;
+    }
+  }
+
   async function openCombat(): Promise<void> {
     if (!character) {
       return;
     }
 
     setCombatRoutePending(true);
+    setBattleSummary(null);
+    battleStartSnapshotRef.current = {
+      level: character.level,
+      exp: character.exp,
+      freePoints: character.freePoints,
+    };
 
     try {
       const battleMapPayload = toRuntimeBattleMapPayload(selectedBattleMap);
@@ -1405,6 +1772,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setBattleWindowOpen(true);
       setStatus(activeArenaNpcs.length > 0 ? `Battle started against ${activeArenaNpcs.length} arena NPC.` : 'Battle started.');
     } catch (error) {
+      battleStartSnapshotRef.current = null;
       setStatus(`Battle error: ${(error as Error).message}`);
     } finally {
       setCombatRoutePending(false);
@@ -1792,8 +2160,18 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 {PROFILE_STATS.map((stat) => (
                   <div key={stat} className="wm-stat-row">
                     <div>
-                      <strong>{STAT_LABELS[stat]}</strong>
-                      <p className="wm-stat-hint">{STAT_HINTS[stat]}</p>
+                      <strong className="character-stat-label">
+                        {STAT_LABELS[stat]}
+                        <button
+                          type="button"
+                          className="stat-help-chip"
+                          title={STAT_HINTS[stat]}
+                          aria-label={`Что делает параметр ${STAT_LABELS[stat]}`}
+                        >
+                          ?
+                        </button>
+                      </strong>
+                      <p className="wm-stat-hint">Наведите на ? чтобы увидеть, за что отвечает параметр.</p>
                     </div>
                     <span>{formatStatPreview(character.baseStats[stat], character.activeStats[stat], pendingStatAllocation[stat] ?? 0, stat)}</span>
                     <div className="mini-stepper">
@@ -1954,7 +2332,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
                       <div className="npc-equipment-grid">
                         {EQUIPMENT_SLOT_ORDER.map((slot) => {
-                          const options = Object.values(ITEMS).filter((item) => item.itemType === EQUIPMENT_SLOT_ITEM_TYPES[slot]);
+                          const options = arenaEquipmentOptionsBySlot[slot];
                           return (
                             <div key={slot} className="npc-equipment-field">
                               <label>{EQUIPMENT_SLOT_LABELS[slot]}</label>
@@ -2143,11 +2521,57 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 onSkillChange={setSelectedCombatSkill}
                 onStateChange={setCombatState}
                 onStatus={setStatus}
+                onBattleFinished={handleBattleFinished}
                 onClose={() => setBattleWindowOpen(false)}
                 playerAvatarUrl={playerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
                 playerEquipment={equipment}
               />
+            </section>
+          </div>
+        ) : null}
+
+        {battleSummary ? (
+          <div className="battle-overlay" role="dialog" aria-modal="true">
+            <section className="card battle-window wm-modal battle-summary-modal">
+              <div className="battle-window-head">
+                <h2>{battleSummary.title}</h2>
+                <button onClick={() => setBattleSummary(null)}>✕</button>
+              </div>
+
+              <div className="battle-summary-grid">
+                <section className="inner-card">
+                  <h3>Награды</h3>
+                  <p>Опыт: +{battleSummary.expGained}</p>
+                  <p>Золото: +{battleSummary.goldGained}</p>
+                  <p>Уровень: {battleSummary.levelBefore} -&gt; {battleSummary.levelAfter}</p>
+                  <p>Свободные очки: {battleSummary.freePointsAfter}</p>
+                </section>
+
+                <section className="inner-card">
+                  <h3>Статистика боя</h3>
+                  <p>Нанесено урона: {battleSummary.damageDealt}</p>
+                  <p>Получено урона: {battleSummary.damageTaken}</p>
+                  <p>Заблокировано: {battleSummary.damageBlocked}</p>
+                </section>
+
+                <section className="inner-card">
+                  <h3>Добыча</h3>
+                  {battleSummary.lootNames.length > 0 ? (
+                    <ul className="battle-summary-loot-list">
+                      {battleSummary.lootNames.map((lootName, index) => (
+                        <li key={`${lootName}-${index}`}>{lootName}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">В этот раз без добычи.</p>
+                  )}
+                </section>
+              </div>
+
+              <div className="character-item-actions">
+                <button type="button" onClick={() => setBattleSummary(null)}>Продолжить</button>
+              </div>
             </section>
           </div>
         ) : null}

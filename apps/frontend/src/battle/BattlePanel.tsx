@@ -35,6 +35,7 @@ interface BattlePanelProps {
   onSkillChange: (skill: CombatSkillType) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
+  onBattleFinished?: (next: ArenaBattleState) => Promise<void> | void;
   onClose?: () => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -56,7 +57,10 @@ function parseZoneFromLogText(text: string): TargetZone | null {
   return null;
 }
 
-function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number }): 'MELEE' | 'RANGED' | 'MAGIC' {
+function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number; combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC' }): 'MELEE' | 'RANGED' | 'MAGIC' {
+  if (entity.combatStyleHint) {
+    return entity.combatStyleHint;
+  }
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
     return 'MAGIC';
   }
@@ -92,6 +96,7 @@ export function BattlePanel({
   onSkillChange,
   onStateChange,
   onStatus,
+  onBattleFinished,
   onClose,
   playerAvatarUrl,
   resolveItemById,
@@ -310,6 +315,7 @@ export function BattlePanel({
 
       if (nextState.isFinished) {
         onStatus(`Battle finished. Winner: ${nextState.winner ?? 'none'}.`);
+        await onBattleFinished?.(nextState);
       } else {
         onStatus(`Round ${nextState.roundNumber} resolved.`);
       }
@@ -448,7 +454,6 @@ export function BattlePanel({
 
           <div className="battle-center-column battle-column">
             <div className="battle-center-log card">
-              <h3>Event / Combat Log</h3>
               <CombatLogPanel logs={state.logs} />
             </div>
 

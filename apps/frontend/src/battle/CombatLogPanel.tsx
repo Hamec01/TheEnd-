@@ -1,5 +1,5 @@
 import type { CombatLogEntry } from '@theend/rpg-domain';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface CombatLogPanelProps {
   logs: CombatLogEntry[];
@@ -7,15 +7,17 @@ interface CombatLogPanelProps {
 
 export function CombatLogPanel({ logs }: CombatLogPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const visibleLogs = useMemo(() => logs.slice(-40), [logs]);
+  const latestEntry = visibleLogs.at(-1) ?? null;
 
   useEffect(() => {
-    if (!bodyRef.current) {
+    if (isCollapsed || !bodyRef.current) {
       return;
     }
     bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [visibleLogs]);
+  }, [isCollapsed, visibleLogs]);
 
   function logClass(entry: CombatLogEntry): string {
     if (entry.type === 'HIT') {
@@ -38,15 +40,30 @@ export function CombatLogPanel({ logs }: CombatLogPanelProps) {
 
   return (
     <div className="combat-log battle-log-panel">
-      <h3>Журнал боя</h3>
-      <div className="combat-log-body" ref={bodyRef}>
-        {logs.length === 0 ? <p>Событий пока нет.</p> : null}
-        {visibleLogs.map((entry, index) => (
-          <p key={`${entry.round}-${entry.actorId}-${index}`} className={logClass(entry)}>
-            <span className="combat-log-round">R{entry.round}</span> {entry.text}
-          </p>
-        ))}
+      <div className="combat-log-header">
+        <div className="combat-log-header-copy">
+          <h3>Журнал боя</h3>
+          <span className="combat-log-meta">{visibleLogs.length} записей</span>
+        </div>
+        <button type="button" className="combat-log-toggle" onClick={() => setIsCollapsed((current) => !current)}>
+          {isCollapsed ? 'Развернуть' : 'Свернуть'}
+        </button>
       </div>
+
+      {isCollapsed ? (
+        <div className="combat-log-collapsed">
+          {latestEntry ? latestEntry.text : 'Событий пока нет.'}
+        </div>
+      ) : (
+        <div className="combat-log-body" ref={bodyRef}>
+          {logs.length === 0 ? <p>Событий пока нет.</p> : null}
+          {visibleLogs.map((entry, index) => (
+            <p key={`${entry.round}-${entry.actorId}-${index}`} className={logClass(entry)}>
+              <span className="combat-log-round">R{entry.round}</span> {entry.text}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

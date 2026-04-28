@@ -262,7 +262,7 @@ function classifyCombatStyle(actor) {
     if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
         return 'MAGIC';
     }
-    if (actor.dexterity > actor.strength) {
+    if (actor.dexterity >= actor.strength + 3 && actor.perception >= actor.strength + 2) {
         return 'RANGED';
     }
     return 'MELEE';

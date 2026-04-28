@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
-import { calculateDerivedStats, getItemById, getItemHandsRequired } from '@theend/rpg-domain';
+import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
@@ -96,6 +96,19 @@ const STAT_LABELS: Record<PrimaryStat, string> = {
   willpower: 'Willpower',
 };
 
+const STAT_HINTS: Record<PrimaryStat, string> = {
+  hp: 'Определяет запас жизни и то, сколько урона персонаж переживёт.',
+  mp: 'Ресурс для магии, умений и особых эффектов.',
+  stamina: 'Тратится на удары, защиту, рывки и другие боевые действия.',
+  strength: 'Увеличивает силу ударов в ближнем бою и требования к тяжёлому оружию.',
+  constitution: 'Даёт выживаемость, защиту и снижает входящий физический урон.',
+  dexterity: 'Помогает с уклонением, точностью и работой ловкого оружия.',
+  intelligence: 'Усиливает магию и магический урон.',
+  luck: 'Влияет на криты, удачные броски и общую боевую удачу.',
+  perception: 'Даёт инициативу, меткость и бонус к точным атакам.',
+  willpower: 'Повышает магическую стойкость, контроль и ману-реген.',
+};
+
 const SKILL_NAMES: Record<string, string> = {
   NONE: 'Базовая атака',
   POWER_STRIKE: 'Power Strike',
@@ -189,6 +202,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   const derivedBase = useMemo(() => calculateDerivedStats(character.activeStats, equipment), [character.activeStats, equipment]);
   const derivedPreview = useMemo(() => calculateDerivedStats(previewStats, equipment), [equipment, previewStats]);
+  const levelProgress = useMemo(() => getLevelProgress(character.level, character.exp), [character.exp, character.level]);
+  const expToNextLevel = Math.max(0, levelProgress.next - character.exp);
 
   const inventoryEntries = useMemo(
     () => inventory.items
@@ -713,7 +728,17 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <div className="character-stats-list">
                 {STATS_ORDER.map((stat) => (
                   <div key={stat} className="character-stat-row">
-                    <span>{STAT_LABELS[stat]}</span>
+                    <span className="character-stat-label">
+                      {STAT_LABELS[stat]}
+                      <button
+                        type="button"
+                        className="stat-help-chip"
+                        title={STAT_HINTS[stat]}
+                        aria-label={`Что делает параметр ${STAT_LABELS[stat]}`}
+                      >
+                        ?
+                      </button>
+                    </span>
                     <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` -> ${previewStats[stat]}` : ''}</strong>
                     <div className="mini-stepper">
                       <button disabled={freePointsLeft <= 0} onClick={() => onAdjustStat(stat, 1)}>+</button>
@@ -731,7 +756,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             </section>
 
             <section className="character-meta-card">
-              <h3>Combat Statistics</h3>
+              <h3>Combat Overview</h3>
+              <p className="muted">Preview values depend on the current build. Exact hit and block results still depend on distance, target zone and defense choice in battle.</p>
               <p>HP: {character.activeStats.hp}{' -> '}{previewStats.hp}</p>
               <p>Mana: {character.activeStats.mp}{' -> '}{previewStats.mp}</p>
               <p>Stamina: {character.activeStats.stamina}{' -> '}{previewStats.stamina}</p>
@@ -759,6 +785,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <h3>Level / Progression</h3>
               <p>Level: {character.level}</p>
               <p>Experience: {character.exp}</p>
+              <p>Next level at: {levelProgress.next} EXP</p>
+              <p>Inside current level: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
+              <p>Remaining to next level: {expToNextLevel}</p>
+              <p>Free stat points: {freePointsLeft}</p>
               <p>Faction: None</p>
               <p>Reputation: None</p>
               <p>Professions: Не изучено</p>
