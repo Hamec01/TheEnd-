@@ -141,7 +141,12 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
         <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
           <button
             className={`btn ${mode === 'buy' ? 'is-active' : ''}`}
-            onClick={() => setMode('buy')}
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMode('buy');
+            }}
             style={{
               padding: '6px 12px',
               border: mode === 'buy' ? '2px solid #d2aa66' : '2px solid #666',
@@ -155,7 +160,12 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           </button>
           <button
             className={`btn ${mode === 'sell' ? 'is-active' : ''}`}
-            onClick={() => setMode('sell')}
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMode('sell');
+            }}
             style={{
               padding: '6px 12px',
               border: mode === 'sell' ? '2px solid #d2aa66' : '2px solid #666',
@@ -176,6 +186,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
             columns={5}
             resolveItemImage={resolveItemImage}
             onItemClick={(item) => {
+              if (!item) return;
               setSelectedItem(item);
               setTradeModalOpen(true);
             }}
@@ -187,6 +198,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
             columns={5}
             resolveItemImage={resolveItemImage}
             onItemClick={(item) => {
+              if (!item) return;
               setSelectedItem(item);
               setTradeModalOpen(true);
             }}

@@ -35,6 +35,28 @@ function formatStatRows(stats: Record<string, number> | undefined): Array<{ key:
     }));
 }
 
+function safeNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function safeText(value: unknown, fallback = ''): string {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function safeRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') return {};
+
+  const result: Record<string, number> = {};
+
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      result[key] = raw;
+    }
+  }
+
+  return result;
+}
+
 interface TradeModalProps {
   isOpen: boolean;
   action: 'buy' | 'sell';
@@ -66,19 +88,44 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 }) => {
   if (!isOpen || !item) return null;
 
-  const resolvedPrice = typeof price === 'number'
-    ? price
-    : action === 'buy'
-      ? item.price
-      : Math.max(1, Math.floor(item.price * 0.6));
+  const itemName = safeText(item.name, 'Неизвестный предмет');
+  const itemDescription = safeText(item.description, 'Описание отсутствует.');
+  const itemType = safeText(adminItem?.type, safeText(item.itemType, 'unknown'));
+  const itemSubType = safeText(adminItem?.subtype, safeText(item.itemSubType, 'unknown'));
+  const itemRarity = safeText(adminItem?.rarity, safeText(item.rarity, 'common'));
+  const itemPrice = safeNumber(item.price, 0);
+  const itemHands = typeof adminItem?.handsRequired === 'number'
+    ? adminItem.handsRequired
+    : typeof item.handsRequired === 'number'
+      ? item.handsRequired
+      : null;
+
+  const selectedBonuses = safeRecord(adminItem?.bonuses ?? item.bonuses);
+  const selectedRequiredStats = safeRecord(adminItem?.requiredStats ?? item.requiredStats);
+  const equippedBonuses = safeRecord(equippedAdminItem?.bonuses ?? equippedItem?.bonuses);
+
+  const selectedDamageMin = typeof adminItem?.damageMin === 'number' ? adminItem.damageMin : null;
+  const selectedDamageMax = typeof adminItem?.damageMax === 'number' ? adminItem.damageMax : null;
+  const selectedArmorValue = typeof adminItem?.armorValue === 'number' ? adminItem.armorValue : null;
+
+  const equippedDamageMin = typeof equippedAdminItem?.damageMin === 'number' ? equippedAdminItem.damageMin : null;
+  const equippedDamageMax = typeof equippedAdminItem?.damageMax === 'number' ? equippedAdminItem.damageMax : null;
+  const equippedArmorValue = typeof equippedAdminItem?.armorValue === 'number' ? equippedAdminItem.armorValue : null;
+
+  const resolvedPrice =
+    typeof price === 'number'
+      ? price
+      : action === 'buy'
+        ? itemPrice
+        : Math.max(1, Math.floor(itemPrice * 0.6));
   const canAfford = playerGold >= resolvedPrice;
   const isBuy = action === 'buy';
   const title = isBuy ? 'Подтверждение покупки' : 'Подтверждение продажи';
 
-  const description = adminItem?.gameplayDescription?.trim() || item.description;
-  const loreDescription = adminItem?.loreDescription?.trim();
-  const damageMin = adminItem?.damageMin;
-  const damageMax = adminItem?.damageMax;
+  const description = safeText(adminItem?.gameplayDescription, itemDescription);
+  const loreDescription = safeText(adminItem?.loreDescription, '');
+  const damageMin = selectedDamageMin;
+  const damageMax = selectedDamageMax;
   const hasDamage = typeof damageMin === 'number' || typeof damageMax === 'number';
   const damageText = typeof damageMin === 'number' && typeof damageMax === 'number'
     ? `${damageMin}-${damageMax}`
@@ -87,23 +134,20 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       : typeof damageMax === 'number'
         ? `${damageMax}`
         : '—';
-  const hasArmorValue = typeof adminItem?.armorValue === 'number';
-  const reqRows = formatStatRows((adminItem?.requiredStats as Record<string, number> | undefined) ?? (item.requiredStats as Record<string, number>));
-  const bonusRows = formatStatRows((adminItem?.bonuses as Record<string, number> | undefined) ?? (item.bonuses as Record<string, number>));
-  const rarity = adminItem?.rarity ?? item.rarity;
+  const hasArmorValue = selectedArmorValue !== null;
+  const reqRows = formatStatRows(selectedRequiredStats);
+  const bonusRows = formatStatRows(selectedBonuses);
+  const rarity = itemRarity;
   const rarityKey = String(rarity).toLowerCase();
   const rarityClass = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'forbidden'].includes(rarityKey)
     ? rarityKey
     : 'common';
-  const type = adminItem?.type ?? item.itemType;
-  const subtype = adminItem?.subtype ?? item.itemSubType;
-  const hands = adminItem?.handsRequired ?? item.handsRequired;
-  const equippedBonusSource = (equippedAdminItem?.bonuses as Record<string, number> | undefined) ?? (equippedItem?.bonuses as Record<string, number> | undefined);
-  const selectedBonusSource = (adminItem?.bonuses as Record<string, number> | undefined) ?? (item.bonuses as Record<string, number> | undefined);
-  const equippedDamageMin = equippedAdminItem?.damageMin;
-  const equippedDamageMax = equippedAdminItem?.damageMax;
-  const equippedArmorValue = equippedAdminItem?.armorValue;
-  const showComparison = isBuy && item.itemType !== 'consumable';
+  const type = itemType;
+  const subtype = itemSubType;
+  const hands = itemHands;
+  const equippedBonusSource = equippedBonuses;
+  const selectedBonusSource = selectedBonuses;
+  const showComparison = isBuy && itemType !== 'consumable';
   const statDiffRows = showComparison
     ? Array.from(new Set([...Object.keys(selectedBonusSource ?? {}), ...Object.keys(equippedBonusSource ?? {})]))
       .map((key) => {
@@ -125,8 +169,8 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       max: damageMax - equippedDamageMax,
     }
     : null;
-  const armorDiff = showComparison && typeof adminItem?.armorValue === 'number' && typeof equippedArmorValue === 'number'
-    ? adminItem.armorValue - equippedArmorValue
+  const armorDiff = showComparison && typeof selectedArmorValue === 'number' && typeof equippedArmorValue === 'number'
+    ? selectedArmorValue - equippedArmorValue
     : null;
 
   return (
@@ -140,14 +184,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({
         <section className="trade-modal-item-card">
           <div className="trade-modal-item-media">
             {itemImage ? (
-              <img src={itemImage} alt={item.name} />
+              <img src={itemImage} alt={itemName} />
             ) : (
-              <span aria-hidden="true">{item.name.trim().charAt(0).toUpperCase() || '?'}</span>
+              <span aria-hidden="true">{itemName.charAt(0).toUpperCase() || '?'}</span>
             )}
           </div>
 
           <div className="trade-modal-item-main">
-            <h3>{item.name}</h3>
+            <h3>{itemName}</h3>
             <p className="trade-modal-item-classline">
               {type} / {subtype} / {rarity}
             </p>
@@ -163,7 +207,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           <section className="trade-modal-compare-card">
             <div className="trade-modal-compare-head">
               <h4>Сравнение с экипированным</h4>
-              {equippedItem ? <span>Слот занят: {equippedItem.name}</span> : <span>Слот пуст</span>}
+              {equippedItem ? <span>Слот занят: {safeText(equippedItem?.name, 'Экипированный предмет')}</span> : <span>Слот пуст</span>}
             </div>
 
             {equippedItem ? (
@@ -171,21 +215,21 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                 <div className="trade-modal-compare-items">
                   <div className="trade-modal-compare-item current">
                     <div className="trade-modal-compare-item-media">
-                      {equippedItemImage ? <img src={equippedItemImage} alt={equippedItem.name} /> : <span aria-hidden="true">{equippedItem.name.trim().charAt(0).toUpperCase() || '?'}</span>}
+                      {equippedItemImage ? <img src={equippedItemImage} alt={safeText(equippedItem?.name, 'Экипированный предмет')} /> : <span aria-hidden="true">{safeText(equippedItem?.name, 'Экипированный предмет').charAt(0).toUpperCase() || '?'}</span>}
                     </div>
                     <div>
                       <strong>Сейчас</strong>
-                      <p>{equippedItem.name}</p>
+                      <p>{safeText(equippedItem?.name, 'Экипированный предмет')}</p>
                     </div>
                   </div>
 
                   <div className="trade-modal-compare-item next">
                     <div className="trade-modal-compare-item-media">
-                      {itemImage ? <img src={itemImage} alt={item.name} /> : <span aria-hidden="true">{item.name.trim().charAt(0).toUpperCase() || '?'}</span>}
+                      {itemImage ? <img src={itemImage} alt={itemName} /> : <span aria-hidden="true">{itemName.charAt(0).toUpperCase() || '?'}</span>}
                     </div>
                     <div>
                       <strong>После покупки</strong>
-                      <p>{item.name}</p>
+                      <p>{itemName}</p>
                     </div>
                   </div>
                 </div>
@@ -220,7 +264,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                         <div>
                           <em>{equippedArmorValue}</em>
                           <strong className={armorDiff >= 0 ? 'up' : 'down'}>{armorDiff >= 0 ? `+${armorDiff}` : armorDiff}</strong>
-                          <b>{adminItem?.armorValue}</b>
+                          <b>{selectedArmorValue ?? 0}</b>
                         </div>
                       </li>
                     ) : null}
@@ -242,7 +286,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
               <p><strong>Урон:</strong> {damageText}</p>
             ) : null}
             {hasArmorValue ? (
-              <p><strong>Броня:</strong> {adminItem?.armorValue}</p>
+              <p><strong>Броня:</strong> {selectedArmorValue}</p>
             ) : null}
             {!hasDamage && !hasArmorValue ? <p className="muted">Нет дополнительных боевых параметров.</p> : null}
           </div>
