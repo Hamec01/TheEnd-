@@ -3,7 +3,7 @@ import type { ArenaBattleState } from '@theend/rpg-domain';
 import { CombatActionDto } from './dto.combat-action.dto';
 import { StartCombatDto } from './dto.start-combat.dto';
 import { UseCombatItemDto } from './dto.use-combat-item.dto';
-import { CombatService } from './combat.service';
+import { CombatService, type CombatActionResult } from './combat.service';
 
 type StartCombatResponse = {
   combatId: string;
@@ -27,7 +27,7 @@ export class CombatController {
   }
 
   @Post('action')
-  async action(@Body() dto: CombatActionDto): Promise<ArenaBattleState> {
+  async action(@Body() dto: CombatActionDto): Promise<CombatActionResult> {
     return this.combatService.resolvePlayerRound(dto.combatId, {
       actorId: dto.actorId,
       targetId: dto.targetId,

@@ -56,7 +56,7 @@ interface CombatSession {
   damageContribution: number;
 }
 
-interface CombatActionResult {
+export interface CombatActionResult {
   state: ArenaBattleState;
   hubState?: Awaited<ReturnType<ArenaService['getHubState']>>;
 }
@@ -213,7 +213,7 @@ export class CombatService {
     let progression = { gainedExp: 0, levelsGained: 0 };
     let itemName: string | null = null;
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const character = await tx.character.findUnique({
         where: { id: characterId },
         select: { level: true, exp: true, freePoints: true },

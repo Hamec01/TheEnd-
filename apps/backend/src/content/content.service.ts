@@ -958,10 +958,10 @@ export class ContentService implements OnModuleInit {
 
     await this.prisma.contentStore.upsert({
       where: { key: CONTENT_STORE_KEY },
-      update: { value: next as unknown as Prisma.InputJsonValue },
+      update: { value: next as unknown as any },
       create: {
         key: CONTENT_STORE_KEY,
-        value: next as unknown as Prisma.InputJsonValue,
+        value: next as unknown as any,
       },
     });
 
