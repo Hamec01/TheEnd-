@@ -45,6 +45,9 @@ function normalize(item: AdminItem): AdminItem {
 
 export function validateItem(item: AdminItem): string[] {
   const errors: string[] = [];
+  const hasDamageMin = typeof item.damageMin === 'number';
+  const hasDamageMax = typeof item.damageMax === 'number';
+
   if (!item.id.trim()) {
     errors.push('id required');
   }
@@ -62,6 +65,9 @@ export function validateItem(item: AdminItem): string[] {
   }
   if (item.price < 0) {
     errors.push('price must be >= 0');
+  }
+  if (hasDamageMin !== hasDamageMax) {
+    errors.push('damageMin and damageMax must both be set');
   }
   if (typeof item.damageMin === 'number' && typeof item.damageMax === 'number' && item.damageMin > item.damageMax) {
     errors.push('damageMin must be <= damageMax');

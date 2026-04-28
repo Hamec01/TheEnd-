@@ -4,6 +4,7 @@ import type { ItemDefinition } from '@theend/rpg-domain';
 import type { AdminItem } from '../services/content/models';
 import { InventoryGrid } from './InventoryGrid';
 import { TradeModal } from './TradeModal';
+import { resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
 
 interface MerchantPanelProps {
   merchant: Merchant;
@@ -60,23 +61,9 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
       return null;
     }
 
-    switch (selectedItem.itemType) {
-      case 'weapon':
-        return equipment.weapon;
-      case 'helmet':
-        return equipment.helmet;
-      case 'armor':
-        return equipment.armor;
-      case 'boots':
-        return equipment.boots;
-      case 'gloves':
-        return equipment.gloves;
-      case 'shield':
-        return equipment.shield;
-      default:
-        return null;
-    }
-  }, [equipment.armor, equipment.boots, equipment.gloves, equipment.helmet, equipment.shield, equipment.weapon, selectedItem]);
+    const comparisonSlot = resolvePreferredEquipmentSlot(selectedItem, equipment);
+    return comparisonSlot ? equipment[comparisonSlot] ?? null : null;
+  }, [equipment, selectedItem]);
   const equippedItemForSelected = useMemo(() => {
     if (!equippedItemIdForSelected) {
       return null;

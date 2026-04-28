@@ -80,6 +80,7 @@
       "updatedAt": "2026-04-26T09:22:39.460Z",
       "physicalType": "pierce",
       "damageMin": 15,
+      "damageMax": 15,
       "damageCategory": "physical"
     }
   ],

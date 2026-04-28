@@ -296,6 +296,13 @@ function ensureCollectionName(name: string): ContentCollectionName {
 }
 
 function normalizeItemInput(input: AdminItem): AdminItem {
+  const damageMin = typeof input.damageMin === 'number' && Number.isFinite(input.damageMin)
+    ? Math.max(0, Math.round(input.damageMin))
+    : undefined;
+  const damageMax = typeof input.damageMax === 'number' && Number.isFinite(input.damageMax)
+    ? Math.max(0, Math.round(input.damageMax))
+    : undefined;
+
   return {
     ...input,
     id: input.id.trim(),
@@ -309,6 +316,8 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     maxStack: input.stackable ? Math.max(2, input.maxStack ?? 2) : 1,
     requiredStats: input.requiredStats ?? {},
     bonuses: input.bonuses ?? {},
+    damageMin: input.type === 'weapon' ? (damageMin ?? damageMax) : damageMin,
+    damageMax: input.type === 'weapon' ? (damageMax ?? damageMin) : damageMax,
     gameplayDescription: input.gameplayDescription ?? '',
     loreDescription: input.loreDescription ?? '',
     imagePath: input.imagePath?.trim() || undefined,

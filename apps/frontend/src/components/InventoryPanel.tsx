@@ -9,6 +9,7 @@ import {
   getRaceSilhouette,
   getRaceSilhouetteFallback,
 } from '../utils/raceSilhouette';
+import { findEquippedCoreSlot, resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
 
 export type CharacterPageFocus = 'character' | 'equipment' | 'inventory' | 'stats' | 'skills';
 
@@ -328,8 +329,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }, [equipment, equippedWeapon, resolveItemById, weaponOccupiesBothHands]);
 
   function findEquippedSlotId(itemId: string): EquipmentSlotId | null {
-    const entry = (Object.entries(equipment) as Array<[keyof Equipment, string | null]>).find(([, currentItemId]) => currentItemId === itemId);
-    return entry ? LAYOUT_SLOT_BY_CORE_SLOT[entry[0]] : null;
+    const equippedCoreSlot = findEquippedCoreSlot(equipment, itemId);
+    return equippedCoreSlot ? LAYOUT_SLOT_BY_CORE_SLOT[equippedCoreSlot] : null;
   }
 
   useEffect(() => {
@@ -371,11 +372,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       };
     }
 
-    const equippedSlotId = findEquippedSlotId(item.id);
-    const comparisonSlotId = equippedSlotId
-      ?? getAcceptedSlotsForItem(item).find((slotId) => Boolean(CORE_SLOT_BY_LAYOUT[slotId]))
-      ?? null;
-    const comparisonCoreSlot = comparisonSlotId ? CORE_SLOT_BY_LAYOUT[comparisonSlotId] ?? null : null;
+    const comparisonCoreSlot = resolvePreferredEquipmentSlot(item, equipment);
+    const comparisonSlotId = comparisonCoreSlot ? LAYOUT_SLOT_BY_CORE_SLOT[comparisonCoreSlot] ?? null : null;
     const alreadyEquipped = equippedItemIds.has(item.id);
 
     const previewEquipment: Equipment = (() => {
@@ -396,7 +394,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     })();
 
     const derivedItemPreview = calculateDerivedStats(character.activeStats, previewEquipment);
-    const currentItem = comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null;
+    const currentItemId = comparisonCoreSlot ? equipment[comparisonCoreSlot] : null;
+    const currentItem = currentItemId
+      ? (resolveItemById ? resolveItemById(currentItemId) : getItemById(currentItemId))
+      : null;
     const selectedAdminItem = resolveAdminItemById ? resolveAdminItemById(item.id) : null;
     const currentAdminItem = currentItem && resolveAdminItemById ? resolveAdminItemById(currentItem.id) : null;
     const selectedBonusSource = (selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (item.bonuses as Record<string, number> | undefined);
@@ -561,14 +562,23 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
-    const acceptedSlots = getAcceptedSlotsForItem(selectedItem);
-    if (acceptedSlots.length === 0) {
+    const preferredCoreSlot = resolvePreferredEquipmentSlot(selectedItem, equipment);
+    if (!preferredCoreSlot) {
       onStatus('Этот предмет нельзя экипировать.');
       return;
     }
 
-    const firstEmpty = acceptedSlots.find((slotId) => !equippedByLayoutSlot[slotId]);
-    await equipToSlot(firstEmpty ?? acceptedSlots[0], selectedItem);
+    const targetSlotId = LAYOUT_SLOT_BY_CORE_SLOT[preferredCoreSlot];
+    if (!targetSlotId || !canEquipItemInSlot(selectedItem, targetSlotId)) {
+      onStatus('Этот предмет нельзя экипировать.');
+      return;
+    }
+
+    try {
+      await onEquipItem(selectedItem.id, preferredCoreSlot);
+    } catch {
+      // parent already reports error status
+    }
   }
 
   async function unequipFromSlot(slotId: EquipmentSlotId): Promise<void> {
