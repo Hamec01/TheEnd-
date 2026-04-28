@@ -590,6 +590,17 @@ export class CombatService {
     }
   }
 
+  private getBattlefieldCellDistance(
+    left: { battlefieldX?: number; battlefieldY?: number },
+    right: { battlefieldX?: number; battlefieldY?: number },
+  ): number {
+    const leftX = left.battlefieldX ?? 0;
+    const leftY = left.battlefieldY ?? 0;
+    const rightX = right.battlefieldX ?? 0;
+    const rightY = right.battlefieldY ?? 0;
+    return Math.abs(leftX - rightX) + Math.abs(leftY - rightY);
+  }
+
   async startCombat(
     characterId: string,
     enemyCount = 1,
@@ -778,6 +789,21 @@ export class CombatService {
       throw new BadRequestException('Player cannot act.');
     }
 
+    const selectedEnemyTarget = state.entities.find(
+      (item) => item.id === playerAction.targetId && item.isAlive && item.team !== playerEntity.team,
+    );
+
+    if (playerAction.actionType === ActionType.Attack && playerEntity.combatStyleHint === 'MELEE') {
+      if (!selectedEnemyTarget) {
+        throw new BadRequestException('Target is not available for attack.');
+      }
+
+      const distance = this.getBattlefieldCellDistance(playerEntity, selectedEnemyTarget);
+      if (distance > 1) {
+        throw new BadRequestException('Melee attack is out of range. Move closer first.');
+      }
+    }
+
     const requestedTotalSpent = Math.max(0, playerAction.attackPointsSpent) + Math.max(0, playerAction.defensePointsSpent);
     if (requestedTotalSpent > playerEntity.currentStamina) {
       throw new BadRequestException('Not enough stamina for selected action points.');
@@ -930,7 +956,13 @@ export class CombatService {
     });
 
     const selectedTarget = nextState.entities.find((item) => item.id === playerAction.targetId);
-    if (selectedSkill === CombatSkillType.Fireball && selectedTarget?.isAlive) {
+    const playerInNextState = nextState.entities.find((item) => item.id === playerEntity.id);
+    const roundLogs = nextState.lastRound?.logs ?? [];
+    const playerHitTargetThisRound = roundLogs.some(
+      (entry) => entry.type === 'HIT' && entry.actorId === playerEntity.id && entry.targetId === playerAction.targetId,
+    );
+
+    if (selectedSkill === CombatSkillType.Fireball && selectedTarget?.isAlive && playerHitTargetThisRound) {
       const extraDamage = Math.max(4, Math.floor(playerEntity.intelligence * 1.8 * magicPenaltyMultiplier));
       selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - extraDamage);
       selectedTarget.isAlive = selectedTarget.currentHp > 0;
@@ -946,7 +978,7 @@ export class CombatService {
       nextState.lastRound?.logs.push(fireballLog);
     }
 
-    if (selectedSkill === CombatSkillType.FrostLance && selectedTarget?.isAlive) {
+    if (selectedSkill === CombatSkillType.FrostLance && selectedTarget?.isAlive && playerHitTargetThisRound) {
       const extraDamage = Math.max(3, Math.floor(playerEntity.intelligence * 1.4 * magicPenaltyMultiplier));
       selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - extraDamage);
       selectedTarget.perception = Math.max(1, selectedTarget.perception - 1);
@@ -963,7 +995,13 @@ export class CombatService {
       nextState.lastRound?.logs.push(frostLog);
     }
 
-    if (selectedSkill === CombatSkillType.ShieldBash && selectedTarget?.isAlive) {
+    const isAdjacentToTarget = Boolean(
+      playerInNextState
+      && selectedTarget
+      && this.getBattlefieldCellDistance(playerInNextState, selectedTarget) <= 1,
+    );
+
+    if (selectedSkill === CombatSkillType.ShieldBash && selectedTarget?.isAlive && playerHitTargetThisRound && isAdjacentToTarget) {
       const bashDamage = Math.max(4, Math.floor(playerEntity.constitution * 0.8));
       selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - bashDamage);
       selectedTarget.currentStamina = Math.max(0, selectedTarget.currentStamina - 16);
@@ -991,8 +1029,11 @@ export class CombatService {
       nextState.lastRound?.logs.push(bashLog);
     }
 
-    if (selectedSkill === CombatSkillType.Whirlwind) {
-      const aliveEnemies = nextState.entities.filter((item) => item.team === TeamSide.Right && item.isAlive);
+    if (selectedSkill === CombatSkillType.Whirlwind && playerInNextState && playerHitTargetThisRound) {
+      const aliveEnemies = nextState.entities.filter((item) =>
+        item.team === TeamSide.Right
+        && item.isAlive
+        && this.getBattlefieldCellDistance(playerInNextState, item) <= 1);
       for (const enemy of aliveEnemies) {
         const aoeDamage = Math.max(5, Math.floor(playerEntity.strength * 0.9));
         enemy.currentHp = Math.max(0, enemy.currentHp - aoeDamage);
@@ -1038,7 +1079,6 @@ export class CombatService {
       }
     }
 
-    const roundLogs = nextState.lastRound?.logs ?? [];
     const roundDamage = roundLogs
       .filter((entry) => entry.type === 'HIT' && entry.actorId === playerId)
       .reduce((sum, entry) => sum + Math.max(0, entry.amount ?? 0), 0);

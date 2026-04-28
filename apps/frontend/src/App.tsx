@@ -1397,7 +1397,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       const battleMapPayload = toRuntimeBattleMapPayload(selectedBattleMap);
       const started = activeArenaNpcs.length > 0
         ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload), battleMapPayload)
-        : await startCombat(character.id, 1, battleMapPayload);
+        : await startCombat(character.id, 3, battleMapPayload);
       setOverlayPanel(null);
       setCombatId(started.combatId);
       setPlayerCombatId(started.playerId);
