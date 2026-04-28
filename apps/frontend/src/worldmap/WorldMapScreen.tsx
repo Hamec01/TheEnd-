@@ -29,6 +29,7 @@ import type { DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
 
 type LocationView = 'map' | 'arklein';
+type SidePanelKey = 'adminEditor' | 'adminBattle' | 'contextActions' | 'npcInteraction' | 'nearbyNpc' | 'nearbyPlayers';
 
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const ARKLEIN_MERCHANT_SLOTS = [
@@ -207,6 +208,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [chatType, setChatType] = useState<ChatType>('local');
   const [chatDraft, setChatDraft] = useState('');
   const [systemChat, setSystemChat] = useState<ChatMessage[]>([]);
+  const [collapsedSidePanels, setCollapsedSidePanels] = useState<Record<SidePanelKey, boolean>>({
+    adminEditor: true,
+    adminBattle: true,
+    contextActions: true,
+    npcInteraction: true,
+    nearbyNpc: true,
+    nearbyPlayers: true,
+  });
   const [questDefinitions, setQuestDefinitions] = useState<QuestDefinition[]>([]);
   const [playerQuestStates, setPlayerQuestStates] = useState<PlayerQuestState[]>([]);
   const [questMarkers, setQuestMarkers] = useState<QuestMarkerDefinition[]>([]);
@@ -1274,6 +1283,31 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setChatDraft('');
   }
 
+  const toggleSidePanel = useCallback((panel: SidePanelKey) => {
+    setCollapsedSidePanels((current) => ({
+      ...current,
+      [panel]: !current[panel],
+    }));
+  }, []);
+
+  const renderSidePanel = useCallback((panel: SidePanelKey, title: string, content: React.ReactNode) => {
+    const isCollapsed = collapsedSidePanels[panel];
+    return (
+      <section className={`wm-side-module ${isCollapsed ? 'is-collapsed' : ''}`}>
+        <button
+          type="button"
+          className="wm-side-module-toggle"
+          aria-expanded={!isCollapsed}
+          onClick={() => toggleSidePanel(panel)}
+        >
+          <span>{title}</span>
+          <span className="wm-side-module-caret" aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
+        </button>
+        {!isCollapsed ? <div className="wm-side-module-body">{content}</div> : null}
+      </section>
+    );
+  }, [collapsedSidePanels, toggleSidePanel]);
+
   function handleEnterArena() {
     onOpenArena();
   }
@@ -1387,111 +1421,125 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         <div className="wm-right-stack">
           {showAdminShortcuts ? (
             <>
-              <div className="wm-editor-launch card">
-                <button
-                  onClick={() => {
-                    window.open('/admin/zone-editor', '_blank', 'noopener,noreferrer');
-                    onStatus('Zone Editor открыт в отдельном окне админки.');
-                  }}
-                >
-                  Zone Editor (Admin)
-                </button>
-              </div>
-
-              <section className="wm-battle-map-panel card">
-                <div className="wm-battle-map-head">
-                  <h3>Battle Map Editor</h3>
-                </div>
-
-                <div className="wm-action-grid">
+              {renderSidePanel('adminEditor', 'Admin инструменты', (
+                <div className="wm-editor-launch card">
                   <button
                     onClick={() => {
-                      window.open('/admin/battle-maps', '_blank', 'noopener,noreferrer');
-                      onStatus('Battle Map Editor открыт в отдельном окне админки.');
+                      window.open('/admin/zone-editor', '_blank', 'noopener,noreferrer');
+                      onStatus('Zone Editor открыт в отдельном окне админки.');
                     }}
                   >
-                    Открыть редактор баттл-карт
+                    Zone Editor (Admin)
                   </button>
-                  <button onClick={onOpenArenaNpc}>Настроить NPC</button>
-                  <button onClick={() => { void onStartCombat(); }}>Начать бой в арене</button>
                 </div>
-              </section>
+              ))}
+
+              {renderSidePanel('adminBattle', 'Battle Map Editor', (
+                <section className="wm-battle-map-panel card">
+                  <div className="wm-battle-map-head">
+                    <h3>Battle Map Editor</h3>
+                  </div>
+
+                  <div className="wm-action-grid">
+                    <button
+                      onClick={() => {
+                        window.open('/admin/battle-maps', '_blank', 'noopener,noreferrer');
+                        onStatus('Battle Map Editor открыт в отдельном окне админки.');
+                      }}
+                    >
+                      Открыть редактор баттл-карт
+                    </button>
+                    <button onClick={onOpenArenaNpc}>Настроить NPC</button>
+                    <button onClick={() => { void onStartCombat(); }}>Начать бой в арене</button>
+                  </div>
+                </section>
+              ))}
             </>
           ) : null}
 
-          <ContextActionPanel
-            mode={contextMode}
-            selectedNode={selectedNode}
-            quests={questDefinitions}
-            playerQuestStates={playerQuestStates}
-            onAction={(actionId, kind) => { void handleAction(actionId, kind); }}
-          />
-          <NpcInteractionPanel
-            npc={selectedNpcForInteraction}
-            dialogue={activeDialogue}
-            node={activeDialogueNode}
-            logs={dialogueLogs}
-            onTalk={handleNpcTalk}
-            onTrade={handleNpcTrade}
-            onTrain={handleNpcTrain}
-            onAttack={() => { void handleNpcAttack(); }}
-            onQuest={handleNpcQuest}
-            onInspect={handleNpcInspect}
-            onSelectChoice={handleSelectDialogueChoice}
-          />
-          <section className="wm-context card" style={{ borderTop: 'none' }}>
-            <section className="wm-context-block">
-              <h3>NPC рядом</h3>
-              {nearbyNpcs.length > 0 ? nearbyNpcs.map((entry) => (
-                <button
-                  key={entry.npc.id}
-                  style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNpcForInteraction?.id === entry.npc.id ? 1 : 0.82 }}
-                  onClick={() => setSelectedNpcForInteractionId(entry.npc.id)}
-                >
-                  {entry.npc.name} [{entry.npc.kind}] ({entry.distance.toFixed(3)})
-                </button>
-              )) : <p className="muted">Нет NPC в радиусе взаимодействия.</p>}
-            </section>
+          {renderSidePanel('contextActions', 'Последние события и действия', (
+            <ContextActionPanel
+              mode={contextMode}
+              selectedNode={selectedNode}
+              quests={questDefinitions}
+              playerQuestStates={playerQuestStates}
+              onAction={(actionId, kind) => { void handleAction(actionId, kind); }}
+            />
+          ))}
 
-            <section className="wm-context-block">
-              <h3>Игроки рядом</h3>
-              {nearbyPlayers.map((entry) => (
-                <button
-                  key={entry.id}
-                  style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNearbyPlayer?.id === entry.id ? 1 : 0.82 }}
-                  onClick={() => setSelectedNearbyPlayerId(entry.id)}
-                >
-                  {entry.name} (ур.{entry.level}) [{entry.state}]
-                </button>
-              ))}
-              {selectedNearbyPlayer ? (
-                <div className="wm-action-grid" style={{ marginTop: '8px' }}>
-                  <button disabled={!canAttackPlayer} onClick={() => handleNearbyAction('attack', selectedNearbyPlayer)}>Напасть</button>
-                  <button onClick={() => handleNearbyAction('message', selectedNearbyPlayer)}>Написать</button>
-                  <button onClick={() => handleNearbyAction('trade', selectedNearbyPlayer)}>Торговать</button>
-                  <button onClick={() => handleNearbyAction('inspect', selectedNearbyPlayer)}>Осмотреть</button>
-                </div>
-              ) : null}
+          {renderSidePanel('npcInteraction', 'NPC взаимодействие', (
+            <NpcInteractionPanel
+              npc={selectedNpcForInteraction}
+              dialogue={activeDialogue}
+              node={activeDialogueNode}
+              logs={dialogueLogs}
+              onTalk={handleNpcTalk}
+              onTrade={handleNpcTrade}
+              onTrain={handleNpcTrain}
+              onAttack={() => { void handleNpcAttack(); }}
+              onQuest={handleNpcQuest}
+              onInspect={handleNpcInspect}
+              onSelectChoice={handleSelectDialogueChoice}
+            />
+          ))}
+
+          {renderSidePanel('nearbyNpc', 'NPC рядом', (
+            <section className="wm-context card" style={{ borderTop: 'none' }}>
+              <section className="wm-context-block">
+                {nearbyNpcs.length > 0 ? nearbyNpcs.map((entry) => (
+                  <button
+                    key={entry.npc.id}
+                    style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNpcForInteraction?.id === entry.npc.id ? 1 : 0.82 }}
+                    onClick={() => setSelectedNpcForInteractionId(entry.npc.id)}
+                  >
+                    {entry.npc.name} [{entry.npc.kind}] ({entry.distance.toFixed(3)})
+                  </button>
+                )) : <p className="muted">Нет NPC в радиусе взаимодействия.</p>}
+              </section>
             </section>
-          </section>
-          <section className="wm-chat card">
-            <h3>Чат</h3>
-            <div className="wm-chat-log">
-              {chatMessages.map((line) => (
-                <p key={line.id}><strong>[{line.type.toUpperCase()}]</strong> {line.text}</p>
-              ))}
-            </div>
-            <div className="wm-chat-input">
-              <select value={chatType} onChange={(event) => setChatType(event.target.value as ChatType)}>
-                <option value="local">local</option>
-                <option value="private">private</option>
-                <option value="system">system</option>
-              </select>
-              <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Введите сообщение..." />
-              <button onClick={handleSendChat}>▶</button>
-            </div>
-          </section>
+          ))}
+
+          {renderSidePanel('nearbyPlayers', 'Игроки рядом', (
+            <section className="wm-context card" style={{ borderTop: 'none' }}>
+              <section className="wm-context-block">
+                {nearbyPlayers.map((entry) => (
+                  <button
+                    key={entry.id}
+                    style={{ width: '100%', marginBottom: '6px', textAlign: 'left', opacity: selectedNearbyPlayer?.id === entry.id ? 1 : 0.82 }}
+                    onClick={() => setSelectedNearbyPlayerId(entry.id)}
+                  >
+                    {entry.name} (ур.{entry.level}) [{entry.state}]
+                  </button>
+                ))}
+                {selectedNearbyPlayer ? (
+                  <div className="wm-action-grid" style={{ marginTop: '8px' }}>
+                    <button disabled={!canAttackPlayer} onClick={() => handleNearbyAction('attack', selectedNearbyPlayer)}>Напасть</button>
+                    <button onClick={() => handleNearbyAction('message', selectedNearbyPlayer)}>Написать</button>
+                    <button onClick={() => handleNearbyAction('trade', selectedNearbyPlayer)}>Торговать</button>
+                    <button onClick={() => handleNearbyAction('inspect', selectedNearbyPlayer)}>Осмотреть</button>
+                  </div>
+                ) : null}
+              </section>
+            </section>
+          ))}
         </div>
+        <section className="wm-chat card wm-chat-under-map">
+          <h3>Чат</h3>
+          <div className="wm-chat-log">
+            {chatMessages.map((line) => (
+              <p key={line.id}><strong>[{line.type.toUpperCase()}]</strong> {line.text}</p>
+            ))}
+          </div>
+          <div className="wm-chat-input">
+            <select value={chatType} onChange={(event) => setChatType(event.target.value as ChatType)}>
+              <option value="local">local</option>
+              <option value="private">private</option>
+              <option value="system">system</option>
+            </select>
+            <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Введите сообщение..." />
+            <button onClick={handleSendChat}>▶</button>
+          </div>
+        </section>
       </section>
 
       <footer className="wm-footer card">

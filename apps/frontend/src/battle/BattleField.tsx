@@ -7,7 +7,7 @@ import {
   type ArenaCombatEntity,
   type BattlefieldTile,
 } from '@theend/rpg-domain';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface BattleFieldProps {
   entities: ArenaCombatEntity[];
@@ -355,7 +355,7 @@ export function BattleField({
     return dist <= 5;
   };
 
-  const planMoveTo = (x: number, y: number, immediate = false) => {
+  const planMoveTo = useCallback((x: number, y: number, immediate = false) => {
     const moveInfo = movablePositions.get(`${x}:${y}`);
     const inferredType: MovementType = (moveInfo?.dist ?? 1) <= 1 ? MovementType.Step : MovementType.Dash;
     const tile = { x, y, movementType: inferredType, willTriggerOpportunity: moveInfo?.triggersOpportunity ?? false };
@@ -367,7 +367,34 @@ export function BattleField({
       return;
     }
     onMoveTileSelect?.(tile);
-  };
+  }, [movablePositions, onMoveTileSelect, onQuickMove, onStatusMessage]);
+
+  const planDirectionalMove = useCallback((dx: number, dy: number) => {
+    if (!playerPlacement) {
+      return;
+    }
+
+    const originX = selectedMoveTile?.x ?? playerPlacement.x;
+    const originY = selectedMoveTile?.y ?? playerPlacement.y;
+
+    const candidates = [...movablePositions.entries()]
+      .map(([key]) => {
+        const [x, y] = key.split(':').map(Number);
+        return { x, y };
+      })
+      .filter((tile) => {
+        if (dx !== 0) {
+          return tile.y === originY && Math.sign(tile.x - originX) === Math.sign(dx);
+        }
+        return tile.x === originX && Math.sign(tile.y - originY) === Math.sign(dy);
+      })
+      .sort((a, b) => (Math.abs(a.x - originX) + Math.abs(a.y - originY)) - (Math.abs(b.x - originX) + Math.abs(b.y - originY)));
+
+    const nextTile = candidates[0];
+    if (nextTile) {
+      planMoveTo(nextTile.x, nextTile.y, false);
+    }
+  }, [movablePositions, planMoveTo, playerPlacement, selectedMoveTile?.x, selectedMoveTile?.y]);
 
   const getMoveCloserTile = (enemyX: number, enemyY: number): { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean } | null => {
     const candidates = [...movablePositions.entries()]
@@ -496,11 +523,32 @@ export function BattleField({
       if (e.key === 'Escape') {
         onCancelSelection?.();
         closeContextMenu();
+        return;
+      }
+
+      if (!e.ctrlKey) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') {
+        e.preventDefault();
+        planDirectionalMove(0, -1);
+      } else if (key === 's' || key === 'arrowdown') {
+        e.preventDefault();
+        planDirectionalMove(0, 1);
+      } else if (key === 'a' || key === 'arrowleft') {
+        e.preventDefault();
+        planDirectionalMove(-1, 0);
+      } else if (key === 'd' || key === 'arrowright') {
+        e.preventDefault();
+        planDirectionalMove(1, 0);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onCancelSelection]);
+  }, [onCancelSelection, planDirectionalMove]);
 
   useEffect(() => {
     if (!contextMenu.show) {

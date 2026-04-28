@@ -11,7 +11,7 @@ import {
   type Equipment,
   type InventoryState,
 } from '@theend/rpg-domain';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { sendCombatAction } from '../api';
 import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
@@ -274,14 +274,8 @@ export function BattlePanel({
     }
   }, [movementType]);
 
-  useEffect(() => {
-    if (actionType !== ActionType.Move && (movementType || selectedMoveTile)) {
-      setMovementType(null);
-      setSelectedMoveTile(null);
-    }
-  }, [actionType, movementType, selectedMoveTile]);
 
-  async function submitRound(): Promise<void> {
+  const submitRound = useCallback(async (): Promise<void> => {
     if (!player || !selectedTargetId) {
       return;
     }
@@ -322,7 +316,68 @@ export function BattlePanel({
     } catch (error) {
       onStatus(`Round error: ${(error as Error).message}`);
     }
-  }
+  }, [
+    actionType,
+    actionWarning,
+    attackZone,
+    combatId,
+    defenseZones,
+    movementType,
+    onStateChange,
+    onStatus,
+    player,
+    selectedMoveTile,
+    selectedSkill,
+    selectedTargetId,
+  ]);
+
+  const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
+    setMovementType(tile.movementType);
+    setSelectedMoveTile({ x: tile.x, y: tile.y });
+    if (tile.willTriggerOpportunity) {
+      onStatus('Маршрут опасен: будет удар вслед.');
+    } else {
+      onStatus(`Move planned to ${tile.x + 1}:${tile.y + 1}`);
+    }
+  }, [onStatus]);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+
+    const handleHotkeys = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (event.ctrlKey && event.key === 'Enter') {
+        event.preventDefault();
+        if (!event.repeat) {
+          void submitRound();
+        }
+        return;
+      }
+
+      if (event.key === ' ' || event.code === 'Space') {
+        if (event.repeat) {
+          return;
+        }
+        if (actionType === ActionType.Wait || (actionType !== ActionType.Attack && actionType !== ActionType.Defend)) {
+          event.preventDefault();
+          setActionType(ActionType.Wait);
+          void submitRound();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleHotkeys);
+    return () => window.removeEventListener('keydown', handleHotkeys);
+  }, [actionType, submitRound]);
 
   if (!player) {
     return <p>Player entity not found.</p>;
@@ -418,27 +473,8 @@ export function BattlePanel({
                 setSelectedTargetId(targetId);
                 setActionType(ActionType.Attack);
               }}
-              onQuickMove={(tile) => {
-                if (actionType !== ActionType.Move) {
-                  onStatus('Сначала выберите действие «Движение».');
-                  return;
-                }
-                setMovementType(tile.movementType);
-                setSelectedMoveTile({ x: tile.x, y: tile.y });
-              }}
-              onMoveTileSelect={(tile) => {
-                if (actionType !== ActionType.Move) {
-                  onStatus('Сначала выберите действие «Движение».');
-                  return;
-                }
-                setMovementType(tile.movementType);
-                setSelectedMoveTile({ x: tile.x, y: tile.y });
-                if (tile.willTriggerOpportunity) {
-                  onStatus('Маршрут опасен: будет удар вслед.');
-                } else {
-                  onStatus(`Move planned to ${tile.x + 1}:${tile.y + 1}`);
-                }
-              }}
+              onQuickMove={applyMoveSelection}
+              onMoveTileSelect={applyMoveSelection}
               onCancelSelection={() => setSelectedMoveTile(null)}
               onInspectEntity={(entityId) => setInspectEntityId(entityId)}
               playerVisualState={feedback.playerVisualState}

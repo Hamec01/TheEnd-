@@ -5167,6 +5167,52 @@ h3 {
   gap: 0;
 }
 
+.wm-side-module {
+  border: 1px solid rgba(66, 53, 36, 0.84);
+  background: rgba(18, 15, 11, 0.82);
+}
+
+.wm-side-module + .wm-side-module {
+  border-top: none;
+}
+
+.wm-side-module-toggle {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgba(83, 67, 45, 0.74);
+  background: linear-gradient(180deg, rgba(32, 26, 20, 0.94), rgba(16, 13, 10, 0.96));
+  color: #dbc59d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wm-side-module-toggle:hover {
+  background: linear-gradient(180deg, rgba(42, 34, 25, 0.95), rgba(22, 18, 14, 0.97));
+}
+
+.wm-side-module.is-collapsed .wm-side-module-toggle {
+  border-bottom: none;
+}
+
+.wm-side-module-caret {
+  color: #f0d9ac;
+  font-size: 0.82rem;
+}
+
+.wm-side-module-body {
+  padding: 0;
+}
+
+.wm-side-module-body > .card {
+  border-top: none;
+}
+
 .wm-editor-launch {
   border-bottom: none;
   display: flex;
@@ -5245,6 +5291,11 @@ h3 {
   gap: 8px;
   border-top: none;
   padding: 8px;
+}
+
+.wm-chat-under-map {
+  grid-column: 2 / 3;
+  border-top: 1px solid rgba(42, 34, 24, 0.92);
 }
 
 .wm-chat-log {
@@ -7735,6 +7786,10 @@ body:has(.page.page--scroll) {
   .wm-grid {
     grid-template-columns: 1fr;
     grid-auto-rows: auto;
+  }
+
+  .wm-chat-under-map {
+    grid-column: 1 / -1;
   }
 
   .wm-left,
