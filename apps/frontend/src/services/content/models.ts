@@ -1,4 +1,7 @@
 import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { DialogueDefinition } from '../../types/dialogue';
+import type { NpcDefinition } from '../../types/npc';
+import type { QuestDefinition, QuestItemDefinition, QuestMarkerDefinition } from '../../types/quest';
 
 export type StatKey = PrimaryStat;
 
@@ -145,3 +148,8 @@ export interface StoredImage {
 }
 
 export type AdminSkill = AdminSkillDefinition;
+export type AdminDialogue = DialogueDefinition;
+export type AdminNpc = NpcDefinition;
+export type AdminQuest = QuestDefinition;
+export type AdminQuestItem = QuestItemDefinition;
+export type AdminQuestMarker = QuestMarkerDefinition;

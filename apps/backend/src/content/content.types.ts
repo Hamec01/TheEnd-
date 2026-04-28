@@ -144,6 +144,93 @@ export interface StoredImage {
   updatedAt: string;
 }
 
+export interface DialogueDefinition {
+  id: string;
+  title: string;
+  npcId?: string;
+  status: 'draft' | 'active' | 'disabled';
+  description?: string;
+  startNodeId: string;
+  nodes: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NpcDefinition {
+  id: string;
+  name: string;
+  title?: string;
+  status: 'draft' | 'active' | 'disabled' | 'archived';
+  kind: string;
+  race: string;
+  description?: string;
+  mapBindings?: unknown[];
+  dialogues?: unknown[];
+  questBindings?: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestItemDefinition {
+  id: string;
+  name: string;
+  description: string;
+  iconUrl?: string;
+  imageUrl?: string;
+  linkedQuestId?: string;
+  canDrop: boolean;
+  canSell: boolean;
+  canTrade: boolean;
+  removeOnQuestComplete: boolean;
+  showInQuestInventory: boolean;
+}
+
+export interface QuestMarkerDefinition {
+  id: string;
+  mapId: string;
+  x: number;
+  y: number;
+  type: string;
+  title: string;
+  linkedQuestId?: string;
+  linkedStepId?: string;
+  linkedObjectiveId?: string;
+  linkedNpcId?: string;
+  icon?: string;
+  visibleToPlayer: boolean;
+  conditionIds: string[];
+  imageUrl?: string;
+}
+
+export interface QuestDefinition {
+  id: string;
+  title: string;
+  adminDescription?: string;
+  playerDescription?: string;
+  category: string;
+  status: 'draft' | 'active' | 'disabled' | 'archived';
+  kingdomId?: string;
+  factionId?: string;
+  cityId?: string;
+  npcId?: string;
+  recommendedLevel?: number;
+  minLevel?: number;
+  maxLevel?: number;
+  isRepeatable: boolean;
+  isHidden: boolean;
+  portraitUrl?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
+  steps: unknown[];
+  triggers: unknown[];
+  conditions: unknown[];
+  rewards: unknown[];
+  failureConsequences: unknown[];
+  flags?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ZoneShape = 'circle' | 'polygon' | 'rect';
 
 export type ZoneType =
@@ -227,10 +314,26 @@ export interface ContentDatabase {
   materials: Material[];
   lootTables: LootTable[];
   images: StoredImage[];
+  dialogues: DialogueDefinition[];
+  npcs: NpcDefinition[];
+  quests: QuestDefinition[];
+  questItems: QuestItemDefinition[];
+  questMarkers: QuestMarkerDefinition[];
   worldMap: WorldMapContent;
 }
 
-export type ContentCollectionName = 'items' | 'skills' | 'merchants' | 'materials' | 'lootTables' | 'images';
+export type ContentCollectionName =
+  | 'items'
+  | 'skills'
+  | 'merchants'
+  | 'materials'
+  | 'lootTables'
+  | 'images'
+  | 'dialogues'
+  | 'npcs'
+  | 'quests'
+  | 'questItems'
+  | 'questMarkers';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -239,4 +342,9 @@ export interface ContentCollectionMap {
   materials: Material;
   lootTables: LootTable;
   images: StoredImage;
+  dialogues: DialogueDefinition;
+  npcs: NpcDefinition;
+  quests: QuestDefinition;
+  questItems: QuestItemDefinition;
+  questMarkers: QuestMarkerDefinition;
 }

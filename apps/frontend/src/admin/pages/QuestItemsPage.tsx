@@ -3,7 +3,7 @@ import { AdminImageField } from '../AdminImageField';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
-import { deleteQuestItem, getAllQuests, getQuestItems, saveQuestItem } from '../../services/questRepository';
+import { deleteQuestItem, ensureQuestsLoaded, getAllQuests, getQuestItems, saveQuestItem } from '../../services/questRepository';
 import type { StoredImage } from '../../services/content/models';
 import type { QuestItemDefinition } from '../../types/quest';
 
@@ -37,6 +37,7 @@ export function QuestItemsPage() {
   const [status, setStatus] = useState('Готово');
 
   async function refresh() {
+    await ensureQuestsLoaded();
     const [nextItems, quests, nextImages] = await Promise.all([
       Promise.resolve(getQuestItems()),
       Promise.resolve(getAllQuests()),
@@ -75,30 +76,30 @@ export function QuestItemsPage() {
     setDraft(emptyQuestItem());
   }
 
-  function saveCurrent() {
+  async function saveCurrent() {
     try {
-      const saved = saveQuestItem({
+      const saved = await saveQuestItem({
         ...draft,
         id: draft.id.trim() || uid('quest_item'),
         name: draft.name.trim(),
       });
       setSelectedId(saved.id);
       setDraft(saved);
-      void refresh();
+      await refresh();
       setStatus(`Квестовый предмет сохранен: ${saved.id}`);
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
     }
   }
 
-  function removeCurrent() {
+  async function removeCurrent() {
     if (!selectedId) {
       return;
     }
-    deleteQuestItem(selectedId);
+    await deleteQuestItem(selectedId);
     setSelectedId(null);
     setDraft(emptyQuestItem());
-    void refresh();
+    await refresh();
     setStatus(`Квестовый предмет удален: ${selectedId}`);
   }
 

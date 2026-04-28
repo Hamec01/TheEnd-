@@ -21,15 +21,32 @@ import type {
   ContentCollectionMap,
   ContentCollectionName,
   ContentDatabase,
+  DialogueDefinition,
   ItemRarity,
   Material,
   MerchantItem,
+  NpcDefinition,
+  QuestDefinition,
+  QuestItemDefinition,
+  QuestMarkerDefinition,
   StoredImage,
   WorldMapContent,
 } from './content.types';
 
 const CONTENT_DB_VERSION = 1 as const;
-const CONTENT_COLLECTIONS: ContentCollectionName[] = ['items', 'skills', 'merchants', 'materials', 'lootTables', 'images'];
+const CONTENT_COLLECTIONS: ContentCollectionName[] = [
+  'items',
+  'skills',
+  'merchants',
+  'materials',
+  'lootTables',
+  'images',
+  'dialogues',
+  'npcs',
+  'quests',
+  'questItems',
+  'questMarkers',
+];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
@@ -158,6 +175,11 @@ function createEmptyDatabase(): ContentDatabase {
     materials: [],
     lootTables: [],
     images: [],
+    dialogues: [],
+    npcs: [],
+    quests: [],
+    questItems: [],
+    questMarkers: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -176,6 +198,11 @@ function createSeedDatabase(): ContentDatabase {
     materials: [],
     lootTables: [],
     images: [],
+    dialogues: [],
+    npcs: [],
+    quests: [],
+    questItems: [],
+    questMarkers: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -317,6 +344,113 @@ function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition 
   }
 
   return normalized;
+}
+
+function normalizeDialogueInput(input: DialogueDefinition): DialogueDefinition {
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    title: String(input.title ?? '').trim(),
+    npcId: input.npcId ? String(input.npcId).trim() : undefined,
+    status: input.status === 'active' || input.status === 'disabled' ? input.status : 'draft',
+    description: input.description ? String(input.description).trim() : undefined,
+    startNodeId: String(input.startNodeId ?? 'start').trim() || 'start',
+    nodes: Array.isArray(input.nodes) ? clone(input.nodes) : [],
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    title: input.title ? String(input.title).trim() : undefined,
+    status: input.status === 'active' || input.status === 'disabled' || input.status === 'archived' ? input.status : 'draft',
+    kind: String(input.kind ?? 'civilian').trim() || 'civilian',
+    race: String(input.race ?? 'human').trim() || 'human',
+    description: input.description ? String(input.description).trim() : undefined,
+    mapBindings: Array.isArray(input.mapBindings) ? clone(input.mapBindings) : [],
+    dialogues: Array.isArray(input.dialogues) ? clone(input.dialogues) : [],
+    questBindings: Array.isArray(input.questBindings) ? clone(input.questBindings) : [],
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeQuestItemInput(input: QuestItemDefinition): QuestItemDefinition {
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: String(input.description ?? '').trim(),
+    iconUrl: input.iconUrl ? String(input.iconUrl).trim() : undefined,
+    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+    linkedQuestId: input.linkedQuestId ? String(input.linkedQuestId).trim() : undefined,
+    canDrop: input.canDrop !== false,
+    canSell: input.canSell !== false,
+    canTrade: input.canTrade !== false,
+    removeOnQuestComplete: input.removeOnQuestComplete !== false,
+    showInQuestInventory: input.showInQuestInventory !== false,
+  };
+}
+
+function normalizeQuestMarkerInput(input: QuestMarkerDefinition): QuestMarkerDefinition {
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    mapId: String(input.mapId ?? '').trim(),
+    x: typeof input.x === 'number' && Number.isFinite(input.x) ? Math.max(0, Math.min(1, input.x)) : 0.5,
+    y: typeof input.y === 'number' && Number.isFinite(input.y) ? Math.max(0, Math.min(1, input.y)) : 0.5,
+    type: String(input.type ?? 'quest_objective').trim() || 'quest_objective',
+    title: String(input.title ?? '').trim(),
+    linkedQuestId: input.linkedQuestId ? String(input.linkedQuestId).trim() : undefined,
+    linkedStepId: input.linkedStepId ? String(input.linkedStepId).trim() : undefined,
+    linkedObjectiveId: input.linkedObjectiveId ? String(input.linkedObjectiveId).trim() : undefined,
+    linkedNpcId: input.linkedNpcId ? String(input.linkedNpcId).trim() : undefined,
+    icon: input.icon ? String(input.icon).trim() : undefined,
+    visibleToPlayer: input.visibleToPlayer !== false,
+    conditionIds: Array.isArray(input.conditionIds) ? input.conditionIds.map((id) => String(id).trim()).filter(Boolean) : [],
+    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+  };
+}
+
+function normalizeQuestInput(input: QuestDefinition): QuestDefinition {
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    title: String(input.title ?? '').trim(),
+    adminDescription: input.adminDescription ? String(input.adminDescription) : '',
+    playerDescription: input.playerDescription ? String(input.playerDescription) : '',
+    category: String(input.category ?? 'global').trim() || 'global',
+    status: input.status === 'active' || input.status === 'disabled' || input.status === 'archived' ? input.status : 'draft',
+    kingdomId: input.kingdomId ? String(input.kingdomId).trim() : undefined,
+    factionId: input.factionId ? String(input.factionId).trim() : undefined,
+    cityId: input.cityId ? String(input.cityId).trim() : undefined,
+    npcId: input.npcId ? String(input.npcId).trim() : undefined,
+    recommendedLevel: typeof input.recommendedLevel === 'number' && Number.isFinite(input.recommendedLevel)
+      ? Math.max(1, Math.round(input.recommendedLevel))
+      : undefined,
+    minLevel: typeof input.minLevel === 'number' && Number.isFinite(input.minLevel) ? Math.max(1, Math.round(input.minLevel)) : undefined,
+    maxLevel: typeof input.maxLevel === 'number' && Number.isFinite(input.maxLevel) ? Math.max(1, Math.round(input.maxLevel)) : undefined,
+    isRepeatable: Boolean(input.isRepeatable),
+    isHidden: Boolean(input.isHidden),
+    portraitUrl: input.portraitUrl ? String(input.portraitUrl).trim() : undefined,
+    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+    bannerUrl: input.bannerUrl ? String(input.bannerUrl).trim() : undefined,
+    steps: Array.isArray(input.steps) ? clone(input.steps) : [],
+    triggers: Array.isArray(input.triggers) ? clone(input.triggers) : [],
+    conditions: Array.isArray(input.conditions) ? clone(input.conditions) : [],
+    rewards: Array.isArray(input.rewards) ? clone(input.rewards) : [],
+    failureConsequences: Array.isArray(input.failureConsequences) ? clone(input.failureConsequences) : [],
+    flags: input.flags && typeof input.flags === 'object' ? clone(input.flags) : {},
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
 }
 
 function normalizeMerchantItem(entry: MerchantItem): MerchantItem {
@@ -469,6 +603,31 @@ export class ContentService {
       errors.push(`Duplicate image ids: ${duplicateImages.join(', ')}`);
     }
 
+    const duplicateDialogues = findDuplicateIds(db.dialogues);
+    if (duplicateDialogues.length > 0) {
+      errors.push(`Duplicate dialogue ids: ${duplicateDialogues.join(', ')}`);
+    }
+
+    const duplicateNpcs = findDuplicateIds(db.npcs);
+    if (duplicateNpcs.length > 0) {
+      errors.push(`Duplicate npc ids: ${duplicateNpcs.join(', ')}`);
+    }
+
+    const duplicateQuests = findDuplicateIds(db.quests);
+    if (duplicateQuests.length > 0) {
+      errors.push(`Duplicate quest ids: ${duplicateQuests.join(', ')}`);
+    }
+
+    const duplicateQuestItems = findDuplicateIds(db.questItems);
+    if (duplicateQuestItems.length > 0) {
+      errors.push(`Duplicate quest item ids: ${duplicateQuestItems.join(', ')}`);
+    }
+
+    const duplicateQuestMarkers = findDuplicateIds(db.questMarkers);
+    if (duplicateQuestMarkers.length > 0) {
+      errors.push(`Duplicate quest marker ids: ${duplicateQuestMarkers.join(', ')}`);
+    }
+
     const itemIds = new Set(db.items.map((item) => item.id));
     const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
 
@@ -519,6 +678,24 @@ export class ContentService {
       }
     }
 
+    for (const dialogue of db.dialogues ?? []) {
+      if (hasMojibakeQuestionMarks(dialogue.title) || hasMojibakeQuestionMarks(dialogue.description)) {
+        errors.push(`Dialogue '${dialogue.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    for (const npc of db.npcs ?? []) {
+      if (hasMojibakeQuestionMarks(npc.name) || hasMojibakeQuestionMarks(npc.title) || hasMojibakeQuestionMarks(npc.description)) {
+        errors.push(`NPC '${npc.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
+    for (const quest of db.quests ?? []) {
+      if (hasMojibakeQuestionMarks(quest.title) || hasMojibakeQuestionMarks(quest.adminDescription) || hasMojibakeQuestionMarks(quest.playerDescription)) {
+        errors.push(`Quest '${quest.id}' contains suspicious mojibake text ('???').`);
+      }
+    }
+
     return errors;
   }
 
@@ -554,6 +731,11 @@ export class ContentService {
       materials: Array.isArray(raw.materials) ? clone(raw.materials as Material[]) : [],
       lootTables: Array.isArray(raw.lootTables) ? clone(raw.lootTables) : [],
       images: Array.isArray(raw.images) ? clone(raw.images as StoredImage[]) : [],
+      dialogues: Array.isArray(raw.dialogues) ? raw.dialogues.map((entry) => normalizeDialogueInput(entry as DialogueDefinition)).filter((d) => Boolean(d.id)) : [],
+      npcs: Array.isArray(raw.npcs) ? raw.npcs.map((entry) => normalizeNpcInput(entry as NpcDefinition)).filter((n) => Boolean(n.id)) : [],
+      quests: Array.isArray(raw.quests) ? raw.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition)).filter((q) => Boolean(q.id)) : [],
+      questItems: Array.isArray(raw.questItems) ? raw.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition)).filter((q) => Boolean(q.id)) : [],
+      questMarkers: Array.isArray(raw.questMarkers) ? raw.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id)) : [],
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones) : [],
@@ -683,6 +865,16 @@ export class ContentService {
       nextEntry = normalizeSkillInput(payload as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'dialogues') {
+      nextEntry = normalizeDialogueInput(payload as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'npcs') {
+      nextEntry = normalizeNpcInput(payload as unknown as NpcDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'quests') {
+      nextEntry = normalizeQuestInput(payload as unknown as QuestDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questItems') {
+      nextEntry = normalizeQuestItemInput(payload as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questMarkers') {
+      nextEntry = normalizeQuestMarkerInput(payload as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
     } else {
       nextEntry = clone(payload);
     }
@@ -709,6 +901,16 @@ export class ContentService {
       merged = normalizeSkillInput(mergedBase as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'dialogues') {
+      merged = normalizeDialogueInput(mergedBase as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'npcs') {
+      merged = normalizeNpcInput(mergedBase as unknown as NpcDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'quests') {
+      merged = normalizeQuestInput(mergedBase as unknown as QuestDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questItems') {
+      merged = normalizeQuestItemInput(mergedBase as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questMarkers') {
+      merged = normalizeQuestMarkerInput(mergedBase as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
     } else {
       merged = mergedBase;
     }
@@ -756,6 +958,26 @@ export class ContentService {
     }
     if (Array.isArray(payload.images) && payload.images.length > 0) {
       db.images = mergeById(db.images, payload.images as StoredImage[]);
+    }
+    if (Array.isArray(payload.dialogues) && payload.dialogues.length > 0) {
+      const normalized = payload.dialogues.map((entry) => normalizeDialogueInput(entry as DialogueDefinition));
+      db.dialogues = mergeById(db.dialogues, normalized);
+    }
+    if (Array.isArray(payload.npcs) && payload.npcs.length > 0) {
+      const normalized = payload.npcs.map((entry) => normalizeNpcInput(entry as NpcDefinition));
+      db.npcs = mergeById(db.npcs, normalized);
+    }
+    if (Array.isArray(payload.quests) && payload.quests.length > 0) {
+      const normalized = payload.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition));
+      db.quests = mergeById(db.quests, normalized);
+    }
+    if (Array.isArray(payload.questItems) && payload.questItems.length > 0) {
+      const normalized = payload.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition));
+      db.questItems = mergeById(db.questItems, normalized);
+    }
+    if (Array.isArray(payload.questMarkers) && payload.questMarkers.length > 0) {
+      const normalized = payload.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition));
+      db.questMarkers = mergeById(db.questMarkers, normalized);
     }
     if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length)) {
       db.worldMap = {

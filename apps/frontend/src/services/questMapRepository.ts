@@ -1,66 +1,86 @@
 import type { QuestMarkerDefinition } from '../types/quest';
+import {
+  createContentEntry,
+  deleteContentEntry,
+  getContentCollection,
+  updateContentEntry,
+} from './content/contentApi';
 
-const QUEST_MARKERS_KEY = 'theend.questMap.markers';
+let cache: QuestMarkerDefinition[] = [];
+let loaded = false;
+let loadPromise: Promise<void> | null = null;
 
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) {
-    return fallback;
-  }
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function read(): QuestMarkerDefinition[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-  return safeParse<QuestMarkerDefinition[]>(window.localStorage.getItem(QUEST_MARKERS_KEY), []);
-}
-
-function write(values: QuestMarkerDefinition[]): void {
-  if (typeof window === 'undefined') {
+export async function ensureQuestMarkersLoaded(force = false): Promise<void> {
+  if (loaded && !force) {
     return;
   }
-  window.localStorage.setItem(QUEST_MARKERS_KEY, JSON.stringify(values));
+  if (!loadPromise) {
+    loadPromise = getContentCollection<QuestMarkerDefinition>('questMarkers').then((entries) => {
+      cache = entries;
+      loaded = true;
+      loadPromise = null;
+    }).catch((error) => {
+      loadPromise = null;
+      throw error;
+    });
+  }
+  return loadPromise;
+}
+
+function invalidate(): void {
+  loaded = false;
 }
 
 export function getQuestMarkers(): QuestMarkerDefinition[] {
-  return read();
+  return [...cache];
 }
 
-export function saveQuestMarker(marker: QuestMarkerDefinition): QuestMarkerDefinition {
-  const normalized: QuestMarkerDefinition = {
-    ...marker,
-    id: marker.id.trim(),
-    title: marker.title.trim(),
-    mapId: marker.mapId.trim(),
-    x: Math.max(0, Math.min(1, marker.x)),
-    y: Math.max(0, Math.min(1, marker.y)),
-    visibleToPlayer: marker.visibleToPlayer !== false,
-    conditionIds: Array.isArray(marker.conditionIds) ? marker.conditionIds.filter(Boolean) : [],
-  };
-
-  const values = read();
-  const next = [...values.filter((entry) => entry.id !== normalized.id), normalized];
-  write(next);
-  return normalized;
+export async function saveQuestMarker(marker: QuestMarkerDefinition): Promise<QuestMarkerDefinition> {
+  await ensureQuestMarkersLoaded();
+  const exists = cache.some((entry) => entry.id === marker.id);
+  const saved = exists
+    ? await updateContentEntry<QuestMarkerDefinition>('questMarkers', marker.id, marker)
+    : await createContentEntry<QuestMarkerDefinition>('questMarkers', marker);
+  invalidate();
+  await ensureQuestMarkersLoaded(true);
+  return saved;
 }
 
-export function deleteQuestMarker(id: string): void {
-  const next = read().filter((entry) => entry.id !== id);
-  write(next);
+export async function deleteQuestMarker(id: string): Promise<void> {
+  await deleteContentEntry('questMarkers', id);
+  invalidate();
+  await ensureQuestMarkersLoaded(true);
 }
 
-export function exportQuestMarkersJson(): string {
-  return JSON.stringify(read(), null, 2);
+export async function exportQuestMarkersJson(): Promise<string> {
+  await ensureQuestMarkersLoaded();
+  return JSON.stringify(cache, null, 2);
 }
 
-export function importQuestMarkersJson(raw: string): number {
+export async function importQuestMarkersJson(raw: string): Promise<number> {
   const parsed = JSON.parse(raw) as QuestMarkerDefinition[];
   const values = Array.isArray(parsed) ? parsed : [];
-  write(values);
-  return values.length;
+
+  await ensureQuestMarkersLoaded();
+  const existingIds = new Set(cache.map((entry) => entry.id));
+
+  let count = 0;
+  for (const entry of values) {
+    if (!entry?.id?.trim()) {
+      continue;
+    }
+    const id = entry.id.trim();
+    if (existingIds.has(id)) {
+      await updateContentEntry<QuestMarkerDefinition>('questMarkers', id, entry);
+    } else {
+      await createContentEntry<QuestMarkerDefinition>('questMarkers', entry);
+      existingIds.add(id);
+    }
+    count += 1;
+  }
+
+  invalidate();
+  await ensureQuestMarkersLoaded(true);
+  return count;
 }
+

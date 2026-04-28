@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminImageField } from '../AdminImageField';
+import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import { subscribeToContentSync } from '../../services/content/contentSync';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { QUEST_SEED_CITIES, QUEST_SEED_FACTIONS, QUEST_SEED_KINGDOMS } from '../../services/questWorldSeed';
 import {
   deleteQuest,
   duplicateQuest,
+  ensureQuestsLoaded,
   exportQuestsJson,
   getAllQuests,
   importQuestsJson,
   saveQuest,
 } from '../../services/questRepository';
-import { getAllNpcs } from '../../services/npcRepository';
+import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
 import { validateQuest } from '../../services/questValidator';
+import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import type {
   QuestCategory,
   QuestCondition,
@@ -26,6 +30,7 @@ import type {
   QuestValidationResult,
 } from '../../types/quest';
 import type { StoredImage } from '../../services/content/models';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 
 const QUEST_CATEGORIES: QuestCategory[] = ['global', 'kingdom', 'faction', 'profession', 'lore', 'city', 'npc', 'random', 'hidden', 'repeatable'];
 const QUEST_STATUSES: QuestStatus[] = ['draft', 'active', 'disabled', 'archived'];
@@ -75,7 +80,7 @@ function uniqueId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildValidationWorldData(quests: QuestDefinition[]) {
+function buildValidationWorldData(quests: QuestDefinition[], zones: WorldMapZone[]) {
   const npcIds = getAllNpcs().map((entry) => entry.id);
   return {
     npcIds,
@@ -83,7 +88,7 @@ function buildValidationWorldData(quests: QuestDefinition[]) {
     questItemIds: [],
     professionIds: ['archer', 'blacksmith', 'alchemist', 'hunter'],
     markerIds: [],
-    zoneIds: [],
+    zoneIds: zones.map((zone) => zone.id),
     dialogueIds: quests.flatMap((quest) => quest.triggers.map((trigger) => trigger.dialogueId)).filter(Boolean) as string[],
     kingdoms: [...QUEST_SEED_KINGDOMS],
     factions: [...QUEST_SEED_FACTIONS],
@@ -105,6 +110,7 @@ export function QuestsPage() {
   const [status, setStatus] = useState('Готово');
   const [validation, setValidation] = useState<QuestValidationResult>({ errors: [], warnings: [] });
   const [npcIds, setNpcIds] = useState<string[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
 
   const [stepsJson, setStepsJson] = useState('[]');
   const [conditionsJson, setConditionsJson] = useState('[]');
@@ -113,6 +119,7 @@ export function QuestsPage() {
   const [triggersJson, setTriggersJson] = useState('[]');
 
   async function refresh() {
+    await Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded()]);
     const [nextQuests, nextImages] = await Promise.all([Promise.resolve(getAllQuests()), imageService.getAll()]);
     setQuests(nextQuests);
     setImages(nextImages);
@@ -130,6 +137,17 @@ export function QuestsPage() {
 
   useEffect(() => {
     void refresh();
+
+    setZones(getAllZones());
+    void refreshZonesFromBackend().then(setZones).catch(() => undefined);
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'worldMap' || payload.scope === 'all') {
+        void refreshZonesFromBackend().then(setZones).catch(() => undefined);
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -139,9 +157,9 @@ export function QuestsPage() {
     setFailureJson(JSON.stringify(draft.failureConsequences, null, 2));
     setTriggersJson(JSON.stringify(draft.triggers, null, 2));
 
-    const worldData = buildValidationWorldData(quests);
+    const worldData = buildValidationWorldData(quests, zones);
     setValidation(validateQuest(draft, worldData));
-  }, [draft, quests]);
+  }, [draft, quests, zones]);
 
   const visibleQuests = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -172,6 +190,15 @@ export function QuestsPage() {
     () => (selectedId ? quests.find((entry) => entry.id === selectedId) ?? null : null),
     [quests, selectedId],
   );
+  const zoneListText = useMemo(() => zones.map((zone) => buildWorldZoneLabel(zone)).join(', '), [zones]);
+  const triggerZoneEntries = useMemo(
+    () => draft.triggers.map((trigger, index) => ({ trigger, index })),
+    [draft.triggers],
+  );
+  const objectiveZoneEntries = useMemo(
+    () => draft.steps.flatMap((step, stepIndex) => step.objectives.map((objective, objectiveIndex) => ({ step, objective, stepIndex, objectiveIndex }))),
+    [draft.steps],
+  );
 
   function getQuestCardAccent(quest: QuestDefinition): string {
     if (quest.status === 'disabled' || quest.status === 'archived') {
@@ -197,7 +224,7 @@ export function QuestsPage() {
   }
 
   async function saveCurrent() {
-    const worldData = buildValidationWorldData(quests);
+    const worldData = buildValidationWorldData(quests, zones);
     const result = validateQuest(draft, worldData);
     setValidation(result);
 
@@ -220,7 +247,7 @@ export function QuestsPage() {
     };
 
     try {
-      const saved = saveQuest(prepared);
+      const saved = await saveQuest(prepared);
       setSelectedId(saved.id);
       setDraft(saved);
       await refresh();
@@ -235,7 +262,7 @@ export function QuestsPage() {
       return;
     }
     try {
-      const copied = duplicateQuest(selectedId);
+      const copied = await duplicateQuest(selectedId);
       await refresh();
       setSelectedId(copied.id);
       setDraft(copied);
@@ -255,7 +282,7 @@ export function QuestsPage() {
       return;
     }
 
-    saveQuest({ ...selected, status: 'disabled' });
+    await saveQuest({ ...selected, status: 'disabled' });
     await refresh();
     setStatus(`Квест отключен: ${selectedId}`);
   }
@@ -265,7 +292,7 @@ export function QuestsPage() {
       return;
     }
 
-    deleteQuest(selectedId);
+    await deleteQuest(selectedId);
     setSelectedId(null);
     setDraft(emptyQuest());
     await refresh();
@@ -299,8 +326,8 @@ export function QuestsPage() {
     patch({ steps: [...draft.steps, nextStep] });
   }
 
-  function exportJson() {
-    const payload = exportQuestsJson();
+  async function exportJson() {
+    const payload = await exportQuestsJson();
     navigator.clipboard.writeText(payload).then(() => {
       setStatus('JSON квестов скопирован в буфер обмена.');
     }).catch(() => {
@@ -308,15 +335,15 @@ export function QuestsPage() {
     });
   }
 
-  function importJson() {
+  async function importJson() {
     const raw = window.prompt('Вставьте JSON для импорта квестов и предметов:');
     if (!raw) {
       return;
     }
 
     try {
-      const result = importQuestsJson(raw);
-      void refresh();
+      const result = await importQuestsJson(raw);
+      await refresh();
       setStatus(`Импорт завершен: квестов ${result.quests}, квестовых предметов ${result.questItems}.`);
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
@@ -324,10 +351,29 @@ export function QuestsPage() {
   }
 
   function validateCurrentQuest() {
-    const worldData = buildValidationWorldData(quests);
+    const worldData = buildValidationWorldData(quests, zones);
     const result = validateQuest(draft, worldData);
     setValidation(result);
     setStatus(`Проверка: ${result.errors.length} ошибок, ${result.warnings.length} предупреждений.`);
+  }
+
+  function updateTriggerZone(index: number, zoneId: string) {
+    patch({
+      triggers: draft.triggers.map((trigger, triggerIndex) => triggerIndex === index ? { ...trigger, zoneId: zoneId || undefined } : trigger),
+    });
+  }
+
+  function updateObjectiveZone(stepIndex: number, objectiveIndex: number, zoneId: string) {
+    patch({
+      steps: draft.steps.map((step, currentStepIndex) => currentStepIndex === stepIndex
+        ? {
+            ...step,
+            objectives: step.objectives.map((objective, currentObjectiveIndex) => currentObjectiveIndex === objectiveIndex
+              ? { ...objective, zoneId: zoneId || undefined }
+              : objective),
+          }
+        : step),
+    });
   }
 
   function resolveImage(imageKey: string | undefined): string | undefined {
@@ -471,6 +517,23 @@ export function QuestsPage() {
             <button type="button" onClick={addStep}>Добавить шаг</button>
           </div>
           <textarea rows={12} value={stepsJson} onChange={(event) => setStepsJson(event.target.value)} onBlur={() => patch({ steps: safeParseJson<QuestStep[]>(stepsJson, draft.steps) })} />
+          <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
+          {objectiveZoneEntries.length > 0 ? (
+            <div className="admin-zone-reference-stack">
+              {objectiveZoneEntries.map(({ step, objective, stepIndex, objectiveIndex }) => (
+                <ZoneReferenceInput
+                  key={`${step.id}:${objective.id}`}
+                  label={`Objective ${objective.id}`}
+                  hint={`Шаг ${step.title || step.id}. Для objective можно выбрать существующую зону или ввести zoneId вручную.`}
+                  listId={`quest-objective-zone-${step.id}-${objective.id}`}
+                  value={objective.zoneId ?? ''}
+                  zones={zones}
+                  onChange={(value) => updateObjectiveZone(stepIndex, objectiveIndex, value)}
+                  emptyOptionLabel="Зона objective"
+                />
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="card admin-item-preview">
@@ -488,6 +551,23 @@ export function QuestsPage() {
         <section className="card admin-item-preview">
           <h4>Triggers</h4>
           <textarea rows={10} value={triggersJson} onChange={(event) => setTriggersJson(event.target.value)} onBlur={() => patch({ triggers: safeParseJson<QuestTrigger[]>(triggersJson, draft.triggers) })} />
+          <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
+          {triggerZoneEntries.length > 0 ? (
+            <div className="admin-zone-reference-stack">
+              {triggerZoneEntries.map(({ trigger, index }) => (
+                <ZoneReferenceInput
+                  key={trigger.id}
+                  label={`Trigger ${trigger.id}`}
+                  hint={`Тип ${trigger.type}. Для trigger можно выбрать существующую зону или ввести zoneId вручную.`}
+                  listId={`quest-trigger-zone-${trigger.id}`}
+                  value={trigger.zoneId ?? ''}
+                  zones={zones}
+                  onChange={(value) => updateTriggerZone(index, value)}
+                  emptyOptionLabel="Зона trigger"
+                />
+              ))}
+            </div>
+          ) : null}
         </section>
 
         <section className="card admin-item-preview">

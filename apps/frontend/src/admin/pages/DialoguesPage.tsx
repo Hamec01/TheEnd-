@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminFieldLabel } from '../adminUi';
-import { deleteDialogue, duplicateDialogue, exportDialoguesJson, getAllDialogues, importDialoguesJson, saveDialogue } from '../../services/dialogueRepository';
-import { getAllNpcs } from '../../services/npcRepository';
-import { getAllQuests, getQuestItems } from '../../services/questRepository';
+import {
+  deleteDialogue,
+  duplicateDialogue,
+  ensureDialoguesLoaded,
+  exportDialoguesJson,
+  getAllDialogues,
+  importDialoguesJson,
+  saveDialogue,
+} from '../../services/dialogueRepository';
+import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
+import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
 import { itemsService } from '../../services/content/itemsService';
 import { skillsService } from '../../services/content/skillsService';
 import { validateDialogue } from '../../services/dialogueValidator';
@@ -69,14 +77,20 @@ export function DialoguesPage() {
   }
 
   useEffect(() => {
-    void Promise.all([itemsService.getAll(), skillsService.getAll()]).then(([items, skills]) => {
+    void Promise.all([
+      ensureDialoguesLoaded(),
+      ensureNpcsLoaded(),
+      ensureQuestsLoaded(),
+      itemsService.getAll(),
+      skillsService.getAll(),
+    ]).then(([, , , items, skills]) => {
       setItemIds(items.map((entry) => entry.id));
       setSkillIds(skills.map((entry) => entry.id));
+      setNpcIds(getAllNpcs().map((entry) => entry.id));
+      setQuestIds(getAllQuests().map((entry) => entry.id));
+      setQuestItemIds(getQuestItems().map((entry) => entry.id));
+      refresh();
     });
-    setNpcIds(getAllNpcs().map((entry) => entry.id));
-    setQuestIds(getAllQuests().map((entry) => entry.id));
-    setQuestItemIds(getQuestItems().map((entry) => entry.id));
-    refresh();
   }, []);
 
   useEffect(() => {
@@ -122,7 +136,7 @@ export function DialoguesPage() {
     setStatusText('Новый диалог.');
   }
 
-  function saveCurrent() {
+  async function saveCurrent() {
     const prepared: DialogueDefinition = {
       ...draft,
       id: draft.id.trim() || `dlg_${Math.random().toString(36).slice(2, 8)}`,
@@ -139,50 +153,51 @@ export function DialoguesPage() {
       return;
     }
 
-    const saved = saveDialogue(prepared);
+    const saved = await saveDialogue(prepared);
     setSelectedId(saved.id);
     setDraft(saved);
     refresh();
     setStatusText(`Диалог сохранен: ${saved.id}`);
   }
 
-  function duplicateSelectedDialogue() {
+  async function duplicateSelectedDialogue() {
     if (!selectedId) {
       return;
     }
-    const copied = duplicateDialogue(selectedId);
+    const copied = await duplicateDialogue(selectedId);
     setSelectedId(copied.id);
     setDraft(copied);
     refresh();
     setStatusText(`Создана копия: ${copied.id}`);
   }
 
-  function deleteSelectedDialogue() {
+  async function deleteSelectedDialogue() {
     if (!selectedId) {
       return;
     }
-    deleteDialogue(selectedId);
+    await deleteDialogue(selectedId);
     setSelectedId(null);
     setDraft(emptyDialogue());
     refresh();
     setStatusText(`Диалог удален: ${selectedId}`);
   }
 
-  function exportJson() {
-    navigator.clipboard.writeText(exportDialoguesJson()).then(() => {
+  async function exportJson() {
+    const json = await exportDialoguesJson();
+    navigator.clipboard.writeText(json).then(() => {
       setStatusText('JSON диалогов скопирован в буфер обмена.');
     }).catch(() => {
       setStatusText('Не удалось скопировать JSON диалогов.');
     });
   }
 
-  function importJson() {
+  async function importJson() {
     const raw = window.prompt('Вставьте JSON диалогов для импорта:');
     if (!raw) {
       return;
     }
     try {
-      const count = importDialoguesJson(raw);
+      const count = await importDialoguesJson(raw);
       refresh();
       setStatusText(`Импорт диалогов завершен: ${count}`);
     } catch (error) {

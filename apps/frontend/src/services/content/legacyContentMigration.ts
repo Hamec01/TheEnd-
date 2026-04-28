@@ -1,10 +1,27 @@
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
-import type { AdminItem, AdminMerchant, AdminSkill, LootTable, Material, StoredImage } from './models';
+import type {
+  AdminDialogue,
+  AdminItem,
+  AdminMerchant,
+  AdminNpc,
+  AdminQuest,
+  AdminQuestItem,
+  AdminQuestMarker,
+  AdminSkill,
+  LootTable,
+  Material,
+  StoredImage,
+} from './models';
 import { readCollection } from './storage';
 import type { ContentSnapshot } from './contentApi';
 
 const MIGRATION_FLAG_KEY = 'theend.content.backend.migrated.v3';
 const LEGACY_WORLD_MAP_STORAGE_PREFIX = 'theend.worldMap.zones.dev';
+const LEGACY_DIALOGUES_KEY = 'theend.dialogues';
+const LEGACY_NPCS_KEY = 'theend.npcs';
+const LEGACY_QUESTS_KEY = 'theend.quests';
+const LEGACY_QUEST_ITEMS_KEY = 'theend.questItems';
+const LEGACY_QUEST_MARKERS_KEY = 'theend.questMap.markers';
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
   const merged = new Map<string, T>();
@@ -120,6 +137,24 @@ function readLegacyWorldMap(): { zones: WorldMapZone[]; regions: PaintedRegion[]
   return { zones, regions };
 }
 
+function safeParse<T>(raw: string | null, fallback: T): T {
+  if (!raw) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function readLegacyArray<T>(key: string): T[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  return safeParse<T[]>(window.localStorage.getItem(key), []);
+}
+
 function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
   if (typeof window === 'undefined') {
     return null;
@@ -131,6 +166,11 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
   const materials = readCollection<Material>('materials');
   const lootTables = readCollection<LootTable>('lootTables');
   const images = readCollection<StoredImage>('images');
+  const dialogues = readLegacyArray<AdminDialogue>(LEGACY_DIALOGUES_KEY);
+  const npcs = readLegacyArray<AdminNpc>(LEGACY_NPCS_KEY);
+  const quests = readLegacyArray<AdminQuest>(LEGACY_QUESTS_KEY);
+  const questItems = readLegacyArray<AdminQuestItem>(LEGACY_QUEST_ITEMS_KEY);
+  const questMarkers = readLegacyArray<AdminQuestMarker>(LEGACY_QUEST_MARKERS_KEY);
   const worldMap = readLegacyWorldMap();
 
   const hasAnyContent = items.length > 0
@@ -139,6 +179,11 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
     || materials.length > 0
     || lootTables.length > 0
     || images.length > 0
+    || dialogues.length > 0
+    || npcs.length > 0
+    || quests.length > 0
+    || questItems.length > 0
+    || questMarkers.length > 0
     || Boolean(worldMap && (worldMap.zones.length > 0 || worldMap.regions.length > 0));
 
   if (!hasAnyContent) {
@@ -152,6 +197,11 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
     materials,
     lootTables,
     images,
+    dialogues,
+    npcs,
+    quests,
+    questItems,
+    questMarkers,
     worldMap: worldMap
       ? {
           zones: worldMap.zones,
@@ -213,6 +263,21 @@ function shouldImportLegacy(remote: ContentSnapshot, legacy: Partial<ContentSnap
     return true;
   }
   if (hasMissingIds(remote.images, legacy.images) || hasNewerEntries(remote.images, legacy.images)) {
+    return true;
+  }
+  if (hasMissingIds(remote.dialogues, legacy.dialogues) || hasNewerEntries(remote.dialogues, legacy.dialogues)) {
+    return true;
+  }
+  if (hasMissingIds(remote.npcs, legacy.npcs) || hasNewerEntries(remote.npcs, legacy.npcs)) {
+    return true;
+  }
+  if (hasMissingIds(remote.quests, legacy.quests) || hasNewerEntries(remote.quests, legacy.quests)) {
+    return true;
+  }
+  if (hasMissingIds(remote.questItems, legacy.questItems) || hasNewerEntries(remote.questItems, legacy.questItems)) {
+    return true;
+  }
+  if (hasMissingIds(remote.questMarkers, legacy.questMarkers) || hasNewerEntries(remote.questMarkers, legacy.questMarkers)) {
     return true;
   }
 

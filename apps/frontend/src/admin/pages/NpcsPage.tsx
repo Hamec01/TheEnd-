@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminImageField } from '../AdminImageField';
+import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel } from '../adminUi';
-import { getAllDialogues, saveDialogue } from '../../services/dialogueRepository';
+import { subscribeToContentSync } from '../../services/content/contentSync';
+import { ensureDialoguesLoaded, getAllDialogues, saveDialogue } from '../../services/dialogueRepository';
 import { itemsService } from '../../services/content/itemsService';
 import { lootTablesService } from '../../services/content/lootTablesService';
 import { merchantsService } from '../../services/content/merchantsService';
 import { skillsService } from '../../services/content/skillsService';
-import { getQuestMarkers } from '../../services/questMapRepository';
-import { getAllQuests, getQuestItems } from '../../services/questRepository';
-import { getAllNpcs, saveNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
+import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
+import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
+import { ensureNpcsLoaded, getAllNpcs, saveNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
 import { validateNpc } from '../../services/npcValidator';
+import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import type {
   NpcCondition,
   NpcDefinition,
@@ -20,6 +23,7 @@ import type {
   NpcStatus,
   NpcValidationWorldData,
 } from '../../types/npc';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'guard', 'enemy', 'boss', 'companion', 'random_encounter', 'story_character', 'monster', 'animal'];
@@ -93,7 +97,7 @@ export function NpcsPage() {
   const [itemIds, setItemIds] = useState<string[]>([]);
   const [questItemIds, setQuestItemIds] = useState<string[]>([]);
   const [traderOptions, setTraderOptions] = useState<Array<{ id: string; name: string; city: string; enabled: boolean; assortment: number }>>([]);
-  const [zoneIds, setZoneIds] = useState<string[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [lootTableIds, setLootTableIds] = useState<string[]>([]);
 
@@ -117,11 +121,15 @@ export function NpcsPage() {
 
   useEffect(() => {
     void Promise.all([
+      ensureNpcsLoaded(),
+      ensureDialoguesLoaded(),
+      ensureQuestsLoaded(),
+      ensureQuestMarkersLoaded(),
       skillsService.getAll(),
       itemsService.getAll(),
       merchantsService.getAll(),
       lootTablesService.getAll(),
-    ]).then(([skills, items, merchants, lootTables]) => {
+    ]).then(([, , , , skills, items, merchants, lootTables]) => {
       setSkillIds(skills.map((entry) => entry.id));
       setItemIds(items.map((entry) => entry.id));
       setTraderOptions(merchants.map((entry) => ({
@@ -132,15 +140,24 @@ export function NpcsPage() {
         assortment: entry.items.length,
       })));
       setLootTableIds(lootTables.map((entry) => entry.id));
+
+      setQuestIds(getAllQuests().map((entry) => entry.id));
+      setQuestItemIds(getQuestItems().map((entry) => entry.id));
+      setDialogueIds(getAllDialogues().map((entry) => entry.id));
+      setMarkerIds(getQuestMarkers().map((entry) => entry.id));
+      setZones(getAllZones());
+      refresh();
     });
 
-    setQuestIds(getAllQuests().map((entry) => entry.id));
-    setQuestItemIds(getQuestItems().map((entry) => entry.id));
-    setDialogueIds(getAllDialogues().map((entry) => entry.id));
-    setZoneIds(getAllQuests().flatMap((entry) => entry.triggers.map((trigger) => trigger.zoneId)).filter(Boolean) as string[]);
-    setMarkerIds(getQuestMarkers().map((entry) => entry.id));
+    void refreshZonesFromBackend().then(setZones).catch(() => undefined);
 
-    refresh();
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'worldMap' || payload.scope === 'all') {
+        void refreshZonesFromBackend().then(setZones).catch(() => undefined);
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -149,6 +166,8 @@ export function NpcsPage() {
     setQuestBindingsJson(JSON.stringify(draft.questBindings, null, 2));
     setConditionsJson(JSON.stringify(draft.conditions ?? [], null, 2));
   }, [draft]);
+
+  const zoneIds = useMemo(() => zones.map((zone) => zone.id), [zones]);
 
   const worldData = useMemo<NpcValidationWorldData>(() => ({
     questIds,
@@ -186,6 +205,18 @@ export function NpcsPage() {
     return traderOptions.find((entry) => entry.id === draft.traderId) ?? null;
   }, [draft.traderId, traderOptions]);
 
+  const primaryMapBinding = useMemo(() => draft.mapBindings[0] ?? null, [draft.mapBindings]);
+  const locationZone = useMemo(
+    () => zones.find((zone) => zone.id === (primaryMapBinding?.zoneId ?? '').trim()) ?? null,
+    [primaryMapBinding?.zoneId, zones],
+  );
+  const zoneListText = useMemo(() => zones.map((zone) => buildWorldZoneLabel(zone)).join(', '), [zones]);
+
+  function patchPrimaryMapBinding(next: Partial<NpcMapBinding>) {
+    const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
+    patch({ mapBindings: [{ ...current, ...next }] });
+  }
+
   function patch(next: Partial<NpcDefinition>) {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
   }
@@ -202,7 +233,7 @@ export function NpcsPage() {
     setStatusText(`Редактируется NPC: ${npc.id}`);
   }
 
-  function saveCurrent() {
+  async function saveCurrent() {
     const prepared: NpcDefinition = {
       ...draft,
       id: draft.id.trim() || `npc_${Math.random().toString(36).slice(2, 8)}`,
@@ -221,25 +252,25 @@ export function NpcsPage() {
       return;
     }
 
-    const saved = saveNpc(prepared);
+    const saved = await saveNpc(prepared);
     setDraft(saved);
     setSelectedId(saved.id);
     refresh();
     setStatusText(`NPC сохранен: ${saved.id}`);
   }
 
-  function duplicateSelected() {
+  async function duplicateSelected() {
     if (!selectedId) {
       return;
     }
-    const copy = duplicateNpc(selectedId);
+    const copy = await duplicateNpc(selectedId);
     refresh();
     setSelectedId(copy.id);
     setDraft(copy);
     setStatusText(`Создана копия: ${copy.id}`);
   }
 
-  function disableSelected() {
+  async function disableSelected() {
     if (!selectedId) {
       return;
     }
@@ -247,38 +278,39 @@ export function NpcsPage() {
     if (!current) {
       return;
     }
-    saveNpc({ ...current, status: 'disabled' });
+    await saveNpc({ ...current, status: 'disabled' });
     refresh();
     setStatusText(`NPC отключен: ${selectedId}`);
   }
 
-  function removeSelected() {
+  async function removeSelected() {
     if (!selectedId) {
       return;
     }
-    deleteNpc(selectedId);
+    await deleteNpc(selectedId);
     setSelectedId(null);
     setDraft(emptyNpc());
     refresh();
     setStatusText(`NPC удален: ${selectedId}`);
   }
 
-  function exportJson() {
-    navigator.clipboard.writeText(exportNpcsJson()).then(() => {
+  async function exportJson() {
+    const json = await exportNpcsJson();
+    navigator.clipboard.writeText(json).then(() => {
       setStatusText('JSON NPC скопирован в буфер обмена.');
     }).catch(() => {
       setStatusText('Не удалось скопировать JSON.');
     });
   }
 
-  function importJson() {
+  async function importJson() {
     const raw = window.prompt('Вставьте JSON NPC для импорта:');
     if (!raw) {
       return;
     }
 
     try {
-      const count = importNpcsJson(raw);
+      const count = await importNpcsJson(raw);
       refresh();
       setStatusText(`Импорт NPC завершен: ${count}`);
     } catch (error) {
@@ -286,7 +318,7 @@ export function NpcsPage() {
     }
   }
 
-  function createDialogueForNpc() {
+  async function createDialogueForNpc() {
     const npcId = draft.id.trim();
     if (!npcId) {
       setStatusText('Сначала сохраните NPC, затем создайте диалог.');
@@ -295,7 +327,7 @@ export function NpcsPage() {
 
     const dialogueId = `dlg_${npcId}_${Math.random().toString(36).slice(2, 6)}`;
     const now = new Date().toISOString();
-    saveDialogue({
+    await saveDialogue({
       id: dialogueId,
       title: `Dialogue for ${draft.name || npcId}`,
       npcId,
@@ -406,40 +438,40 @@ export function NpcsPage() {
         {activeTab === 'location' ? (
           <>
             <div className="admin-form-grid">
-              <label><AdminFieldLabel label="Map ID" hint="Карта, где спавнится NPC." /><input value={draft.mapBindings[0]?.mapId ?? 'worldmap-main'} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, mapId: event.target.value }] });
+              <label><AdminFieldLabel label="Map ID" hint="Карта, где спавнится NPC. Для city zone можно оставить пустым." /><input value={primaryMapBinding?.mapId ?? ''} onChange={(event) => {
+                patchPrimaryMapBinding({ mapId: event.target.value });
+              }} placeholder="worldmap-main" /></label>
+              <label><AdminFieldLabel label="Marker ID" hint="Связь с квестовым маркером." /><input value={primaryMapBinding?.markerId ?? ''} onChange={(event) => {
+                patchPrimaryMapBinding({ markerId: event.target.value || undefined });
               }} /></label>
-              <label><AdminFieldLabel label="Marker ID" hint="Связь с квестовым маркером." /><input value={draft.mapBindings[0]?.markerId ?? ''} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, markerId: event.target.value || undefined }] });
-              }} /></label>
-              <label><AdminFieldLabel label="Zone ID" hint="Привязка к зоне карты." /><input value={draft.mapBindings[0]?.zoneId ?? ''} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, zoneId: event.target.value || undefined }] });
-              }} /></label>
-              <label><AdminFieldLabel label="Spawn Type" hint="Тип появления NPC." /><select value={draft.mapBindings[0]?.spawnType ?? 'fixed'} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, spawnType: event.target.value as NpcMapBinding['spawnType'] }] });
+              <ZoneReferenceInput
+                label="Zone ID"
+                hint="Выберите существующую зону или введите zoneId вручную."
+                listId="npc-location-zone-ids"
+                value={primaryMapBinding?.zoneId ?? ''}
+                zones={zones}
+                onChange={(value) => patchPrimaryMapBinding({ zoneId: value || undefined })}
+              />
+              <label><AdminFieldLabel label="Spawn Type" hint="Тип появления NPC." /><select value={primaryMapBinding?.spawnType ?? 'fixed'} onChange={(event) => {
+                patchPrimaryMapBinding({ spawnType: event.target.value as NpcMapBinding['spawnType'] });
               }}>{MAP_SPAWN_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label>
-              <label><AdminFieldLabel label="X" hint="Нормализованная координата X (0..1)." /><input type="number" min={0} max={1} step={0.01} value={draft.mapBindings[0]?.x ?? ''} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, x: event.target.value ? Number(event.target.value) : undefined }] });
+              <label><AdminFieldLabel label="X" hint="Нормализованная координата X (0..1). Для city zone можно не заполнять." /><input type="number" min={0} max={1} step={0.01} value={primaryMapBinding?.x ?? ''} onChange={(event) => {
+                patchPrimaryMapBinding({ x: event.target.value ? Number(event.target.value) : undefined });
               }} /></label>
-              <label><AdminFieldLabel label="Y" hint="Нормализованная координата Y (0..1)." /><input type="number" min={0} max={1} step={0.01} value={draft.mapBindings[0]?.y ?? ''} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, y: event.target.value ? Number(event.target.value) : undefined }] });
+              <label><AdminFieldLabel label="Y" hint="Нормализованная координата Y (0..1). Для city zone можно не заполнять." /><input type="number" min={0} max={1} step={0.01} value={primaryMapBinding?.y ?? ''} onChange={(event) => {
+                patchPrimaryMapBinding({ y: event.target.value ? Number(event.target.value) : undefined });
               }} /></label>
-              <label className="zone-editor-checkbox"><input type="checkbox" checked={draft.mapBindings[0]?.visibleToPlayer ?? true} onChange={(event) => {
-                const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
-                patch({ mapBindings: [{ ...current, visibleToPlayer: event.target.checked }] });
+              <label className="zone-editor-checkbox"><input type="checkbox" checked={primaryMapBinding?.visibleToPlayer ?? true} onChange={(event) => {
+                patchPrimaryMapBinding({ visibleToPlayer: event.target.checked });
               }} /><AdminFieldLabel label="Visible to player" hint="Показывать NPC игроку на карте." /></label>
             </div>
+
+            {locationZone ? <p className="muted">Выбрана зона: {buildWorldZoneLabel(locationZone)}</p> : null}
 
             <section className="card admin-item-preview">
               <h4>Map bindings JSON</h4>
               <textarea rows={10} value={mapBindingsJson} onChange={(event) => setMapBindingsJson(event.target.value)} onBlur={() => patch({ mapBindings: parseJsonArray<NpcMapBinding>(mapBindingsJson, draft.mapBindings) })} />
-              <p className="muted">Доступные zoneId: {zoneIds.join(', ') || '-'}</p>
+              <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
               <p className="muted">Доступные markerId: {markerIds.join(', ') || '-'}</p>
             </section>
           </>
@@ -552,7 +584,14 @@ export function NpcsPage() {
               <label><AdminFieldLabel label="Movement radius" hint="Радиус перемещения NPC." /><input type="number" value={draft.behavior?.movementRadius ?? ''} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), movementRadius: event.target.value ? Number(event.target.value) : undefined } })} /></label>
               <label><AdminFieldLabel label="Interaction radius" hint="Радиус взаимодействия игрока." /><input type="number" value={draft.behavior?.interactionRadius ?? ''} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), interactionRadius: event.target.value ? Number(event.target.value) : undefined } })} /></label>
               <label><AdminFieldLabel label="Aggression radius" hint="Радиус агрессии NPC." /><input type="number" value={draft.behavior?.aggressionRadius ?? ''} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), aggressionRadius: event.target.value ? Number(event.target.value) : undefined } })} /></label>
-              <label><AdminFieldLabel label="Patrol zone" hint="Зона патрулирования." /><input value={draft.behavior?.patrolZoneId ?? ''} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), patrolZoneId: event.target.value || undefined } })} /></label>
+              <ZoneReferenceInput
+                label="Patrol zone"
+                hint="Зона патрулирования NPC. Можно выбрать из списка или ввести вручную."
+                listId="npc-patrol-zone-ids"
+                value={draft.behavior?.patrolZoneId ?? ''}
+                zones={zones}
+                onChange={(value) => patch({ behavior: { ...(draft.behavior ?? {}), patrolZoneId: value || undefined } })}
+              />
               <label><AdminFieldLabel label="Flee at HP %" hint="Порог бегства по HP." /><input type="number" value={draft.behavior?.fleeAtHpPercent ?? ''} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), fleeAtHpPercent: event.target.value ? Number(event.target.value) : undefined } })} /></label>
               <label className="zone-editor-checkbox"><input type="checkbox" checked={draft.behavior?.callsGuards ?? false} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), callsGuards: event.target.checked } })} /><AdminFieldLabel label="Calls guards" hint="Зовет стражу при агрессии." /></label>
               <label className="zone-editor-checkbox"><input type="checkbox" checked={draft.behavior?.attacksEnemiesOfFaction ?? false} onChange={(event) => patch({ behavior: { ...(draft.behavior ?? {}), attacksEnemiesOfFaction: event.target.checked } })} /><AdminFieldLabel label="Attacks faction enemies" hint="Атакует врагов фракции." /></label>

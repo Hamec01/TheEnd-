@@ -2435,6 +2435,33 @@ h3 {
   color: var(--text-muted);
 }
 
+.admin-zone-reference-field {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-zone-reference-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.admin-zone-reference-preview {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(153, 124, 75, 0.42);
+  background: rgba(26, 22, 17, 0.68);
+}
+
+.admin-zone-reference-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .admin-field-label {
   display: inline-flex;
   align-items: center;

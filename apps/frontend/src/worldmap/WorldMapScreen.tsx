@@ -9,6 +9,7 @@ import { ZoneEditorPanel } from './ZoneEditorPanel';
 import { NpcInteractionPanel } from './NpcInteractionPanel';
 import { createEmptyHistory, createSnapshot, pushHistory, redoHistory, undoHistory, type ZoneEditorHistoryState } from './zoneEditorHistory';
 import { clearEditorSettingsStorage, clearZoneStorage, exportEditorDataJson, loadEditorDataFromBackend, loadEditorSettings, saveEditorDataToBackend, saveEditorSettings, validateEditorDataJson } from './zoneEditorStorage';
+import { replaceAllZones } from '../services/worldRepository';
 import { createDefaultEditorSettings, createDraftFromZone, createEmptyZoneDraft, createZoneFromDraft, type PaintedRegion, type RegionBrushSize, type RegionToolMode, type RegionType, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import type { ChatMessage, ChatType, ContextMode, MapNodeData, PlayerWorldState, WorldMapMode } from './types';
 import { getNearbyPlayers, canAttackNearbyPlayer, type NearbyPlayer } from './nearbyPlayersSystem';
@@ -16,11 +17,11 @@ import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import { getZoneCenter, moveZone } from './zoneGeometry';
 import type { AdminMerchant } from '../services/content/models';
 import { subscribeToContentSync } from '../services/content/contentSync';
-import { getAllPlayerQuestStates, getAllQuests } from '../services/questRepository';
-import { deleteQuestMarker, getQuestMarkers, saveQuestMarker } from '../services/questMapRepository';
+import { ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests } from '../services/questRepository';
+import { deleteQuestMarker, ensureQuestMarkersLoaded, getQuestMarkers, saveQuestMarker } from '../services/questMapRepository';
 import { tryStartRandomQuestFromZone } from '../services/questRuntime';
 import type { PlayerQuestState, QuestDefinition, QuestMarkerDefinition } from '../types/quest';
-import { getAllNpcs, saveNpc } from '../services/npcRepository';
+import { ensureNpcsLoaded, getAllNpcs, saveNpc } from '../services/npcRepository';
 import { getDialoguesByNpc } from '../services/dialogueRepository';
 import { chooseDialogueOption, getStartNode } from '../services/dialogueRuntime';
 import { getNearbyMappedNpcs } from '../services/npcMapRuntime';
@@ -305,6 +306,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         skipNextZonePersistRef.current = true;
         setZones(loaded.zones);
         setRegions(loaded.regions);
+        replaceAllZones(loaded.zones);
         setCurrentZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
         setHoverZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
       })
@@ -326,10 +328,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [regions, zones]);
 
   useEffect(() => {
-    setQuestDefinitions(getAllQuests());
-    setPlayerQuestStates(getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id));
-    setQuestMarkers(getQuestMarkers());
-    setNpcs(getAllNpcs());
+    void Promise.all([
+      ensureQuestsLoaded(),
+      ensureQuestMarkersLoaded(),
+      ensureNpcsLoaded(),
+    ]).then(() => {
+      setQuestDefinitions(getAllQuests());
+      setPlayerQuestStates(getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id));
+      setQuestMarkers(getQuestMarkers());
+      setNpcs(getAllNpcs());
+    }).catch(() => {
+      setQuestDefinitions([]);
+      setQuestMarkers([]);
+      setNpcs([]);
+    });
   }, [character.id]);
 
   useEffect(() => {
@@ -405,8 +417,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         if (zones.length === 0 && regions.length === 0) {
           clearZoneStorage();
           await saveEditorDataToBackend([], []);
+          replaceAllZones([]);
         } else {
           await saveEditorDataToBackend(zones, regions);
+          replaceAllZones(zones);
         }
         setAutosaveStatus('autosaved');
       } catch {
@@ -622,7 +636,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setQuestMarkerDraft(existing ? { ...existing } : null);
   }, [questMarkers]);
 
-  const handleSaveQuestMarker = useCallback(() => {
+  const handleSaveQuestMarker = useCallback(async () => {
     const draft = questMarkerDraft ?? {
       id: `marker_${Date.now()}`,
       title: 'Новый маркер',
@@ -639,7 +653,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
-    const saved = saveQuestMarker(draft);
+    const saved = await saveQuestMarker(draft);
     const all = getQuestMarkers();
     setQuestMarkers(all);
     setSelectedQuestMarkerId(saved.id);
@@ -647,11 +661,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onStatus(`Quest marker сохранен: ${saved.title}.`);
   }, [mouseCoords.x, mouseCoords.y, onStatus, questMarkerDraft]);
 
-  const handleDeleteQuestMarker = useCallback(() => {
+  const handleDeleteQuestMarker = useCallback(async () => {
     if (!selectedQuestMarkerId) {
       return;
     }
-    deleteQuestMarker(selectedQuestMarkerId);
+    await deleteQuestMarker(selectedQuestMarkerId);
     const all = getQuestMarkers();
     setQuestMarkers(all);
     setSelectedQuestMarkerId(null);
@@ -684,7 +698,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     void onStartCombat();
   }, [nearbyNpcs, onStartCombat, onStatus, worldMapMode]);
 
-  const handlePlaceNpcAtCursor = useCallback(() => {
+  const handlePlaceNpcAtCursor = useCallback(async () => {
     if (!selectedNpcIdForPlacement) {
       onStatus('Выберите NPC для размещения.');
       return;
@@ -709,7 +723,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       visibleToPlayer: true,
     };
 
-    const saved = saveNpc({
+    const saved = await saveNpc({
       ...npc,
       mapBindings: [...npc.mapBindings, binding],
       updatedAt: new Date().toISOString(),
@@ -952,6 +966,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setEditorDraft(null);
     setEditorJson('');
     clearZoneStorage();
+    replaceAllZones([]);
     void saveEditorDataToBackend([], []);
     onStatus('Editor: all zones and regions cleared.');
   }
@@ -963,6 +978,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     void saveEditorDataToBackend([], []);
     clearEditorSettingsStorage();
     setZones(cloneZones(WORLD_MAP_ZONES));
+    replaceAllZones(cloneZones(WORLD_MAP_ZONES));
     setRegions([]);
     setEditorSettings(createDefaultEditorSettings());
     setSelectedZoneId(null);
@@ -1135,6 +1151,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   function handleSaveShortcut() {
     void saveEditorDataToBackend(zones, regions);
+    replaceAllZones(zones);
     saveEditorSettings(editorSettings);
     setAutosaveStatus('autosaved');
     onStatus('Editor: saved to backend content store.');

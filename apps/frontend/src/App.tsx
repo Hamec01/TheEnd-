@@ -61,6 +61,10 @@ import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource }
 import { getDomainItemWithFallback } from './services/content/seedService';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
+import { ensureDialoguesLoaded } from './services/dialogueRepository';
+import { ensureNpcsLoaded } from './services/npcRepository';
+import { ensureQuestsLoaded } from './services/questRepository';
+import { ensureQuestMarkersLoaded } from './services/questMapRepository';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -669,6 +673,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const refreshPromise = Promise.all([
       loadRuntimeAdminContent(),
       loadRuntimeImages(),
+      ensureDialoguesLoaded(options?.force === true),
+      ensureNpcsLoaded(options?.force === true),
+      ensureQuestsLoaded(options?.force === true),
+      ensureQuestMarkersLoaded(options?.force === true),
     ])
       .then(([content, images]) => {
         setRuntimeAdminItems(content.items);
