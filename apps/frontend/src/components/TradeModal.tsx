@@ -134,9 +134,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       <div className={`trade-modal-content rarity-${rarityClass}`} onClick={(e) => e.stopPropagation()}>
         <header className="trade-modal-head">
           <h2 className="trade-modal-title">{title}</h2>
-          <span className={`trade-modal-action-badge ${isBuy ? 'is-buy' : 'is-sell'} rarity-${rarityClass}`}>
-            {isBuy ? 'Купить' : 'Продать'}
-          </span>
+          <button type="button" className="trade-modal-close" aria-label="Закрыть" onClick={onCancel}>×</button>
         </header>
 
         <section className="trade-modal-item-card">

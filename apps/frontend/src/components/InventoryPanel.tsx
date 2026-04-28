@@ -165,6 +165,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
   const [silhouetteBroken, setSilhouetteBroken] = useState(false);
   const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
+  const [hoverPreview, setHoverPreview] = useState<{ itemId: string; x: number; y: number } | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -262,6 +263,55 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }, [equippedByLayoutSlot, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
 
+  const getComparisonForItem = (item: ItemDefinition | null) => {
+    if (!item) {
+      return {
+        slotId: null as EquipmentSlotId | null,
+        currentItem: null as ItemDefinition | null,
+        rows: [] as Array<{ label: string; before: number; after: number }>,
+      };
+    }
+
+    const equippedSlotId = ALL_SLOT_IDS.find((slotId) => equippedByLayoutSlot[slotId]?.id === item.id) ?? null;
+    const comparisonSlotId = equippedSlotId
+      ?? getAcceptedSlotsForItem(item).find((slotId) => Boolean(CORE_SLOT_BY_LAYOUT[slotId]))
+      ?? null;
+    const comparisonCoreSlot = comparisonSlotId ? CORE_SLOT_BY_LAYOUT[comparisonSlotId] ?? null : null;
+    const alreadyEquipped = equippedItemIds.has(item.id);
+
+    const previewEquipment: Equipment = (() => {
+      if (!comparisonCoreSlot || alreadyEquipped) {
+        return equipment;
+      }
+
+      const next: Equipment = {
+        ...equipment,
+        [comparisonCoreSlot]: item.id,
+      };
+
+      if (item.itemType === 'weapon' && getItemHandsRequired(item) === 2) {
+        next.shield = null;
+      }
+
+      return next;
+    })();
+
+    const derivedItemPreview = calculateDerivedStats(character.activeStats, previewEquipment);
+
+    return {
+      slotId: comparisonSlotId,
+      currentItem: comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null,
+      rows: [
+        { label: 'Defense', before: derivedBase.totalDefense, after: derivedItemPreview.totalDefense },
+        { label: 'Min Damage', before: derivedBase.minDamage, after: derivedItemPreview.minDamage },
+        { label: 'Max Damage', before: derivedBase.maxDamage, after: derivedItemPreview.maxDamage },
+        { label: 'Crit', before: derivedBase.critChance, after: derivedItemPreview.critChance },
+        { label: 'Block', before: derivedBase.blockChance, after: derivedItemPreview.blockChance },
+        { label: 'STA Load', before: derivedBase.staminaLoad, after: derivedItemPreview.staminaLoad },
+      ],
+    };
+  };
+
   useEffect(() => {
     if (!selectedItemId && inventoryEntries.length > 0) {
       setSelectedItemId(inventoryEntries[0].item.id);
@@ -278,53 +328,34 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }, [equippedItemIds, inventoryEntries, selectedItemId]);
 
-  const comparisonSlotId = useMemo(() => {
-    if (!selectedItem) {
-      return null;
-    }
+  const selectedComparison = useMemo(() => getComparisonForItem(selectedItem), [selectedItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase]);
+  const comparisonSlotId = selectedComparison.slotId;
+  const comparisonCurrentItem = selectedComparison.currentItem;
+  const itemComparisonRows = selectedComparison.rows;
 
-    return selectedEquippedSlotId
-      ?? getAcceptedSlotsForItem(selectedItem).find((slotId) => Boolean(CORE_SLOT_BY_LAYOUT[slotId]))
-      ?? null;
-  }, [selectedEquippedSlotId, selectedItem]);
-
-  const comparisonCoreSlot = comparisonSlotId ? CORE_SLOT_BY_LAYOUT[comparisonSlotId] ?? null : null;
-  const comparisonCurrentItem = comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null;
-  const selectedPreviewEquipment = useMemo<Equipment>(() => {
-    if (!selectedItem || !comparisonCoreSlot || selectedAlreadyEquipped) {
-      return equipment;
-    }
-
-    const next: Equipment = {
-      ...equipment,
-      [comparisonCoreSlot]: selectedItem.id,
-    };
-
-    if (selectedItem.itemType === 'weapon' && getItemHandsRequired(selectedItem) === 2) {
-      next.shield = null;
-    }
-
-    return next;
-  }, [comparisonCoreSlot, equipment, selectedAlreadyEquipped, selectedItem]);
-
-  const derivedItemPreview = useMemo(
-    () => calculateDerivedStats(character.activeStats, selectedPreviewEquipment),
-    [character.activeStats, selectedPreviewEquipment],
+  const hoverItem = useMemo(
+    () => (hoverPreview?.itemId ? inventoryByItemId.get(hoverPreview.itemId)?.item ?? null : null),
+    [hoverPreview, inventoryByItemId],
   );
-
-  const itemComparisonRows = [
-    ['Defense', derivedBase.totalDefense, derivedItemPreview.totalDefense],
-    ['Min Damage', derivedBase.minDamage, derivedItemPreview.minDamage],
-    ['Max Damage', derivedBase.maxDamage, derivedItemPreview.maxDamage],
-    ['Crit', derivedBase.critChance, derivedItemPreview.critChance],
-    ['Block', derivedBase.blockChance, derivedItemPreview.blockChance],
-    ['STA Load', derivedBase.staminaLoad, derivedItemPreview.staminaLoad],
-  ] as const;
+  const hoverComparison = useMemo(
+    () => getComparisonForItem(hoverItem),
+    [hoverItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase],
+  );
 
   useEffect(() => {
     setSilhouetteBroken(false);
     setSilhouetteSrc(getRaceSilhouette(paperDollRace as any));
   }, [paperDollRace]);
+
+  useEffect(() => {
+    const clearHoverPreview = () => setHoverPreview(null);
+    window.addEventListener('scroll', clearHoverPreview, true);
+    window.addEventListener('resize', clearHoverPreview);
+    return () => {
+      window.removeEventListener('scroll', clearHoverPreview, true);
+      window.removeEventListener('resize', clearHoverPreview);
+    };
+  }, []);
 
   const skillItems = useMemo(
     () => learnedSkills.map((skillId) => ({
@@ -506,7 +537,27 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       key={entry.item.id}
                       type="button"
                       className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+                      onMouseEnter={(event) => {
+                        const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        const cardWidth = Math.min(360, window.innerWidth - 24);
+                        const nextX = rect.right + cardWidth + 18 <= window.innerWidth
+                          ? rect.right + 12
+                          : Math.max(12, rect.left - cardWidth - 12);
+                        const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+                        setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
+                        setSelectedItemId(entry.item.id);
+                      }}
+                      onFocus={() => {
+                        setSelectedItemId(entry.item.id);
+                      }}
+                      onMouseLeave={() => {
+                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
+                      }}
+                      onBlur={() => {
+                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
+                      }}
                       onClick={() => {
+                        setHoverPreview(null);
                         setSelectedItemId(entry.item.id);
                         setItemDetailOpen(true);
                       }}
@@ -559,6 +610,24 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   <p className="muted">
                     Requirements: {Object.entries(selectedItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
                   </p>
+                  <div className="character-item-inline-compare-head">
+                    <span>Сравнение со слотом</span>
+                    <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
+                  </div>
+                  <div className="character-item-inline-compare-grid">
+                    {itemComparisonRows.map((row) => {
+                      const delta = Number((row.after - row.before).toFixed(1));
+                      return (
+                        <p key={row.label}>
+                          <span>{row.label}</span>
+                          <strong>{row.before} → {row.after}</strong>
+                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </em>
+                        </p>
+                      );
+                    })}
+                  </div>
                   <div className="character-item-actions">
                     <button
                       disabled={selectedAlreadyEquipped}
@@ -597,6 +666,44 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <p className="muted">Select an item from backpack.</p>
               )}
             </section>
+
+            {hoverPreview && hoverItem ? (
+              <aside
+                className="character-item-hover-card"
+                style={{ left: hoverPreview.x, top: hoverPreview.y }}
+                role="tooltip"
+              >
+                <div className="character-item-hover-head">
+                  <strong>{hoverItem.name}</strong>
+                  <small>{hoverItem.itemType} / {hoverItem.itemSubType} / {hoverItem.rarity}</small>
+                </div>
+                <p className="muted">{hoverItem.description || 'Описание отсутствует.'}</p>
+                <p className="muted">
+                  Бонусы: {Object.entries(hoverItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                </p>
+                <p className="muted">
+                  Требования: {Object.entries(hoverItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                </p>
+                <div className="character-item-inline-compare-head">
+                  <span>Сравнение со слотом</span>
+                  <strong>{hoverComparison.currentItem?.name ?? 'Слот пуст'}</strong>
+                </div>
+                <div className="character-item-inline-compare-grid">
+                  {hoverComparison.rows.map((row) => {
+                    const delta = Number((row.after - row.before).toFixed(1));
+                    return (
+                      <p key={row.label}>
+                        <span>{row.label}</span>
+                        <strong>{row.before} → {row.after}</strong>
+                        <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                          {delta > 0 ? `+${delta}` : delta}
+                        </em>
+                      </p>
+                    );
+                  })}
+                </div>
+              </aside>
+            ) : null}
           </section>
 
           <section ref={rightColumnRef} className={`character-column character-right ${focusedColumnClass === 'right' ? 'is-focused' : ''}`}>
@@ -769,12 +876,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     </div>
                   </div>
                   <div className="character-item-compare-grid">
-                    {itemComparisonRows.map(([label, before, after]) => {
-                      const delta = Number((after - before).toFixed(1));
+                    {itemComparisonRows.map((row) => {
+                      const delta = Number((row.after - row.before).toFixed(1));
                       return (
-                        <p key={label}>
-                          <span>{label}</span>
-                          <strong>{before} → {after}</strong>
+                        <p key={row.label}>
+                          <span>{row.label}</span>
+                          <strong>{row.before} → {row.after}</strong>
                           <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
                             {delta > 0 ? `+${delta}` : delta}
                           </em>

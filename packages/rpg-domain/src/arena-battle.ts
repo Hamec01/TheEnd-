@@ -409,7 +409,7 @@ function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
     return 'MAGIC';
   }
 
-  if (actor.dexterity > actor.strength) {
+  if (actor.dexterity >= actor.strength + 3 && actor.perception >= actor.strength + 2) {
     return 'RANGED';
   }
 
