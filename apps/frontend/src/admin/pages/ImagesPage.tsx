@@ -64,7 +64,7 @@ export function ImagesPage() {
   const selected = images.find((image) => image.id === selectedId) ?? null;
 
   return (
-    <div className="admin-two-col">
+    <div className="images-admin-layout">
       <section className="admin-list-panel">
         <div className="admin-list-tools">
           <label className="card">
@@ -72,18 +72,25 @@ export function ImagesPage() {
             <input type="file" accept="image/*" onChange={upload} />
           </label>
         </div>
-        <div className="admin-scroll-list image-list">
+        <div className="admin-image-browser">
           {images.map((image) => (
-            <button key={image.id} className={selectedId === image.id ? 'is-active' : ''} onClick={() => setSelectedId(image.id)}>
-              <img src={image.dataUrl} alt={image.name} />
-              <span>{image.name}</span>
-              <span>{image.id}</span>
+            <button
+              key={image.id}
+              type="button"
+              className={`admin-image-card ${selectedId === image.id ? 'is-active' : ''}`}
+              onClick={() => setSelectedId(image.id)}
+            >
+              <div className="admin-image-thumb">
+                <img src={image.dataUrl} alt={image.name} />
+              </div>
+              <strong>{image.name || image.id}</strong>
+              <small>{image.id}</small>
             </button>
           ))}
         </div>
       </section>
 
-      <section className="admin-form-panel">
+      <section className="admin-form-panel admin-image-preview-panel">
         <h3>Предпросмотр</h3>
         {selected ? (
           <>

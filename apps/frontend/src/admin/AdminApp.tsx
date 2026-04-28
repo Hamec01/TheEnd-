@@ -15,6 +15,7 @@ import { SkillsPage } from './pages/SkillsPage';
 import { NpcsPage } from './pages/NpcsPage';
 import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
+import { CitiesPage } from './pages/CitiesPage';
 
 interface AdminAppProps {
   currentPath: string;
@@ -135,7 +136,7 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       page = <ZoneEditorPage />;
       break;
     case '/admin/cities':
-      page = <ZoneEditorPage />;
+      page = <CitiesPage />;
       break;
     default:
       page = <DashboardPage />;
