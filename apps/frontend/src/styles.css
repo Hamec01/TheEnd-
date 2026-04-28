@@ -8515,3 +8515,48 @@ body:has(.page.page--scroll) {
   top: 0;
   transform-origin: 0 0;
 }
+
+.admin-editor-page {
+  height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.battle-map-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.battle-map-editor-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) minmax(420px, 1fr) minmax(260px, 330px);
+  gap: 10px;
+  overflow: hidden;
+}
+
+.battle-map-editor-side-section {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.battle-map-editor-canvas-section {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.battle-map-editor-canvas-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
