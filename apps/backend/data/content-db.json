@@ -320,7 +320,7 @@
       },
       "gameplayDescription": "A reliable blade for first battles.",
       "loreDescription": "Issued to new fighters of Arklein militia.",
-      "imagePath": "unknown",
+      "imagePath": "img_1777165487565_qhgqamq4",
       "isEnabled": true,
       "createdAt": "2026-04-28T14:39:50.904Z",
       "updatedAt": "2026-04-28T14:39:50.904Z"
@@ -343,7 +343,7 @@
       },
       "gameplayDescription": "Basic armor for beginners.",
       "loreDescription": "Simple leather vest sold in Arklein market.",
-      "imagePath": "unknown",
+      "imagePath": "img_1777238775904_o1xr3kha",
       "isEnabled": true,
       "createdAt": "2026-04-28T14:39:50.904Z",
       "updatedAt": "2026-04-28T14:39:50.904Z"
@@ -363,7 +363,7 @@
       "bonuses": {},
       "gameplayDescription": "Recovers a small amount of HP in combat.",
       "loreDescription": "Brewed by local alchemists for recruits.",
-      "imagePath": "unknown",
+      "imagePath": null,
       "isEnabled": true,
       "createdAt": "2026-04-28T14:39:50.904Z",
       "updatedAt": "2026-04-28T14:39:50.904Z"
