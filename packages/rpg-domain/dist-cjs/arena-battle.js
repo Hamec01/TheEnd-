@@ -256,6 +256,9 @@ function selectNearestEnemy(actor, enemies) {
     return [...enemies].sort((left, right) => getTacticalDistance(actor, left) - getTacticalDistance(actor, right))[0] ?? enemies[0];
 }
 function classifyCombatStyle(actor) {
+    if (actor.combatStyleHint) {
+        return actor.combatStyleHint;
+    }
     if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
         return 'MAGIC';
     }
@@ -417,10 +420,11 @@ function ensureActionPoints(_entity, action) {
     };
 }
 function classifyPreferredDistance(actor) {
-    if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
+    const style = classifyCombatStyle(actor);
+    if (style === 'MAGIC') {
         return DistanceBand.Far;
     }
-    if (actor.dexterity > actor.strength) {
+    if (style === 'RANGED') {
         return DistanceBand.Near;
     }
     return DistanceBand.Melee;

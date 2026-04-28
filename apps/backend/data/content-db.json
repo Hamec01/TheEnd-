@@ -298,6 +298,75 @@
       "updatedAt": "2026-04-27T09:38:57.468Z",
       "damageMin": 6,
       "damageMax": 10
+    },
+    {
+      "id": "starter_sword_01",
+      "name": "Starter Sword",
+      "type": "weapon",
+      "subtype": "sword",
+      "slot": "rightHand",
+      "handsRequired": 1,
+      "rarity": "common",
+      "price": 25,
+      "stackable": false,
+      "maxStack": 1,
+      "damageMin": 4,
+      "damageMax": 9,
+      "damageCategory": "physical",
+      "physicalType": "slash",
+      "requiredStats": {},
+      "bonuses": {
+        "strength": 1
+      },
+      "gameplayDescription": "A reliable blade for first battles.",
+      "loreDescription": "Issued to new fighters of Arklein militia.",
+      "imagePath": "unknown",
+      "isEnabled": true,
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
+    },
+    {
+      "id": "starter_leather_armor_01",
+      "name": "Starter Leather Armor",
+      "type": "armor",
+      "subtype": "leather",
+      "slot": "chest",
+      "handsRequired": 1,
+      "rarity": "common",
+      "price": 30,
+      "stackable": false,
+      "maxStack": 1,
+      "armorValue": 4,
+      "requiredStats": {},
+      "bonuses": {
+        "hp": 10
+      },
+      "gameplayDescription": "Basic armor for beginners.",
+      "loreDescription": "Simple leather vest sold in Arklein market.",
+      "imagePath": "unknown",
+      "isEnabled": true,
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
+    },
+    {
+      "id": "starter_healing_potion_01",
+      "name": "Starter Healing Potion",
+      "type": "potion",
+      "subtype": "healing",
+      "slot": "quick",
+      "handsRequired": 1,
+      "rarity": "common",
+      "price": 12,
+      "stackable": true,
+      "maxStack": 20,
+      "requiredStats": {},
+      "bonuses": {},
+      "gameplayDescription": "Recovers a small amount of HP in combat.",
+      "loreDescription": "Brewed by local alchemists for recruits.",
+      "imagePath": "unknown",
+      "isEnabled": true,
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
     }
   ],
   "skills": [
@@ -563,6 +632,42 @@
       ],
       "createdAt": "2026-04-26T09:17:38.452Z",
       "updatedAt": "2026-04-27T08:08:10.822Z"
+    },
+    {
+      "id": "merchant_arklein_starter",
+      "name": "Borin Ironhand",
+      "city": "Arklein",
+      "location": "Market Square",
+      "type": "general",
+      "description": "Starter gear merchant for new adventurers.",
+      "portraitPath": "",
+      "priceMultiplier": 1,
+      "isEnabled": true,
+      "items": [
+        {
+          "itemId": "starter_sword_01",
+          "stock": 20,
+          "infiniteStock": true,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "starter_leather_armor_01",
+          "stock": 20,
+          "infiniteStock": true,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "starter_healing_potion_01",
+          "stock": 20,
+          "infiniteStock": true,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        }
+      ],
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
     }
   ],
   "materials": [],
@@ -1286,6 +1391,22 @@
       "portraitUrl": "img_1777374792236_485fbddm",
       "iconUrl": "img_1777374795364_ayjr88rb",
       "conditions": []
+    },
+    {
+      "id": "npc_arklein_guard_01",
+      "name": "Captain Rhea",
+      "title": "City Guard Captain",
+      "status": "active",
+      "kind": "guard",
+      "race": "human",
+      "description": "Commands the city gate watch in Arklein.",
+      "mapBindings": [],
+      "dialogues": [],
+      "questBindings": [
+        "quest_arklein_first_step"
+      ],
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
     }
   ],
   "quests": [
@@ -1613,6 +1734,39 @@
       "flags": {},
       "createdAt": "2026-04-28T09:06:41.043Z",
       "updatedAt": "2026-04-28T11:22:40.173Z"
+    },
+    {
+      "id": "quest_arklein_first_step",
+      "title": "First Step in Arklein",
+      "adminDescription": "Intro quest for new players.",
+      "playerDescription": "Talk to Captain Rhea and buy a starter item.",
+      "category": "starter",
+      "status": "active",
+      "cityId": "city_arklein",
+      "npcId": "npc_arklein_guard_01",
+      "recommendedLevel": 1,
+      "minLevel": 1,
+      "maxLevel": 5,
+      "isRepeatable": false,
+      "isHidden": false,
+      "steps": [],
+      "triggers": [],
+      "conditions": [],
+      "rewards": [
+        {
+          "type": "gold",
+          "amount": 50
+        },
+        {
+          "type": "item",
+          "itemId": "starter_healing_potion_01",
+          "quantity": 2
+        }
+      ],
+      "failureConsequences": [],
+      "flags": {},
+      "createdAt": "2026-04-28T14:39:50.904Z",
+      "updatedAt": "2026-04-28T14:39:50.904Z"
     }
   ],
   "questItems": [
@@ -1664,9 +1818,29 @@
         "shape": "circle",
         "createdAt": 1713484800000,
         "updatedAt": 1713484800000
+      },
+      {
+        "id": "city_arklein",
+        "name": "Arklein",
+        "type": "city",
+        "shape": "circle",
+        "x": 0.5,
+        "y": 0.55,
+        "radius": 0.08,
+        "description": "Main starter city with market and quest board.",
+        "tooltip": "Arklein - Starter City",
+        "dangerLevel": 1,
+        "recommendedLevel": 1,
+        "requiredLevel": 1,
+        "isDiscovered": true,
+        "isVisibleToPlayer": true,
+        "isSafeZone": true,
+        "allowPvP": false,
+        "createdAt": 1777387190904,
+        "updatedAt": 1777387190904
       }
     ],
     "regions": [],
-    "updatedAt": "2026-04-28T11:25:53.031Z"
+    "updatedAt": "2026-04-28T14:39:50.904Z"
   }
 }

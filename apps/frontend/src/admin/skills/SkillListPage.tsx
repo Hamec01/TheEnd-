@@ -101,6 +101,10 @@ export function SkillListPage(props: SkillListPageProps) {
           </button>
         ))}
       </div>
+
+      {skills.length === 0 ? (
+        <p className="muted">Скиллы не найдены. Проверьте фильтры или создайте новый skill.</p>
+      ) : null}
     </section>
   );
 }

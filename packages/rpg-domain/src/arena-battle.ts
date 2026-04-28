@@ -80,6 +80,7 @@ export interface ArenaCombatEntity {
   battlefieldX?: number;
   battlefieldY?: number;
   avatarUrl?: string;
+  combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC';
 }
 
 export interface ArenaCombatAction {
@@ -400,6 +401,10 @@ function selectNearestEnemy(actor: ArenaCombatEntity, enemies: ArenaCombatEntity
 }
 
 function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
+  if (actor.combatStyleHint) {
+    return actor.combatStyleHint;
+  }
+
   if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
     return 'MAGIC';
   }
@@ -620,11 +625,13 @@ function ensureActionPoints(_entity: ArenaCombatEntity, action: ArenaCombatActio
 }
 
 function classifyPreferredDistance(actor: ArenaCombatEntity): DistanceBand {
-  if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
+  const style = classifyCombatStyle(actor);
+
+  if (style === 'MAGIC') {
     return DistanceBand.Far;
   }
 
-  if (actor.dexterity > actor.strength) {
+  if (style === 'RANGED') {
     return DistanceBand.Near;
   }
 

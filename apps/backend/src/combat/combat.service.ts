@@ -43,6 +43,7 @@ interface CharacterRecord {
 }
 
 type CombatEquipmentPayload = Partial<Equipment> | null | undefined;
+type CombatStyleHint = 'MELEE' | 'RANGED' | 'MAGIC';
 
 interface CombatSession {
   state: ArenaBattleState;
@@ -274,7 +275,31 @@ export class CombatService {
       team,
       position,
       stats: activeStats,
+      combatStyleHint: this.resolveCombatStyleHint(equipment),
     });
+  }
+
+  private resolveCombatStyleHint(equipment: Equipment): CombatStyleHint {
+    if (!equipment.weapon) {
+      return 'MELEE';
+    }
+
+    try {
+      const weapon = this.contentService.resolveItemById(equipment.weapon);
+      const subtype = String(weapon.itemSubType ?? '').toLowerCase();
+
+      if (subtype.includes('bow') || subtype.includes('crossbow') || subtype.includes('sling') || subtype.includes('throw')) {
+        return 'RANGED';
+      }
+
+      if (subtype.includes('staff') || subtype.includes('wand') || subtype.includes('tome') || subtype.includes('orb')) {
+        return 'MAGIC';
+      }
+    } catch {
+      return 'MELEE';
+    }
+
+    return 'MELEE';
   }
 
   private normalizeEquipment(equipment?: CombatEquipmentPayload): Equipment {
@@ -289,6 +314,7 @@ export class CombatService {
     position: number;
     stats: StatBlock;
     avatarUrl?: string;
+    combatStyleHint?: CombatStyleHint;
   }) {
     return createArenaCombatEntity({
       id: params.id,
@@ -310,6 +336,7 @@ export class CombatService {
       willpower: params.stats.willpower,
       position: params.position,
       avatarUrl: params.avatarUrl,
+      combatStyleHint: params.combatStyleHint,
     });
   }
 
@@ -347,6 +374,7 @@ export class CombatService {
       position,
       stats: activeStats,
       avatarUrl: template.avatarUrl,
+      combatStyleHint: this.resolveCombatStyleHint(equipment),
     });
   }
 

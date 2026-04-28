@@ -21,7 +21,7 @@ interface AdminAppProps {
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
@@ -37,6 +37,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     || path === '/admin/images'
     || path === '/admin/battle-maps'
     || path === '/admin/zone-editor'
+    || path === '/admin/cities'
   ) {
     return path;
   }
@@ -73,6 +74,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Battle Maps';
       case '/admin/zone-editor':
         return 'Zone Editor';
+      case '/admin/cities':
+        return 'Города';
       default:
         return 'Обзор';
     }
@@ -131,6 +134,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     case '/admin/zone-editor':
       page = <ZoneEditorPage />;
       break;
+    case '/admin/cities':
+      page = <ZoneEditorPage />;
+      break;
     default:
       page = <DashboardPage />;
       break;
@@ -142,7 +148,7 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       currentPath={route}
       onNavigate={onNavigate}
       onLogout={logout}
-      isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor'}
+      isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor' || route === '/admin/cities'}
     >
       {page}
     </AdminLayout>

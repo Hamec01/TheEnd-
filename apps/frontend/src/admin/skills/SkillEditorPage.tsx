@@ -24,12 +24,17 @@ export function SkillEditorPage() {
   const [status, setStatus] = useState('Ready');
 
   async function refresh() {
-    const [nextSkills, nextImages] = await Promise.all([skillsService.getAll(), imageService.getAll()]);
-    setSkills(nextSkills);
-    setImages(nextImages as StoredImage[]);
-    if (selectedId && !nextSkills.some((skill) => skill.id === selectedId)) {
-      setSelectedId(null);
-      setDraft(normalizeSkillDraft(emptySkill()));
+    try {
+      const [nextSkills, nextImages] = await Promise.all([skillsService.getAll(), imageService.getAll()]);
+      setSkills(nextSkills);
+      setImages(nextImages as StoredImage[]);
+      if (selectedId && !nextSkills.some((skill) => skill.id === selectedId)) {
+        setSelectedId(null);
+        setDraft(normalizeSkillDraft(emptySkill()));
+      }
+      setStatus('Ready');
+    } catch (error) {
+      setStatus(`Не удалось загрузить skills: ${(error as Error).message}`);
     }
   }
 
