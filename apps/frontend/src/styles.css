@@ -4649,6 +4649,20 @@ h3 {
   min-height: 640px;
 }
 
+.wm-main-column {
+  display: grid;
+  grid-template-rows: minmax(460px, 1fr) auto;
+  min-height: 0;
+}
+
+.wm-main-column .wm-map {
+  min-height: clamp(480px, 66vh, 820px);
+}
+
+.wm-main-column .wm-map-surface {
+  min-height: clamp(430px, 60vh, 760px);
+}
+
 .wm-left,
 .wm-map,
 .wm-context,
@@ -5294,8 +5308,41 @@ h3 {
 }
 
 .wm-chat-under-map {
-  grid-column: 2 / 3;
+  grid-column: auto;
   border-top: 1px solid rgba(42, 34, 24, 0.92);
+}
+
+.wm-chat-dock {
+  position: relative;
+  margin-top: 8px;
+  padding-top: 56px;
+}
+
+.wm-event-overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 0;
+  display: grid;
+  gap: 5px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.wm-event-line {
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid rgba(213, 173, 110, 0.45);
+  background: rgba(21, 16, 11, 0.64);
+  color: #f4deba;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(1.2px);
+}
+
+.wm-event-line.type-system {
+  border-color: rgba(124, 172, 255, 0.45);
 }
 
 .wm-chat-log {
@@ -7720,7 +7767,7 @@ body:has(.page.page--scroll) {
   min-height: 0;
 }
 
-.wm-map-surface {
+.wm-map-surface.is-editor {
   min-height: 0;
 }
 
@@ -7786,6 +7833,10 @@ body:has(.page.page--scroll) {
   .wm-grid {
     grid-template-columns: 1fr;
     grid-auto-rows: auto;
+  }
+
+  .wm-main-column {
+    grid-template-rows: minmax(420px, auto) auto;
   }
 
   .wm-chat-under-map {

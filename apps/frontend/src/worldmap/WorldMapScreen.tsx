@@ -542,6 +542,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return [...localMessages, ...systemChat].slice(-24);
   }, [chatLines, systemChat]);
 
+  const eventOverlayMessages = useMemo<ChatMessage[]>(() => {
+    return chatMessages
+      .filter((message) => message.text.trim().length > 0)
+      .slice(-3)
+      .reverse();
+  }, [chatMessages]);
+
   const quickButtons = useMemo(() => [
     {
       id: 'combat',
@@ -1356,67 +1363,95 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           resolveItemImage={resolveItemImage}
         />
 
-        {locationView === 'map' ? (
-          <WorldMapCanvas
-            mode="play"
-            playerStartPosition={playSpawnPosition}
-            zones={zones}
-            regions={regions}
-            playQuestMarkers={playQuestMarkers}
-            playNpcMarkers={playNpcMarkers}
-            onOpenLocation={handleOpenLocation}
-            onEnterZone={handleZoneEnterMemoized}
-            onHoverZone={handleHoverZone}
-            onPlayerPosition={handlePlayerPosition}
-            onPlayerState={handlePlayerState}
-          />
-        ) : (
-          <section className="wm-map card">
-            <div
-              className="wm-map-surface wm-city-surface"
-              style={{ backgroundImage: "linear-gradient(rgba(24, 17, 12, 0.38), rgba(24, 17, 12, 0.62)), url('/map/City_Arclain.png')" }}
-            >
-              <div className="wm-map-title">Арклейн</div>
-              <div className="wm-city-hotspots">
-                <button type="button" className="wm-city-hotspot hotspot-arena" onClick={handleEnterArena}>Арена</button>
-                {arkleinMerchantHotspots.map(({ merchant, left, top }) => {
-                  const portrait = resolveMerchantImage?.(merchant);
-                  const subtitle = merchant.location?.trim() || merchant.type.replace(/_/g, ' ');
-                  const merchantInitial = merchant.name.trim().charAt(0).toUpperCase() || 'Т';
+        <div className="wm-main-column">
+          {locationView === 'map' ? (
+            <WorldMapCanvas
+              mode="play"
+              playerStartPosition={playSpawnPosition}
+              zones={zones}
+              regions={regions}
+              playQuestMarkers={playQuestMarkers}
+              playNpcMarkers={playNpcMarkers}
+              onOpenLocation={handleOpenLocation}
+              onEnterZone={handleZoneEnterMemoized}
+              onHoverZone={handleHoverZone}
+              onPlayerPosition={handlePlayerPosition}
+              onPlayerState={handlePlayerState}
+            />
+          ) : (
+            <section className="wm-map card">
+              <div
+                className="wm-map-surface wm-city-surface"
+                style={{ backgroundImage: "linear-gradient(rgba(24, 17, 12, 0.38), rgba(24, 17, 12, 0.62)), url('/map/City_Arclain.png')" }}
+              >
+                <div className="wm-map-title">Арклейн</div>
+                <div className="wm-city-hotspots">
+                  <button type="button" className="wm-city-hotspot hotspot-arena" onClick={handleEnterArena}>Арена</button>
+                  {arkleinMerchantHotspots.map(({ merchant, left, top }) => {
+                    const portrait = resolveMerchantImage?.(merchant);
+                    const subtitle = merchant.location?.trim() || merchant.type.replace(/_/g, ' ');
+                    const merchantInitial = merchant.name.trim().charAt(0).toUpperCase() || 'Т';
 
-                  return (
-                    <button
-                      key={merchant.id}
-                      type="button"
-                      className="wm-city-hotspot wm-city-merchant-hotspot"
-                      style={{ left, top }}
-                      onClick={() => onOpenMerchant(merchant.id)}
-                    >
-                      {portrait ? (
-                        <img src={portrait} alt={merchant.name} />
-                      ) : (
-                        <span className="wm-city-merchant-avatar" aria-hidden="true">{merchantInitial}</span>
-                      )}
-                      <span className="wm-city-merchant-copy">
-                        <strong>{merchant.name}</strong>
-                        <span>{subtitle}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-                {arkleinMerchantHotspots.length === 0 ? (
-                  <div className="wm-city-empty-note">
-                    В Арклейне пока нет торговцев из админки. Создайте торговца и поставьте город: Арклейн.
-                  </div>
-                ) : null}
+                    return (
+                      <button
+                        key={merchant.id}
+                        type="button"
+                        className="wm-city-hotspot wm-city-merchant-hotspot"
+                        style={{ left, top }}
+                        onClick={() => onOpenMerchant(merchant.id)}
+                      >
+                        {portrait ? (
+                          <img src={portrait} alt={merchant.name} />
+                        ) : (
+                          <span className="wm-city-merchant-avatar" aria-hidden="true">{merchantInitial}</span>
+                        )}
+                        <span className="wm-city-merchant-copy">
+                          <strong>{merchant.name}</strong>
+                          <span>{subtitle}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {arkleinMerchantHotspots.length === 0 ? (
+                    <div className="wm-city-empty-note">
+                      В Арклейне пока нет торговцев из админки. Создайте торговца и поставьте город: Арклейн.
+                    </div>
+                  ) : null}
+                </div>
               </div>
+              <footer className="wm-map-legend">
+                <span>Арклейн | Торговцы из админки появляются здесь автоматически, если у них указан город "Арклейн".</span>
+                <button className="wm-city-back" onClick={handleReturnToMap}>Назад к карте</button>
+              </footer>
+            </section>
+          )}
+
+          <div className="wm-chat-dock">
+            <div className="wm-event-overlay" aria-live="polite">
+              {eventOverlayMessages.map((line) => (
+                <p key={`overlay-${line.id}`} className={`wm-event-line type-${line.type}`}>{line.text}</p>
+              ))}
             </div>
-            <footer className="wm-map-legend">
-              <span>Арклейн | Торговцы из админки появляются здесь автоматически, если у них указан город "Арклейн".</span>
-              <button className="wm-city-back" onClick={handleReturnToMap}>Назад к карте</button>
-            </footer>
-          </section>
-        )}
+
+            <section className="wm-chat card wm-chat-under-map">
+              <h3>Чат</h3>
+              <div className="wm-chat-log">
+                {chatMessages.map((line) => (
+                  <p key={line.id}><strong>[{line.type.toUpperCase()}]</strong> {line.text}</p>
+                ))}
+              </div>
+              <div className="wm-chat-input">
+                <select value={chatType} onChange={(event) => setChatType(event.target.value as ChatType)}>
+                  <option value="local">local</option>
+                  <option value="private">private</option>
+                  <option value="system">system</option>
+                </select>
+                <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Введите сообщение..." />
+                <button onClick={handleSendChat}>▶</button>
+              </div>
+            </section>
+          </div>
+        </div>
 
         <div className="wm-right-stack">
           {showAdminShortcuts ? (
@@ -1523,23 +1558,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             </section>
           ))}
         </div>
-        <section className="wm-chat card wm-chat-under-map">
-          <h3>Чат</h3>
-          <div className="wm-chat-log">
-            {chatMessages.map((line) => (
-              <p key={line.id}><strong>[{line.type.toUpperCase()}]</strong> {line.text}</p>
-            ))}
-          </div>
-          <div className="wm-chat-input">
-            <select value={chatType} onChange={(event) => setChatType(event.target.value as ChatType)}>
-              <option value="local">local</option>
-              <option value="private">private</option>
-              <option value="system">system</option>
-            </select>
-            <input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="Введите сообщение..." />
-            <button onClick={handleSendChat}>▶</button>
-          </div>
-        </section>
       </section>
 
       <footer className="wm-footer card">
