@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const dbPath = path.resolve(__dirname, '..', 'data', 'content-db.json');
+const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 
 function hasMojibakeQuestionMarks(value) {
   return typeof value === 'string' && /\?{3,}/.test(value);
@@ -40,7 +41,7 @@ function validate(db) {
   const imageIds = new Set((db.images || []).map((img) => String((img && img.id) || '').trim()).filter(Boolean));
 
   for (const item of db.items || []) {
-    if (item.imagePath && !imageIds.has(item.imagePath)) {
+    if (item.imagePath && !imageIds.has(item.imagePath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(item.imagePath)) {
       errors.push(`Item '${item.id}' references missing image '${item.imagePath}'.`);
     }
     if (
@@ -54,7 +55,7 @@ function validate(db) {
   }
 
   for (const merchant of db.merchants || []) {
-    if (merchant.portraitPath && !imageIds.has(merchant.portraitPath)) {
+    if (merchant.portraitPath && !imageIds.has(merchant.portraitPath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(merchant.portraitPath)) {
       errors.push(`Merchant '${merchant.id}' references missing portrait image '${merchant.portraitPath}'.`);
     }
 

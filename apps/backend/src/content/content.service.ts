@@ -50,6 +50,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
+const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -645,7 +646,7 @@ export class ContentService {
     const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
 
     for (const item of db.items) {
-      if (item.imagePath && !imageIds.has(item.imagePath)) {
+      if (item.imagePath && !imageIds.has(item.imagePath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(item.imagePath)) {
         errors.push(`Item '${item.id}' references missing image '${item.imagePath}'.`);
       }
 
@@ -664,7 +665,7 @@ export class ContentService {
     }
 
     for (const merchant of db.merchants) {
-      if (merchant.portraitPath && !imageIds.has(merchant.portraitPath)) {
+      if (merchant.portraitPath && !imageIds.has(merchant.portraitPath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(merchant.portraitPath)) {
         errors.push(`Merchant '${merchant.id}' references missing portrait image '${merchant.portraitPath}'.`);
       }
 
