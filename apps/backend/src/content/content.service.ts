@@ -14,7 +14,7 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, isAbsolute, join } from 'path';
 import type {
   AdminItem,
   AdminMerchant,
@@ -564,11 +564,24 @@ function hasMojibakeQuestionMarks(value: string | undefined): boolean {
   return /\?{3,}/.test(value);
 }
 
+function resolveContentDbFilePath(): string {
+  const configured = String(process.env.CONTENT_DB_PATH ?? '').trim();
+  if (!configured) {
+    return join(process.cwd(), 'data', 'content-db.json');
+  }
+
+  if (isAbsolute(configured)) {
+    return configured;
+  }
+
+  return join(process.cwd(), configured);
+}
+
 @Injectable()
 export class ContentService {
-  private readonly dataDir = join(process.cwd(), 'data');
-  private readonly dbFile = join(this.dataDir, 'content-db.json');
-  private readonly templateFile = join(this.dataDir, 'content-template.json');
+  private readonly dbFile = resolveContentDbFilePath();
+  private readonly dataDir = dirname(this.dbFile);
+  private readonly templateFile = join(process.cwd(), 'data', 'content-template.json');
   private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
   private dbCache: ContentDatabase | null = null;
 
