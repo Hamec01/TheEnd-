@@ -5,6 +5,11 @@ const { PrismaClient } = require('@prisma/client');
 
 const CONTENT_DB_VERSION = 1;
 
+function isExplicitSeedRequested() {
+  const flag = String(process.env.CONTENT_SEED_CONFIRM ?? '').trim().toUpperCase();
+  return flag === 'YES' || flag === 'TRUE' || flag === '1';
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -118,6 +123,12 @@ function loadDb(dbPath) {
 }
 
 async function main() {
+  if (!isExplicitSeedRequested()) {
+    console.log('[seed-admin-content] Skip: seeding is disabled by default.');
+    console.log('[seed-admin-content] Run with CONTENT_SEED_CONFIRM=YES to seed content manually.');
+    return;
+  }
+
   await assertPostgresConnection();
 
   const backendRoot = join(__dirname, '..');
