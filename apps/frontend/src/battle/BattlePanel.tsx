@@ -274,6 +274,13 @@ export function BattlePanel({
     }
   }, [movementType]);
 
+  useEffect(() => {
+    if (actionType !== ActionType.Move && (movementType || selectedMoveTile)) {
+      setMovementType(null);
+      setSelectedMoveTile(null);
+    }
+  }, [actionType, movementType, selectedMoveTile]);
+
   async function submitRound(): Promise<void> {
     if (!player || !selectedTargetId) {
       return;
@@ -412,13 +419,18 @@ export function BattlePanel({
                 setActionType(ActionType.Attack);
               }}
               onQuickMove={(tile) => {
-                setMovementType(tile.movementType);
-                if (actionType === ActionType.Wait) {
-                  setActionType(ActionType.Move);
+                if (actionType !== ActionType.Move) {
+                  onStatus('Сначала выберите действие «Движение».');
+                  return;
                 }
+                setMovementType(tile.movementType);
                 setSelectedMoveTile({ x: tile.x, y: tile.y });
               }}
               onMoveTileSelect={(tile) => {
+                if (actionType !== ActionType.Move) {
+                  onStatus('Сначала выберите действие «Движение».');
+                  return;
+                }
                 setMovementType(tile.movementType);
                 setSelectedMoveTile({ x: tile.x, y: tile.y });
                 if (tile.willTriggerOpportunity) {
