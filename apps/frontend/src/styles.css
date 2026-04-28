@@ -3666,13 +3666,16 @@ h3 {
 .tactical-board-container {
   position: relative;
   width: 100%;
-  min-height: 0;
-  height: 100%;
+  height: min(52vh, 520px);
+  min-height: 320px;
+  max-height: 520px;
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid rgba(166, 132, 82, 0.45);
   padding: 0;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tactical-board {
@@ -3682,6 +3685,10 @@ h3 {
 
 .tactical-scene {
   position: relative;
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .tactical-scene-image {
