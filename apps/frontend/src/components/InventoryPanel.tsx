@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
+import type { AdminItem } from '../services/content/models';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
 import {
@@ -30,6 +31,7 @@ interface InventoryPanelProps {
   onUseItem?: (itemId: string) => Promise<void>;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
+  resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
 }
 
@@ -120,6 +122,37 @@ const SKILL_NAMES: Record<string, string> = {
   WHIRLWIND: 'Whirlwind',
 };
 
+const ITEM_STAT_LABELS: Record<string, string> = {
+  strength: 'Strength',
+  dexterity: 'Dexterity',
+  constitution: 'Constitution',
+  intelligence: 'Intelligence',
+  stamina: 'Stamina',
+  perception: 'Perception',
+  luck: 'Luck',
+  willpower: 'Willpower',
+  hp: 'HP',
+  mp: 'MP',
+};
+
+function formatItemStatLabel(value: string): string {
+  return ITEM_STAT_LABELS[value] ?? value;
+}
+
+function formatItemStatRows(stats: Record<string, number> | undefined): Array<{ key: string; label: string; value: number }> {
+  if (!stats) {
+    return [];
+  }
+
+  return Object.entries(stats)
+    .filter(([, value]) => typeof value === 'number' && Number.isFinite(value) && value !== 0)
+    .map(([key, value]) => ({
+      key,
+      label: formatItemStatLabel(key),
+      value,
+    }));
+}
+
 const FOCUS_SECTION_COLUMN: Record<CharacterPageFocus, 'left' | 'center' | 'right'> = {
   character: 'left',
   equipment: 'left',
@@ -170,6 +203,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onUseItem,
   playerAvatarUrl,
   resolveItemById,
+  resolveAdminItemById,
   resolveItemImage,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -283,7 +317,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return {
         slotId: null as EquipmentSlotId | null,
         currentItem: null as ItemDefinition | null,
+        currentAdminItem: null as AdminItem | null,
         rows: [] as Array<{ label: string; before: number; after: number }>,
+        statDiffRows: [] as Array<{ key: string; label: string; current: number; next: number; diff: number }>,
+        damageComparison: null as { currentMin?: number; currentMax?: number; nextMin?: number; nextMax?: number; minDiff: number; maxDiff: number } | null,
+        armorComparison: null as { current: number; next: number; diff: number } | null,
       };
     }
 
@@ -312,10 +350,50 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     })();
 
     const derivedItemPreview = calculateDerivedStats(character.activeStats, previewEquipment);
+    const currentItem = comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null;
+    const selectedAdminItem = resolveAdminItemById ? resolveAdminItemById(item.id) : null;
+    const currentAdminItem = currentItem && resolveAdminItemById ? resolveAdminItemById(currentItem.id) : null;
+    const selectedBonusSource = (selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (item.bonuses as Record<string, number> | undefined);
+    const currentBonusSource = (currentAdminItem?.bonuses as Record<string, number> | undefined) ?? (currentItem?.bonuses as Record<string, number> | undefined);
+    const statDiffRows = Array.from(new Set([...Object.keys(selectedBonusSource ?? {}), ...Object.keys(currentBonusSource ?? {})]))
+      .map((key) => {
+        const next = selectedBonusSource?.[key] ?? 0;
+        const current = currentBonusSource?.[key] ?? 0;
+        return {
+          key,
+          label: formatItemStatLabel(key),
+          current,
+          next,
+          diff: next - current,
+        };
+      })
+      .filter((row) => row.current !== 0 || row.next !== 0);
+    const damageComparison = typeof selectedAdminItem?.damageMin === 'number'
+      || typeof selectedAdminItem?.damageMax === 'number'
+      || typeof currentAdminItem?.damageMin === 'number'
+      || typeof currentAdminItem?.damageMax === 'number'
+      ? {
+        currentMin: currentAdminItem?.damageMin,
+        currentMax: currentAdminItem?.damageMax,
+        nextMin: selectedAdminItem?.damageMin,
+        nextMax: selectedAdminItem?.damageMax,
+        minDiff: (selectedAdminItem?.damageMin ?? 0) - (currentAdminItem?.damageMin ?? 0),
+        maxDiff: (selectedAdminItem?.damageMax ?? 0) - (currentAdminItem?.damageMax ?? 0),
+      }
+      : null;
+    const armorComparison = typeof selectedAdminItem?.armorValue === 'number'
+      || typeof currentAdminItem?.armorValue === 'number'
+      ? {
+        current: currentAdminItem?.armorValue ?? 0,
+        next: selectedAdminItem?.armorValue ?? 0,
+        diff: (selectedAdminItem?.armorValue ?? 0) - (currentAdminItem?.armorValue ?? 0),
+      }
+      : null;
 
     return {
       slotId: comparisonSlotId,
-      currentItem: comparisonSlotId ? equippedByLayoutSlot[comparisonSlotId] ?? null : null,
+      currentItem,
+      currentAdminItem,
       rows: [
         { label: 'Defense', before: derivedBase.totalDefense, after: derivedItemPreview.totalDefense },
         { label: 'Min Damage', before: derivedBase.minDamage, after: derivedItemPreview.minDamage },
@@ -324,6 +402,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         { label: 'Block', before: derivedBase.blockChance, after: derivedItemPreview.blockChance },
         { label: 'STA Load', before: derivedBase.staminaLoad, after: derivedItemPreview.staminaLoad },
       ],
+      statDiffRows,
+      damageComparison,
+      armorComparison,
     };
   };
 
@@ -343,10 +424,13 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }, [equippedItemIds, inventoryEntries, selectedItemId]);
 
-  const selectedComparison = useMemo(() => getComparisonForItem(selectedItem), [selectedItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase]);
+  const selectedComparison = useMemo(() => getComparisonForItem(selectedItem), [selectedItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById]);
   const comparisonSlotId = selectedComparison.slotId;
   const comparisonCurrentItem = selectedComparison.currentItem;
   const itemComparisonRows = selectedComparison.rows;
+  const itemStatDiffRows = selectedComparison.statDiffRows;
+  const itemDamageComparison = selectedComparison.damageComparison;
+  const itemArmorComparison = selectedComparison.armorComparison;
 
   const hoverItem = useMemo(
     () => (hoverPreview?.itemId ? inventoryByItemId.get(hoverPreview.itemId)?.item ?? null : null),
@@ -354,8 +438,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   );
   const hoverComparison = useMemo(
     () => getComparisonForItem(hoverItem),
-    [hoverItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase],
+    [hoverItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById],
   );
+  const selectedAdminItem = useMemo(
+    () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
+    [resolveAdminItemById, selectedItem],
+  );
+  const selectedDescription = selectedAdminItem?.gameplayDescription?.trim() || selectedItem?.description || 'Description unavailable.';
+  const selectedLoreDescription = selectedAdminItem?.loreDescription?.trim() || '';
+  const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedItem?.requiredStats as Record<string, number> | undefined));
+  const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedItem?.bonuses as Record<string, number> | undefined));
 
   useEffect(() => {
     setSilhouetteBroken(false);
@@ -612,7 +704,14 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed / Двуручное' : 'One-handed / Одноручное'}</p>
                   ) : null}
                   <p className="muted">Rarity: {selectedItem.rarity}</p>
-                  <p>{selectedItem.description}</p>
+                  <p>{selectedDescription}</p>
+                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+                  ) : null}
+                  {typeof selectedAdminItem?.armorValue === 'number' ? (
+                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
+                  ) : null}
                   {selectedIsTwoHandedWeapon && equipment.shield ? (
                     <p className="muted">Equipping this weapon will remove the offhand item and leave it in your inventory.</p>
                   ) : null}
@@ -620,15 +719,38 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
                   ) : null}
                   <p className="muted">
-                    Bonuses: {Object.entries(selectedItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
                   </p>
                   <p className="muted">
-                    Requirements: {Object.entries(selectedItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
                   </p>
                   <div className="character-item-inline-compare-head">
                     <span>Сравнение со слотом</span>
                     <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
                   </div>
+                  {itemDamageComparison ? (
+                    <p className="muted">
+                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
+                    </p>
+                  ) : null}
+                  {itemArmorComparison ? (
+                    <p className="muted">
+                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
+                    </p>
+                  ) : null}
+                  {itemStatDiffRows.length > 0 ? (
+                    <div className="character-item-inline-compare-grid">
+                      {itemStatDiffRows.map((row) => (
+                        <p key={`stat-${row.key}`}>
+                          <span>{row.label}</span>
+                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
+                            {row.diff > 0 ? `+${row.diff}` : row.diff}
+                          </em>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="character-item-inline-compare-grid">
                     {itemComparisonRows.map((row) => {
                       const delta = Number((row.after - row.before).toFixed(1));
@@ -877,7 +999,14 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   {selectedItem.itemType === 'weapon' ? (
                     <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed' : 'One-handed'}</p>
                   ) : null}
-                  <p>{selectedItem.description}</p>
+                  <p>{selectedDescription}</p>
+                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+                  ) : null}
+                  {typeof selectedAdminItem?.armorValue === 'number' ? (
+                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
+                  ) : null}
                   {selectedIsTwoHandedWeapon && equipment.shield ? (
                     <p className="muted">Equipping this weapon will move the offhand item back to the backpack.</p>
                   ) : null}
@@ -885,10 +1014,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
                   ) : null}
                   <p className="muted">
-                    Bonuses: {Object.entries(selectedItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
                   </p>
                   <p className="muted">
-                    Requirements: {Object.entries(selectedItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
                   </p>
                 </section>
 
@@ -905,6 +1034,29 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       <small>{selectedAlreadyEquipped ? 'Already equipped' : selectedInventoryEntry ? 'In backpack' : 'Equipped'}</small>
                     </div>
                   </div>
+                  {itemDamageComparison ? (
+                    <p className="muted">
+                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
+                    </p>
+                  ) : null}
+                  {itemArmorComparison ? (
+                    <p className="muted">
+                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
+                    </p>
+                  ) : null}
+                  {itemStatDiffRows.length > 0 ? (
+                    <div className="character-item-compare-grid">
+                      {itemStatDiffRows.map((row) => (
+                        <p key={`popup-stat-${row.key}`}>
+                          <span>{row.label}</span>
+                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
+                            {row.diff > 0 ? `+${row.diff}` : row.diff}
+                          </em>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="character-item-compare-grid">
                     {itemComparisonRows.map((row) => {
                       const delta = Number((row.after - row.before).toFixed(1));

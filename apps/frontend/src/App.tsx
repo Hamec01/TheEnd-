@@ -2144,6 +2144,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onUseItem={handleUseConsumable}
             playerAvatarUrl={playerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+            resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
             resolveItemImage={resolveItemImage}
           />
         ) : null}
