@@ -65,7 +65,6 @@ interface TileState {
 }
 
 const CAMERA_TILE_BUDGET = 12;
-const MAX_SCENE_UPSCALE = 1.7;
 
 function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
@@ -178,12 +177,11 @@ export function BattleField({
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [boardSize, setBoardSize] = useState({ width: 0, height: 0 });
-    const sceneCellSize = Math.max(34, Math.min(96, mapCalibration?.cellSizePx ?? 64));
     const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
     const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
     const showVisualGrid = Boolean(mapCalibration?.showEditorGrid);
     const visualGridOpacity = mapCalibration?.gridOpacity ?? 0.12;
-    const tokenSizePx = Math.max(34, Math.min(Math.floor(sceneCellSize * 0.8), Math.floor(sceneCellSize * 0.72)));
+    const viewportCellCount = CAMERA_TILE_BUDGET;
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, type: 'cell', show: false });
@@ -201,8 +199,8 @@ export function BattleField({
   const playerPlacement = placements.find((p) => p.entityId === playerId);
   const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
   const viewport = useMemo(() => {
-    const width = Math.min(viewportWidth, battleMapWidth, CAMERA_TILE_BUDGET);
-    const height = Math.min(viewportHeight, battleMapHeight, CAMERA_TILE_BUDGET);
+    const width = Math.min(viewportCellCount, battleMapWidth);
+    const height = Math.min(viewportCellCount, battleMapHeight);
     const playerX = playerPlacement?.x ?? 0;
     const playerY = playerPlacement?.y ?? 0;
     const maxOffsetX = Math.max(0, battleMapWidth - width);
@@ -213,7 +211,7 @@ export function BattleField({
       offsetX: Math.max(0, Math.min(maxOffsetX, playerX - Math.floor(width / 2))),
       offsetY: Math.max(0, Math.min(maxOffsetY, playerY - Math.floor(height / 2))),
     };
-  }, [battleMapHeight, battleMapWidth, playerPlacement?.x, playerPlacement?.y, viewportHeight, viewportWidth]);
+  }, [battleMapHeight, battleMapWidth, playerPlacement?.x, playerPlacement?.y, viewportCellCount]);
 
   const adjacentMeleeEnemies = useMemo(() => {
     if (!playerPlacement) {
@@ -576,19 +574,16 @@ export function BattleField({
 
   const contextEntity = contextMenu.targetId ? entityById.get(contextMenu.targetId) : null;
 
-  const visibleMapPixelWidth = gridOffsetX * 2 + viewport.width * sceneCellSize;
-  const visibleMapPixelHeight = gridOffsetY * 2 + viewport.height * sceneCellSize;
+  const availableBoardWidth = Math.max(1, boardSize.width);
+  const sceneCellSize = Math.max(22, Math.floor(availableBoardWidth / viewportCellCount));
+  const tokenSizePx = Math.max(24, Math.floor(sceneCellSize * 0.72));
+
+  const visibleMapPixelWidth = viewport.width * sceneCellSize;
+  const visibleMapPixelHeight = viewport.height * sceneCellSize;
   const fullMapPixelWidth = gridOffsetX * 2 + battleMapWidth * sceneCellSize;
   const fullMapPixelHeight = gridOffsetY * 2 + battleMapHeight * sceneCellSize;
   const backgroundOffsetX = gridOffsetX - viewport.offsetX * sceneCellSize;
   const backgroundOffsetY = gridOffsetY - viewport.offsetY * sceneCellSize;
-  const availableBoardWidth = Math.max(1, boardSize.width - 16);
-  const availableBoardHeight = Math.max(1, boardSize.height - 16);
-  const sceneScale = Math.min(
-    MAX_SCENE_UPSCALE,
-    availableBoardWidth / Math.max(1, visibleMapPixelWidth),
-    availableBoardHeight / Math.max(1, visibleMapPixelHeight),
-  );
 
   return (
     <div className="battle-field tactical-field">
@@ -606,7 +601,6 @@ export function BattleField({
           style={{
             width: `${visibleMapPixelWidth}px`,
             height: `${visibleMapPixelHeight}px`,
-            transform: `scale(${sceneScale})`,
           }}
         >
           <div
@@ -621,8 +615,8 @@ export function BattleField({
             <div
               className="tactical-scene-grid"
               style={{
-                left: `${gridOffsetX}px`,
-                top: `${gridOffsetY}px`,
+                left: '0px',
+                top: '0px',
                 width: `${viewport.width * sceneCellSize}px`,
                 height: `${viewport.height * sceneCellSize}px`,
                 backgroundSize: `${sceneCellSize}px ${sceneCellSize}px`,
@@ -645,8 +639,8 @@ export function BattleField({
                   key={`tile-${x}-${y}`}
                   className={`tactical-tile ${placement ? `tile-occupied tile-${placement.entityId === playerId ? 'player' : 'enemy'}` : ''} ${tileState.moveType === 'step' ? 'tile-movable' : ''} ${tileState.moveType === 'dash' ? 'tile-movable tile-dash' : ''} ${tileState.isAttackable ? 'tile-attackable' : ''} ${tileState.isThreat ? 'tile-threat' : ''} ${tileState.isBlocked ? 'tile-blocked' : ''} ${tileState.isSelected ? 'tile-selected' : ''} ${tileState.triggersOpportunity ? 'tile-danger' : ''}`}
                   style={{
-                    left: `${gridOffsetX + col * sceneCellSize}px`,
-                    top: `${gridOffsetY + row * sceneCellSize}px`,
+                    left: `${col * sceneCellSize}px`,
+                    top: `${row * sceneCellSize}px`,
                     width: `${sceneCellSize}px`,
                     height: `${sceneCellSize}px`,
                   }}

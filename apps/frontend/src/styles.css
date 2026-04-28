@@ -28,6 +28,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow: hidden;
   color: var(--text-main);
   background:
     radial-gradient(circle at 14% 10%, rgba(214, 168, 96, 0.14), transparent 28%),
@@ -2930,8 +2931,7 @@ h3 {
 }
 
 .battle-window:not(.wm-modal) .battle-main-grid {
-  display: grid;
-  grid-template-columns: minmax(290px, 0.95fr) minmax(500px, 1.35fr) minmax(320px, 1fr);
+  display: flex;
   gap: 10px;
   min-height: 0;
   height: 100%;
@@ -2941,6 +2941,20 @@ h3 {
   display: grid;
   gap: 8px;
   min-height: 0;
+}
+
+.battle-window:not(.wm-modal) .battle-left-column {
+  flex: 0 0 320px;
+  width: 320px;
+}
+
+.battle-window:not(.wm-modal) .battle-center-column {
+  flex: 1 1 auto;
+}
+
+.battle-window:not(.wm-modal) .battle-right-column {
+  flex: 0 0 320px;
+  width: 320px;
 }
 
 .battle-window:not(.wm-modal) .column-player-section,
@@ -3027,6 +3041,7 @@ h3 {
 
 @media (max-width: 1280px) {
   .battle-window:not(.wm-modal) .battle-main-grid {
+    display: grid;
     grid-template-columns: minmax(250px, 0.85fr) minmax(420px, 1.2fr) minmax(280px, 0.95fr);
   }
 }
@@ -3573,10 +3588,10 @@ h3 {
 }
 
 .battle-fullscreen-root .battle-main-grid {
-  display: grid;
-  grid-template-columns: 340px minmax(760px, 1fr) 300px;
+  display: flex;
   gap: 10px;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -3589,6 +3604,20 @@ h3 {
   border: none;
   background: transparent;
   gap: 8px;
+}
+
+.battle-fullscreen-root .battle-left-column {
+  flex: 0 0 340px;
+  width: 340px;
+}
+
+.battle-fullscreen-root .battle-center-column {
+  flex: 1 1 auto;
+}
+
+.battle-fullscreen-root .battle-right-column {
+  flex: 0 0 300px;
+  width: 300px;
 }
 
 .battle-fullscreen-root .column-player-section,
@@ -3631,19 +3660,19 @@ h3 {
 .battle-fullscreen-root .battle-field.tactical-field {
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
-  min-height: 55vh;
+  height: 100%;
 }
 
 .tactical-board-container {
   position: relative;
+  width: 100%;
   min-height: 0;
   height: 100%;
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid rgba(166, 132, 82, 0.45);
-  padding: 8px;
-  display: grid;
-  place-items: center;
+  padding: 0;
+  display: block;
 }
 
 .tactical-board {
@@ -6086,8 +6115,8 @@ body:has(.page.page--scroll) {
 
 .battle-fullscreen-root .battle-main-grid,
 .battle-window:not(.wm-modal) .battle-main-grid {
-  grid-template-columns: 320px minmax(600px, 1fr) 320px;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -6110,11 +6139,11 @@ body:has(.page.page--scroll) {
 }
 
 .battle-left-column {
-  overflow: auto;
+  overflow: hidden;
 }
 
 .battle-right-column {
-  overflow: auto;
+  overflow: hidden;
 }
 
 .battle-center-column {
@@ -6131,10 +6160,10 @@ body:has(.page.page--scroll) {
 
 .tactical-board-container {
   width: 100%;
-  height: 55vh;
-  min-height: 380px;
-  max-height: 65vh;
-  padding: 6px;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  padding: 0;
   overflow: hidden;
 }
 
@@ -6230,6 +6259,7 @@ body:has(.page.page--scroll) {
 @media (max-width: 1360px) {
   .battle-fullscreen-root .battle-main-grid,
   .battle-window:not(.wm-modal) .battle-main-grid {
+    display: grid;
     grid-template-columns: 280px minmax(0, 1fr) 300px;
   }
 }
@@ -6248,8 +6278,8 @@ body:has(.page.page--scroll) {
   }
 
   .tactical-board-container {
-    min-height: 320px;
-    height: 50vh;
+    min-height: 0;
+    height: 100%;
   }
 
   .wm-editor-shell.is-admin-editor .wm-editor-main,
