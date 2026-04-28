@@ -2,12 +2,27 @@ import type { AdminItem } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { nowIso, uid } from './storage';
 
+function normalizeItemSlot(slot: AdminItem['slot'] | string | undefined): AdminItem['slot'] {
+  switch (slot) {
+    case 'cloak':
+      return 'outerwear';
+    case 'knees':
+      return 'legs';
+    case 'charm':
+      return 'necklace';
+    case 'trinket':
+      return 'ring';
+    default:
+      return (slot as AdminItem['slot']) ?? 'none';
+  }
+}
+
 function normalize(item: AdminItem): AdminItem {
   const normalized: AdminItem = {
     ...item,
     requiredStats: item.requiredStats ?? {},
     bonuses: item.bonuses ?? {},
-    slot: item.slot ?? 'none',
+    slot: normalizeItemSlot(item.slot),
     handsRequired: item.type === 'weapon' && item.handsRequired === 2 ? 2 : 1,
     maxStack: item.stackable ? Math.max(2, item.maxStack ?? 2) : 1,
     price: Math.max(0, item.price),

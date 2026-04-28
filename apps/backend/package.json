@@ -6,8 +6,8 @@
   "scripts": {
     "build": "npm run build --workspace @theend/rpg-domain && tsc -p tsconfig.build.json",
     "start": "node dist/apps/backend/src/main.js",
-    "seed:admin-content": "node scripts/seed-admin-content.js",
-    "content:seed": "CONTENT_SEED_CONFIRM=YES node scripts/seed-admin-content.js",
+    "seed:admin-content": "npm run content:seed",
+    "content:seed": "node -e \"process.env.CONTENT_SEED_CONFIRM='YES'; require('./scripts/seed-admin-content.js')\"",
     "db:seed": "npm run content:seed",
     "clean:domain-js": "node -e \"const fs=require('fs');const p=require('path');const dir=p.resolve(process.cwd(),'../../packages/rpg-domain/src');if(fs.existsSync(dir)){for(const f of fs.readdirSync(dir)){if(f.endsWith('.js')){fs.unlinkSync(p.join(dir,f));}}}\"",
     "content:validate": "node scripts/validate-content-db.js",

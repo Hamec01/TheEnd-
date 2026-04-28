@@ -23,7 +23,7 @@ import {
 const STAT_KEYS: StatKey[] = ['hp', 'mp', 'stamina', 'strength', 'constitution', 'dexterity', 'intelligence', 'luck', 'perception', 'willpower'];
 const ITEM_TYPES: ItemType[] = ['weapon', 'armor', 'potion', 'material', 'quest', 'misc'];
 const RARITIES: ItemRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'forbidden'];
-const SLOTS: ItemSlot[] = ['head', 'necklace', 'chest', 'cloak', 'belt', 'leftHand', 'rightHand', 'gloves', 'knees', 'boots', 'ring', 'trinket', 'charm', 'quick', 'none'];
+const SLOTS: ItemSlot[] = ['head', 'necklace', 'chest', 'outerwear', 'belt', 'leftHand', 'rightHand', 'gloves', 'legs', 'boots', 'ring', 'trinket', 'charm', 'quick', 'none'];
 const DAMAGE_CATEGORIES: DamageCategory[] = ['physical', 'elemental', 'magic', 'shamanic', 'runic', 'poison', 'bleed', 'true'];
 const PHYSICAL_TYPES: PhysicalType[] = ['slash', 'pierce', 'blunt', 'cleave', 'unarmed'];
 const ELEMENT_TYPES: ElementType[] = ['fire', 'water', 'earth', 'air', 'light', 'dark'];

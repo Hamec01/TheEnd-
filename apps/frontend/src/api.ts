@@ -59,6 +59,11 @@ export interface ArenaHubState {
   equipment: Equipment;
 }
 
+export interface CombatActionResult {
+  state: ArenaBattleState;
+  hubState?: ArenaHubState;
+}
+
 export interface CustomArenaNpcPayload {
   name: string;
   race: Race;
@@ -245,7 +250,7 @@ export async function sellArenaItem(characterId: string, itemId: string, quantit
 export async function equipArenaItem(
   characterId: string,
   itemId: string,
-  slot?: 'weapon' | 'shield',
+  slot?: keyof Equipment,
 ): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/equip`, {
     method: 'POST',
@@ -260,7 +265,7 @@ export async function equipArenaItem(
 
 export async function unequipArenaItem(
   characterId: string,
-  slot: 'weapon' | 'helmet' | 'armor' | 'boots' | 'gloves' | 'shield',
+  slot: keyof Equipment,
 ): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/unequip`, {
     method: 'POST',
@@ -332,7 +337,7 @@ export async function sendCombatAction(payload: {
   destinationX?: number;
   destinationY?: number;
   skillType?: CombatSkillType;
-}): Promise<ArenaBattleState> {
+}): Promise<CombatActionResult> {
   const res = await fetch(`${API_BASE}/combat/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

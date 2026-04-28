@@ -12,7 +12,7 @@ import {
   type InventoryState,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { sendCombatAction } from '../api';
+import { sendCombatAction, type ArenaHubState } from '../api';
 import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
@@ -35,7 +35,7 @@ interface BattlePanelProps {
   onSkillChange: (skill: CombatSkillType) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
-  onBattleFinished?: (next: ArenaBattleState) => Promise<void> | void;
+  onBattleFinished?: (next: ArenaBattleState, hubState?: ArenaHubState) => Promise<void> | void;
   onClose?: () => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -299,7 +299,7 @@ export function BattlePanel({
     }
 
     try {
-      const nextState = await sendCombatAction({
+      const result = await sendCombatAction({
         combatId,
         actorId: player.id,
         targetId: selectedTargetId,
@@ -313,6 +313,7 @@ export function BattlePanel({
         destinationY: effectiveDestinationY,
         skillType: effectiveActionType === ActionType.Attack ? selectedSkill : undefined,
       });
+      const nextState = result.state;
 
       onStateChange(nextState);
       setSelectedMoveTile(null);
@@ -320,7 +321,7 @@ export function BattlePanel({
 
       if (nextState.isFinished) {
         onStatus(`Battle finished. Winner: ${nextState.winner ?? 'none'}.`);
-        await onBattleFinished?.(nextState);
+        await onBattleFinished?.(nextState, result.hubState);
       } else {
         onStatus(`Round ${nextState.roundNumber} resolved.`);
       }

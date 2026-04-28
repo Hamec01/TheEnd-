@@ -16,6 +16,7 @@ import { notifyContentSync } from './contentSync';
 import { ensureLegacyContentMigrated } from './legacyContentMigration';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const ALLOW_CONTENT_IMPORT = String(import.meta.env.VITE_ALLOW_CONTENT_IMPORT ?? '').trim().toLowerCase() === 'true';
 
 export type ContentCollectionName =
   | 'items'
@@ -105,6 +106,10 @@ async function importLegacyContentRaw(payload: Partial<ContentSnapshot>): Promis
 }
 
 export async function ensureContentBackendReady(): Promise<void> {
+  if (!ALLOW_CONTENT_IMPORT) {
+    return;
+  }
+
   if (!bootstrapPromise) {
     bootstrapPromise = ensureLegacyContentMigrated({
       loadRemoteSnapshot: getContentSnapshotRaw,

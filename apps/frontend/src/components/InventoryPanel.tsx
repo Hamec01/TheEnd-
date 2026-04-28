@@ -23,7 +23,7 @@ interface InventoryPanelProps {
   focusSection: CharacterPageFocus;
   onClose: () => void;
   onStatus: (text: string) => void;
-  onEquipItem: (itemId: string, slot?: 'weapon' | 'shield') => Promise<void>;
+  onEquipItem: (itemId: string, slot?: keyof Equipment) => Promise<void>;
   onUnequipSlot: (slot: keyof Equipment) => Promise<void>;
   onAdjustStat: (stat: PrimaryStat, delta: number) => void;
   onApplyStatAllocation: () => Promise<void>;
@@ -37,18 +37,41 @@ interface InventoryPanelProps {
 
 const CORE_SLOT_BY_LAYOUT: Partial<Record<EquipmentSlotId, keyof Equipment>> = {
   helmet: 'helmet',
+  necklace: 'necklace',
   armor: 'armor',
+  outerwear: 'outerwear',
+  belt: 'belt',
   boots: 'boots',
   gloves: 'gloves',
   leftHand: 'shield',
   rightHand: 'weapon',
+  ring1: 'ring1',
+  ring2: 'ring2',
+  ring3: 'ring3',
+  legs: 'legs',
+};
+
+const LAYOUT_SLOT_BY_CORE_SLOT: Record<keyof Equipment, EquipmentSlotId> = {
+  weapon: 'rightHand',
+  helmet: 'helmet',
+  necklace: 'necklace',
+  armor: 'armor',
+  outerwear: 'outerwear',
+  belt: 'belt',
+  gloves: 'gloves',
+  shield: 'leftHand',
+  ring1: 'ring1',
+  ring2: 'ring2',
+  ring3: 'ring3',
+  legs: 'legs',
+  boots: 'boots',
 };
 
 const SLOT_LABELS: Record<EquipmentSlotId, string> = {
   helmet: 'Helmet / Шлем',
   necklace: 'Necklace / Амулет',
   armor: 'Armor / Броня',
-  cloak: 'Cloak / Плащ',
+  outerwear: 'Outerwear / Плащ',
   belt: 'Belt / Пояс',
   leftHand: 'Left Hand / Левая рука',
   gloves: 'Gloves / Перчатки',
@@ -56,7 +79,7 @@ const SLOT_LABELS: Record<EquipmentSlotId, string> = {
   ring1: 'Ring 1',
   ring2: 'Ring 2',
   ring3: 'Ring 3',
-  knees: 'Knees / Наколенники',
+  legs: 'Legs / Ноги',
   boots: 'Boots / Сапоги',
   quick1: 'Quick 1',
   quick2: 'Quick 2',
@@ -169,8 +192,20 @@ export function canEquipItemInSlot(item: ItemDefinition, slotId: EquipmentSlotId
       return item.itemType === 'shield' || (item.itemType === 'weapon' && getItemHandsRequired(item) === 1);
     case 'helmet':
       return item.itemType === 'helmet';
+    case 'necklace':
+      return item.itemType === 'necklace';
     case 'armor':
       return item.itemType === 'armor';
+    case 'outerwear':
+      return item.itemType === 'outerwear';
+    case 'belt':
+      return item.itemType === 'belt';
+    case 'ring1':
+    case 'ring2':
+    case 'ring3':
+      return item.itemType === 'ring';
+    case 'legs':
+      return item.itemType === 'legs';
     case 'boots':
       return item.itemType === 'boots';
     case 'gloves':
@@ -267,6 +302,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     () => (equipment.weapon ? (resolveItemById ? resolveItemById(equipment.weapon) : getItemById(equipment.weapon)) : null),
     [equipment.weapon, resolveItemById],
   );
+  const weaponOccupiesBothHands = Boolean(equippedWeapon && equippedWeapon.itemType === 'weapon' && getItemHandsRequired(equippedWeapon) === 2);
   const selectedItemHandsRequired = selectedItem ? getItemHandsRequired(selectedItem) : 1;
   const selectedIsTwoHandedWeapon = Boolean(selectedItem && selectedItem.itemType === 'weapon' && selectedItemHandsRequired === 2);
   const shieldBlockedByTwoHandedWeapon = Boolean(selectedItem?.itemType === 'shield' && equippedWeapon && getItemHandsRequired(equippedWeapon) === 2);
@@ -279,12 +315,22 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     for (const slotId of ALL_SLOT_IDS) {
       const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
+      if (slotId === 'leftHand' && !equipment.shield && weaponOccupiesBothHands && equippedWeapon) {
+        full[slotId] = equippedWeapon;
+        continue;
+      }
+
       const itemId = coreSlot ? equipment[coreSlot] : null;
       full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
     }
 
     return full;
-  }, [equipment, resolveItemById]);
+  }, [equipment, equippedWeapon, resolveItemById, weaponOccupiesBothHands]);
+
+  function findEquippedSlotId(itemId: string): EquipmentSlotId | null {
+    const entry = (Object.entries(equipment) as Array<[keyof Equipment, string | null]>).find(([, currentItemId]) => currentItemId === itemId);
+    return entry ? LAYOUT_SLOT_BY_CORE_SLOT[entry[0]] : null;
+  }
 
   useEffect(() => {
     const target = FOCUS_SECTION_COLUMN[focusSection];
@@ -300,16 +346,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }, [focusSection]);
 
   const equippedItemIds = useMemo(
-    () => new Set(Object.values(equippedByLayoutSlot).filter((item): item is ItemDefinition => Boolean(item)).map((item) => item.id)),
-    [equippedByLayoutSlot],
+    () => new Set(Object.values(equipment).filter((itemId): itemId is string => Boolean(itemId))),
+    [equipment],
   );
   const selectedEquippedSlotId = useMemo(() => {
     if (!selectedItem) {
       return null;
     }
 
-    return ALL_SLOT_IDS.find((slotId) => equippedByLayoutSlot[slotId]?.id === selectedItem.id) ?? null;
-  }, [equippedByLayoutSlot, selectedItem]);
+    return findEquippedSlotId(selectedItem.id);
+  }, [equipment, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
 
   const getComparisonForItem = (item: ItemDefinition | null) => {
@@ -325,7 +371,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       };
     }
 
-    const equippedSlotId = ALL_SLOT_IDS.find((slotId) => equippedByLayoutSlot[slotId]?.id === item.id) ?? null;
+    const equippedSlotId = findEquippedSlotId(item.id);
     const comparisonSlotId = equippedSlotId
       ?? getAcceptedSlotsForItem(item).find((slotId) => Boolean(CORE_SLOT_BY_LAYOUT[slotId]))
       ?? null;
@@ -483,14 +529,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
+    if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) {
+      onStatus('Левая рука уже занята двуручным оружием.');
+      return;
+    }
+
     if (!canEquipItemInSlot(item, slotId)) {
       onStatus('Этот предмет нельзя надеть в выбранный слот.');
       return;
     }
 
     try {
-      const preferredHand = coreSlot === 'weapon' || coreSlot === 'shield' ? coreSlot : undefined;
-      await onEquipItem(item.id, preferredHand);
+      await onEquipItem(item.id, coreSlot);
     } catch {
       // parent already reports error status
     }
@@ -522,7 +572,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   async function unequipFromSlot(slotId: EquipmentSlotId): Promise<void> {
-    const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
+    const coreSlot = slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield
+      ? 'weapon'
+      : CORE_SLOT_BY_LAYOUT[slotId];
     if (!coreSlot) {
       onStatus('Этот слот пока декоративный и не поддерживает снятие предметов.');
       return;
@@ -583,7 +635,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     canDropItemInSlot={(slotId, itemId) => {
                       try {
                         const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-                        return Boolean(item && canEquipItemInSlot(item, slotId));
+                        if (!item) {
+                          return false;
+                        }
+
+                        if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) {
+                          return false;
+                        }
+
+                        return canEquipItemInSlot(item, slotId);
                       } catch {
                         return false;
                       }
@@ -906,10 +966,21 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             <section className="character-meta-card">
               <h3>Level / Progression</h3>
               <p>Level: {character.level}</p>
-              <p>Experience: {character.exp}</p>
-              <p>Next level at: {levelProgress.next} EXP</p>
-              <p>Inside current level: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
-              <p>Remaining to next level: {expToNextLevel}</p>
+              <p>EXP: {character.exp} / {levelProgress.next}</p>
+              <div style={{ margin: '0.4rem 0 0.6rem' }}>
+                <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`,
+                      height: '100%',
+                      borderRadius: 999,
+                      background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)',
+                    }}
+                  />
+                </div>
+              </div>
+              <p>До следующего уровня: {expToNextLevel} XP</p>
+              <p>Внутри текущего уровня: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
               <p>Free stat points: {freePointsLeft}</p>
               <p>Faction: None</p>
               <p>Reputation: None</p>

@@ -7,12 +7,15 @@ export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
   @Get('snapshot')
-  getSnapshot(): ContentDatabase {
+  async getSnapshot(): Promise<ContentDatabase> {
+    await this.contentService.ensureInitialized();
     return this.contentService.getSnapshot();
   }
 
   @Post('import-local')
-  importLocal(@Body() payload?: Partial<ContentDatabase>): ContentDatabase {
+  async importLocal(@Body() payload?: Partial<ContentDatabase>): Promise<ContentDatabase> {
+    this.contentService.assertContentImportAllowed();
+    await this.contentService.ensureInitialized();
     if (!payload || Object.keys(payload).length === 0) {
       return this.contentService.reloadFromDisk();
     }
@@ -21,7 +24,9 @@ export class ContentController {
   }
 
   @Post('reload-local')
-  reloadLocal(): ContentDatabase {
+  async reloadLocal(): Promise<ContentDatabase> {
+    this.contentService.assertContentImportAllowed();
+    await this.contentService.ensureInitialized();
     return this.contentService.reloadFromDisk();
   }
 
@@ -31,43 +36,52 @@ export class ContentController {
   }
 
   @Post('seed-defaults')
-  seedDefaults() {
+  async seedDefaults() {
+    this.contentService.assertContentImportAllowed();
+    await this.contentService.ensureInitialized();
     return this.contentService.seedDefaultsIfEmpty();
   }
 
   @Get('world-map')
-  getWorldMap(): WorldMapContent {
+  async getWorldMap(): Promise<WorldMapContent> {
+    await this.contentService.ensureInitialized();
     return this.contentService.getWorldMap();
   }
 
   @Put('world-map')
-  saveWorldMap(@Body() payload: WorldMapContent): WorldMapContent {
+  async saveWorldMap(@Body() payload: WorldMapContent): Promise<WorldMapContent> {
+    await this.contentService.ensureInitialized();
     return this.contentService.saveWorldMap(payload);
   }
 
   @Get(':collection')
-  listCollection(@Param('collection') collection: string) {
+  async listCollection(@Param('collection') collection: string) {
+    await this.contentService.ensureInitialized();
     return this.contentService.listCollection(collection as any);
   }
 
   @Get(':collection/:id')
-  getEntry(@Param('collection') collection: string, @Param('id') id: string) {
+  async getEntry(@Param('collection') collection: string, @Param('id') id: string) {
+    await this.contentService.ensureInitialized();
     return this.contentService.getCollectionEntry(collection as any, id);
   }
 
   @Post(':collection')
-  createEntry(@Param('collection') collection: string, @Body() payload: any) {
+  async createEntry(@Param('collection') collection: string, @Body() payload: any) {
+    await this.contentService.ensureInitialized();
     return this.contentService.createCollectionEntry(collection as any, payload);
   }
 
   @Put(':collection/:id')
-  updateEntry(@Param('collection') collection: string, @Param('id') id: string, @Body() payload: any) {
+  async updateEntry(@Param('collection') collection: string, @Param('id') id: string, @Body() payload: any) {
+    await this.contentService.ensureInitialized();
     return this.contentService.updateCollectionEntry(collection as any, id, payload);
   }
 
   @Delete(':collection/:id')
-  deleteEntry(@Param('collection') collection: string, @Param('id') id: string) {
-    this.contentService.deleteCollectionEntry(collection as any, id);
+  async deleteEntry(@Param('collection') collection: string, @Param('id') id: string) {
+    await this.contentService.ensureInitialized();
+    await this.contentService.deleteCollectionEntry(collection as any, id);
     return { ok: true };
   }
 }

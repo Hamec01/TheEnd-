@@ -1,6 +1,6 @@
 import { IsIn, IsOptional, IsString, Length } from 'class-validator';
 
-const HAND_SLOTS = ['weapon', 'shield'] as const;
+const EQUIPMENT_SLOTS = ['weapon', 'helmet', 'necklace', 'armor', 'outerwear', 'belt', 'gloves', 'shield', 'ring1', 'ring2', 'ring3', 'legs', 'boots'] as const;
 
 export class EquipItemDto {
   @IsString()
@@ -13,6 +13,6 @@ export class EquipItemDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(HAND_SLOTS)
-  slot?: (typeof HAND_SLOTS)[number];
+  @IsIn(EQUIPMENT_SLOTS)
+  slot?: (typeof EQUIPMENT_SLOTS)[number];
 }

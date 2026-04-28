@@ -114,6 +114,17 @@ const stats_1 = require("./stats");
     });
 });
 (0, vitest_1.describe)('equipment', () => {
+    (0, vitest_1.it)('exposes the expanded equipment schema', () => {
+        (0, vitest_1.expect)(index_1.EMPTY_EQUIPMENT).toMatchObject({
+            necklace: null,
+            outerwear: null,
+            belt: null,
+            ring1: null,
+            ring2: null,
+            ring3: null,
+            legs: null,
+        });
+    });
     (0, vitest_1.it)('prevents equip when stat requirement is not met', () => {
         const check = (0, index_1.canEquipItem)({
             hp: 50,
@@ -130,23 +141,13 @@ const stats_1 = require("./stats");
         (0, vitest_1.expect)(check.ok).toBe(false);
     });
     (0, vitest_1.it)('equips item into correct slot', () => {
-        const equipment = (0, index_1.equipItem)({
-            weapon: null,
-            helmet: null,
-            armor: null,
-            boots: null,
-            gloves: null,
-            shield: null,
-        }, 'iron_sword');
+        const equipment = (0, index_1.equipItem)(index_1.EMPTY_EQUIPMENT, 'iron_sword');
         (0, vitest_1.expect)(equipment.weapon).toBe('iron_sword');
     });
     (0, vitest_1.it)('clears shield when equipping a two-handed weapon', () => {
         const equipment = (0, index_1.equipItem)({
+            ...index_1.EMPTY_EQUIPMENT,
             weapon: 'iron_sword',
-            helmet: null,
-            armor: null,
-            boots: null,
-            gloves: null,
             shield: 'kite_shield',
         }, 'hunter_bow');
         (0, vitest_1.expect)(equipment.weapon).toBe('hunter_bow');
@@ -165,24 +166,16 @@ const stats_1 = require("./stats");
             perception: 6,
             willpower: 5,
         }, 'kite_shield', {
+            ...index_1.EMPTY_EQUIPMENT,
             weapon: 'hunter_bow',
-            helmet: null,
-            armor: null,
-            boots: null,
-            gloves: null,
-            shield: null,
         });
         (0, vitest_1.expect)(check.ok).toBe(false);
         (0, vitest_1.expect)(check.reason).toBeDefined();
     });
     (0, vitest_1.it)('allows equipping a one-handed weapon into offhand for dual-wield', () => {
         const equipment = (0, index_1.equipItem)({
+            ...index_1.EMPTY_EQUIPMENT,
             weapon: 'iron_sword',
-            helmet: null,
-            armor: null,
-            boots: null,
-            gloves: null,
-            shield: null,
         }, 'raider_axe', 'shield');
         (0, vitest_1.expect)(equipment.weapon).toBe('iron_sword');
         (0, vitest_1.expect)(equipment.shield).toBe('raider_axe');
@@ -200,12 +193,8 @@ const stats_1 = require("./stats");
             perception: 6,
             willpower: 5,
         }, 'iron_sword', {
+            ...index_1.EMPTY_EQUIPMENT,
             weapon: 'hunter_bow',
-            helmet: null,
-            armor: null,
-            boots: null,
-            gloves: null,
-            shield: null,
         }, 'shield');
         (0, vitest_1.expect)(check.ok).toBe(false);
         (0, vitest_1.expect)(check.reason).toBeDefined();

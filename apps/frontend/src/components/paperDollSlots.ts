@@ -4,7 +4,7 @@ export type EquipmentSlotId =
   | 'helmet'
   | 'necklace'
   | 'armor'
-  | 'cloak'
+  | 'outerwear'
   | 'belt'
   | 'leftHand'
   | 'gloves'
@@ -12,7 +12,7 @@ export type EquipmentSlotId =
   | 'ring1'
   | 'ring2'
   | 'ring3'
-  | 'knees'
+  | 'legs'
   | 'boots'
   | 'quick1'
   | 'quick2'
@@ -44,7 +44,7 @@ const SOURCE_SLOT_RECTS: PaperDollSlotRect[] = [
   { id: 'helmet', x: 691, y: 68, w: 220, h: 220 },
   { id: 'necklace', x: 744, y: 307, w: 108, h: 108 },
   { id: 'armor', x: 700, y: 471, w: 205, h: 205 },
-  { id: 'cloak', x: 700, y: 730, w: 205, h: 205 },
+  { id: 'outerwear', x: 700, y: 730, w: 205, h: 205 },
   { id: 'belt', x: 658, y: 1010, w: 280, h: 110 },
   { id: 'leftHand', x: 168, y: 599, w: 220, h: 220 },
   { id: 'gloves', x: 190, y: 872, w: 205, h: 205 },
@@ -52,7 +52,7 @@ const SOURCE_SLOT_RECTS: PaperDollSlotRect[] = [
   { id: 'ring1', x: 1233, y: 848, w: 205, h: 205 },
   { id: 'ring2', x: 1233, y: 1075, w: 205, h: 205 },
   { id: 'ring3', x: 1233, y: 1302, w: 205, h: 205 },
-  { id: 'knees', x: 524, y: 1302, w: 185, h: 220 },
+  { id: 'legs', x: 524, y: 1302, w: 185, h: 220 },
   { id: 'boots', x: 896, y: 1302, w: 185, h: 220 },
   { id: 'quick1', x: 63, y: 1863, w: 137, h: 137 },
   { id: 'quick2', x: 220, y: 1863, w: 137, h: 137 },

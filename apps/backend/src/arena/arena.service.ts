@@ -16,7 +16,66 @@ export class ArenaService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.ensureEquipmentSchema();
     await this.sanitizeAllCharactersInventoryAndEquipment();
+  }
+
+  private async ensureEquipmentSchema(): Promise<void> {
+    const columns = ['necklace', 'outerwear', 'belt', 'ring1', 'ring2', 'ring3', 'legs'];
+
+    for (const column of columns) {
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "CharacterEquipment" ADD COLUMN IF NOT EXISTS "${column}" TEXT`);
+    }
+  }
+
+  private toEquipmentRecord(equipment: Equipment) {
+    return {
+      weapon: equipment.weapon,
+      helmet: equipment.helmet,
+      necklace: equipment.necklace,
+      armor: equipment.armor,
+      outerwear: equipment.outerwear,
+      belt: equipment.belt,
+      gloves: equipment.gloves,
+      shield: equipment.shield,
+      ring1: equipment.ring1,
+      ring2: equipment.ring2,
+      ring3: equipment.ring3,
+      legs: equipment.legs,
+      boots: equipment.boots,
+    };
+  }
+
+  private fromEquipmentRecord(record: {
+    weapon?: string | null;
+    helmet?: string | null;
+    necklace?: string | null;
+    armor?: string | null;
+    outerwear?: string | null;
+    belt?: string | null;
+    gloves?: string | null;
+    shield?: string | null;
+    ring1?: string | null;
+    ring2?: string | null;
+    ring3?: string | null;
+    legs?: string | null;
+    boots?: string | null;
+  } | null | undefined): Equipment {
+    return {
+      weapon: record?.weapon ?? null,
+      helmet: record?.helmet ?? null,
+      necklace: record?.necklace ?? null,
+      armor: record?.armor ?? null,
+      outerwear: record?.outerwear ?? null,
+      belt: record?.belt ?? null,
+      gloves: record?.gloves ?? null,
+      shield: record?.shield ?? null,
+      ring1: record?.ring1 ?? null,
+      ring2: record?.ring2 ?? null,
+      ring3: record?.ring3 ?? null,
+      legs: record?.legs ?? null,
+      boots: record?.boots ?? null,
+    };
   }
 
   private async sanitizeAllCharactersInventoryAndEquipment(): Promise<void> {
@@ -35,14 +94,7 @@ export class ArenaService implements OnModuleInit {
           itemId: entry.itemId,
           quantity: entry.quantity,
         })),
-        equipment: {
-          weapon: character.equipment?.weapon ?? null,
-          helmet: character.equipment?.helmet ?? null,
-          armor: character.equipment?.armor ?? null,
-          boots: character.equipment?.boots ?? null,
-          gloves: character.equipment?.gloves ?? null,
-          shield: character.equipment?.shield ?? null,
-        },
+        equipment: this.fromEquipmentRecord(character.equipment),
       });
     }
   }
@@ -72,6 +124,10 @@ export class ArenaService implements OnModuleInit {
 
         if (slot === 'shield') {
           return item.itemType === 'shield' || (item.itemType === 'weapon' && (item.handsRequired ?? 1) === 1);
+        }
+
+        if (slot === 'ring1' || slot === 'ring2' || slot === 'ring3') {
+          return item.itemType === 'ring';
         }
 
         return item.itemType === slot;
@@ -161,10 +217,10 @@ export class ArenaService implements OnModuleInit {
       if (equipmentChanged) {
         await tx.characterEquipment.upsert({
           where: { characterId: params.characterId },
-          update: nextEquipment,
+          update: this.toEquipmentRecord(nextEquipment),
           create: {
             characterId: params.characterId,
-            ...nextEquipment,
+            ...this.toEquipmentRecord(nextEquipment),
           },
         });
       }
@@ -266,14 +322,7 @@ export class ArenaService implements OnModuleInit {
       throw new NotFoundException('Character not found.');
     }
 
-    const rawEquipment: Equipment = {
-      weapon: character.equipment?.weapon ?? null,
-      helmet: character.equipment?.helmet ?? null,
-      armor: character.equipment?.armor ?? null,
-      boots: character.equipment?.boots ?? null,
-      gloves: character.equipment?.gloves ?? null,
-      shield: character.equipment?.shield ?? null,
-    };
+    const rawEquipment = this.fromEquipmentRecord(character.equipment);
 
     const sanitized = await this.sanitizeCharacterInventoryAndEquipment({
       characterId,
@@ -396,19 +445,19 @@ export class ArenaService implements OnModuleInit {
     return this.getCharacterArenaState(characterId);
   }
 
-  async equipItem(characterId: string, itemId: string, preferredHand?: 'weapon' | 'shield') {
+  async equipItem(characterId: string, itemId: string, preferredSlot?: keyof Equipment) {
     const state = await this.getCharacterArenaState(characterId);
     const hasItem = state.inventory.items.find((entry) => entry.itemId === itemId && entry.quantity > 0);
     if (!hasItem) {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment, preferredHand);
+    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment, preferredSlot);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }
 
-    const nextEquipment = this.contentService.equipItem(state.equipment, itemId, preferredHand);
+    const nextEquipment = this.contentService.equipItem(state.equipment, itemId, preferredSlot);
     const returnedItems = new Map<string, number>();
     for (const slot of Object.keys(state.equipment) as Array<keyof Equipment>) {
       const previousItemId = state.equipment[slot];
@@ -426,22 +475,10 @@ export class ArenaService implements OnModuleInit {
 
       await tx.characterEquipment.upsert({
         where: { characterId },
-        update: {
-          weapon: nextEquipment.weapon,
-          helmet: nextEquipment.helmet,
-          armor: nextEquipment.armor,
-          boots: nextEquipment.boots,
-          gloves: nextEquipment.gloves,
-          shield: nextEquipment.shield,
-        },
+        update: this.toEquipmentRecord(nextEquipment),
         create: {
           characterId,
-          weapon: nextEquipment.weapon,
-          helmet: nextEquipment.helmet,
-          armor: nextEquipment.armor,
-          boots: nextEquipment.boots,
-          gloves: nextEquipment.gloves,
-          shield: nextEquipment.shield,
+          ...this.toEquipmentRecord(nextEquipment),
         },
       });
     });
@@ -464,22 +501,10 @@ export class ArenaService implements OnModuleInit {
     await this.prisma.$transaction(async (tx) => {
       await tx.characterEquipment.upsert({
         where: { characterId },
-        update: {
-          weapon: nextEquipment.weapon,
-          helmet: nextEquipment.helmet,
-          armor: nextEquipment.armor,
-          boots: nextEquipment.boots,
-          gloves: nextEquipment.gloves,
-          shield: nextEquipment.shield,
-        },
+        update: this.toEquipmentRecord(nextEquipment),
         create: {
           characterId,
-          weapon: nextEquipment.weapon,
-          helmet: nextEquipment.helmet,
-          armor: nextEquipment.armor,
-          boots: nextEquipment.boots,
-          gloves: nextEquipment.gloves,
-          shield: nextEquipment.shield,
+          ...this.toEquipmentRecord(nextEquipment),
         },
       });
 

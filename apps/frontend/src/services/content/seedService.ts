@@ -21,10 +21,25 @@ function toAdminType(item: ItemDefinition): AdminItem['type'] {
   if (item.itemType === 'weapon') {
     return 'weapon';
   }
-  if (['helmet', 'armor', 'boots', 'gloves', 'shield'].includes(item.itemType)) {
+  if (['helmet', 'necklace', 'armor', 'outerwear', 'belt', 'gloves', 'shield', 'ring', 'legs', 'boots'].includes(item.itemType)) {
     return 'armor';
   }
   return 'misc';
+}
+
+function normalizeAdminSlot(slot: AdminItem['slot'] | string | undefined): AdminItem['slot'] {
+  switch (slot) {
+    case 'cloak':
+      return 'outerwear';
+    case 'knees':
+      return 'legs';
+    case 'charm':
+      return 'necklace';
+    case 'trinket':
+      return 'ring';
+    default:
+      return (slot as AdminItem['slot']) ?? 'none';
+  }
 }
 
 function toAdminSlot(item: ItemDefinition): AdminItem['slot'] {
@@ -37,8 +52,23 @@ function toAdminSlot(item: ItemDefinition): AdminItem['slot'] {
   if (item.itemType === 'helmet') {
     return 'head';
   }
+  if (item.itemType === 'necklace') {
+    return 'necklace';
+  }
   if (item.itemType === 'armor') {
     return 'chest';
+  }
+  if (item.itemType === 'outerwear') {
+    return 'outerwear';
+  }
+  if (item.itemType === 'belt') {
+    return 'belt';
+  }
+  if (item.itemType === 'ring') {
+    return 'ring';
+  }
+  if (item.itemType === 'legs') {
+    return 'legs';
   }
   if (item.itemType === 'boots') {
     return 'boots';
@@ -74,14 +104,26 @@ function seedItemFromDomain(item: ItemDefinition): Omit<AdminItem, 'createdAt' |
 }
 
 function toDomainItemType(adminItem: AdminItem): ItemDefinition['itemType'] {
+  const slot = normalizeAdminSlot(adminItem.slot);
+
   if (adminItem.type === 'weapon') {
     return 'weapon';
   }
 
   if (adminItem.type === 'armor') {
-    switch (adminItem.slot) {
+    switch (slot) {
       case 'head':
         return 'helmet';
+      case 'necklace':
+        return 'necklace';
+      case 'outerwear':
+        return 'outerwear';
+      case 'belt':
+        return 'belt';
+      case 'ring':
+        return 'ring';
+      case 'legs':
+        return 'legs';
       case 'boots':
         return 'boots';
       case 'gloves':

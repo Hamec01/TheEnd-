@@ -23,7 +23,35 @@ class EquipmentPayloadDto {
 
   @IsOptional()
   @IsString()
+  necklace?: string | null;
+
+  @IsOptional()
+  @IsString()
   armor?: string | null;
+
+  @IsOptional()
+  @IsString()
+  outerwear?: string | null;
+
+  @IsOptional()
+  @IsString()
+  belt?: string | null;
+
+  @IsOptional()
+  @IsString()
+  ring1?: string | null;
+
+  @IsOptional()
+  @IsString()
+  ring2?: string | null;
+
+  @IsOptional()
+  @IsString()
+  ring3?: string | null;
+
+  @IsOptional()
+  @IsString()
+  legs?: string | null;
 
   @IsOptional()
   @IsString()

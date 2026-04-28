@@ -3,7 +3,12 @@ import type { PrimaryStat } from './stats';
 export type ItemType =
   | 'weapon'
   | 'helmet'
+  | 'necklace'
   | 'armor'
+  | 'outerwear'
+  | 'belt'
+  | 'ring'
+  | 'legs'
   | 'boots'
   | 'gloves'
   | 'shield'

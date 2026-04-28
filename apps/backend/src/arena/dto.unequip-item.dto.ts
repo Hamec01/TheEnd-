@@ -1,6 +1,6 @@
 import { IsIn, IsString, Length } from 'class-validator';
 
-const EQUIPMENT_SLOTS = ['weapon', 'helmet', 'armor', 'boots', 'gloves', 'shield'] as const;
+const EQUIPMENT_SLOTS = ['weapon', 'helmet', 'necklace', 'armor', 'outerwear', 'belt', 'gloves', 'shield', 'ring1', 'ring2', 'ring3', 'legs', 'boots'] as const;
 
 export class UnequipItemDto {
   @IsString()

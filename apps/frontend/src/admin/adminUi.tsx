@@ -75,7 +75,7 @@ export function translateItemSlot(value: ItemSlot): string {
       return 'Шея';
     case 'chest':
       return 'Торс';
-    case 'cloak':
+    case 'outerwear':
       return 'Плащ';
     case 'belt':
       return 'Пояс';
@@ -85,7 +85,7 @@ export function translateItemSlot(value: ItemSlot): string {
       return 'Правая рука';
     case 'gloves':
       return 'Перчатки';
-    case 'knees':
+    case 'legs':
       return 'Ноги';
     case 'boots':
       return 'Обувь';

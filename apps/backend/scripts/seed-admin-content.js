@@ -4,6 +4,8 @@ const { join } = require('path');
 const { PrismaClient } = require('@prisma/client');
 
 const CONTENT_DB_VERSION = 1;
+const CONTENT_STORE_KEY = 'main-content-db';
+const STORAGE_MODE = String(process.env.CONTENT_STORAGE ?? '').trim().toLowerCase() === 'file' ? 'file' : 'database';
 
 function isExplicitSeedRequested() {
   const flag = String(process.env.CONTENT_SEED_CONFIRM ?? '').trim().toUpperCase();
@@ -37,6 +39,35 @@ function emptyDb() {
       zones: [],
       regions: [],
       updatedAt: timestamp,
+    },
+  };
+}
+
+function normalizeDb(parsed) {
+  if (!parsed || typeof parsed !== 'object') {
+    return emptyDb();
+  }
+
+  const base = emptyDb();
+  return {
+    ...base,
+    ...parsed,
+    version: CONTENT_DB_VERSION,
+    items: Array.isArray(parsed.items) ? parsed.items : [],
+    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    merchants: Array.isArray(parsed.merchants) ? parsed.merchants : [],
+    materials: Array.isArray(parsed.materials) ? parsed.materials : [],
+    lootTables: Array.isArray(parsed.lootTables) ? parsed.lootTables : [],
+    images: Array.isArray(parsed.images) ? parsed.images : [],
+    dialogues: Array.isArray(parsed.dialogues) ? parsed.dialogues : [],
+    npcs: Array.isArray(parsed.npcs) ? parsed.npcs : [],
+    quests: Array.isArray(parsed.quests) ? parsed.quests : [],
+    questItems: Array.isArray(parsed.questItems) ? parsed.questItems : [],
+    questMarkers: Array.isArray(parsed.questMarkers) ? parsed.questMarkers : [],
+    worldMap: {
+      zones: Array.isArray(parsed.worldMap && parsed.worldMap.zones) ? parsed.worldMap.zones : [],
+      regions: Array.isArray(parsed.worldMap && parsed.worldMap.regions) ? parsed.worldMap.regions : [],
+      updatedAt: parsed.worldMap && parsed.worldMap.updatedAt ? parsed.worldMap.updatedAt : nowIso(),
     },
   };
 }
@@ -84,41 +115,57 @@ async function assertPostgresConnection() {
   }
 }
 
-function loadDb(dbPath) {
+function loadDbFromFile(dbPath) {
   if (!existsSync(dbPath)) {
     return emptyDb();
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(dbPath, 'utf8'));
-    if (!parsed || typeof parsed !== 'object') {
-      return emptyDb();
-    }
-
-    const base = emptyDb();
-    return {
-      ...base,
-      ...parsed,
-      version: CONTENT_DB_VERSION,
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      skills: Array.isArray(parsed.skills) ? parsed.skills : [],
-      merchants: Array.isArray(parsed.merchants) ? parsed.merchants : [],
-      materials: Array.isArray(parsed.materials) ? parsed.materials : [],
-      lootTables: Array.isArray(parsed.lootTables) ? parsed.lootTables : [],
-      images: Array.isArray(parsed.images) ? parsed.images : [],
-      dialogues: Array.isArray(parsed.dialogues) ? parsed.dialogues : [],
-      npcs: Array.isArray(parsed.npcs) ? parsed.npcs : [],
-      quests: Array.isArray(parsed.quests) ? parsed.quests : [],
-      questItems: Array.isArray(parsed.questItems) ? parsed.questItems : [],
-      questMarkers: Array.isArray(parsed.questMarkers) ? parsed.questMarkers : [],
-      worldMap: {
-        zones: Array.isArray(parsed.worldMap && parsed.worldMap.zones) ? parsed.worldMap.zones : [],
-        regions: Array.isArray(parsed.worldMap && parsed.worldMap.regions) ? parsed.worldMap.regions : [],
-        updatedAt: parsed.worldMap && parsed.worldMap.updatedAt ? parsed.worldMap.updatedAt : nowIso(),
-      },
-    };
+    return normalizeDb(JSON.parse(readFileSync(dbPath, 'utf8')));
   } catch {
     return emptyDb();
+  }
+}
+
+async function loadDb(dbPath) {
+  if (STORAGE_MODE === 'file') {
+    return loadDbFromFile(dbPath);
+  }
+
+  const prisma = new PrismaClient();
+  try {
+    const store = await prisma.contentStore.findUnique({
+      where: { key: CONTENT_STORE_KEY },
+    });
+
+    if (store && store.value && typeof store.value === 'object') {
+      return normalizeDb(store.value);
+    }
+
+    return loadDbFromFile(dbPath);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function persistDb(dbPath, db) {
+  if (STORAGE_MODE === 'file') {
+    writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+    return;
+  }
+
+  const prisma = new PrismaClient();
+  try {
+    await prisma.contentStore.upsert({
+      where: { key: CONTENT_STORE_KEY },
+      update: { value: db },
+      create: {
+        key: CONTENT_STORE_KEY,
+        value: db,
+      },
+    });
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
@@ -132,8 +179,8 @@ async function main() {
   await assertPostgresConnection();
 
   const backendRoot = join(__dirname, '..');
-  const dbPath = join(backendRoot, 'data', 'content-db.json');
-  const db = loadDb(dbPath);
+  const dbPath = join(backendRoot, 'data', STORAGE_MODE === 'file' ? 'content-runtime.json' : 'content-db.json');
+  const db = await loadDb(dbPath);
   const timestamp = nowIso();
 
   const starterItems = [
@@ -297,7 +344,7 @@ async function main() {
   upsertZone(db.worldMap.zones, cityZone);
   db.worldMap.updatedAt = nowIso();
 
-  writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+  await persistDb(dbPath, db);
 
   console.log('[seed-admin-content] Seed completed.');
   console.log(`[seed-admin-content] Items: ${db.items.length}`);

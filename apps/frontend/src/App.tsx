@@ -22,6 +22,7 @@ import {
   allocateStats,
   buyArenaItem,
   createCharacter,
+  type ArenaHubState,
   type CustomArenaNpcPayload,
   equipArenaItem,
   getArenaHubState,
@@ -173,15 +174,22 @@ interface BattleSummary {
 const ARENA_NPC_LOCATION_ID = 'arena:combat';
 const DEFAULT_ARENA_NPC_DESCRIPTION = 'Arena combat NPC managed from the arena editor.';
 
-const EQUIPMENT_SLOT_ORDER: EquipmentSlot[] = ['weapon', 'helmet', 'armor', 'gloves', 'boots', 'shield'];
+const EQUIPMENT_SLOT_ORDER: EquipmentSlot[] = ['weapon', 'helmet', 'necklace', 'armor', 'outerwear', 'belt', 'gloves', 'shield', 'ring1', 'ring2', 'ring3', 'legs', 'boots'];
 
 const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
   weapon: 'Weapon',
   helmet: 'Head',
+  necklace: 'Necklace',
   armor: 'Chest',
+  outerwear: 'Outerwear',
+  belt: 'Belt',
   gloves: 'Hands',
-  boots: 'Legs',
   shield: 'Offhand',
+  ring1: 'Ring 1',
+  ring2: 'Ring 2',
+  ring3: 'Ring 3',
+  legs: 'Legs',
+  boots: 'Boots',
 };
 
 const DEFAULT_NPC_STATS: StatBlock = {
@@ -743,14 +751,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
-  const [equipment, setEquipment] = useState<Equipment>({
-    weapon: null,
-    helmet: null,
-    armor: null,
-    boots: null,
-    gloves: null,
-    shield: null,
-  });
+  const [equipment, setEquipment] = useState<Equipment>({ ...EMPTY_EQUIPMENT });
 
   const [combatId, setCombatId] = useState<string | null>(null);
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
@@ -838,10 +839,17 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return {
       weapon: values.filter((item) => item.itemType === 'weapon'),
       helmet: values.filter((item) => item.itemType === 'helmet'),
+      necklace: values.filter((item) => item.itemType === 'necklace'),
       armor: values.filter((item) => item.itemType === 'armor'),
+      outerwear: values.filter((item) => item.itemType === 'outerwear'),
+      belt: values.filter((item) => item.itemType === 'belt'),
       gloves: values.filter((item) => item.itemType === 'gloves'),
-      boots: values.filter((item) => item.itemType === 'boots'),
       shield: values.filter((item) => item.itemType === 'shield'),
+      ring1: values.filter((item) => item.itemType === 'ring'),
+      ring2: values.filter((item) => item.itemType === 'ring'),
+      ring3: values.filter((item) => item.itemType === 'ring'),
+      legs: values.filter((item) => item.itemType === 'legs'),
+      boots: values.filter((item) => item.itemType === 'boots'),
     };
   }, [runtimeAdminItems]);
   const loadArenaNpcTemplatesFromBackend = useCallback(async (force = false) => {
@@ -1552,7 +1560,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     reader.readAsDataURL(file);
   }
 
-  async function handleEquip(itemId: string, preferredHand?: 'weapon' | 'shield'): Promise<void> {
+  async function handleEquip(itemId: string, preferredSlot?: keyof Equipment): Promise<void> {
     if (!character) {
       return;
     }
@@ -1562,7 +1570,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const isTwoHandedWeapon = item.itemType === 'weapon' && getItemHandsRequired(item) === 2;
 
     try {
-      const hub = await equipArenaItem(character.id, itemId, preferredHand);
+      const hub = await equipArenaItem(character.id, itemId, preferredSlot);
       applyHubState(hub);
       if (isTwoHandedWeapon && previousShieldId && !hub.equipment.shield) {
         setStatus(`Экипировано: ${item.name}. Предмет из левой руки снят и остался в инвентаре, потому что оружие двуручное.`);
@@ -1575,7 +1583,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function handleUnequip(slot: 'weapon' | 'helmet' | 'armor' | 'boots' | 'gloves' | 'shield'): Promise<void> {
+  async function handleUnequip(slot: keyof Equipment): Promise<void> {
     if (!character) {
       return;
     }
@@ -1727,7 +1735,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus(`Изучен навык: ${offer.name}`);
   }
 
-  async function handleBattleFinished(nextState: ArenaBattleState): Promise<void> {
+  async function handleBattleFinished(nextState: ArenaBattleState, resolvedHubState?: ArenaHubState): Promise<void> {
     if (!character || !playerCombatId) {
       setBattleWindowOpen(false);
       battleStartSnapshotRef.current = null;
@@ -1735,7 +1743,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
 
     try {
-      const refreshedHub = await getArenaHubState(character.id);
+      const refreshedHub = resolvedHubState ?? await getArenaHubState(character.id);
       applyHubState(refreshedHub);
       setBattleSummary(buildBattleSummary(nextState, playerCombatId, battleStartSnapshotRef.current, refreshedHub.character));
       setStatus('Бой завершён. Открылось окно итогов.');
@@ -2478,14 +2486,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                     setLogin('');
                     setPassword('');
                     setInventory({ gold: 0, items: [] });
-                    setEquipment({
-                      weapon: null,
-                      helmet: null,
-                      armor: null,
-                      boots: null,
-                      gloves: null,
-                      shield: null,
-                    });
+                    setEquipment({ ...EMPTY_EQUIPMENT });
                     setPendingStatAllocation({});
                     window.localStorage.removeItem(LAST_CHARACTER_STORAGE_KEY);
                     setStatus('Вы вышли из аккаунта.');

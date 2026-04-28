@@ -1,15 +1,6 @@
-import { Race, type InventoryState } from '@theend/rpg-domain';
+import { EMPTY_EQUIPMENT, Race, type InventoryState } from '@theend/rpg-domain';
 import { useMemo, useState } from 'react';
 import { WorldMapScreen } from '../../worldmap/WorldMapScreen';
-
-const EMPTY_EQUIPMENT = {
-  weapon: null,
-  helmet: null,
-  armor: null,
-  boots: null,
-  gloves: null,
-  shield: null,
-} as const;
 
 const EMPTY_INVENTORY: InventoryState = {
   gold: 0,

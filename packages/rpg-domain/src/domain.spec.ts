@@ -162,6 +162,18 @@ describe('derived stats', () => {
 });
 
 describe('equipment', () => {
+  it('exposes the expanded equipment schema', () => {
+    expect(EMPTY_EQUIPMENT).toMatchObject({
+      necklace: null,
+      outerwear: null,
+      belt: null,
+      ring1: null,
+      ring2: null,
+      ring3: null,
+      legs: null,
+    });
+  });
+
   it('prevents equip when stat requirement is not met', () => {
     const check = canEquipItem(
       {
@@ -183,17 +195,7 @@ describe('equipment', () => {
   });
 
   it('equips item into correct slot', () => {
-    const equipment = equipItem(
-      {
-        weapon: null,
-        helmet: null,
-        armor: null,
-        boots: null,
-        gloves: null,
-        shield: null,
-      },
-      'iron_sword',
-    );
+    const equipment = equipItem(EMPTY_EQUIPMENT, 'iron_sword');
 
     expect(equipment.weapon).toBe('iron_sword');
   });
@@ -201,11 +203,8 @@ describe('equipment', () => {
   it('clears shield when equipping a two-handed weapon', () => {
     const equipment = equipItem(
       {
+        ...EMPTY_EQUIPMENT,
         weapon: 'iron_sword',
-        helmet: null,
-        armor: null,
-        boots: null,
-        gloves: null,
         shield: 'kite_shield',
       },
       'hunter_bow',
@@ -231,12 +230,8 @@ describe('equipment', () => {
       },
       'kite_shield',
       {
+        ...EMPTY_EQUIPMENT,
         weapon: 'hunter_bow',
-        helmet: null,
-        armor: null,
-        boots: null,
-        gloves: null,
-        shield: null,
       },
     );
 
@@ -247,12 +242,8 @@ describe('equipment', () => {
   it('allows equipping a one-handed weapon into offhand for dual-wield', () => {
     const equipment = equipItem(
       {
+        ...EMPTY_EQUIPMENT,
         weapon: 'iron_sword',
-        helmet: null,
-        armor: null,
-        boots: null,
-        gloves: null,
-        shield: null,
       },
       'raider_axe',
       'shield',
@@ -278,12 +269,8 @@ describe('equipment', () => {
       },
       'iron_sword',
       {
+        ...EMPTY_EQUIPMENT,
         weapon: 'hunter_bow',
-        helmet: null,
-        armor: null,
-        boots: null,
-        gloves: null,
-        shield: null,
       },
       'shield',
     );

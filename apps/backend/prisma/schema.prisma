@@ -59,10 +59,23 @@ model CharacterEquipment {
   characterId String    @id
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
-  weapon String?
-  helmet String?
-  armor  String?
-  boots  String?
-  gloves String?
-  shield String?
+  weapon    String?
+  helmet    String?
+  necklace  String?
+  armor     String?
+  outerwear String?
+  belt      String?
+  gloves    String?
+  shield    String?
+  ring1     String?
+  ring2     String?
+  ring3     String?
+  legs      String?
+  boots     String?
+}
+
+model ContentStore {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

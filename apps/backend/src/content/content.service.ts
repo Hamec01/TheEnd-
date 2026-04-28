@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import {
   EMPTY_EQUIPMENT,
   CastType,
@@ -13,8 +13,10 @@ import {
   type Merchant,
   type StatBlock,
 } from '@theend/rpg-domain';
+import type { Prisma } from '@prisma/client';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
+import { PrismaService } from '../prisma/prisma.service';
 import type {
   AdminItem,
   AdminMerchant,
@@ -51,9 +53,17 @@ const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
 const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
+const CONTENT_STORE_KEY = 'main-content-db';
+
+type ContentStorageMode = 'database' | 'file';
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function clone<T>(value: T): T {
@@ -71,10 +81,25 @@ function toAdminType(item: ItemDefinition): AdminItem['type'] {
   if (item.itemType === 'weapon') {
     return 'weapon';
   }
-  if (['helmet', 'armor', 'boots', 'gloves', 'shield'].includes(item.itemType)) {
+  if (['helmet', 'necklace', 'armor', 'outerwear', 'belt', 'gloves', 'shield', 'ring', 'legs', 'boots'].includes(item.itemType)) {
     return 'armor';
   }
   return 'misc';
+}
+
+function normalizeAdminSlot(slot: AdminItem['slot'] | string | undefined): AdminItem['slot'] {
+  switch (slot) {
+    case 'cloak':
+      return 'outerwear';
+    case 'knees':
+      return 'legs';
+    case 'charm':
+      return 'necklace';
+    case 'trinket':
+      return 'ring';
+    default:
+      return (slot as AdminItem['slot']) ?? 'none';
+  }
 }
 
 function toAdminSlot(item: ItemDefinition): AdminItem['slot'] {
@@ -87,8 +112,23 @@ function toAdminSlot(item: ItemDefinition): AdminItem['slot'] {
   if (item.itemType === 'helmet') {
     return 'head';
   }
+  if (item.itemType === 'necklace') {
+    return 'necklace';
+  }
   if (item.itemType === 'armor') {
     return 'chest';
+  }
+  if (item.itemType === 'outerwear') {
+    return 'outerwear';
+  }
+  if (item.itemType === 'belt') {
+    return 'belt';
+  }
+  if (item.itemType === 'ring') {
+    return 'ring';
+  }
+  if (item.itemType === 'legs') {
+    return 'legs';
   }
   if (item.itemType === 'boots') {
     return 'boots';
@@ -213,14 +253,26 @@ function createSeedDatabase(): ContentDatabase {
 }
 
 function toDomainItemType(adminItem: AdminItem): ItemDefinition['itemType'] {
+  const slot = normalizeAdminSlot(adminItem.slot);
+
   if (adminItem.type === 'weapon') {
     return 'weapon';
   }
 
   if (adminItem.type === 'armor') {
-    switch (adminItem.slot) {
+    switch (slot) {
       case 'head':
         return 'helmet';
+      case 'necklace':
+        return 'necklace';
+      case 'outerwear':
+        return 'outerwear';
+      case 'belt':
+        return 'belt';
+      case 'ring':
+        return 'ring';
+      case 'legs':
+        return 'legs';
       case 'boots':
         return 'boots';
       case 'gloves':
@@ -250,7 +302,7 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     name: input.name.trim(),
     type: input.type,
     subtype: input.subtype?.trim() || undefined,
-    slot: input.slot ?? 'none',
+    slot: normalizeAdminSlot(input.slot),
     handsRequired: input.type === 'weapon' && input.handsRequired === 2 ? 2 : 1,
     price: Math.max(0, Math.round(input.price || 0)),
     stackable: Boolean(input.stackable),
@@ -579,12 +631,103 @@ function resolveContentDbFilePath(): string {
 }
 
 @Injectable()
-export class ContentService {
-  private readonly dbFile = resolveContentDbFilePath();
-  private readonly dataDir = dirname(this.dbFile);
-  private readonly templateFile = join(process.cwd(), 'data', 'content-template.json');
+export class ContentService implements OnModuleInit {
+  private readonly logger = new Logger(ContentService.name);
+  private readonly templateFile = resolveContentDbFilePath();
+  private readonly dataDir = dirname(this.templateFile);
+  private readonly legacyTemplateFile = join(this.dataDir, 'content-template.json');
+  private readonly runtimeFile = join(this.dataDir, 'content-runtime.json');
   private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
+  private readonly storageMode: ContentStorageMode = String(process.env.CONTENT_STORAGE ?? '').trim().toLowerCase() === 'file'
+    ? 'file'
+    : 'database';
   private dbCache: ContentDatabase | null = null;
+  private initPromise: Promise<void> | null = null;
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.ensureInitialized();
+  }
+
+  async ensureInitialized(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.initializeStorage().catch((error) => {
+        this.initPromise = null;
+        throw error;
+      });
+    }
+
+    await this.initPromise;
+  }
+
+  getStorageMode(): ContentStorageMode {
+    return this.storageMode;
+  }
+
+  assertContentImportAllowed(): void {
+    if (isTruthyEnv(process.env.ALLOW_CONTENT_IMPORT)) {
+      return;
+    }
+
+    throw new ForbiddenException('Local content import/reload/seed endpoints are disabled. Set ALLOW_CONTENT_IMPORT=true to enable them explicitly.');
+  }
+
+  private ensureCache(): ContentDatabase {
+    if (!this.dbCache) {
+      throw new InternalServerErrorException('Content storage is not initialized.');
+    }
+
+    return this.dbCache;
+  }
+
+  private async initializeStorage(): Promise<void> {
+    if (this.storageMode === 'file') {
+      this.dbCache = this.loadFromFileStorage();
+      this.logger.log(`Content storage initialized in file mode using ${this.runtimeFile}.`);
+      return;
+    }
+
+    await this.ensureDatabaseStorageSchema();
+
+    const store = await this.prisma.contentStore.findUnique({
+      where: { key: CONTENT_STORE_KEY },
+    });
+
+    if (store) {
+      const raw = store.value && typeof store.value === 'object'
+        ? (store.value as Partial<ContentDatabase>)
+        : {};
+      this.dbCache = this.normalizeDatabase(raw);
+      this.logger.log('Content storage initialized from database.');
+      return;
+    }
+
+    const template = this.loadTemplateDatabase() ?? createEmptyDatabase();
+    await this.persist(template);
+    this.logger.log('Content storage bootstrapped from repository template into database.');
+  }
+
+  private loadFromFileStorage(): ContentDatabase {
+    if (!existsSync(this.dataDir)) {
+      mkdirSync(this.dataDir, { recursive: true });
+    }
+
+    if (!existsSync(this.runtimeFile)) {
+      const seeded = this.loadTemplateDatabase() ?? createEmptyDatabase();
+      this.persistToFile(seeded);
+      return this.ensureCache();
+    }
+
+    try {
+      const raw = JSON.parse(readFileSync(this.runtimeFile, 'utf8')) as Partial<ContentDatabase>;
+      return this.normalizeDatabase(raw);
+    } catch {
+      const fallback = this.loadTemplateDatabase() ?? createEmptyDatabase();
+      this.persistToFile(fallback);
+      return this.ensureCache();
+    }
+  }
 
   private validateDatabaseIntegrity(db: ContentDatabase): string[] {
     const errors: string[] = [];
@@ -714,7 +857,7 @@ export class ContentService {
   }
 
   private createBackupSnapshot(): void {
-    if (!existsSync(this.dbFile)) {
+    if (!existsSync(this.runtimeFile)) {
       return;
     }
 
@@ -724,7 +867,7 @@ export class ContentService {
 
     const timestamp = nowIso().replace(/[:.]/g, '-');
     const backupFile = join(this.backupDir, `content-db-${timestamp}.json`);
-    copyFileSync(this.dbFile, backupFile);
+    copyFileSync(this.runtimeFile, backupFile);
 
     const backups = readdirSync(this.backupDir)
       .filter((file) => file.startsWith('content-db-') && file.endsWith('.json'))
@@ -765,46 +908,27 @@ export class ContentService {
   }
 
   private loadTemplateDatabase(): ContentDatabase | null {
-    if (!existsSync(this.templateFile)) {
-      return null;
+    for (const filePath of [this.templateFile, this.legacyTemplateFile]) {
+      if (!existsSync(filePath)) {
+        continue;
+      }
+
+      try {
+        const raw = JSON.parse(readFileSync(filePath, 'utf8')) as Partial<ContentDatabase>;
+        return this.normalizeDatabase(raw);
+      } catch {
+        continue;
+      }
     }
 
-    try {
-      const raw = JSON.parse(readFileSync(this.templateFile, 'utf8')) as Partial<ContentDatabase>;
-      return this.normalizeDatabase(raw);
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   private ensureLoaded(): ContentDatabase {
-    if (this.dbCache) {
-      return this.dbCache;
-    }
-
-    if (!existsSync(this.dataDir)) {
-      mkdirSync(this.dataDir, { recursive: true });
-    }
-
-    if (!existsSync(this.dbFile)) {
-      const template = this.loadTemplateDatabase();
-      this.persist(template ?? createEmptyDatabase());
-      return this.dbCache!;
-    }
-
-    try {
-      const raw = JSON.parse(readFileSync(this.dbFile, 'utf8')) as Partial<ContentDatabase>;
-      const next = this.normalizeDatabase(raw);
-      this.dbCache = clone(next);
-      return this.dbCache!;
-    } catch {
-      const template = this.loadTemplateDatabase();
-      this.persist(template ?? createEmptyDatabase());
-      return this.dbCache!;
-    }
+    return this.ensureCache();
   }
 
-  private persist(db: ContentDatabase): ContentDatabase {
+  private persistToFile(db: ContentDatabase): ContentDatabase {
     const next = clone(db);
     const integrityErrors = this.validateDatabaseIntegrity(next);
     if (integrityErrors.length > 0) {
@@ -817,27 +941,56 @@ export class ContentService {
 
     this.createBackupSnapshot();
     this.dbCache = next;
-    writeFileSync(this.dbFile, JSON.stringify(this.dbCache, null, 2), 'utf8');
+    writeFileSync(this.runtimeFile, JSON.stringify(this.dbCache, null, 2), 'utf8');
     return clone(this.dbCache);
+  }
+
+  private async persist(db: ContentDatabase): Promise<ContentDatabase> {
+    const next = clone(db);
+    const integrityErrors = this.validateDatabaseIntegrity(next);
+    if (integrityErrors.length > 0) {
+      throw new BadRequestException(`Content integrity check failed:\n- ${integrityErrors.join('\n- ')}`);
+    }
+
+    if (this.storageMode === 'file') {
+      return this.persistToFile(next);
+    }
+
+    await this.prisma.contentStore.upsert({
+      where: { key: CONTENT_STORE_KEY },
+      update: { value: next as unknown as Prisma.InputJsonValue },
+      create: {
+        key: CONTENT_STORE_KEY,
+        value: next as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    this.dbCache = next;
+    return clone(this.dbCache);
+  }
+
+  private async ensureDatabaseStorageSchema(): Promise<void> {
+    if (this.storageMode !== 'database') {
+      return;
+    }
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ContentStore" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "value" JSONB NOT NULL,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
   }
 
   getSnapshot(): ContentDatabase {
     return clone(this.ensureLoaded());
   }
 
-  reloadFromDisk(): ContentDatabase {
-    if (!existsSync(this.dbFile)) {
-      const template = this.loadTemplateDatabase();
-      return this.persist(template ?? createEmptyDatabase());
-    }
-
-    try {
-      const raw = JSON.parse(readFileSync(this.dbFile, 'utf8')) as Partial<ContentDatabase>;
-      return this.persist(this.normalizeDatabase(raw));
-    } catch {
-      const template = this.loadTemplateDatabase();
-      return this.persist(template ?? createEmptyDatabase());
-    }
+  async reloadFromDisk(): Promise<ContentDatabase> {
+    await this.ensureInitialized();
+    const template = this.loadTemplateDatabase() ?? createEmptyDatabase();
+    return this.persist(template);
   }
 
   validateIntegrity(): { ok: boolean; errors: string[] } {
@@ -860,7 +1013,7 @@ export class ContentService {
     return collection.find((entry) => entry.id === id) ?? null;
   }
 
-  createCollectionEntry<K extends ContentCollectionName>(name: K | string, payload: ContentCollectionMap[K]): ContentCollectionMap[K] {
+  async createCollectionEntry<K extends ContentCollectionName>(name: K | string, payload: ContentCollectionMap[K]): Promise<ContentCollectionMap[K]> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
     const nextId = String(payload.id ?? '').trim();
@@ -895,11 +1048,11 @@ export class ContentService {
 
     const collections = db as unknown as Record<ContentCollectionName, unknown[]>;
     collections[collectionName] = [...collections[collectionName], nextEntry as unknown];
-    this.persist(db);
+    await this.persist(db);
     return clone(nextEntry);
   }
 
-  updateCollectionEntry<K extends ContentCollectionName>(name: K | string, id: string, patch: Partial<ContentCollectionMap[K]>): ContentCollectionMap[K] {
+  async updateCollectionEntry<K extends ContentCollectionName>(name: K | string, id: string, patch: Partial<ContentCollectionMap[K]>): Promise<ContentCollectionMap[K]> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
     const current = (db[collectionName] as Array<{ id: string }>).find((entry) => entry.id === id);
@@ -933,19 +1086,19 @@ export class ContentService {
     collections[collectionName] = (collections[collectionName] as Array<{ id: string }>).map((entry) =>
       entry.id === id ? clone(merged) : entry,
     );
-    this.persist(db);
+    await this.persist(db);
     return clone(merged);
   }
 
-  deleteCollectionEntry(name: ContentCollectionName | string, id: string): void {
+  async deleteCollectionEntry(name: ContentCollectionName | string, id: string): Promise<void> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
     const collections = db as unknown as Record<ContentCollectionName, unknown[]>;
     collections[collectionName] = (collections[collectionName] as Array<{ id: string }>).filter((entry) => entry.id !== id);
-    this.persist(db);
+    await this.persist(db);
   }
 
-  importLegacy(payload: Partial<ContentDatabase>): ContentDatabase {
+  async importLegacy(payload: Partial<ContentDatabase>): Promise<ContentDatabase> {
     const db = this.ensureLoaded();
 
     if (Array.isArray(payload.items) && payload.items.length > 0) {
@@ -1004,14 +1157,14 @@ export class ContentService {
     return this.persist(db);
   }
 
-  seedDefaultsIfEmpty(): { seeded: boolean; message: string } {
+  async seedDefaultsIfEmpty(): Promise<{ seeded: boolean; message: string }> {
     const db = this.ensureLoaded();
     if (db.items.length > 0 || db.merchants.length > 0) {
       return { seeded: false, message: 'Content already exists, seed skipped.' };
     }
 
     const seeded = this.loadTemplateDatabase() ?? createSeedDatabase();
-    this.persist(seeded);
+    await this.persist(seeded);
     return {
       seeded: true,
       message: `Seeded ${seeded.items.length} items and ${seeded.merchants.length} merchants at ${seeded.worldMap.updatedAt}`,
@@ -1038,14 +1191,14 @@ export class ContentService {
     return this.getCanonicalItemIds({ enabledOnly: true });
   }
 
-  saveWorldMap(payload: WorldMapContent): WorldMapContent {
+  async saveWorldMap(payload: WorldMapContent): Promise<WorldMapContent> {
     const db = this.ensureLoaded();
     db.worldMap = {
       zones: clone(Array.isArray(payload.zones) ? payload.zones : []),
       regions: clone(Array.isArray(payload.regions) ? payload.regions : []),
       updatedAt: nowIso(),
     };
-    this.persist(db);
+    await this.persist(db);
     return clone(db.worldMap);
   }
 
@@ -1107,7 +1260,7 @@ export class ContentService {
     return next;
   }
 
-  canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment, preferredHand?: 'weapon' | 'shield'): { ok: boolean; reason?: string } {
+  canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment, preferredSlot?: keyof Equipment): { ok: boolean; reason?: string } {
     const item = this.resolveItemById(itemId);
 
     if (item.itemType === 'consumable') {
@@ -1121,18 +1274,44 @@ export class ContentService {
       }
     }
 
-    if (item.itemType === 'weapon' && getItemHandsRequired(item) === 1 && preferredHand === 'shield' && equipment?.weapon) {
-      try {
-        const equippedWeapon = this.resolveItemById(equipment.weapon);
-        if (equippedWeapon.itemType === 'weapon' && getItemHandsRequired(equippedWeapon) === 2) {
-          return { ok: false, reason: 'Левая рука занята двуручным оружием.' };
-        }
-      } catch {
-        // Ignore broken legacy equipment records.
+    const ringSlots: Array<keyof Equipment> = ['ring1', 'ring2', 'ring3'];
+    const directSlots: Partial<Record<ItemDefinition['itemType'], keyof Equipment>> = {
+      helmet: 'helmet',
+      necklace: 'necklace',
+      armor: 'armor',
+      outerwear: 'outerwear',
+      belt: 'belt',
+      gloves: 'gloves',
+      legs: 'legs',
+      boots: 'boots',
+      shield: 'shield',
+    };
+
+    const targetSlot = (() => {
+      if (item.itemType === 'weapon') {
+        return getItemHandsRequired(item) === 2 ? 'weapon' : preferredSlot === 'shield' ? 'shield' : 'weapon';
       }
+
+      if (item.itemType === 'ring') {
+        if (preferredSlot && !ringSlots.includes(preferredSlot)) {
+          return null;
+        }
+
+        return preferredSlot ?? ringSlots.find((slot) => !(equipment?.[slot])) ?? 'ring1';
+      }
+
+      return directSlots[item.itemType] ?? null;
+    })();
+
+    if (!targetSlot) {
+      return { ok: false, reason: 'Предмет нельзя надеть в выбранный слот.' };
     }
 
-    if (item.itemType === 'shield' && equipment?.weapon) {
+    if (item.itemType !== 'weapon' && item.itemType !== 'ring' && preferredSlot && preferredSlot !== targetSlot) {
+      return { ok: false, reason: 'Предмет нельзя надеть в выбранный слот.' };
+    }
+
+    if (targetSlot === 'shield' && equipment?.weapon) {
       try {
         const equippedWeapon = this.resolveItemById(equipment.weapon);
         if (equippedWeapon.itemType === 'weapon' && getItemHandsRequired(equippedWeapon) === 2) {
@@ -1146,17 +1325,23 @@ export class ContentService {
     return { ok: true };
   }
 
-  equipItem(equipment: Equipment, itemId: string, preferredHand?: 'weapon' | 'shield'): Equipment {
+  equipItem(equipment: Equipment, itemId: string, preferredSlot?: keyof Equipment): Equipment {
     const item = this.resolveItemById(itemId);
 
     if (item.itemType === 'consumable') {
       throw new BadRequestException('Consumables cannot be equipped.');
     }
 
-    const slotByType: Record<string, keyof Equipment> = {
+    const ringSlots: Array<keyof Equipment> = ['ring1', 'ring2', 'ring3'];
+    const slotByType: Partial<Record<ItemDefinition['itemType'], keyof Equipment>> = {
       weapon: 'weapon',
       helmet: 'helmet',
+      necklace: 'necklace',
       armor: 'armor',
+      outerwear: 'outerwear',
+      belt: 'belt',
+      ring: 'ring1',
+      legs: 'legs',
       boots: 'boots',
       gloves: 'gloves',
       shield: 'shield',
@@ -1164,7 +1349,14 @@ export class ContentService {
     let slot = slotByType[item.itemType];
 
     if (item.itemType === 'weapon' && getItemHandsRequired(item) === 1) {
-      slot = preferredHand ?? 'weapon';
+      slot = preferredSlot === 'shield' ? 'shield' : 'weapon';
+    }
+
+    if (item.itemType === 'ring') {
+      if (preferredSlot && !ringSlots.includes(preferredSlot)) {
+        throw new BadRequestException('Кольцо можно надеть только в слот кольца.');
+      }
+      slot = preferredSlot ?? ringSlots.find((ringSlot) => !equipment[ringSlot]) ?? 'ring1';
     }
 
     if (!slot) {
@@ -1203,7 +1395,14 @@ export class ContentService {
       ...EMPTY_EQUIPMENT,
       weapon: equipment?.weapon ?? null,
       helmet: equipment?.helmet ?? null,
+      necklace: equipment?.necklace ?? null,
       armor: equipment?.armor ?? null,
+      outerwear: equipment?.outerwear ?? null,
+      belt: equipment?.belt ?? null,
+      ring1: equipment?.ring1 ?? null,
+      ring2: equipment?.ring2 ?? null,
+      ring3: equipment?.ring3 ?? null,
+      legs: equipment?.legs ?? null,
       boots: equipment?.boots ?? null,
       gloves: equipment?.gloves ?? null,
       shield: equipment?.shield ?? null,

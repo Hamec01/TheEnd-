@@ -7,7 +7,7 @@ exports.calculateCritChance = calculateCritChance;
 exports.calculateInitiative = calculateInitiative;
 exports.calculateDerivedStats = calculateDerivedStats;
 const items_1 = require("./items");
-const DEFENSIVE_SLOTS = ['helmet', 'armor', 'shield', 'boots', 'gloves'];
+const DEFENSIVE_SLOTS = ['helmet', 'armor', 'outerwear', 'shield', 'gloves', 'legs', 'boots'];
 function getSafeItemById(itemId) {
     try {
         return (0, items_1.getItemById)(itemId);

@@ -21,7 +21,9 @@ import {
   type Race,
   type StatBlock,
 } from '@theend/rpg-domain';
+import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CustomCombatNpcDto, RuntimeBattleMapDto } from './dto.start-combat.dto';
@@ -54,11 +56,17 @@ interface CombatSession {
   damageContribution: number;
 }
 
+interface CombatActionResult {
+  state: ArenaBattleState;
+  hubState?: Awaited<ReturnType<ArenaService['getHubState']>>;
+}
+
 @Injectable()
 export class CombatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
+    private readonly arenaService: ArenaService,
   ) {}
 
   private readonly sessions = new Map<string, CombatSession>();
@@ -138,58 +146,6 @@ export class CombatService {
     }
   }
 
-  private async applyCombatExp(characterId: string, gainedExp: number): Promise<{ gainedExp: number; levelsGained: number }> {
-    if (gainedExp <= 0) {
-      return { gainedExp: 0, levelsGained: 0 };
-    }
-
-    const character = await this.prisma.character.findUnique({
-      where: { id: characterId },
-      select: { level: true, exp: true, freePoints: true },
-    });
-
-    if (!character) {
-      return { gainedExp: 0, levelsGained: 0 };
-    }
-
-    let nextLevel = character.level;
-    let nextExp = character.exp + gainedExp;
-    let levelsGained = 0;
-
-    while (nextExp >= getRequiredExpForNextLevel(nextLevel)) {
-      nextLevel += 1;
-      levelsGained += 1;
-    }
-
-    await this.prisma.character.update({
-      where: { id: characterId },
-      data: {
-        exp: nextExp,
-        level: nextLevel,
-        freePoints: character.freePoints + levelsGained * 5,
-      },
-    });
-
-    return { gainedExp, levelsGained };
-  }
-
-  private async applyCombatGold(characterId: string, gainedGold: number): Promise<number> {
-    if (gainedGold <= 0) {
-      return 0;
-    }
-
-    await this.prisma.character.update({
-      where: { id: characterId },
-      data: {
-        gold: {
-          increment: gainedGold,
-        },
-      },
-    });
-
-    return gainedGold;
-  }
-
   private calculateCombatGoldReward(state: ArenaBattleState, damageContribution: number): number {
     const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right);
     const enemyCount = enemies.length;
@@ -223,27 +179,88 @@ export class CombatService {
     return combatLootPool[index] ?? null;
   }
 
-  private async grantCombatLoot(characterId: string, itemId: string): Promise<string | null> {
+  private async grantCombatLootTx(tx: PrismaService['$transaction'] extends (...args: any[]) => any ? Prisma.TransactionClient : never, characterId: string, itemId: string): Promise<string | null> {
     const item = this.contentService.resolveItemById(itemId);
 
-    await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.characterInventoryItem.findUnique({
-        where: { characterId_itemId: { characterId, itemId } },
-      });
-
-      if (existing) {
-        await tx.characterInventoryItem.update({
-          where: { id: existing.id },
-          data: { quantity: existing.quantity + 1 },
-        });
-      } else {
-        await tx.characterInventoryItem.create({
-          data: { characterId, itemId, quantity: 1 },
-        });
-      }
+    const existing = await tx.characterInventoryItem.findUnique({
+      where: { characterId_itemId: { characterId, itemId } },
     });
 
+    if (existing) {
+      await tx.characterInventoryItem.update({
+        where: { id: existing.id },
+        data: { quantity: existing.quantity + 1 },
+      });
+    } else {
+      await tx.characterInventoryItem.create({
+        data: { characterId, itemId, quantity: 1 },
+      });
+    }
+
     return item.name;
+  }
+
+  private async applyVictoryRewards(characterId: string, state: ArenaBattleState, damageContribution: number): Promise<{
+    progression: { gainedExp: number; levelsGained: number };
+    gainedGold: number;
+    itemName: string | null;
+    hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
+  }> {
+    const gainedExp = Math.max(0, Math.floor(damageContribution));
+    const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
+    const droppedItemId = this.rollCombatDrop(state);
+
+    let progression = { gainedExp: 0, levelsGained: 0 };
+    let itemName: string | null = null;
+
+    await this.prisma.$transaction(async (tx) => {
+      const character = await tx.character.findUnique({
+        where: { id: characterId },
+        select: { level: true, exp: true, freePoints: true },
+      });
+
+      if (!character) {
+        throw new NotFoundException('Character not found.');
+      }
+
+      let nextLevel = character.level;
+      const nextExp = character.exp + gainedExp;
+      let levelsGained = 0;
+
+      while (nextExp >= getRequiredExpForNextLevel(nextLevel)) {
+        nextLevel += 1;
+        levelsGained += 1;
+      }
+
+      await tx.character.update({
+        where: { id: characterId },
+        data: {
+          exp: nextExp,
+          level: nextLevel,
+          freePoints: character.freePoints + levelsGained * 5,
+          gold: {
+            increment: gainedGold,
+          },
+        },
+      });
+
+      if (droppedItemId) {
+        itemName = await this.grantCombatLootTx(tx, characterId, droppedItemId);
+      }
+
+      progression = {
+        gainedExp,
+        levelsGained,
+      };
+    });
+
+    const hubState = await this.arenaService.getHubState(characterId);
+    return {
+      progression,
+      gainedGold,
+      itemName,
+      hubState,
+    };
   }
 
   private upsertEffect(
@@ -766,7 +783,7 @@ export class CombatService {
       destinationY?: number;
       skillType?: CombatSkillType;
     },
-  ): Promise<ArenaBattleState> {
+  ): Promise<CombatActionResult> {
     const session = this.sessions.get(combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
@@ -774,7 +791,7 @@ export class CombatService {
 
     const { state, playerId } = session;
     if (state.isFinished) {
-      return state;
+      return { state };
     }
 
     if (playerAction.actorId !== playerId) {
@@ -1066,14 +1083,16 @@ export class CombatService {
       .reduce((sum, entry) => sum + Math.max(0, entry.amount ?? 0), 0);
     session.damageContribution += roundDamage;
 
+    let finishedHubState: Awaited<ReturnType<ArenaService['getHubState']>> | undefined;
+
     if (nextState.isFinished && nextState.winner === TeamSide.Left) {
-      const progression = await this.applyCombatExp(playerId, session.damageContribution);
-      if (progression.gainedExp > 0) {
+      const rewards = await this.applyVictoryRewards(playerId, nextState, session.damageContribution);
+      if (rewards.progression.gainedExp > 0) {
         const expLog = {
           round: nextState.roundNumber,
           actorId: playerId,
           type: 'INFO' as const,
-          text: `Battle reward: +${progression.gainedExp} EXP`,
+          text: `Battle reward: +${rewards.progression.gainedExp} EXP`,
         };
         nextState.logs.push(expLog);
         if (nextState.lastRound) {
@@ -1081,12 +1100,12 @@ export class CombatService {
         }
       }
 
-      if (progression.levelsGained > 0) {
+      if (rewards.progression.levelsGained > 0) {
         const levelLog = {
           round: nextState.roundNumber,
           actorId: playerId,
           type: 'INFO' as const,
-          text: `${playerEntity.name} levels up! +${progression.levelsGained * 5} free stat points`,
+          text: `${playerEntity.name} levels up! +${rewards.progression.levelsGained * 5} free stat points`,
         };
         nextState.logs.push(levelLog);
         if (nextState.lastRound) {
@@ -1094,14 +1113,12 @@ export class CombatService {
         }
       }
 
-      const gainedGold = await this.applyCombatGold(playerId, this.calculateCombatGoldReward(nextState, session.damageContribution));
-
-      if (gainedGold > 0) {
+      if (rewards.gainedGold > 0) {
         const goldLog = {
           round: nextState.roundNumber,
           actorId: playerId,
           type: 'INFO' as const,
-          text: `Battle reward: +${gainedGold} gold`,
+          text: `Battle reward: +${rewards.gainedGold} gold`,
         };
         nextState.logs.push(goldLog);
         if (nextState.lastRound) {
@@ -1109,22 +1126,20 @@ export class CombatService {
         }
       }
 
-      const droppedItemId = this.rollCombatDrop(nextState);
-      if (droppedItemId) {
-        const itemName = await this.grantCombatLoot(playerId, droppedItemId);
-        if (itemName) {
-          const lootLog = {
-            round: nextState.roundNumber,
-            actorId: playerId,
-            type: 'INFO' as const,
-            text: `Battle reward: loot ${itemName}`,
-          };
-          nextState.logs.push(lootLog);
-          if (nextState.lastRound) {
-            nextState.lastRound.logs.push(lootLog);
-          }
+      if (rewards.itemName) {
+        const lootLog = {
+          round: nextState.roundNumber,
+          actorId: playerId,
+          type: 'INFO' as const,
+          text: `Battle reward: loot ${rewards.itemName}`,
+        };
+        nextState.logs.push(lootLog);
+        if (nextState.lastRound) {
+          nextState.lastRound.logs.push(lootLog);
         }
       }
+
+      finishedHubState = rewards.hubState;
     }
 
     if (nextState.isFinished && !playerEntity.isAlive) {
@@ -1145,6 +1160,9 @@ export class CombatService {
       }
     }
 
-    return nextState;
+    return {
+      state: nextState,
+      hubState: finishedHubState,
+    };
   }
 }

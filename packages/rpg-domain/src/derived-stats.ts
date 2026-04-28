@@ -25,7 +25,7 @@ export interface DerivedStatsResult {
   critBreakdown: DerivedStatLine[];
 }
 
-const DEFENSIVE_SLOTS: Array<keyof Equipment> = ['helmet', 'armor', 'shield', 'boots', 'gloves'];
+const DEFENSIVE_SLOTS: Array<keyof Equipment> = ['helmet', 'armor', 'outerwear', 'shield', 'gloves', 'legs', 'boots'];
 
 function getSafeItemById(itemId: string): ItemDefinition | null {
   try {
