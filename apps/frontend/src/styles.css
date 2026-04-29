@@ -8632,3 +8632,11 @@ body:has(.page.page--scroll) {
   overflow: hidden !important;
   position: relative !important;
 }
+
+.admin-layout,
+.admin-shell,
+.admin-main,
+.admin-content {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
