@@ -20,6 +20,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import type {
   AdminItem,
   AdminMerchant,
+  City,
+  CityLocation,
   ContentCollectionMap,
   ContentCollectionName,
   ContentDatabase,
@@ -40,6 +42,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'items',
   'skills',
   'merchants',
+  'cities',
   'materials',
   'lootTables',
   'images',
@@ -187,6 +190,7 @@ function seedMerchantFromDomain(merchant: Merchant, timestamp: string): AdminMer
     id: merchant.id,
     name: merchant.name,
     city: 'Arklein',
+    cityId: 'city_arklein',
     location: 'Main District',
     type: merchantTypeToAdmin(merchant),
     description: `${merchant.name} (seeded)`,
@@ -206,6 +210,135 @@ function seedMerchantFromDomain(merchant: Merchant, timestamp: string): AdminMer
   };
 }
 
+function createStarterCityLocation(cityId: string, id: string, name: string, type: CityLocation['type']): CityLocation {
+  return {
+    id,
+    cityId,
+    name,
+    type,
+    description: '',
+    shapeType: 'rectangle',
+    shape: { x: 120, y: 120, width: 120, height: 80 },
+    npcIds: [],
+    questIds: [],
+    shopIds: [],
+    isVisible: true,
+    isUnlocked: true,
+    markerIcon: type,
+  };
+}
+
+function seedStarterCities(timestamp: string): City[] {
+  const cityId = 'city_arklein';
+
+  return [
+    {
+      id: cityId,
+      slug: 'arklein',
+      name: 'Арклейн',
+      kingdomId: 'argos',
+      regionId: 'teramor',
+      worldZoneId: cityId,
+      status: 'active',
+      shortDescription: 'Пограничный город-крепость Аргоса.',
+      fullDescription: 'Арклейн стоит на напряжённой границе и служит военным, торговым и политическим узлом.',
+      history: '',
+      loreNotes: '',
+      populationTotal: 12000,
+      racePopulation: [
+        { raceId: 'human', percent: 82, role: 'citizens, soldiers, merchants' },
+        { raceId: 'dwarf', percent: 10, role: 'smiths, engineers' },
+        { raceId: 'wood_elf', percent: 8, role: 'scouts, healers' },
+      ],
+      rulerName: 'Барон Арклейна',
+      rulerTitle: 'baron',
+      governmentType: 'military border rule',
+      economyTags: ['fortress', 'trade', 'blacksmith'],
+      cultureTags: ['military', 'border', 'human'],
+      dangerLevel: 4,
+      recommendedLevel: 1,
+      climate: 'temperate',
+      visualTheme: 'dark medieval fortress',
+      locations: [
+        createStarterCityLocation(cityId, 'gate_main', 'Главные ворота', 'gate'),
+        createStarterCityLocation(cityId, 'market_square', 'Рыночная площадь', 'market'),
+        createStarterCityLocation(cityId, 'blacksmith_old', 'Старая кузница', 'blacksmith'),
+        createStarterCityLocation(cityId, 'tavern_wolf', 'Таверна Волчий Дым', 'tavern'),
+      ],
+      connectedCityIds: [],
+      connectedZoneIds: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  ];
+}
+
+function normalizeCityInput(input: City): City {
+  const cityId = String(input.id ?? '').trim();
+  return {
+    ...clone(input),
+    id: cityId,
+    slug: input.slug?.trim() || undefined,
+    name: String(input.name ?? '').trim(),
+    kingdomId: String(input.kingdomId ?? '').trim(),
+    regionId: input.regionId?.trim() || undefined,
+    worldZoneId: input.worldZoneId?.trim() || undefined,
+    status: input.status,
+    ownerFactionId: input.ownerFactionId?.trim() || undefined,
+    entryRequirement: input.entryRequirement?.trim() || undefined,
+    shortDescription: String(input.shortDescription ?? '').trim(),
+    fullDescription: String(input.fullDescription ?? '').trim(),
+    history: input.history?.trim() || undefined,
+    loreNotes: input.loreNotes?.trim() || undefined,
+    populationTotal: typeof input.populationTotal === 'number' && Number.isFinite(input.populationTotal)
+      ? Math.max(0, Math.round(input.populationTotal))
+      : undefined,
+    racePopulation: Array.isArray(input.racePopulation)
+      ? input.racePopulation
+        .map((entry) => ({
+          raceId: String(entry.raceId ?? '').trim(),
+          count: typeof entry.count === 'number' && Number.isFinite(entry.count) ? Math.max(0, Math.round(entry.count)) : undefined,
+          percent: typeof entry.percent === 'number' && Number.isFinite(entry.percent) ? Math.max(0, Math.min(100, entry.percent)) : undefined,
+          role: entry.role?.trim() || undefined,
+        }))
+        .filter((entry) => Boolean(entry.raceId))
+      : [],
+    rulerNpcId: input.rulerNpcId?.trim() || undefined,
+    rulerName: input.rulerName?.trim() || undefined,
+    rulerTitle: input.rulerTitle?.trim() || undefined,
+    governmentType: input.governmentType?.trim() || undefined,
+    economyTags: Array.isArray(input.economyTags) ? input.economyTags.map((entry) => String(entry).trim()).filter(Boolean) : [],
+    cultureTags: Array.isArray(input.cultureTags) ? input.cultureTags.map((entry) => String(entry).trim()).filter(Boolean) : [],
+    dangerLevel: typeof input.dangerLevel === 'number' && Number.isFinite(input.dangerLevel) ? Math.max(0, Math.round(input.dangerLevel)) : undefined,
+    recommendedLevel: typeof input.recommendedLevel === 'number' && Number.isFinite(input.recommendedLevel) ? Math.max(0, Math.round(input.recommendedLevel)) : undefined,
+    climate: input.climate?.trim() || undefined,
+    visualTheme: input.visualTheme?.trim() || undefined,
+    backgroundImageId: input.backgroundImageId?.trim() || undefined,
+    thumbnailImageId: input.thumbnailImageId?.trim() || undefined,
+    locations: Array.isArray(input.locations)
+      ? input.locations
+        .map((location) => ({
+          ...clone(location),
+          id: String(location.id ?? '').trim(),
+          cityId,
+          name: String(location.name ?? '').trim(),
+          description: location.description?.trim() || undefined,
+          imageId: location.imageId?.trim() || undefined,
+          npcIds: Array.isArray(location.npcIds) ? location.npcIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+          questIds: Array.isArray(location.questIds) ? location.questIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+          shopIds: Array.isArray(location.shopIds) ? location.shopIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+          unlockCondition: location.unlockCondition?.trim() || undefined,
+          markerIcon: location.markerIcon?.trim() || undefined,
+        }))
+        .filter((location) => Boolean(location.id && location.name))
+      : [],
+    connectedCityIds: Array.isArray(input.connectedCityIds) ? input.connectedCityIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+    connectedZoneIds: Array.isArray(input.connectedZoneIds) ? input.connectedZoneIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+    createdAt: input.createdAt || nowIso(),
+    updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
 function createEmptyDatabase(): ContentDatabase {
   const timestamp = nowIso();
   return {
@@ -213,6 +346,7 @@ function createEmptyDatabase(): ContentDatabase {
     items: [],
     skills: [],
     merchants: [],
+    cities: [],
     materials: [],
     lootTables: [],
     images: [],
@@ -236,6 +370,7 @@ function createSeedDatabase(): ContentDatabase {
     items: Object.values(ITEMS).map((item) => seedItemFromDomain(item, timestamp)),
     skills: [],
     merchants: MERCHANTS.map((merchant) => seedMerchantFromDomain(merchant, timestamp)),
+    cities: seedStarterCities(timestamp),
     materials: [],
     lootTables: [],
     images: [],
@@ -690,6 +825,18 @@ export class ContentService implements OnModuleInit {
     return this.dbCache;
   }
 
+  private getContentStoreDelegate(): {
+    findUnique(args: { where: { key: string } }): Promise<{ value: Prisma.JsonValue } | null>;
+    upsert(args: { where: { key: string }; update: { value: Prisma.InputJsonValue }; create: { key: string; value: Prisma.InputJsonValue } }): Promise<unknown>;
+  } {
+    return (this.prisma as unknown as {
+      contentStore: {
+        findUnique(args: { where: { key: string } }): Promise<{ value: Prisma.JsonValue } | null>;
+        upsert(args: { where: { key: string }; update: { value: Prisma.InputJsonValue }; create: { key: string; value: Prisma.InputJsonValue } }): Promise<unknown>;
+      };
+    }).contentStore;
+  }
+
   private async initializeStorage(): Promise<void> {
     if (this.storageMode === 'file') {
       this.dbCache = this.loadFromFileStorage();
@@ -699,7 +846,7 @@ export class ContentService implements OnModuleInit {
 
     await this.ensureDatabaseStorageSchema();
 
-    const store = await this.prisma.contentStore.findUnique({
+    const store = await this.getContentStoreDelegate().findUnique({
       where: { key: CONTENT_STORE_KEY },
     });
 
@@ -894,6 +1041,7 @@ export class ContentService implements OnModuleInit {
       items: Array.isArray(raw.items) ? raw.items.map((item) => normalizeItemInput(item as AdminItem)) : [],
       skills: Array.isArray(raw.skills) ? raw.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition)) : [],
       merchants: Array.isArray(raw.merchants) ? raw.merchants.map((merchant) => normalizeMerchantInput(merchant as AdminMerchant)) : [],
+      cities: Array.isArray(raw.cities) ? raw.cities.map((city) => normalizeCityInput(city as City)).filter((city) => Boolean(city.id)) : [],
       materials: Array.isArray(raw.materials) ? clone(raw.materials as Material[]) : [],
       lootTables: Array.isArray(raw.lootTables) ? clone(raw.lootTables) : [],
       images: Array.isArray(raw.images) ? clone(raw.images as StoredImage[]) : [],
@@ -965,7 +1113,7 @@ export class ContentService implements OnModuleInit {
       return this.persistToFile(next);
     }
 
-    await this.prisma.contentStore.upsert({
+    await this.getContentStoreDelegate().upsert({
       where: { key: CONTENT_STORE_KEY },
       update: { value: next as unknown as any },
       create: {
@@ -1041,6 +1189,8 @@ export class ContentService implements OnModuleInit {
       nextEntry = normalizeSkillInput(payload as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'cities') {
+      nextEntry = normalizeCityInput(payload as ContentCollectionMap['cities']) as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       nextEntry = normalizeDialogueInput(payload as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -1077,6 +1227,8 @@ export class ContentService implements OnModuleInit {
       merged = normalizeSkillInput(mergedBase as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'cities') {
+      merged = normalizeCityInput(mergedBase as ContentCollectionMap['cities']) as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       merged = normalizeDialogueInput(mergedBase as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -1125,6 +1277,10 @@ export class ContentService implements OnModuleInit {
       db.merchants = shouldReplaceMerchantsFromLegacy(db.merchants, normalizedMerchants)
         ? clone(normalizedMerchants)
         : mergeById(db.merchants, normalizedMerchants);
+    }
+    if (Array.isArray(payload.cities) && payload.cities.length > 0) {
+      const normalizedCities = payload.cities.map((city) => normalizeCityInput(city as City));
+      db.cities = mergeById(db.cities, normalizedCities);
     }
     if (Array.isArray(payload.materials) && payload.materials.length > 0) {
       db.materials = mergeById(db.materials, payload.materials as Material[]);

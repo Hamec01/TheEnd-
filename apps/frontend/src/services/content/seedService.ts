@@ -8,6 +8,8 @@ import {
 import type { AdminItem, AdminMerchant } from './models';
 import { seedDefaultContent } from './contentApi';
 
+const USE_SEED_FALLBACK = String(import.meta.env.VITE_USE_SEED_FALLBACK ?? 'true').trim().toLowerCase() !== 'false';
+
 const RARITY_MAP: Record<ItemDefinition['rarity'], AdminItem['rarity']> = {
   common: 'common',
   uncommon: 'uncommon',
@@ -153,6 +155,7 @@ function seedMerchantFromDomain(merchant: Merchant): Omit<AdminMerchant, 'create
     id: merchant.id,
     name: merchant.name,
     city: 'Arklein',
+    cityId: 'city_arklein',
     location: 'Main District',
     type: merchantTypeToAdmin(merchant),
     description: `${merchant.name} (seeded)`,
@@ -197,6 +200,10 @@ export function getDomainItemWithFallback(itemId: string, adminItems: AdminItem[
   const fromAdmin = adminItems.find((item) => item.id === itemId && item.isEnabled);
   if (fromAdmin) {
     return toDomainItemDefinition(fromAdmin);
+  }
+
+  if (!USE_SEED_FALLBACK) {
+    return null;
   }
 
   try {

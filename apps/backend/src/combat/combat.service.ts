@@ -42,7 +42,7 @@ interface CharacterRecord {
   luck: number;
   speed: number;
   willpower: number;
-  equipment?: Equipment | null;
+  equipment?: Partial<Equipment> | null;
 }
 
 type CombatEquipmentPayload = Partial<Equipment> | null | undefined;

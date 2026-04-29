@@ -4,6 +4,8 @@ import { itemsService } from './itemsService';
 import { merchantsService } from './merchantsService';
 import { getDomainItemWithFallback } from './seedService';
 
+const USE_SEED_FALLBACK = String(import.meta.env.VITE_USE_SEED_FALLBACK ?? 'true').trim().toLowerCase() !== 'false';
+
 function mapMerchantType(type: AdminMerchant['type']): Merchant['merchantType'] {
   if (type === 'blacksmith') {
     return 'weaponsmith';
@@ -24,7 +26,7 @@ export async function loadRuntimeAdminContent(): Promise<{ items: AdminItem[]; m
 
 export function getRuntimeMerchants(adminMerchants: AdminMerchant[]): Merchant[] {
   if (adminMerchants.length === 0) {
-    return MERCHANTS;
+    return USE_SEED_FALLBACK ? MERCHANTS : [];
   }
 
   return adminMerchants.map((merchant) => ({
@@ -38,7 +40,7 @@ export function getRuntimeMerchants(adminMerchants: AdminMerchant[]): Merchant[]
 export function getRuntimeMerchantItems(merchantId: string, adminMerchants: AdminMerchant[], adminItems: AdminItem[]): ItemDefinition[] {
   const adminMerchant = adminMerchants.find((entry) => entry.id === merchantId);
   if (!adminMerchant) {
-    return getMerchantItems(merchantId);
+    return USE_SEED_FALLBACK ? getMerchantItems(merchantId) : [];
   }
 
   return adminMerchant.items

@@ -28,7 +28,7 @@ import { getNearbyMappedNpcs } from '../services/npcMapRuntime';
 import type { DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
 
-type LocationView = 'map' | 'arklein';
+type LocationView = 'map' | 'city';
 type SidePanelKey = 'adminEditor' | 'adminBattle' | 'contextActions' | 'npcInteraction' | 'nearbyNpc' | 'nearbyPlayers';
 
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
@@ -61,6 +61,11 @@ function assignArkleinMerchantSlots(merchants: AdminMerchant[]) {
       top: slot.top,
     };
   });
+}
+
+function isCitySceneId(value: string | null | undefined): boolean {
+  const normalized = (value ?? '').trim().toLowerCase();
+  return normalized === 'arklein' || normalized.startsWith('city_');
 }
 
 function getPlayerPositionStorageKey(characterId: string): string {
@@ -1286,7 +1291,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return;
       }
 
-      setLocationView('arklein');
+      setLocationView('city');
       setContextMode('location');
       onStatus('Войдите в город и выберите торговца на карте.');
       return;
@@ -1312,16 +1317,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
     const zone = zones.find((entry) => entry.id === locationId) ?? null;
-    const opensArkleinScene = locationId === 'arklein' || zone?.targetScene === 'city_arklein';
-    if (!opensArkleinScene) {
+    const targetScene = zone?.targetScene?.trim().toLowerCase();
+    const opensCityScene = isCitySceneId(locationId) || isCitySceneId(targetScene);
+    if (!opensCityScene) {
       onStatus(`Локация ${locationId} пока недоступна.`);
       return;
     }
     rememberCurrentMapPosition();
-    setLocationView('arklein');
+    setLocationView('city');
     setContextMode('location');
     setPlayerState('in_city');
-    onStatus(`Вы вошли в ${zone?.name ?? 'Арклейн'}.`);
+    onStatus(`Вы вошли в ${zone?.name ?? 'город'}.`);
   }
 
   function handleReturnToMap() {
@@ -1477,7 +1483,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 className="wm-map-surface wm-city-surface"
                 style={{ backgroundImage: "linear-gradient(rgba(24, 17, 12, 0.38), rgba(24, 17, 12, 0.62)), url('/map/City_Arclain.png')" }}
               >
-                <div className="wm-map-title">Арклейн</div>
+                <div className="wm-map-title">{selectedLocationName}</div>
                 <div className="wm-city-hotspots">
                   <button type="button" className="wm-city-hotspot hotspot-arena" onClick={handleEnterArena}>Арена</button>
                   {arkleinMerchantHotspots.map(({ merchant, left, top }) => {
@@ -1507,13 +1513,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   })}
                   {arkleinMerchantHotspots.length === 0 ? (
                     <div className="wm-city-empty-note">
-                      В Арклейне пока нет торговцев из админки. Создайте торговца и поставьте город: Арклейн.
+                      В этом городе пока нет торговцев из админки. Привяжите торговца к `cityId` или названию города.
                     </div>
                   ) : null}
                 </div>
               </div>
               <footer className="wm-map-legend">
-                <span>Арклейн | Торговцы из админки появляются здесь автоматически, если у них указан город "Арклейн".</span>
+                <span>{selectedLocationName} | Торговцы из админки появляются здесь автоматически, если у них указан `cityId` или совпадающее имя города.</span>
                 <button className="wm-city-back" onClick={handleReturnToMap}>Назад к карте</button>
               </footer>
             </section>

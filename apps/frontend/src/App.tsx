@@ -33,7 +33,7 @@ import {
   startCustomCombat,
   sellArenaItem,
   unequipArenaItem,
-  useCombatItem,
+  useCombatItem as consumeCombatItem,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -275,6 +275,11 @@ function normalizeCityName(value: string | null | undefined): string {
 function isArkleinCity(value: string | null | undefined): boolean {
   const normalized = normalizeCityName(value);
   return normalized === 'арклейн' || normalized === 'arklein' || normalized === 'arclein';
+}
+
+function isArkleinCityId(value: string | null | undefined): boolean {
+  const normalized = normalizeCityName(value);
+  return normalized === 'city_arklein' || normalized === 'argos_arklein' || normalized === 'arklein';
 }
 
 function getWeaponDamagePreview(item: ItemDefinition): string {
@@ -818,7 +823,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     [runtimeImages],
   );
   const arkleinMerchants = useMemo(
-    () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled && isArkleinCity(merchant.city)),
+    () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled && (isArkleinCityId(merchant.cityId) || isArkleinCity(merchant.city))),
     [runtimeAdminMerchants],
   );
   const arenaEquipmentOptionsBySlot = useMemo<Record<EquipmentSlot, ItemDefinition[]>>(() => {
@@ -1813,7 +1818,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
 
     try {
-      const result = await useCombatItem({
+      const result = await consumeCombatItem({
         combatId,
         actorId: playerCombatId,
         itemId,
@@ -1879,6 +1884,34 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       canUseElementalMagic: raceConfig.traits.canUseElementalMagic,
     },
   }), [gender, name, originId, race, raceConfig.id, raceConfig.traits, setupAvatarResolved, setupElements, setupOriginRequired, setupSkills, setupStatsPreview]);
+
+  const respecStats = useCallback(async (): Promise<void> => {
+    if (!character) {
+      return;
+    }
+
+    const ok = window.confirm('Ð¡Ð±Ñ€Ð¾ÑÐ¸Ñ‚ÑŒ Ñ…Ð°Ñ€Ð°ÐºÑ‚ÐµÑ€Ð¸ÑÑ‚Ð¸ÐºÐ¸ Ð¸ Ð²ÐµÑ€Ð½ÑƒÑ‚ÑŒ Ð²ÑÐµ Ð¾Ñ‡ÐºÐ¸ Ð´Ð»Ñ Ð¿ÐµÑ€ÐµÑ€Ð°ÑÐ¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ñ?');
+    if (!ok) {
+      return;
+    }
+
+    const baseline = { ...getCharacterCreationRaceConfig(character.race).stats };
+    const level = character.level ?? 1;
+    const totalFreePoints = 5 + Math.max(0, level - 1) * 5;
+
+    setPendingStatAllocation({});
+    setCharacter((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        baseStats: baseline,
+        activeStats: baseline,
+        freePoints: totalFreePoints,
+      };
+    });
+
+    setStatus('Ð¥Ð°Ñ€Ð°ÐºÑ‚ÐµÑ€Ð¸ÑÑ‚Ð¸ÐºÐ¸ ÑÐ±Ñ€Ð¾ÑˆÐµÐ½Ñ‹. ÐžÑ‡ÐºÐ¸ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰ÐµÐ½Ñ‹.');
+  }, [character]);
 
   if (phase === 'setup') {
     if (restoringSession) {
@@ -2088,7 +2121,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const freePointsLeft = character.freePoints - getAllocationCost(pendingStatAllocation);
 
-  const respecStats = useCallback(async (): Promise<void> => {
+  const respecStatsUnused = async (): Promise<void> => {
     const ok = window.confirm('Сбросить характеристики и вернуть все очки для перераспределения?');
     if (!ok) {
       return;
@@ -2110,7 +2143,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     });
 
     setStatus('Характеристики сброшены. Очки возвращены.');
-  }, [character.level, character.race]);
+  };
 
   return (
     <div className="page game-root">

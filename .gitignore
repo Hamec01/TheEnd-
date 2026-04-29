@@ -7,3 +7,7 @@ apps/backend/prisma/dev.db
 *.log
 *.tsbuildinfo
 Resurse/Word_map.png
+
+# Frontend source must stay TypeScript-only. Compiled JavaScript belongs in dist/.
+apps/frontend/src/**/*.js
+apps/frontend/src/**/*.jsx

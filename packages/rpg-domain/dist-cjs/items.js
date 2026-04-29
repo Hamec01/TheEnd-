@@ -367,10 +367,22 @@ exports.ITEMS = {
 };
 function getItemById(itemId) {
     const item = exports.ITEMS[itemId];
-    if (!item) {
-        throw new Error(`Unknown item id: ${itemId}`);
+    if (item) {
+        return item;
     }
-    return item;
+    return {
+        id: itemId,
+        name: `Unknown item (${itemId})`,
+        itemType: 'consumable',
+        itemSubType: 'unknown',
+        price: 0,
+        requiredStats: {},
+        bonuses: {},
+        stackable: true,
+        description: 'Item definition is missing. Check admin content.',
+        icon: 'unknown',
+        rarity: 'common',
+    };
 }
 function getItemHandsRequired(item) {
     if (item.itemType !== 'weapon') {

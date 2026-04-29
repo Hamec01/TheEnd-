@@ -1,6 +1,8 @@
 import type { City, CityLocation } from '../types/city';
+import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from './content/contentApi';
 
 const CITY_STORAGE_KEY = 'theend.admin.cities.v1';
+const LEGACY_ARKLEIN_IDS = new Set(['argos_arklein', 'arklein', 'arclein', 'arkea', 'аркея', 'аркейн', 'арклейн']);
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -26,14 +28,16 @@ function createStarterLocation(cityId: string, id: string, name: string, type: C
 
 function seedCities(): City[] {
   const createdAt = nowIso();
+  const arkleinId = 'city_arklein';
 
   return [
     {
-      id: 'argos_arklein',
+      id: arkleinId,
+      slug: 'arklein',
       name: 'Арклейн',
       kingdomId: 'argos',
       regionId: 'teramor',
-      worldZoneId: 'zone_argos_arklein',
+      worldZoneId: arkleinId,
       status: 'active',
       shortDescription: 'Пограничный город-крепость Аргоса.',
       fullDescription: 'Арклейн стоит на напряжённой границе и служит военным, торговым и политическим узлом.',
@@ -55,10 +59,10 @@ function seedCities(): City[] {
       climate: 'temperate',
       visualTheme: 'dark medieval fortress',
       locations: [
-        createStarterLocation('argos_arklein', 'gate_main', 'Главные ворота', 'gate'),
-        createStarterLocation('argos_arklein', 'market_square', 'Рыночная площадь', 'market'),
-        createStarterLocation('argos_arklein', 'blacksmith_old', 'Старая кузница', 'blacksmith'),
-        createStarterLocation('argos_arklein', 'tavern_wolf', 'Таверна Волчий Дым', 'tavern'),
+        createStarterLocation(arkleinId, 'gate_main', 'Главные ворота', 'gate'),
+        createStarterLocation(arkleinId, 'market_square', 'Рыночная площадь', 'market'),
+        createStarterLocation(arkleinId, 'blacksmith_old', 'Старая кузница', 'blacksmith'),
+        createStarterLocation(arkleinId, 'tavern_wolf', 'Таверна Волчий Дым', 'tavern'),
       ],
       connectedCityIds: [],
       connectedZoneIds: [],
@@ -179,6 +183,10 @@ function seedCities(): City[] {
 }
 
 function readRawCities(): City[] | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
   const raw = window.localStorage.getItem(CITY_STORAGE_KEY);
   if (!raw) return null;
   try {
@@ -190,44 +198,94 @@ function readRawCities(): City[] | null {
 }
 
 function writeCities(cities: City[]): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
   window.localStorage.setItem(CITY_STORAGE_KEY, JSON.stringify(cities));
+}
+
+function clearLegacyCities(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.removeItem(CITY_STORAGE_KEY);
+}
+
+function normalizeCityId(id: string): string {
+  const normalized = id.trim().toLowerCase().replace(/ё/g, 'е');
+  return LEGACY_ARKLEIN_IDS.has(normalized) ? 'city_arklein' : id.trim();
+}
+
+function normalizeCity(city: City): City {
+  const id = normalizeCityId(city.id);
+  const worldZoneId = city.worldZoneId && LEGACY_ARKLEIN_IDS.has(city.worldZoneId.trim().toLowerCase().replace(/ё/g, 'е'))
+    ? 'city_arklein'
+    : city.worldZoneId === 'zone_argos_arklein'
+      ? 'city_arklein'
+      : city.worldZoneId;
+
+  return {
+    ...city,
+    id,
+    slug: city.slug || (id === 'city_arklein' ? 'arklein' : undefined),
+    worldZoneId,
+    locations: city.locations.map((location) => ({
+      ...location,
+      cityId: id,
+    })),
+  };
+}
+
+async function hydrateBackendCities(): Promise<City[]> {
+  const existing = (await getContentCollection<City>('cities')).map(normalizeCity);
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  const legacy = readRawCities();
+  const initialCities = (legacy && legacy.length > 0 ? legacy : seedCities()).map(normalizeCity);
+  const persisted: City[] = [];
+  for (const city of initialCities) {
+    persisted.push(await createContentEntry<City>('cities', city));
+  }
+  clearLegacyCities();
+  return persisted.map(normalizeCity);
 }
 
 export const cityService = {
   async getCities(): Promise<City[]> {
-    const existing = readRawCities();
-    if (existing && existing.length > 0) return existing;
-
-    const seeded = seedCities();
-    writeCities(seeded);
-    return seeded;
+    return hydrateBackendCities();
   },
 
   async getCityById(id: string): Promise<City | null> {
     const cities = await this.getCities();
-    return cities.find((city) => city.id === id) ?? null;
+    const normalizedId = normalizeCityId(id);
+    return cities.find((city) => city.id === normalizedId) ?? null;
   },
 
   async createCity(city: City): Promise<City> {
     const cities = await this.getCities();
-    if (cities.some((entry) => entry.id === city.id)) {
-      throw new Error(`City id already exists: ${city.id}`);
+    const normalized = normalizeCity(city);
+    if (cities.some((entry) => entry.id === normalized.id)) {
+      throw new Error(`City id already exists: ${normalized.id}`);
     }
-    const next = { ...city, createdAt: city.createdAt || nowIso(), updatedAt: nowIso() };
-    writeCities([...cities, next]);
-    return next;
+    return createContentEntry<City>('cities', {
+      ...normalized,
+      createdAt: normalized.createdAt || nowIso(),
+      updatedAt: nowIso(),
+    });
   },
 
   async updateCity(city: City): Promise<City> {
-    const cities = await this.getCities();
-    const next = { ...city, updatedAt: nowIso() };
-    writeCities(cities.map((entry) => entry.id === city.id ? next : entry));
-    return next;
+    const normalized = normalizeCity(city);
+    return updateContentEntry<City>('cities', normalized.id, {
+      ...normalized,
+      updatedAt: nowIso(),
+    });
   },
 
   async deleteCity(id: string): Promise<void> {
-    const cities = await this.getCities();
-    writeCities(cities.filter((city) => city.id !== id));
+    await deleteContentEntry('cities', normalizeCityId(id));
   },
 
   async duplicateCity(id: string): Promise<City> {
@@ -247,6 +305,7 @@ export const cityService = {
       ...source,
       id: copyId,
       name: `${source.name} Copy`,
+      slug: `${source.slug ?? source.id}-copy`,
       locations: source.locations.map((location) => ({
         ...location,
         cityId: copyId,
@@ -256,18 +315,26 @@ export const cityService = {
       updatedAt: createdAt,
     };
 
-    writeCities([...cities, copy]);
-    return copy;
+    return createContentEntry<City>('cities', copy);
   },
 
-  exportCities(): string {
-    return JSON.stringify(readRawCities() ?? [], null, 2);
+  async exportCities(): Promise<string> {
+    return JSON.stringify(await this.getCities(), null, 2);
   },
 
-  importCities(json: string): void {
+  async importCities(json: string): Promise<void> {
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) throw new Error('Cities import must be an array.');
-    writeCities(parsed as City[]);
+
+    for (const entry of parsed as City[]) {
+      const normalized = normalizeCity(entry);
+      const existing = await this.getCityById(normalized.id);
+      if (existing) {
+        await updateContentEntry<City>('cities', normalized.id, normalized);
+      } else {
+        await createContentEntry<City>('cities', normalized);
+      }
+    }
   },
 };
 

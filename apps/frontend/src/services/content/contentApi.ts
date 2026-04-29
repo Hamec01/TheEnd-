@@ -1,4 +1,5 @@
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
+import type { City } from '../../types/city';
 import type {
   AdminDialogue,
   AdminItem,
@@ -22,6 +23,7 @@ export type ContentCollectionName =
   | 'items'
   | 'skills'
   | 'merchants'
+  | 'cities'
   | 'materials'
   | 'lootTables'
   | 'images'
@@ -41,6 +43,7 @@ export interface ContentSnapshot {
   items: AdminItem[];
   skills: AdminSkill[];
   merchants: AdminMerchant[];
+  cities: City[];
   materials: Material[];
   lootTables: LootTable[];
   images: StoredImage[];
