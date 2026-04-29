@@ -9044,3 +9044,45 @@ body,
   overflow-x: hidden !important;
   padding-right: 6px;
 }
+
+.battle-map-editor button {
+  font-size: 11px;
+  padding: 4px 6px;
+  min-height: 24px;
+  border-radius: 6px;
+}
+
+.battle-map-editor .row {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.battle-map-editor input,
+.battle-map-editor select,
+.battle-map-editor textarea {
+  min-height: 24px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.battle-map-editor-main {
+  display: grid !important;
+  grid-template-columns: 190px minmax(520px, 1fr) 260px !important;
+  gap: 8px !important;
+  height: calc(100vh - 130px) !important;
+  overflow: hidden !important;
+}
+
+.battle-map-editor-side-section,
+.battle-map-editor-canvas-section,
+.battle-map-editor-inspector-section {
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.battle-map-editor-canvas-viewport {
+  height: 100% !important;
+  min-height: 460px !important;
+}

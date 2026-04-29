@@ -275,6 +275,9 @@ export function ItemsPage() {
     if (!selectedId) {
       return;
     }
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     await itemsService.delete(selectedId);
     setSelectedId(null);
     setDraft(emptyItem());

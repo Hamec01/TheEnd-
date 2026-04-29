@@ -212,6 +212,9 @@ export function MerchantsPage() {
     if (!selectedId) {
       return;
     }
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
 
     await merchantsService.delete(selectedId);
     setSelectedId(null);

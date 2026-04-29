@@ -17,6 +17,8 @@ import {
   upsertBattleMap,
   validateBattleMap,
 } from '../services/battleMaps/battleMapStorage';
+import { ensureNpcsLoaded, getAllNpcs } from '../services/npcRepository';
+import type { NpcDefinition } from '../types/npc';
 
 const CELL_TOOL_OPTIONS: Array<{ value: BattleMapCellType | 'erase'; label: string; help: string }> = [
   { value: 'walkable', label: 'Walkable', help: 'Normal tactical floor cell.' },
@@ -116,6 +118,10 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [selectedTrapId, setSelectedTrapId] = useState<string | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [selectedTriggerId, setSelectedTriggerId] = useState<string | null>(null);
+  const [selectedNpcSourceId, setSelectedNpcSourceId] = useState('random');
+  const [adminNpcs, setAdminNpcs] = useState<NpcDefinition[]>([]);
+  const [undoStack, setUndoStack] = useState<BattleMapDefinition[]>([]);
+  const [redoStack, setRedoStack] = useState<BattleMapDefinition[]>([]);
   const [canvasZoom, setCanvasZoom] = useState(1);
   const [canvasPanX, setCanvasPanX] = useState(0);
   const [canvasPanY, setCanvasPanY] = useState(0);
@@ -143,6 +149,20 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       disposed = true;
     };
   }, [onStatusMessage, selectedMapId]);
+
+  useEffect(() => {
+    let disposed = false;
+    ensureNpcsLoaded()
+      .then(() => {
+        if (!disposed) {
+          setAdminNpcs(getAllNpcs().sort((left, right) => left.name.localeCompare(right.name)));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedMapId) {
@@ -193,8 +213,14 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const selectedNpc = draft.npcs.find((npc) => npc.id === selectedNpcId) ?? null;
   const selectedTrigger = draft.triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null;
 
-  const commitDraft = (updater: (current: BattleMapDefinition) => BattleMapDefinition) => {
-    setDraft((current) => normalizeBattleMap(updater(current)));
+  const commitDraft = (updater: (current: BattleMapDefinition) => BattleMapDefinition, trackHistory = false) => {
+    setDraft((current) => {
+      if (trackHistory) {
+        setUndoStack((stack) => [...stack.slice(-39), current]);
+        setRedoStack([]);
+      }
+      return normalizeBattleMap(updater(current));
+    });
   };
 
   const handleSave = () => {
@@ -236,6 +262,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   };
 
   const handleDelete = () => {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     deleteBattleMap(draft.id);
     const nextMaps = loadBattleMaps();
     setMaps(nextMaps);
@@ -251,7 +280,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
 
   const updateCellAt = (x: number, y: number) => {
     if (layer === 'cells') {
-      commitDraft((current) => replaceCellType(current, x, y, cellTool === 'erase' ? 'walkable' : cellTool));
+      commitDraft((current) => replaceCellType(current, x, y, cellTool === 'erase' ? 'walkable' : cellTool), true);
       return;
     }
 
@@ -272,7 +301,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           nextZones.push(zone);
         }
         return { ...next, spawnZones: nextZones, updatedAt: Date.now() };
-      });
+      }, true);
       return;
     }
 
@@ -293,7 +322,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           interactable: false,
         }],
         updatedAt: Date.now(),
-      }));
+      }), true);
       setSelectedObjectId(objectId);
       onStatusMessage?.(`Object placed at ${x}:${y}.`);
       return;
@@ -314,25 +343,28 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           revealedByDefault: true,
         }],
         updatedAt: Date.now(),
-      }));
+      }), true);
       setSelectedTrapId(trapId);
       return;
     }
 
     if (layer === 'npcs') {
       const npcId = `npc-${Date.now()}`;
+      const selectedAdminNpc = selectedNpcSourceId === 'random' ? null : adminNpcs.find((npc) => npc.id === selectedNpcSourceId) ?? null;
       commitDraft((current) => ({
         ...current,
         npcs: [...current.npcs, {
           id: npcId,
-          name: 'New NPC',
-          role: 'neutral',
+          npcId: selectedAdminNpc?.id ?? '',
+          name: selectedAdminNpc?.name ?? 'Random Arena Enemy',
+          role: selectedAdminNpc ? 'neutral' : 'enemy',
           x,
           y,
           startsCombat: false,
+          ...(selectedAdminNpc ? {} : { isGenerated: true }),
         }],
         updatedAt: Date.now(),
-      }));
+      }), true);
       setSelectedNpcId(npcId);
       onStatusMessage?.(`NPC placed at ${x}:${y}.`);
       return;
@@ -349,7 +381,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
         enabled: true,
       }],
       updatedAt: Date.now(),
-    }));
+    }), true);
     setSelectedTriggerId(triggerId);
     onStatusMessage?.(`Trigger placed at ${x}:${y}.`);
   };
@@ -510,30 +542,71 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   }
 
   function deleteSelectedObject(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     commitDraft((current) => ({
       ...current,
       objects: current.objects.filter((object) => object.id !== id),
       updatedAt: Date.now(),
-    }));
+    }), true);
     if (selectedObjectId === id) setSelectedObjectId(null);
   }
 
   function deleteSelectedNpc(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     commitDraft((current) => ({
       ...current,
       npcs: current.npcs.filter((npc) => npc.id !== id),
       updatedAt: Date.now(),
-    }));
+    }), true);
     if (selectedNpcId === id) setSelectedNpcId(null);
   }
 
+  function deleteSelectedTrap(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
+    commitDraft((current) => ({
+      ...current,
+      traps: current.traps.filter((trap) => trap.id !== id),
+      updatedAt: Date.now(),
+    }), true);
+    if (selectedTrapId === id) setSelectedTrapId(null);
+  }
+
   function deleteSelectedTrigger(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     commitDraft((current) => ({
       ...current,
       triggers: current.triggers.filter((trigger) => trigger.id !== id),
       updatedAt: Date.now(),
-    }));
+    }), true);
     if (selectedTriggerId === id) setSelectedTriggerId(null);
+  }
+
+  function handleUndo() {
+    const previous = undoStack[undoStack.length - 1];
+    if (!previous) {
+      return;
+    }
+    setRedoStack((stack) => [...stack.slice(-39), draft]);
+    setUndoStack((stack) => stack.slice(0, -1));
+    setDraft(normalizeBattleMap(previous));
+  }
+
+  function handleRedo() {
+    const next = redoStack[redoStack.length - 1];
+    if (!next) {
+      return;
+    }
+    setUndoStack((stack) => [...stack.slice(-39), draft]);
+    setRedoStack((stack) => stack.slice(0, -1));
+    setDraft(normalizeBattleMap(next));
   }
 
   return (
@@ -554,8 +627,8 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <button type="button" className={layer === 'triggers' ? 'is-active' : ''} onClick={() => { setLayer('triggers'); setInteractionMode('paint'); onStatusMessage?.('Trigger tool selected. Click a map cell to place trigger.'); }}>Trigger Tool</button>
           <button type="button" className={interactionMode === 'pan' ? 'is-active' : ''} onClick={() => setInteractionMode((mode) => mode === 'pan' ? 'paint' : 'pan')}>Pan</button>
           <button type="button" onClick={fitCanvasToViewport}>Fit</button>
-          <button type="button" disabled>Undo</button>
-          <button type="button" disabled>Redo</button>
+          <button type="button" onClick={handleUndo} disabled={undoStack.length === 0}>Undo</button>
+          <button type="button" onClick={handleRedo} disabled={redoStack.length === 0}>Redo</button>
           <button type="button" onClick={handleSave}>Save</button>
         </div>
       </div>
@@ -607,6 +680,17 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 {option.label} <HelpTooltip text={option.help} />
               </button>
             ))}
+          </div>
+        ) : null}
+        {layer === 'npcs' ? (
+          <div className="row">
+            <label>NPC</label>
+            <select value={selectedNpcSourceId} onChange={(event) => setSelectedNpcSourceId(event.target.value)}>
+              <option value="random">Random Arena Enemy</option>
+              {adminNpcs.map((npc) => (
+                <option key={npc.id} value={npc.id}>{npc.name}</option>
+              ))}
+            </select>
           </div>
         ) : null}
       </section>
@@ -883,7 +967,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 <label><input type="checkbox" checked={selectedTrap.revealedByDefault ?? false} onChange={(event) => commitDraft((current) => ({ ...current, traps: current.traps.map((trap) => trap.id === selectedTrap.id ? { ...trap, revealedByDefault: event.target.checked } : trap) }))} /> revealed by default</label>
                 <input type="number" value={selectedTrap.detectionDifficulty ?? 0} onChange={(event) => commitDraft((current) => ({ ...current, traps: current.traps.map((trap) => trap.id === selectedTrap.id ? { ...trap, detectionDifficulty: Number(event.target.value) || 0 } : trap) }))} placeholder="detectionDifficulty" />
                 <textarea value={selectedTrap.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, traps: current.traps.map((trap) => trap.id === selectedTrap.id ? { ...trap, description: event.target.value } : trap) }))} placeholder="description" rows={2} />
-                <button type="button" onClick={() => commitDraft((current) => ({ ...current, traps: current.traps.filter((trap) => trap.id !== selectedTrap.id) }))}>Remove trap</button>
+                <button type="button" onClick={() => deleteSelectedTrap(selectedTrap.id)}>Remove trap</button>
               </div>
             ) : null}
           </section>

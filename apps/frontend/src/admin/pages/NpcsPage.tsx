@@ -309,6 +309,9 @@ export function NpcsPage() {
     if (!selectedId) {
       return;
     }
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
     await deleteNpc(selectedId);
     setSelectedId(null);
     setDraft(emptyNpc());

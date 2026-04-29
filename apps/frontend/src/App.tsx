@@ -125,6 +125,7 @@ interface CharacterCreationProfile {
 type Phase = 'setup' | 'hub';
 type SetupStep = 'account' | 'character';
 type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
+type ArenaSetupMode = '1v1' | '1v3' | '1v10' | 'random';
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
 
@@ -743,6 +744,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const [playerAvatarUrl, setPlayerAvatarUrl] = useState<string>('');
   const [selectedBattleMapId, setSelectedBattleMapId] = useState<string>(() => DEFAULT_BATTLE_MAP_ID);
+  const [pendingArenaBattleMapId, setPendingArenaBattleMapId] = useState<string | null>(null);
 
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
@@ -1703,6 +1705,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus('Открыта арена. Настройте NPC и начинайте бой. Tactical Battle Map Editor доступен в боковой панели карты мира.');
   }
 
+  function openArenaSetup(battleMapId: string): void {
+    setPendingArenaBattleMapId(battleMapId);
+    setOverlayPanel('arena');
+    setStatus('Арена готова. Выберите формат боя.');
+  }
+
   function openArenaNpcOverlay(): void {
     setOverlayPanel('arenaNpc');
     setStatus('Открыт редактор arena NPC. Здесь можно собрать бойцов для арены и выдать им вещи.');
@@ -1768,7 +1776,29 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function openCombat(battleMapIdOverride?: string): Promise<void> {
+  function buildGeneratedArenaEnemy(index: number): CustomArenaNpcPayload {
+    const stats = character?.activeStats ?? DEFAULT_NPC_STATS;
+    const vary = (value: number) => Math.max(1, Math.round(value * (0.8 + Math.random() * 0.4)));
+    return {
+      name: `Random Arena Enemy ${index}`,
+      race: character?.race ?? Race.Human,
+      stats: {
+        hp: vary(stats.hp),
+        mp: vary(stats.mp),
+        stamina: vary(stats.stamina),
+        strength: vary(stats.strength),
+        constitution: vary(stats.constitution),
+        dexterity: vary(stats.dexterity),
+        intelligence: vary(stats.intelligence),
+        luck: vary(stats.luck),
+        perception: vary(stats.perception),
+        willpower: vary(stats.willpower),
+      },
+      equipment: {},
+    };
+  }
+
+  async function openCombat(battleMapIdOverride?: string, options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[] }): Promise<void> {
     if (!character) {
       return;
     }
@@ -1783,15 +1813,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     try {
       const battleMapPayload = toRuntimeBattleMapPayload(battleMapIdOverride ? resolveBattleMapForCombat(battleMapIdOverride) : selectedBattleMap);
-      const started = activeArenaNpcs.length > 0
-        ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload), battleMapPayload)
-        : await startCombat(character.id, 3, battleMapPayload);
+      const customEnemies = options?.customEnemies ?? (activeArenaNpcs.length > 0 ? activeArenaNpcs.map(toCustomNpcPayload) : null);
+      const started = customEnemies && customEnemies.length > 0
+        ? await startCustomCombat(character.id, customEnemies, battleMapPayload)
+        : await startCombat(character.id, options?.enemyCount ?? 3, battleMapPayload);
       setOverlayPanel(null);
       setCombatId(started.combatId);
       setPlayerCombatId(started.playerId);
       setCombatState(started.state);
       setBattleWindowOpen(true);
-      setStatus(activeArenaNpcs.length > 0 ? `Battle started against ${activeArenaNpcs.length} arena NPC.` : 'Battle started.');
+      setStatus(customEnemies && customEnemies.length > 0 ? `Battle started against ${customEnemies.length} arena NPC.` : 'Battle started.');
     } catch (error) {
       battleStartSnapshotRef.current = null;
       setStatus(`Battle error: ${(error as Error).message}`);
@@ -2127,6 +2158,17 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return null;
   }
 
+  function startArenaSetupBattle(mode: ArenaSetupMode): void {
+    const battleMapId = pendingArenaBattleMapId ?? selectedBattleMapId;
+    if (mode === 'random') {
+      const enemyCount = 1 + Math.floor(Math.random() * 3);
+      void openCombat(battleMapId, { customEnemies: Array.from({ length: enemyCount }, (_, index) => buildGeneratedArenaEnemy(index + 1)) });
+      return;
+    }
+    const enemyCount = mode === '1v1' ? 1 : mode === '1v3' ? 3 : 10;
+    void openCombat(battleMapId, { enemyCount });
+  }
+
   const freePointsLeft = character.freePoints - getAllocationCost(pendingStatAllocation);
 
   const respecStatsUnused = async (): Promise<void> => {
@@ -2184,7 +2226,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onOpenMerchant={openMerchantOverlay}
           onOpenSkills={openSkillsOverlay}
           onStartCombat={openCombat}
-          onStartBattleMap={openCombat}
+          onStartBattleMap={(battleMapId) => {
+            openArenaSetup(battleMapId);
+            return Promise.resolve();
+          }}
           onStatus={setStatus}
           cityMerchants={enabledRuntimeMerchants}
           resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
@@ -2276,7 +2321,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
               <div className="profile-actions">
                 <button onClick={openArenaNpcOverlay}>Настроить NPC</button>
                 <button onClick={() => setStatus('Tactical Battle Map Editor находится в боковой панели карты мира под Zone Editor.')}>Где редактор карты</button>
-                <button onClick={() => { void openCombat(); }}>Начать бой</button>
+                <button onClick={() => startArenaSetupBattle('1v1')}>1 vs 1</button>
+                <button onClick={() => startArenaSetupBattle('1v3')}>1 vs 3</button>
+                <button onClick={() => startArenaSetupBattle('1v10')}>1 vs 10</button>
+                <button onClick={() => startArenaSetupBattle('random')}>Random encounter</button>
               </div>
             </section>
           </div>

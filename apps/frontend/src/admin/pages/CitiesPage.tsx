@@ -205,7 +205,7 @@ export function CitiesPage() {
 
   async function deleteCity() {
     if (!draft) return;
-    if (!window.confirm(`Удалить город ${draft.name}?`)) return;
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) return;
     await cityService.deleteCity(draft.id);
     const next = cities.filter((city) => city.id !== draft.id);
     await reload(next[0]?.id);
@@ -239,6 +239,7 @@ export function CitiesPage() {
 
   function deleteLocation() {
     if (!draft || !selectedLocation) return;
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) return;
     patchCity({ locations: draft.locations.filter((location) => location.id !== selectedLocation.id) });
     setSelectedLocationId('');
   }
