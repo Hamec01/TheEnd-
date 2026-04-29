@@ -16,6 +16,9 @@ import { getNearbyPlayers, canAttackNearbyPlayer, type NearbyPlayer } from './ne
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import { getZoneCenter, moveZone } from './zoneGeometry';
 import type { AdminMerchant } from '../services/content/models';
+import { cityService } from '../services/cityRepository';
+import { imageService } from '../services/content/imageService';
+import type { City, CityLocation } from '../types/city';
 import { subscribeToContentSync } from '../services/content/contentSync';
 import { ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests } from '../services/questRepository';
 import { deleteQuestMarker, ensureQuestMarkersLoaded, getQuestMarkers, saveQuestMarker } from '../services/questMapRepository';
@@ -37,35 +40,39 @@ const UI_RIGHT_PANEL_COLLAPSED_KEY = 'theend.worldMap.ui.rightPanelCollapsed';
 const UI_CHAT_MINIMIZED_KEY = 'theend.worldMap.ui.chatMinimized';
 const POPUP_HIDE_DELAY_MS = 3000;
 const POPUP_FADE_DURATION_MS = 450;
-const ARKLEIN_MERCHANT_SLOTS = [
-  { left: '37%', top: '46%', keywords: ['рынок', 'market', 'bazaar', 'лавка', 'торг'] },
-  { left: '68%', top: '35%', keywords: ['куз', 'smith', 'forge', 'blacksmith'] },
-  { left: '50%', top: '69%', keywords: ['площадь', 'manor', 'guild', 'центр', 'hall'] },
-  { left: '80%', top: '54%', keywords: ['храм', 'church', 'temple', 'cathedral'] },
-  { left: '17%', top: '72%', keywords: ['порт', 'dock', 'harbor', 'harbour', 'warehouse', 'склад'] },
-  { left: '69%', top: '78%', keywords: ['таверн', 'inn', 'tavern', 'south', 'квартал'] },
-] as const;
-
-function assignArkleinMerchantSlots(merchants: AdminMerchant[]) {
-  const freeSlots = [...ARKLEIN_MERCHANT_SLOTS];
-
-  return merchants.map((merchant, index) => {
-    const locationKey = `${merchant.location ?? ''} ${merchant.type}`.trim().toLowerCase();
-    const preferredIndex = freeSlots.findIndex((slot) => slot.keywords.some((keyword) => locationKey.includes(keyword)));
-    const slotIndex = preferredIndex >= 0 ? preferredIndex : 0;
-    const slot = freeSlots.splice(slotIndex, 1)[0] ?? ARKLEIN_MERCHANT_SLOTS[index % ARKLEIN_MERCHANT_SLOTS.length];
-
-    return {
-      merchant,
-      left: slot.left,
-      top: slot.top,
-    };
-  });
-}
-
 function isCitySceneId(value: string | null | undefined): boolean {
   const normalized = (value ?? '').trim().toLowerCase();
   return normalized === 'arklein' || normalized.startsWith('city_');
+}
+
+function normalizeCitySceneId(value: string | null | undefined): string {
+  const normalized = (value ?? '').trim();
+  const lower = normalized.toLowerCase();
+  if (lower === 'arklein' || lower === 'arclein' || lower === 'arkea') {
+    return 'city_arklein';
+  }
+  return normalized;
+}
+
+function getLocationPercent(location: CityLocation): { left: string; top: string; width: string; height: string } {
+  const shape = location.shape;
+  const x = Math.max(0, Math.min(1200, shape.x ?? 0));
+  const y = Math.max(0, Math.min(720, shape.y ?? 0));
+  if (location.shapeType === 'circle') {
+    const radius = Math.max(20, shape.radius ?? 48);
+    return {
+      left: `${((x - radius) / 1200) * 100}%`,
+      top: `${((y - radius) / 720) * 100}%`,
+      width: `${((radius * 2) / 1200) * 100}%`,
+      height: `${((radius * 2) / 720) * 100}%`,
+    };
+  }
+  return {
+    left: `${(x / 1200) * 100}%`,
+    top: `${(y / 720) * 100}%`,
+    width: `${((shape.width ?? 140) / 1200) * 100}%`,
+    height: `${((shape.height ?? 90) / 720) * 100}%`,
+  };
 }
 
 function getPlayerPositionStorageKey(characterId: string): string {
@@ -171,10 +178,9 @@ interface WorldMapScreenProps {
   onOpenInventory: () => void;
   onOpenClan: () => void;
   onExit: () => void;
-  onOpenArena: () => void;
   onStartCombat: () => Promise<void>;
+  onStartBattleMap?: (battleMapId: string) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
-  onOpenArenaNpc: () => void;
   onOpenSkills: () => void;
   onStatus: (text: string) => void;
   cityMerchants?: AdminMerchant[];
@@ -198,8 +204,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onOpenInventory,
     onOpenClan,
     onExit,
-    onOpenArena,
     onStartCombat,
+    onStartBattleMap,
     onOpenMerchant,
     onOpenSkills,
     onStatus,
@@ -211,7 +217,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     initialMode = 'play',
     adminEditorOnly = false,
     showAdminShortcuts = false,
-    onOpenArenaNpc,
   } = props;
 
   const canvasRef = useRef<WorldMapCanvasHandle>(null);
@@ -227,6 +232,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(adminEditorOnly ? 'editor' : initialMode);
   const [contextMode, setContextMode] = useState<ContextMode>('empty');
   const [locationView, setLocationView] = useState<LocationView>('map');
+  const [activeCityId, setActiveCityId] = useState<string | null>(null);
+  const [activeCity, setActiveCity] = useState<City | null>(null);
+  const [activeCityBackgroundUrl, setActiveCityBackgroundUrl] = useState('');
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [playerState, setPlayerState] = useState<PlayerWorldState>('idle');
@@ -300,9 +308,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => nearbyPlayers.find((entry) => entry.id === selectedNearbyPlayerId) ?? nearbyPlayers[0] ?? null,
     [nearbyPlayers, selectedNearbyPlayerId],
   );
-  const arkleinMerchantHotspots = useMemo(
-    () => assignArkleinMerchantSlots(cityMerchants),
+  const cityMerchantById = useMemo(
+    () => new Map(cityMerchants.map((merchant) => [merchant.id, merchant])),
     [cityMerchants],
+  );
+  const visibleCityLocations = useMemo(
+    () => (activeCity?.locations ?? []).filter((location) => location.isVisible && location.isUnlocked),
+    [activeCity?.locations],
   );
   const canAttackPlayer = canAttackNearbyPlayer((currentZone?.type as never) ?? null);
   const avatarLetter = character.name.trim().charAt(0).toUpperCase() || 'H';
@@ -349,6 +361,63 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   useEffect(() => {
     setEditorJson(exportEditorDataJson(zones, regions));
   }, [regions, zones]);
+
+  useEffect(() => {
+    if (!activeCityId) {
+      setActiveCity(null);
+      setActiveCityBackgroundUrl('');
+      return;
+    }
+
+    let cancelled = false;
+    cityService.getCityById(activeCityId)
+      .then((city) => {
+        if (!cancelled) {
+          setActiveCity(city);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveCity(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCityId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const imageId = activeCity?.backgroundImageId?.trim();
+    const fallbackUrl = activeCity?.backgroundImageUrl?.trim() || '';
+
+    if (!imageId) {
+      setActiveCityBackgroundUrl(fallbackUrl);
+      return;
+    }
+
+    if (!imageId.startsWith('img_')) {
+      setActiveCityBackgroundUrl(imageId);
+      return;
+    }
+
+    imageService.get(imageId)
+      .then((image) => {
+        if (!cancelled) {
+          setActiveCityBackgroundUrl(image?.dataUrl ?? fallbackUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveCityBackgroundUrl(fallbackUrl);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCity?.backgroundImageId, activeCity?.backgroundImageUrl]);
 
   useEffect(() => {
     void Promise.all([
@@ -1323,7 +1392,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStatus(`Локация ${locationId} пока недоступна.`);
       return;
     }
+    const cityId = normalizeCitySceneId(targetScene && isCitySceneId(targetScene) ? targetScene : locationId);
     rememberCurrentMapPosition();
+    setActiveCityId(cityId);
     setLocationView('city');
     setContextMode('location');
     setPlayerState('in_city');
@@ -1332,6 +1403,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   function handleReturnToMap() {
     rememberCurrentMapPosition();
+    setActiveCityId(null);
     setLocationView('map');
     setContextMode(currentZone ? 'location' : 'empty');
     setPlayerState(currentZone ? 'in_zone' : 'idle');
@@ -1395,8 +1467,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }, [collapsedSidePanels, toggleSidePanel]);
 
-  function handleEnterArena() {
-    onOpenArena();
+  function handleCityLocation(location: CityLocation) {
+    if (location.shopIds.length > 0) {
+      onOpenMerchant(location.shopIds[0]);
+      onStatus(`Opened shop from ${location.name}.`);
+      return;
+    }
+    if (location.linkedBattleMapId) {
+      void (onStartBattleMap ? onStartBattleMap(location.linkedBattleMapId) : onStartCombat());
+      onStatus(`Starting encounter from ${location.name}.`);
+      return;
+    }
+    if (location.npcIds.length > 0) {
+      setSelectedNpcForInteractionId(location.npcIds[0]);
+      setContextMode('npc');
+      onStatus(`NPC interaction: ${location.name}.`);
+      return;
+    }
+    if (location.questIds.length > 0) {
+      onStatus(`Quest hook: ${location.questIds[0]} at ${location.name}.`);
+      return;
+    }
+    onStatus(`${location.name}: ${location.description?.trim() || 'No action configured.'}`);
   }
 
   const playLayout = (
@@ -1481,37 +1573,39 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             <section className="wm-map card">
               <div
                 className="wm-map-surface wm-city-surface"
-                style={{ backgroundImage: "linear-gradient(rgba(24, 17, 12, 0.38), rgba(24, 17, 12, 0.62)), url('/map/City_Arclain.png')" }}
+                style={{
+                  backgroundImage: activeCityBackgroundUrl
+                    ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeCityBackgroundUrl}')`
+                    : 'linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))',
+                }}
               >
-                <div className="wm-map-title">{selectedLocationName}</div>
+                <div className="wm-map-title">{activeCity?.name ?? selectedLocationName}</div>
                 <div className="wm-city-hotspots">
-                  <button type="button" className="wm-city-hotspot hotspot-arena" onClick={handleEnterArena}>Арена</button>
-                  {arkleinMerchantHotspots.map(({ merchant, left, top }) => {
-                    const portrait = resolveMerchantImage?.(merchant);
-                    const subtitle = merchant.location?.trim() || merchant.type.replace(/_/g, ' ');
-                    const merchantInitial = merchant.name.trim().charAt(0).toUpperCase() || 'Т';
-
+                  {visibleCityLocations.map((location) => {
+                    const position = getLocationPercent(location);
+                    const merchant = location.shopIds.length > 0 ? cityMerchantById.get(location.shopIds[0]) : undefined;
+                    const portrait = merchant ? resolveMerchantImage?.(merchant) : undefined;
                     return (
                       <button
-                        key={merchant.id}
+                        key={location.id}
                         type="button"
-                        className="wm-city-hotspot wm-city-merchant-hotspot"
-                        style={{ left, top }}
-                        onClick={() => onOpenMerchant(merchant.id)}
+                        className={`wm-city-hotspot wm-city-location-hotspot type-${location.type}`}
+                        style={position}
+                        onClick={() => handleCityLocation(location)}
                       >
                         {portrait ? (
-                          <img src={portrait} alt={merchant.name} />
+                          <img src={portrait} alt={merchant?.name ?? location.name} />
                         ) : (
-                          <span className="wm-city-merchant-avatar" aria-hidden="true">{merchantInitial}</span>
+                          <span className="wm-city-merchant-avatar" aria-hidden="true">{location.markerIcon || location.type.slice(0, 1).toUpperCase()}</span>
                         )}
                         <span className="wm-city-merchant-copy">
-                          <strong>{merchant.name}</strong>
-                          <span>{subtitle}</span>
+                          <strong>{location.name}</strong>
+                          <span>{merchant?.name ?? location.type}</span>
                         </span>
                       </button>
                     );
                   })}
-                  {arkleinMerchantHotspots.length === 0 ? (
+                  {activeCity && visibleCityLocations.length === 0 ? (
                     <div className="wm-city-empty-note">
                       В этом городе пока нет торговцев из админки. Привяжите торговца к `cityId` или названию города.
                     </div>
@@ -1605,8 +1699,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                     >
                       Открыть редактор баттл-карт
                     </button>
-                    <button onClick={onOpenArenaNpc}>Настроить NPC</button>
-                    <button onClick={() => { void onStartCombat(); }}>Начать бой в арене</button>
+                    <button onClick={() => { void onStartCombat(); }}>Start test battle</button>
                   </div>
                 </section>
               ))}

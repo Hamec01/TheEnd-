@@ -314,6 +314,7 @@ function normalizeCityInput(input: City): City {
     climate: input.climate?.trim() || undefined,
     visualTheme: input.visualTheme?.trim() || undefined,
     backgroundImageId: input.backgroundImageId?.trim() || undefined,
+    backgroundImageUrl: input.backgroundImageUrl?.trim() || undefined,
     thumbnailImageId: input.thumbnailImageId?.trim() || undefined,
     locations: Array.isArray(input.locations)
       ? input.locations
@@ -329,6 +330,7 @@ function normalizeCityInput(input: City): City {
           shopIds: Array.isArray(location.shopIds) ? location.shopIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
           unlockCondition: location.unlockCondition?.trim() || undefined,
           markerIcon: location.markerIcon?.trim() || undefined,
+          linkedBattleMapId: location.linkedBattleMapId?.trim() || undefined,
         }))
         .filter((location) => Boolean(location.id && location.name))
       : [],

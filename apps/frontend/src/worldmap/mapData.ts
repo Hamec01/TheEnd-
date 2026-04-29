@@ -110,7 +110,7 @@ export const MAP_NODES: MapNodeData[] = [
     ],
   },
   {
-    id: 'arklein',
+    id: 'city_arklein',
     name: 'Арклейн',
     type: 'Town',
     faction: 'Trade League',

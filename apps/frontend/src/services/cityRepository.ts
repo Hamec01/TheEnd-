@@ -229,9 +229,11 @@ function normalizeCity(city: City): City {
     id,
     slug: city.slug || (id === 'city_arklein' ? 'arklein' : undefined),
     worldZoneId,
+    backgroundImageUrl: city.backgroundImageUrl?.trim() || undefined,
     locations: city.locations.map((location) => ({
       ...location,
       cityId: id,
+      linkedBattleMapId: location.linkedBattleMapId?.trim() || undefined,
     })),
   };
 }

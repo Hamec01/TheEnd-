@@ -14,6 +14,6 @@ export const QUEST_SEED_FACTIONS = [
   'shamans_of_orcs',
 ] as const;
 
-export const QUEST_SEED_CITIES = ['arklein', 'brenhold', 'ironcrest', 'whisper_port'] as const;
+export const QUEST_SEED_CITIES = ['city_arklein', 'brenhold', 'ironcrest', 'whisper_port'] as const;
 
 export const QUEST_SEED_PROFESSIONS = ['archer', 'blacksmith', 'alchemist', 'hunter'] as const;

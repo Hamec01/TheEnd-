@@ -8740,5 +8740,52 @@ body,
   min-height: 600px;
   height: 70vh;
   position: relative;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.city-upload-button,
+.city-image-upload-panel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid rgba(220, 182, 97, 0.55);
+  border-radius: 6px;
+  background: rgba(49, 37, 24, 0.92);
+  color: #f7e8c7;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.city-upload-button input,
+.city-image-upload-panel input {
+  display: none;
+}
+
+.city-duplicate-warning {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 170, 70, 0.75);
+  border-radius: 6px;
+  background: rgba(89, 47, 18, 0.78);
+  color: #ffe0ad;
+  font-weight: 800;
+}
+
+.city-background-preview {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border: 1px solid rgba(220, 182, 97, 0.35);
+  border-radius: 6px;
+}
+
+.wm-city-location-hotspot {
+  min-width: 112px;
+  min-height: 56px;
+  border-width: 2px;
+  background: rgba(20, 14, 9, 0.78);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }

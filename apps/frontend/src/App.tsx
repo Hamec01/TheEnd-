@@ -272,16 +272,6 @@ function normalizeCityName(value: string | null | undefined): string {
     .replace(/\s+/g, ' ');
 }
 
-function isArkleinCity(value: string | null | undefined): boolean {
-  const normalized = normalizeCityName(value);
-  return normalized === 'арклейн' || normalized === 'arklein' || normalized === 'arclein';
-}
-
-function isArkleinCityId(value: string | null | undefined): boolean {
-  const normalized = normalizeCityName(value);
-  return normalized === 'city_arklein' || normalized === 'argos_arklein' || normalized === 'arklein';
-}
-
 function getWeaponDamagePreview(item: ItemDefinition): string {
   const baseBySubtype: Record<string, { min: number; max: number }> = {
     sword: { min: 18, max: 26 },
@@ -822,8 +812,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     (merchant: AdminMerchant | null | undefined) => resolveMerchantImageSource(merchant, runtimeImages),
     [runtimeImages],
   );
-  const arkleinMerchants = useMemo(
-    () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled && (isArkleinCityId(merchant.cityId) || isArkleinCity(merchant.city))),
+  const enabledRuntimeMerchants = useMemo(
+    () => runtimeAdminMerchants.filter((merchant) => merchant.isEnabled),
     [runtimeAdminMerchants],
   );
   const arenaEquipmentOptionsBySlot = useMemo<Record<EquipmentSlot, ItemDefinition[]>>(() => {
@@ -1760,7 +1750,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function openCombat(): Promise<void> {
+  async function openCombat(battleMapIdOverride?: string): Promise<void> {
     if (!character) {
       return;
     }
@@ -1774,7 +1764,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     };
 
     try {
-      const battleMapPayload = toRuntimeBattleMapPayload(selectedBattleMap);
+      const battleMapPayload = toRuntimeBattleMapPayload(battleMapIdOverride ? resolveBattleMapForCombat(battleMapIdOverride) : selectedBattleMap);
       const started = activeArenaNpcs.length > 0
         ? await startCustomCombat(character.id, activeArenaNpcs.map(toCustomNpcPayload), battleMapPayload)
         : await startCombat(character.id, 3, battleMapPayload);
@@ -2173,13 +2163,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           }}
           onOpenClan={() => setOverlayPanel('clan')}
           onExit={() => setExitDialogOpen(true)}
-          onOpenArena={openArenaOverlay}
           onOpenMerchant={openMerchantOverlay}
-          onOpenArenaNpc={openArenaNpcOverlay}
           onOpenSkills={openSkillsOverlay}
           onStartCombat={openCombat}
+          onStartBattleMap={openCombat}
           onStatus={setStatus}
-          cityMerchants={arkleinMerchants}
+          cityMerchants={enabledRuntimeMerchants}
           resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
           resolveItemImage={resolveItemImage}
           resolveMerchantImage={resolveMerchantImage}

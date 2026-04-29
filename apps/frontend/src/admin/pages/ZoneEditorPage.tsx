@@ -61,12 +61,10 @@ export function ZoneEditorPage() {
         onOpenInventory={() => setStatus('Admin editor mode: inventory panel disabled.')}
         onOpenClan={() => setStatus('Admin editor mode: clan panel disabled.')}
         onExit={() => setStatus('Admin editor mode active.')}
-        onOpenArena={() => setStatus('Admin editor mode: arena disabled.')}
         onStartCombat={async () => {
           setStatus('Admin editor mode: combat disabled.');
         }}
         onOpenMerchant={() => setStatus('Admin editor mode: merchants disabled.')}
-        onOpenArenaNpc={() => setStatus('Admin editor mode: NPC editor disabled.')}
         onOpenSkills={() => setStatus('Admin editor mode: skills disabled.')}
         onStatus={setStatus}
         cityMerchants={[]}

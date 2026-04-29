@@ -359,6 +359,7 @@ export interface CityLocation {
   isUnlocked: boolean;
   unlockCondition?: string;
   markerIcon?: string;
+  linkedBattleMapId?: string;
 }
 
 export interface City {
@@ -389,6 +390,7 @@ export interface City {
   climate?: string;
   visualTheme?: string;
   backgroundImageId?: string;
+  backgroundImageUrl?: string;
   thumbnailImageId?: string;
   locations: CityLocation[];
   connectedCityIds?: string[];

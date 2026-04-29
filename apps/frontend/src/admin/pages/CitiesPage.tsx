@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { City, CityLocation, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
 import { cityService } from '../../services/cityRepository';
+import type { StoredImage } from '../../services/content/models';
+import { imageService } from '../../services/content/imageService';
 
 const STATUS_OPTIONS: CityStatus[] = ['active', 'ruined', 'occupied', 'hidden', 'locked'];
 const LOCATION_TYPES: CityLocationType[] = [
@@ -71,6 +73,7 @@ export function CitiesPage() {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 });
   const [status, setStatus] = useState('');
+  const [images, setImages] = useState<StoredImage[]>([]);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
@@ -84,6 +87,7 @@ export function CitiesPage() {
 
   useEffect(() => {
     void reload();
+    void imageService.getAll().then(setImages).catch(() => setImages([]));
   }, []);
 
   const filteredCities = useMemo(() => {
@@ -100,6 +104,29 @@ export function CitiesPage() {
     () => draft?.locations.find((location) => location.id === selectedLocationId) ?? draft?.locations[0] ?? null,
     [draft, selectedLocationId],
   );
+  const duplicateArkleinCities = useMemo(() => {
+    const aliases = new Set(['arklein', 'city_arklein', 'arclein', 'arkea', 'Ð°Ñ€ÐºÐ»ÐµÐ¹Ð½']);
+    return cities.filter((city) => {
+      const id = city.id.trim().toLowerCase();
+      const name = city.name.trim().toLowerCase().replace(/Ñ‘/g, 'Ðµ');
+      const slug = city.slug?.trim().toLowerCase();
+      const worldZoneId = city.worldZoneId?.trim().toLowerCase();
+      return aliases.has(id) || aliases.has(name) || Boolean(slug && aliases.has(slug)) || Boolean(worldZoneId && aliases.has(worldZoneId));
+    });
+  }, [cities]);
+  const resolvedBackgroundUrl = useMemo(() => {
+    const imageId = draft?.backgroundImageId?.trim();
+    if (imageId) {
+      const stored = images.find((image) => image.id === imageId);
+      if (stored) {
+        return stored.dataUrl;
+      }
+      if (!imageId.startsWith('img_')) {
+        return imageId;
+      }
+    }
+    return draft?.backgroundImageUrl?.trim() || '';
+  }, [draft?.backgroundImageId, draft?.backgroundImageUrl, images]);
 
   function selectCity(id: string) {
     const city = cities.find((entry) => entry.id === id) ?? null;
@@ -184,6 +211,24 @@ export function CitiesPage() {
     await reload(next[0]?.id);
   }
 
+  async function uploadBackground(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !draft) {
+      return;
+    }
+
+    try {
+      const stored = await imageService.upload(file);
+      setImages((current) => [stored, ...current.filter((image) => image.id !== stored.id)]);
+      patchCity({ backgroundImageId: stored.id, backgroundImageUrl: '' });
+      setTab('images');
+      setStatus(`Background uploaded: ${stored.name}`);
+    } catch (error) {
+      setStatus(`Background upload failed: ${(error as Error).message}`);
+    }
+  }
+
   function addLocation() {
     if (!draft) return;
     const location = createNewLocation(draft.id);
@@ -245,8 +290,8 @@ export function CitiesPage() {
     setIsPanning(false);
   }
 
-  const backgroundStyle = draft?.backgroundImageId
-    ? { backgroundImage: `url("${draft.backgroundImageId.startsWith('img_') ? '' : draft.backgroundImageId}")` }
+  const backgroundStyle = resolvedBackgroundUrl
+    ? { backgroundImage: `url("${resolvedBackgroundUrl}")` }
     : {};
 
   return (
@@ -256,8 +301,17 @@ export function CitiesPage() {
         <button type="button" onClick={duplicateCity} disabled={!draft}>DUPLICATE</button>
         <button type="button" onClick={deleteCity} disabled={!draft}>DELETE</button>
         <button type="button" onClick={saveCity} disabled={!draft}>SAVE</button>
+        <label className="city-upload-button">
+          Upload Background
+          <input type="file" accept="image/*" onChange={uploadBackground} disabled={!draft} />
+        </label>
         <span>{status}</span>
       </div>
+      {duplicateArkleinCities.length > 1 ? (
+        <div className="city-duplicate-warning">
+          Duplicate Arklein detected. Keep only city_arklein.
+        </div>
+      ) : null}
 
       <div className="city-editor-layout">
         <aside className="city-list-panel card">
@@ -305,7 +359,7 @@ export function CitiesPage() {
                 ...backgroundStyle,
               }}
             >
-              {!draft?.backgroundImageId ? <div className="city-canvas-empty">No city background image selected</div> : null}
+              {!resolvedBackgroundUrl ? <div className="city-canvas-empty">No city background image selected</div> : null}
 
               {draft?.locations.map((location) => {
                 const selected = location.id === selectedLocation?.id;
@@ -473,6 +527,7 @@ export function CitiesPage() {
                         <label>NPC IDs<input value={joinCsv(selectedLocation.npcIds)} onChange={(e) => patchSelectedLocation({ npcIds: splitCsv(e.target.value) })} /></label>
                         <label>Quest IDs<input value={joinCsv(selectedLocation.questIds)} onChange={(e) => patchSelectedLocation({ questIds: splitCsv(e.target.value) })} /></label>
                         <label>Shop IDs<input value={joinCsv(selectedLocation.shopIds)} onChange={(e) => patchSelectedLocation({ shopIds: splitCsv(e.target.value) })} /></label>
+                        <label>Linked Battle Map ID<input value={selectedLocation.linkedBattleMapId ?? ''} onChange={(e) => patchSelectedLocation({ linkedBattleMapId: e.target.value })} placeholder="battlemap_arklein_arena" /></label>
                         <label><input type="checkbox" checked={selectedLocation.isVisible} onChange={(e) => patchSelectedLocation({ isVisible: e.target.checked })} /> Visible</label>
                         <label><input type="checkbox" checked={selectedLocation.isUnlocked} onChange={(e) => patchSelectedLocation({ isUnlocked: e.target.checked })} /> Unlocked</label>
                         <label>Unlock Condition<input value={selectedLocation.unlockCondition ?? ''} onChange={(e) => patchSelectedLocation({ unlockCondition: e.target.value })} /></label>
@@ -484,9 +539,15 @@ export function CitiesPage() {
 
                 {tab === 'images' && (
                   <div className="city-form-grid">
-                    <label>Background Image ID / URL<input value={draft.backgroundImageId ?? ''} onChange={(e) => patchCity({ backgroundImageId: e.target.value })} /></label>
+                    <label className="city-image-upload-panel">
+                      Upload Background
+                      <input type="file" accept="image/*" onChange={uploadBackground} />
+                    </label>
+                    <label>Background Image ID<input value={draft.backgroundImageId ?? ''} onChange={(e) => patchCity({ backgroundImageId: e.target.value })} /></label>
+                    <label>Manual Background URL<input value={draft.backgroundImageUrl ?? ''} onChange={(e) => patchCity({ backgroundImageUrl: e.target.value, backgroundImageId: e.target.value.trim() ? '' : draft.backgroundImageId })} placeholder="/cities/arklein.png or https://..." /></label>
                     <label>Thumbnail Image ID / URL<input value={draft.thumbnailImageId ?? ''} onChange={(e) => patchCity({ thumbnailImageId: e.target.value })} /></label>
-                    <p className="muted">For now paste image URL or existing image id. Later hook image picker from ImagesPage.</p>
+                    {resolvedBackgroundUrl ? <img className="city-background-preview" src={resolvedBackgroundUrl} alt={`${draft.name} background preview`} /> : null}
+                    <p className="muted">Uploads are saved through Admin Images. Manual URL remains available as fallback.</p>
                   </div>
                 )}
               </div>
