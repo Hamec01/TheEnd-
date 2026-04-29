@@ -6,7 +6,7 @@ import type {
   BattleMapTriggerType,
   BattleMapNpcRole,
 } from '@theend/rpg-domain';
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { HelpTooltip } from './editor/HelpTooltip';
 import {
   createDefaultBattleMap,
@@ -57,6 +57,15 @@ function getCellKey(x: number, y: number): string {
 
 function getCellType(map: BattleMapDefinition, x: number, y: number): BattleMapCellType {
   return map.cells.find((cell) => cell.x === x && cell.y === y)?.type ?? 'walkable';
+}
+
+function getCellStyle(x: number, y: number, cellSizePx: number, gridOffsetX: number, gridOffsetY: number): CSSProperties {
+  return {
+    left: `${gridOffsetX + x * cellSizePx}px`,
+    top: `${gridOffsetY + y * cellSizePx}px`,
+    width: `${cellSizePx}px`,
+    height: `${cellSizePx}px`,
+  };
 }
 
 function ensureSpawnZone(map: BattleMapDefinition, type: BattleMapSpawnZoneType) {
@@ -286,6 +295,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
         updatedAt: Date.now(),
       }));
       setSelectedObjectId(objectId);
+      onStatusMessage?.(`Object placed at ${x}:${y}.`);
       return;
     }
 
@@ -324,6 +334,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
         updatedAt: Date.now(),
       }));
       setSelectedNpcId(npcId);
+      onStatusMessage?.(`NPC placed at ${x}:${y}.`);
       return;
     }
 
@@ -340,6 +351,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       updatedAt: Date.now(),
     }));
     setSelectedTriggerId(triggerId);
+    onStatusMessage?.(`Trigger placed at ${x}:${y}.`);
   };
 
   const cellSizePx = draft.cellSizePx ?? 64;
@@ -497,6 +509,33 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
     setCanvasPanY(nextPanY);
   }
 
+  function deleteSelectedObject(id: string) {
+    commitDraft((current) => ({
+      ...current,
+      objects: current.objects.filter((object) => object.id !== id),
+      updatedAt: Date.now(),
+    }));
+    if (selectedObjectId === id) setSelectedObjectId(null);
+  }
+
+  function deleteSelectedNpc(id: string) {
+    commitDraft((current) => ({
+      ...current,
+      npcs: current.npcs.filter((npc) => npc.id !== id),
+      updatedAt: Date.now(),
+    }));
+    if (selectedNpcId === id) setSelectedNpcId(null);
+  }
+
+  function deleteSelectedTrigger(id: string) {
+    commitDraft((current) => ({
+      ...current,
+      triggers: current.triggers.filter((trigger) => trigger.id !== id),
+      updatedAt: Date.now(),
+    }));
+    if (selectedTriggerId === id) setSelectedTriggerId(null);
+  }
+
   return (
     <section className="battle-map-editor battle-map-editor-page">
       <div className="battle-map-editor-head">
@@ -510,9 +549,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <button type="button" className={layer === 'cells' && cellTool === 'trap' ? 'is-active' : ''} onClick={() => { setLayer('cells'); setCellTool('trap'); setInteractionMode('paint'); }}>Paint Trap</button>
           <button type="button" className={layer === 'spawns' && spawnTool === 'player' ? 'is-active' : ''} onClick={() => { setLayer('spawns'); setSpawnTool('player'); setInteractionMode('paint'); }}>Player Spawn</button>
           <button type="button" className={layer === 'spawns' && spawnTool === 'enemy' ? 'is-active' : ''} onClick={() => { setLayer('spawns'); setSpawnTool('enemy'); setInteractionMode('paint'); }}>Enemy Spawn</button>
-          <button type="button" className={layer === 'objects' ? 'is-active' : ''} onClick={() => { setLayer('objects'); setInteractionMode('paint'); }}>Object Tool</button>
-          <button type="button" className={layer === 'npcs' ? 'is-active' : ''} onClick={() => { setLayer('npcs'); setInteractionMode('paint'); }}>NPC Tool</button>
-          <button type="button" className={layer === 'triggers' ? 'is-active' : ''} onClick={() => { setLayer('triggers'); setInteractionMode('paint'); }}>Trigger Tool</button>
+          <button type="button" className={layer === 'objects' ? 'is-active' : ''} onClick={() => { setLayer('objects'); setInteractionMode('paint'); onStatusMessage?.('Object tool selected. Click a map cell to place object.'); }}>Object Tool</button>
+          <button type="button" className={layer === 'npcs' ? 'is-active' : ''} onClick={() => { setLayer('npcs'); setInteractionMode('paint'); onStatusMessage?.('NPC tool selected. Click a map cell to place NPC.'); }}>NPC Tool</button>
+          <button type="button" className={layer === 'triggers' ? 'is-active' : ''} onClick={() => { setLayer('triggers'); setInteractionMode('paint'); onStatusMessage?.('Trigger tool selected. Click a map cell to place trigger.'); }}>Trigger Tool</button>
           <button type="button" className={interactionMode === 'pan' ? 'is-active' : ''} onClick={() => setInteractionMode((mode) => mode === 'pan' ? 'paint' : 'pan')}>Pan</button>
           <button type="button" onClick={fitCanvasToViewport}>Fit</button>
           <button type="button" disabled>Undo</button>
@@ -523,9 +562,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
 
       <div className="battle-map-editor-main">
 
-      <section className="battle-map-editor-section battle-map-editor-side-section">
+      <section className="battle-map-editor-section battle-map-editor-left-panel">
         <div className="battle-map-editor-section-head">
-          <h4>Map Identity</h4>
+          <h4>Tools</h4>
         </div>
         <div className="row">
           <label>Map</label>
@@ -541,6 +580,40 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <button type="button" onClick={handleNew}>New</button>
           <button type="button" onClick={handleDuplicate}>Duplicate</button>
           <button type="button" onClick={handleDelete}>Delete</button>
+        </div>
+        <div className="battle-map-editor-section-head">
+          <h4>Layers</h4>
+        </div>
+        <div className="battle-map-editor-layer-tabs">
+          {(['cells', 'spawns', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
+            <button key={entry} type="button" className={layer === entry ? 'is-active' : ''} onClick={() => setLayer(entry)}>
+              {entry}
+            </button>
+          ))}
+        </div>
+        {layer === 'cells' ? (
+          <div className="battle-map-editor-toolbar">
+            {CELL_TOOL_OPTIONS.map((option) => (
+              <button key={option.value} type="button" className={cellTool === option.value ? 'is-active' : ''} onClick={() => setCellTool(option.value)}>
+                {option.label} <HelpTooltip text={option.help} />
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {layer === 'spawns' ? (
+          <div className="battle-map-editor-toolbar">
+            {SPAWN_ZONE_OPTIONS.map((option) => (
+              <button key={option.value} type="button" className={spawnTool === option.value ? 'is-active' : ''} onClick={() => setSpawnTool(option.value)}>
+                {option.label} <HelpTooltip text={option.help} />
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="battle-map-editor-section battle-map-editor-side-section">
+        <div className="battle-map-editor-section-head">
+          <h4>Map Identity</h4>
         </div>
         <div className="row">
           <label>ID <HelpTooltip text="Unique map key used by arenas, quests, dungeons and NPC encounters. Do not rename after linking unless you also update all references." /></label>
@@ -627,35 +700,6 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       </section>
 
       <section className="battle-map-editor-section battle-map-editor-canvas-section">
-        <div className="battle-map-editor-section-head">
-          <h4>Layers</h4>
-        </div>
-        <div className="battle-map-editor-layer-tabs">
-          {(['cells', 'spawns', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
-            <button key={entry} type="button" className={layer === entry ? 'is-active' : ''} onClick={() => setLayer(entry)}>
-              {entry}
-            </button>
-          ))}
-        </div>
-        {layer === 'cells' ? (
-          <div className="battle-map-editor-toolbar">
-            {CELL_TOOL_OPTIONS.map((option) => (
-              <button key={option.value} type="button" className={cellTool === option.value ? 'is-active' : ''} onClick={() => setCellTool(option.value)}>
-                {option.label} <HelpTooltip text={option.help} />
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {layer === 'spawns' ? (
-          <div className="battle-map-editor-toolbar">
-            {SPAWN_ZONE_OPTIONS.map((option) => (
-              <button key={option.value} type="button" className={spawnTool === option.value ? 'is-active' : ''} onClick={() => setSpawnTool(option.value)}>
-                {option.label} <HelpTooltip text={option.help} />
-              </button>
-            ))}
-          </div>
-        ) : null}
-
         <div
           ref={viewportRef}
           className="battle-map-editor-canvas-viewport"
@@ -725,6 +769,56 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 );
               })}
             </div>
+            {draft.objects.map((object) => (
+              <button
+                key={object.id}
+                type="button"
+                className={`battle-map-editor-marker battle-map-editor-marker-object ${selectedObjectId === object.id ? 'is-selected' : ''}`}
+                style={getCellStyle(object.x, object.y, cellSizePx, gridOffsetX, gridOffsetY)}
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                  setSelectedObjectId(object.id);
+                }}
+                title={`${object.name} (${object.x}:${object.y})`}
+              >
+                O
+              </button>
+            ))}
+            {draft.npcs.map((npc) => (
+              <button
+                key={npc.id}
+                type="button"
+                className={`battle-map-editor-marker battle-map-editor-marker-npc ${selectedNpcId === npc.id ? 'is-selected' : ''}`}
+                style={getCellStyle(npc.x, npc.y, cellSizePx, gridOffsetX, gridOffsetY)}
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                  setSelectedNpcId(npc.id);
+                }}
+                title={`${npc.name} (${npc.x}:${npc.y})`}
+              >
+                N
+              </button>
+            ))}
+            {draft.triggers.map((trigger) => {
+              const cell = trigger.cells[0];
+              if (!cell) return null;
+
+              return (
+                <button
+                  key={trigger.id}
+                  type="button"
+                  className={`battle-map-editor-marker battle-map-editor-marker-trigger ${selectedTriggerId === trigger.id ? 'is-selected' : ''}`}
+                  style={getCellStyle(cell.x, cell.y, cellSizePx, gridOffsetX, gridOffsetY)}
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    setSelectedTriggerId(trigger.id);
+                  }}
+                  title={`${trigger.name} (${cell.x}:${cell.y})`}
+                >
+                  T
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -763,7 +857,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 <label><input type="checkbox" checked={selectedObject.blocksLineOfSight ?? false} onChange={(event) => commitDraft((current) => ({ ...current, objects: current.objects.map((object) => object.id === selectedObject.id ? { ...object, blocksLineOfSight: event.target.checked } : object) }))} /> blocks line of sight</label>
                 <label><input type="checkbox" checked={selectedObject.interactable ?? false} onChange={(event) => commitDraft((current) => ({ ...current, objects: current.objects.map((object) => object.id === selectedObject.id ? { ...object, interactable: event.target.checked } : object) }))} /> interactable</label>
                 <textarea value={selectedObject.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objects: current.objects.map((object) => object.id === selectedObject.id ? { ...object, description: event.target.value } : object) }))} placeholder="description" rows={2} />
-                <button type="button" onClick={() => commitDraft((current) => ({ ...current, objects: current.objects.filter((object) => object.id !== selectedObject.id) }))}>Remove object</button>
+                <button type="button" onClick={() => deleteSelectedObject(selectedObject.id)}>Remove object</button>
               </div>
             ) : null}
           </section>
@@ -820,7 +914,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 <input value={selectedNpc.avatarUrl ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, avatarUrl: event.target.value } : npc) }))} placeholder="avatarUrl" />
                 <label><input type="checkbox" checked={selectedNpc.startsCombat ?? false} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, startsCombat: event.target.checked } : npc) }))} /> starts combat</label>
                 <textarea value={selectedNpc.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, description: event.target.value } : npc) }))} placeholder="description" rows={2} />
-                <button type="button" onClick={() => commitDraft((current) => ({ ...current, npcs: current.npcs.filter((npc) => npc.id !== selectedNpc.id) }))}>Remove NPC</button>
+                <button type="button" onClick={() => deleteSelectedNpc(selectedNpc.id)}>Remove NPC</button>
               </div>
             ) : null}
           </section>
@@ -848,7 +942,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 <label><input type="checkbox" checked={selectedTrigger.enabled ?? true} onChange={(event) => commitDraft((current) => ({ ...current, triggers: current.triggers.map((trigger) => trigger.id === selectedTrigger.id ? { ...trigger, enabled: event.target.checked } : trigger) }))} /> enabled</label>
                 <div className="muted">Paint trigger zone by creating a trigger, then keep it selected and extend its cells in future pass.</div>
                 <textarea value={selectedTrigger.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, triggers: current.triggers.map((trigger) => trigger.id === selectedTrigger.id ? { ...trigger, description: event.target.value } : trigger) }))} placeholder="description" rows={2} />
-                <button type="button" onClick={() => commitDraft((current) => ({ ...current, triggers: current.triggers.filter((trigger) => trigger.id !== selectedTrigger.id) }))}>Remove trigger</button>
+                <button type="button" onClick={() => deleteSelectedTrigger(selectedTrigger.id)}>Remove trigger</button>
               </div>
             ) : null}
           </section>

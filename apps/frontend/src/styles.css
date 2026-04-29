@@ -8868,3 +8868,123 @@ body,
   flex-wrap: wrap;
   gap: 10px;
 }
+
+.battle-map-editor-marker {
+  position: absolute;
+  z-index: 18;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid rgba(244, 213, 139, 0.95);
+  background: rgba(20, 16, 11, 0.72);
+  color: #ffe6ad;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.65), 0 8px 18px rgba(0,0,0,.35);
+  overflow: hidden;
+}
+
+.battle-map-editor-marker:hover,
+.battle-map-editor-marker.is-selected {
+  z-index: 24;
+  border-color: #fff0b8;
+  background: rgba(97, 66, 29, 0.88);
+}
+
+.battle-map-editor-marker-object {
+  color: #f1d18a;
+}
+
+.battle-map-editor-marker-npc {
+  color: #a9e6ff;
+}
+
+.battle-map-editor-marker-trigger {
+  color: #f3a6ff;
+}
+
+.battle-map-editor {
+  min-height: calc(100vh - 150px);
+}
+
+.battle-map-editor-head {
+  display: grid;
+  grid-template-columns: minmax(220px, 380px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.battle-map-editor-main {
+  display: grid !important;
+  grid-template-columns: 260px minmax(620px, 1fr) 340px !important;
+  grid-template-rows: minmax(0, 1fr) auto auto !important;
+  gap: 12px !important;
+  min-height: calc(100vh - 280px) !important;
+  height: calc(100vh - 280px) !important;
+  overflow: hidden !important;
+  align-items: stretch !important;
+}
+
+.battle-map-editor-main > .battle-map-editor-left-panel {
+  grid-column: 1 !important;
+  grid-row: 1 / 4 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.battle-map-editor-main > .battle-map-editor-section:nth-child(2) {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.battle-map-editor-main > .battle-map-editor-canvas-section {
+  grid-column: 2 !important;
+  grid-row: 1 / 4 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.battle-map-editor-main > .battle-map-editor-section:nth-child(4) {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.battle-map-editor-main > .battle-map-editor-section:nth-child(5) {
+  grid-column: 3 !important;
+  grid-row: 3 !important;
+  max-height: 170px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.battle-map-editor-canvas-viewport {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 520px !important;
+  overflow: hidden !important;
+}
+
+.battle-map-editor-canvas-content {
+  position: absolute !important;
+}
+
+.battle-map-editor-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 1400px) {
+  .battle-map-editor-main {
+    grid-template-columns: 240px minmax(480px, 1fr) 320px !important;
+  }
+}
