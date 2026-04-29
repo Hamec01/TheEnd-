@@ -1,4 +1,4 @@
-import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { AdminSkillDefinition, BattleMapDefinition, PrimaryStat } from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -413,6 +413,7 @@ export interface ContentDatabase {
   quests: QuestDefinition[];
   questItems: QuestItemDefinition[];
   questMarkers: QuestMarkerDefinition[];
+  battleMaps: BattleMapDefinition[];
   worldMap: WorldMapContent;
 }
 
@@ -428,7 +429,8 @@ export type ContentCollectionName =
   | 'npcs'
   | 'quests'
   | 'questItems'
-  | 'questMarkers';
+  | 'questMarkers'
+  | 'battleMaps';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -443,4 +445,5 @@ export interface ContentCollectionMap {
   quests: QuestDefinition;
   questItems: QuestItemDefinition;
   questMarkers: QuestMarkerDefinition;
+  battleMaps: BattleMapDefinition;
 }

@@ -16,13 +16,14 @@ import { NpcsPage } from './pages/NpcsPage';
 import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
 import { CitiesPage } from './pages/CitiesPage';
+import { BackupPage } from './pages/BackupPage';
 
 interface AdminAppProps {
   currentPath: string;
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/backup';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
@@ -39,6 +40,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     || path === '/admin/battle-maps'
     || path === '/admin/zone-editor'
     || path === '/admin/cities'
+    || path === '/admin/backup'
   ) {
     return path;
   }
@@ -76,7 +78,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       case '/admin/zone-editor':
         return 'Zone Editor';
       case '/admin/cities':
-        return 'Города';
+        return 'Cities';
+      case '/admin/backup':
+        return 'Backup / Content Tools';
       default:
         return 'Обзор';
     }
@@ -137,6 +141,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/cities':
       page = <CitiesPage />;
+      break;
+    case '/admin/backup':
+      page = <BackupPage />;
       break;
     default:
       page = <DashboardPage />;

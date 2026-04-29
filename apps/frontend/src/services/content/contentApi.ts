@@ -1,3 +1,4 @@
+import type { BattleMapDefinition } from '@theend/rpg-domain';
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
 import type {
@@ -31,7 +32,8 @@ export type ContentCollectionName =
   | 'npcs'
   | 'quests'
   | 'questItems'
-  | 'questMarkers';
+  | 'questMarkers'
+  | 'battleMaps';
 
 export interface WorldMapContent {
   zones: WorldMapZone[];
@@ -52,6 +54,7 @@ export interface ContentSnapshot {
   quests: AdminQuest[];
   questItems: AdminQuestItem[];
   questMarkers: AdminQuestMarker[];
+  battleMaps: BattleMapDefinition[];
   worldMap: WorldMapContent;
 }
 
@@ -129,6 +132,21 @@ export async function ensureContentBackendReady(): Promise<void> {
 export async function getContentSnapshot(): Promise<ContentSnapshot> {
   await ensureContentBackendReady();
   return getContentSnapshotRaw();
+}
+
+export async function exportFullContent(): Promise<ContentSnapshot> {
+  await ensureContentBackendReady();
+  return requestJson<ContentSnapshot>('/content/export');
+}
+
+export async function importFullContent(payload: Partial<ContentSnapshot>): Promise<ContentSnapshot> {
+  await ensureContentBackendReady();
+  const snapshot = await requestJson<ContentSnapshot>('/content/import', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  notifyContentSync('all');
+  return snapshot;
 }
 
 export async function seedDefaultContent(): Promise<{ seeded: boolean; message: string }> {

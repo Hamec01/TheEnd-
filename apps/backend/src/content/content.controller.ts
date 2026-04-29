@@ -12,6 +12,18 @@ export class ContentController {
     return this.contentService.getSnapshot();
   }
 
+  @Get('export')
+  async exportContent(): Promise<ContentDatabase> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.exportFullContent();
+  }
+
+  @Post('import')
+  async importContent(@Body() payload?: Partial<ContentDatabase>): Promise<ContentDatabase> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.importFullContent(payload ?? {});
+  }
+
   @Post('import-local')
   async importLocal(@Body() payload?: Partial<ContentDatabase>): Promise<ContentDatabase> {
     this.contentService.assertContentImportAllowed();

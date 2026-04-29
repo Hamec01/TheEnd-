@@ -8,9 +8,11 @@ import type {
   BattleMapTrap,
   BattleMapTrigger,
 } from '@theend/rpg-domain';
+import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from '../content/contentApi';
 
 const BATTLE_MAPS_STORAGE_KEY = 'theend.battleMaps';
 export const DEFAULT_BATTLE_MAP_ID = 'battlemap_arklein_arena_test';
+let battleMapsCache: BattleMapDefinition[] | null = null;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -447,14 +449,18 @@ export function validateBattleMap(map: BattleMapDefinition): string[] {
 }
 
 export function loadBattleMaps(): BattleMapDefinition[] {
-  if (typeof window === 'undefined') {
-    return [createDefaultBattleMap()];
+  if (battleMapsCache) {
+    return battleMapsCache;
   }
 
+  if (typeof window === 'undefined') {
+    battleMapsCache = [createDefaultBattleMap()];
+    return battleMapsCache;
+  }
   const raw = window.localStorage.getItem(BATTLE_MAPS_STORAGE_KEY);
   if (!raw) {
     const defaults = [createDefaultBattleMap()];
-    saveBattleMaps(defaults);
+    battleMapsCache = defaults;
     return defaults;
   }
 
@@ -463,21 +469,48 @@ export function loadBattleMaps(): BattleMapDefinition[] {
     const normalized = Array.isArray(parsed) ? parsed.map((map) => normalizeBattleMap(map)) : [createDefaultBattleMap()];
     if (!normalized.some((map) => map.id === DEFAULT_BATTLE_MAP_ID)) {
       normalized.unshift(createDefaultBattleMap());
-      saveBattleMaps(normalized);
     }
+    battleMapsCache = normalized;
     return normalized;
   } catch {
     const defaults = [createDefaultBattleMap()];
-    saveBattleMaps(defaults);
+    battleMapsCache = defaults;
     return defaults;
   }
 }
 
 export function saveBattleMaps(maps: BattleMapDefinition[]): void {
+  battleMapsCache = maps.map((map) => normalizeBattleMap(map));
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(BATTLE_MAPS_STORAGE_KEY, JSON.stringify(maps.map((map) => normalizeBattleMap(map))));
+  window.localStorage.setItem(BATTLE_MAPS_STORAGE_KEY, JSON.stringify(battleMapsCache));
+}
+
+export async function loadBattleMapsFromStore(): Promise<BattleMapDefinition[]> {
+  const remote = (await getContentCollection<BattleMapDefinition>('battleMaps')).map((map) => normalizeBattleMap(map));
+  const maps = remote.length > 0 ? remote : loadBattleMaps();
+  battleMapsCache = maps;
+  if (remote.length === 0) {
+    await saveBattleMapsToStore(maps);
+  }
+  return maps;
+}
+
+export async function saveBattleMapsToStore(maps: BattleMapDefinition[]): Promise<void> {
+  const normalized = maps.map((map) => normalizeBattleMap(map));
+  battleMapsCache = normalized;
+  const existing = await getContentCollection<BattleMapDefinition>('battleMaps');
+  const existingIds = new Set(existing.map((map) => map.id));
+  const nextIds = new Set(normalized.map((map) => map.id));
+
+  await Promise.all(normalized.map((map) =>
+    existingIds.has(map.id)
+      ? updateContentEntry<BattleMapDefinition>('battleMaps', map.id, map)
+      : createContentEntry<BattleMapDefinition>('battleMaps', map),
+  ));
+
+  await Promise.all(existing.filter((map) => !nextIds.has(map.id)).map((map) => deleteContentEntry('battleMaps', map.id)));
 }
 
 export function getBattleMapById(id: string): BattleMapDefinition | null {
@@ -494,9 +527,11 @@ export function upsertBattleMap(map: BattleMapDefinition): void {
     maps.push(normalized);
   }
   saveBattleMaps(maps);
+  void saveBattleMapsToStore(maps).catch(() => undefined);
 }
 
 export function deleteBattleMap(id: string): void {
   const maps = loadBattleMaps().filter((map) => map.id !== id);
   saveBattleMaps(maps.length > 0 ? maps : [createDefaultBattleMap()]);
+  void deleteContentEntry('battleMaps', id).catch(() => undefined);
 }

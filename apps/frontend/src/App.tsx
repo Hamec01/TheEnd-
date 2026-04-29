@@ -61,7 +61,7 @@ import {
 } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource } from './services/content/runtimeImageService';
 import { getDomainItemWithFallback } from './services/content/seedService';
-import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps } from './services/battleMaps/battleMapStorage';
+import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps, loadBattleMapsFromStore } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 import { ensureDialoguesLoaded } from './services/dialogueRepository';
 import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npcRepository';
@@ -1237,13 +1237,31 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [loadArenaNpcTemplatesFromBackend, runtimeAdminItems]);
 
   useEffect(() => {
-    const maps = loadBattleMaps();
-    const savedBattleMapId = window.localStorage.getItem(SELECTED_BATTLE_MAP_STORAGE_KEY);
-    if (savedBattleMapId && maps.some((map) => map.id === savedBattleMapId)) {
-      setSelectedBattleMapId(savedBattleMapId);
-      return;
-    }
-    setSelectedBattleMapId(maps[0]?.id ?? DEFAULT_BATTLE_MAP_ID);
+    let disposed = false;
+    void loadBattleMapsFromStore()
+      .then((maps) => {
+        if (disposed) {
+          return;
+        }
+        const savedBattleMapId = window.localStorage.getItem(SELECTED_BATTLE_MAP_STORAGE_KEY);
+        if (savedBattleMapId && maps.some((map) => map.id === savedBattleMapId)) {
+          setSelectedBattleMapId(savedBattleMapId);
+          return;
+        }
+        setSelectedBattleMapId(maps[0]?.id ?? DEFAULT_BATTLE_MAP_ID);
+      })
+      .catch(() => {
+        const maps = loadBattleMaps();
+        const savedBattleMapId = window.localStorage.getItem(SELECTED_BATTLE_MAP_STORAGE_KEY);
+        if (savedBattleMapId && maps.some((map) => map.id === savedBattleMapId)) {
+          setSelectedBattleMapId(savedBattleMapId);
+          return;
+        }
+        setSelectedBattleMapId(maps[0]?.id ?? DEFAULT_BATTLE_MAP_ID);
+      });
+    return () => {
+      disposed = true;
+    };
   }, []);
 
   useEffect(() => {

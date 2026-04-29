@@ -12,6 +12,7 @@ import {
   createDefaultBattleMap,
   deleteBattleMap,
   loadBattleMaps,
+  loadBattleMapsFromStore,
   normalizeBattleMap,
   upsertBattleMap,
   validateBattleMap,
@@ -112,6 +113,27 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [interactionMode, setInteractionMode] = useState<'paint' | 'pan'>('paint');
   const [panDrag, setPanDrag] = useState<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    loadBattleMapsFromStore()
+      .then((loadedMaps) => {
+        if (disposed) {
+          return;
+        }
+        const nextMaps = loadedMaps.length > 0 ? loadedMaps : [createDefaultBattleMap()];
+        setMaps(nextMaps);
+        const nextId = selectedMapId && nextMaps.some((map) => map.id === selectedMapId)
+          ? selectedMapId
+          : nextMaps[0]?.id ?? createDefaultBattleMap().id;
+        setCurrentMapId(nextId);
+        setDraft(normalizeBattleMap(nextMaps.find((map) => map.id === nextId) ?? nextMaps[0] ?? createDefaultBattleMap()));
+      })
+      .catch((error) => onStatusMessage?.(`Battle maps database load failed: ${(error as Error).message}`));
+    return () => {
+      disposed = true;
+    };
+  }, [onStatusMessage, selectedMapId]);
 
   useEffect(() => {
     if (!selectedMapId) {

@@ -8,6 +8,7 @@ import {
   validateSkillDefinition,
   getItemHandsRequired,
   type AdminSkillDefinition,
+  type BattleMapDefinition,
   type Equipment,
   type ItemDefinition,
   type Merchant,
@@ -51,6 +52,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'quests',
   'questItems',
   'questMarkers',
+  'battleMaps',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -357,6 +359,7 @@ function createEmptyDatabase(): ContentDatabase {
     quests: [],
     questItems: [],
     questMarkers: [],
+    battleMaps: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -381,6 +384,7 @@ function createSeedDatabase(): ContentDatabase {
     quests: [],
     questItems: [],
     questMarkers: [],
+    battleMaps: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -1052,6 +1056,7 @@ export class ContentService implements OnModuleInit {
       quests: Array.isArray(raw.quests) ? raw.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition)).filter((q) => Boolean(q.id)) : [],
       questItems: Array.isArray(raw.questItems) ? raw.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition)).filter((q) => Boolean(q.id)) : [],
       questMarkers: Array.isArray(raw.questMarkers) ? raw.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id)) : [],
+      battleMaps: Array.isArray(raw.battleMaps) ? clone(raw.battleMaps as BattleMapDefinition[]).filter((map) => Boolean(map.id)) : [],
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones) : [],
@@ -1144,6 +1149,24 @@ export class ContentService implements OnModuleInit {
 
   getSnapshot(): ContentDatabase {
     return clone(this.ensureLoaded());
+  }
+
+  exportFullContent(): ContentDatabase {
+    return this.getSnapshot();
+  }
+
+  async importFullContent(payload: Partial<ContentDatabase>): Promise<ContentDatabase> {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new BadRequestException('Import payload must be a JSON object.');
+    }
+
+    const normalized = this.normalizeDatabase(payload);
+    const errors = this.validateDatabaseIntegrity(normalized);
+    if (errors.length > 0) {
+      throw new BadRequestException(`Content import validation failed:\n- ${errors.join('\n- ')}`);
+    }
+
+    return this.persist(normalized);
   }
 
   async reloadFromDisk(): Promise<ContentDatabase> {
@@ -1312,6 +1335,9 @@ export class ContentService implements OnModuleInit {
     if (Array.isArray(payload.questMarkers) && payload.questMarkers.length > 0) {
       const normalized = payload.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition));
       db.questMarkers = mergeById(db.questMarkers, normalized);
+    }
+    if (Array.isArray(payload.battleMaps) && payload.battleMaps.length > 0) {
+      db.battleMaps = mergeById(db.battleMaps, clone(payload.battleMaps as BattleMapDefinition[]));
     }
     if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length)) {
       db.worldMap = {

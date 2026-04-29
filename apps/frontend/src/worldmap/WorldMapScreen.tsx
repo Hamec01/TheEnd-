@@ -1582,26 +1582,50 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 <div className="wm-map-title">{activeCity?.name ?? selectedLocationName}</div>
                 <div className="wm-city-hotspots">
                   {visibleCityLocations.map((location) => {
-                    const position = getLocationPercent(location);
-                    const merchant = location.shopIds.length > 0 ? cityMerchantById.get(location.shopIds[0]) : undefined;
-                    const portrait = merchant ? resolveMerchantImage?.(merchant) : undefined;
+                    const locationMerchant = location.shopIds?.[0]
+                      ? cityMerchantById.get(location.shopIds[0]) ?? null
+                      : null;
+                    const merchantImage = locationMerchant && resolveMerchantImage
+                      ? resolveMerchantImage(locationMerchant)
+                      : undefined;
                     return (
                       <button
                         key={location.id}
                         type="button"
-                        className={`wm-city-hotspot wm-city-location-hotspot type-${location.type}`}
-                        style={position}
-                        onClick={() => handleCityLocation(location)}
+                        className={`city-location-hotspot city-location-hotspot-${location.shapeType}`}
+                        style={getLocationPercent(location)}
+                        onClick={() => {
+                          const merchantId = location.shopIds?.[0];
+                          if (merchantId) {
+                            onOpenMerchant(merchantId);
+                            onStatus(`Opened shop from ${location.name}.`);
+                            return;
+                          }
+
+                          const battleMapId = location.linkedBattleMapId?.trim();
+                          if (battleMapId && onStartBattleMap) {
+                            void onStartBattleMap(battleMapId);
+                            return;
+                          }
+
+                          void handleCityLocation(location);
+                        }}
                       >
-                        {portrait ? (
-                          <img src={portrait} alt={merchant?.name ?? location.name} />
-                        ) : (
-                          <span className="wm-city-merchant-avatar" aria-hidden="true">{location.markerIcon || location.type.slice(0, 1).toUpperCase()}</span>
-                        )}
-                        <span className="wm-city-merchant-copy">
-                          <strong>{location.name}</strong>
-                          <span>{merchant?.name ?? location.type}</span>
-                        </span>
+                        <span className="city-location-hotspot-title">{location.name}</span>
+                        {locationMerchant ? (
+                          <span className="city-location-hotspot-merchant">
+                            {merchantImage ? (
+                              <img
+                                className="city-location-hotspot-thumb"
+                                src={merchantImage}
+                                alt={locationMerchant.name}
+                              />
+                            ) : null}
+                            <span className="city-location-hotspot-merchant-name">
+                              {locationMerchant.name}
+                            </span>
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}

@@ -10,7 +10,7 @@ interface AdminLayoutProps {
 const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: string }> }> = [
   {
     title: 'General',
-    links: [{ path: '/admin', label: 'Обзор' }],
+    links: [{ path: '/admin', label: 'Overview' }, { path: '/admin/backup', label: 'Backup' }],
   },
   {
     title: 'Content',
