@@ -13,6 +13,7 @@ import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/
 import { ensureNpcsLoaded, getAllNpcs, saveNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
 import { validateNpc } from '../../services/npcValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
+import { cityService } from '../../services/cityRepository';
 import type {
   NpcCondition,
   NpcDefinition,
@@ -24,6 +25,7 @@ import type {
   NpcValidationWorldData,
 } from '../../types/npc';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
+import type { City } from '../../types/city';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'guard', 'enemy', 'boss', 'companion', 'random_encounter', 'story_character', 'monster', 'animal'];
@@ -100,6 +102,7 @@ export function NpcsPage() {
   const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [lootTableIds, setLootTableIds] = useState<string[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
 
   const [mapBindingsJson, setMapBindingsJson] = useState('[]');
   const [dialogueBindingsJson, setDialogueBindingsJson] = useState('[]');
@@ -149,6 +152,8 @@ export function NpcsPage() {
       refresh();
     });
 
+    void cityService.getCities().then(setCities).catch(() => setCities([]));
+
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
 
     const unsubscribe = subscribeToContentSync((payload) => {
@@ -159,6 +164,23 @@ export function NpcsPage() {
 
     return unsubscribe;
   }, []);
+
+  const homeCity = useMemo(
+    () => (draft.homeCityId ? cities.find((city) => city.id === draft.homeCityId) ?? null : null),
+    [cities, draft.homeCityId],
+  );
+  const currentCity = useMemo(
+    () => (draft.currentCityId ? cities.find((city) => city.id === draft.currentCityId) ?? null : null),
+    [cities, draft.currentCityId],
+  );
+  const currentCityLocations = useMemo(
+    () => currentCity?.locations ?? [],
+    [currentCity],
+  );
+  const selectedCityLocation = useMemo(() => {
+    if (!draft.cityLocationId || !currentCity) return null;
+    return currentCity.locations.find((location) => location.id === draft.cityLocationId) ?? null;
+  }, [currentCity, draft.cityLocationId]);
 
   useEffect(() => {
     setMapBindingsJson(JSON.stringify(draft.mapBindings, null, 2));
@@ -438,6 +460,51 @@ export function NpcsPage() {
         {activeTab === 'location' ? (
           <>
             <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Home City" hint="Родной город NPC. Не обязателен, но полезен для логики появления/диалогов." />
+                <select value={draft.homeCityId ?? ''} onChange={(event) => patch({ homeCityId: event.target.value || undefined })}>
+                  <option value="">Не задано</option>
+                  {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
+                </select>
+              </label>
+              {draft.homeCityId && !homeCity ? <p className="muted">City not found</p> : null}
+
+              <label>
+                <AdminFieldLabel label="Current City" hint="Город, где NPC находится сейчас (для City-сцен). Меняет список локаций ниже." />
+                <select value={draft.currentCityId ?? ''} onChange={(event) => {
+                  const nextCityId = event.target.value || undefined;
+                  patch({
+                    currentCityId: nextCityId,
+                    cityLocationId: nextCityId ? draft.cityLocationId : undefined,
+                  });
+                }}>
+                  <option value="">Не задано</option>
+                  {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
+                </select>
+              </label>
+              {draft.currentCityId && !currentCity ? <p className="muted">City not found</p> : null}
+
+              <label>
+                <AdminFieldLabel label="City Location" hint="Локация внутри выбранного Current City (ворота, рынок, кузница и т.д.)." />
+                <select
+                  value={draft.cityLocationId ?? ''}
+                  onChange={(event) => patch({ cityLocationId: event.target.value || undefined })}
+                  disabled={!draft.currentCityId}
+                >
+                  <option value="">Не задано</option>
+                  {currentCityLocations.map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+                </select>
+              </label>
+              {draft.cityLocationId && draft.currentCityId && !selectedCityLocation ? <p className="muted">Location not found</p> : null}
+
+              <label>
+                <AdminFieldLabel label="Allowed Cities (CSV)" hint="Список городов, где NPC может появляться. Введите ids через запятую." />
+                <input
+                  value={(draft.allowedCityIds ?? []).join(', ')}
+                  onChange={(event) => patch({ allowedCityIds: event.target.value ? event.target.value.split(',').map((v) => v.trim()).filter(Boolean) : undefined })}
+                  placeholder="argos_arklein, luminor_soleymar"
+                />
+              </label>
               <label><AdminFieldLabel label="Map ID" hint="Карта, где спавнится NPC. Для city zone можно оставить пустым." /><input value={primaryMapBinding?.mapId ?? ''} onChange={(event) => {
                 patchPrimaryMapBinding({ mapId: event.target.value });
               }} placeholder="worldmap-main" /></label>

@@ -66,6 +66,11 @@ export interface NpcDefinition {
   cityId?: string;
   locationId?: string;
 
+  homeCityId?: string;
+  currentCityId?: string;
+  cityLocationId?: string;
+  allowedCityIds?: string[];
+
   description: string;
   adminNotes?: string;
 

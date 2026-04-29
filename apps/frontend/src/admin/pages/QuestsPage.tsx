@@ -6,6 +6,7 @@ import { subscribeToContentSync } from '../../services/content/contentSync';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { QUEST_SEED_CITIES, QUEST_SEED_FACTIONS, QUEST_SEED_KINGDOMS } from '../../services/questWorldSeed';
+import { cityService } from '../../services/cityRepository';
 import {
   deleteQuest,
   duplicateQuest,
@@ -31,6 +32,7 @@ import type {
 } from '../../types/quest';
 import type { StoredImage } from '../../services/content/models';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
+import type { City } from '../../types/city';
 
 const QUEST_CATEGORIES: QuestCategory[] = ['global', 'kingdom', 'faction', 'profession', 'lore', 'city', 'npc', 'random', 'hidden', 'repeatable'];
 const QUEST_STATUSES: QuestStatus[] = ['draft', 'active', 'disabled', 'archived'];
@@ -99,6 +101,7 @@ function buildValidationWorldData(quests: QuestDefinition[], zones: WorldMapZone
 export function QuestsPage() {
   const [quests, setQuests] = useState<QuestDefinition[]>([]);
   const [images, setImages] = useState<StoredImage[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestDefinition>(emptyQuest());
   const [query, setQuery] = useState('');
@@ -137,6 +140,7 @@ export function QuestsPage() {
 
   useEffect(() => {
     void refresh();
+    void cityService.getCities().then(setCities).catch(() => setCities([]));
 
     setZones(getAllZones());
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
@@ -149,6 +153,23 @@ export function QuestsPage() {
 
     return unsubscribe;
   }, []);
+
+  const startCity = useMemo(
+    () => (draft.startCityId ? cities.find((city) => city.id === draft.startCityId) ?? null : null),
+    [cities, draft.startCityId],
+  );
+  const targetCity = useMemo(
+    () => (draft.targetCityId ? cities.find((city) => city.id === draft.targetCityId) ?? null : null),
+    [cities, draft.targetCityId],
+  );
+  const startLocation = useMemo(() => {
+    if (!draft.startLocationId || !startCity) return null;
+    return startCity.locations.find((location) => location.id === draft.startLocationId) ?? null;
+  }, [draft.startLocationId, startCity]);
+  const targetLocation = useMemo(() => {
+    if (!draft.targetLocationId || !targetCity) return null;
+    return targetCity.locations.find((location) => location.id === draft.targetLocationId) ?? null;
+  }, [draft.targetLocationId, targetCity]);
 
   useEffect(() => {
     setStepsJson(JSON.stringify(draft.steps, null, 2));
@@ -428,6 +449,38 @@ export function QuestsPage() {
               {QUEST_SEED_CITIES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
             </select>
           </label>
+          <label>
+            <AdminFieldLabel label="Start City" hint="Город, где начинается квест (для city-сцен/логики)." />
+            <select value={draft.startCityId ?? ''} onChange={(event) => patch({ startCityId: event.target.value || undefined, startLocationId: undefined })}>
+              <option value="">Не задано</option>
+              {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
+            </select>
+          </label>
+          {draft.startCityId && !startCity ? <p className="muted">City not found</p> : null}
+          <label>
+            <AdminFieldLabel label="Start Location" hint="Локация внутри Start City." />
+            <select value={draft.startLocationId ?? ''} onChange={(event) => patch({ startLocationId: event.target.value || undefined })} disabled={!draft.startCityId}>
+              <option value="">Не задано</option>
+              {(startCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+            </select>
+          </label>
+          {draft.startLocationId && draft.startCityId && !startLocation ? <p className="muted">Location not found</p> : null}
+          <label>
+            <AdminFieldLabel label="Target City" hint="Город-цель квеста (куда ведёт)." />
+            <select value={draft.targetCityId ?? ''} onChange={(event) => patch({ targetCityId: event.target.value || undefined, targetLocationId: undefined })}>
+              <option value="">Не задано</option>
+              {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
+            </select>
+          </label>
+          {draft.targetCityId && !targetCity ? <p className="muted">City not found</p> : null}
+          <label>
+            <AdminFieldLabel label="Target Location" hint="Локация внутри Target City." />
+            <select value={draft.targetLocationId ?? ''} onChange={(event) => patch({ targetLocationId: event.target.value || undefined })} disabled={!draft.targetCityId}>
+              <option value="">Не задано</option>
+              {(targetCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+            </select>
+          </label>
+          {draft.targetLocationId && draft.targetCityId && !targetLocation ? <p className="muted">Location not found</p> : null}
           <label>
             <AdminFieldLabel label="NPC" hint="ID квестодателя или связанного NPC." />
             <select value={draft.npcId ?? ''} onChange={(event) => patch({ npcId: event.target.value || undefined })}>

@@ -3,6 +3,7 @@ import { AdminImageField } from '../AdminImageField';
 import type { AdminItem, AdminMerchant, MerchantType } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { merchantsService, validateMerchant } from '../../services/content/merchantsService';
+import { cityService } from '../../services/cityRepository';
 import { uid } from '../../services/content/storage';
 import {
   AdminFieldLabel,
@@ -11,6 +12,7 @@ import {
   translateItemType,
   translateMerchantType,
 } from '../adminUi';
+import type { City } from '../../types/city';
 
 const MERCHANT_TYPES: MerchantType[] = ['blacksmith', 'alchemist', 'general', 'rune_master', 'material_trader', 'rare_goods', 'other'];
 
@@ -35,6 +37,7 @@ function emptyMerchant(): AdminMerchant {
 export function MerchantsPage() {
   const [merchants, setMerchants] = useState<AdminMerchant[]>([]);
   const [items, setItems] = useState<AdminItem[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminMerchant>(emptyMerchant());
@@ -63,7 +66,18 @@ export function MerchantsPage() {
 
   useEffect(() => {
     void refresh();
+    void cityService.getCities().then(setCities).catch(() => setCities([]));
   }, []);
+
+  const selectedCity = useMemo(() => {
+    if (!draft.cityId) return null;
+    return cities.find((city) => city.id === draft.cityId) ?? null;
+  }, [cities, draft.cityId]);
+
+  const selectedCityLocation = useMemo(() => {
+    if (!draft.cityLocationId || !selectedCity) return null;
+    return selectedCity.locations.find((location) => location.id === draft.cityLocationId) ?? null;
+  }, [draft.cityLocationId, selectedCity]);
 
   const visibleMerchants = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -229,6 +243,24 @@ export function MerchantsPage() {
             <AdminFieldLabel label="Локация" hint="Более точное место внутри города: рынок, кузня, таверна, квартал и т.д. По этому полю игра старается поставить торговца в подходящую часть города." />
             <input value={draft.location ?? ''} onChange={(event) => patch({ location: event.target.value })} />
           </label>
+
+          <label>
+            <AdminFieldLabel label="City (ID)" hint="Привязка к City Editor: выбери город по id. Это не ломает старые поля 'Город/Локация'." />
+            <select value={draft.cityId ?? ''} onChange={(event) => patch({ cityId: event.target.value || undefined, cityLocationId: undefined })}>
+              <option value="">Не задано</option>
+              {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
+            </select>
+          </label>
+          {draft.cityId && !selectedCity ? <p className="muted">City not found</p> : null}
+
+          <label>
+            <AdminFieldLabel label="City Location (ID)" hint="Локация внутри выбранного города (из City Editor). Список фильтруется по выбранному City." />
+            <select value={draft.cityLocationId ?? ''} onChange={(event) => patch({ cityLocationId: event.target.value || undefined })} disabled={!draft.cityId}>
+              <option value="">Не задано</option>
+              {(selectedCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+            </select>
+          </label>
+          {draft.cityLocationId && draft.cityId && !selectedCityLocation ? <p className="muted">Location not found</p> : null}
 
           <label>
             <AdminFieldLabel label="Тип" hint="Роль торговца. Помогает понять, чем именно он торгует." />

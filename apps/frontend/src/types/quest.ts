@@ -96,6 +96,11 @@ export interface QuestDefinition {
   cityId?: string;
   npcId?: string;
 
+  startCityId?: string;
+  startLocationId?: string;
+  targetCityId?: string;
+  targetLocationId?: string;
+
   recommendedLevel?: number;
   minLevel?: number;
   maxLevel?: number;
