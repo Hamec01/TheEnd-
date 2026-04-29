@@ -363,6 +363,7 @@ function createEmptyDatabase(): ContentDatabase {
     worldMap: {
       zones: [],
       regions: [],
+      questMarkers: [],
       updatedAt: timestamp,
     },
   };
@@ -388,6 +389,7 @@ function createSeedDatabase(): ContentDatabase {
     worldMap: {
       zones: [],
       regions: [],
+      questMarkers: [],
       updatedAt: timestamp,
     },
   };
@@ -1061,11 +1063,15 @@ export class ContentService implements OnModuleInit {
         ? {
             zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones) : [],
             regions: Array.isArray(raw.worldMap.regions) ? clone(raw.worldMap.regions) : [],
+            questMarkers: Array.isArray(raw.worldMap.questMarkers)
+              ? raw.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
+              : [],
             updatedAt: raw.worldMap.updatedAt || nowIso(),
           }
         : {
             zones: [],
             regions: [],
+            questMarkers: [],
             updatedAt: nowIso(),
           },
     };
@@ -1339,10 +1345,13 @@ export class ContentService implements OnModuleInit {
     if (Array.isArray(payload.battleMaps) && payload.battleMaps.length > 0) {
       db.battleMaps = mergeById(db.battleMaps, clone(payload.battleMaps as BattleMapDefinition[]));
     }
-    if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length)) {
+    if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length || payload.worldMap.questMarkers?.length)) {
       db.worldMap = {
         zones: clone(payload.worldMap.zones ?? []),
         regions: clone(payload.worldMap.regions ?? []),
+        questMarkers: Array.isArray(payload.worldMap.questMarkers)
+          ? payload.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
+          : [],
         updatedAt: nowIso(),
       };
     }
@@ -1389,6 +1398,9 @@ export class ContentService implements OnModuleInit {
     db.worldMap = {
       zones: clone(Array.isArray(payload.zones) ? payload.zones : []),
       regions: clone(Array.isArray(payload.regions) ? payload.regions : []),
+      questMarkers: Array.isArray(payload.questMarkers)
+        ? payload.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
+        : [],
       updatedAt: nowIso(),
     };
     await this.persist(db);

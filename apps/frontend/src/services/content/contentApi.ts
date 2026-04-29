@@ -1,6 +1,7 @@
 import type { BattleMapDefinition } from '@theend/rpg-domain';
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import type { QuestMarkerDefinition } from '../../types/quest';
 import type {
   AdminDialogue,
   AdminItem,
@@ -38,6 +39,7 @@ export type ContentCollectionName =
 export interface WorldMapContent {
   zones: WorldMapZone[];
   regions: PaintedRegion[];
+  questMarkers?: QuestMarkerDefinition[];
   updatedAt?: string;
 }
 

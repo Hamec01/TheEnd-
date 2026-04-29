@@ -79,6 +79,21 @@ function getPlayerPositionStorageKey(characterId: string): string {
   return `theend.worldMap.playerPosition.${characterId}`;
 }
 
+function upsertQuestMarkerList(current: QuestMarkerDefinition[], marker: QuestMarkerDefinition): QuestMarkerDefinition[] {
+  const index = current.findIndex((entry) => entry.id === marker.id);
+  if (index === -1) {
+    return [...current, marker];
+  }
+  return current.map((entry) => (entry.id === marker.id ? marker : entry));
+}
+
+function mergeQuestMarkerLists(primary: QuestMarkerDefinition[], fallback: QuestMarkerDefinition[]): QuestMarkerDefinition[] {
+  const merged = new Map<string, QuestMarkerDefinition>();
+  fallback.forEach((entry) => merged.set(entry.id, entry));
+  primary.forEach((entry) => merged.set(entry.id, entry));
+  return Array.from(merged.values());
+}
+
 function loadUiBoolean(key: string, fallback: boolean): boolean {
   if (typeof window === 'undefined') {
     return fallback;
@@ -341,6 +356,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         skipNextZonePersistRef.current = true;
         setZones(loaded.zones);
         setRegions(loaded.regions);
+        setQuestMarkers((current) => mergeQuestMarkerLists(loaded.questMarkers, current));
         replaceAllZones(loaded.zones);
         setCurrentZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
         setHoverZone((previous) => previous ? loaded.zones.find((zone) => zone.id === previous.id) ?? previous : previous);
@@ -359,8 +375,34 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [worldMapMode]);
 
   useEffect(() => {
-    setEditorJson(exportEditorDataJson(zones, regions));
-  }, [regions, zones]);
+    if (worldMapMode !== 'editor') {
+      return;
+    }
+
+    let cancelled = false;
+    void loadEditorDataFromBackend(cloneZones(WORLD_MAP_ZONES))
+      .then((loaded) => {
+        if (cancelled) {
+          return;
+        }
+        skipNextZonePersistRef.current = true;
+        setZones(loaded.zones);
+        setRegions(loaded.regions);
+        setQuestMarkers((current) => mergeQuestMarkerLists(loaded.questMarkers, current));
+        replaceAllZones(loaded.zones);
+      })
+      .catch(() => {
+        // Keep the current editor state if backend content is unavailable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [worldMapMode]);
+
+  useEffect(() => {
+    setEditorJson(exportEditorDataJson(zones, regions, questMarkers));
+  }, [questMarkers, regions, zones]);
 
   useEffect(() => {
     if (!activeCityId) {
@@ -427,7 +469,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     ]).then(() => {
       setQuestDefinitions(getAllQuests());
       setPlayerQuestStates(getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id));
-      setQuestMarkers(getQuestMarkers());
+      setQuestMarkers((current) => mergeQuestMarkerLists(current, getQuestMarkers()));
       setNpcs(getAllNpcs());
     }).catch(() => {
       setQuestDefinitions([]);
@@ -506,12 +548,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setAutosaveStatus('saving');
     void (async () => {
       try {
-        if (zones.length === 0 && regions.length === 0) {
+        if (zones.length === 0 && regions.length === 0 && questMarkers.length === 0) {
           clearZoneStorage();
-          await saveEditorDataToBackend([], []);
+          await saveEditorDataToBackend([], [], []);
           replaceAllZones([]);
         } else {
-          await saveEditorDataToBackend(zones, regions);
+          await saveEditorDataToBackend(zones, regions, questMarkers);
           replaceAllZones(zones);
         }
         setAutosaveStatus('autosaved');
@@ -519,7 +561,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         setAutosaveStatus('save failed');
       }
     })();
-  }, [regions, worldMapMode, zones]);
+  }, [questMarkers, regions, worldMapMode, zones]);
 
   useEffect(() => {
     if (skipNextSettingsPersistRef.current) {
@@ -818,8 +860,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const saved = await saveQuestMarker(draft);
-    const all = getQuestMarkers();
-    setQuestMarkers(all);
+    setQuestMarkers((current) => mergeQuestMarkerLists(upsertQuestMarkerList(current, saved), getQuestMarkers()));
     setSelectedQuestMarkerId(saved.id);
     setQuestMarkerDraft({ ...saved });
     onStatus(`Quest marker сохранен: ${saved.title}.`);
@@ -830,8 +871,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
     await deleteQuestMarker(selectedQuestMarkerId);
-    const all = getQuestMarkers();
-    setQuestMarkers(all);
+    setQuestMarkers((current) => mergeQuestMarkerLists(
+      getQuestMarkers(),
+      current.filter((entry) => entry.id !== selectedQuestMarkerId),
+    ));
     setSelectedQuestMarkerId(null);
     setQuestMarkerDraft(null);
     onStatus('Quest marker удален.');
@@ -1131,7 +1174,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setEditorJson('');
     clearZoneStorage();
     replaceAllZones([]);
-    void saveEditorDataToBackend([], []);
+    setQuestMarkers([]);
+    void saveEditorDataToBackend([], [], []);
     onStatus('Editor: all zones and regions cleared.');
   }
 
@@ -1139,28 +1183,29 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     skipNextZonePersistRef.current = true;
     skipNextSettingsPersistRef.current = true;
     clearZoneStorage();
-    void saveEditorDataToBackend([], []);
+    void saveEditorDataToBackend([], [], []);
     clearEditorSettingsStorage();
     setZones(cloneZones(WORLD_MAP_ZONES));
     replaceAllZones(cloneZones(WORLD_MAP_ZONES));
     setRegions([]);
+    setQuestMarkers([]);
     setEditorSettings(createDefaultEditorSettings());
     setSelectedZoneId(null);
     setEditorDraft(null);
     setValidationErrors([]);
     setHistory(createEmptyHistory());
-    setEditorJson(exportEditorDataJson(cloneZones(WORLD_MAP_ZONES), []));
+    setEditorJson(exportEditorDataJson(cloneZones(WORLD_MAP_ZONES), [], []));
     onStatus('Editor: storage reset to defaults.');
   }
 
   function handleExportJson() {
-    setEditorJson(exportEditorDataJson(zones, regions));
+    setEditorJson(exportEditorDataJson(zones, regions, questMarkers));
     setValidationErrors([]);
     onStatus('Editor: JSON exported to textarea.');
   }
 
   async function handleCopyJson(zone: WorldMapZone | null = selectedZone) {
-    const payload = zone ? JSON.stringify(zone, null, 2) : exportEditorDataJson(zones, regions);
+    const payload = zone ? JSON.stringify(zone, null, 2) : exportEditorDataJson(zones, regions, questMarkers);
     setEditorJson(payload);
     try {
       await navigator.clipboard.writeText(payload);
@@ -1174,7 +1219,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     try {
       return validateEditorDataJson(normalizeClipboardText(text));
     } catch {
-      return { valid: false, errors: ['Invalid JSON syntax'], zones: [], regions: [] };
+      return { valid: false, errors: ['Invalid JSON syntax'], zones: [], regions: [], questMarkers: [] };
     }
   }
 
@@ -1182,23 +1227,26 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const result = validateJsonText(editorJson);
     setValidationErrors(result.errors);
     onStatus(result.valid
-      ? `JSON valid: ${result.zones.length} zones, ${result.regions.length} regions`
+      ? `JSON valid: ${result.zones.length} zones, ${result.regions.length} regions, ${result.questMarkers.length} quest markers`
       : `JSON invalid: ${result.errors.length} errors`);
   }
 
-  function mergeImportedData(importedZones: WorldMapZone[], importedRegions: PaintedRegion[]) {
+  function mergeImportedData(importedZones: WorldMapZone[], importedRegions: PaintedRegion[], importedQuestMarkers: QuestMarkerDefinition[]) {
     const importedIds = new Set(importedZones.map((zone) => zone.id));
     const importedRegionIds = new Set(importedRegions.map((region) => region.id));
+    const importedQuestMarkerIds = new Set(importedQuestMarkers.map((marker) => marker.id));
     const duplicates = zones.filter((zone) => importedIds.has(zone.id));
     const regionDuplicates = regions.filter((region) => importedRegionIds.has(region.id));
-    if ((duplicates.length > 0 || regionDuplicates.length > 0)
-      && !window.confirm(`Replace ${duplicates.length} zones and ${regionDuplicates.length} regions with matching ids?`)) {
+    const markerDuplicates = questMarkers.filter((marker) => importedQuestMarkerIds.has(marker.id));
+    if ((duplicates.length > 0 || regionDuplicates.length > 0 || markerDuplicates.length > 0)
+      && !window.confirm(`Replace ${duplicates.length} zones, ${regionDuplicates.length} regions and ${markerDuplicates.length} quest markers with matching ids?`)) {
       return false;
     }
 
     captureCheckpoint();
     setZones((prev) => [...prev.filter((zone) => !importedIds.has(zone.id)), ...importedZones]);
     setRegions((prev) => [...prev.filter((region) => !importedRegionIds.has(region.id)), ...importedRegions]);
+    setQuestMarkers((prev) => [...prev.filter((marker) => !importedQuestMarkerIds.has(marker.id)), ...importedQuestMarkers]);
     setSelectedZoneId(null);
     setEditorDraft(null);
     return true;
@@ -1212,8 +1260,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
-    if (mergeImportedData(result.zones, result.regions)) {
-      onStatus(`Editor: imported ${result.zones.length} zones and ${result.regions.length} regions.`);
+    if (mergeImportedData(result.zones, result.regions, result.questMarkers)) {
+      onStatus(`Editor: imported ${result.zones.length} zones, ${result.regions.length} regions and ${result.questMarkers.length} quest markers.`);
     }
   }
 
@@ -1314,7 +1362,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleSaveShortcut() {
-    void saveEditorDataToBackend(zones, regions);
+    void saveEditorDataToBackend(zones, regions, questMarkers);
     replaceAllZones(zones);
     saveEditorSettings(editorSettings);
     setAutosaveStatus('autosaved');

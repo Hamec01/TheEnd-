@@ -304,6 +304,7 @@ export interface WorldMapZone {
 export interface WorldMapContent {
   zones: WorldMapZone[];
   regions: PaintedRegion[];
+  questMarkers?: QuestMarkerDefinition[];
   updatedAt: string;
 }
 

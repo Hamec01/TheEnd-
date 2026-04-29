@@ -1,4 +1,5 @@
 import { getWorldMapContent, saveWorldMapContent } from '../services/content/contentApi';
+import type { QuestMarkerDefinition, QuestMarkerType } from '../types/quest';
 import type { PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
 
@@ -34,14 +35,26 @@ const ZONE_TYPES: ZoneType[] = [
 ];
 
 const REGION_TYPES: RegionType[] = ['walkable', 'blocked', 'water', 'road', 'danger', 'trigger'];
+const QUEST_MARKER_TYPES: QuestMarkerType[] = [
+  'quest_start',
+  'quest_objective',
+  'quest_finish',
+  'npc_quest',
+  'item_spawn',
+  'enemy_spawn',
+  'inspect_object',
+  'hidden_location',
+];
 
 export interface EditorDataValidationResult extends ZoneValidationResult {
   regions: PaintedRegion[];
+  questMarkers: QuestMarkerDefinition[];
 }
 
 export interface EditorDataPayload {
   zones: WorldMapZone[];
   regions: PaintedRegion[];
+  questMarkers: QuestMarkerDefinition[];
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -102,6 +115,40 @@ function normalizeRegion(input: unknown): PaintedRegion | null {
     name: String(region.name ?? '').trim() || String(type),
     type: type as RegionType,
     cells,
+  };
+}
+
+function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  const marker = input as Record<string, unknown>;
+  const id = String(marker.id ?? '').trim();
+  const title = String(marker.title ?? '').trim();
+  const typeValue = String(marker.type ?? marker.markerType ?? 'quest_objective').trim();
+  const type = QUEST_MARKER_TYPES.includes(typeValue as QuestMarkerType) ? typeValue as QuestMarkerType : 'quest_objective';
+  if (!id || !title) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    mapId: String(marker.mapId ?? 'worldmap-main').trim() || 'worldmap-main',
+    x: isFiniteNumber(marker.x) ? Math.max(0, Math.min(1, marker.x)) : 0.5,
+    y: isFiniteNumber(marker.y) ? Math.max(0, Math.min(1, marker.y)) : 0.5,
+    type,
+    linkedQuestId: marker.linkedQuestId || marker.questId ? String(marker.linkedQuestId ?? marker.questId).trim() : undefined,
+    linkedStepId: marker.linkedStepId || marker.stepId ? String(marker.linkedStepId ?? marker.stepId).trim() : undefined,
+    linkedObjectiveId: marker.linkedObjectiveId || marker.objectiveId ? String(marker.linkedObjectiveId ?? marker.objectiveId).trim() : undefined,
+    linkedNpcId: marker.linkedNpcId ? String(marker.linkedNpcId).trim() : undefined,
+    icon: marker.icon ? String(marker.icon).trim() : undefined,
+    visibleToPlayer: marker.visibleToPlayer !== false,
+    conditionIds: Array.isArray(marker.conditionIds)
+      ? marker.conditionIds.map((entry) => String(entry).trim()).filter(Boolean)
+      : [],
+    imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
   };
 }
 
@@ -197,7 +244,7 @@ export function validateEditorDataJson(text: string): EditorDataValidationResult
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { valid: false, errors: ['Invalid JSON syntax'], zones: [], regions: [] };
+    return { valid: false, errors: ['Invalid JSON syntax'], zones: [], regions: [], questMarkers: [] };
   }
 
   const rawZones = Array.isArray(parsed)
@@ -208,13 +255,17 @@ export function validateEditorDataJson(text: string): EditorDataValidationResult
   const rawRegions = parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).regions)
     ? (parsed as Record<string, unknown>).regions as unknown[]
     : [];
+  const rawQuestMarkers = parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).questMarkers)
+    ? (parsed as Record<string, unknown>).questMarkers as unknown[]
+    : [];
 
   if (!rawZones) {
-    return { valid: false, errors: ['JSON must be an array of zones or an object { zones, regions }'], zones: [], regions: [] };
+    return { valid: false, errors: ['JSON must be an array of zones or an object { zones, regions, questMarkers }'], zones: [], regions: [], questMarkers: [] };
   }
 
   const zones: WorldMapZone[] = [];
   const regions: PaintedRegion[] = [];
+  const questMarkers: QuestMarkerDefinition[] = [];
   const seenIds = new Set<string>();
 
   rawZones.forEach((entry, index) => {
@@ -250,11 +301,27 @@ export function validateEditorDataJson(text: string): EditorDataValidationResult
     regions.push(region);
   });
 
+  const seenQuestMarkerIds = new Set<string>();
+  rawQuestMarkers.forEach((entry, index) => {
+    const marker = normalizeQuestMarker(entry);
+    if (!marker) {
+      errors.push(`Quest marker entry ${index + 1} is invalid`);
+      return;
+    }
+    if (seenQuestMarkerIds.has(marker.id)) {
+      errors.push(`Duplicate quest marker id: ${marker.id}`);
+      return;
+    }
+    seenQuestMarkerIds.add(marker.id);
+    questMarkers.push(marker);
+  });
+
   return {
     valid: errors.length === 0,
     errors,
     zones,
     regions,
+    questMarkers,
   };
 }
 
@@ -262,8 +329,8 @@ export function exportZonesJson(zones: WorldMapZone[]): string {
   return JSON.stringify(zones, null, 2);
 }
 
-export function exportEditorDataJson(zones: WorldMapZone[], regions: PaintedRegion[]): string {
-  return JSON.stringify({ zones, regions }, null, 2);
+export function exportEditorDataJson(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): string {
+  return JSON.stringify({ zones, regions, questMarkers }, null, 2);
 }
 
 export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorDataPayload {
@@ -272,6 +339,7 @@ export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorD
     return {
       zones: initialZones,
       regions: [],
+      questMarkers: [],
     };
   }
 
@@ -280,17 +348,19 @@ export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorD
     return {
       zones: initialZones,
       regions: [],
+      questMarkers: [],
     };
   }
 
   return {
     zones: result.zones,
     regions: result.regions,
+    questMarkers: result.questMarkers,
   };
 }
 
-export function saveEditorDataToStorage(zones: WorldMapZone[], regions: PaintedRegion[]): void {
-  window.localStorage.setItem(DEV_ZONE_STORAGE_KEY, exportEditorDataJson(zones, regions));
+export function saveEditorDataToStorage(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): void {
+  window.localStorage.setItem(DEV_ZONE_STORAGE_KEY, exportEditorDataJson(zones, regions, questMarkers));
 }
 
 export function loadZonesFromStorage(initialZones: WorldMapZone[]): WorldMapZone[] {
@@ -298,7 +368,7 @@ export function loadZonesFromStorage(initialZones: WorldMapZone[]): WorldMapZone
 }
 
 export function saveZonesToStorage(zones: WorldMapZone[]): void {
-  saveEditorDataToStorage(zones, []);
+  saveEditorDataToStorage(zones, [], []);
 }
 
 export function clearZoneStorage(): void {
@@ -307,21 +377,24 @@ export function clearZoneStorage(): void {
 
 export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): Promise<EditorDataPayload> {
   const remote = await getWorldMapContent();
-  if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0)) {
+  const remoteQuestMarkers = Array.isArray(remote.questMarkers) ? remote.questMarkers : [];
+  if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0) && remoteQuestMarkers.length === 0) {
     return {
       zones: initialZones,
       regions: [],
+      questMarkers: [],
     };
   }
 
   return {
     zones: remote.zones.length > 0 ? remote.zones : initialZones,
     regions: remote.regions ?? [],
+    questMarkers: remoteQuestMarkers,
   };
 }
 
-export async function saveEditorDataToBackend(zones: WorldMapZone[], regions: PaintedRegion[]): Promise<void> {
-  await saveWorldMapContent({ zones, regions });
+export async function saveEditorDataToBackend(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): Promise<void> {
+  await saveWorldMapContent({ zones, regions, questMarkers });
 }
 
 export function loadEditorSettings(): ZoneEditorSettings {
