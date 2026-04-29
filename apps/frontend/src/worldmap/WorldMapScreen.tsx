@@ -296,6 +296,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [autosaveStatus, setAutosaveStatus] = useState('ready');
   const [mouseCoords, setMouseCoords] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [lastMouseCoords, setLastMouseCoords] = useState<{ x: number; y: number } | null>(null);
   const [history, setHistory] = useState<ZoneEditorHistoryState>(createEmptyHistory());
 
   const selectedLocationName = currentZone?.name ?? 'Пустоши';
@@ -837,15 +838,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     const existing = questMarkers.find((entry) => entry.id === id) ?? null;
     setQuestMarkerDraft(existing ? { ...existing } : null);
-  }, [questMarkers]);
+    if (existing && worldMapMode === 'editor') {
+      canvasRef.current?.focusPoint([existing.x, existing.y]);
+    }
+  }, [questMarkers, worldMapMode]);
 
   const handleSaveQuestMarker = useCallback(async () => {
     const draft = questMarkerDraft ?? {
       id: `marker_${Date.now()}`,
       title: 'Новый маркер',
       mapId: 'worldmap-main',
-      x: mouseCoords.x ?? 0.5,
-      y: mouseCoords.y ?? 0.5,
+      x: lastMouseCoords?.x ?? mouseCoords.x ?? 0.5,
+      y: lastMouseCoords?.y ?? mouseCoords.y ?? 0.5,
       type: 'quest_start' as const,
       visibleToPlayer: true,
       conditionIds: [],
@@ -856,13 +860,23 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    const existing = questMarkers.find((entry) => entry.id === draft.id.trim()) ?? null;
+    const useCursorForNewMarker = !existing
+      && lastMouseCoords
+      && draft.x === 0.5
+      && draft.y === 0.5;
+
     const normalized: QuestMarkerDefinition = {
       ...draft,
       id: draft.id.trim(),
       title: draft.title.trim(),
       mapId: String(draft.mapId ?? 'worldmap-main').trim() || 'worldmap-main',
-      x: typeof draft.x === 'number' && Number.isFinite(draft.x) ? Math.max(0, Math.min(1, draft.x)) : 0.5,
-      y: typeof draft.y === 'number' && Number.isFinite(draft.y) ? Math.max(0, Math.min(1, draft.y)) : 0.5,
+      x: useCursorForNewMarker
+        ? lastMouseCoords.x
+        : (typeof draft.x === 'number' && Number.isFinite(draft.x) ? Math.max(0, Math.min(1, draft.x)) : 0.5),
+      y: useCursorForNewMarker
+        ? lastMouseCoords.y
+        : (typeof draft.y === 'number' && Number.isFinite(draft.y) ? Math.max(0, Math.min(1, draft.y)) : 0.5),
       visibleToPlayer: draft.visibleToPlayer !== false,
       conditionIds: Array.isArray(draft.conditionIds) ? draft.conditionIds : [],
     };
@@ -871,7 +885,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setSelectedQuestMarkerId(normalized.id);
     setQuestMarkerDraft({ ...normalized });
     onStatus(`Quest marker сохранен: ${normalized.title}.`);
-  }, [mouseCoords.x, mouseCoords.y, onStatus, questMarkerDraft]);
+  }, [lastMouseCoords, mouseCoords.x, mouseCoords.y, onStatus, questMarkerDraft, questMarkers]);
 
   const handleDeleteQuestMarker = useCallback(async () => {
     if (!selectedQuestMarkerId) {
@@ -882,6 +896,35 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setQuestMarkerDraft(null);
     onStatus('Quest marker удален.');
   }, [onStatus, selectedQuestMarkerId]);
+
+  const handleMouseCoordinatesChange = useCallback((coords: { x: number | null; y: number | null }) => {
+    setMouseCoords(coords);
+    if (typeof coords.x === 'number' && Number.isFinite(coords.x) && typeof coords.y === 'number' && Number.isFinite(coords.y)) {
+      setLastMouseCoords({ x: coords.x, y: coords.y });
+    }
+  }, []);
+
+  const handlePlaceQuestMarkerAtCursor = useCallback(() => {
+    if (!lastMouseCoords) {
+      onStatus('Наведите курсор на карту, чтобы получить координаты.');
+      return;
+    }
+
+    setQuestMarkerDraft((current) => {
+      const base = current ?? {
+        id: `marker_${Date.now()}`,
+        title: 'Новый маркер',
+        mapId: 'worldmap-main',
+        x: lastMouseCoords.x,
+        y: lastMouseCoords.y,
+        type: 'quest_start' as const,
+        visibleToPlayer: true,
+        conditionIds: [] as string[],
+      };
+      return { ...base, x: lastMouseCoords.x, y: lastMouseCoords.y };
+    });
+    onStatus(`Quest marker: coords set to x:${lastMouseCoords.x.toFixed(4)} y:${lastMouseCoords.y.toFixed(4)}.`);
+  }, [lastMouseCoords, onStatus]);
 
   useEffect(() => {
     if (!selectedNpcForInteractionId && nearbyNpcs[0]?.npc.id) {
@@ -1907,7 +1950,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             onSaveShortcut={handleSaveShortcut}
             onToolChange={handleToolChange}
             onStatusMessage={onStatus}
-            onMouseCoordinatesChange={setMouseCoords}
+            onMouseCoordinatesChange={handleMouseCoordinatesChange}
             onHoverZone={(zone) => setHoverZone(zone as WorldMapZone | null)}
           />
         </div>
@@ -1950,6 +1993,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onQuestMarkerDraftChange={setQuestMarkerDraft}
           onSaveQuestMarker={handleSaveQuestMarker}
           onDeleteQuestMarker={handleDeleteQuestMarker}
+          onPlaceQuestMarkerAtCursor={handlePlaceQuestMarkerAtCursor}
           npcOptions={npcs}
           selectedNpcIdForPlacement={selectedNpcIdForPlacement}
           onSelectNpcForPlacement={setSelectedNpcIdForPlacement}

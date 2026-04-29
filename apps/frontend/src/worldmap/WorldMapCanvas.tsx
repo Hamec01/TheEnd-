@@ -115,6 +115,7 @@ export interface WorldMapCanvasHandle {
   resetView: () => void;
   fitToScreen: () => void;
   focusZone: (zoneId: string | null) => void;
+  focusPoint: (point: [number, number] | null) => void;
 }
 
 interface WorldMapCanvasProps {
@@ -394,6 +395,18 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onStatusMessage?.(`Editor: focus ${zone.name}.`);
   }
 
+  function focusPointInView(point: [number, number] | null) {
+    if (!point || !editorViewport) {
+      return;
+    }
+    const [x, y] = point;
+    const panX = canvasSize.width / 2 - x * editorViewport.imageWidth * editorSettings.zoom;
+    const panY = canvasSize.height / 2 - y * editorViewport.imageHeight * editorSettings.zoom;
+    const clamped = getClampedPan(editorSettings.zoom, panX, panY, canvasSize.width, canvasSize.height, editorViewport.imageWidth, editorViewport.imageHeight);
+    onSettingsChange?.(clamped);
+    onStatusMessage?.(`Editor: focus point x:${x.toFixed(4)} y:${y.toFixed(4)}.`);
+  }
+
   useImperativeHandle(ref, () => ({
     resetView() {
       if (!worldImage) {
@@ -413,7 +426,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     focusZone(zoneId) {
       focusZoneInView(zoneId);
     },
-  }), [canvasSize.height, canvasSize.width, editorSettings.zoom, editorViewport, focusZoneInView, onSettingsChange, onStatusMessage, worldImage, zones]);
+    focusPoint(point) {
+      focusPointInView(point);
+    },
+  }), [canvasSize.height, canvasSize.width, editorSettings.zoom, editorViewport, focusPointInView, focusZoneInView, onSettingsChange, onStatusMessage, worldImage, zones]);
 
   useEffect(() => {
     const surface = surfaceRef.current;

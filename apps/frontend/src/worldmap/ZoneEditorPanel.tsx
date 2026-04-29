@@ -89,6 +89,7 @@ interface ZoneEditorPanelProps {
   onQuestMarkerDraftChange: (draft: QuestMarkerDefinition | null) => void;
   onSaveQuestMarker: () => void;
   onDeleteQuestMarker: () => void;
+  onPlaceQuestMarkerAtCursor: () => void;
   npcOptions?: NpcDefinition[];
   selectedNpcIdForPlacement?: string;
   onSelectNpcForPlacement?: (id: string) => void;
@@ -143,6 +144,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     onQuestMarkerDraftChange,
     onSaveQuestMarker,
     onDeleteQuestMarker,
+    onPlaceQuestMarkerAtCursor,
     npcOptions = [],
     selectedNpcIdForPlacement = '',
     onSelectNpcForPlacement,
@@ -322,9 +324,14 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </label>
         <div className="wm-meta-row">
           <span>Markers: {questMarkers.length}</span>
+          <span>x: {baseMarkerDraft.x.toFixed(4)} y: {baseMarkerDraft.y.toFixed(4)}</span>
+        </div>
+        <div className="wm-meta-row">
           <span>{questMarkerDraft ? 'ready' : 'new marker'}</span>
+          <span />
         </div>
         <div className="zone-editor-actions compact">
+          <button onClick={onPlaceQuestMarkerAtCursor}>Place At Cursor</button>
           <button onClick={onSaveQuestMarker}>Save Marker</button>
           <button disabled={!selectedQuestMarkerId} onClick={onDeleteQuestMarker}>Delete Marker</button>
         </div>
