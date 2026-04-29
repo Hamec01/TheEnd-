@@ -603,23 +603,30 @@ function normalizeQuestItemInput(input: QuestItemDefinition): QuestItemDefinitio
   };
 }
 
-function normalizeQuestMarkerInput(input: QuestMarkerDefinition): QuestMarkerDefinition {
+function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
+  const marker = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+
+  const linkedQuestId = marker.linkedQuestId ?? marker.questId;
+  const linkedObjectiveId = marker.linkedObjectiveId ?? marker.objectiveId;
+  const linkedStepId = marker.linkedStepId ?? marker.stepId;
+  const linkedNpcId = marker.linkedNpcId ?? marker.npcId;
+  const type = String(marker.type ?? marker.markerType ?? 'quest_objective').trim() || 'quest_objective';
+
   return {
-    ...input,
-    id: String(input.id ?? '').trim(),
-    mapId: String(input.mapId ?? '').trim(),
-    x: typeof input.x === 'number' && Number.isFinite(input.x) ? Math.max(0, Math.min(1, input.x)) : 0.5,
-    y: typeof input.y === 'number' && Number.isFinite(input.y) ? Math.max(0, Math.min(1, input.y)) : 0.5,
-    type: String(input.type ?? 'quest_objective').trim() || 'quest_objective',
-    title: String(input.title ?? '').trim(),
-    linkedQuestId: input.linkedQuestId ? String(input.linkedQuestId).trim() : undefined,
-    linkedStepId: input.linkedStepId ? String(input.linkedStepId).trim() : undefined,
-    linkedObjectiveId: input.linkedObjectiveId ? String(input.linkedObjectiveId).trim() : undefined,
-    linkedNpcId: input.linkedNpcId ? String(input.linkedNpcId).trim() : undefined,
-    icon: input.icon ? String(input.icon).trim() : undefined,
-    visibleToPlayer: input.visibleToPlayer !== false,
-    conditionIds: Array.isArray(input.conditionIds) ? input.conditionIds.map((id) => String(id).trim()).filter(Boolean) : [],
-    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+    id: String(marker.id ?? '').trim(),
+    mapId: String(marker.mapId ?? 'worldmap-main').trim() || 'worldmap-main',
+    x: typeof marker.x === 'number' && Number.isFinite(marker.x) ? Math.max(0, Math.min(1, marker.x)) : 0.5,
+    y: typeof marker.y === 'number' && Number.isFinite(marker.y) ? Math.max(0, Math.min(1, marker.y)) : 0.5,
+    type,
+    title: String(marker.title ?? '').trim(),
+    linkedQuestId: linkedQuestId ? String(linkedQuestId).trim() : undefined,
+    linkedStepId: linkedStepId ? String(linkedStepId).trim() : undefined,
+    linkedObjectiveId: linkedObjectiveId ? String(linkedObjectiveId).trim() : undefined,
+    linkedNpcId: linkedNpcId ? String(linkedNpcId).trim() : undefined,
+    icon: marker.icon ? String(marker.icon).trim() : undefined,
+    visibleToPlayer: marker.visibleToPlayer !== false,
+    conditionIds: Array.isArray(marker.conditionIds) ? marker.conditionIds.map((id) => String(id).trim()).filter(Boolean) : [],
+    imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
   };
 }
 

@@ -428,7 +428,9 @@ export function clearZoneStorage(): void {
 
 export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): Promise<EditorDataPayload> {
   const remote = await getWorldMapContent();
-  const remoteQuestMarkers = Array.isArray(remote.questMarkers) ? remote.questMarkers : [];
+  const remoteQuestMarkers = Array.isArray(remote.questMarkers)
+    ? remote.questMarkers.map((entry) => normalizeQuestMarker(entry)).filter((marker): marker is QuestMarkerDefinition => Boolean(marker))
+    : [];
   if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0) && remoteQuestMarkers.length === 0) {
     return {
       zones: initialZones,
@@ -445,7 +447,7 @@ export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): P
 }
 
 export async function saveEditorDataToBackend(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): Promise<void> {
-  await saveWorldMapContent({ zones, regions, questMarkers });
+  await saveWorldMapContent({ zones, regions, questMarkers: questMarkers.map(serializeQuestMarker) });
 }
 
 export function loadEditorSettings(): ZoneEditorSettings {

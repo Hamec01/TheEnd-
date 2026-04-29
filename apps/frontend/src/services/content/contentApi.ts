@@ -39,7 +39,7 @@ export type ContentCollectionName =
 export interface WorldMapContent {
   zones: WorldMapZone[];
   regions: PaintedRegion[];
-  questMarkers?: QuestMarkerDefinition[];
+  questMarkers?: unknown[];
   updatedAt?: string;
 }
 

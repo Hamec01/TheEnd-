@@ -21,7 +21,6 @@ import { imageService } from '../services/content/imageService';
 import type { City, CityLocation } from '../types/city';
 import { subscribeToContentSync } from '../services/content/contentSync';
 import { ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests } from '../services/questRepository';
-import { deleteQuestMarker, ensureQuestMarkersLoaded, getQuestMarkers, saveQuestMarker } from '../services/questMapRepository';
 import { tryStartRandomQuestFromZone } from '../services/questRuntime';
 import type { PlayerQuestState, QuestDefinition, QuestMarkerDefinition } from '../types/quest';
 import { ensureNpcsLoaded, getAllNpcs, saveNpc } from '../services/npcRepository';
@@ -388,7 +387,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         skipNextZonePersistRef.current = true;
         setZones(loaded.zones);
         setRegions(loaded.regions);
-        setQuestMarkers((current) => mergeQuestMarkerLists(loaded.questMarkers, current));
+        setQuestMarkers(loaded.questMarkers);
         replaceAllZones(loaded.zones);
       })
       .catch(() => {
@@ -464,12 +463,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   useEffect(() => {
     void Promise.all([
       ensureQuestsLoaded(),
-      ensureQuestMarkersLoaded(),
       ensureNpcsLoaded(),
     ]).then(() => {
       setQuestDefinitions(getAllQuests());
       setPlayerQuestStates(getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id));
-      setQuestMarkers((current) => mergeQuestMarkerLists(current, getQuestMarkers()));
       setNpcs(getAllNpcs());
     }).catch(() => {
       setQuestDefinitions([]);
@@ -859,22 +856,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
-    const saved = await saveQuestMarker(draft);
-    setQuestMarkers((current) => mergeQuestMarkerLists(upsertQuestMarkerList(current, saved), getQuestMarkers()));
-    setSelectedQuestMarkerId(saved.id);
-    setQuestMarkerDraft({ ...saved });
-    onStatus(`Quest marker сохранен: ${saved.title}.`);
+    const normalized: QuestMarkerDefinition = {
+      ...draft,
+      id: draft.id.trim(),
+      title: draft.title.trim(),
+      mapId: String(draft.mapId ?? 'worldmap-main').trim() || 'worldmap-main',
+      x: typeof draft.x === 'number' && Number.isFinite(draft.x) ? Math.max(0, Math.min(1, draft.x)) : 0.5,
+      y: typeof draft.y === 'number' && Number.isFinite(draft.y) ? Math.max(0, Math.min(1, draft.y)) : 0.5,
+      visibleToPlayer: draft.visibleToPlayer !== false,
+      conditionIds: Array.isArray(draft.conditionIds) ? draft.conditionIds : [],
+    };
+
+    setQuestMarkers((current) => upsertQuestMarkerList(current, normalized));
+    setSelectedQuestMarkerId(normalized.id);
+    setQuestMarkerDraft({ ...normalized });
+    onStatus(`Quest marker сохранен: ${normalized.title}.`);
   }, [mouseCoords.x, mouseCoords.y, onStatus, questMarkerDraft]);
 
   const handleDeleteQuestMarker = useCallback(async () => {
     if (!selectedQuestMarkerId) {
       return;
     }
-    await deleteQuestMarker(selectedQuestMarkerId);
-    setQuestMarkers((current) => mergeQuestMarkerLists(
-      getQuestMarkers(),
-      current.filter((entry) => entry.id !== selectedQuestMarkerId),
-    ));
+    setQuestMarkers((current) => current.filter((entry) => entry.id !== selectedQuestMarkerId));
     setSelectedQuestMarkerId(null);
     setQuestMarkerDraft(null);
     onStatus('Quest marker удален.');
