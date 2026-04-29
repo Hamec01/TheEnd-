@@ -14,6 +14,10 @@ import type {
   QuestValidationWorldData,
 } from '../types/quest';
 
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 export interface QuestRuntimePlayer {
   id: string;
   level?: number;
@@ -41,14 +45,15 @@ function saveQuestState(state: PlayerQuestState): PlayerQuestState {
 }
 
 function currentStep(quest: QuestDefinition, state: PlayerQuestState) {
+  const steps = asArray(quest.steps);
   if (!state.currentStepId) {
-    return quest.steps[0] ?? null;
+    return steps[0] ?? null;
   }
-  return quest.steps.find((step) => step.id === state.currentStepId) ?? quest.steps[0] ?? null;
+  return steps.find((step) => step.id === state.currentStepId) ?? steps[0] ?? null;
 }
 
 export function evaluateConditions(player: QuestRuntimePlayer, conditions: QuestCondition[]): boolean {
-  for (const condition of conditions) {
+  for (const condition of asArray(conditions)) {
     const value = condition.value;
     switch (condition.type) {
       case 'player_level':
@@ -123,7 +128,7 @@ export function canStartQuest(player: QuestRuntimePlayer, quest: QuestDefinition
     return false;
   }
 
-  if (!evaluateConditions(player, quest.conditions)) {
+  if (!evaluateConditions(player, asArray(quest.conditions))) {
     return false;
   }
 
@@ -150,7 +155,7 @@ export function startQuest(playerId: string, questId: string): PlayerQuestState 
     playerId,
     questId,
     status: 'active',
-    currentStepId: quest.steps[0]?.id,
+    currentStepId: asArray(quest.steps)[0]?.id,
     completedStepIds: [],
     completedObjectiveIds: [],
     flags: existing?.flags ?? {},
@@ -190,7 +195,7 @@ export function advanceQuest(playerId: string, questId: string): PlayerQuestStat
     return completeQuest(playerId, questId);
   }
 
-  const requiredObjectiveIds = step.objectives.filter((entry) => !entry.isOptional).map((entry) => entry.id);
+  const requiredObjectiveIds = asArray(step.objectives).filter((entry) => !entry.isOptional).map((entry) => entry.id);
   const hasAllRequired = requiredObjectiveIds.every((objectiveId) => existing.completedObjectiveIds.includes(objectiveId));
 
   if (!hasAllRequired) {
@@ -252,7 +257,7 @@ export function applyQuestRewards(playerId: string, questId: string): { applied:
 
   return {
     applied: true,
-    rewards: quest.rewards.map((reward) => `${reward.type}:${reward.targetId ?? reward.amount ?? reward.id}`),
+    rewards: asArray(quest.rewards).map((reward) => `${reward.type}:${reward.targetId ?? reward.amount ?? reward.id}`),
   };
 }
 

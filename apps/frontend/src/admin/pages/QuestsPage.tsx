@@ -23,7 +23,6 @@ import type {
   QuestCategory,
   QuestCondition,
   QuestDefinition,
-  QuestObjective,
   QuestReward,
   QuestStatus,
   QuestStep,
@@ -36,6 +35,14 @@ import type { City } from '../../types/city';
 
 const QUEST_CATEGORIES: QuestCategory[] = ['global', 'kingdom', 'faction', 'profession', 'lore', 'city', 'npc', 'random', 'hidden', 'repeatable'];
 const QUEST_STATUSES: QuestStatus[] = ['draft', 'active', 'disabled', 'archived'];
+
+type QuestStepJson = QuestStep & {
+  description?: string;
+  status?: string;
+  conditions?: QuestCondition[];
+  rewards?: QuestReward[];
+  triggers?: QuestTrigger[];
+};
 
 function formatLabel(value: string): string {
   return value.split('_').map((entry) => entry.charAt(0).toUpperCase() + entry.slice(1)).join(' ');
@@ -78,6 +85,46 @@ function safeParseJson<T>(raw: string, fallback: T): T {
   }
 }
 
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeQuestStep(step: QuestStep): QuestStep {
+  const jsonStep = step as QuestStepJson;
+  return {
+    ...step,
+    objectives: asArray(jsonStep.objectives),
+    conditions: asArray(jsonStep.conditions),
+    rewards: asArray(jsonStep.rewards),
+    triggers: asArray(jsonStep.triggers),
+  } as QuestStep;
+}
+
+function normalizeQuestDraft(quest: QuestDefinition): QuestDefinition {
+  return {
+    ...quest,
+    steps: asArray(quest.steps).map(normalizeQuestStep),
+    conditions: asArray(quest.conditions),
+    rewards: asArray(quest.rewards),
+    failureConsequences: asArray(quest.failureConsequences),
+    triggers: asArray(quest.triggers),
+  };
+}
+
+const SAFE_DEFAULT_STEP: QuestStep = {
+  id: 'step_find_chest',
+  questId: '',
+  title: 'Найти тайник',
+  journalText: 'Эрдон указал на старый тайник в Аркейле.',
+  order: 1,
+  description: 'Эрдон указал на старый тайник в Аркейле.',
+  status: 'active',
+  objectives: [],
+  conditions: [],
+  rewards: [],
+  triggers: [],
+} as unknown as QuestStep;
+
 function uniqueId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -91,7 +138,7 @@ function buildValidationWorldData(quests: QuestDefinition[], zones: WorldMapZone
     professionIds: ['archer', 'blacksmith', 'alchemist', 'hunter'],
     markerIds: [],
     zoneIds: zones.map((zone) => zone.id),
-    dialogueIds: quests.flatMap((quest) => quest.triggers.map((trigger) => trigger.dialogueId)).filter(Boolean) as string[],
+    dialogueIds: quests.flatMap((quest) => asArray(quest.triggers).map((trigger) => trigger.dialogueId)).filter(Boolean) as string[],
     kingdoms: [...QUEST_SEED_KINGDOMS],
     factions: [...QUEST_SEED_FACTIONS],
     cities: [...QUEST_SEED_CITIES],
@@ -172,14 +219,15 @@ export function QuestsPage() {
   }, [draft.targetLocationId, targetCity]);
 
   useEffect(() => {
-    setStepsJson(JSON.stringify(draft.steps, null, 2));
-    setConditionsJson(JSON.stringify(draft.conditions, null, 2));
-    setRewardsJson(JSON.stringify(draft.rewards, null, 2));
-    setFailureJson(JSON.stringify(draft.failureConsequences, null, 2));
-    setTriggersJson(JSON.stringify(draft.triggers, null, 2));
+    const safeDraft = normalizeQuestDraft(draft);
+    setStepsJson(JSON.stringify(safeDraft.steps, null, 2));
+    setConditionsJson(JSON.stringify(safeDraft.conditions, null, 2));
+    setRewardsJson(JSON.stringify(safeDraft.rewards, null, 2));
+    setFailureJson(JSON.stringify(safeDraft.failureConsequences, null, 2));
+    setTriggersJson(JSON.stringify(safeDraft.triggers, null, 2));
 
     const worldData = buildValidationWorldData(quests, zones);
-    setValidation(validateQuest(draft, worldData));
+    setValidation(validateQuest(safeDraft, worldData));
   }, [draft, quests, zones]);
 
   const visibleQuests = useMemo(() => {
@@ -213,11 +261,11 @@ export function QuestsPage() {
   );
   const zoneListText = useMemo(() => zones.map((zone) => buildWorldZoneLabel(zone)).join(', '), [zones]);
   const triggerZoneEntries = useMemo(
-    () => draft.triggers.map((trigger, index) => ({ trigger, index })),
+    () => asArray(draft.triggers).map((trigger, index) => ({ trigger, index })),
     [draft.triggers],
   );
   const objectiveZoneEntries = useMemo(
-    () => draft.steps.flatMap((step, stepIndex) => step.objectives.map((objective, objectiveIndex) => ({ step, objective, stepIndex, objectiveIndex }))),
+    () => asArray(draft.steps).flatMap((step, stepIndex) => asArray(step.objectives).map((objective, objectiveIndex) => ({ step, objective, stepIndex, objectiveIndex }))),
     [draft.steps],
   );
 
@@ -235,18 +283,19 @@ export function QuestsPage() {
   }
 
   function patch(next: Partial<QuestDefinition>) {
-    setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
+    setDraft((current) => normalizeQuestDraft({ ...current, ...next, updatedAt: new Date().toISOString() }));
   }
 
   function select(quest: QuestDefinition) {
     setSelectedId(quest.id);
-    setDraft({ ...quest });
+    setDraft(normalizeQuestDraft({ ...quest }));
     setStatus(`Редактируется квест: ${quest.id}`);
   }
 
   async function saveCurrent() {
     const worldData = buildValidationWorldData(quests, zones);
-    const result = validateQuest(draft, worldData);
+    const safeDraft = normalizeQuestDraft(draft);
+    const result = validateQuest(safeDraft, worldData);
     setValidation(result);
 
     if (draft.status === 'active' && result.errors.length > 0) {
@@ -255,22 +304,22 @@ export function QuestsPage() {
     }
 
     const prepared: QuestDefinition = {
-      ...draft,
+      ...safeDraft,
       id: draft.id.trim() || uniqueId('quest'),
       title: draft.title.trim(),
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
-      steps: safeParseJson<QuestStep[]>(stepsJson, draft.steps),
-      conditions: safeParseJson<QuestCondition[]>(conditionsJson, draft.conditions),
-      rewards: safeParseJson<QuestReward[]>(rewardsJson, draft.rewards),
-      failureConsequences: safeParseJson<QuestReward[]>(failureJson, draft.failureConsequences),
-      triggers: safeParseJson<QuestTrigger[]>(triggersJson, draft.triggers),
+      steps: asArray(safeParseJson<QuestStep[]>(stepsJson, safeDraft.steps)).map(normalizeQuestStep),
+      conditions: asArray(safeParseJson<QuestCondition[]>(conditionsJson, safeDraft.conditions)),
+      rewards: asArray(safeParseJson<QuestReward[]>(rewardsJson, safeDraft.rewards)),
+      failureConsequences: asArray(safeParseJson<QuestReward[]>(failureJson, safeDraft.failureConsequences)),
+      triggers: asArray(safeParseJson<QuestTrigger[]>(triggersJson, safeDraft.triggers)),
     };
 
     try {
       const saved = await saveQuest(prepared);
       setSelectedId(saved.id);
-      setDraft(saved);
+      setDraft(normalizeQuestDraft(saved));
       await refresh();
       setStatus(`Квест сохранен: ${saved.id}`);
     } catch (error) {
@@ -286,7 +335,7 @@ export function QuestsPage() {
       const copied = await duplicateQuest(selectedId);
       await refresh();
       setSelectedId(copied.id);
-      setDraft(copied);
+      setDraft(normalizeQuestDraft(copied));
       setStatus(`Создана копия: ${copied.id}`);
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
@@ -327,24 +376,15 @@ export function QuestsPage() {
   }
 
   function addStep() {
-    const stepId = uniqueId('step');
-    const objectiveId = uniqueId('obj');
+    const existingSteps = asArray(draft.steps);
     const nextStep: QuestStep = {
-      id: stepId,
+      ...SAFE_DEFAULT_STEP,
+      id: existingSteps.some((step) => step.id === SAFE_DEFAULT_STEP.id) ? uniqueId('step_find_chest') : SAFE_DEFAULT_STEP.id,
       questId: draft.id || '',
-      title: `Step ${draft.steps.length + 1}`,
-      journalText: '',
-      order: draft.steps.length + 1,
-      objectives: [
-        {
-          id: objectiveId,
-          type: 'talk_to_npc',
-          description: 'New objective',
-        } as QuestObjective,
-      ],
-    };
+      order: existingSteps.length + 1,
+    } as QuestStep;
 
-    patch({ steps: [...draft.steps, nextStep] });
+    patch({ steps: [...existingSteps, nextStep] });
   }
 
   async function exportJson() {
@@ -373,23 +413,23 @@ export function QuestsPage() {
 
   function validateCurrentQuest() {
     const worldData = buildValidationWorldData(quests, zones);
-    const result = validateQuest(draft, worldData);
+    const result = validateQuest(normalizeQuestDraft(draft), worldData);
     setValidation(result);
     setStatus(`Проверка: ${result.errors.length} ошибок, ${result.warnings.length} предупреждений.`);
   }
 
   function updateTriggerZone(index: number, zoneId: string) {
     patch({
-      triggers: draft.triggers.map((trigger, triggerIndex) => triggerIndex === index ? { ...trigger, zoneId: zoneId || undefined } : trigger),
+      triggers: asArray(draft.triggers).map((trigger, triggerIndex) => triggerIndex === index ? { ...trigger, zoneId: zoneId || undefined } : trigger),
     });
   }
 
   function updateObjectiveZone(stepIndex: number, objectiveIndex: number, zoneId: string) {
     patch({
-      steps: draft.steps.map((step, currentStepIndex) => currentStepIndex === stepIndex
+      steps: asArray(draft.steps).map((step, currentStepIndex) => currentStepIndex === stepIndex
         ? {
             ...step,
-            objectives: step.objectives.map((objective, currentObjectiveIndex) => currentObjectiveIndex === objectiveIndex
+            objectives: asArray(step.objectives).map((objective, currentObjectiveIndex) => currentObjectiveIndex === objectiveIndex
               ? { ...objective, zoneId: zoneId || undefined }
               : objective),
           }
@@ -569,7 +609,7 @@ export function QuestsPage() {
           <div className="admin-actions-row">
             <button type="button" onClick={addStep}>Добавить шаг</button>
           </div>
-          <textarea rows={12} value={stepsJson} onChange={(event) => setStepsJson(event.target.value)} onBlur={() => patch({ steps: safeParseJson<QuestStep[]>(stepsJson, draft.steps) })} />
+          <textarea rows={12} value={stepsJson} onChange={(event) => setStepsJson(event.target.value)} onBlur={() => patch({ steps: asArray(safeParseJson<QuestStep[]>(stepsJson, asArray(draft.steps))).map(normalizeQuestStep) })} />
           <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
           {objectiveZoneEntries.length > 0 ? (
             <div className="admin-zone-reference-stack">
@@ -591,19 +631,19 @@ export function QuestsPage() {
 
         <section className="card admin-item-preview">
           <h4>Conditions</h4>
-          <textarea rows={8} value={conditionsJson} onChange={(event) => setConditionsJson(event.target.value)} onBlur={() => patch({ conditions: safeParseJson<QuestCondition[]>(conditionsJson, draft.conditions) })} />
+          <textarea rows={8} value={conditionsJson} onChange={(event) => setConditionsJson(event.target.value)} onBlur={() => patch({ conditions: asArray(safeParseJson<QuestCondition[]>(conditionsJson, asArray(draft.conditions))) })} />
         </section>
 
         <section className="card admin-item-preview">
           <h4>Rewards</h4>
-          <textarea rows={8} value={rewardsJson} onChange={(event) => setRewardsJson(event.target.value)} onBlur={() => patch({ rewards: safeParseJson<QuestReward[]>(rewardsJson, draft.rewards) })} />
+          <textarea rows={8} value={rewardsJson} onChange={(event) => setRewardsJson(event.target.value)} onBlur={() => patch({ rewards: asArray(safeParseJson<QuestReward[]>(rewardsJson, asArray(draft.rewards))) })} />
           <h4>Failure Consequences</h4>
-          <textarea rows={6} value={failureJson} onChange={(event) => setFailureJson(event.target.value)} onBlur={() => patch({ failureConsequences: safeParseJson<QuestReward[]>(failureJson, draft.failureConsequences) })} />
+          <textarea rows={6} value={failureJson} onChange={(event) => setFailureJson(event.target.value)} onBlur={() => patch({ failureConsequences: asArray(safeParseJson<QuestReward[]>(failureJson, asArray(draft.failureConsequences))) })} />
         </section>
 
         <section className="card admin-item-preview">
           <h4>Triggers</h4>
-          <textarea rows={10} value={triggersJson} onChange={(event) => setTriggersJson(event.target.value)} onBlur={() => patch({ triggers: safeParseJson<QuestTrigger[]>(triggersJson, draft.triggers) })} />
+          <textarea rows={10} value={triggersJson} onChange={(event) => setTriggersJson(event.target.value)} onBlur={() => patch({ triggers: asArray(safeParseJson<QuestTrigger[]>(triggersJson, asArray(draft.triggers))) })} />
           <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
           {triggerZoneEntries.length > 0 ? (
             <div className="admin-zone-reference-stack">

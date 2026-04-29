@@ -6,6 +6,10 @@ import type {
   QuestValidationWorldData,
 } from '../types/quest';
 
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function hasId(list: string[], id: string | undefined): boolean {
   if (!id) {
     return true;
@@ -70,21 +74,26 @@ function validateTrigger(trigger: QuestTrigger, worldData: QuestValidationWorldD
 export function validateQuest(quest: QuestDefinition, worldData: QuestValidationWorldData): QuestValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const steps = asArray(quest.steps);
+  const triggers = asArray(quest.triggers);
+  const rewards = asArray(quest.rewards);
+  const failureConsequences = asArray(quest.failureConsequences);
 
   if (quest.status === 'active' && !quest.title.trim()) {
     errors.push('Active quest must have a title.');
   }
-  if (quest.status === 'active' && quest.triggers.length === 0) {
+  if (quest.status === 'active' && triggers.length === 0) {
     errors.push('Active quest must have at least one trigger.');
   }
-  if (quest.status === 'active' && quest.steps.length === 0) {
+  if (quest.status === 'active' && steps.length === 0) {
     errors.push('Active quest must have at least one step.');
   }
 
-  const stepIds = new Set(quest.steps.map((step) => step.id));
+  const stepIds = new Set(steps.map((step) => step.id));
 
-  for (const step of quest.steps) {
-    if (step.objectives.length === 0) {
+  for (const step of steps) {
+    const objectives = asArray(step.objectives);
+    if (objectives.length === 0) {
       errors.push(`Step '${step.id}' has no objectives.`);
     }
     if (step.nextStepId && !stepIds.has(step.nextStepId)) {
@@ -99,7 +108,7 @@ export function validateQuest(quest: QuestDefinition, worldData: QuestValidation
       errors.push(`Step '${step.id}' references missing failureStepId '${step.failureStepId}'.`);
     }
 
-    for (const objective of step.objectives) {
+    for (const objective of objectives) {
       if (objective.npcId && !hasId(worldData.npcIds, objective.npcId)) {
         errors.push(`Objective '${objective.id}' references missing NPC '${objective.npcId}'.`);
       }
@@ -118,30 +127,30 @@ export function validateQuest(quest: QuestDefinition, worldData: QuestValidation
     }
   }
 
-  for (const trigger of quest.triggers) {
+  for (const trigger of triggers) {
     validateTrigger(trigger, worldData, errors);
     if (trigger.type === 'random_zone_roll' && (trigger.chancePercent ?? 0) > 50) {
       warnings.push(`Random trigger '${trigger.id}' chancePercent is above 50.`);
     }
   }
 
-  for (const reward of [...quest.rewards, ...quest.failureConsequences]) {
+  for (const reward of [...rewards, ...failureConsequences]) {
     validateRewardReferences(reward, worldData, errors);
   }
 
   if (!quest.portraitUrl && !quest.imageUrl && !quest.bannerUrl) {
     warnings.push('Quest has no portrait/image/banner.');
   }
-  if (quest.rewards.length === 0) {
+  if (rewards.length === 0) {
     warnings.push('Quest has no rewards.');
   }
-  if (quest.failureConsequences.length === 0) {
+  if (failureConsequences.length === 0) {
     warnings.push('Quest has no failure consequences.');
   }
-  if (quest.isHidden && quest.triggers.some((trigger) => trigger.type === 'map_marker')) {
+  if (quest.isHidden && triggers.some((trigger) => trigger.type === 'map_marker')) {
     warnings.push('Hidden quest has visible marker trigger.');
   }
-  if (quest.isRepeatable && quest.rewards.some((reward) => reward.type === 'quest_item')) {
+  if (quest.isRepeatable && rewards.some((reward) => reward.type === 'quest_item')) {
     warnings.push('Repeatable quest gives quest_item reward. Ensure this item can be duplicated.');
   }
   if (quest.adminDescription.trim() && !quest.playerDescription.trim()) {
