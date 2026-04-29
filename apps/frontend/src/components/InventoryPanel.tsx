@@ -29,6 +29,7 @@ interface InventoryPanelProps {
   onAdjustStat: (stat: PrimaryStat, delta: number) => void;
   onApplyStatAllocation: () => Promise<void>;
   onResetStatAllocation?: () => void;
+  onRespecStats?: () => Promise<void> | void;
   onUseItem?: (itemId: string) => Promise<void>;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -236,6 +237,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onAdjustStat,
   onApplyStatAllocation,
   onResetStatAllocation,
+  onRespecStats,
   onUseItem,
   playerAvatarUrl,
   resolveItemById,
@@ -944,6 +946,13 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   {allocatingStats ? 'Applying...' : 'Apply'}
                 </button>
                 <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Revert</button>
+                <button
+                  type="button"
+                  onClick={() => void onRespecStats?.()}
+                  title="Сбросить распределение характеристик и вернуть все очки для перераспределения."
+                >
+                  Respec
+                </button>
               </div>
             </section>
 

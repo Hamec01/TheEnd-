@@ -2088,6 +2088,30 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const freePointsLeft = character.freePoints - getAllocationCost(pendingStatAllocation);
 
+  const respecStats = useCallback(async (): Promise<void> => {
+    const ok = window.confirm('Сбросить характеристики и вернуть все очки для перераспределения?');
+    if (!ok) {
+      return;
+    }
+
+    const baseline = { ...getCharacterCreationRaceConfig(character.race).stats };
+    const level = character.level ?? 1;
+    const totalFreePoints = 5 + Math.max(0, level - 1) * 5;
+
+    setPendingStatAllocation({});
+    setCharacter((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        baseStats: baseline,
+        activeStats: baseline,
+        freePoints: totalFreePoints,
+      };
+    });
+
+    setStatus('Характеристики сброшены. Очки возвращены.');
+  }, [character.level, character.race]);
+
   return (
     <div className="page game-root">
       <main className="shell game-shell world-shell game-main">
@@ -2149,6 +2173,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onAdjustStat={adjustPendingStat}
             onApplyStatAllocation={applyStatAllocation}
             onResetStatAllocation={() => setPendingStatAllocation({})}
+            onRespecStats={respecStats}
             onUseItem={handleUseConsumable}
             playerAvatarUrl={playerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
