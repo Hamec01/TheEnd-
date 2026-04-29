@@ -57,6 +57,23 @@ export interface EditorDataPayload {
   questMarkers: QuestMarkerDefinition[];
 }
 
+interface QuestMarkerExportJson {
+  id: string;
+  title: string;
+  questId?: string;
+  objectiveId?: string;
+  stepId?: string;
+  markerType: QuestMarkerType;
+  x: number;
+  y: number;
+  mapId?: string;
+  npcId?: string;
+  icon?: string;
+  visibleToPlayer?: boolean;
+  conditionIds?: string[];
+  imageUrl?: string;
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -142,7 +159,7 @@ function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
     linkedQuestId: marker.linkedQuestId || marker.questId ? String(marker.linkedQuestId ?? marker.questId).trim() : undefined,
     linkedStepId: marker.linkedStepId || marker.stepId ? String(marker.linkedStepId ?? marker.stepId).trim() : undefined,
     linkedObjectiveId: marker.linkedObjectiveId || marker.objectiveId ? String(marker.linkedObjectiveId ?? marker.objectiveId).trim() : undefined,
-    linkedNpcId: marker.linkedNpcId ? String(marker.linkedNpcId).trim() : undefined,
+    linkedNpcId: marker.linkedNpcId || marker.npcId ? String(marker.linkedNpcId ?? marker.npcId).trim() : undefined,
     icon: marker.icon ? String(marker.icon).trim() : undefined,
     visibleToPlayer: marker.visibleToPlayer !== false,
     conditionIds: Array.isArray(marker.conditionIds)
@@ -150,6 +167,40 @@ function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
       : [],
     imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
   };
+}
+
+function serializeQuestMarker(marker: QuestMarkerDefinition): QuestMarkerExportJson {
+  const output: QuestMarkerExportJson = {
+    id: marker.id,
+    title: marker.title,
+    questId: marker.linkedQuestId,
+    objectiveId: marker.linkedObjectiveId,
+    stepId: marker.linkedStepId,
+    markerType: marker.type,
+    x: marker.x,
+    y: marker.y,
+  };
+
+  if (marker.mapId && marker.mapId !== 'worldmap-main') {
+    output.mapId = marker.mapId;
+  }
+  if (marker.linkedNpcId) {
+    output.npcId = marker.linkedNpcId;
+  }
+  if (marker.icon) {
+    output.icon = marker.icon;
+  }
+  if (marker.visibleToPlayer === false) {
+    output.visibleToPlayer = false;
+  }
+  if (marker.conditionIds.length > 0) {
+    output.conditionIds = marker.conditionIds;
+  }
+  if (marker.imageUrl) {
+    output.imageUrl = marker.imageUrl;
+  }
+
+  return output;
 }
 
 export function normalizeZone(input: unknown): WorldMapZone | null {
@@ -330,7 +381,7 @@ export function exportZonesJson(zones: WorldMapZone[]): string {
 }
 
 export function exportEditorDataJson(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): string {
-  return JSON.stringify({ zones, regions, questMarkers }, null, 2);
+  return JSON.stringify({ zones, regions, questMarkers: questMarkers.map(serializeQuestMarker) }, null, 2);
 }
 
 export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorDataPayload {
