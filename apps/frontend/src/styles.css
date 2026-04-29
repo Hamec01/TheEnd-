@@ -8560,3 +8560,75 @@ body:has(.page.page--scroll) {
   overflow: hidden;
   position: relative;
 }
+
+/* HARD FIX: Battle Maps editor internal scroll */
+
+.admin-editor-page:has(.battle-map-editor) {
+  height: calc(100vh - 20px) !important;
+  max-height: calc(100vh - 20px) !important;
+  overflow: hidden !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.admin-editor-page:has(.battle-map-editor) .admin-editor-status {
+  flex: 0 0 auto !important;
+}
+
+.battle-map-editor {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.battle-map-editor-head {
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.battle-map-editor-main {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+
+  display: grid !important;
+  grid-template-columns: minmax(220px, 280px) minmax(420px, 1fr) minmax(260px, 330px) !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+}
+
+.battle-map-editor-section {
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+.battle-map-editor-side-section {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable !important;
+}
+
+.battle-map-editor-canvas-section {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+
+  display: grid !important;
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+}
+
+.battle-map-editor-canvas-viewport {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
