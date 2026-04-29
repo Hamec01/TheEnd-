@@ -905,7 +905,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, []);
 
   const handlePlaceQuestMarkerAtCursor = useCallback(() => {
-    if (!lastMouseCoords) {
+    const cursor = typeof mouseCoords.x === 'number' && Number.isFinite(mouseCoords.x) && typeof mouseCoords.y === 'number' && Number.isFinite(mouseCoords.y)
+      ? { x: mouseCoords.x, y: mouseCoords.y }
+      : lastMouseCoords;
+
+    if (!cursor) {
       onStatus('Наведите курсор на карту, чтобы получить координаты.');
       return;
     }
@@ -915,16 +919,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         id: `marker_${Date.now()}`,
         title: 'Новый маркер',
         mapId: 'worldmap-main',
-        x: lastMouseCoords.x,
-        y: lastMouseCoords.y,
+        x: cursor.x,
+        y: cursor.y,
         type: 'quest_start' as const,
         visibleToPlayer: true,
         conditionIds: [] as string[],
       };
-      return { ...base, x: lastMouseCoords.x, y: lastMouseCoords.y };
+      return { ...base, x: cursor.x, y: cursor.y };
     });
-    onStatus(`Quest marker: coords set to x:${lastMouseCoords.x.toFixed(4)} y:${lastMouseCoords.y.toFixed(4)}.`);
-  }, [lastMouseCoords, onStatus]);
+    onStatus(`Quest marker: coords set to x:${cursor.x.toFixed(4)} y:${cursor.y.toFixed(4)}.`);
+  }, [lastMouseCoords, mouseCoords.x, mouseCoords.y, onStatus]);
 
   useEffect(() => {
     if (!selectedNpcForInteractionId && nearbyNpcs[0]?.npc.id) {

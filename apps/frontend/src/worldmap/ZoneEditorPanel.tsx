@@ -331,7 +331,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span />
         </div>
         <div className="zone-editor-actions compact">
-          <button onClick={onPlaceQuestMarkerAtCursor}>Place At Cursor</button>
+          <button onClick={onPlaceQuestMarkerAtCursor}>PLACE MARKER AT CURSOR</button>
           <button onClick={onSaveQuestMarker}>Save Marker</button>
           <button disabled={!selectedQuestMarkerId} onClick={onDeleteQuestMarker}>Delete Marker</button>
         </div>
