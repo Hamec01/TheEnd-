@@ -2134,7 +2134,7 @@ h3 {
 
 .admin-content {
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .admin-content.is-editor-route {
@@ -2142,11 +2142,7 @@ h3 {
 }
 
 .admin-editor-page {
-  height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  overflow: hidden;
 }
 
 .admin-editor-status {
@@ -8179,6 +8175,16 @@ body:has(.page.page--scroll) {
 .battle-fullscreen-root .tactical-board-container,
 .battle-window:not(.wm-modal) .tactical-board-container {
   padding: 4px;
+  width: 100%;
+  max-width: 100%;
+  height: 600px;
+  min-height: 600px;
+  max-height: 600px;
+}
+
+.tactical-battlefield {
+  width: 100%;
+  max-width: 100%;
 }
 
 .battle-fullscreen-root .tactical-scene,
@@ -8638,50 +8644,76 @@ body:has(.page.page--scroll) {
 .admin-main,
 .admin-content {
   min-height: 0 !important;
-  overflow: hidden !important;
+  overflow: visible !important;
+}
+
+/* Admin pages should scroll normally in the browser. */
+html,
+body,
+#root {
+  height: auto;
+  overflow-y: auto;
+}
+
+.admin-shell {
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+}
+
+.admin-main {
+  min-height: 100vh;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.admin-content {
+  min-height: 100%;
+  height: auto;
+  overflow: visible;
 }
 
 /* Battle Maps: page scroll + inner panel scroll, no hard page lock */
-
 .admin-content.is-editor-route .admin-editor-page:has(.battle-map-editor) {
-  height: auto !important;
-  min-height: calc(100vh - 24px) !important;
-  overflow: visible !important;
-  display: block !important;
+  height: auto;
+  min-height: calc(100vh - 24px);
+  overflow: visible;
+  display: block;
 }
 
-.admin-content.is-editor-route .battle-map-editor {
-  display: grid !important;
-  grid-template-rows: auto auto !important;
-  gap: 10px !important;
-  overflow: visible !important;
+/* Battle Maps layout: page scrolls, side panels scroll internally, center expands full width. */
+.battle-map-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.admin-content.is-editor-route .battle-map-editor-main {
-  display: grid !important;
-  grid-template-columns: minmax(260px, 330px) minmax(420px, 1fr) minmax(340px, 420px) !important;
-  gap: 10px !important;
-  align-items: start !important;
-  overflow: visible !important;
+.battle-map-editor-main {
+  display: grid;
+  grid-template-columns: 280px 1fr 380px;
+  gap: 12px;
+  width: 100%;
+  align-items: start;
 }
 
-.admin-content.is-editor-route .battle-map-editor-side-section {
-  max-height: 72vh !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  scrollbar-gutter: stable !important;
+.battle-map-editor-side-section {
+  max-height: 75vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.admin-content.is-editor-route .battle-map-editor-canvas-section {
-  max-height: 72vh !important;
-  overflow: hidden !important;
-  display: grid !important;
-  grid-template-rows: auto auto auto minmax(420px, 1fr) !important;
+.battle-map-editor-canvas-section {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.admin-content.is-editor-route .battle-map-editor-canvas-viewport {
-  min-height: 420px !important;
-  max-height: 72vh !important;
-  overflow: hidden !important;
-  position: relative !important;
+.battle-map-editor-canvas-viewport {
+  width: 100%;
+  min-height: 600px;
+  height: 70vh;
+  position: relative;
+  overflow: hidden;
 }
