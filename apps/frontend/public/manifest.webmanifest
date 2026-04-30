@@ -1,0 +1,9 @@
+{
+  "name": "TheEnd RPG",
+  "short_name": "TheEnd",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#120f0d",
+  "theme_color": "#120f0d",
+  "icons": []
+}

@@ -1,0 +1,26 @@
+{
+  "name": "theend-rpg",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @theend/frontend",
+    "dev:frontend": "npm run dev --workspace @theend/frontend",
+    "dev:backend": "npm run start:dev --workspace @theend/backend",
+    "build": "npm run build --workspaces",
+    "lint": "npm run check:no-frontend-src-js && eslint apps/frontend/src",
+    "check:no-frontend-src-js": "node scripts/check-no-frontend-src-js.mjs",
+    "typecheck": "npm run typecheck --workspaces",
+    "content:validate": "npm run content:validate --workspace @theend/backend",
+    "prepare": "npx husky"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.59.1",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7"
+  }
+}

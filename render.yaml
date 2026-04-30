@@ -1,0 +1,36 @@
+databases:
+  - name: theend-db
+    databaseName: theend
+    user: theend
+
+services:
+  - type: web
+    name: theend-backend
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run -w @theend/backend prisma:generate && npm run -w @theend/backend build
+    preDeployCommand: npx prisma migrate deploy --schema apps/backend/prisma/schema.prisma
+    startCommand: npm run -w @theend/backend start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: theend-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: theend-frontend
+    runtime: static
+    buildCommand: npm ci && npm run -w @theend/frontend build
+    staticPublishPath: apps/frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: theend-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

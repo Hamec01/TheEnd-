@@ -1,0 +1,4 @@
+Place the Arkleyne city image here as:
+arkleyne-city.png
+
+Reason for placeholder: chat attachments are not directly writable as binary files by the code tools, so this marker reserves the exact path for the incoming image file.

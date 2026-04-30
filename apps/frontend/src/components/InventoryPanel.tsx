@@ -1,0 +1,1206 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
+import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
+import type { ArenaCharacter } from '../arena/types';
+import type { AdminItem } from '../services/content/models';
+import { PaperDoll } from './PaperDoll';
+import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
+import {
+  getRaceSilhouette,
+  getRaceSilhouetteFallback,
+} from '../utils/raceSilhouette';
+import { findEquippedCoreSlot, resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
+
+export type CharacterPageFocus = 'character' | 'equipment' | 'inventory' | 'stats' | 'skills';
+
+interface InventoryPanelProps {
+  character: ArenaCharacter;
+  inventory: InventoryState;
+  equipment: Equipment;
+  learnedSkills: string[];
+  pendingStatAllocation: Partial<Record<PrimaryStat, number>>;
+  freePointsLeft: number;
+  allocatingStats: boolean;
+  focusSection: CharacterPageFocus;
+  onClose: () => void;
+  onStatus: (text: string) => void;
+  onEquipItem: (itemId: string, slot?: keyof Equipment) => Promise<void>;
+  onUnequipSlot: (slot: keyof Equipment) => Promise<void>;
+  onAdjustStat: (stat: PrimaryStat, delta: number) => void;
+  onApplyStatAllocation: () => Promise<void>;
+  onResetStatAllocation?: () => void;
+  onRespecStats?: () => Promise<void> | void;
+  onUseItem?: (itemId: string) => Promise<void>;
+  playerAvatarUrl?: string;
+  resolveItemById?: (itemId: string) => ItemDefinition | null;
+  resolveAdminItemById?: (itemId: string) => AdminItem | null;
+  resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+}
+
+const CORE_SLOT_BY_LAYOUT: Partial<Record<EquipmentSlotId, keyof Equipment>> = {
+  helmet: 'helmet',
+  necklace: 'necklace',
+  armor: 'armor',
+  outerwear: 'outerwear',
+  belt: 'belt',
+  boots: 'boots',
+  gloves: 'gloves',
+  leftHand: 'shield',
+  rightHand: 'weapon',
+  ring1: 'ring1',
+  ring2: 'ring2',
+  ring3: 'ring3',
+  legs: 'legs',
+};
+
+const LAYOUT_SLOT_BY_CORE_SLOT: Record<keyof Equipment, EquipmentSlotId> = {
+  weapon: 'rightHand',
+  helmet: 'helmet',
+  necklace: 'necklace',
+  armor: 'armor',
+  outerwear: 'outerwear',
+  belt: 'belt',
+  gloves: 'gloves',
+  shield: 'leftHand',
+  ring1: 'ring1',
+  ring2: 'ring2',
+  ring3: 'ring3',
+  legs: 'legs',
+  boots: 'boots',
+};
+
+const SLOT_LABELS: Record<EquipmentSlotId, string> = {
+  helmet: 'Helmet / Шлем',
+  necklace: 'Necklace / Амулет',
+  armor: 'Armor / Броня',
+  outerwear: 'Outerwear / Плащ',
+  belt: 'Belt / Пояс',
+  leftHand: 'Left Hand / Левая рука',
+  gloves: 'Gloves / Перчатки',
+  rightHand: 'Right Hand / Правая рука',
+  ring1: 'Ring 1',
+  ring2: 'Ring 2',
+  ring3: 'Ring 3',
+  legs: 'Legs / Ноги',
+  boots: 'Boots / Сапоги',
+  quick1: 'Quick 1',
+  quick2: 'Quick 2',
+  quick3: 'Quick 3',
+  quick4: 'Quick 4',
+  quick5: 'Quick 5',
+  quick6: 'Quick 6',
+  quick7: 'Quick 7',
+  quick8: 'Quick 8',
+  quick9: 'Quick 9',
+  quick10: 'Quick 10',
+};
+
+const ALL_SLOT_IDS = Object.keys(SLOT_LABELS) as EquipmentSlotId[];
+
+const STATS_ORDER: PrimaryStat[] = [
+  'hp',
+  'mp',
+  'stamina',
+  'strength',
+  'constitution',
+  'dexterity',
+  'intelligence',
+  'luck',
+  'perception',
+  'willpower',
+];
+
+const STAT_LABELS: Record<PrimaryStat, string> = {
+  hp: 'HP',
+  mp: 'Mana',
+  stamina: 'Stamina',
+  strength: 'Strength',
+  constitution: 'Constitution',
+  dexterity: 'Dexterity',
+  intelligence: 'Intelligence',
+  luck: 'Luck',
+  perception: 'Perception',
+  willpower: 'Willpower',
+};
+
+const STAT_HINTS: Record<PrimaryStat, string> = {
+  hp: 'Определяет запас жизни и то, сколько урона персонаж переживёт.',
+  mp: 'Ресурс для магии, умений и особых эффектов.',
+  stamina: 'Тратится на удары, защиту, рывки и другие боевые действия.',
+  strength: 'Увеличивает силу ударов в ближнем бою и требования к тяжёлому оружию.',
+  constitution: 'Даёт выживаемость, защиту и снижает входящий физический урон.',
+  dexterity: 'Помогает с уклонением, точностью и работой ловкого оружия.',
+  intelligence: 'Усиливает магию и магический урон.',
+  luck: 'Влияет на криты, удачные броски и общую боевую удачу.',
+  perception: 'Даёт инициативу, меткость и бонус к точным атакам.',
+  willpower: 'Повышает магическую стойкость, контроль и ману-реген.',
+};
+
+const SKILL_NAMES: Record<string, string> = {
+  NONE: 'Базовая атака',
+  POWER_STRIKE: 'Power Strike',
+  CRUSHING_BLOCK: 'Crushing Block',
+  RAGE: 'Rage',
+  FIREBALL: 'Пламя Фелдана',
+  FROST_LANCE: 'Frost Lance',
+  SHIELD_BASH: 'Таран Арклейна',
+  WHIRLWIND: 'Whirlwind',
+};
+
+const ITEM_STAT_LABELS: Record<string, string> = {
+  strength: 'Strength',
+  dexterity: 'Dexterity',
+  constitution: 'Constitution',
+  intelligence: 'Intelligence',
+  stamina: 'Stamina',
+  perception: 'Perception',
+  luck: 'Luck',
+  willpower: 'Willpower',
+  hp: 'HP',
+  mp: 'MP',
+};
+
+function formatItemStatLabel(value: string): string {
+  return ITEM_STAT_LABELS[value] ?? value;
+}
+
+function formatItemStatRows(stats: Record<string, number> | undefined): Array<{ key: string; label: string; value: number }> {
+  if (!stats) {
+    return [];
+  }
+
+  return Object.entries(stats)
+    .filter(([, value]) => typeof value === 'number' && Number.isFinite(value) && value !== 0)
+    .map(([key, value]) => ({
+      key,
+      label: formatItemStatLabel(key),
+      value,
+    }));
+}
+
+const FOCUS_SECTION_COLUMN: Record<CharacterPageFocus, 'left' | 'center' | 'right'> = {
+  character: 'left',
+  equipment: 'left',
+  inventory: 'center',
+  stats: 'right',
+  skills: 'right',
+};
+
+export function canEquipItemInSlot(item: ItemDefinition, slotId: EquipmentSlotId): boolean {
+  switch (slotId) {
+    case 'rightHand':
+      return item.itemType === 'weapon';
+    case 'leftHand':
+      return item.itemType === 'shield' || (item.itemType === 'weapon' && getItemHandsRequired(item) === 1);
+    case 'helmet':
+      return item.itemType === 'helmet';
+    case 'necklace':
+      return item.itemType === 'necklace';
+    case 'armor':
+      return item.itemType === 'armor';
+    case 'outerwear':
+      return item.itemType === 'outerwear';
+    case 'belt':
+      return item.itemType === 'belt';
+    case 'ring1':
+    case 'ring2':
+    case 'ring3':
+      return item.itemType === 'ring';
+    case 'legs':
+      return item.itemType === 'legs';
+    case 'boots':
+      return item.itemType === 'boots';
+    case 'gloves':
+      return item.itemType === 'gloves';
+    default:
+      return false;
+  }
+}
+
+export function getAcceptedSlotsForItem(item: ItemDefinition): EquipmentSlotId[] {
+  return ALL_SLOT_IDS.filter((slotId) => canEquipItemInSlot(item, slotId));
+}
+
+export const InventoryPanel: React.FC<InventoryPanelProps> = ({
+  character,
+  inventory,
+  equipment,
+  learnedSkills,
+  pendingStatAllocation,
+  freePointsLeft,
+  allocatingStats,
+  focusSection,
+  onClose,
+  onStatus,
+  onEquipItem,
+  onUnequipSlot,
+  onAdjustStat,
+  onApplyStatAllocation,
+  onResetStatAllocation,
+  onRespecStats,
+  onUseItem,
+  playerAvatarUrl,
+  resolveItemById,
+  resolveAdminItemById,
+  resolveItemImage,
+}) => {
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemDetailOpen, setItemDetailOpen] = useState(false);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
+  const [silhouetteBroken, setSilhouetteBroken] = useState(false);
+  const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
+  const [hoverPreview, setHoverPreview] = useState<{ itemId: string; x: number; y: number } | null>(null);
+
+  const leftColumnRef = useRef<HTMLElement | null>(null);
+  const centerColumnRef = useRef<HTMLElement | null>(null);
+  const rightColumnRef = useRef<HTMLElement | null>(null);
+
+  const previewStats = useMemo<StatBlock>(() => {
+    const next = { ...character.activeStats };
+    for (const stat of STATS_ORDER) {
+      const points = pendingStatAllocation[stat] ?? 0;
+      if (points <= 0) {
+        continue;
+      }
+      if (stat === 'hp' || stat === 'mp' || stat === 'stamina') {
+        next[stat] += points * 10;
+      } else {
+        next[stat] += points;
+      }
+    }
+    return next;
+  }, [character.activeStats, pendingStatAllocation]);
+
+  const derivedBase = useMemo(() => calculateDerivedStats(character.activeStats, equipment), [character.activeStats, equipment]);
+  const derivedPreview = useMemo(() => calculateDerivedStats(previewStats, equipment), [equipment, previewStats]);
+  const levelProgress = useMemo(() => getLevelProgress(character.level, character.exp), [character.exp, character.level]);
+  const expToNextLevel = Math.max(0, levelProgress.next - character.exp);
+
+  const inventoryEntries = useMemo(
+    () => inventory.items
+      .map((entry) => {
+        const item = resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId);
+        return item ? { item, quantity: entry.quantity } : null;
+      })
+      .filter(Boolean) as Array<{ item: ItemDefinition; quantity: number }>,
+    [inventory.items, resolveItemById],
+  );
+
+  const inventoryByItemId = useMemo(
+    () => new Map(inventoryEntries.map((entry) => [entry.item.id, entry])),
+    [inventoryEntries],
+  );
+
+  const selectedInventoryEntry = useMemo(
+    () => (selectedItemId ? inventoryByItemId.get(selectedItemId) ?? null : null),
+    [inventoryByItemId, selectedItemId],
+  );
+
+  const selectedItem = useMemo(
+    () => (selectedItemId ? selectedInventoryEntry?.item ?? (resolveItemById ? resolveItemById(selectedItemId) : getItemById(selectedItemId)) : null),
+    [resolveItemById, selectedInventoryEntry, selectedItemId],
+  );
+  const equippedWeapon = useMemo(
+    () => (equipment.weapon ? (resolveItemById ? resolveItemById(equipment.weapon) : getItemById(equipment.weapon)) : null),
+    [equipment.weapon, resolveItemById],
+  );
+  const weaponOccupiesBothHands = Boolean(equippedWeapon && equippedWeapon.itemType === 'weapon' && getItemHandsRequired(equippedWeapon) === 2);
+  const selectedItemHandsRequired = selectedItem ? getItemHandsRequired(selectedItem) : 1;
+  const selectedIsTwoHandedWeapon = Boolean(selectedItem && selectedItem.itemType === 'weapon' && selectedItemHandsRequired === 2);
+  const shieldBlockedByTwoHandedWeapon = Boolean(selectedItem?.itemType === 'shield' && equippedWeapon && getItemHandsRequired(equippedWeapon) === 2);
+
+  const paperDollRace = (character.race in PAPER_DOLL_ASSETS ? character.race : 'HUMAN') as PaperDollRace;
+  const paperDollDebug = false;
+
+  const equippedByLayoutSlot = useMemo(() => {
+    const full: Partial<Record<EquipmentSlotId, ItemDefinition | null>> = {};
+
+    for (const slotId of ALL_SLOT_IDS) {
+      const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
+      if (slotId === 'leftHand' && !equipment.shield && weaponOccupiesBothHands && equippedWeapon) {
+        full[slotId] = equippedWeapon;
+        continue;
+      }
+
+      const itemId = coreSlot ? equipment[coreSlot] : null;
+      full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
+    }
+
+    return full;
+  }, [equipment, equippedWeapon, resolveItemById, weaponOccupiesBothHands]);
+
+  function findEquippedSlotId(itemId: string): EquipmentSlotId | null {
+    const equippedCoreSlot = findEquippedCoreSlot(equipment, itemId);
+    return equippedCoreSlot ? LAYOUT_SLOT_BY_CORE_SLOT[equippedCoreSlot] : null;
+  }
+
+  useEffect(() => {
+    const target = FOCUS_SECTION_COLUMN[focusSection];
+    if (target === 'left') {
+      leftColumnRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (target === 'center') {
+      centerColumnRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (target === 'right') {
+      rightColumnRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [focusSection]);
+
+  const equippedItemIds = useMemo(
+    () => new Set(Object.values(equipment).filter((itemId): itemId is string => Boolean(itemId))),
+    [equipment],
+  );
+  const selectedEquippedSlotId = useMemo(() => {
+    if (!selectedItem) {
+      return null;
+    }
+
+    return findEquippedSlotId(selectedItem.id);
+  }, [equipment, selectedItem]);
+  const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
+
+  const getComparisonForItem = (item: ItemDefinition | null) => {
+    if (!item) {
+      return {
+        slotId: null as EquipmentSlotId | null,
+        currentItem: null as ItemDefinition | null,
+        currentAdminItem: null as AdminItem | null,
+        rows: [] as Array<{ label: string; before: number; after: number }>,
+        statDiffRows: [] as Array<{ key: string; label: string; current: number; next: number; diff: number }>,
+        damageComparison: null as { currentMin?: number; currentMax?: number; nextMin?: number; nextMax?: number; minDiff: number; maxDiff: number } | null,
+        armorComparison: null as { current: number; next: number; diff: number } | null,
+      };
+    }
+
+    const comparisonCoreSlot = resolvePreferredEquipmentSlot(item, equipment);
+    const comparisonSlotId = comparisonCoreSlot ? LAYOUT_SLOT_BY_CORE_SLOT[comparisonCoreSlot] ?? null : null;
+    const alreadyEquipped = equippedItemIds.has(item.id);
+
+    const previewEquipment: Equipment = (() => {
+      if (!comparisonCoreSlot || alreadyEquipped) {
+        return equipment;
+      }
+
+      const next: Equipment = {
+        ...equipment,
+        [comparisonCoreSlot]: item.id,
+      };
+
+      if (item.itemType === 'weapon' && getItemHandsRequired(item) === 2) {
+        next.shield = null;
+      }
+
+      return next;
+    })();
+
+    const derivedItemPreview = calculateDerivedStats(character.activeStats, previewEquipment);
+    const currentItemId = comparisonCoreSlot ? equipment[comparisonCoreSlot] : null;
+    const currentItem = currentItemId
+      ? (resolveItemById ? resolveItemById(currentItemId) : getItemById(currentItemId))
+      : null;
+    const selectedAdminItem = resolveAdminItemById ? resolveAdminItemById(item.id) : null;
+    const currentAdminItem = currentItem && resolveAdminItemById ? resolveAdminItemById(currentItem.id) : null;
+    const selectedBonusSource = (selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (item.bonuses as Record<string, number> | undefined);
+    const currentBonusSource = (currentAdminItem?.bonuses as Record<string, number> | undefined) ?? (currentItem?.bonuses as Record<string, number> | undefined);
+    const statDiffRows = Array.from(new Set([...Object.keys(selectedBonusSource ?? {}), ...Object.keys(currentBonusSource ?? {})]))
+      .map((key) => {
+        const next = selectedBonusSource?.[key] ?? 0;
+        const current = currentBonusSource?.[key] ?? 0;
+        return {
+          key,
+          label: formatItemStatLabel(key),
+          current,
+          next,
+          diff: next - current,
+        };
+      })
+      .filter((row) => row.current !== 0 || row.next !== 0);
+    const damageComparison = typeof selectedAdminItem?.damageMin === 'number'
+      || typeof selectedAdminItem?.damageMax === 'number'
+      || typeof currentAdminItem?.damageMin === 'number'
+      || typeof currentAdminItem?.damageMax === 'number'
+      ? {
+        currentMin: currentAdminItem?.damageMin,
+        currentMax: currentAdminItem?.damageMax,
+        nextMin: selectedAdminItem?.damageMin,
+        nextMax: selectedAdminItem?.damageMax,
+        minDiff: (selectedAdminItem?.damageMin ?? 0) - (currentAdminItem?.damageMin ?? 0),
+        maxDiff: (selectedAdminItem?.damageMax ?? 0) - (currentAdminItem?.damageMax ?? 0),
+      }
+      : null;
+    const armorComparison = typeof selectedAdminItem?.armorValue === 'number'
+      || typeof currentAdminItem?.armorValue === 'number'
+      ? {
+        current: currentAdminItem?.armorValue ?? 0,
+        next: selectedAdminItem?.armorValue ?? 0,
+        diff: (selectedAdminItem?.armorValue ?? 0) - (currentAdminItem?.armorValue ?? 0),
+      }
+      : null;
+
+    return {
+      slotId: comparisonSlotId,
+      currentItem,
+      currentAdminItem,
+      rows: [
+        { label: 'Defense', before: derivedBase.totalDefense, after: derivedItemPreview.totalDefense },
+        { label: 'Min Damage', before: derivedBase.minDamage, after: derivedItemPreview.minDamage },
+        { label: 'Max Damage', before: derivedBase.maxDamage, after: derivedItemPreview.maxDamage },
+        { label: 'Crit', before: derivedBase.critChance, after: derivedItemPreview.critChance },
+        { label: 'Block', before: derivedBase.blockChance, after: derivedItemPreview.blockChance },
+        { label: 'STA Load', before: derivedBase.staminaLoad, after: derivedItemPreview.staminaLoad },
+      ],
+      statDiffRows,
+      damageComparison,
+      armorComparison,
+    };
+  };
+
+  useEffect(() => {
+    if (!selectedItemId && inventoryEntries.length > 0) {
+      setSelectedItemId(inventoryEntries[0].item.id);
+      return;
+    }
+
+    if (
+      selectedItemId
+      && !inventoryEntries.some((entry) => entry.item.id === selectedItemId)
+      && !equippedItemIds.has(selectedItemId)
+    ) {
+      setSelectedItemId(inventoryEntries[0]?.item.id ?? null);
+      setItemDetailOpen(false);
+    }
+  }, [equippedItemIds, inventoryEntries, selectedItemId]);
+
+  const selectedComparison = useMemo(() => getComparisonForItem(selectedItem), [selectedItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById]);
+  const comparisonSlotId = selectedComparison.slotId;
+  const comparisonCurrentItem = selectedComparison.currentItem;
+  const itemComparisonRows = selectedComparison.rows;
+  const itemStatDiffRows = selectedComparison.statDiffRows;
+  const itemDamageComparison = selectedComparison.damageComparison;
+  const itemArmorComparison = selectedComparison.armorComparison;
+
+  const hoverItem = useMemo(
+    () => (hoverPreview?.itemId ? inventoryByItemId.get(hoverPreview.itemId)?.item ?? null : null),
+    [hoverPreview, inventoryByItemId],
+  );
+  const hoverComparison = useMemo(
+    () => getComparisonForItem(hoverItem),
+    [hoverItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById],
+  );
+  const selectedAdminItem = useMemo(
+    () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
+    [resolveAdminItemById, selectedItem],
+  );
+  const selectedDescription = selectedAdminItem?.gameplayDescription?.trim() || selectedItem?.description || 'Description unavailable.';
+  const selectedLoreDescription = selectedAdminItem?.loreDescription?.trim() || '';
+  const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedItem?.requiredStats as Record<string, number> | undefined));
+  const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedItem?.bonuses as Record<string, number> | undefined));
+
+  useEffect(() => {
+    setSilhouetteBroken(false);
+    setSilhouetteSrc(getRaceSilhouette(paperDollRace as any));
+  }, [paperDollRace]);
+
+  useEffect(() => {
+    const clearHoverPreview = () => setHoverPreview(null);
+    window.addEventListener('scroll', clearHoverPreview, true);
+    window.addEventListener('resize', clearHoverPreview);
+    return () => {
+      window.removeEventListener('scroll', clearHoverPreview, true);
+      window.removeEventListener('resize', clearHoverPreview);
+    };
+  }, []);
+
+  const skillItems = useMemo(
+    () => learnedSkills.map((skillId) => ({
+      id: skillId,
+      name: SKILL_NAMES[skillId] ?? skillId,
+      type: skillTab,
+      description: skillTab === 'status' ? 'Статусный эффект из текущего билда.' : 'Детали будут расширены в следующем обновлении.',
+    })),
+    [learnedSkills, skillTab],
+  );
+
+  const selectedSkill = skillItems.find((skill) => skill.id === selectedSkillId) ?? null;
+
+  async function equipToSlot(slotId: EquipmentSlotId, item: ItemDefinition): Promise<void> {
+    const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
+    if (!coreSlot) {
+      onStatus('Этот слот пока декоративный и не поддерживает экипировку.');
+      return;
+    }
+
+    if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) {
+      onStatus('Левая рука уже занята двуручным оружием.');
+      return;
+    }
+
+    if (!canEquipItemInSlot(item, slotId)) {
+      onStatus('Этот предмет нельзя надеть в выбранный слот.');
+      return;
+    }
+
+    try {
+      await onEquipItem(item.id, coreSlot);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
+  async function equipSelectedItem(): Promise<void> {
+    if (!selectedItem) {
+      return;
+    }
+
+    if (!selectedInventoryEntry) {
+      onStatus('This item is already equipped. Unequip it first if you want it back in the backpack.');
+      return;
+    }
+
+    if (shieldBlockedByTwoHandedWeapon) {
+      onStatus('Левая рука занята двуручным оружием. Сначала снимите его.');
+      return;
+    }
+
+    const preferredCoreSlot = resolvePreferredEquipmentSlot(selectedItem, equipment);
+    if (!preferredCoreSlot) {
+      onStatus('Этот предмет нельзя экипировать.');
+      return;
+    }
+
+    const targetSlotId = LAYOUT_SLOT_BY_CORE_SLOT[preferredCoreSlot];
+    if (!targetSlotId || !canEquipItemInSlot(selectedItem, targetSlotId)) {
+      onStatus('Этот предмет нельзя экипировать.');
+      return;
+    }
+
+    try {
+      await onEquipItem(selectedItem.id, preferredCoreSlot);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
+  async function unequipFromSlot(slotId: EquipmentSlotId): Promise<void> {
+    const coreSlot = slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield
+      ? 'weapon'
+      : CORE_SLOT_BY_LAYOUT[slotId];
+    if (!coreSlot) {
+      onStatus('Этот слот пока декоративный и не поддерживает снятие предметов.');
+      return;
+    }
+
+    try {
+      await onUnequipSlot(coreSlot);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
+  const focusedColumnClass = FOCUS_SECTION_COLUMN[focusSection];
+
+  const hasPendingAllocation = Object.keys(pendingStatAllocation).length > 0;
+
+  return (
+    <div className="battle-overlay" role="dialog" aria-modal="true">
+      <section className="card battle-window wm-modal character-page-modal">
+        <div className="battle-window-head">
+          <h2>Character Page - {character.name}</h2>
+          <button onClick={onClose}>✕</button>
+        </div>
+
+        <div className="character-page-grid">
+          <section ref={leftColumnRef} className={`character-column character-left ${focusedColumnClass === 'left' ? 'is-focused' : ''}`}>
+            <section className="character-status-card">
+              <div className="character-status-head">
+                {playerAvatarUrl ? (
+                  <img src={playerAvatarUrl} alt={character.name} className="character-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <div className="character-avatar-circle">{character.name.charAt(0).toUpperCase()}</div>
+                )}
+                <div>
+                  <strong>{character.name}</strong>
+                  <p className="muted">Race: {character.race}</p>
+                </div>
+              </div>
+              <div className="character-status-bars">
+                <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
+                <p><span>Mana</span><strong>{character.activeStats.mp}</strong></p>
+                <p><span>Stamina</span><strong>{character.activeStats.stamina}</strong></p>
+                <p><span>Gold</span><strong>{inventory.gold}</strong></p>
+                <p><span>Total Defense</span><strong>{derivedPreview.totalDefense}</strong></p>
+                <p><span>Min Damage</span><strong>{derivedPreview.minDamage}</strong></p>
+              </div>
+            </section>
+
+            <section className="character-paperdoll-card">
+              <div className="character-paperdoll-canvas inventory-wrapper">
+                {!silhouetteBroken ? (
+                  <PaperDoll
+                    race={paperDollRace}
+                    imageSrc={silhouetteSrc}
+                    slotItems={equippedByLayoutSlot}
+                    slotLabels={SLOT_LABELS}
+                    resolveItemImage={resolveItemImage}
+                    canDropItemInSlot={(slotId, itemId) => {
+                      try {
+                        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                        if (!item) {
+                          return false;
+                        }
+
+                        if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) {
+                          return false;
+                        }
+
+                        return canEquipItemInSlot(item, slotId);
+                      } catch {
+                        return false;
+                      }
+                    }}
+                    debug={paperDollDebug}
+                    onImageError={() => {
+                      const fallback = getRaceSilhouetteFallback(paperDollRace as any);
+                      if (silhouetteSrc !== fallback) {
+                        setSilhouetteSrc(fallback);
+                        return;
+                      }
+                      setSilhouetteBroken(true);
+                    }}
+                    onSlotClick={(slotId) => {
+                      const equippedItem = equippedByLayoutSlot[slotId] ?? null;
+                      if (equippedItem) {
+                        setSelectedItemId(equippedItem.id);
+                        setItemDetailOpen(true);
+                        return;
+                      }
+
+                      if (selectedItem) {
+                        void equipToSlot(slotId, selectedItem);
+                      }
+                    }}
+                    onSlotDrop={(slotId, itemId) => {
+                      try {
+                        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                        if (item) {
+                          void equipToSlot(slotId, item);
+                        }
+                      } catch {
+                        // ignore invalid drop payload
+                      }
+                    }}
+                    onSlotContextMenu={(slotId) => {
+                      if (equippedByLayoutSlot[slotId]) {
+                        void unequipFromSlot(slotId);
+                      }
+                    }}
+                  />
+                ) : null}
+              </div>
+            </section>
+          </section>
+
+          <section ref={centerColumnRef} className={`character-column character-center ${focusedColumnClass === 'center' ? 'is-focused' : ''}`}>
+            <section className="character-backpack-card">
+              <div className="character-backpack-head">
+                <h3>Рюкзак / Backpack</h3>
+                <p className="gold">🪙 {inventory.gold}</p>
+              </div>
+
+              <div className="character-inventory-grid-wrap">
+                <div className="character-inventory-grid">
+                  {inventoryEntries.map((entry) => (
+                    <button
+                      key={entry.item.id}
+                      type="button"
+                      className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+                      onMouseEnter={(event) => {
+                        const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        const cardWidth = Math.min(360, window.innerWidth - 24);
+                        const nextX = rect.right + cardWidth + 18 <= window.innerWidth
+                          ? rect.right + 12
+                          : Math.max(12, rect.left - cardWidth - 12);
+                        const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+                        setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
+                        setSelectedItemId(entry.item.id);
+                      }}
+                      onFocus={() => {
+                        setSelectedItemId(entry.item.id);
+                      }}
+                      onMouseLeave={() => {
+                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
+                      }}
+                      onBlur={() => {
+                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
+                      }}
+                      onClick={() => {
+                        setHoverPreview(null);
+                        setSelectedItemId(entry.item.id);
+                        setItemDetailOpen(true);
+                      }}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData('text/theend-item-id', entry.item.id);
+                        event.dataTransfer.effectAllowed = 'move';
+                      }}
+                    >
+                      <span
+                        className="character-item-icon"
+                        style={resolveItemImage?.(entry.item)
+                          ? {
+                              backgroundImage: `url("${resolveItemImage(entry.item)}")`,
+                              backgroundSize: 'contain',
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'center',
+                            }
+                          : undefined}
+                      >
+                      </span>
+                      <span className="character-item-name">{entry.item.name}</span>
+                      <span className="character-item-qty">x{entry.quantity}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="character-item-detail-card">
+              <h3>Item Details</h3>
+              {selectedItem ? (
+                <>
+                  <strong>{selectedItem.name}</strong>
+                  <p className="muted">Type: {selectedItem.itemType} / {selectedItem.itemSubType}</p>
+                  {selectedItem.itemType === 'weapon' ? (
+                    <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed / Двуручное' : 'One-handed / Одноручное'}</p>
+                  ) : null}
+                  <p className="muted">Rarity: {selectedItem.rarity}</p>
+                  <p>{selectedDescription}</p>
+                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+                  ) : null}
+                  {typeof selectedAdminItem?.armorValue === 'number' ? (
+                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
+                  ) : null}
+                  {selectedIsTwoHandedWeapon && equipment.shield ? (
+                    <p className="muted">Equipping this weapon will remove the offhand item and leave it in your inventory.</p>
+                  ) : null}
+                  {shieldBlockedByTwoHandedWeapon ? (
+                    <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
+                  ) : null}
+                  <p className="muted">
+                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
+                  </p>
+                  <p className="muted">
+                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
+                  </p>
+                  <div className="character-item-inline-compare-head">
+                    <span>Сравнение со слотом</span>
+                    <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
+                  </div>
+                  {itemDamageComparison ? (
+                    <p className="muted">
+                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
+                    </p>
+                  ) : null}
+                  {itemArmorComparison ? (
+                    <p className="muted">
+                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
+                    </p>
+                  ) : null}
+                  {itemStatDiffRows.length > 0 ? (
+                    <div className="character-item-inline-compare-grid">
+                      {itemStatDiffRows.map((row) => (
+                        <p key={`stat-${row.key}`}>
+                          <span>{row.label}</span>
+                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
+                            {row.diff > 0 ? `+${row.diff}` : row.diff}
+                          </em>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="character-item-inline-compare-grid">
+                    {itemComparisonRows.map((row) => {
+                      const delta = Number((row.after - row.before).toFixed(1));
+                      return (
+                        <p key={row.label}>
+                          <span>{row.label}</span>
+                          <strong>{row.before} → {row.after}</strong>
+                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </em>
+                        </p>
+                      );
+                    })}
+                  </div>
+                  <div className="character-item-actions">
+                    <button
+                      disabled={selectedAlreadyEquipped}
+                      onClick={() => {
+                        void equipSelectedItem();
+                      }}
+                    >
+                      {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
+                    </button>
+                    <button
+                      disabled={!selectedEquippedSlotId}
+                      onClick={() => {
+                        if (selectedEquippedSlotId) {
+                          void unequipFromSlot(selectedEquippedSlotId);
+                        }
+                      }}
+                    >
+                      Unequip
+                    </button>
+                    <button
+                      disabled={selectedItem.itemType !== 'consumable'}
+                      onClick={() => {
+                        if (onUseItem) {
+                          void onUseItem(selectedItem.id);
+                        } else {
+                          onStatus('Use action is not available in this context.');
+                        }
+                      }}
+                    >
+                      Use
+                    </button>
+                    <button disabled>Drop</button>
+                  </div>
+                </>
+              ) : (
+                <p className="muted">Select an item from backpack.</p>
+              )}
+            </section>
+
+            {hoverPreview && hoverItem ? (
+              <aside
+                className="character-item-hover-card"
+                style={{ left: hoverPreview.x, top: hoverPreview.y }}
+                role="tooltip"
+              >
+                <div className="character-item-hover-head">
+                  <strong>{hoverItem.name}</strong>
+                  <small>{hoverItem.itemType} / {hoverItem.itemSubType} / {hoverItem.rarity}</small>
+                </div>
+                <p className="muted">{hoverItem.description || 'Описание отсутствует.'}</p>
+                <p className="muted">
+                  Бонусы: {Object.entries(hoverItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                </p>
+                <p className="muted">
+                  Требования: {Object.entries(hoverItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
+                </p>
+                <div className="character-item-inline-compare-head">
+                  <span>Сравнение со слотом</span>
+                  <strong>{hoverComparison.currentItem?.name ?? 'Слот пуст'}</strong>
+                </div>
+                <div className="character-item-inline-compare-grid">
+                  {hoverComparison.rows.map((row) => {
+                    const delta = Number((row.after - row.before).toFixed(1));
+                    return (
+                      <p key={row.label}>
+                        <span>{row.label}</span>
+                        <strong>{row.before} → {row.after}</strong>
+                        <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                          {delta > 0 ? `+${delta}` : delta}
+                        </em>
+                      </p>
+                    );
+                  })}
+                </div>
+              </aside>
+            ) : null}
+          </section>
+
+          <section ref={rightColumnRef} className={`character-column character-right ${focusedColumnClass === 'right' ? 'is-focused' : ''}`}>
+            <section className="character-stats-card">
+              <h3>Stats</h3>
+              <p className="muted">Free points: {freePointsLeft}</p>
+              <div className="character-stats-list">
+                {STATS_ORDER.map((stat) => (
+                  <div key={stat} className="character-stat-row">
+                    <span className="character-stat-label">
+                      {STAT_LABELS[stat]}
+                      <button
+                        type="button"
+                        className="stat-help-chip"
+                        title={STAT_HINTS[stat]}
+                        aria-label={`Что делает параметр ${STAT_LABELS[stat]}`}
+                      >
+                        ?
+                      </button>
+                    </span>
+                    <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` -> ${previewStats[stat]}` : ''}</strong>
+                    <div className="mini-stepper">
+                      <button disabled={freePointsLeft <= 0} onClick={() => onAdjustStat(stat, 1)}>+</button>
+                      <button disabled={(pendingStatAllocation[stat] ?? 0) <= 0} onClick={() => onAdjustStat(stat, -1)}>-</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="character-item-actions">
+                <button disabled={allocatingStats || !hasPendingAllocation || freePointsLeft < 0} onClick={() => void onApplyStatAllocation()}>
+                  {allocatingStats ? 'Applying...' : 'Apply'}
+                </button>
+                <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Revert</button>
+                <button
+                  type="button"
+                  onClick={() => void onRespecStats?.()}
+                  title="Сбросить распределение характеристик и вернуть все очки для перераспределения."
+                >
+                  Respec
+                </button>
+              </div>
+            </section>
+
+            <section className="character-meta-card">
+              <h3>Combat Overview</h3>
+              <p className="muted">Preview values depend on the current build. Exact hit and block results still depend on distance, target zone and defense choice in battle.</p>
+              <p>HP: {character.activeStats.hp}{' -> '}{previewStats.hp}</p>
+              <p>Mana: {character.activeStats.mp}{' -> '}{previewStats.mp}</p>
+              <p>Stamina: {character.activeStats.stamina}{' -> '}{previewStats.stamina}</p>
+              <p>Total Defense: {derivedBase.totalDefense}{' -> '}{derivedPreview.totalDefense}</p>
+              <p>Min Damage: {derivedBase.minDamage}{' -> '}{derivedPreview.minDamage}</p>
+              <p>Max Damage: {derivedBase.maxDamage}{' -> '}{derivedPreview.maxDamage}</p>
+              <p>Crit Chance: {derivedBase.critChance}%{' -> '}{derivedPreview.critChance}%</p>
+              <p>Initiative: {derivedBase.initiative}{' -> '}{derivedPreview.initiative}</p>
+              <p>Hit Chance: {derivedPreview.hitChance}%</p>
+              <p>Evasion: {derivedPreview.evasion}%</p>
+              <p>Block Chance: {derivedPreview.blockChance}%</p>
+              <p>Physical Resistance: {derivedPreview.physicalResistance}</p>
+              <p>Magic Resistance: {derivedPreview.magicResistance}</p>
+              <p>STA Load: {derivedPreview.staminaLoad}</p>
+            </section>
+
+            <section className="character-meta-card">
+              <h3>Breakdown</h3>
+              <p>Defense: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Damage: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Crit: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+            </section>
+
+            <section className="character-meta-card">
+              <h3>Level / Progression</h3>
+              <p>Level: {character.level}</p>
+              <p>EXP: {character.exp} / {levelProgress.next}</p>
+              <div style={{ margin: '0.4rem 0 0.6rem' }}>
+                <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`,
+                      height: '100%',
+                      borderRadius: 999,
+                      background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)',
+                    }}
+                  />
+                </div>
+              </div>
+              <p>До следующего уровня: {expToNextLevel} XP</p>
+              <p>Внутри текущего уровня: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
+              <p>Free stat points: {freePointsLeft}</p>
+              <p>Faction: None</p>
+              <p>Reputation: None</p>
+              <p>Professions: Не изучено</p>
+              <p>Class: None</p>
+              <p>Race: {character.race}</p>
+            </section>
+
+            <section className="character-skills-card">
+              <div className="character-skills-tabs">
+                <button className={skillTab === 'skills' ? 'is-active' : ''} onClick={() => setSkillTab('skills')}>Skills</button>
+                <button className={skillTab === 'abilities' ? 'is-active' : ''} onClick={() => setSkillTab('abilities')}>Abilities</button>
+                <button className={skillTab === 'passives' ? 'is-active' : ''} onClick={() => setSkillTab('passives')}>Passives</button>
+                <button className={skillTab === 'status' ? 'is-active' : ''} onClick={() => setSkillTab('status')}>Status</button>
+              </div>
+
+              <div className="character-skills-list">
+                {skillItems.length > 0 ? skillItems.map((skill) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    className={`character-skill-card ${selectedSkillId === skill.id ? 'is-active' : ''}`}
+                    onClick={() => setSelectedSkillId(skill.id)}
+                  >
+                    <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
+                    <span>
+                      <strong>{skill.name}</strong>
+                      <small>{skill.type}</small>
+                    </span>
+                  </button>
+                )) : (
+                  <p className="muted">Навыки пока не изучены</p>
+                )}
+              </div>
+
+              <div className="character-skill-detail">
+                {selectedSkill ? (
+                  <>
+                    <strong>{selectedSkill.name}</strong>
+                    <p>{selectedSkill.description}</p>
+                    <p>Mana cost: variable</p>
+                    <p>Stamina cost: variable</p>
+                    <p>Cooldown: none</p>
+                  </>
+                ) : (
+                  <p className="muted">Select a skill or state to inspect.</p>
+                )}
+              </div>
+            </section>
+          </section>
+        </div>
+
+        {itemDetailOpen && selectedItem ? (
+          <div
+            className="character-item-popup-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setItemDetailOpen(false);
+              }
+            }}
+          >
+            <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Item details">
+              <div className="character-item-popup-head">
+                <div className="character-item-popup-title">
+                  <span
+                    className="character-item-popup-icon"
+                    style={resolveItemImage?.(selectedItem)
+                      ? {
+                          backgroundImage: `url("${resolveItemImage(selectedItem)}")`,
+                          backgroundSize: 'contain',
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'center',
+                        }
+                      : undefined}
+                  />
+                  <div>
+                    <h3>{selectedItem.name}</h3>
+                    <p className="muted">{selectedItem.itemType} / {selectedItem.itemSubType} / {selectedItem.rarity}</p>
+                  </div>
+                </div>
+                <button type="button" className="character-item-popup-close" onClick={() => setItemDetailOpen(false)}>×</button>
+              </div>
+
+              <div className="character-item-popup-body">
+                <section className="character-item-popup-main">
+                  {selectedItem.itemType === 'weapon' ? (
+                    <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed' : 'One-handed'}</p>
+                  ) : null}
+                  <p>{selectedDescription}</p>
+                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+                  ) : null}
+                  {typeof selectedAdminItem?.armorValue === 'number' ? (
+                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
+                  ) : null}
+                  {selectedIsTwoHandedWeapon && equipment.shield ? (
+                    <p className="muted">Equipping this weapon will move the offhand item back to the backpack.</p>
+                  ) : null}
+                  {shieldBlockedByTwoHandedWeapon ? (
+                    <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
+                  ) : null}
+                  <p className="muted">
+                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
+                  </p>
+                  <p className="muted">
+                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
+                  </p>
+                </section>
+
+                <section className="character-item-compare">
+                  <div className="character-item-compare-items">
+                    <div>
+                      <span>Equipped</span>
+                      <strong>{comparisonCurrentItem?.name ?? 'Empty slot'}</strong>
+                      <small>{comparisonSlotId ? SLOT_LABELS[comparisonSlotId] : 'No slot'}</small>
+                    </div>
+                    <div>
+                      <span>Selected</span>
+                      <strong>{selectedItem.name}</strong>
+                      <small>{selectedAlreadyEquipped ? 'Already equipped' : selectedInventoryEntry ? 'In backpack' : 'Equipped'}</small>
+                    </div>
+                  </div>
+                  {itemDamageComparison ? (
+                    <p className="muted">
+                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
+                    </p>
+                  ) : null}
+                  {itemArmorComparison ? (
+                    <p className="muted">
+                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
+                    </p>
+                  ) : null}
+                  {itemStatDiffRows.length > 0 ? (
+                    <div className="character-item-compare-grid">
+                      {itemStatDiffRows.map((row) => (
+                        <p key={`popup-stat-${row.key}`}>
+                          <span>{row.label}</span>
+                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
+                            {row.diff > 0 ? `+${row.diff}` : row.diff}
+                          </em>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="character-item-compare-grid">
+                    {itemComparisonRows.map((row) => {
+                      const delta = Number((row.after - row.before).toFixed(1));
+                      return (
+                        <p key={row.label}>
+                          <span>{row.label}</span>
+                          <strong>{row.before} → {row.after}</strong>
+                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </em>
+                        </p>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <div className="character-item-actions character-item-popup-actions">
+                <button
+                  disabled={selectedAlreadyEquipped || !selectedInventoryEntry}
+                  onClick={() => {
+                    void equipSelectedItem();
+                  }}
+                >
+                  {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
+                </button>
+                <button
+                  disabled={!selectedEquippedSlotId}
+                  onClick={() => {
+                    if (selectedEquippedSlotId) {
+                      void unequipFromSlot(selectedEquippedSlotId);
+                    }
+                  }}
+                >
+                  Unequip
+                </button>
+                <button
+                  disabled={selectedItem.itemType !== 'consumable'}
+                  onClick={() => {
+                    if (onUseItem) {
+                      void onUseItem(selectedItem.id);
+                    } else {
+                      onStatus('Use action is not available in this context.');
+                    }
+                  }}
+                >
+                  Use
+                </button>
+                <button disabled>Drop</button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+};

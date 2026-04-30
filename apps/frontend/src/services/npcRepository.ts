@@ -1,0 +1,111 @@
+import type { NpcDefinition } from '../types/npc';
+import {
+  createContentEntry,
+  deleteContentEntry,
+  getContentCollection,
+  updateContentEntry,
+} from './content/contentApi';
+
+let cache: NpcDefinition[] = [];
+let loaded = false;
+let loadPromise: Promise<void> | null = null;
+
+export async function ensureNpcsLoaded(force = false): Promise<void> {
+  if (loaded && !force) {
+    return;
+  }
+  if (!loadPromise) {
+    loadPromise = getContentCollection<NpcDefinition>('npcs').then((entries) => {
+      cache = entries;
+      loaded = true;
+      loadPromise = null;
+    }).catch((error) => {
+      loadPromise = null;
+      throw error;
+    });
+  }
+  return loadPromise;
+}
+
+function invalidateCache(): void {
+  loaded = false;
+}
+
+export function getAllNpcs(): NpcDefinition[] {
+  return [...cache];
+}
+
+export function getNpcById(id: string): NpcDefinition | null {
+  return cache.find((entry) => entry.id === id) ?? null;
+}
+
+export async function saveNpc(npc: NpcDefinition): Promise<NpcDefinition> {
+  await ensureNpcsLoaded();
+  const exists = cache.some((entry) => entry.id === npc.id);
+  const saved = exists
+    ? await updateContentEntry<NpcDefinition>('npcs', npc.id, npc)
+    : await createContentEntry<NpcDefinition>('npcs', npc);
+  invalidateCache();
+  await ensureNpcsLoaded(true);
+  return saved;
+}
+
+export async function deleteNpc(id: string): Promise<void> {
+  await deleteContentEntry('npcs', id);
+  invalidateCache();
+  await ensureNpcsLoaded(true);
+}
+
+export async function duplicateNpc(id: string): Promise<NpcDefinition> {
+  const source = getNpcById(id);
+  if (!source) {
+    throw new Error(`NPC not found: ${id}`);
+  }
+
+  const copy: NpcDefinition = {
+    ...source,
+    id: `${source.id}_copy_${Math.floor(Math.random() * 10000)}`,
+    name: `${source.name} Copy`,
+    status: 'draft',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    mapBindings: Array.isArray(source.mapBindings) ? source.mapBindings.map((entry) => ({ ...entry })) : [],
+    dialogues: Array.isArray(source.dialogues) ? source.dialogues.map((entry) => ({ ...entry })) : [],
+    questBindings: Array.isArray(source.questBindings) ? source.questBindings.map((entry) => ({ ...entry })) : [],
+    conditions: Array.isArray((source as any).conditions) ? (source as any).conditions.map((entry: any) => ({ ...entry })) : (source as any).conditions,
+  };
+
+  return saveNpc(copy);
+}
+
+export async function exportNpcsJson(): Promise<string> {
+  await ensureNpcsLoaded();
+  return JSON.stringify(cache, null, 2);
+}
+
+export async function importNpcsJson(raw: string): Promise<number> {
+  const parsed = JSON.parse(raw) as NpcDefinition[];
+  const values = Array.isArray(parsed) ? parsed : [];
+
+  await ensureNpcsLoaded();
+  const existingIds = new Set(cache.map((entry) => entry.id));
+
+  let count = 0;
+  for (const entry of values) {
+    if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !entry.id.trim()) {
+      continue;
+    }
+    const id = entry.id.trim();
+    if (existingIds.has(id)) {
+      await updateContentEntry<NpcDefinition>('npcs', id, entry);
+    } else {
+      await createContentEntry<NpcDefinition>('npcs', entry);
+      existingIds.add(id);
+    }
+    count += 1;
+  }
+
+  invalidateCache();
+  await ensureNpcsLoaded(true);
+  return count;
+}
