@@ -54,6 +54,27 @@ export interface AdminItem {
   elementType?: ElementType;
   magicSchool?: MagicSchool;
   armorValue?: number;
+  /**
+   * Grid-based combat targeting (cells).
+   * When `attackRange` is set to > 1, the item can be used at range (bow, staff, bomb, thrown spear, etc).
+   */
+  attackRange?: number;
+  /**
+   * Optional line piercing for ranged attacks (e.g. thrown spear piercing two targets).
+   */
+  pierceTargets?: number;
+  /**
+   * Optional splash damage radius around the impact cell (e.g. bomb).
+   */
+  splashRadius?: number;
+  /**
+   * Damage multiplier for the impact cell when splash is enabled (>= 1).
+   */
+  splashCenterMultiplier?: number;
+  /**
+   * Damage multiplier for adjacent cells inside the splash radius (0..centerMultiplier).
+   */
+  splashOuterMultiplier?: number;
   requiredStats?: Partial<Record<StatKey, number>>;
   bonuses?: Partial<Record<StatKey, number>>;
   gameplayDescription: string;

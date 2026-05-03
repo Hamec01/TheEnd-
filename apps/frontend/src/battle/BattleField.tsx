@@ -5,6 +5,7 @@ import {
   TeamSide,
   getBattlefieldTilePlacements,
   type ArenaCombatEntity,
+  type CombatLogEntry,
   type BattlefieldTile,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,6 +42,8 @@ interface BattleFieldProps {
   enemyVisualState?: 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
   floatingText?: string | null;
   animationTick?: number;
+  lastLog?: CombatLogEntry | null;
+  recentLogs?: CombatLogEntry[];
 }
 
 interface ContextMenu {
@@ -51,6 +54,16 @@ interface ContextMenu {
   tileX?: number;
   tileY?: number;
   show: boolean;
+}
+
+interface FloatingDamage {
+  id: string;
+  entityId: string;
+  text: string;
+  createdAt: number;
+  offsetX: number;
+  offsetY: number;
+  kind: 'damage' | 'block' | 'miss';
 }
 
 interface TileState {
@@ -67,6 +80,12 @@ interface TileState {
 const CAMERA_TILE_BUDGET = 12;
 
 function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
+  if (entity.combatStyleHint) {
+    return entity.combatStyleHint;
+  }
+  if (typeof entity.attackRange === 'number' && entity.attackRange > 1) {
+    return 'RANGED';
+  }
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
     return 'MAGIC';
   }
@@ -74,6 +93,19 @@ function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'M
     return 'RANGED';
   }
   return 'MELEE';
+}
+
+function getMaxAttackRange(entity: ArenaCombatEntity, style: 'MELEE' | 'RANGED' | 'MAGIC'): number {
+  if (style === 'MELEE') {
+    return 1;
+  }
+  const raw = typeof entity.attackRange === 'number' && Number.isFinite(entity.attackRange)
+    ? Math.floor(entity.attackRange)
+    : undefined;
+  if (style === 'MAGIC') {
+    return Math.max(2, raw ?? 5);
+  }
+  return Math.max(2, raw ?? 6);
 }
 
 function isBlockingTile(type: BattlefieldTileType): boolean {
@@ -147,6 +179,8 @@ export function BattleField({
   playerId,
   playerAvatarUrl,
   movementType = null,
+  lastLog = null,
+  recentLogs = [],
   selectedMoveTile,
   onMoveTileSelect,
   onTargetSelect,
@@ -176,6 +210,7 @@ export function BattleField({
     }
 
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const processedLogKeysRef = useRef<Set<string>>(new Set());
   const [boardSize, setBoardSize] = useState({ width: 0, height: 0 });
     const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
     const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
@@ -185,6 +220,7 @@ export function BattleField({
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, type: 'cell', show: false });
+  const [floatingDamages, setFloatingDamages] = useState<FloatingDamage[]>([]);
 
   const placements = useMemo(
     () => getBattlefieldTilePlacements(entities, distance, battleMapWidth, battleMapHeight),
@@ -198,6 +234,82 @@ export function BattleField({
   const selectedEnemy = entities.find((entity) => entity.id === selectedTargetId) ?? entities.find((entity) => entity.team === TeamSide.Right && entity.isAlive);
   const playerPlacement = placements.find((p) => p.entityId === playerId);
   const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
+
+  useEffect(() => {
+    const logsToProcess = recentLogs.length > 0 ? recentLogs : lastLog ? [lastLog] : [];
+    if (logsToProcess.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const processed = processedLogKeysRef.current;
+
+    const pending: Array<{ targetId: string; kind: FloatingDamage['kind']; text: string }> = [];
+
+    for (const log of logsToProcess) {
+      if (!log.targetId) {
+        continue;
+      }
+      if (log.type !== 'HIT' && log.type !== 'BLOCK' && log.type !== 'MISS') {
+        continue;
+      }
+
+      const key = `${log.round}:${log.type}:${log.actorId}:${log.targetId}:${log.amount ?? ''}:${log.text}`;
+      if (processed.has(key)) {
+        continue;
+      }
+      processed.add(key);
+
+      if (log.type === 'HIT') {
+        pending.push({ targetId: log.targetId, kind: 'damage', text: `-${log.amount ?? 0}` });
+      } else if (log.type === 'BLOCK') {
+        pending.push({ targetId: log.targetId, kind: 'block', text: 'BLOCK' });
+      } else if (log.type === 'MISS') {
+        pending.push({ targetId: log.targetId, kind: 'miss', text: 'MISS' });
+      }
+    }
+
+    if (processed.size > 120) {
+      processedLogKeysRef.current = new Set(
+        logsToProcess.map((log) => `${log.round}:${log.type}:${log.actorId}:${log.targetId ?? ''}:${log.amount ?? ''}:${log.text}`),
+      );
+    }
+
+    if (pending.length === 0) {
+      return;
+    }
+
+    setFloatingDamages((prev) => {
+      const active = prev.filter((entry) => now - entry.createdAt < 1300);
+      const next = [...active];
+      for (const item of pending) {
+        const stackIndex = next.filter((entry) => entry.entityId === item.targetId).length;
+        const offsetX = (stackIndex % 3 - 1) * 10;
+        const offsetY = -stackIndex * 7;
+        next.push({
+          id: `fd_${now}_${Math.random().toString(16).slice(2)}`,
+          entityId: item.targetId,
+          text: item.text,
+          createdAt: now,
+          offsetX,
+          offsetY,
+          kind: item.kind,
+        });
+      }
+      return next;
+    });
+  }, [lastLog, recentLogs]);
+
+  useEffect(() => {
+    if (floatingDamages.length === 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      setFloatingDamages((prev) => prev.filter((entry) => now - entry.createdAt < 1300));
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [floatingDamages.length]);
   const viewport = useMemo(() => {
     const width = Math.min(viewportCellCount, battleMapWidth);
     const height = Math.min(viewportCellCount, battleMapHeight);
@@ -271,7 +383,7 @@ export function BattleField({
   }, [adjacentMeleeEnemies, movementType, placementByTile, playerPlacement, tileTypeByKey]);
 
   const attackablePositions = useMemo(() => {
-    if (!selectedEnemy || selectedTargetId === playerId) {
+    if (!player || !selectedEnemy || selectedTargetId === playerId) {
       return new Set<string>();
     }
 
@@ -281,6 +393,7 @@ export function BattleField({
       return new Set<string>();
     }
 
+    const maxRange = getMaxAttackRange(player, playerStyle);
     const positions = new Set<string>();
     for (let x = 0; x < battleMapWidth; x += 1) {
       for (let y = 0; y < battleMapHeight; y += 1) {
@@ -288,19 +401,20 @@ export function BattleField({
         if (playerStyle === 'MELEE' && dist <= 1) {
           positions.add(`${x}:${y}`);
         }
-        if (playerStyle === 'RANGED' && dist >= 2 && dist <= 6) {
-          // For ranged attacks, also check line of sight
+        if (playerStyle === 'RANGED' && dist <= maxRange) {
           if (hasLineOfSightOnTiles(x, y, enemyPlacement.x, enemyPlacement.y, tileTypeByKey)) {
             positions.add(`${x}:${y}`);
           }
         }
-        if (playerStyle === 'MAGIC' && dist <= 5) {
-          positions.add(`${x}:${y}`);
+        if (playerStyle === 'MAGIC' && dist <= maxRange) {
+          if (hasLineOfSightOnTiles(x, y, enemyPlacement.x, enemyPlacement.y, tileTypeByKey)) {
+            positions.add(`${x}:${y}`);
+          }
         }
       }
     }
     return positions;
-  }, [playerId, playerStyle, placements, selectedEnemy, selectedTargetId, tileTypeByKey]);
+  }, [battleMapHeight, battleMapWidth, player, playerId, playerStyle, placements, selectedEnemy, selectedTargetId, tileTypeByKey]);
 
   const threatPositions = useMemo(() => {
     const set = new Set<string>();
@@ -351,9 +465,11 @@ export function BattleField({
       return dist <= 1;
     }
     if (playerStyle === 'RANGED') {
-      return dist >= 2 && hasLineOfSightOnTiles(playerPlacement.x, playerPlacement.y, x, y, tileTypeByKey);
+      const maxRange = getMaxAttackRange(player, playerStyle);
+      return dist <= maxRange && hasLineOfSightOnTiles(playerPlacement.x, playerPlacement.y, x, y, tileTypeByKey);
     }
-    return dist <= 5;
+    const maxRange = getMaxAttackRange(player, playerStyle);
+    return dist <= maxRange && hasLineOfSightOnTiles(playerPlacement.x, playerPlacement.y, x, y, tileTypeByKey);
   };
 
   const planMoveTo = useCallback((x: number, y: number, immediate = false) => {
@@ -672,18 +788,48 @@ export function BattleField({
                   role="button"
                   tabIndex={-1}
                 >
-                  {entity ? (
-                    <div className="tactical-token" title={entity.name}>
-                      <div
-                        className={`token-avatar-shell ${entity.isAlive ? '' : 'is-dead'}`}
-                        style={{ width: `${tokenSizePx}px`, height: `${tokenSizePx}px` }}
-                      >
-                        <img src={getRacePortrait(entity)} alt={entity.name} className="token-avatar-img" />
-                        <div className="token-avatar-base" />
-                        <div className="token-avatar-hp-fill" style={{ height: `${Math.max(0, Math.min(100, Math.round((entity.currentHp / Math.max(1, entity.maxHp)) * 100)))}%` }} />
-                      </div>
-                    </div>
-                  ) : null}
+                   {entity ? (() => {
+                     const hpPercent = Math.max(
+                       0,
+                       Math.min(100, Math.round((entity.currentHp / Math.max(1, entity.maxHp)) * 100)),
+                     );
+                     const teamClass =
+                       entity.team === TeamSide.Right
+                         ? 'team-enemy'
+                         : entity.team === TeamSide.Left
+                           ? 'team-player'
+                           : 'team-neutral';
+                     const isFocus = entity.id === playerId || entity.id === selectedTargetId;
+                     const isSelected = entity.id === selectedTargetId;
+                     const floats = floatingDamages.filter((entry) => entry.entityId === entity.id);
+
+                     return (
+                       <div className="tactical-token" title={entity.name}>
+                         <div
+                           className={`token-avatar-shell ${teamClass} ${entity.isAlive ? '' : 'is-dead'} ${isFocus ? 'is-focus' : ''} ${isSelected ? 'is-selected' : ''}`}
+                           style={{ width: `${tokenSizePx}px`, height: `${tokenSizePx}px` }}
+                         >
+                           <img src={getRacePortrait(entity)} alt={entity.name} className="token-avatar-img" />
+                           <div className="token-avatar-base" />
+                           <div className="token-hp-bar" aria-hidden="true">
+                             <div className="token-hp-bar-fill" style={{ width: `${hpPercent}%` }} />
+                           </div>
+                         </div>
+
+                         {floats.map((entry) => (
+                           <div
+                             key={entry.id}
+                             className={`tactical-float tactical-float-${entry.kind}`}
+                             style={{
+                               transform: `translate(calc(-50% + ${entry.offsetX}px), ${entry.offsetY}px)`,
+                             }}
+                           >
+                             {entry.text}
+                           </div>
+                         ))}
+                       </div>
+                     );
+                   })() : null}
                 </div>
               );
             }),

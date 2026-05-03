@@ -234,6 +234,104 @@ class RuntimeBattleMapTrapDto {
   triggerOnce?: boolean;
 }
 
+class RuntimeBattleMapPlacedNpcDto {
+  @IsString()
+  id!: string;
+
+  @IsOptional()
+  @IsString()
+  npcId?: string;
+
+  @IsString()
+  @Length(1, 120)
+  name!: string;
+
+  @IsString()
+  role!: string;
+
+  @IsInt()
+  @Min(0)
+  x!: number;
+
+  @IsInt()
+  @Min(0)
+  y!: number;
+
+  @IsOptional()
+  @IsString()
+  factionId?: string;
+
+  @IsOptional()
+  @IsString()
+  dialogueId?: string;
+
+  @IsOptional()
+  @IsString()
+  questId?: string;
+
+  @IsOptional()
+  @IsString()
+  merchantId?: string;
+
+  @IsOptional()
+  startsCombat?: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  description?: string;
+}
+
+class RuntimeBattleMapTriggerDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  type!: string;
+
+  @IsString()
+  @Length(1, 120)
+  name!: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapPointDto)
+  cells!: RuntimeBattleMapPointDto[];
+
+  @IsOptional()
+  @IsString()
+  questId?: string;
+
+  @IsOptional()
+  @IsString()
+  dialogueId?: string;
+
+  @IsOptional()
+  @IsString()
+  targetBattleMapId?: string;
+
+  @IsOptional()
+  @IsString()
+  targetWorldZoneId?: string;
+
+  @IsOptional()
+  startsCombat?: boolean;
+
+  @IsOptional()
+  once?: boolean;
+
+  @IsOptional()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  description?: string;
+}
+
 export class RuntimeBattleMapDto {
   @IsString()
   id!: string;
@@ -282,6 +380,16 @@ export class RuntimeBattleMapDto {
   @ValidateNested({ each: true })
   @Type(() => RuntimeBattleMapTrapDto)
   traps?: RuntimeBattleMapTrapDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapPlacedNpcDto)
+  npcs?: RuntimeBattleMapPlacedNpcDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapTriggerDto)
+  triggers?: RuntimeBattleMapTriggerDto[];
 }
 
 export class CustomCombatNpcDto {

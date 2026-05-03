@@ -179,6 +179,43 @@ export function completeObjective(playerId: string, questId: string, objectiveId
   return saveQuestState({ ...existing });
 }
 
+export function completeStep(playerId: string, questId: string, stepId?: string): PlayerQuestState {
+  const quest = getQuestById(questId);
+  if (!quest) {
+    throw new Error(`Quest not found: ${questId}`);
+  }
+
+  const existing = getQuestState(playerId, questId);
+  if (!existing) {
+    throw new Error('Quest state not found. Start quest first.');
+  }
+
+  const step =
+    (stepId ? asArray(quest.steps).find((entry) => entry.id === stepId) : null) ??
+    currentStep(quest, existing);
+
+  if (!step) {
+    return completeQuest(playerId, questId);
+  }
+
+  if (!existing.completedStepIds.includes(step.id)) {
+    existing.completedStepIds.push(step.id);
+  }
+
+  for (const objective of asArray(step.objectives)) {
+    if (!existing.completedObjectiveIds.includes(objective.id)) {
+      existing.completedObjectiveIds.push(objective.id);
+    }
+  }
+
+  if (!step.nextStepId) {
+    return completeQuest(playerId, questId);
+  }
+
+  existing.currentStepId = step.nextStepId;
+  return saveQuestState({ ...existing });
+}
+
 export function advanceQuest(playerId: string, questId: string): PlayerQuestState {
   const quest = getQuestById(questId);
   if (!quest) {

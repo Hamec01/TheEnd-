@@ -26,6 +26,33 @@ export interface DialogueChoice {
   text: string;
   nextNodeId?: string;
   endsDialogue?: boolean;
+  /**
+   * Backward/forward compatibility with the newer dialogue schema used in TZ:
+   * - `next` is an alias for `nextNodeId`
+   * - `end` is an alias for `endsDialogue`
+   */
+  next?: string;
+  end?: boolean;
+
+  /**
+   * Sugar fields (TZ) that are converted to actions at runtime.
+   * Prefer using `actions[]` in admin, but keep these for imported content.
+   */
+  giveQuest?: string;
+  completeQuest?: string;
+  completeStep?:
+    | string
+    | {
+        questId: string;
+        stepId?: string;
+      };
+  completeObjective?:
+    | string
+    | {
+        questId: string;
+        objectiveId: string;
+      };
+  rewards?: unknown;
 
   conditions?: DialogueCondition[];
   actions?: DialogueAction[];
@@ -59,6 +86,13 @@ export interface DialogueCondition {
   key?: string;
   operator?: '==' | '!=' | '>' | '>=' | '<' | '<=';
   value?: string | number | boolean;
+
+  // Compatibility with TZ-style conditions (camelCase + explicit fields).
+  // These fields are optional and ignored by existing editors.
+  questId?: string;
+  objectiveId?: string;
+  itemId?: string;
+  questItemId?: string;
 }
 
 export interface DialogueAction {
@@ -66,6 +100,7 @@ export interface DialogueAction {
   type:
     | 'startQuest'
     | 'completeObjective'
+    | 'completeStep'
     | 'advanceQuest'
     | 'completeQuest'
     | 'failQuest'

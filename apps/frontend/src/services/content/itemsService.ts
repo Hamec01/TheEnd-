@@ -18,6 +18,26 @@ function normalizeItemSlot(slot: AdminItem['slot'] | string | undefined): AdminI
 }
 
 function normalize(item: AdminItem): AdminItem {
+  const normalizedRange = typeof item.attackRange === 'number'
+    ? Math.max(2, Math.min(24, Math.floor(item.attackRange)))
+    : undefined;
+
+  const normalizedPierce = normalizedRange && typeof item.pierceTargets === 'number'
+    ? Math.max(2, Math.min(12, Math.floor(item.pierceTargets)))
+    : undefined;
+
+  const normalizedSplashRadius = normalizedRange && typeof item.splashRadius === 'number'
+    ? Math.max(1, Math.min(6, Math.floor(item.splashRadius)))
+    : undefined;
+
+  const normalizedSplashCenter = normalizedSplashRadius
+    ? (typeof item.splashCenterMultiplier === 'number' ? Math.max(1, Math.min(10, item.splashCenterMultiplier)) : 1)
+    : undefined;
+
+  const normalizedSplashOuter = normalizedSplashRadius
+    ? (typeof item.splashOuterMultiplier === 'number' ? Math.max(0, Math.min(normalizedSplashCenter ?? 1, item.splashOuterMultiplier)) : 0.5)
+    : undefined;
+
   const normalized: AdminItem = {
     ...item,
     requiredStats: item.requiredStats ?? {},
@@ -26,6 +46,11 @@ function normalize(item: AdminItem): AdminItem {
     handsRequired: item.type === 'weapon' && item.handsRequired === 2 ? 2 : 1,
     maxStack: item.stackable ? Math.max(2, item.maxStack ?? 2) : 1,
     price: Math.max(0, item.price),
+    attackRange: normalizedRange,
+    pierceTargets: normalizedPierce,
+    splashRadius: normalizedSplashRadius,
+    splashCenterMultiplier: normalizedSplashCenter,
+    splashOuterMultiplier: normalizedSplashOuter,
     updatedAt: item.updatedAt || nowIso(),
     createdAt: item.createdAt || nowIso(),
   };
@@ -38,6 +63,13 @@ function normalize(item: AdminItem): AdminItem {
   }
   if (normalized.type === 'weapon' && (!normalized.slot || normalized.slot === 'none')) {
     normalized.slot = 'rightHand';
+  }
+
+  if (!normalized.attackRange) {
+    normalized.pierceTargets = undefined;
+    normalized.splashRadius = undefined;
+    normalized.splashCenterMultiplier = undefined;
+    normalized.splashOuterMultiplier = undefined;
   }
 
   return normalized;
@@ -78,6 +110,53 @@ export function validateItem(item: AdminItem): string[] {
   if (!item.stackable && (item.maxStack ?? 1) !== 1) {
     errors.push('non-stackable item maxStack must be 1');
   }
+
+  if (typeof item.attackRange === 'number') {
+    if (!Number.isFinite(item.attackRange) || Math.floor(item.attackRange) !== item.attackRange) {
+      errors.push('attackRange must be an integer');
+    } else if (item.attackRange <= 1) {
+      errors.push('attackRange must be > 1');
+    }
+  }
+
+  if (typeof item.pierceTargets === 'number') {
+    if (!item.attackRange) {
+      errors.push('pierceTargets requires attackRange');
+    } else if (!Number.isFinite(item.pierceTargets) || Math.floor(item.pierceTargets) !== item.pierceTargets) {
+      errors.push('pierceTargets must be an integer');
+    } else if (item.pierceTargets < 2) {
+      errors.push('pierceTargets must be >= 2');
+    }
+  }
+
+  if (typeof item.splashRadius === 'number') {
+    if (!item.attackRange) {
+      errors.push('splashRadius requires attackRange');
+    } else if (!Number.isFinite(item.splashRadius) || Math.floor(item.splashRadius) !== item.splashRadius) {
+      errors.push('splashRadius must be an integer');
+    } else if (item.splashRadius < 1) {
+      errors.push('splashRadius must be >= 1');
+    }
+  }
+
+  if (typeof item.splashCenterMultiplier === 'number') {
+    if (!item.splashRadius) {
+      errors.push('splashCenterMultiplier requires splashRadius');
+    } else if (!Number.isFinite(item.splashCenterMultiplier) || item.splashCenterMultiplier < 1) {
+      errors.push('splashCenterMultiplier must be >= 1');
+    }
+  }
+
+  if (typeof item.splashOuterMultiplier === 'number') {
+    if (!item.splashRadius) {
+      errors.push('splashOuterMultiplier requires splashRadius');
+    } else if (!Number.isFinite(item.splashOuterMultiplier) || item.splashOuterMultiplier < 0) {
+      errors.push('splashOuterMultiplier must be >= 0');
+    } else if (typeof item.splashCenterMultiplier === 'number' && item.splashOuterMultiplier > item.splashCenterMultiplier) {
+      errors.push('splashOuterMultiplier must be <= splashCenterMultiplier');
+    }
+  }
+
   return errors;
 }
 

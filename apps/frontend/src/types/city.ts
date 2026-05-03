@@ -27,6 +27,35 @@ export interface CityLocationShape {
   points?: Array<{ x: number; y: number }>;
 }
 
+export type CityLocationEncounterKind = 'arena' | 'quest' | 'event' | 'dungeon' | 'ambush';
+
+export interface CityLocationEncounterPreset {
+  id: string;
+  label: string;
+  type: 'pve' | 'pvp' | 'random' | 'scripted';
+  battleMapId?: string;
+  enemyCount?: number;
+  playerTurnSeconds?: number;
+  notes?: string;
+}
+
+export interface CityLocationEncounterConfig {
+  kind: CityLocationEncounterKind;
+  arenaMasterNpcId?: string;
+  battleMapIds?: string[];
+  presets?: CityLocationEncounterPreset[];
+  allowPvE?: boolean;
+  allowPvP?: boolean;
+  allowRandomEnemyGeneration?: boolean;
+}
+
+export interface CityLocationAutoTrigger {
+  npcId: string;
+  dialogueId: string;
+  condition?: string;
+  once?: boolean;
+}
+
 export interface CityRacePopulation {
   raceId: string;
   count?: number;
@@ -44,6 +73,7 @@ export interface CityLocation {
   shapeType: CityLocationShapeType;
   shape: CityLocationShape;
   npcIds: string[];
+  autoTriggers?: CityLocationAutoTrigger[];
   questIds: string[];
   shopIds: string[];
   isVisible: boolean;
@@ -51,6 +81,7 @@ export interface CityLocation {
   unlockCondition?: string;
   markerIcon?: string;
   linkedBattleMapId?: string;
+  encounter?: CityLocationEncounterConfig;
 }
 
 export interface City {

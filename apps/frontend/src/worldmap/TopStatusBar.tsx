@@ -14,6 +14,7 @@ interface TopStatusBarProps {
   onStats: () => void;
   onSkills: () => void;
   onInventory: () => void;
+  onQuests: () => void;
   onMap: () => void;
   onClan: () => void;
   onExit: () => void;
@@ -34,6 +35,7 @@ export function TopStatusBar(props: TopStatusBarProps) {
     onStats,
     onSkills,
     onInventory,
+    onQuests,
     onMap,
     onClan,
     onExit,
@@ -64,6 +66,7 @@ export function TopStatusBar(props: TopStatusBarProps) {
         <button onClick={onSkills}>Навыки</button>
         <button onClick={onStats}>Персонаж</button>
         <button onClick={onMap}>Карта</button>
+        <button onClick={onQuests}>Журнал</button>
         <button onClick={onInventory}>Экипировка</button>
         <button onClick={onStats}>Рейды</button>
         <button onClick={onClan}>Клан</button>

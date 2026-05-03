@@ -6,11 +6,13 @@ import type {
   StatBlock,
 } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
+import type { CustomArenaNpcPayload, NearbyPvpPlayer } from "../api";
+import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
 import { TopStatusBar } from "./TopStatusBar";
 import { PlayerQuickPanel } from "./PlayerQuickPanel";
 import { WorldMapCanvas, type WorldMapCanvasHandle } from "./WorldMapCanvas";
 import { ZoneEditorPanel } from "./ZoneEditorPanel";
-import { NpcInteractionPanel } from "./NpcInteractionPanel";
+import { QuestJournalModal } from "./QuestJournalModal";
 import {
   createEmptyHistory,
   createSnapshot,
@@ -64,7 +66,7 @@ import {
   getAllPlayerQuestStates,
   getAllQuests,
 } from "../services/questRepository";
-import { tryStartRandomQuestFromZone } from "../services/questRuntime";
+import { advanceQuest, applyQuestRewards, tryStartRandomQuestFromZone } from "../services/questRuntime";
 import type {
   PlayerQuestState,
   QuestDefinition,
@@ -75,13 +77,16 @@ import {
   getAllNpcs,
   saveNpc,
 } from "../services/npcRepository";
-import { getDialoguesByNpc } from "../services/dialogueRepository";
-import {
-  chooseDialogueOption,
-  getStartNode,
-} from "../services/dialogueRuntime";
+import { ensureDialoguesLoaded } from "../services/dialogueRepository";
+import { getAllDialogues } from "../services/dialogueRepository";
+import { useDialogueRunner } from "../services/dialogueRunner";
+import { selectBestInteractionForNpc } from "../services/npcInteractionSelector";
 import { getNearbyMappedNpcs } from "../services/npcMapRuntime";
-import type { DialogueDefinition, DialogueNode } from "../types/dialogue";
+import {
+  createLocationAutoTriggerKey,
+  hasTriggeredLocationAutoTrigger,
+  markLocationAutoTriggerTriggered,
+} from "../services/locationAutoTriggerStore";
 import type { NpcDefinition } from "../types/npc";
 
 type LocationView = "map" | "city";
@@ -97,6 +102,10 @@ type ActiveWorldModal =
       npcId: string;
     }
   | {
+      type: "encounter";
+      locationId: string;
+    }
+  | {
       type: "location";
       locationId: string;
     }
@@ -104,9 +113,7 @@ type ActiveWorldModal =
 type SidePanelKey =
   | "adminEditor"
   | "adminBattle"
-  | "contextActions"
-  | "npcInteraction"
-  | "nearbyNpc";
+  | "contextActions";
 
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const UI_LEFT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.leftPanelCollapsed";
@@ -156,6 +163,62 @@ function getLocationPercent(location: CityLocation): {
 
 function getPlayerPositionStorageKey(characterId: string): string {
   return `theend.worldMap.playerPosition.${characterId}`;
+}
+
+function evaluateLocationAutoTriggerCondition(
+  condition: string | undefined,
+  player: {
+    activeQuestIds?: string[];
+    completedQuestIds?: string[];
+    itemIds?: string[];
+    flags?: Record<string, unknown>;
+  },
+): boolean {
+  const raw = (condition ?? "").trim();
+  if (!raw) {
+    return true;
+  }
+
+  let negate = false;
+  let expression = raw;
+  if (expression.startsWith("!")) {
+    negate = true;
+    expression = expression.slice(1).trim();
+  }
+
+  const [kindRaw, ...rest] = expression.split(":");
+  const kind = (kindRaw ?? "").trim().toLowerCase();
+  const value = rest.join(":").trim();
+
+  let result = false;
+  switch (kind) {
+    case "true":
+      result = true;
+      break;
+    case "false":
+      result = false;
+      break;
+    case "quest_active":
+    case "questactive":
+      result = Boolean(value && (player.activeQuestIds ?? []).includes(value));
+      break;
+    case "quest_completed":
+    case "questcompleted":
+      result = Boolean(value && (player.completedQuestIds ?? []).includes(value));
+      break;
+    case "has_item":
+    case "hasitem":
+      result = Boolean(value && (player.itemIds ?? []).includes(value));
+      break;
+    case "flag":
+      result = Boolean(value && player.flags && Object.prototype.hasOwnProperty.call(player.flags, value));
+      break;
+    default:
+      result = false;
+      break;
+  }
+
+  return negate ? !result : result;
 }
 
 function upsertQuestMarkerList(
@@ -299,7 +362,10 @@ interface WorldMapScreenProps {
   onOpenInventory: () => void;
   onOpenClan: () => void;
   onExit: () => void;
-  onStartCombat: () => Promise<void>;
+  onStartCombat: (
+    battleMapIdOverride?: string,
+    options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[] },
+  ) => Promise<void>;
   onStartBattleMap?: (battleMapId: string) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
   onOpenSkills: () => void;
@@ -396,9 +462,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   >({
     adminEditor: true,
     adminBattle: true,
-    contextActions: true,
-    npcInteraction: true,
-    nearbyNpc: true,
+    contextActions: false,
   });
   const [questDefinitions, setQuestDefinitions] = useState<QuestDefinition[]>(
     [],
@@ -420,21 +484,48 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<string | null>(null);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
-
-  const [activeDialogue, setActiveDialogue] =
-    useState<DialogueDefinition | null>(null);
-  const [activeDialogueNode, setActiveDialogueNode] =
-    useState<DialogueNode | null>(null);
-  const [dialogueLogs, setDialogueLogs] = useState<string[]>([]);
+  const [questJournalOpen, setQuestJournalOpen] = useState(false);
+  const [pvpBrowserOpen, setPvpBrowserOpen] = useState(false);
+  const [pvpPlayers, setPvpPlayers] = useState<NearbyPvpPlayer[]>([]);
+  const [pvpLoading, setPvpLoading] = useState(false);
+  const [pvpError, setPvpError] = useState<string | null>(null);
+  const [npcQuestSceneModal, setNpcQuestSceneModal] = useState<
+    | null
+    | {
+        npcId: string;
+        npcName: string;
+        portrait?: string;
+        stages: Array<{
+          questId: string;
+          questTitle: string;
+          stepTitle: string | null;
+          journalText: string | null;
+          objectives: Array<{ id: string; text: string; completed: boolean }>;
+        }>;
+        selectedQuestId: string;
+      }
+  >(null);
+  const [randomEventModal, setRandomEventModal] = useState<
+    | null
+    | {
+        zoneId: string;
+        zoneName: string;
+        questId: string;
+        questTitle: string;
+        questText: string;
+      }
+  >(null);
+  const dialoguePlayer = useMemo(
+    () => ({ id: character.id, level: character.level, race: character.race }),
+    [character.id, character.level, character.race],
+  );
+  const dialogueRunner = useDialogueRunner({ player: dialoguePlayer });
 
   const [selectedCityLocationId, setSelectedCityLocationId] = useState<
     string | null
   >(null);
 
-  const pendingNpcActionRef = useRef<{
-    npcId: string;
-    action: "talk" | "quest" | "trade" | "train";
-  } | null>(null);
+  const nextSystemChatIdRef = useRef(0);
   const [zones, setZones] = useState<WorldMapZone[]>(() =>
     cloneZones(WORLD_MAP_ZONES),
   );
@@ -477,13 +568,34 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       ),
     [playerPosition.x, playerPosition.y],
   );
-  const playQuestMarkers = useMemo(
-    () =>
-      questMarkers.filter(
-        (entry) => entry.mapId === "worldmap-main" && entry.visibleToPlayer,
-      ),
-    [questMarkers],
-  );
+  const playQuestMarkers = useMemo(() => {
+    const activeStates = playerQuestStates.filter((entry) => entry.status === "active");
+    if (activeStates.length === 0) {
+      return [] as QuestMarkerDefinition[];
+    }
+
+    const stateByQuestId = new Map(activeStates.map((state) => [state.questId, state]));
+
+    return questMarkers.filter((marker) => {
+      if (marker.mapId !== "worldmap-main" || !marker.visibleToPlayer) {
+        return false;
+      }
+      if (!marker.linkedQuestId) {
+        return false;
+      }
+      const state = stateByQuestId.get(marker.linkedQuestId);
+      if (!state) {
+        return false;
+      }
+      if (marker.linkedStepId && state.currentStepId && marker.linkedStepId !== state.currentStepId) {
+        return false;
+      }
+      if (marker.linkedObjectiveId && state.completedObjectiveIds.includes(marker.linkedObjectiveId)) {
+        return false;
+      }
+      return true;
+    });
+  }, [playerQuestStates, questMarkers]);
   const playNpcMarkers = useMemo(() => {
     // NPC interactions stay available, but map labels/markers are intentionally hidden.
     return [] as Array<{
@@ -505,6 +617,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       npcs.find((entry) => entry.id === selectedNpcForInteractionId) ?? null
     );
   }, [npcs, selectedNpcForInteractionId]);
+  const npcById = useMemo(() => new Map(npcs.map((npc) => [npc.id, npc])), [npcs]);
   const cityMerchantById = useMemo(
     () => new Map(cityMerchants.map((merchant) => [merchant.id, merchant])),
     [cityMerchants],
@@ -690,7 +803,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [activeCity?.backgroundImageId, activeCity?.backgroundImageUrl]);
 
   useEffect(() => {
-    void Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded()])
+    void Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded(), ensureDialoguesLoaded()])
       .then(() => {
         setQuestDefinitions(getAllQuests());
         setPlayerQuestStates(
@@ -1117,6 +1230,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         );
 
         if (triggered) {
+          setRandomEventModal({
+            zoneId: zone.id,
+            zoneName: zone.name,
+            questId: triggered.id,
+            questTitle: triggered.title,
+            questText: triggered.playerDescription || triggered.adminDescription || "",
+          });
           const questEntry: ChatMessage = {
             id: `sys-quest-${Date.now()}-${triggered.id}`,
             text: `\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442: ${triggered.title}`,
@@ -1453,26 +1573,82 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }, [mouseCoords.x, mouseCoords.y, npcs, onStatus, selectedNpcIdForPlacement]);
 
+  const openNpcDialogue = useCallback(
+    (npcId: string, context?: { cityId?: string; locationId?: string }) => {
+      const npc = npcs.find((entry) => entry.id === npcId) ?? null;
+      if (!npc) {
+        dialogueRunner.openDialogueForNpc(npcId, context ?? {});
+        return;
+      }
+
+      const activeQuestIds = playerQuestStates.filter((entry) => entry.status === "active").map((entry) => entry.questId);
+      const completedQuestIds = playerQuestStates.filter((entry) => entry.status === "completed").map((entry) => entry.questId);
+      const itemIds = inventory.items.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId);
+
+      const player = {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        gold: inventory.gold,
+        itemIds,
+        activeQuestIds,
+        completedQuestIds,
+      };
+
+      const bindingDialogueIds = (npc.dialogues ?? []).map((binding) => binding.dialogueId);
+      const candidateDialogues = getAllDialogues().filter((dialogue) => {
+        if (dialogue.status !== "active") {
+          return false;
+        }
+        return dialogue.npcId === npcId || bindingDialogueIds.includes(dialogue.id);
+      });
+
+      const best = selectBestInteractionForNpc({
+        npc,
+        player,
+        questDefinitions,
+        playerQuestStates,
+        dialogues: candidateDialogues,
+      });
+
+      if (best.kind === "quest_scene") {
+        const stages = best.questStages.map((stage) => ({
+          questId: stage.questId,
+          questTitle: stage.questTitle,
+          stepTitle: stage.stepTitle,
+          journalText: stage.journalText,
+          objectives: stage.objectives,
+        }));
+        const selectedQuestId = stages[0]?.questId ?? "";
+        setNpcQuestSceneModal({
+          npcId,
+          npcName: npc.name ?? npcId,
+          portrait: npc.fullImageUrl ?? npc.portraitUrl ?? npc.iconUrl,
+          stages,
+          selectedQuestId,
+        });
+        return;
+      }
+
+      if (best.kind === "dialogue") {
+        dialogueRunner.openDialogue(best.dialogueId, { ...context, npcId, sourceType: "npc" });
+        return;
+      }
+
+      dialogueRunner.openDialogueForNpc(npcId, context ?? {});
+    },
+    [character.id, character.level, character.race, dialogueRunner, inventory.gold, inventory.items, npcs, playerQuestStates, questDefinitions],
+  );
+
   const handleNpcTalk = useCallback(() => {
     if (!selectedNpcForInteraction) {
       return;
     }
-    const dialogues = getDialoguesByNpc(selectedNpcForInteraction.id).filter(
-      (entry) => entry.status !== "disabled",
-    );
-    const first = dialogues[0] ?? null;
-    if (!first) {
-      onStatus("\u0423 \u044d\u0442\u043e\u0433\u043e NPC \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0434\u0438\u0430\u043b\u043e\u0433\u043e\u0432.");
-      setActiveDialogue(null);
-      setActiveDialogueNode(null);
-      return;
-    }
-    setActiveDialogue(first);
-    setActiveDialogueNode(getStartNode(first));
-    setDialogueLogs((prev) =>
-      [...prev, `Open dialogue: ${first.id}`].slice(-12),
-    );
-  }, [onStatus, selectedNpcForInteraction]);
+    openNpcDialogue(selectedNpcForInteraction.id, {
+      cityId: activeCity?.id,
+      locationId: selectedNpcForInteraction.cityLocationId ?? selectedNpcForInteraction.locationId ?? undefined,
+    });
+  }, [activeCity?.id, openNpcDialogue, selectedNpcForInteraction]);
 
   const handleNpcTrade = useCallback(() => {
     if (!selectedNpcForInteraction?.traderId) {
@@ -1530,36 +1706,173 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const handleSelectDialogueChoice = useCallback(
     (choiceId: string) => {
-      if (
-        !selectedNpcForInteraction ||
-        !activeDialogue ||
-        !activeDialogueNode
-      ) {
+      const dialogueNpcId =
+        dialogueRunner.state.isOpen ? (dialogueRunner.state.context.npcId ?? null) : null;
+      const result = dialogueRunner.selectChoice(choiceId);
+      if (!result) {
         return;
       }
-      try {
-        const result = chooseDialogueOption(
-          character.id,
-          selectedNpcForInteraction.id,
-          activeDialogue.id,
-          activeDialogueNode.id,
-          choiceId,
-        );
-        setDialogueLogs((prev) => [...prev, ...result.logs].slice(-20));
-        setActiveDialogueNode(result.nextNode);
-        if (result.ended) {
-          setDialogueLogs((prev) => [...prev, "Dialogue ended."].slice(-20));
+        const playerLogLines: string[] = [];
+        for (const rawLine of result.logs ?? []) {
+          const line = rawLine.trim();
+          if (!line) {
+            continue;
+          }
+
+          if (line.endsWith("event emitted.")) {
+            continue;
+          }
+          if (line.startsWith("Unhandled action:")) {
+            continue;
+          }
+          if (line.startsWith("Quest flag set:")) {
+            continue;
+          }
+          if (line.startsWith("Global flag set:")) {
+            continue;
+          }
+          if (line.startsWith("NPC disposition updated for")) {
+            continue;
+          }
+          if (line.startsWith("Dialogue ended.")) {
+            continue;
+          }
+
+          if (line.startsWith("Quest started:")) {
+            const questId = line.slice("Quest started:".length).trim();
+            const questTitle =
+              questDefinitions.find((entry) => entry.id === questId)?.title ??
+              null;
+            playerLogLines.push(
+              questTitle ? `\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442: ${questTitle}` : "\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.",
+            );
+            onStatus("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.");
+            continue;
+          }
+          if (line.startsWith("Quest completed:")) {
+            const questId = line.slice("Quest completed:".length).trim();
+            const questTitle =
+              questDefinitions.find((entry) => entry.id === questId)?.title ??
+              null;
+            playerLogLines.push(
+              questTitle ? `\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d: ${questTitle}` : "\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d.",
+            );
+            continue;
+          }
+          if (line.startsWith("Quest advanced:")) {
+            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.");
+            continue;
+          }
+          if (line.startsWith("Quest failed:")) {
+            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u043e\u0432\u0430\u043b\u0435\u043d.");
+            continue;
+          }
+          if (line.startsWith("Gold granted:")) {
+            const amount = line.slice("Gold granted:".length).trim();
+            playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
+            continue;
+          }
+          if (line.startsWith("Gold removed:")) {
+            const amount = line.slice("Gold removed:".length).trim();
+            playerLogLines.push(`\u041f\u043e\u0442\u0440\u0430\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
+            continue;
+          }
+          if (line.startsWith("Item granted:")) {
+            const itemId = line.slice("Item granted:".length).trim();
+            const name = resolveItemById
+              ? (resolveItemById(itemId)?.name ?? itemId)
+              : itemId;
+            playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
+            continue;
+          }
+          if (line.startsWith("Item removed:")) {
+            const itemId = line.slice("Item removed:".length).trim();
+            const name = resolveItemById
+              ? (resolveItemById(itemId)?.name ?? itemId)
+              : itemId;
+            playerLogLines.push(`\u041f\u043e\u0442\u0435\u0440\u044f\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
+            continue;
+          }
+          if (line.startsWith("Quest item granted:")) {
+            playerLogLines.push("\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442.");
+            continue;
+          }
+          if (line.startsWith("Quest item removed:")) {
+            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u043f\u043e\u0442\u0435\u0440\u044f\u043d.");
+            continue;
+          }
+          if (line.startsWith("Location unlocked:")) {
+            playerLogLines.push("\u041e\u0442\u043a\u0440\u044b\u0442\u0430 \u043d\u043e\u0432\u0430\u044f \u043b\u043e\u043a\u0430\u0446\u0438\u044f.");
+            continue;
+          }
+
+          // For any remaining logs, avoid leaking internal IDs to the player.
         }
-      } catch (error) {
-        onStatus((error as Error).message);
-      }
+
+        if (playerLogLines.length > 0) {
+          const now = Date.now();
+          const next = playerLogLines.map((text) => ({
+            id: `sys-dialogue-${now}-${nextSystemChatIdRef.current++}`,
+            text,
+            type: "system" as const,
+          }));
+          setSystemChat((prev) => [...prev, ...next].slice(-12));
+        }
+
+        setPlayerQuestStates(
+          getAllPlayerQuestStates().filter(
+            (entry) => entry.playerId === character.id,
+          ),
+        );
+
+        let modalClosed = false;
+        for (const intent of result.intents ?? []) {
+          if (intent.type === "OPEN_SHOP") {
+            const npc = npcs.find((entry) => entry.id === dialogueNpcId) ?? null;
+            const traderId = npc?.traderId?.trim() || intent.merchantId?.trim();
+            if (!traderId) {
+              onStatus("\u0414\u043b\u044f openShop \u043d\u0435\u0442 traderId \u0443 NPC.");
+              continue;
+            }
+            dialogueRunner.closeDialogue();
+            setActiveWorldModal(null);
+            onOpenMerchant(traderId);
+            modalClosed = true;
+            break;
+          }
+          if (intent.type === "START_COMBAT") {
+            dialogueRunner.closeDialogue();
+            setActiveWorldModal(null);
+            void onStartCombat();
+            modalClosed = true;
+            break;
+          }
+          if (intent.type === "OPEN_TRAINING") {
+            dialogueRunner.closeDialogue();
+            setActiveWorldModal(null);
+            onOpenSkills();
+            modalClosed = true;
+            break;
+          }
+        }
+
+        if (modalClosed) {
+          return;
+        }
+        if (result.ended) {
+          dialogueRunner.closeDialogue();
+        }
     },
     [
-      activeDialogue,
-      activeDialogueNode,
       character.id,
+      dialogueRunner,
+      npcs,
+      onOpenMerchant,
+      onOpenSkills,
+      onStartCombat,
       onStatus,
-      selectedNpcForInteraction,
+      questDefinitions,
+      resolveItemById,
     ],
   );
 
@@ -2077,75 +2390,69 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   function handleCityLocation(location: CityLocation) {
     setSelectedCityLocationId(location.id);
-    setActiveWorldModal(null);
-
-    const npcId = location.npcIds?.[0] ?? null;
-    const merchantId = location.shopIds?.[0] ?? null;
-
-    if (npcId) {
-      setActiveWorldModal({
-        type: "npc",
-        locationId: location.id,
-        npcId,
-      });
-      setContextMode("npc");
-      return;
-    }
-
-    if (merchantId) {
-      setActiveWorldModal({
-        type: "merchant",
-        locationId: location.id,
-        merchantId,
-      });
-      setContextMode("location");
-      return;
-    }
-
+    setNpcQuestSceneModal(null);
     setActiveWorldModal({
       type: "location",
       locationId: location.id,
     });
+    dialogueRunner.closeDialogue();
     setContextMode("location");
+
+    const triggers = location.autoTriggers ?? [];
+    if (triggers.length === 0) {
+      return;
+    }
+
+    const activeQuestIds = playerQuestStates
+      .filter((entry) => entry.status === "active")
+      .map((entry) => entry.questId);
+    const completedQuestIds = playerQuestStates
+      .filter((entry) => entry.status === "completed")
+      .map((entry) => entry.questId);
+    const itemIds = inventory.items
+      .filter((entry) => entry.quantity > 0)
+      .map((entry) => entry.itemId);
+
+    const player = {
+      activeQuestIds,
+      completedQuestIds,
+      itemIds,
+    };
+
+    for (const trigger of triggers) {
+      const npcId = String(trigger?.npcId ?? "").trim();
+      const dialogueId = String(trigger?.dialogueId ?? "").trim();
+      if (!npcId || !dialogueId) {
+        continue;
+      }
+
+      if (!evaluateLocationAutoTriggerCondition(trigger.condition, player)) {
+        continue;
+      }
+
+      const triggerKey = createLocationAutoTriggerKey({
+        locationId: location.id,
+        npcId,
+        dialogueId,
+      });
+
+      if (trigger.once && hasTriggeredLocationAutoTrigger(character.id, triggerKey)) {
+        continue;
+      }
+
+      if (trigger.once) {
+        markLocationAutoTriggerTriggered(character.id, triggerKey);
+      }
+
+      dialogueRunner.openDialogue(dialogueId, {
+        npcId,
+        cityId: activeCity?.id,
+        locationId: location.id,
+        sourceType: "location",
+      });
+      break;
+    }
   }
-  const requestNpcAction = useCallback(
-    (npcId: string, action: "talk" | "quest" | "trade" | "train") => {
-      pendingNpcActionRef.current = { npcId, action };
-      setSelectedNpcForInteractionId(npcId);
-      setContextMode("npc");
-    },
-    [],
-  );
-
-  useEffect(() => {
-    const pending = pendingNpcActionRef.current;
-    if (!pending) {
-      return;
-    }
-    if (
-      !selectedNpcForInteraction ||
-      selectedNpcForInteraction.id !== pending.npcId
-    ) {
-      return;
-    }
-
-    pendingNpcActionRef.current = null;
-    if (pending.action === "talk") {
-      handleNpcTalk();
-    } else if (pending.action === "quest") {
-      handleNpcQuest();
-    } else if (pending.action === "trade") {
-      handleNpcTrade();
-    } else if (pending.action === "train") {
-      handleNpcTrain();
-    }
-  }, [
-    handleNpcQuest,
-    handleNpcTalk,
-    handleNpcTrade,
-    handleNpcTrain,
-    selectedNpcForInteraction,
-  ]);
 
   const activeWorldModalElement = (() => {
     if (!activeWorldModal) {
@@ -2156,14 +2463,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       activeCity?.locations.find(
         (location) => location.id === activeWorldModal.locationId,
       ) ?? null;
-    const closeModal = () => setActiveWorldModal(null);
+    const closeModal = () => {
+      setActiveWorldModal(null);
+      dialogueRunner.closeDialogue();
+    };
 
 
     let portrait: string | undefined;
     let title = "";
     let subtitle: string | undefined;
     let description: string | undefined;
+    let content: React.ReactNode = null;
     let buttons: React.ReactNode = null;
+    const cardWidth =
+      activeWorldModal.type === "location" ? "min(760px, 100%)" : "min(520px, 100%)";
 
     if (activeWorldModal.type === "merchant") {
       const merchant = cityMerchantById.get(activeWorldModal.merchantId) ?? null;
@@ -2187,7 +2500,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const npc = npcs.find((entry) => entry.id === activeWorldModal.npcId) ?? null;
       portrait = npc?.fullImageUrl ?? npc?.portraitUrl ?? npc?.iconUrl;
       title = npc?.name ?? activeWorldModal.npcId;
-      subtitle = [npc?.title, npc?.status].filter(Boolean).join(" · ");
+      subtitle = npc?.title;
       description = npc?.description;
       const canTalk = Boolean(npc?.canTalk);
       const canQuest = Boolean(
@@ -2197,33 +2510,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       );
       const canTrain = Boolean(npc?.canTrain);
       const canTrade = Boolean(npc?.canTrade);
+
+      const canOpenDialogue = canTalk || canQuest;
       buttons = (
         <>
-          {canTalk ? (
+          {canOpenDialogue ? (
             <button
-              onClick={() => {
-                closeModal();
-                requestNpcAction(activeWorldModal.npcId, "talk");
-              }}
+              onClick={() =>
+                openNpcDialogue(activeWorldModal.npcId, {
+                  cityId: activeCity?.id,
+                  locationId: activeWorldModal.locationId,
+                })
+              }
             >
               {"\u0417\u0430\u0433\u043e\u0432\u043e\u0440\u0438\u0442\u044c"}
-            </button>
-          ) : null}
-          {canQuest ? (
-            <button
-              onClick={() => {
-                closeModal();
-                requestNpcAction(activeWorldModal.npcId, "quest");
-              }}
-            >
-              {"\u0417\u0430\u0434\u0430\u043d\u0438\u0435"}
             </button>
           ) : null}
           {canTrain ? (
             <button
               onClick={() => {
                 closeModal();
-                requestNpcAction(activeWorldModal.npcId, "train");
+                onOpenSkills();
               }}
             >
               {"\u0422\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430"}
@@ -2232,40 +2539,299 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           {canTrade ? (
             <button
               onClick={() => {
+                const traderId = npc?.traderId?.trim();
+                if (!traderId) {
+                  onStatus(
+                    "\u0423 NPC \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d trader profile.",
+                  );
+                  return;
+                }
                 closeModal();
-                requestNpcAction(activeWorldModal.npcId, "trade");
+                onOpenMerchant(traderId);
               }}
             >
               {"\u0422\u043e\u0440\u0433\u043e\u0432\u0430\u0442\u044c"}
             </button>
           ) : null}
-          <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
-        </>
-      );
-    } else {
-      title = modalLocation?.name ?? activeWorldModal.locationId;
-      description = modalLocation?.description;
-      if (modalLocation?.questIds.length) {
-        const questNames = modalLocation.questIds.map((questId) => {
-          const quest =
-            questDefinitions.find((entry) => entry.id === questId) ?? null;
-          return quest?.title ?? questId;
-        });
-        description = [description, `Сюжет: ${questNames.join(", ")}`]
-          .filter(Boolean)
-          .join("\n");
-      }
-      const battleMapId = modalLocation?.linkedBattleMapId?.trim();
-      buttons = (
-        <>
-          {battleMapId ? (
+          {npc?.canFight ? (
             <button
               onClick={() => {
                 closeModal();
-                void (onStartBattleMap
-                  ? onStartBattleMap(battleMapId)
-                  : onStartCombat());
+                void onStartCombat();
+              }}
+            >
+              {"\u0410\u0442\u0430\u043a\u043e\u0432\u0430\u0442\u044c"}
+            </button>
+          ) : null}
+          <button
+            onClick={() => {
+              onStatus(
+                `${npc?.name ?? "NPC"}: ${npc?.description || "\u0431\u0435\u0437 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u044f"}`,
+              );
+            }}
+          >
+            {"\u041e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c"}
+          </button>
+          <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
+        </>
+      );
+    } else if (activeWorldModal.type === "encounter") {
+      title = modalLocation?.name ?? activeWorldModal.locationId;
+      description = modalLocation?.description;
+
+      const encounter = modalLocation?.encounter;
+      const legacyBattleMapId = modalLocation?.linkedBattleMapId?.trim() || null;
+      const battleMapIds = [
+        ...(encounter?.battleMapIds ?? []),
+        ...(legacyBattleMapId ? [legacyBattleMapId] : []),
+      ]
+        .map((entry) => String(entry).trim())
+        .filter(Boolean);
+      const uniqueBattleMapIds = Array.from(new Set(battleMapIds));
+      const presets = (encounter?.presets ?? []).filter((preset) => Boolean(preset?.id && preset?.label));
+
+      const startBattleMap = async (battleMapId?: string | null) => {
+        closeModal();
+        if (battleMapId && onStartBattleMap) {
+          await onStartBattleMap(battleMapId);
+          return;
+        }
+        await onStartCombat();
+      };
+
+      buttons = (
+        <>
+          {presets.length > 0 ? (
+            presets.map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => {
+                  void startBattleMap(preset.battleMapId ?? uniqueBattleMapIds[0] ?? null);
+                  onStatus(`Starting encounter: ${preset.label}`);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))
+          ) : uniqueBattleMapIds.length > 0 ? (
+            uniqueBattleMapIds.map((battleMapId, index) => (
+              <button
+                key={battleMapId}
+                onClick={() => {
+                  void startBattleMap(battleMapId);
+                  onStatus(`Starting encounter from ${title}.`);
+                }}
+              >
+                {uniqueBattleMapIds.length > 1 ? `Войти (${index + 1})` : "Войти"}
+              </button>
+            ))
+          ) : (
+            <button
+              onClick={() => {
+                void startBattleMap(null);
                 onStatus(`Starting encounter from ${title}.`);
+              }}
+            >
+              {"Войти"}
+            </button>
+          )}
+
+          {encounter?.allowPvP ? (
+            <button
+              onClick={() => {
+                closeModal();
+                setPvpBrowserOpen(true);
+                setPvpLoading(true);
+                setPvpError(null);
+                fetchNearbyPvpPlayers(character.id)
+                  .then((players) => {
+                    setPvpPlayers(players);
+                  })
+                  .catch((error) => {
+                    setPvpError((error as Error).message);
+                    setPvpPlayers([]);
+                  })
+                  .finally(() => {
+                    setPvpLoading(false);
+                  });
+              }}
+            >
+              {"PvP"}
+            </button>
+          ) : null}
+
+          <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
+        </>
+      );
+    } else if (activeWorldModal.type === "location") {
+      title = modalLocation?.name ?? activeWorldModal.locationId;
+      description = modalLocation?.description;
+
+      const locationNpcIds = modalLocation?.npcIds ?? [];
+      const locationNpcs = locationNpcIds
+        .map((npcId) => npcById.get(npcId))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+      const locationShopIds = modalLocation?.shopIds ?? [];
+      const locationMerchants = locationShopIds
+        .map((merchantId) => cityMerchantById.get(merchantId) ?? null)
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+      const hasPeople = locationNpcs.length > 0 || locationMerchants.length > 0;
+      content = (
+        <div style={{ display: "grid", gap: 16, margin: "18px auto 0", maxWidth: 640 }}>
+          {locationNpcs.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Персонажи
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {locationNpcs.map((npc) => {
+                  const npcPortrait = npc.fullImageUrl ?? npc.portraitUrl ?? npc.iconUrl;
+                  return (
+                    <button
+                      key={npc.id}
+                      type="button"
+                      className="btn"
+                      style={{
+                        padding: 10,
+                        borderRadius: 10,
+                        display: "grid",
+                        gap: 8,
+                        justifyItems: "center",
+                      }}
+                      onClick={() => {
+                        dialogueRunner.closeDialogue();
+                        setActiveWorldModal({
+                          type: "npc",
+                          locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                          npcId: npc.id,
+                        });
+                        setContextMode("npc");
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 72,
+                          height: 72,
+                          borderRadius: 10,
+                          border: "1px solid #8b6a3f",
+                          overflow: "hidden",
+                          background: "rgba(0, 0, 0, 0.35)",
+                          display: "grid",
+                          placeItems: "center",
+                        }}
+                      >
+                        {npcPortrait ? (
+                          <img
+                            src={npcPortrait}
+                            alt={npc.name ?? npc.id}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <span className="muted">{(npc.name ?? npc.id).charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.1 }}>{npc.name ?? npc.id}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {locationMerchants.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Торговцы
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {locationMerchants.map((merchant) => {
+                  const merchantPortrait = resolveMerchantImage?.(merchant);
+                  return (
+                    <button
+                      key={merchant.id}
+                      type="button"
+                      className="btn"
+                      style={{
+                        padding: 10,
+                        borderRadius: 10,
+                        display: "grid",
+                        gap: 8,
+                        justifyItems: "center",
+                      }}
+                      onClick={() => {
+                        dialogueRunner.closeDialogue();
+                        setActiveWorldModal({
+                          type: "merchant",
+                          locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                          merchantId: merchant.id,
+                        });
+                        setContextMode("location");
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 72,
+                          height: 72,
+                          borderRadius: 10,
+                          border: "1px solid #8b6a3f",
+                          overflow: "hidden",
+                          background: "rgba(0, 0, 0, 0.35)",
+                          display: "grid",
+                          placeItems: "center",
+                        }}
+                      >
+                        {merchantPortrait ? (
+                          <img
+                            src={merchantPortrait}
+                            alt={merchant.name ?? merchant.id}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        ) : (
+                          <span className="muted">{(merchant.name ?? merchant.id).charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.1 }}>{merchant.name ?? merchant.id}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {!hasPeople ? <div className="muted">Здесь никого нет.</div> : null}
+        </div>
+      );
+
+      const battleMapId = modalLocation?.linkedBattleMapId?.trim();
+      const hasEncounter = Boolean(modalLocation?.encounter) || Boolean(battleMapId);
+      buttons = (
+        <>
+          {hasEncounter ? (
+            <button
+              onClick={() => {
+                closeModal();
+                if (modalLocation?.encounter || battleMapId) {
+                  setActiveWorldModal({
+                    type: "encounter",
+                    locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                  });
+                  setContextMode("location");
+                  return;
+                }
               }}
             >
               {"\u0412\u043e\u0439\u0442\u0438"}
@@ -2274,6 +2840,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
         </>
       );
+    } else {
+      const _exhaustive: never = activeWorldModal;
+      title = modalLocation?.name ?? String((_exhaustive as any)?.locationId ?? "");
+      description = modalLocation?.description;
+      buttons = <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>;
     }
 
     return (
@@ -2292,7 +2863,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         <div
           className="card"
           style={{
-            width: "min(520px, 100%)",
+            width: cardWidth,
             padding: 24,
             textAlign: "center",
           }}
@@ -2328,10 +2899,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             </p>
           ) : null}
           {description?.trim() ? (
-            <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 380 }}>
+            <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 640 }}>
               {description.trim()}
             </p>
           ) : null}
+
+          {content}
 
           <div
             style={{
@@ -2343,6 +2916,534 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             }}
           >
             {buttons}
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
+  const pvpBrowserElement = (() => {
+    if (!pvpBrowserOpen) {
+      return null;
+    }
+
+    const close = () => {
+      setPvpBrowserOpen(false);
+      setPvpError(null);
+      setPvpPlayers([]);
+      setPvpLoading(false);
+    };
+
+    const startChallenge = async (target: NearbyPvpPlayer) => {
+      try {
+        setPvpLoading(true);
+        setPvpError(null);
+        const result = await challengePvpPlayer({
+          challengerId: character.id,
+          targetId: target.characterId,
+        });
+        const enemy: CustomArenaNpcPayload = result.customEnemy;
+        close();
+        onStatus(`PvP skeleton: бой против ${target.name}.`);
+        void onStartCombat(undefined, { customEnemies: [enemy] });
+      } catch (error) {
+        setPvpError((error as Error).message);
+      } finally {
+        setPvpLoading(false);
+      }
+    };
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "rgba(0, 0, 0, 0.72)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div className="card" style={{ width: "min(720px, 100%)", padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <h2 style={{ margin: 0 }}>PvP</h2>
+            <button onClick={close}>Закрыть</button>
+          </div>
+
+          <p className="muted" style={{ marginTop: 10 }}>
+            Skeleton режим: PvP пока запускает бой против слепка персонажа (как arena enemy).
+          </p>
+
+          {pvpError ? (
+            <p className="muted" style={{ marginTop: 10 }}>
+              Ошибка: {pvpError}
+            </p>
+          ) : null}
+
+          {pvpLoading ? (
+            <p className="muted" style={{ marginTop: 10 }}>
+              Загрузка...
+            </p>
+          ) : null}
+
+          {!pvpLoading && pvpPlayers.length === 0 ? (
+            <p className="muted" style={{ marginTop: 10 }}>
+              Рядом никого нет (пока). Создайте второго персонажа или откройте игру в другом аккаунте.
+            </p>
+          ) : null}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 12 }}>
+            {pvpPlayers.map((player) => (
+              <div
+                key={player.characterId}
+                className="card"
+                style={{
+                  padding: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <strong>{player.name}</strong>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {player.race} • lvl {player.level}
+                  </div>
+                </div>
+                <button disabled={pvpLoading} onClick={() => void startChallenge(player)}>
+                  Вызвать
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
+  const randomEventModalElement = (() => {
+    if (!randomEventModal) {
+      return null;
+    }
+
+    const close = () => setRandomEventModal(null);
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "rgba(0, 0, 0, 0.72)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div className="card" style={{ width: "min(620px, 100%)", padding: 18, textAlign: "center" }}>
+          <h2 style={{ margin: "0 0 10px" }}>Случайное событие</h2>
+          <p className="muted" style={{ margin: "0 auto 10px", maxWidth: 520 }}>
+            Зона: {randomEventModal.zoneName}
+          </p>
+          <h3 style={{ margin: "10px 0 10px" }}>{randomEventModal.questTitle}</h3>
+          {randomEventModal.questText.trim() ? (
+            <p className="muted" style={{ margin: "0 auto 16px", maxWidth: 520 }}>
+              {randomEventModal.questText.trim()}
+            </p>
+          ) : null}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "min(280px, 100%)", margin: "0 auto" }}>
+            <button
+              onClick={() => {
+                close();
+                setQuestJournalOpen(true);
+              }}
+            >
+              Открыть журнал
+            </button>
+            <button onClick={close}>Продолжить</button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
+  const npcQuestSceneModalElement = (() => {
+    if (!npcQuestSceneModal) {
+      return null;
+    }
+
+    const npc = npcs.find((entry) => entry.id === npcQuestSceneModal.npcId) ?? null;
+    const activeStage =
+      npcQuestSceneModal.stages.find((stage) => stage.questId === npcQuestSceneModal.selectedQuestId) ??
+      npcQuestSceneModal.stages[0] ??
+      null;
+
+    const questState = activeStage
+      ? playerQuestStates.find((state) => state.playerId === character.id && state.questId === activeStage.questId) ?? null
+      : null;
+
+    const questDefinition = activeStage
+      ? questDefinitions.find((quest) => quest.id === activeStage.questId) ?? null
+      : null;
+
+    const stepDefinition = (() => {
+      if (!questDefinition || !questState) {
+        return null;
+      }
+      const steps = questDefinition.steps ?? [];
+      const stepId = questState.currentStepId ?? steps[0]?.id ?? null;
+      if (!stepId) {
+        return null;
+      }
+      return steps.find((step) => step.id === stepId) ?? null;
+    })();
+
+    const canTurnIn = (() => {
+      if (!questState || !stepDefinition) {
+        return false;
+      }
+      const requiredObjectiveIds = (stepDefinition.objectives ?? [])
+        .filter((objective) => !objective.isOptional)
+        .map((objective) => objective.id);
+      if (requiredObjectiveIds.length === 0) {
+        return true;
+      }
+      return requiredObjectiveIds.every((objectiveId) => questState.completedObjectiveIds.includes(objectiveId));
+    })();
+
+    const close = () => setNpcQuestSceneModal(null);
+
+    const openQuestDialogue = () => {
+      if (!activeStage) {
+        close();
+        return;
+      }
+      const npcId = npcQuestSceneModal.npcId;
+      const context = {
+        cityId: activeCity?.id,
+        locationId: npc?.cityLocationId ?? npc?.locationId ?? undefined,
+        questId: activeStage.questId,
+      };
+      close();
+      dialogueRunner.openDialogueForNpc(npcId, context);
+    };
+
+    const turnInQuestStage = () => {
+      if (!activeStage || !questState) {
+        close();
+        return;
+      }
+
+      close();
+
+      try {
+        const before = questState;
+        const next = advanceQuest(character.id, activeStage.questId);
+
+        setPlayerQuestStates(
+          getAllPlayerQuestStates().filter((entry) => entry.playerId === character.id),
+        );
+
+        const questTitle = questDefinition?.title ?? activeStage.questTitle ?? activeStage.questId;
+
+        if (next.status === "completed") {
+          const rewards = applyQuestRewards(character.id, activeStage.questId);
+          const lines: ChatMessage[] = [];
+          const now = Date.now();
+          lines.push({
+            id: `sys-quest-complete-${now}-${activeStage.questId}`,
+            text: `Квест завершён: ${questTitle}`,
+            type: "system",
+          });
+          if (rewards.applied && rewards.rewards.length > 0) {
+            rewards.rewards.slice(0, 6).forEach((reward, index) => {
+              lines.push({
+                id: `sys-quest-reward-${now}-${activeStage.questId}-${index}`,
+                text: `Награда: ${reward}`,
+                type: "system",
+              });
+            });
+          }
+          setSystemChat((prev) => [...prev, ...lines].slice(-12));
+          onStatus(`Квест завершён: ${questTitle}`);
+          return;
+        }
+
+        if (next.currentStepId !== before.currentStepId) {
+          setSystemChat((prev) =>
+            [
+              ...prev,
+              {
+                id: `sys-quest-advanced-${Date.now()}-${activeStage.questId}`,
+                text: `Квест обновлён: ${questTitle}`,
+                type: "system" as const,
+              },
+            ].slice(-12),
+          );
+          onStatus(`Квест обновлён: ${questTitle}`);
+          return;
+        }
+
+        onStatus("Квест пока нельзя сдать: не все цели выполнены.");
+      } catch (error) {
+        onStatus(`Ошибка сдачи квеста: ${(error as Error).message}`);
+      }
+    };
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "rgba(0, 0, 0, 0.72)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div className="card" style={{ width: "min(720px, 100%)", padding: 18, textAlign: "center" }}>
+          <h2 style={{ margin: "0 0 10px" }}>{npcQuestSceneModal.npcName}</h2>
+          <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 560 }}>
+            Квестовый этап
+          </p>
+
+          {npcQuestSceneModal.portrait ? (
+            <div
+              style={{
+                width: 220,
+                height: 260,
+                margin: "0 auto 14px",
+                border: "1px solid #8b6a3f",
+                borderRadius: 8,
+                overflow: "hidden",
+                background: "rgba(0, 0, 0, 0.35)",
+              }}
+            >
+              <img
+                src={npcQuestSceneModal.portrait}
+                alt={npcQuestSceneModal.npcName}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+          ) : null}
+
+          {npcQuestSceneModal.stages.length > 1 ? (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", margin: "12px 0" }}>
+              {npcQuestSceneModal.stages.map((stage) => (
+                <button
+                  key={stage.questId}
+                  className={stage.questId === npcQuestSceneModal.selectedQuestId ? "is-active" : ""}
+                  onClick={() =>
+                    setNpcQuestSceneModal((prev) =>
+                      prev ? { ...prev, selectedQuestId: stage.questId } : prev,
+                    )
+                  }
+                >
+                  {stage.questTitle}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {activeStage ? (
+            <div className="card" style={{ padding: 12, margin: "0 auto 14px", maxWidth: 620, textAlign: "left" }}>
+              <strong>{activeStage.questTitle}</strong>
+              {activeStage.stepTitle ? (
+                <p className="muted" style={{ margin: "8px 0 0" }}>
+                  Шаг: {activeStage.stepTitle}
+                </p>
+              ) : null}
+              {activeStage.journalText ? (
+                <p className="muted" style={{ margin: "8px 0 0" }}>
+                  {activeStage.journalText}
+                </p>
+              ) : null}
+
+              {activeStage.objectives.length > 0 ? (
+                <div style={{ marginTop: 10 }}>
+                  {activeStage.objectives.map((obj) => (
+                    <p key={obj.id} className="muted" style={{ margin: "6px 0" }}>
+                      {obj.completed ? "✓" : "•"} {obj.text}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "min(280px, 100%)", margin: "0 auto" }}>
+            {canTurnIn ? (
+              <button onClick={turnInQuestStage}>Сдать / получить награду</button>
+            ) : (
+              <button onClick={openQuestDialogue}>Продолжить</button>
+            )}
+            <button
+              onClick={() => {
+                close();
+                setQuestJournalOpen(true);
+              }}
+            >
+              Открыть журнал
+            </button>
+            <button onClick={close}>Назад</button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
+  const dialogueModalElement = (() => {
+    if (!dialogueRunner.state.isOpen) {
+      return null;
+    }
+
+    const context = dialogueRunner.state.context;
+    const contextNpc =
+      context.npcId
+        ? npcs.find((entry) => entry.id === context.npcId) ?? null
+        : null;
+    const currentNode = dialogueRunner.node;
+
+    const speakerName =
+      currentNode?.speaker === "player"
+        ? character.name
+        : currentNode?.speaker === "system"
+          ? "\u0421\u0438\u0441\u0442\u0435\u043c\u0430"
+          : contextNpc?.name ?? context.npcId ?? "\u041d\u041f\u0421";
+
+    const title = speakerName;
+    const subtitle = dialogueRunner.dialogue
+      ? `\u0414\u0438\u0430\u043b\u043e\u0433: ${dialogueRunner.dialogue.title}`
+      : "\u0414\u0438\u0430\u043b\u043e\u0433";
+
+    const portrait =
+      currentNode?.imageUrl ??
+      currentNode?.portraitUrl ??
+      (currentNode?.speaker === "player"
+        ? playerAvatarUrl
+        : contextNpc?.fullImageUrl ?? contextNpc?.portraitUrl ?? contextNpc?.iconUrl);
+
+    const description =
+      currentNode?.text ||
+      dialogueRunner.state.error ||
+      "\u0414\u0438\u0430\u043b\u043e\u0433 \u043d\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.";
+
+    const backToNpcMenu =
+      activeWorldModal?.type === "npc" &&
+      Boolean(context.npcId) &&
+      activeWorldModal.npcId === context.npcId;
+
+    const closeDialogue = () => {
+      dialogueRunner.closeDialogue();
+    };
+
+    const leaveInteraction = () => {
+      dialogueRunner.closeDialogue();
+      if (backToNpcMenu) {
+        setActiveWorldModal(null);
+      }
+    };
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          background: "rgba(0, 0, 0, 0.72)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            width: "min(560px, 100%)",
+            padding: 24,
+            textAlign: "center",
+          }}
+        >
+          {portrait ? (
+            <div
+              style={{
+                width: 220,
+                height: 260,
+                margin: "0 auto 18px",
+                border: "1px solid #8b6a3f",
+                borderRadius: 8,
+                overflow: "hidden",
+                background: "rgba(0, 0, 0, 0.35)",
+              }}
+            >
+              <img
+                src={portrait}
+                alt={title}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            </div>
+          ) : null}
+
+          <h2 style={{ margin: "0 0 12px" }}>{title}</h2>
+          <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 420 }}>
+            {subtitle}
+          </p>
+
+          {description?.trim() ? (
+            <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 420 }}>
+              {description.trim()}
+            </p>
+          ) : null}
+
+          {dialogueRunner.state.error ? (
+            <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 420 }}>
+              {dialogueRunner.state.error}
+            </p>
+          ) : null}
+          {dialogueRunner.state.notice ? (
+            <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 420 }}>
+              {dialogueRunner.state.notice}
+            </p>
+          ) : null}
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              width: "min(300px, 100%)",
+              margin: "0 auto",
+            }}
+          >
+            {dialogueRunner.choices.map((choice) => (
+              <button
+                key={choice.id}
+                disabled={choice.disabled}
+                onClick={() => handleSelectDialogueChoice(choice.id)}
+              >
+                {choice.text || choice.id}
+              </button>
+            ))}
+            {backToNpcMenu ? (
+              <button onClick={closeDialogue}>{"\u041d\u0430\u0437\u0430\u0434"}</button>
+            ) : (
+              <button onClick={closeDialogue}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>
+            )}
+            {backToNpcMenu ? (
+              <button onClick={leaveInteraction}>{"\u0423\u0439\u0442\u0438"}</button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -2365,6 +3466,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onStats={onOpenStats}
         onSkills={onOpenSkills}
         onInventory={onOpenInventory}
+        onQuests={() => setQuestJournalOpen(true)}
         onMap={() => {
           if (locationView === "map") {
             setContextMode(currentZone ? "location" : "empty");
@@ -2564,6 +3666,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           </div>
         </div>
         {activeWorldModalElement}
+        {dialogueModalElement}
+        {pvpBrowserElement}
+        {randomEventModalElement}
+        {npcQuestSceneModalElement}
+        <QuestJournalModal
+          isOpen={questJournalOpen}
+          onClose={() => setQuestJournalOpen(false)}
+          questDefinitions={questDefinitions}
+          playerQuestStates={playerQuestStates}
+        />
         <div
           className={`wm-right-panel ${rightPanelCollapsed ? "is-collapsed" : ""}`}
         >
@@ -2647,7 +3759,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               "contextActions",
               "\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0441\u043e\u0431\u044b\u0442\u0438\u044f",
               <section
-                className="wm-context card"
+                className="wm-context wm-context-summary card"
                 style={{ borderTop: "none" }}
               >
                 <section className="wm-context-block">
@@ -2704,79 +3816,22 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
                 <section className="wm-context-block">
                   <h3>{"\u0416\u0443\u0440\u043d\u0430\u043b"}</h3>
-                  {chatMessages.slice(-5).length > 0 ? (
-                    chatMessages.slice(-5).map((line) => (
-                      <p key={`side-${line.id}`} className="muted">
-                        [{line.type.toUpperCase()}] {line.text}
+                  <div className="wm-context-journal-scroll">
+                    {chatMessages.slice(-16).length > 0 ? (
+                      chatMessages.slice(-16).map((line) => (
+                        <p key={`side-${line.id}`} className="muted">
+                          [{line.type.toUpperCase()}] {line.text}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="muted">
+                        {"\u0421\u043e\u0431\u044b\u0442\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442."}
                       </p>
-                    ))
-                  ) : (
-                    <p className="muted">{"\u0421\u043e\u0431\u044b\u0442\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442."}</p>
-                  )}
+                    )}
+                  </div>
                 </section>
               </section>,
             )}
-            {showAdminShortcuts
-              ? renderSidePanel(
-                  "npcInteraction",
-                  "NPC \u0432\u0437\u0430\u0438\u043c\u043e\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435",
-                  <NpcInteractionPanel
-                    npc={selectedNpcForInteraction}
-                    dialogue={activeDialogue}
-                    node={activeDialogueNode}
-                    logs={dialogueLogs}
-                    onTalk={handleNpcTalk}
-                    onTrade={handleNpcTrade}
-                    onTrain={handleNpcTrain}
-                    onAttack={() => {
-                      void handleNpcAttack();
-                    }}
-                    onQuest={handleNpcQuest}
-                    onInspect={handleNpcInspect}
-                    onSelectChoice={handleSelectDialogueChoice}
-                  />,
-                )
-              : null}
-
-            {showAdminShortcuts
-              ? renderSidePanel(
-                  "nearbyNpc",
-                  "NPC \u0440\u044f\u0434\u043e\u043c",
-                  <section
-                    className="wm-context card"
-                    style={{ borderTop: "none" }}
-                  >
-                    <section className="wm-context-block">
-                      {nearbyNpcs.length > 0 ? (
-                        nearbyNpcs.map((entry) => (
-                          <button
-                            key={entry.npc.id}
-                            style={{
-                              width: "100%",
-                              marginBottom: "6px",
-                              textAlign: "left",
-                              opacity:
-                                selectedNpcForInteraction?.id === entry.npc.id
-                                  ? 1
-                                  : 0.82,
-                            }}
-                            onClick={() =>
-                              setSelectedNpcForInteractionId(entry.npc.id)
-                            }
-                          >
-                            {entry.npc.name} [{entry.npc.kind}] (
-                            {entry.distance.toFixed(3)})
-                          </button>
-                        ))
-                      ) : (
-                        <p className="muted">
-                          {"\u041d\u0435\u0442 NPC \u0432 \u0440\u0430\u0434\u0438\u0443\u0441\u0435 \u0432\u0437\u0430\u0438\u043c\u043e\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f."}
-                        </p>
-                      )}
-                    </section>
-                  </section>,
-                )
-              : null}
 
           </div>
         </div>

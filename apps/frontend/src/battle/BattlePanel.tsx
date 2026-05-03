@@ -11,7 +11,7 @@ import {
   type Equipment,
   type InventoryState,
 } from '@theend/rpg-domain';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sendCombatAction, type ArenaHubState } from '../api';
 import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
@@ -57,9 +57,19 @@ function parseZoneFromLogText(text: string): TargetZone | null {
   return null;
 }
 
-function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number; combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC' }): 'MELEE' | 'RANGED' | 'MAGIC' {
+function formatCountdown(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number; combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC'; attackRange?: number }): 'MELEE' | 'RANGED' | 'MAGIC' {
   if (entity.combatStyleHint) {
     return entity.combatStyleHint;
+  }
+  if (typeof entity.attackRange === 'number' && entity.attackRange > 1) {
+    return 'RANGED';
   }
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
     return 'MAGIC';
@@ -105,6 +115,12 @@ export function BattlePanel({
   const player = useMemo(() => state.entities.find((item) => item.id === playerId), [state, playerId]);
   const enemies = useMemo(() => state.entities.filter((item) => item.team === TeamSide.Right && item.isAlive), [state]);
 
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, []);
+
   const [selectedTargetId, setSelectedTargetId] = useState(enemies[0]?.id ?? '');
   const [actionType, setActionType] = useState<ActionType>(ActionType.Attack);
   const [attackZone, setAttackZone] = useState(TargetZone.Chest);
@@ -112,6 +128,8 @@ export function BattlePanel({
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [selectedMoveTile, setSelectedMoveTile] = useState<{ x: number; y: number } | null>(null);
   const [inspectEntityId, setInspectEntityId] = useState<string | null>(null);
+  const isSubmittingRef = useRef(false);
+  const autoSubmittedRoundRef = useRef<number>(-1);
 
   const availableSkills = useMemo(
     () => [
@@ -154,6 +172,7 @@ export function BattlePanel({
   );
 
   const lastLog = state.logs.at(-1);
+  const recentLogs = useMemo(() => state.logs.slice(-8), [state.logs]);
   const lastHitZone = useMemo(() => (lastLog ? parseZoneFromLogText(lastLog.text) : null), [lastLog]);
   const selectedEnemy = useMemo(
     () => enemies.find((enemy) => enemy.id === selectedTargetId) ?? enemies[0] ?? null,
@@ -192,10 +211,12 @@ export function BattlePanel({
       return dist <= 1;
     }
     if (playerStyle === 'RANGED') {
-      return dist >= 2;
+      const maxRange = typeof player?.attackRange === 'number' && player.attackRange > 1 ? Math.floor(player.attackRange) : 6;
+      return dist <= Math.max(2, maxRange);
     }
-    return dist <= 5;
-  }, [pendingPlayerPlacement, playerStyle, selectedEnemyPlacement]);
+    const maxRange = typeof player?.attackRange === 'number' && player.attackRange > 1 ? Math.floor(player.attackRange) : 5;
+    return dist <= Math.max(2, maxRange);
+  }, [pendingPlayerPlacement, player?.attackRange, playerStyle, selectedEnemyPlacement]);
 
   const feedback = useMemo(() => {
     if (!lastLog) {
@@ -267,6 +288,14 @@ export function BattlePanel({
     return null;
   }, [actionType, selectedMoveTile, targetInRange]);
 
+  const secondsLeft = useMemo(() => {
+    if (!state.turnDeadlineAt || state.isFinished) {
+      return null;
+    }
+    const diff = state.turnDeadlineAt - nowMs;
+    return Math.max(0, Math.ceil(diff / 1000));
+  }, [nowMs, state.isFinished, state.turnDeadlineAt]);
+
   useEffect(() => {
     if (!enemies.some((enemy) => enemy.id === selectedTargetId)) {
       setSelectedTargetId(enemies[0]?.id ?? '');
@@ -281,6 +310,9 @@ export function BattlePanel({
 
 
   const submitRoundWithAction = useCallback(async (actionTypeOverride?: ActionType): Promise<void> => {
+    if (isSubmittingRef.current) {
+      return;
+    }
     const effectiveActionType = actionTypeOverride ?? actionType;
     const effectiveMovementType = effectiveActionType === ActionType.Wait ? undefined : movementType ?? undefined;
     const effectiveDestinationX = effectiveActionType === ActionType.Wait ? undefined : selectedMoveTile?.x;
@@ -299,6 +331,7 @@ export function BattlePanel({
     }
 
     try {
+      isSubmittingRef.current = true;
       const result = await sendCombatAction({
         combatId,
         actorId: player.id,
@@ -327,6 +360,8 @@ export function BattlePanel({
       }
     } catch (error) {
       onStatus(`Round error: ${(error as Error).message}`);
+    } finally {
+      isSubmittingRef.current = false;
     }
   }, [
     actionWarning,
@@ -341,6 +376,20 @@ export function BattlePanel({
     selectedSkill,
     selectedTargetId,
   ]);
+
+  useEffect(() => {
+    if (!state.turnDeadlineAt || state.isFinished) {
+      return;
+    }
+    if (nowMs < state.turnDeadlineAt) {
+      return;
+    }
+    if (autoSubmittedRoundRef.current === state.roundNumber) {
+      return;
+    }
+    autoSubmittedRoundRef.current = state.roundNumber;
+    submitRoundWithAction(ActionType.Wait);
+  }, [nowMs, state.isFinished, state.roundNumber, state.turnDeadlineAt, submitRoundWithAction]);
 
   const submitRound = useCallback(async (): Promise<void> => {
     await submitRoundWithAction();
@@ -406,6 +455,11 @@ export function BattlePanel({
           </div>
           <div className="battle-header-center">
             <span>{state.isFinished ? `Battle Over: ${state.winner ?? 'none'} wins` : 'Combat in Progress'}</span>
+            {secondsLeft !== null ? (
+              <span className="battle-turn-timer" title={`Turn deadline: ${new Date(state.turnDeadlineAt ?? 0).toLocaleTimeString()}`}>
+                Turn: {formatCountdown(secondsLeft)}
+              </span>
+            ) : null}
           </div>
           <div className="battle-header-right">
             <button type="button" onClick={() => onClose?.()} aria-label="Close battle">✕</button>
@@ -464,26 +518,28 @@ export function BattlePanel({
               <CombatLogPanel logs={state.logs} />
             </div>
 
-            <BattleField
-              entities={state.entities}
-              battlefieldTiles={state.battlefieldTiles}
-              battleMapWidth={state.battleMapWidth}
-              battleMapHeight={state.battleMapHeight}
-              viewportWidth={state.viewportWidth}
-              viewportHeight={state.viewportHeight}
-              mapImageUrl={mapImageUrl}
-              mapCalibration={mapCalibration}
-              distance={state.distance}
-              selectedTargetId={selectedTargetId}
-              playerId={playerId}
-              playerAvatarUrl={playerAvatarUrl}
-              movementType={movementType}
-              selectedMoveTile={selectedMoveTile}
-              onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
-              onStatusMessage={onStatus}
-              onQuickAttack={(targetId) => {
-                setSelectedTargetId(targetId);
-                setActionType(ActionType.Attack);
+              <BattleField
+                entities={state.entities}
+                battlefieldTiles={state.battlefieldTiles}
+                battleMapWidth={state.battleMapWidth}
+                battleMapHeight={state.battleMapHeight}
+                viewportWidth={state.viewportWidth}
+                viewportHeight={state.viewportHeight}
+                mapImageUrl={mapImageUrl}
+                mapCalibration={mapCalibration}
+                distance={state.distance}
+                selectedTargetId={selectedTargetId}
+                playerId={playerId}
+                playerAvatarUrl={playerAvatarUrl}
+                movementType={movementType}
+                selectedMoveTile={selectedMoveTile}
+                lastLog={lastLog}
+                recentLogs={recentLogs}
+                onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
+                onStatusMessage={onStatus}
+                onQuickAttack={(targetId) => {
+                  setSelectedTargetId(targetId);
+                  setActionType(ActionType.Attack);
               }}
               onQuickMove={applyMoveSelection}
               onMoveTileSelect={applyMoveSelection}

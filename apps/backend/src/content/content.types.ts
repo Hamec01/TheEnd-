@@ -51,6 +51,27 @@ export interface AdminItem {
   elementType?: ElementType;
   magicSchool?: MagicSchool;
   armorValue?: number;
+  /**
+   * Grid-based combat targeting (cells).
+   * When `attackRange` is set to > 1, the item can be used at range (bow, staff, bomb, thrown spear, etc).
+   */
+  attackRange?: number;
+  /**
+   * Optional line piercing for ranged attacks (e.g. thrown spear piercing two targets).
+   */
+  pierceTargets?: number;
+  /**
+   * Optional splash damage radius around the impact cell (e.g. bomb).
+   */
+  splashRadius?: number;
+  /**
+   * Damage multiplier for the impact cell when splash is enabled (>= 1).
+   */
+  splashCenterMultiplier?: number;
+  /**
+   * Damage multiplier for adjacent cells inside the splash radius (0..centerMultiplier).
+   */
+  splashOuterMultiplier?: number;
   requiredStats?: Partial<Record<StatKey, number>>;
   bonuses?: Partial<Record<StatKey, number>>;
   gameplayDescription: string;
@@ -84,6 +105,7 @@ export interface AdminMerchant {
   name: string;
   city: string;
   cityId?: string;
+  cityLocationId?: string;
   location?: string;
   type: MerchantType;
   description?: string;
@@ -337,6 +359,35 @@ export interface CityLocationShape {
   points?: Array<{ x: number; y: number }>;
 }
 
+export type CityLocationEncounterKind = 'arena' | 'quest' | 'event' | 'dungeon' | 'ambush';
+
+export interface CityLocationEncounterPreset {
+  id: string;
+  label: string;
+  type: 'pve' | 'pvp' | 'random' | 'scripted';
+  battleMapId?: string;
+  enemyCount?: number;
+  playerTurnSeconds?: number;
+  notes?: string;
+}
+
+export interface CityLocationEncounterConfig {
+  kind: CityLocationEncounterKind;
+  arenaMasterNpcId?: string;
+  battleMapIds?: string[];
+  presets?: CityLocationEncounterPreset[];
+  allowPvE?: boolean;
+  allowPvP?: boolean;
+  allowRandomEnemyGeneration?: boolean;
+}
+
+export interface CityLocationAutoTrigger {
+  npcId: string;
+  dialogueId: string;
+  condition?: string;
+  once?: boolean;
+}
+
 export interface CityRacePopulation {
   raceId: string;
   count?: number;
@@ -354,6 +405,7 @@ export interface CityLocation {
   shapeType: CityLocationShapeType;
   shape: CityLocationShape;
   npcIds: string[];
+  autoTriggers?: CityLocationAutoTrigger[];
   questIds: string[];
   shopIds: string[];
   isVisible: boolean;
@@ -361,6 +413,7 @@ export interface CityLocation {
   unlockCondition?: string;
   markerIcon?: string;
   linkedBattleMapId?: string;
+  encounter?: CityLocationEncounterConfig;
 }
 
 export interface City {

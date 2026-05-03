@@ -81,6 +81,19 @@ export interface ArenaCombatEntity {
   battlefieldY?: number;
   avatarUrl?: string;
   combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC';
+  /**
+   * Grid-based combat targeting (cells).
+   * If set to > 1, enables ranged attacks for this entity and defines max range.
+   */
+  attackRange?: number;
+  /** Optional line piercing (e.g. thrown spear hits 2 targets in a line). */
+  pierceTargets?: number;
+  /** Optional splash radius around the impact cell (e.g. bomb). */
+  splashRadius?: number;
+  /** Damage multiplier for the impact cell when splash is enabled (>= 1). */
+  splashCenterMultiplier?: number;
+  /** Damage multiplier for adjacent cells inside the splash radius (>= 0). */
+  splashOuterMultiplier?: number;
 }
 
 export interface ArenaCombatAction {
@@ -144,6 +157,10 @@ export interface ArenaBattleState {
   battleMapHeight: number;
   viewportWidth: number;
   viewportHeight: number;
+  /**
+   * Turn timer deadline (epoch ms). Client renders countdown; server may auto-resolve when expired.
+   */
+  turnDeadlineAt?: number;
   roundNumber: number;
   distance: DistanceBand;
   entities: ArenaCombatEntity[];
@@ -405,6 +422,10 @@ function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
     return actor.combatStyleHint;
   }
 
+  if (typeof actor.attackRange === 'number' && actor.attackRange > 1) {
+    return 'RANGED';
+  }
+
   if (actor.intelligence >= actor.strength && actor.intelligence >= actor.dexterity) {
     return 'MAGIC';
   }
@@ -414,6 +435,22 @@ function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
   }
 
   return 'MELEE';
+}
+
+function getMaxAttackRange(actor: ArenaCombatEntity, style: CombatStyle): number {
+  if (style === 'MELEE') {
+    return 1;
+  }
+
+  const raw = typeof actor.attackRange === 'number' && Number.isFinite(actor.attackRange)
+    ? Math.floor(actor.attackRange)
+    : undefined;
+
+  if (style === 'MAGIC') {
+    return Math.max(2, raw ?? 5);
+  }
+
+  return Math.max(2, raw ?? 6);
 }
 
 function selectNpcAttackZone(actor: ArenaCombatEntity, currentBand: DistanceBand): TargetZone {
@@ -765,14 +802,17 @@ function getActionStaminaCost(actionType: ActionType): number {
 function canAttackAtDistance(state: ArenaBattleState, actor: ArenaCombatEntity, target: ArenaCombatEntity): boolean {
   const style = classifyCombatStyle(actor);
   const distance = getBattlefieldDistance(actor, target);
+  if (distance <= 0) {
+    return false;
+  }
 
   if (style === 'MELEE') {
     return distance <= 1;
   }
 
   if (style === 'RANGED') {
-    // Ranged attacks need distance >= 2
-    if (distance < 2) {
+    const maxRange = getMaxAttackRange(actor, style);
+    if (distance > maxRange) {
       return false;
     }
     // Check line of sight for ranged attacks
@@ -783,7 +823,15 @@ function canAttackAtDistance(state: ArenaBattleState, actor: ArenaCombatEntity, 
     return hasLineOfSight(state, fromX, fromY, toX, toY);
   }
 
-  return true;
+  const maxRange = getMaxAttackRange(actor, style);
+  if (distance > maxRange) {
+    return false;
+  }
+  const fromX = actor.battlefieldX ?? 0;
+  const fromY = actor.battlefieldY ?? 0;
+  const toX = target.battlefieldX ?? 0;
+  const toY = target.battlefieldY ?? 0;
+  return hasLineOfSight(state, fromX, fromY, toX, toY);
 }
 
 function spendStamina(actor: ArenaCombatEntity, amount: number): boolean {
@@ -819,8 +867,10 @@ function resolveDestinationForAction(
   }
 
   const style = classifyCombatStyle(actor);
+  const maxRange = getMaxAttackRange(actor, style);
+  const desiredMinDistance = style === 'MELEE' ? 1 : 2;
   const preferRetreat = action.actionType === ActionType.Move
-    && (((style === 'RANGED' || style === 'MAGIC') && getBattlefieldDistance(actor, target) < 3) || action.movementType === MovementType.Disengage);
+    && (((style === 'RANGED' || style === 'MAGIC') && getBattlefieldDistance(actor, target) < desiredMinDistance) || action.movementType === MovementType.Disengage);
 
   candidates.sort((left, right) => {
     const leftDistance = Math.abs(left.x - (target.battlefieldX ?? 0)) + Math.abs(left.y - (target.battlefieldY ?? 0));
@@ -829,6 +879,15 @@ function resolveDestinationForAction(
     if (preferRetreat) {
       if (leftDistance !== rightDistance) {
         return rightDistance - leftDistance;
+      }
+    } else if (style === 'RANGED' || style === 'MAGIC') {
+      const leftOutOfRange = leftDistance > maxRange;
+      const rightOutOfRange = rightDistance > maxRange;
+      if (leftOutOfRange !== rightOutOfRange) {
+        return leftOutOfRange ? 1 : -1;
+      }
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
       }
     } else if (leftDistance !== rightDistance) {
       return leftDistance - rightDistance;
@@ -967,10 +1026,11 @@ function resolveAttack(params: {
   target: ArenaCombatEntity;
   actorAction: ArenaCombatAction;
   targetAction: ArenaCombatAction;
+  byActor: Map<string, ArenaCombatAction>;
   logs: CombatLogEntry[];
   random: () => number;
 }): void {
-  const { state, actor, target, actorAction, targetAction, logs, random } = params;
+  const { state, actor, target, actorAction, targetAction, byActor, logs, random } = params;
   const combatStyle = classifyCombatStyle(actor);
   const actualCells = getBattlefieldDistance(actor, target);
   const actualBand = classifyGapDistance(actualCells);
@@ -978,14 +1038,18 @@ function resolveAttack(params: {
   if (!canAttackAtDistance(state, actor, target)) {
     let reason = 'target is out of effective range';
     
-    if (combatStyle === 'RANGED' && actualCells >= 2) {
-      // Range is OK but line of sight is blocked
-      const fromX = actor.battlefieldX ?? 0;
-      const fromY = actor.battlefieldY ?? 0;
-      const toX = target.battlefieldX ?? 0;
-      const toY = target.battlefieldY ?? 0;
-      if (!hasLineOfSight(state, fromX, fromY, toX, toY)) {
-        reason = 'target is behind a wall (line of sight blocked)';
+    if (combatStyle === 'RANGED' || combatStyle === 'MAGIC') {
+      const maxRange = getMaxAttackRange(actor, combatStyle);
+      if (actualCells > maxRange) {
+        reason = `target is out of range (${actualCells}/${maxRange})`;
+      } else {
+        const fromX = actor.battlefieldX ?? 0;
+        const fromY = actor.battlefieldY ?? 0;
+        const toX = target.battlefieldX ?? 0;
+        const toY = target.battlefieldY ?? 0;
+        if (!hasLineOfSight(state, fromX, fromY, toX, toY)) {
+          reason = 'target is behind a wall (line of sight blocked)';
+        }
       }
     }
     
@@ -1005,9 +1069,11 @@ function resolveAttack(params: {
     combatStyle === 'MELEE'
       ? 0
       : combatStyle === 'RANGED'
-        ? actualCells <= 6
-          ? 0
-          : 6
+        ? actualCells <= 1
+          ? 8
+          : actualCells <= 6
+            ? 0
+            : 6
         : actualBand === DistanceBand.Melee
           ? 4
           : actualBand === DistanceBand.Near
@@ -1085,17 +1151,107 @@ function resolveAttack(params: {
     });
   }
 
-  target.currentHp = Math.max(0, target.currentHp - finalDamage);
-  target.isAlive = target.currentHp > 0;
+  const centerMultiplier = typeof actor.splashCenterMultiplier === 'number' && Number.isFinite(actor.splashCenterMultiplier)
+    ? Math.max(1, actor.splashCenterMultiplier)
+    : 1;
+  const outerMultiplier = typeof actor.splashOuterMultiplier === 'number' && Number.isFinite(actor.splashOuterMultiplier)
+    ? Math.max(0, actor.splashOuterMultiplier)
+    : 0.5;
 
-  logs.push({
-    round: state.roundNumber,
-    actorId: actor.id,
-    targetId: target.id,
-    type: 'HIT',
-    amount: finalDamage,
-    text: `${actor.name} hits ${target.name} in ${actorAction.attackZone} for ${finalDamage} damage${isCritical ? ' (critical)' : ''}`,
-  });
+  const impacted = new Map<string, { entity: ArenaCombatEntity; damage: number; kind: 'primary' | 'pierce' | 'splash' }>();
+  const primaryDamage = Math.max(1, Math.round(finalDamage * (actor.splashRadius ? centerMultiplier : 1)));
+  impacted.set(target.id, { entity: target, damage: primaryDamage, kind: 'primary' });
+
+  if (typeof actor.pierceTargets === 'number' && actor.pierceTargets >= 2) {
+    const fromX = actor.battlefieldX ?? 0;
+    const fromY = actor.battlefieldY ?? 0;
+    const toX = target.battlefieldX ?? 0;
+    const toY = target.battlefieldY ?? 0;
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const isLine = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
+    if (isLine) {
+      const stepX = Math.sign(dx);
+      const stepY = Math.sign(dy);
+      let x = toX + stepX;
+      let y = toY + stepY;
+      let remaining = Math.floor(actor.pierceTargets) - 1;
+      while (remaining > 0 && isWithinBattlefield(state, x, y)) {
+        if (isTileSightBlocked(state, x, y)) {
+          break;
+        }
+        const nextVictim = state.entities.find((entity) =>
+          entity.isAlive && entity.id !== actor.id && entity.battlefieldX === x && entity.battlefieldY === y,
+        );
+        if (nextVictim && !impacted.has(nextVictim.id) && canAttackAtDistance(state, actor, nextVictim)) {
+          impacted.set(nextVictim.id, { entity: nextVictim, damage: finalDamage, kind: 'pierce' });
+          remaining -= 1;
+        }
+        x += stepX;
+        y += stepY;
+      }
+    }
+  }
+
+  if (typeof actor.splashRadius === 'number' && actor.splashRadius >= 1) {
+    const radius = Math.max(1, Math.floor(actor.splashRadius));
+    const impactX = target.battlefieldX ?? 0;
+    const impactY = target.battlefieldY ?? 0;
+    for (const victim of state.entities) {
+      if (!victim.isAlive || victim.id === actor.id || impacted.has(victim.id)) {
+        continue;
+      }
+      const distance = Math.abs((victim.battlefieldX ?? 0) - impactX) + Math.abs((victim.battlefieldY ?? 0) - impactY);
+      if (distance <= radius) {
+        impacted.set(victim.id, { entity: victim, damage: Math.max(1, Math.round(finalDamage * outerMultiplier)), kind: 'splash' });
+      }
+    }
+  }
+
+  for (const entry of impacted.values()) {
+    const victim = entry.entity;
+    if (!victim.isAlive) {
+      continue;
+    }
+
+    victim.currentHp = Math.max(0, victim.currentHp - entry.damage);
+    victim.isAlive = victim.currentHp > 0;
+
+    const tag = entry.kind === 'primary'
+      ? ''
+      : entry.kind === 'pierce'
+        ? ' (pierce)'
+        : ' (splash)';
+
+    logs.push({
+      round: state.roundNumber,
+      actorId: actor.id,
+      targetId: victim.id,
+      type: 'HIT',
+      amount: entry.damage,
+      text: `${actor.name} hits ${victim.name} in ${actorAction.attackZone} for ${entry.damage} damage${isCritical ? ' (critical)' : ''}${tag}`,
+    });
+
+    if (!victim.isAlive) {
+      logs.push({
+        round: state.roundNumber,
+        actorId: victim.id,
+        type: 'DEATH',
+        text: `${victim.name} dies`,
+      });
+    } else if (entry.kind !== 'primary') {
+      const victimAction = byActor.get(victim.id) ?? defaultWaitAction(victim, actor);
+      if (victimAction.actionType === ActionType.Defend) {
+        logs.push({
+          round: state.roundNumber,
+          actorId: victim.id,
+          targetId: actor.id,
+          type: 'INFO',
+          text: `${victim.name} was guarding but got caught in the impact`,
+        });
+      }
+    }
+  }
 
   if (blocked > 0) {
     logs.push({
@@ -1105,15 +1261,6 @@ function resolveAttack(params: {
       type: 'BLOCK',
       amount: blocked,
       text: `${target.name} blocks ${blocked} damage`,
-    });
-  }
-
-  if (!target.isAlive) {
-    logs.push({
-      round: state.roundNumber,
-      actorId: target.id,
-      type: 'DEATH',
-      text: `${target.name} dies`,
     });
   }
 }
@@ -1140,6 +1287,8 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
   const target = selectNearestEnemy(actor, enemies);
   const lowHpRatio = actor.currentHp / Math.max(1, actor.maxHp);
   const combatStyle = classifyCombatStyle(actor);
+  const maxRange = getMaxAttackRange(actor, combatStyle);
+  const desiredMinDistance = combatStyle === 'MELEE' ? 1 : 2;
   const preferredDefense = lowHpRatio < 0.5
     ? [TargetZone.Head]
     : [TargetZone.Chest, TargetZone.Abdomen];
@@ -1171,7 +1320,7 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
     });
   }
 
-  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance < 3) {
+  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance < desiredMinDistance) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
@@ -1184,7 +1333,7 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
     });
   }
 
-  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance > 6) {
+  if ((combatStyle === 'RANGED' || combatStyle === 'MAGIC') && currentDistance > maxRange) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
@@ -1437,6 +1586,7 @@ export function resolveRound(params: {
       target,
       actorAction,
       targetAction,
+      byActor,
       logs,
       random,
     });

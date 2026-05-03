@@ -328,11 +328,52 @@ function normalizeCityInput(input: City): City {
           description: location.description?.trim() || undefined,
           imageId: location.imageId?.trim() || undefined,
           npcIds: Array.isArray(location.npcIds) ? location.npcIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+          autoTriggers: Array.isArray((location as any).autoTriggers)
+            ? (location as any).autoTriggers
+              .map((trigger: any) => ({
+                npcId: String(trigger?.npcId ?? '').trim(),
+                dialogueId: String(trigger?.dialogueId ?? '').trim(),
+                condition: trigger?.condition?.trim() || undefined,
+                once: trigger?.once !== undefined ? Boolean(trigger.once) : undefined,
+              }))
+              .filter((trigger: any) => Boolean(trigger.npcId && trigger.dialogueId))
+            : undefined,
           questIds: Array.isArray(location.questIds) ? location.questIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
           shopIds: Array.isArray(location.shopIds) ? location.shopIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
           unlockCondition: location.unlockCondition?.trim() || undefined,
           markerIcon: location.markerIcon?.trim() || undefined,
           linkedBattleMapId: location.linkedBattleMapId?.trim() || undefined,
+          encounter: location.encounter
+            ? {
+              kind: location.encounter.kind,
+              arenaMasterNpcId: location.encounter.arenaMasterNpcId?.trim() || undefined,
+              battleMapIds: Array.isArray(location.encounter.battleMapIds)
+                ? location.encounter.battleMapIds.map((entry) => String(entry).trim()).filter(Boolean)
+                : undefined,
+              presets: Array.isArray(location.encounter.presets)
+                ? location.encounter.presets
+                  .map((preset) => {
+                    const type = preset?.type;
+                    if (type !== 'pve' && type !== 'pvp' && type !== 'random' && type !== 'scripted') {
+                      return null;
+                    }
+                    return {
+                      id: String(preset?.id ?? '').trim(),
+                      label: String(preset?.label ?? '').trim(),
+                      type,
+                      battleMapId: preset?.battleMapId?.trim() || undefined,
+                      enemyCount: typeof preset?.enemyCount === 'number' && Number.isFinite(preset.enemyCount) ? Math.max(1, Math.round(preset.enemyCount)) : undefined,
+                      playerTurnSeconds: typeof preset?.playerTurnSeconds === 'number' && Number.isFinite(preset.playerTurnSeconds) ? Math.max(5, Math.round(preset.playerTurnSeconds)) : undefined,
+                      notes: preset?.notes?.trim() || undefined,
+                    };
+                  })
+                  .filter((preset): preset is NonNullable<typeof preset> => Boolean(preset?.id && preset?.label))
+                : undefined,
+              allowPvE: location.encounter.allowPvE !== undefined ? Boolean(location.encounter.allowPvE) : undefined,
+              allowPvP: location.encounter.allowPvP !== undefined ? Boolean(location.encounter.allowPvP) : undefined,
+              allowRandomEnemyGeneration: location.encounter.allowRandomEnemyGeneration !== undefined ? Boolean(location.encounter.allowRandomEnemyGeneration) : undefined,
+            }
+            : undefined,
         }))
         .filter((location) => Boolean(location.id && location.name))
       : [],
@@ -446,6 +487,30 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     ? Math.max(0, Math.round(input.damageMax))
     : undefined;
 
+  const attackRange = typeof input.attackRange === 'number' && Number.isFinite(input.attackRange)
+    ? Math.max(2, Math.min(24, Math.floor(input.attackRange)))
+    : undefined;
+
+  const pierceTargets = attackRange && typeof input.pierceTargets === 'number' && Number.isFinite(input.pierceTargets)
+    ? Math.max(2, Math.min(12, Math.floor(input.pierceTargets)))
+    : undefined;
+
+  const splashRadius = attackRange && typeof input.splashRadius === 'number' && Number.isFinite(input.splashRadius)
+    ? Math.max(1, Math.min(6, Math.floor(input.splashRadius)))
+    : undefined;
+
+  const splashCenterMultiplier = splashRadius
+    ? Math.max(1, Math.min(10, normalizePositiveMultiplier(input.splashCenterMultiplier, 1)))
+    : undefined;
+
+  const rawOuterMultiplier = typeof input.splashOuterMultiplier === 'number' && Number.isFinite(input.splashOuterMultiplier)
+    ? input.splashOuterMultiplier
+    : 0.5;
+
+  const splashOuterMultiplier = splashRadius
+    ? Math.max(0, Math.min(splashCenterMultiplier ?? 1, rawOuterMultiplier))
+    : undefined;
+
   return {
     ...input,
     id: input.id.trim(),
@@ -461,6 +526,11 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     bonuses: input.bonuses ?? {},
     damageMin: input.type === 'weapon' ? (damageMin ?? damageMax) : damageMin,
     damageMax: input.type === 'weapon' ? (damageMax ?? damageMin) : damageMax,
+    attackRange,
+    pierceTargets,
+    splashRadius,
+    splashCenterMultiplier,
+    splashOuterMultiplier,
     gameplayDescription: input.gameplayDescription ?? '',
     loreDescription: input.loreDescription ?? '',
     imagePath: input.imagePath?.trim() || undefined,
@@ -679,11 +749,19 @@ function normalizeMerchantItem(entry: MerchantItem): MerchantItem {
 }
 
 function normalizeMerchantInput(input: AdminMerchant): AdminMerchant {
+  const cityId = input.cityId?.trim() || undefined;
+  const cityLocationId = input.cityLocationId?.trim() || undefined;
+  if (cityLocationId && !cityId) {
+    throw new BadRequestException('cityLocationId requires cityId');
+  }
+
   return {
     ...input,
     id: input.id.trim(),
     name: input.name.trim(),
     city: input.city.trim(),
+    cityId,
+    cityLocationId,
     location: input.location?.trim() || undefined,
     description: input.description?.trim() || undefined,
     portraitPath: input.portraitPath?.trim() || undefined,

@@ -64,6 +64,13 @@ export interface CombatActionResult {
   hubState?: ArenaHubState;
 }
 
+export interface NearbyPvpPlayer {
+  characterId: string;
+  name: string;
+  race: Race;
+  level: number;
+}
+
 export interface CustomArenaNpcPayload {
   name: string;
   race: Race;
@@ -126,6 +133,37 @@ export interface RuntimeBattleMapTrapPayload {
   description?: string;
 }
 
+export interface RuntimeBattleMapPlacedNpcPayload {
+  id: string;
+  npcId?: string;
+  name: string;
+  role: string;
+  x: number;
+  y: number;
+  factionId?: string;
+  dialogueId?: string;
+  questId?: string;
+  merchantId?: string;
+  startsCombat?: boolean;
+  avatarUrl?: string;
+  description?: string;
+}
+
+export interface RuntimeBattleMapTriggerPayload {
+  id: string;
+  type: string;
+  name: string;
+  cells: Array<{ x: number; y: number }>;
+  questId?: string;
+  dialogueId?: string;
+  targetBattleMapId?: string;
+  targetWorldZoneId?: string;
+  startsCombat?: boolean;
+  once?: boolean;
+  enabled?: boolean;
+  description?: string;
+}
+
 export interface RuntimeBattleMapPayload {
   id: string;
   name: string;
@@ -139,6 +177,8 @@ export interface RuntimeBattleMapPayload {
   spawnZones: RuntimeBattleMapSpawnZonePayload[];
   objects: RuntimeBattleMapObjectPayload[];
   traps: RuntimeBattleMapTrapPayload[];
+  npcs?: RuntimeBattleMapPlacedNpcPayload[];
+  triggers?: RuntimeBattleMapTriggerPayload[];
 }
 
 export async function registerAccount(payload: RegisterRequest): Promise<RegisterResponse> {
@@ -184,6 +224,29 @@ export async function loginAccount(payload: RegisterRequest): Promise<RegisterRe
     throw new Error(await readErrorMessage(res));
   }
 
+  return res.json();
+}
+
+export async function fetchNearbyPvpPlayers(characterId: string): Promise<NearbyPvpPlayer[]> {
+  const res = await fetch(`${API_BASE}/pvp/nearby/${encodeURIComponent(characterId)}`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function challengePvpPlayer(payload: { challengerId: string; targetId: string }): Promise<{
+  target: NearbyPvpPlayer;
+  customEnemy: CustomArenaNpcPayload;
+}> {
+  const res = await fetch(`${API_BASE}/pvp/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
   return res.json();
 }
 

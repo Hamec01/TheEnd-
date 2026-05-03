@@ -27,6 +27,7 @@ import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CustomCombatNpcDto, RuntimeBattleMapDto } from './dto.start-combat.dto';
+import type { AdminItem } from '../content/content.types';
 
 interface CharacterRecord {
   id: string;
@@ -47,6 +48,9 @@ interface CharacterRecord {
 
 type CombatEquipmentPayload = Partial<Equipment> | null | undefined;
 type CombatStyleHint = 'MELEE' | 'RANGED' | 'MAGIC';
+type WeaponCombatProfile = Pick<AdminItem, 'attackRange' | 'pierceTargets' | 'splashRadius' | 'splashCenterMultiplier' | 'splashOuterMultiplier'> & {
+  combatStyleHint: CombatStyleHint;
+};
 
 interface CombatSession {
   state: ArenaBattleState;
@@ -60,6 +64,8 @@ export interface CombatActionResult {
   state: ArenaBattleState;
   hubState?: Awaited<ReturnType<ArenaService['getHubState']>>;
 }
+
+const DEFAULT_TURN_SECONDS = 60;
 
 @Injectable()
 export class CombatService {
@@ -281,6 +287,7 @@ export class CombatService {
     const baseStats = this.toBaseStats(character);
     const equipment = this.normalizeEquipment(character.equipment);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const weaponProfile = this.resolveWeaponCombatProfile(equipment);
 
     return this.toCombatEntityFromStats({
       id: character.id,
@@ -289,13 +296,40 @@ export class CombatService {
       team,
       position,
       stats: activeStats,
-      combatStyleHint: this.resolveCombatStyleHint(equipment),
+      combatStyleHint: weaponProfile.combatStyleHint,
+      attackRange: weaponProfile.attackRange,
+      pierceTargets: weaponProfile.pierceTargets,
+      splashRadius: weaponProfile.splashRadius,
+      splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
+      splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
     });
   }
 
-  private resolveCombatStyleHint(equipment: Equipment): CombatStyleHint {
+  private resolveWeaponCombatProfile(equipment: Equipment): WeaponCombatProfile {
     if (!equipment.weapon) {
-      return 'MELEE';
+      return { combatStyleHint: 'MELEE' };
+    }
+
+    const weaponId = String(equipment.weapon ?? '').trim();
+    const adminWeapon = this.contentService.listCollection('items').find((item) => item.id === weaponId) ?? null;
+    if (adminWeapon) {
+      const isMagicWeapon = Boolean(adminWeapon.magicSchool) || adminWeapon.damageCategory === 'magic';
+      const hasRange = typeof adminWeapon.attackRange === 'number' && adminWeapon.attackRange > 1;
+
+      const combatStyleHint: CombatStyleHint = isMagicWeapon
+        ? 'MAGIC'
+        : hasRange
+          ? 'RANGED'
+          : 'MELEE';
+
+      return {
+        combatStyleHint,
+        attackRange: adminWeapon.attackRange,
+        pierceTargets: adminWeapon.pierceTargets,
+        splashRadius: adminWeapon.splashRadius,
+        splashCenterMultiplier: adminWeapon.splashCenterMultiplier,
+        splashOuterMultiplier: adminWeapon.splashOuterMultiplier,
+      };
     }
 
     try {
@@ -303,17 +337,17 @@ export class CombatService {
       const subtype = String(weapon.itemSubType ?? '').toLowerCase();
 
       if (subtype.includes('bow') || subtype.includes('crossbow') || subtype.includes('sling') || subtype.includes('throw')) {
-        return 'RANGED';
+        return { combatStyleHint: 'RANGED' };
       }
 
       if (subtype.includes('staff') || subtype.includes('wand') || subtype.includes('tome') || subtype.includes('orb')) {
-        return 'MAGIC';
+        return { combatStyleHint: 'MAGIC' };
       }
     } catch {
-      return 'MELEE';
+      return { combatStyleHint: 'MELEE' };
     }
 
-    return 'MELEE';
+    return { combatStyleHint: 'MELEE' };
   }
 
   private normalizeEquipment(equipment?: CombatEquipmentPayload): Equipment {
@@ -329,6 +363,11 @@ export class CombatService {
     stats: StatBlock;
     avatarUrl?: string;
     combatStyleHint?: CombatStyleHint;
+    attackRange?: number;
+    pierceTargets?: number;
+    splashRadius?: number;
+    splashCenterMultiplier?: number;
+    splashOuterMultiplier?: number;
   }) {
     return createArenaCombatEntity({
       id: params.id,
@@ -351,6 +390,11 @@ export class CombatService {
       position: params.position,
       avatarUrl: params.avatarUrl,
       combatStyleHint: params.combatStyleHint,
+      attackRange: params.attackRange,
+      pierceTargets: params.pierceTargets,
+      splashRadius: params.splashRadius,
+      splashCenterMultiplier: params.splashCenterMultiplier,
+      splashOuterMultiplier: params.splashOuterMultiplier,
     });
   }
 
@@ -379,6 +423,7 @@ export class CombatService {
   private createCustomEnemy(template: CustomCombatNpcDto, position: number) {
     const equipment = this.normalizeEquipment(template.equipment);
     const activeStats = this.contentService.getStatsWithEquipment(template.stats, equipment);
+    const weaponProfile = this.resolveWeaponCombatProfile(equipment);
 
     return this.toCombatEntityFromStats({
       id: `npc-${randomUUID()}`,
@@ -388,7 +433,12 @@ export class CombatService {
       position,
       stats: activeStats,
       avatarUrl: template.avatarUrl,
-      combatStyleHint: this.resolveCombatStyleHint(equipment),
+      combatStyleHint: weaponProfile.combatStyleHint,
+      attackRange: weaponProfile.attackRange,
+      pierceTargets: weaponProfile.pierceTargets,
+      splashRadius: weaponProfile.splashRadius,
+      splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
+      splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
     });
   }
 
@@ -670,6 +720,7 @@ export class CombatService {
       battlefieldTiles,
       battlefieldTraps: this.buildBattlefieldTraps(battleMap),
     });
+    state.turnDeadlineAt = Date.now() + DEFAULT_TURN_SECONDS * 1000;
 
     this.sessions.set(combatId, {
       state,
@@ -803,7 +854,31 @@ export class CombatService {
       throw new BadRequestException('Player cannot act.');
     }
 
-    const requestedTotalSpent = Math.max(0, playerAction.attackPointsSpent) + Math.max(0, playerAction.defensePointsSpent);
+    const now = Date.now();
+    const isTimedOut = typeof state.turnDeadlineAt === 'number'
+      && Number.isFinite(state.turnDeadlineAt)
+      && now > state.turnDeadlineAt;
+    const effectiveAction = isTimedOut
+      ? (() => {
+        const fallbackTarget = state.entities.find((item) => item.team !== TeamSide.Left && item.isAlive)?.id ?? playerAction.targetId;
+        return {
+          actorId: playerId,
+          targetId: fallbackTarget,
+          attackZone: TargetZone.Chest,
+          defenseZones: [TargetZone.Chest, TargetZone.Abdomen],
+          attackPointsSpent: 0,
+          defensePointsSpent: 0,
+          actionType: ActionType.Wait,
+          movementType: undefined,
+          preferredDistance: undefined,
+          destinationX: undefined,
+          destinationY: undefined,
+          skillType: undefined,
+        };
+      })()
+      : playerAction;
+
+    const requestedTotalSpent = Math.max(0, effectiveAction.attackPointsSpent) + Math.max(0, effectiveAction.defensePointsSpent);
     if (requestedTotalSpent > playerEntity.currentStamina) {
       throw new BadRequestException('Not enough stamina for selected action points.');
     }
@@ -815,8 +890,8 @@ export class CombatService {
 
     let powerStrikeActive = false;
     const skillLogs: string[] = [];
-    const selectedSkill = playerAction.actionType === ActionType.Attack
-      ? playerAction.skillType ?? CombatSkillType.None
+    const selectedSkill = effectiveAction.actionType === ActionType.Attack
+      ? effectiveAction.skillType ?? CombatSkillType.None
       : CombatSkillType.None;
     const magicPenaltyMultiplier = 0.5;
 
@@ -885,22 +960,22 @@ export class CombatService {
 
     const crushingActiveNow = hasCrushing || selectedSkill === CombatSkillType.CrushingBlock;
     const rageActiveNow = hasRage || selectedSkill === CombatSkillType.Rage;
-    const normalizedPoints = this.normalizePlayerActionPoints(playerAction, playerEntity.currentStamina);
+    const normalizedPoints = this.normalizePlayerActionPoints(effectiveAction, playerEntity.currentStamina);
 
     const buffedPlayerAction: ArenaCombatAction = {
-      actorId: playerAction.actorId,
-      targetId: playerAction.targetId,
-      attackZone: playerAction.attackZone,
-      defenseZones: playerAction.defenseZones,
+      actorId: effectiveAction.actorId,
+      targetId: effectiveAction.targetId,
+      attackZone: effectiveAction.attackZone,
+      defenseZones: effectiveAction.defenseZones,
       attackPointsSpent: normalizedPoints.attackPointsSpent,
       defensePointsSpent: crushingActiveNow
         ? Math.max(0, Math.ceil(normalizedPoints.defensePointsSpent * 1.4))
         : normalizedPoints.defensePointsSpent,
-      actionType: playerAction.actionType,
-      movementType: playerAction.movementType,
-      preferredDistance: playerAction.preferredDistance,
-      destinationX: playerAction.destinationX,
-      destinationY: playerAction.destinationY,
+      actionType: effectiveAction.actionType,
+      movementType: effectiveAction.movementType,
+      preferredDistance: effectiveAction.preferredDistance,
+      destinationX: effectiveAction.destinationX,
+      destinationY: effectiveAction.destinationY,
     };
 
     const originalStrength = playerEntity.strength;
@@ -954,12 +1029,26 @@ export class CombatService {
       plannedActions: allActions,
     });
 
-    const selectedTarget = nextState.entities.find((item) => item.id === playerAction.targetId);
+    if (!nextState.isFinished) {
+      nextState.turnDeadlineAt = Date.now() + DEFAULT_TURN_SECONDS * 1000;
+    }
+
+    const selectedTarget = nextState.entities.find((item) => item.id === effectiveAction.targetId);
     const playerInNextState = nextState.entities.find((item) => item.id === playerEntity.id);
     const roundLogs = nextState.lastRound?.logs ?? [];
     const playerHitTargetThisRound = roundLogs.some(
-      (entry) => entry.type === 'HIT' && entry.actorId === playerEntity.id && entry.targetId === playerAction.targetId,
+      (entry) => entry.type === 'HIT' && entry.actorId === playerEntity.id && entry.targetId === effectiveAction.targetId,
     );
+    if (isTimedOut) {
+      const timeoutLog = {
+        round: nextState.roundNumber,
+        actorId: playerId,
+        type: 'INFO' as const,
+        text: `${playerEntity.name} timed out and waits`,
+      };
+      nextState.logs.push(timeoutLog);
+      nextState.lastRound?.logs.push(timeoutLog);
+    }
 
     if (selectedSkill === CombatSkillType.Fireball && selectedTarget?.isAlive && playerHitTargetThisRound) {
       const extraDamage = Math.max(4, Math.floor(playerEntity.intelligence * 1.8 * magicPenaltyMultiplier));

@@ -22,6 +22,13 @@ export function validateDialogue(
     errors.push('Dialogue startNodeId is missing.');
   }
 
+  const duplicateNodeIds = dialogue.nodes
+    .map((node) => node.id)
+    .filter((id, index, list) => list.indexOf(id) !== index);
+  if (duplicateNodeIds.length > 0) {
+    errors.push(`Duplicate node ids: ${Array.from(new Set(duplicateNodeIds)).join(', ')}`);
+  }
+
   const nodeMap = new Map(dialogue.nodes.map((node) => [node.id, node]));
   if (!nodeMap.has(dialogue.startNodeId)) {
     errors.push(`Start node does not exist: ${dialogue.startNodeId}.`);
@@ -33,7 +40,7 @@ export function validateDialogue(
 
   for (const node of dialogue.nodes) {
     if (node.choices.length === 0 && !node.actions?.length) {
-      warnings.push(`Node '${node.id}' has no choices.`);
+      warnings.push(`Node '${node.id}' has no choices and no actions.`);
     }
 
     if (node.choices.length > 8) {
@@ -41,8 +48,15 @@ export function validateDialogue(
     }
 
     for (const choice of node.choices) {
-      if (choice.nextNodeId && !nodeMap.has(choice.nextNodeId)) {
-        errors.push(`Choice '${choice.id}' points to missing nextNodeId '${choice.nextNodeId}'.`);
+      const nextNodeId = choice.nextNodeId ?? choice.next;
+      const endsDialogue = Boolean(choice.endsDialogue ?? choice.end);
+
+      if (!nextNodeId && !endsDialogue) {
+        warnings.push(`Choice '${choice.id}' has no next/end.`);
+      }
+
+      if (nextNodeId && !nodeMap.has(nextNodeId)) {
+        errors.push(`Choice '${choice.id}' points to missing next node '${nextNodeId}'.`);
       }
 
       if (choice.questIconMode && choice.questIconMode !== 'none') {
@@ -50,6 +64,13 @@ export function validateDialogue(
         if (!hasQuestAction) {
           warnings.push(`Choice '${choice.id}' has questIconMode but no quest action.`);
         }
+      }
+
+      if (choice.giveQuest && !hasId(worldData.questIds, choice.giveQuest)) {
+        errors.push(`Choice '${choice.id}' gives missing quest '${choice.giveQuest}'.`);
+      }
+      if (choice.completeQuest && !hasId(worldData.questIds, choice.completeQuest)) {
+        errors.push(`Choice '${choice.id}' completes missing quest '${choice.completeQuest}'.`);
       }
 
       for (const action of choice.actions ?? []) {
@@ -67,6 +88,22 @@ export function validateDialogue(
         }
         if (!hasId(worldData.locationIds, action.locationId)) {
           errors.push(`Action '${action.id}' has missing location '${action.locationId}'.`);
+        }
+
+        if (action.type === 'startQuest' && !action.questId) {
+          warnings.push(`Action '${action.id}' startQuest is missing questId.`);
+        }
+        if (action.type === 'completeQuest' && !action.questId) {
+          warnings.push(`Action '${action.id}' completeQuest is missing questId.`);
+        }
+        if ((action.type === 'advanceQuest' || action.type === 'failQuest') && !action.questId) {
+          warnings.push(`Action '${action.id}' ${action.type} is missing questId.`);
+        }
+        if (action.type === 'completeObjective' && (!action.questId || !action.objectiveId)) {
+          warnings.push(`Action '${action.id}' completeObjective is missing questId/objectiveId.`);
+        }
+        if (action.type === 'completeStep' && !action.questId) {
+          warnings.push(`Action '${action.id}' completeStep is missing questId.`);
         }
       }
 

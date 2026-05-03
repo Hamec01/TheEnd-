@@ -1143,6 +1143,45 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         canvas.height,
       );
 
+      const kingdomBorders = zones.filter((zone) => zone.type === 'kingdom_area' && Boolean(zone.isVisibleToPlayer));
+      if (kingdomBorders.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(210, 170, 102, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+
+        for (const zone of kingdomBorders) {
+          if (zone.shape === 'circle') {
+            const x = ((zone.x ?? 0) - camera.left) / camera.width * canvas.width;
+            const y = ((zone.y ?? 0) - camera.top) / camera.height * canvas.height;
+            const radius = (zone.radius ?? 0.03) * canvas.width / camera.width;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            continue;
+          }
+
+          const points = zone.points ?? [];
+          if (points.length === 0) {
+            continue;
+          }
+          ctx.beginPath();
+          points.forEach(([px, py], index) => {
+            const screenX = ((px - camera.left) / camera.width) * canvas.width;
+            const screenY = ((py - camera.top) / camera.height) * canvas.height;
+            if (index === 0) {
+              ctx.moveTo(screenX, screenY);
+            } else {
+              ctx.lineTo(screenX, screenY);
+            }
+          });
+          ctx.closePath();
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
       for (const zone of zones) {
         const isHovered = hoverZone?.id === zone.id;
         if (!isHovered) {

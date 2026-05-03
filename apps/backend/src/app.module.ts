@@ -6,8 +6,9 @@ import { CombatModule } from './combat/combat.module';
 import { ContentModule } from './content/content.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SkillsModule } from './skills/skills.module';
+import { PvpModule } from './pvp/pvp.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, CharactersModule, ContentModule, ArenaModule, CombatModule, SkillsModule],
+  imports: [PrismaModule, AuthModule, CharactersModule, ContentModule, ArenaModule, CombatModule, SkillsModule, PvpModule],
 })
 export class AppModule {}

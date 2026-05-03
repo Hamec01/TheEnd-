@@ -61,6 +61,15 @@ function parseNumber(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parsePositiveInt(value: string): number | undefined {
+  const parsed = parseNumber(value);
+  if (typeof parsed !== 'number') {
+    return undefined;
+  }
+  const intValue = Math.floor(parsed);
+  return Number.isFinite(intValue) && intValue > 0 ? intValue : undefined;
+}
+
 function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
@@ -73,6 +82,7 @@ export function ItemsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
+  const [rangePanelOpen, setRangePanelOpen] = useState(false);
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
@@ -134,6 +144,7 @@ export function ItemsPage() {
   function select(item: AdminItem) {
     setSelectedId(item.id);
     setDraft(item);
+    setRangePanelOpen(Boolean(item.attackRange || item.pierceTargets || item.splashRadius));
   }
 
   function patch(next: Partial<AdminItem>) {
@@ -350,6 +361,148 @@ export function ItemsPage() {
             <AdminFieldLabel label="Макс. урон" hint="Верхняя граница урона. Не должна быть ниже минимального урона." />
             <input type="number" value={draft.damageMax ?? ''} onChange={(event) => patch({ damageMax: parseNumber(event.target.value) })} />
           </label>
+          <div className="admin-item-range-tools card">
+            <div className="admin-item-range-tools-head">
+              <button type="button" onClick={() => setRangePanelOpen((value) => !value)}>
+                RANGE {rangePanelOpen ? '▲' : '▼'}
+              </button>
+              <span className="muted">Дальность / пробитие / урон по площади (лук, арбалет, посох, бомбы, метательное копьё)</span>
+            </div>
+
+            {rangePanelOpen ? (
+              <div className="admin-item-range-tools-grid">
+                <label className="zone-editor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={typeof draft.attackRange === 'number' && draft.attackRange > 1}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        patch({ attackRange: Math.max(2, draft.attackRange ?? 2) });
+                        return;
+                      }
+                      patch({
+                        attackRange: undefined,
+                        pierceTargets: undefined,
+                        splashRadius: undefined,
+                        splashCenterMultiplier: undefined,
+                        splashOuterMultiplier: undefined,
+                      });
+                    }}
+                  />
+                  <AdminFieldLabel label="Дальний бой" hint="Если включено — предмет может атаковать дальше 1 клетки." />
+                </label>
+
+                {typeof draft.attackRange === 'number' && draft.attackRange > 1 ? (
+                  <>
+                    <label>
+                      <AdminFieldLabel label="Range (клетки)" hint="Максимальная дальность в клетках. Пример: лук 3, посох 5, бомба 5." />
+                      <input
+                        type="number"
+                        min={2}
+                        value={draft.attackRange ?? ''}
+                        onChange={(event) => {
+                          const parsed = parsePositiveInt(event.target.value);
+                          if (!parsed) {
+                            patch({
+                              attackRange: undefined,
+                              pierceTargets: undefined,
+                              splashRadius: undefined,
+                              splashCenterMultiplier: undefined,
+                              splashOuterMultiplier: undefined,
+                            });
+                            return;
+                          }
+                          patch({ attackRange: Math.max(2, parsed) });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Пробитие (целей)" hint="Сколько целей по линии может задеть снаряд. Пример: метательное копьё 2." />
+                      <input
+                        type="number"
+                        min={2}
+                        value={draft.pierceTargets ?? ''}
+                        onChange={(event) => {
+                          const parsed = parsePositiveInt(event.target.value);
+                          patch({ pierceTargets: parsed ? Math.max(2, parsed) : undefined });
+                        }}
+                      />
+                    </label>
+
+                    <label className="zone-editor-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={typeof draft.splashRadius === 'number' && draft.splashRadius >= 1}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            patch({
+                              splashRadius: Math.max(1, draft.splashRadius ?? 1),
+                              splashCenterMultiplier: typeof draft.splashCenterMultiplier === 'number' ? Math.max(1, draft.splashCenterMultiplier) : 1,
+                              splashOuterMultiplier: typeof draft.splashOuterMultiplier === 'number' ? Math.max(0, draft.splashOuterMultiplier) : 0.5,
+                            });
+                            return;
+                          }
+                          patch({
+                            splashRadius: undefined,
+                            splashCenterMultiplier: undefined,
+                            splashOuterMultiplier: undefined,
+                          });
+                        }}
+                      />
+                      <AdminFieldLabel label="Урон по площади" hint="Если включено — атакует клетку попадания и клетки вокруг (бомбы/заклинания из посоха)." />
+                    </label>
+
+                    {typeof draft.splashRadius === 'number' && draft.splashRadius >= 1 ? (
+                      <>
+                        <label>
+                          <AdminFieldLabel label="Радиус AoE (клетки)" hint="Радиус поражения вокруг клетки попадания. 1 = ближайшие клетки вокруг." />
+                          <input
+                            type="number"
+                            min={1}
+                            value={draft.splashRadius ?? ''}
+                            onChange={(event) => {
+                              const parsed = parsePositiveInt(event.target.value);
+                              if (!parsed) {
+                                patch({
+                                  splashRadius: undefined,
+                                  splashCenterMultiplier: undefined,
+                                  splashOuterMultiplier: undefined,
+                                });
+                                return;
+                              }
+                              patch({ splashRadius: Math.max(1, parsed) });
+                            }}
+                          />
+                        </label>
+                        <label>
+                          <AdminFieldLabel label="Множитель центра" hint="Во сколько раз урон по клетке попадания выше, чем базовый (>= 1)." />
+                          <input
+                            type="number"
+                            min={1}
+                            step={0.1}
+                            value={draft.splashCenterMultiplier ?? ''}
+                            onChange={(event) => patch({ splashCenterMultiplier: parseNumber(event.target.value) })}
+                          />
+                        </label>
+                        <label>
+                          <AdminFieldLabel label="Множитель вокруг" hint="Урон по клеткам вокруг. 0..(множитель центра). Обычно 0.5." />
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            value={draft.splashOuterMultiplier ?? ''}
+                            onChange={(event) => patch({ splashOuterMultiplier: parseNumber(event.target.value) })}
+                          />
+                        </label>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="muted admin-item-range-tools-note">Для ближнего боя оставь выключенным.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <label>
             <AdminFieldLabel label="Категория урона" hint="Определяет, к какому типу относится урон предмета: физический, магический, стихия и так далее." />
             <select value={draft.damageCategory ?? ''} onChange={(event) => patch({ damageCategory: (event.target.value || undefined) as DamageCategory | undefined })}>
@@ -485,7 +638,7 @@ export function ItemsPage() {
             <option value="all">Любая редкость</option>
             {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
           </select>
-          <button onClick={() => { setSelectedId(null); setDraft(emptyItem()); }}>Новый предмет</button>
+          <button onClick={() => { setSelectedId(null); setDraft(emptyItem()); setRangePanelOpen(false); }}>Новый предмет</button>
         </div>
 
         {selectedItem ? (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { City, CityLocation, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
+import type { City, CityLocation, CityLocationShape, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
 import { cityService } from '../../services/cityRepository';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
@@ -20,6 +20,10 @@ function splitCsv(value: string): string[] {
 
 function joinCsv(value: string[] | undefined): string {
   return (value ?? []).join(', ');
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function createNewCity(): City {
@@ -50,7 +54,7 @@ function createNewLocation(cityId: string): CityLocation {
     type: 'custom',
     description: '',
     shapeType: 'rectangle',
-    shape: { x: 80, y: 80, width: 160, height: 90 },
+    shape: { x: 80, y: 80, width: 130, height: 78 },
     npcIds: [],
     questIds: [],
     shopIds: [],
@@ -72,7 +76,12 @@ export function CitiesPage() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 });
+  const [dragLocationId, setDragLocationId] = useState<string | null>(null);
+  const [dragPointerId, setDragPointerId] = useState<number | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number; shapeX: number; shapeY: number; shape: CityLocationShape } | null>(null);
   const [status, setStatus] = useState('');
+  const [autoTriggersText, setAutoTriggersText] = useState('');
+  const [autoTriggersError, setAutoTriggersError] = useState<string | null>(null);
   const [images, setImages] = useState<StoredImage[]>([]);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +113,11 @@ export function CitiesPage() {
     () => draft?.locations.find((location) => location.id === selectedLocationId) ?? draft?.locations[0] ?? null,
     [draft, selectedLocationId],
   );
+
+  useEffect(() => {
+    setAutoTriggersText(JSON.stringify(selectedLocation?.autoTriggers ?? [], null, 2));
+    setAutoTriggersError(null);
+  }, [selectedLocation?.id]);
   const duplicateArkleinCities = useMemo(() => {
     const aliases = new Set(['arklein', 'city_arklein', 'arclein', 'arkea', 'Ð°Ñ€ÐºÐ»ÐµÐ¹Ð½']);
     return cities.filter((city) => {
@@ -137,6 +151,18 @@ export function CitiesPage() {
 
   function patchCity(patch: Partial<City>) {
     setDraft((current) => current ? { ...current, ...patch } : current);
+  }
+
+  function patchLocationById(locationId: string, patch: Partial<CityLocation>) {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        locations: current.locations.map((location) =>
+          location.id === locationId ? { ...location, ...patch } : location,
+        ),
+      };
+    });
   }
 
   function patchSelectedLocation(patch: Partial<CityLocation>) {
@@ -271,8 +297,8 @@ export function CitiesPage() {
       const location = createNewLocation(draft.id);
       location.shapeType = tool;
       location.shape = tool === 'circle'
-        ? { x, y, radius: 50 }
-        : { x, y, width: 140, height: 90 };
+        ? { x, y, radius: 36 }
+        : { x, y, width: 120, height: 72 };
       patchCity({ locations: [...draft.locations, location] });
       setSelectedLocationId(location.id);
       setTab('locations');
@@ -280,6 +306,19 @@ export function CitiesPage() {
   }
 
   function handleCanvasPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragLocationId && dragStart && (dragPointerId === null || dragPointerId === event.pointerId)) {
+      event.preventDefault();
+      const dx = (event.clientX - dragStart.x) / zoom;
+      const dy = (event.clientY - dragStart.y) / zoom;
+      patchLocationById(dragLocationId, {
+        shape: {
+          ...dragStart.shape,
+          x: Math.max(0, Math.min(1200, Math.round(dragStart.shapeX + dx))),
+          y: Math.max(0, Math.min(720, Math.round(dragStart.shapeY + dy))),
+        },
+      });
+      return;
+    }
     if (!isPanning) return;
     setPan({
       x: panStart.panX + event.clientX - panStart.x,
@@ -289,6 +328,9 @@ export function CitiesPage() {
 
   function stopPanning() {
     setIsPanning(false);
+    setDragLocationId(null);
+    setDragPointerId(null);
+    setDragStart(null);
   }
 
   const backgroundStyle = resolvedBackgroundUrl
@@ -341,7 +383,7 @@ export function CitiesPage() {
             <button type="button" className={tool === 'circle' ? 'is-active' : ''} onClick={() => setTool('circle')}>CIRCLE</button>
             <button type="button" onClick={addLocation}>+ LOCATION</button>
             <button type="button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>FIT</button>
-            <span>Alt + wheel = zoom, middle mouse drag = pan</span>
+            <span>Alt + wheel = zoom, middle mouse drag = pan, Shift + drag = move marker, Shift + wheel = resize marker</span>
           </div>
 
           <div
@@ -378,9 +420,38 @@ export function CitiesPage() {
                       type="button"
                       className={`city-location-shape city-location-circle ${selected ? 'is-selected' : ''}`}
                       style={{ ...common, width: `${r * 2}px`, height: `${r * 2}px` }}
+                      onPointerDown={(event) => {
+                        if (!event.shiftKey || event.button !== 0) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setSelectedLocationId(location.id);
+                        setTab('locations');
+                        setDragLocationId(location.id);
+                        setDragPointerId(event.pointerId);
+                        setDragStart({
+                          x: event.clientX,
+                          y: event.clientY,
+                          shapeX: shape.x ?? 0,
+                          shapeY: shape.y ?? 0,
+                          shape: structuredClone(shape),
+                        });
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      }}
+                      onWheel={(event) => {
+                        if (!event.shiftKey) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const direction = event.deltaY > 0 ? -1 : 1;
+                        const nextRadius = clamp((shape.radius ?? 40) + direction * 6, 18, 240);
+                        patchLocationById(location.id, { shape: { ...shape, radius: nextRadius } });
+                      }}
                       onClick={() => { setSelectedLocationId(location.id); setTab('locations'); }}
                     >
-                      {location.name}
+                      <span className="city-location-label">{location.name}</span>
                     </button>
                   );
                 }
@@ -391,9 +462,40 @@ export function CitiesPage() {
                     type="button"
                     className={`city-location-shape city-location-rect ${selected ? 'is-selected' : ''}`}
                     style={{ ...common, width: `${shape.width ?? 120}px`, height: `${shape.height ?? 80}px` }}
+                    onPointerDown={(event) => {
+                      if (!event.shiftKey || event.button !== 0) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setSelectedLocationId(location.id);
+                      setTab('locations');
+                      setDragLocationId(location.id);
+                      setDragPointerId(event.pointerId);
+                      setDragStart({
+                        x: event.clientX,
+                        y: event.clientY,
+                        shapeX: shape.x ?? 0,
+                        shapeY: shape.y ?? 0,
+                        shape: structuredClone(shape),
+                      });
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onWheel={(event) => {
+                      if (!event.shiftKey) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const direction = event.deltaY > 0 ? -1 : 1;
+                      const scale = 1 + direction * 0.08;
+                      const nextWidth = clamp(Math.round((shape.width ?? 120) * scale), 60, 520);
+                      const nextHeight = clamp(Math.round((shape.height ?? 80) * scale), 40, 360);
+                      patchLocationById(location.id, { shape: { ...shape, width: nextWidth, height: nextHeight } });
+                    }}
                     onClick={() => { setSelectedLocationId(location.id); setTab('locations'); }}
                   >
-                    {location.name}
+                    <span className="city-location-label">{location.name}</span>
                   </button>
                 );
               })}
@@ -528,6 +630,36 @@ export function CitiesPage() {
                         <label>NPC IDs<input value={joinCsv(selectedLocation.npcIds)} onChange={(e) => patchSelectedLocation({ npcIds: splitCsv(e.target.value) })} /></label>
                         <label>Quest IDs<input value={joinCsv(selectedLocation.questIds)} onChange={(e) => patchSelectedLocation({ questIds: splitCsv(e.target.value) })} /></label>
                         <label>Shop IDs<input value={joinCsv(selectedLocation.shopIds)} onChange={(e) => patchSelectedLocation({ shopIds: splitCsv(e.target.value) })} /></label>
+                        <label>
+                          Auto Triggers (JSON)
+                          <textarea
+                            value={autoTriggersText}
+                            onChange={(e) => {
+                              setAutoTriggersText(e.target.value);
+                              setAutoTriggersError(null);
+                            }}
+                            onBlur={() => {
+                              try {
+                                const raw = autoTriggersText.trim();
+                                const parsed = raw ? JSON.parse(raw) : [];
+                                if (!Array.isArray(parsed)) {
+                                  throw new Error('Auto triggers must be an array.');
+                                }
+                                patchSelectedLocation({ autoTriggers: parsed });
+                                setAutoTriggersError(null);
+                              } catch (error) {
+                                setAutoTriggersError((error as Error).message || 'Invalid JSON.');
+                              }
+                            }}
+                            placeholder='[{"npcId":"npc_erdon","dialogueId":"dialogue_erdon_intro","once":true}]'
+                            style={{ minHeight: 110 }}
+                          />
+                        </label>
+                        {autoTriggersError ? (
+                          <p className="muted" style={{ marginTop: -10, color: "#f4a261" }}>
+                            {autoTriggersError}
+                          </p>
+                        ) : null}
                         <label>Linked Battle Map ID<input value={selectedLocation.linkedBattleMapId ?? ''} onChange={(e) => patchSelectedLocation({ linkedBattleMapId: e.target.value })} placeholder="battlemap_arklein_arena" /></label>
                         <label><input type="checkbox" checked={selectedLocation.isVisible} onChange={(e) => patchSelectedLocation({ isVisible: e.target.checked })} /> Visible</label>
                         <label><input type="checkbox" checked={selectedLocation.isUnlocked} onChange={(e) => patchSelectedLocation({ isUnlocked: e.target.checked })} /> Unlocked</label>
