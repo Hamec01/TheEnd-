@@ -211,7 +211,10 @@ export function getRandomZoneCooldowns(): RandomQuestCooldown[] {
 
 export function saveRandomZoneCooldown(cooldown: RandomQuestCooldown): void {
   const current = getRandomZoneCooldowns();
-  const next = [...current.filter((entry) => entry.zoneId !== cooldown.zoneId), cooldown];
+  const next = [
+    ...current.filter((entry) => !(entry.playerId === cooldown.playerId && entry.zoneId === cooldown.zoneId)),
+    cooldown,
+  ];
   writeArray(RANDOM_ZONE_COOLDOWNS_KEY, next);
 }
 

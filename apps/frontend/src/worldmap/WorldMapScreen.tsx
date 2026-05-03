@@ -66,7 +66,7 @@ import {
   getAllPlayerQuestStates,
   getAllQuests,
 } from "../services/questRepository";
-import { advanceQuest, applyQuestRewards, tryStartRandomQuestFromZone } from "../services/questRuntime";
+import { advanceQuest, applyQuestRewards, canStartQuest, handleQuestEvent, tryStartRandomQuestFromZone, type QuestRuntimePlayer } from "../services/questRuntime";
 import type {
   PlayerQuestState,
   QuestDefinition,
@@ -570,32 +570,60 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const playQuestMarkers = useMemo(() => {
     const activeStates = playerQuestStates.filter((entry) => entry.status === "active");
-    if (activeStates.length === 0) {
-      return [] as QuestMarkerDefinition[];
-    }
-
     const stateByQuestId = new Map(activeStates.map((state) => [state.questId, state]));
 
     return questMarkers.filter((marker) => {
-      if (marker.mapId !== "worldmap-main" || !marker.visibleToPlayer) {
+      if (marker.mapId !== "worldmap-main") {
         return false;
       }
-      if (!marker.linkedQuestId) {
-        return false;
+
+      const linkedQuestId = marker.linkedQuestId?.trim() || null;
+      const state = linkedQuestId ? stateByQuestId.get(linkedQuestId) ?? null : null;
+
+      // 1) Active quest objective markers (must be visible even if visibleToPlayer=false).
+      if (state) {
+        if (marker.linkedStepId && marker.linkedStepId !== state.currentStepId) {
+          return false;
+        }
+        if (marker.linkedObjectiveId && state.completedObjectiveIds.includes(marker.linkedObjectiveId)) {
+          return false;
+        }
+        return true;
       }
-      const state = stateByQuestId.get(marker.linkedQuestId);
-      if (!state) {
-        return false;
+
+      // 2) Public markers.
+      if (marker.visibleToPlayer) {
+        return true;
       }
-      if (marker.linkedStepId && state.currentStepId && marker.linkedStepId !== state.currentStepId) {
-        return false;
+
+      // 3) Quest start markers (show if quest can start and is not already active/completed non-repeatable).
+      if (marker.type === "quest_start" && linkedQuestId) {
+        const quest = questDefinitions.find((entry) => entry.id === linkedQuestId) ?? null;
+        if (!quest) {
+          return false;
+        }
+        const player: QuestRuntimePlayer = {
+          id: character.id,
+          level: character.level,
+          race: character.race,
+          activeQuestIds: playerQuestStates.filter((entry) => entry.status === "active").map((entry) => entry.questId),
+          completedQuestIds: playerQuestStates.filter((entry) => entry.status === "completed").map((entry) => entry.questId),
+          itemIds: inventory.items.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId),
+        };
+        return canStartQuest(player, quest);
       }
-      if (marker.linkedObjectiveId && state.completedObjectiveIds.includes(marker.linkedObjectiveId)) {
-        return false;
-      }
-      return true;
+
+      return false;
     });
-  }, [playerQuestStates, questMarkers]);
+  }, [
+    character.id,
+    character.level,
+    character.race,
+    inventory.items,
+    playerQuestStates,
+    questDefinitions,
+    questMarkers,
+  ]);
   const playNpcMarkers = useMemo(() => {
     // NPC interactions stay available, but map labels/markers are intentionally hidden.
     return [] as Array<{
@@ -1043,6 +1071,88 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return [...localMessages, ...systemChat].slice(-24);
   }, [chatLines, systemChat]);
 
+  const appendQuestRuntimeLogsToSystemChat = useCallback((logs: string[] | undefined | null) => {
+    const playerLogLines: string[] = [];
+    for (const rawLine of logs ?? []) {
+      const line = String(rawLine ?? "").trim();
+      if (!line) {
+        continue;
+      }
+
+      if (line === "Вы осмотрелись, но ничего важного не нашли.") {
+        playerLogLines.push(line);
+        continue;
+      }
+
+      if (line.startsWith("Quest started:")) {
+        const questId = line.slice("Quest started:".length).trim();
+        const questTitle = questDefinitions.find((entry) => entry.id === questId)?.title ?? null;
+        playerLogLines.push(questTitle ? `Новый квест: ${questTitle}` : "Новый квест принят.");
+        continue;
+      }
+      if (line.startsWith("Quest completed:")) {
+        const questId = line.slice("Quest completed:".length).trim();
+        const questTitle = questDefinitions.find((entry) => entry.id === questId)?.title ?? null;
+        playerLogLines.push(questTitle ? `Квест завершён: ${questTitle}` : "Квест завершён.");
+        continue;
+      }
+      if (line.startsWith("Quest advanced:")) {
+        playerLogLines.push("Квест обновлён.");
+        continue;
+      }
+      if (line.startsWith("Quest failed:")) {
+        playerLogLines.push("Квест провален.");
+        continue;
+      }
+      if (line.startsWith("Gold granted:")) {
+        const amount = line.slice("Gold granted:".length).trim();
+        playerLogLines.push(`Получено золото: ${amount}`);
+        continue;
+      }
+      if (line.startsWith("Gold removed:")) {
+        const amount = line.slice("Gold removed:".length).trim();
+        playerLogLines.push(`Потрачено золото: ${amount}`);
+        continue;
+      }
+      if (line.startsWith("Item granted:")) {
+        const itemId = line.slice("Item granted:".length).trim();
+        const name = resolveItemById ? (resolveItemById(itemId)?.name ?? itemId) : itemId;
+        playerLogLines.push(`Получен предмет: ${name}`);
+        continue;
+      }
+      if (line.startsWith("Item removed:")) {
+        const itemId = line.slice("Item removed:".length).trim();
+        const name = resolveItemById ? (resolveItemById(itemId)?.name ?? itemId) : itemId;
+        playerLogLines.push(`Потерян предмет: ${name}`);
+        continue;
+      }
+      if (line.startsWith("Quest item granted:")) {
+        playerLogLines.push("Получен квестовый предмет.");
+        continue;
+      }
+      if (line.startsWith("Quest item removed:")) {
+        playerLogLines.push("Квестовый предмет потерян.");
+        continue;
+      }
+      if (line.startsWith("Location unlocked:")) {
+        playerLogLines.push("Открыта новая локация.");
+        continue;
+      }
+    }
+
+    if (playerLogLines.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const next = playerLogLines.map((text) => ({
+      id: `sys-quest-${now}-${nextSystemChatIdRef.current++}`,
+      text,
+      type: "system" as const,
+    }));
+    setSystemChat((prev) => [...prev, ...next].slice(-12));
+  }, [questDefinitions, resolveItemById]);
+
   const quickButtons = useMemo(
     () => [
       {
@@ -1139,6 +1249,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         type: "system",
       };
       setSystemChat((prev) => [...prev, entry].slice(-12));
+
+      const questEventResult = handleQuestEvent(
+        {
+          id: character.id,
+          level: character.level,
+          race: character.race,
+          itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
+        },
+        { type: "zone_enter", zoneId: zone.id },
+      );
+      appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
+      if (
+        questEventResult.startedQuestIds.length > 0 ||
+        questEventResult.advancedQuestIds.length > 0 ||
+        questEventResult.completedQuestIds.length > 0 ||
+        questEventResult.completedObjectiveIds.length > 0 ||
+        questEventResult.failedQuestIds.length > 0
+      ) {
+        setPlayerQuestStates(
+          getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
+        );
+      }
 
       const worldZone = zone as WorldMapZone;
       const targetScene = worldZone.targetScene?.trim();
@@ -1261,9 +1393,44 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStartCombat,
       onStatus,
       playerQuestStates,
+      appendQuestRuntimeLogsToSystemChat,
       worldMapMode,
     ],
   );
+
+  const handleInspectCurrentZone = useCallback(() => {
+    if (worldMapMode === "editor") {
+      return;
+    }
+    if (!currentZone) {
+      onStatus("Сначала войдите в зону.");
+      return;
+    }
+
+    const questEventResult = handleQuestEvent(
+      {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
+      },
+      { type: "zone_inspect", zoneId: currentZone.id },
+    );
+
+    appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
+    setPlayerQuestStates(
+      getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
+    );
+  }, [
+    appendQuestRuntimeLogsToSystemChat,
+    character.id,
+    character.level,
+    character.race,
+    currentZone,
+    inventory.items,
+    onStatus,
+    worldMapMode,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3787,6 +3954,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                         <span>{selectedNode.access}</span>
                       </p>
                       <p className="muted">{selectedNode.description}</p>
+                      {worldMapMode === "play" && locationView === "map" ? (
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
+                          <button onClick={handleInspectCurrentZone}>{"\u041e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c\u0441\u044f"}</button>
+                        </div>
+                      ) : null}
                     </>
                   ) : (
                     <p className="muted">{"\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0447\u043a\u0443 \u043d\u0430 \u043a\u0430\u0440\u0442\u0435."}</p>

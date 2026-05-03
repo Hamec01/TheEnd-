@@ -7,9 +7,12 @@ import {
   completeObjective,
   completeStep,
   completeQuest,
+  applyQuestRewards,
   failQuest,
   setQuestFlag,
   startQuest,
+  handleQuestEvent,
+  type QuestRuntimeEvent as QuestEvent,
   type QuestRuntimePlayer,
 } from './questRuntime';
 import { getQuestById } from './questRepository';
@@ -296,6 +299,15 @@ export function executeDialogueActions(
   const intents: DialogueRuntimeIntent[] = [];
   const events: DialogueRuntimeEvent[] = [];
   const npc = getNpcById(npcId);
+  const player: QuestRuntimePlayer = playerOverride ?? { id: playerId, level: 1 };
+
+  const runQuestEvent = (event: QuestEvent) => {
+    const result = handleQuestEvent(player, event);
+    logs.push(...(result.logs ?? []));
+    result.startedQuestIds.forEach((questId) => intents.push({ type: 'QUEST_STARTED', questId }));
+    result.advancedQuestIds.forEach((questId) => intents.push({ type: 'QUEST_ADVANCED', questId }));
+    result.completedQuestIds.forEach((questId) => intents.push({ type: 'QUEST_COMPLETED', questId }));
+  };
 
   for (const action of actions) {
     switch (action.type) {
@@ -304,45 +316,43 @@ export function executeDialogueActions(
           logs.push('startQuest skipped: missing questId.');
           break;
         }
-        const quest = getQuestById(action.questId);
-        if (!quest) {
-          logs.push(`startQuest failed: missing quest '${action.questId}'.`);
-          break;
-        }
-        const player: QuestRuntimePlayer = playerOverride ?? { id: playerId, level: 1 };
-        if (canStartQuest(player, quest)) {
-          startQuest(playerId, action.questId);
-          logs.push(`Quest started: ${action.questId}`);
-          intents.push({ type: 'QUEST_STARTED', questId: action.questId });
-        } else {
-          logs.push(`Quest cannot start: ${action.questId}`);
-        }
+        runQuestEvent({ type: 'manual', questId: action.questId });
         break;
       }
       case 'completeObjective':
         if (action.questId && action.objectiveId) {
-          completeObjective(playerId, action.questId, action.objectiveId);
-          logs.push(`Objective completed: ${action.objectiveId}`);
+          runQuestEvent({ type: 'manual', questId: action.questId, objectiveId: action.objectiveId });
         }
         break;
       case 'completeStep':
         if (action.questId) {
-          completeStep(playerId, action.questId, action.key ?? undefined);
-          logs.push(`Step completed: ${action.key ?? 'current'}`);
+          runQuestEvent({ type: 'manual', questId: action.questId, stepId: action.key ?? '' });
         }
         break;
       case 'advanceQuest':
         if (action.questId) {
-          advanceQuest(playerId, action.questId);
-          logs.push(`Quest advanced: ${action.questId}`);
-          intents.push({ type: 'QUEST_ADVANCED', questId: action.questId });
+          // keep legacy semantics: advance only if objectives are done
+          const before = getPlayerQuestState(playerId, action.questId);
+          const next = advanceQuest(playerId, action.questId);
+          if (next.currentStepId !== before?.currentStepId) {
+            logs.push(`Quest advanced: ${action.questId}`);
+            intents.push({ type: 'QUEST_ADVANCED', questId: action.questId });
+          }
+          if (next.status === 'completed') {
+            intents.push({ type: 'QUEST_COMPLETED', questId: action.questId });
+          }
         }
         break;
       case 'completeQuest':
         if (action.questId) {
+          // explicit completion request
           completeQuest(playerId, action.questId);
-          logs.push(`Quest completed: ${action.questId}`);
           intents.push({ type: 'QUEST_COMPLETED', questId: action.questId });
+          logs.push(`Quest completed: ${action.questId}`);
+          const rewards = applyQuestRewards(playerId, action.questId);
+          if (rewards.applied) {
+            rewards.rewards.forEach((reward) => logs.push(`Reward granted: ${reward}`));
+          }
         }
         break;
       case 'failQuest':

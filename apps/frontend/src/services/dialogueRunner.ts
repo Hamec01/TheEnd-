@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useReducer } from 'react';
 import type { DialogueChoice, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
-import type { QuestRuntimePlayer } from './questRuntime';
+import { handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
 import { getDialogueById, getDialoguesByNpc } from './dialogueRepository';
 import { getNpcById } from './npcRepository';
 import { getQuestById } from './questRepository';
@@ -373,6 +373,25 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       ...(choice.actions ?? []),
       ...derivedActions,
     ], params.player);
+
+    const questEventResult = handleQuestEvent(params.player, {
+      type: 'dialogue_choice',
+      npcId: npcId ?? undefined,
+      dialogueId: state.dialogueId,
+      nodeId: state.nodeId,
+      choiceId,
+    });
+
+    const merged = {
+      logs: [...(executed.logs ?? []), ...(questEventResult.logs ?? [])],
+      intents: [
+        ...(executed.intents ?? []),
+        ...questEventResult.startedQuestIds.map((questId) => ({ type: 'QUEST_STARTED' as const, questId })),
+        ...questEventResult.advancedQuestIds.map((questId) => ({ type: 'QUEST_ADVANCED' as const, questId })),
+        ...questEventResult.completedQuestIds.map((questId) => ({ type: 'QUEST_COMPLETED' as const, questId })),
+      ],
+      events: executed.events ?? [],
+    };
     const ended = (choice.endsDialogue ?? choice.end) === true;
     const nextNodeIdRaw = choice.nextNodeId ?? choice.next;
     const nextNodeId = typeof nextNodeIdRaw === 'string' ? nextNodeIdRaw.trim() : '';
@@ -382,7 +401,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       // eslint-disable-next-line no-console
       console.log('CHOICE CLICK:', choice);
       // eslint-disable-next-line no-console
-      console.log('NEXT:', nextNodeId);
+      console.log('NEXT:', nextNodeIdRaw);
     }
 
     const questIdGiven = (() => {
@@ -398,7 +417,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
     })();
 
     if (questIdGiven && npcId) {
-      const started = (executed.intents ?? []).some(
+      const started = (merged.intents ?? []).some(
         (intent) => intent.type === 'QUEST_STARTED' && (intent as any).questId === questIdGiven,
       );
       if (started) {
@@ -410,18 +429,22 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       const nextNode = dialogue.nodes.find((entry) => entry.id === nextNodeId) ?? null;
       if (!nextNode) {
         dispatch({ type: 'ERROR', text: `Dialogue node not found: ${nextNodeId}` });
-        return { ended: false, movedToNodeId: null, ...executed };
+        return { ended: false, movedToNodeId: null, ...merged };
       }
       dispatch({ type: 'SET_NODE', nodeId: nextNode.id });
-      return { ended: false, movedToNodeId: nextNode.id, ...executed };
+      return { ended: false, movedToNodeId: nextNode.id, ...merged };
     }
 
     if (ended) {
-      return { ended: true, movedToNodeId: null, ...executed };
+      return { ended: true, movedToNodeId: null, ...merged };
     }
 
-    dispatch({ type: 'NOTICE', text: 'Choice has no next or end.' });
-    return { ended: false, movedToNodeId: null, ...executed };
+    // BUGFIX: treat `end` as the only true terminal marker; treat `next` as missing only when null/undefined/empty.
+    const hasNext = Boolean(nextNodeId && nextNodeId.trim().length > 0);
+    if (!hasNext) {
+      dispatch({ type: 'NOTICE', text: 'Choice has no next or end.' });
+    }
+    return { ended: false, movedToNodeId: null, ...merged };
   }, [dialogue, params.player, state]);
 
   return {
