@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { App } from './App';
 import { AdminApp } from './admin/AdminApp';
 
-export type PlayerPath = '/' | '/inventory' | '/map' | '/combat' | '/merchant';
+export type PlayerPath = '/' | '/inventory' | '/map' | '/combat' | '/merchant' | '/character' | '/stats' | '/skills' | '/equipment' | '/journal';
 
 function normalizePath(pathname: string): string {
   if (!pathname || pathname === '') {
@@ -13,8 +13,9 @@ function normalizePath(pathname: string): string {
 
 function toPlayerPath(pathname: string): PlayerPath {
   const normalized = normalizePath(pathname);
-  if (normalized === '/inventory' || normalized === '/map' || normalized === '/combat' || normalized === '/merchant') {
-    return normalized;
+  const validPaths: PlayerPath[] = ['/', '/inventory', '/map', '/combat', '/merchant', '/character', '/stats', '/skills', '/equipment', '/journal'];
+  if (validPaths.includes(normalized as PlayerPath)) {
+    return normalized as PlayerPath;
   }
   return '/';
 }

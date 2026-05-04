@@ -8,6 +8,7 @@ import type {
   AdminMerchant,
   AdminNpc,
   AdminQuest,
+  AdminQuestInteraction,
   AdminQuestItem,
   AdminQuestMarker,
   AdminSkill,
@@ -32,6 +33,7 @@ export type ContentCollectionName =
   | 'dialogues'
   | 'npcs'
   | 'quests'
+  | 'questInteractions'
   | 'questItems'
   | 'questMarkers'
   | 'battleMaps';
@@ -54,6 +56,7 @@ export interface ContentSnapshot {
   dialogues: AdminDialogue[];
   npcs: AdminNpc[];
   quests: AdminQuest[];
+  questInteractions: AdminQuestInteraction[];
   questItems: AdminQuestItem[];
   questMarkers: AdminQuestMarker[];
   battleMaps: BattleMapDefinition[];

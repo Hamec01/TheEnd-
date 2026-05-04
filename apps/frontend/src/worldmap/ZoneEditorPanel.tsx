@@ -322,6 +322,54 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
             <option value="hidden_location">hidden_location</option>
           </select>
         </label>
+        <label className="zone-editor-checkbox">
+          <input
+            type="checkbox"
+            checked={baseMarkerDraft.isActive !== false}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, isActive: event.target.checked })}
+          />
+          <span>isActive</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            type="checkbox"
+            checked={baseMarkerDraft.hideAfterQuestCompleted === true}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, hideAfterQuestCompleted: event.target.checked })}
+          />
+          <span>hideAfterQuestCompleted</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            type="checkbox"
+            checked={baseMarkerDraft.hideAfterObjectiveCompleted === true}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, hideAfterObjectiveCompleted: event.target.checked })}
+          />
+          <span>hideAfterObjectiveCompleted</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            type="checkbox"
+            checked={baseMarkerDraft.hideAfterStepCompleted === true}
+            onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, hideAfterStepCompleted: event.target.checked })}
+          />
+          <span>hideAfterStepCompleted</span>
+        </label>
+        <label>
+          <span>Requirements JSON</span>
+          <textarea
+            rows={4}
+            placeholder='[{"type":"quest_active","questId":"..."}]'
+            value={baseMarkerDraft.requirements ? JSON.stringify(baseMarkerDraft.requirements, null, 2) : ''}
+            onChange={(event) => {
+              try {
+                const parsed = event.target.value.trim() ? JSON.parse(event.target.value) as QuestMarkerDefinition['requirements'] : undefined;
+                onQuestMarkerDraftChange({ ...baseMarkerDraft, requirements: parsed });
+              } catch {
+                // Keep draft as-is while JSON is invalid mid-edit
+              }
+            }}
+          />
+        </label>
         <div className="wm-meta-row">
           <span>Markers: {questMarkers.length}</span>
           <span>x: {baseMarkerDraft.x.toFixed(4)} y: {baseMarkerDraft.y.toFixed(4)}</span>

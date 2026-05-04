@@ -1770,7 +1770,35 @@
       "showInQuestInventory": true
     }
   ],
-  "questMarkers": [],
+  "questMarkers": [
+    {
+      "id": "marker_fireball_chest",
+      "mapId": "worldmap-main",
+      "x": 0.5694021953283659,
+      "y": 0.6921022574467268,
+      "type": "quest_objective",
+      "title": "Старый тайник",
+      "linkedQuestId": "fireball_unlock_start",
+      "linkedStepId": "step_find_chest",
+      "linkedObjectiveId": "obj_open_chest",
+      "visibleToPlayer": false,
+      "conditionIds": [],
+      "isActive": true,
+      "requirements": [
+        {
+          "type": "quest_active",
+          "questId": "fireball_unlock_start"
+        },
+        {
+          "type": "objective_not_completed",
+          "questId": "fireball_unlock_start",
+          "objectiveId": "obj_open_chest"
+        }
+      ],
+      "hideAfterQuestCompleted": true,
+      "hideAfterObjectiveCompleted": true
+    }
+  ],
   "worldMap": {
     "zones": [
       {

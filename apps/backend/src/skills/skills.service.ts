@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AdminSkillDefinition } from '@theend/rpg-domain';
+import { validateSkillDefinition } from '@theend/rpg-domain';
 import { ContentService } from '../content/content.service';
 
 @Injectable()
@@ -18,11 +19,23 @@ export class SkillsService {
 
   async create(payload: AdminSkillDefinition): Promise<AdminSkillDefinition> {
     await this.contentService.ensureInitialized();
+    const errors = validateSkillDefinition(payload);
+    if (errors.length > 0) {
+      throw new BadRequestException(`Invalid skill definition: ${errors.join('; ')}`);
+    }
     return await this.contentService.createCollectionEntry('skills', payload) as AdminSkillDefinition;
   }
 
   async update(id: string, payload: Partial<AdminSkillDefinition>): Promise<AdminSkillDefinition> {
     await this.contentService.ensureInitialized();
+    const existing = await this.get(id);
+    if (existing) {
+      const merged = { ...existing, ...payload } as AdminSkillDefinition;
+      const errors = validateSkillDefinition(merged);
+      if (errors.length > 0) {
+        throw new BadRequestException(`Invalid skill definition: ${errors.join('; ')}`);
+      }
+    }
     return await this.contentService.updateCollectionEntry('skills', id, payload) as AdminSkillDefinition;
   }
 

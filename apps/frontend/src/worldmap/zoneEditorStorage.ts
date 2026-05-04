@@ -72,6 +72,11 @@ interface QuestMarkerExportJson {
   visibleToPlayer?: boolean;
   conditionIds?: string[];
   imageUrl?: string;
+  isActive?: boolean;
+  requirements?: QuestMarkerDefinition['requirements'];
+  hideAfterQuestCompleted?: boolean;
+  hideAfterObjectiveCompleted?: boolean;
+  hideAfterStepCompleted?: boolean;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -166,6 +171,11 @@ function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
       ? marker.conditionIds.map((entry) => String(entry).trim()).filter(Boolean)
       : [],
     imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
+    isActive: marker.isActive === false ? false : undefined,
+    requirements: Array.isArray(marker.requirements) ? marker.requirements as QuestMarkerDefinition['requirements'] : undefined,
+    hideAfterQuestCompleted: marker.hideAfterQuestCompleted === true ? true : undefined,
+    hideAfterObjectiveCompleted: marker.hideAfterObjectiveCompleted === true ? true : undefined,
+    hideAfterStepCompleted: marker.hideAfterStepCompleted === true ? true : undefined,
   };
 }
 
@@ -198,6 +208,22 @@ function serializeQuestMarker(marker: QuestMarkerDefinition): QuestMarkerExportJ
   }
   if (marker.imageUrl) {
     output.imageUrl = marker.imageUrl;
+  }
+
+  if (marker.isActive === false) {
+    output.isActive = false;
+  }
+  if (marker.requirements && marker.requirements.length > 0) {
+    output.requirements = marker.requirements;
+  }
+  if (marker.hideAfterQuestCompleted) {
+    output.hideAfterQuestCompleted = true;
+  }
+  if (marker.hideAfterObjectiveCompleted) {
+    output.hideAfterObjectiveCompleted = true;
+  }
+  if (marker.hideAfterStepCompleted) {
+    output.hideAfterStepCompleted = true;
   }
 
   return output;

@@ -13,6 +13,7 @@ import { PlayerQuickPanel } from "./PlayerQuickPanel";
 import { WorldMapCanvas, type WorldMapCanvasHandle } from "./WorldMapCanvas";
 import { ZoneEditorPanel } from "./ZoneEditorPanel";
 import { QuestJournalModal } from "./QuestJournalModal";
+import { QuestInteractionModal } from "./QuestInteractionModal";
 import {
   createEmptyHistory,
   createSnapshot,
@@ -65,11 +66,27 @@ import {
   ensureQuestsLoaded,
   getAllPlayerQuestStates,
   getAllQuests,
+  getQuestInteractions,
 } from "../services/questRepository";
-import { advanceQuest, applyQuestRewards, canStartQuest, handleQuestEvent, tryStartRandomQuestFromZone, type QuestRuntimePlayer } from "../services/questRuntime";
+import {
+  advanceQuest,
+  applyQuestRewards,
+  canStartQuest,
+  handleQuestEvent,
+  tryStartRandomQuestFromZone,
+  type QuestRuntimePlayer,
+} from "../services/questRuntime";
+import {
+  findMatchingQuestInteractions,
+  getAvailableQuestInteractionChoices,
+  runQuestInteractionEffects,
+} from "../services/questInteractionRuntime";
+import { checkMarkerRequirements } from "../utils/questMarkerVisibility";
 import type {
   PlayerQuestState,
   QuestDefinition,
+  QuestInteractionChoice,
+  QuestInteractionDefinition,
   QuestMarkerDefinition,
 } from "../types/quest";
 import {
@@ -360,6 +377,8 @@ interface WorldMapScreenProps {
   chatLines: string[];
   onOpenStats: () => void;
   onOpenInventory: () => void;
+  onOpenCharacter: () => void;
+  onOpenEquipment: () => void;
   onOpenClan: () => void;
   onExit: () => void;
   onStartCombat: (
@@ -393,6 +412,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     chatLines,
     onOpenStats,
     onOpenInventory,
+    onOpenCharacter,
+    onOpenEquipment,
     onOpenClan,
     onExit,
     onStartCombat,
@@ -515,6 +536,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       questText: string;
     }
   >(null);
+
+  const [activeInteraction, setActiveInteraction] = useState<QuestInteractionDefinition | null>(null);
+  const [activeInteractionChoices, setActiveInteractionChoices] = useState<QuestInteractionChoice[]>([]);
+  const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
   const dialoguePlayer = useMemo(
     () => ({ id: character.id, level: character.level, race: character.race }),
     [character.id, character.level, character.race],
@@ -580,7 +605,26 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const linkedQuestId = marker.linkedQuestId?.trim() || null;
       const state = linkedQuestId ? stateByQuestId.get(linkedQuestId) ?? null : null;
 
-      // 1) Active quest objective markers (must be visible even if visibleToPlayer=false).
+      // Build player context for requirement checks.
+      const player: QuestRuntimePlayer = {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        activeQuestIds: playerQuestStates.filter((entry) => entry.status === "active").map((entry) => entry.questId),
+        completedQuestIds: playerQuestStates.filter((entry) => entry.status === "completed").map((entry) => entry.questId),
+        itemIds: inventory.items.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId),
+      };
+
+      // 1) Data-driven visibility: isActive / requirements / hideAfter* flags.
+      const requirementResult = checkMarkerRequirements(marker, player);
+      if (requirementResult === false) {
+        return false;
+      }
+      if (requirementResult === true) {
+        return true;
+      }
+
+      // 2) Legacy: active quest objective markers (must be visible even if visibleToPlayer=false).
       if (state) {
         if (marker.linkedStepId && marker.linkedStepId !== state.currentStepId) {
           return false;
@@ -591,25 +635,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return true;
       }
 
-      // 2) Public markers.
+      // 3) Legacy: public markers.
       if (marker.visibleToPlayer) {
         return true;
       }
 
-      // 3) Quest start markers (show if quest can start and is not already active/completed non-repeatable).
+      // 4) Legacy: quest start markers (show if quest can start and is not yet active/completed).
       if (marker.type === "quest_start" && linkedQuestId) {
         const quest = questDefinitions.find((entry) => entry.id === linkedQuestId) ?? null;
         if (!quest) {
           return false;
         }
-        const player: QuestRuntimePlayer = {
-          id: character.id,
-          level: character.level,
-          race: character.race,
-          activeQuestIds: playerQuestStates.filter((entry) => entry.status === "active").map((entry) => entry.questId),
-          completedQuestIds: playerQuestStates.filter((entry) => entry.status === "completed").map((entry) => entry.questId),
-          itemIds: inventory.items.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId),
-        };
         return canStartQuest(player, quest);
       }
 
@@ -834,6 +870,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     void Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded(), ensureDialoguesLoaded()])
       .then(() => {
         setQuestDefinitions(getAllQuests());
+        setQuestInteractions(getQuestInteractions());
         setPlayerQuestStates(
           getAllPlayerQuestStates().filter(
             (entry) => entry.playerId === character.id,
@@ -843,6 +880,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       })
       .catch(() => {
         setQuestDefinitions([]);
+        setQuestInteractions([]);
         setQuestMarkers([]);
         setNpcs([]);
       });
@@ -1155,32 +1193,38 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const applyCompletedQuestRewardsToChat = useCallback(
     (completedQuestIds: string[]) => {
-      if (completedQuestIds.length === 0) {
+      const uniqueCompletedQuestIds = Array.from(new Set(completedQuestIds));
+
+      if (uniqueCompletedQuestIds.length === 0) {
         return;
       }
 
       const now = Date.now();
       const rewardLines: ChatMessage[] = [];
 
-      for (const completedQuestId of completedQuestIds) {
+      for (const completedQuestId of uniqueCompletedQuestIds) {
         const questTitle =
           questDefinitions.find((entry) => entry.id === completedQuestId)
             ?.title ?? completedQuestId;
 
         const result = applyQuestRewards(character.id, completedQuestId);
 
+        if (!result.applied) {
+          continue;
+        }
+
         rewardLines.push({
-          id: `sys-quest-complete-${now}-${completedQuestId}`,
+          id: `sys-quest-complete-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
           text: `Квест завершён: ${questTitle}`,
           type: "system",
         });
 
-        if (result.applied && result.rewards.length > 0) {
+        if (result.rewards.length > 0) {
           for (const reward of result.rewards) {
             if (reward.startsWith("gold:+")) {
               const amount = reward.slice("gold:+".length);
               rewardLines.push({
-                id: `sys-quest-gold-${now}-${completedQuestId}-${rewardLines.length}`,
+                id: `sys-quest-gold-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
                 text: `Получено золото: ${amount}`,
                 type: "system",
               });
@@ -1190,7 +1234,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             if (reward.startsWith("experience:+")) {
               const amount = reward.slice("experience:+".length);
               rewardLines.push({
-                id: `sys-quest-xp-${now}-${completedQuestId}-${rewardLines.length}`,
+                id: `sys-quest-xp-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
                 text: `Получен опыт: ${amount}`,
                 type: "system",
               });
@@ -1204,7 +1248,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 : itemId;
 
               rewardLines.push({
-                id: `sys-quest-item-${now}-${completedQuestId}-${rewardLines.length}`,
+                id: `sys-quest-item-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
                 text: `Получен предмет: ${name}`,
                 type: "system",
               });
@@ -1215,7 +1259,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               const itemId = reward.slice("quest_item:".length);
 
               rewardLines.push({
-                id: `sys-quest-qitem-${now}-${completedQuestId}-${rewardLines.length}`,
+                id: `sys-quest-qitem-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
                 text: `Получен квестовый предмет: ${itemId}`,
                 type: "system",
               });
@@ -1226,7 +1270,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               const skillId = reward.slice("skill:".length);
 
               rewardLines.push({
-                id: `sys-quest-skill-${now}-${completedQuestId}-${rewardLines.length}`,
+                id: `sys-quest-skill-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
                 text: `Получен навык: ${skillId}`,
                 type: "system",
               });
@@ -1234,7 +1278,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             }
 
             rewardLines.push({
-              id: `sys-quest-reward-${now}-${completedQuestId}-${rewardLines.length}`,
+              id: `sys-quest-reward-${now}-${completedQuestId}-${nextSystemChatIdRef.current++}`,
               text: `Награда: ${reward}`,
               type: "system",
             });
@@ -1358,19 +1402,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         { type: "zone_enter", zoneId: zone.id },
       );
 
-      const enterZoneResult = handleQuestEvent(
-        questRuntimePlayer,
-        { type: "enter_zone", zoneId: zone.id } as any,
-      );
-
       appendQuestRuntimeLogsToSystemChat([
         ...zoneEnterResult.logs,
-        ...enterZoneResult.logs,
       ]);
 
       applyCompletedQuestRewardsToChat([
         ...zoneEnterResult.completedQuestIds,
-        ...enterZoneResult.completedQuestIds,
       ]);
 
       if (
@@ -1378,16 +1415,22 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         zoneEnterResult.advancedQuestIds.length > 0 ||
         zoneEnterResult.completedQuestIds.length > 0 ||
         zoneEnterResult.completedObjectiveIds.length > 0 ||
-        zoneEnterResult.failedQuestIds.length > 0 ||
-        enterZoneResult.startedQuestIds.length > 0 ||
-        enterZoneResult.advancedQuestIds.length > 0 ||
-        enterZoneResult.completedQuestIds.length > 0 ||
-        enterZoneResult.completedObjectiveIds.length > 0 ||
-        enterZoneResult.failedQuestIds.length > 0
+        zoneEnterResult.failedQuestIds.length > 0
       ) {
         setPlayerQuestStates(
           getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
         );
+      }
+
+      const zoneEnterInteraction =
+        findMatchingQuestInteractions(
+          { type: "zone_enter", zoneId: zone.id },
+          questRuntimePlayer,
+          questInteractions,
+        )[0] ?? null;
+      if (zoneEnterInteraction) {
+        setActiveInteraction(zoneEnterInteraction);
+        setActiveInteractionChoices(getAvailableQuestInteractionChoices(zoneEnterInteraction, questRuntimePlayer));
       }
 
       const worldZone = zone as WorldMapZone;
@@ -1511,6 +1554,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStartCombat,
       onStatus,
       playerQuestStates,
+      questInteractions,
       appendQuestRuntimeLogsToSystemChat,
       applyCompletedQuestRewardsToChat,
       worldMapMode,
@@ -1526,20 +1570,50 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    const player: QuestRuntimePlayer = {
+      id: character.id,
+      level: character.level,
+      race: character.race,
+      classId: undefined,
+      itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
+    };
+
+    const matchedInteraction =
+      findMatchingQuestInteractions(
+        { type: "zone_inspect", zoneId: currentZone.id },
+        player,
+        questInteractions,
+      )[0] ?? null;
+
+    if (matchedInteraction) {
+      setActiveInteraction(matchedInteraction);
+      setActiveInteractionChoices(getAvailableQuestInteractionChoices(matchedInteraction, player));
+      return;
+    }
+
+    // Fallback: run classic zone_inspect quest event.
     const questEventResult = handleQuestEvent(
-      {
-        id: character.id,
-        level: character.level,
-        race: character.race,
-        itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
-      },
+      player,
       { type: "zone_inspect", zoneId: currentZone.id },
     );
 
     appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
-
     applyCompletedQuestRewardsToChat(questEventResult.completedQuestIds);
-
+    if (
+      questEventResult.logs.length === 0
+      && questEventResult.completedQuestIds.length === 0
+      && questEventResult.completedObjectiveIds.length === 0
+    ) {
+      const now = Date.now();
+      setSystemChat((prev) => [
+        ...prev,
+        {
+          id: `sys-inspect-empty-${now}-${nextSystemChatIdRef.current++}`,
+          text: "Вы осмотрелись, но ничего важного не нашли.",
+          type: "system" as const,
+        },
+      ].slice(-12));
+    }
     setPlayerQuestStates(
       getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
     );
@@ -1552,7 +1626,101 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     currentZone,
     inventory.items,
     onStatus,
+    questInteractions,
     worldMapMode,
+  ]);
+
+  const handleInteractionChoice = useCallback((choice: QuestInteractionChoice) => {
+    if (!activeInteraction) {
+      return;
+    }
+
+    if (choice.id === "__leave__") {
+      setActiveInteraction(null);
+      setActiveInteractionChoices([]);
+      return;
+    }
+
+    const result = runQuestInteractionEffects(character.id, activeInteraction, choice);
+    if (result.logs.length > 0) {
+      appendQuestRuntimeLogsToSystemChat(result.logs);
+    }
+    if (result.completedQuestIds.length > 0) {
+      applyCompletedQuestRewardsToChat(result.completedQuestIds);
+    }
+
+    if (result.grantedRewardLines.length > 0) {
+      const now = Date.now();
+      const lines = result.grantedRewardLines.map((rewardLine) => {
+        if (rewardLine.startsWith("gold:+")) {
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Получено золото: ${rewardLine.slice("gold:+".length)}`,
+            type: "system" as const,
+          };
+        }
+        if (rewardLine.startsWith("experience:+")) {
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Получен опыт: ${rewardLine.slice("experience:+".length)}`,
+            type: "system" as const,
+          };
+        }
+        if (rewardLine.startsWith("item:")) {
+          const itemId = rewardLine.slice("item:".length);
+          const name = resolveItemById
+            ? resolveItemById(itemId)?.name ?? itemId
+            : itemId;
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Получен предмет: ${name}`,
+            type: "system" as const,
+          };
+        }
+        if (rewardLine.startsWith("quest_item:")) {
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Получен квестовый предмет: ${rewardLine.slice("quest_item:".length)}`,
+            type: "system" as const,
+          };
+        }
+        if (rewardLine.startsWith("skill:")) {
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Получен навык: ${rewardLine.slice("skill:".length)}`,
+            type: "system" as const,
+          };
+        }
+        if (rewardLine.startsWith("unlock_location:")) {
+          return {
+            id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+            text: `Открыта локация: ${rewardLine.slice("unlock_location:".length)}`,
+            type: "system" as const,
+          };
+        }
+        return {
+          id: `sys-interaction-reward-${now}-${nextSystemChatIdRef.current++}`,
+          text: `Награда: ${rewardLine}`,
+          type: "system" as const,
+        };
+      });
+      setSystemChat((prev) => [...prev, ...lines].slice(-12));
+    }
+
+    setPlayerQuestStates(
+      getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
+    );
+
+    if (!choice.resultText?.trim() && choice.close !== false) {
+      setActiveInteraction(null);
+      setActiveInteractionChoices([]);
+    }
+  }, [
+    activeInteraction,
+    appendQuestRuntimeLogsToSystemChat,
+    applyCompletedQuestRewardsToChat,
+    character.id,
+    resolveItemById,
   ]);
 
   useEffect(() => {
@@ -1673,6 +1841,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       type: "quest_start" as const,
       visibleToPlayer: true,
       conditionIds: [],
+      isActive: true,
+      requirements: undefined,
+      hideAfterQuestCompleted: false,
+      hideAfterObjectiveCompleted: false,
+      hideAfterStepCompleted: false,
     };
 
     if (!draft.id.trim() || !draft.title.trim()) {
@@ -1702,6 +1875,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           : 0.5,
       visibleToPlayer: draft.visibleToPlayer !== false,
       conditionIds: Array.isArray(draft.conditionIds) ? draft.conditionIds : [],
+      isActive: draft.isActive !== false,
+      requirements: Array.isArray(draft.requirements) ? draft.requirements : undefined,
+      hideAfterQuestCompleted: draft.hideAfterQuestCompleted === true,
+      hideAfterObjectiveCompleted: draft.hideAfterObjectiveCompleted === true,
+      hideAfterStepCompleted: draft.hideAfterStepCompleted === true,
     };
 
     setQuestMarkers((current) => upsertQuestMarkerList(current, normalized));
@@ -1773,6 +1951,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           type: "quest_start" as const,
           visibleToPlayer: true,
           conditionIds: [] as string[],
+          isActive: true,
+          requirements: undefined,
+          hideAfterQuestCompleted: false,
+          hideAfterObjectiveCompleted: false,
+          hideAfterStepCompleted: false,
         },
     );
 
@@ -3756,6 +3939,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onStats={onOpenStats}
         onSkills={onOpenSkills}
         onInventory={onOpenInventory}
+        onCharacter={onOpenCharacter}
+        onEquipment={onOpenEquipment}
         onQuests={() => setQuestJournalOpen(true)}
         onMap={() => {
           if (locationView === "map") {
@@ -3965,6 +4150,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onClose={() => setQuestJournalOpen(false)}
           questDefinitions={questDefinitions}
           playerQuestStates={playerQuestStates}
+        />
+        <QuestInteractionModal
+          interaction={activeInteraction}
+          choices={activeInteractionChoices}
+          onClose={() => {
+            setActiveInteraction(null);
+            setActiveInteractionChoices([]);
+          }}
+          onChoice={handleInteractionChoice}
         />
         <div
           className={`wm-right-panel ${rightPanelCollapsed ? "is-collapsed" : ""}`}

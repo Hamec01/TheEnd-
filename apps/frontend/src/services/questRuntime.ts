@@ -2,6 +2,7 @@ import {
   getAllPlayerQuestStates,
   getAllQuests,
   getQuestById,
+  getQuestInteractions,
   getRandomZoneCooldowns,
   savePlayerQuestState,
   saveRandomZoneCooldown,
@@ -1165,14 +1166,31 @@ export function handleQuestEvent(
 }
 
 export function getQuestValidationWorldData(): QuestValidationWorldData {
-  const quests = getAllQuests();
+  const interactions = getQuestInteractions();
+  const dialogues = getAllDialogues();
+  const interactionQuestIds = Array.from(new Set(interactions.map((entry) => String(entry.questId ?? '').trim()).filter(Boolean)));
+  const dialogueCompletableQuestIds = Array.from(new Set(
+    dialogues.flatMap((dialogue) =>
+      (dialogue.nodes ?? []).flatMap((node) =>
+        [
+          ...(node.actions ?? []),
+          ...((node.choices ?? []).flatMap((choice) => choice.actions ?? [])),
+        ]
+          .map((action: any) => String(action?.questId ?? '').trim())
+          .filter(Boolean),
+      ),
+    ),
+  ));
   return {
     npcIds: getAllNpcs().map((entry) => entry.id),
     itemIds: [...Object.keys(ITEMS ?? {})],
     questItemIds: getQuestItems().map((entry) => entry.id),
+    skillIds: [],
     professionIds: [],
     markerIds: getQuestMarkers().map((entry) => entry.id),
     zoneIds: getAllZones().map((zone) => zone.id),
+    interactionQuestIds,
+    dialogueCompletableQuestIds,
     dialogueIds: getAllDialogues().map((entry) => entry.id),
     kingdoms: [],
     factions: [],

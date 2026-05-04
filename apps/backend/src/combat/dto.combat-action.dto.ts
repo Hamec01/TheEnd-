@@ -53,4 +53,14 @@ export class CombatActionDto {
   @IsOptional()
   @IsEnum(CombatSkillType)
   skillType?: CombatSkillType;
+
+  /** New skill system: AdminSkillDefinition.id */
+  @IsOptional()
+  @IsString()
+  skillId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  skillLevel?: number;
 }

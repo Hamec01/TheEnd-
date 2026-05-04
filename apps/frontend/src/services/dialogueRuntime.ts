@@ -107,6 +107,30 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         return 'quest_completed';
       case 'questNotStarted':
         return 'quest_not_started';
+      case 'objectiveNotCompleted':
+        return 'objective_not_completed';
+      case 'missingItem':
+        return 'missing_item';
+      case 'missingQuestItem':
+        return 'missing_quest_item';
+      case 'hasSkill':
+        return 'has_skill';
+      case 'missingSkill':
+        return 'missing_skill';
+      case 'hasFlag':
+        return 'has_flag';
+      case 'flagEquals':
+        return 'flag_equals';
+      case 'raceIs':
+        return 'race_is';
+      case 'classIs':
+        return 'class_is';
+      case 'levelMin':
+        return 'level_min';
+      case 'levelMax':
+        return 'level_max';
+      case 'factionRelationMin':
+        return 'faction_relation_min';
       case 'questFailed':
         return 'quest_failed';
       case 'objectiveCompleted':
@@ -202,8 +226,25 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         }
         break;
       }
+      case 'objective_not_completed': {
+        const questId = condition.questId ?? (typeof value === 'string' ? value : undefined);
+        const objectiveId = condition.objectiveId ?? condition.key;
+        if (!questId || !objectiveId) {
+          return false;
+        }
+        const state = getPlayerQuestState(player.id, questId);
+        if (!state || state.completedObjectiveIds.includes(objectiveId)) {
+          return false;
+        }
+        break;
+      }
       case 'has_item':
         if (typeof (condition.itemId ?? value) === 'string' && !readArray(PLAYER_ITEMS_KEY).includes(String(condition.itemId ?? value))) {
+          return false;
+        }
+        break;
+      case 'missing_item':
+        if (typeof (condition.itemId ?? value) === 'string' && readArray(PLAYER_ITEMS_KEY).includes(String(condition.itemId ?? value))) {
           return false;
         }
         break;
@@ -212,6 +253,66 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
           return false;
         }
         break;
+      case 'missing_quest_item':
+        if (typeof (condition.questItemId ?? value) === 'string' && readArray(PLAYER_QUEST_ITEMS_KEY).includes(String(condition.questItemId ?? value))) {
+          return false;
+        }
+        break;
+      case 'has_skill':
+        if (typeof value === 'string' && !readArray('theend.player.skills').includes(String(value))) {
+          return false;
+        }
+        break;
+      case 'missing_skill':
+        if (typeof value === 'string' && readArray('theend.player.skills').includes(String(value))) {
+          return false;
+        }
+        break;
+      case 'has_flag': {
+        const flags = readRecord(PLAYER_FLAGS_KEY);
+        const key = String(condition.key ?? value ?? '');
+        if (!key || !Object.prototype.hasOwnProperty.call(flags, key)) {
+          return false;
+        }
+        break;
+      }
+      case 'flag_equals': {
+        const flags = readRecord(PLAYER_FLAGS_KEY);
+        const key = String(condition.key ?? '');
+        if (!key || flags[key] !== value) {
+          return false;
+        }
+        break;
+      }
+      case 'race_is':
+        if (typeof value === 'string' && player.race !== value) {
+          return false;
+        }
+        break;
+      case 'class_is':
+        if (typeof value === 'string' && player.classId !== value) {
+          return false;
+        }
+        break;
+      case 'level_min':
+        if (typeof value === 'number' && (player.level ?? 0) < value) {
+          return false;
+        }
+        break;
+      case 'level_max':
+        if (typeof value === 'number' && (player.level ?? 0) > value) {
+          return false;
+        }
+        break;
+      case 'faction_relation_min': {
+        const rep = readRecord(PLAYER_REP_KEY);
+        const repKey = condition.key ?? String(condition.value ?? '');
+        const expected = Number(condition.value ?? 0);
+        if (!repKey || Number(rep[repKey] ?? 0) < expected) {
+          return false;
+        }
+        break;
+      }
       case 'gold_at_least':
         if (typeof value === 'number' && readNumber(PLAYER_GOLD_KEY, 0) < value) {
           return false;
@@ -277,7 +378,7 @@ export function getAvailableChoices(
   npc: NpcDefinition | null,
   node: DialogueNode,
 ): Array<DialogueChoice & { disabled: boolean; hidden: boolean }> {
-  return node.choices
+  const visible = node.choices
     .map((choice) => {
       const valid = evaluateDialogueConditions(player, npc, choice.conditions ?? []);
       return {
@@ -287,6 +388,102 @@ export function getAvailableChoices(
       };
     })
     .filter((choice) => !choice.hidden);
+
+  if (visible.length > 0) {
+    return visible;
+  }
+
+  return [{
+    id: '__leave__',
+    text: 'Уйти',
+    end: true,
+    disabled: false,
+    hidden: false,
+  }];
+}
+
+function normalizeActionType(type: DialogueAction['type']): DialogueAction['type'] {
+  switch (type) {
+    case 'start_quest':
+      return 'startQuest';
+    case 'complete_objective':
+      return 'completeObjective';
+    case 'complete_step':
+      return 'completeStep';
+    case 'complete_quest':
+      return 'completeQuest';
+    case 'fail_quest':
+      return 'failQuest';
+    case 'give_rewards':
+      return 'giveRewards';
+    case 'set_flag':
+      return 'setQuestFlag';
+    case 'give_item':
+      return 'giveItem';
+    case 'take_item':
+      return 'takeItem';
+    case 'give_quest_item':
+      return 'giveQuestItem';
+    case 'take_quest_item':
+      return 'takeQuestItem';
+    case 'give_gold':
+      return 'giveGold';
+    case 'take_gold':
+      return 'takeGold';
+    case 'give_experience':
+      return 'giveExperience';
+    case 'give_skill':
+      return 'trainSkill';
+    case 'open_shop':
+      return 'openShop';
+    case 'start_combat':
+      return 'startCombat';
+    case 'unlock_location':
+      return 'unlockLocation';
+    case 'unlock_dialogue':
+      return 'unlockDialogue';
+    case 'open_dialogue':
+      return 'openDialogue';
+    default:
+      return type;
+  }
+}
+
+function normalizeActions(actions: DialogueAction[]): DialogueAction[] {
+  return actions.map((action) => ({
+    ...action,
+    type: normalizeActionType(action.type),
+  }));
+}
+
+function choiceShorthandToActions(choice: DialogueChoice): DialogueAction[] {
+  const shorthand: DialogueAction[] = [];
+  if (choice.giveQuest) {
+    shorthand.push({ id: `${choice.id}__giveQuest`, type: 'startQuest', questId: choice.giveQuest });
+  }
+  if (choice.completeQuest) {
+    shorthand.push({ id: `${choice.id}__completeQuest`, type: 'completeQuest', questId: choice.completeQuest });
+  }
+  if (choice.completeStep) {
+    if (typeof choice.completeStep === 'string') {
+      shorthand.push({ id: `${choice.id}__completeStep`, type: 'completeStep', questId: choice.completeStep });
+    } else {
+      shorthand.push({ id: `${choice.id}__completeStep`, type: 'completeStep', questId: choice.completeStep.questId, key: choice.completeStep.stepId });
+    }
+  }
+  if (choice.completeObjective) {
+    if (typeof choice.completeObjective === 'string') {
+      shorthand.push({ id: `${choice.id}__completeObjective`, type: 'completeObjective', questId: choice.completeObjective });
+    } else {
+      shorthand.push({
+        id: `${choice.id}__completeObjective`,
+        type: 'completeObjective',
+        questId: choice.completeObjective.questId,
+        objectiveId: choice.completeObjective.objectiveId,
+      });
+    }
+  }
+  return shorthand;
 }
 
 export function executeDialogueActions(
@@ -309,7 +506,7 @@ export function executeDialogueActions(
     result.completedQuestIds.forEach((questId) => intents.push({ type: 'QUEST_COMPLETED', questId }));
   };
 
-  for (const action of actions) {
+  for (const action of normalizeActions(actions)) {
     switch (action.type) {
       case 'startQuest': {
         if (!action.questId) {
@@ -349,6 +546,14 @@ export function executeDialogueActions(
           completeQuest(playerId, action.questId);
           intents.push({ type: 'QUEST_COMPLETED', questId: action.questId });
           logs.push(`Quest completed: ${action.questId}`);
+          const rewards = applyQuestRewards(playerId, action.questId);
+          if (rewards.applied) {
+            rewards.rewards.forEach((reward) => logs.push(`Reward granted: ${reward}`));
+          }
+        }
+        break;
+      case 'giveRewards':
+        if (action.questId) {
           const rewards = applyQuestRewards(playerId, action.questId);
           if (rewards.applied) {
             rewards.rewards.forEach((reward) => logs.push(`Reward granted: ${reward}`));
@@ -401,6 +606,10 @@ export function executeDialogueActions(
         writeNumber(PLAYER_GOLD_KEY, readNumber(PLAYER_GOLD_KEY, 0) + Math.max(0, action.amount ?? 0));
         logs.push(`Gold granted: ${action.amount ?? 0}`);
         break;
+      case 'giveExperience':
+        writeNumber('theend.player.experience', readNumber('theend.player.experience', 0) + Math.max(0, action.amount ?? 0));
+        logs.push(`Experience granted: ${action.amount ?? 0}`);
+        break;
       case 'takeGold':
         writeNumber(PLAYER_GOLD_KEY, Math.max(0, readNumber(PLAYER_GOLD_KEY, 0) - Math.max(0, action.amount ?? 0)));
         logs.push(`Gold removed: ${action.amount ?? 0}`);
@@ -447,6 +656,11 @@ export function executeDialogueActions(
         logs.push(`Dialogue unlocked: ${action.key ?? 'unknown'}`);
         events.push({ type: 'unlockDialogue', npcId, dialogueId: action.key ?? null });
         break;
+      case 'openDialogue':
+        if (action.key) {
+          events.push({ type: 'unlockDialogue', npcId, dialogueId: action.key });
+        }
+        break;
       default:
         logs.push(`Unhandled action: ${action.type}`);
         break;
@@ -484,7 +698,15 @@ export function chooseDialogueOption(
     throw new Error(`Dialogue choice not found: ${choiceId}`);
   }
 
-  const { logs, intents, events } = executeDialogueActions(playerId, npcId, [...(node.actions ?? []), ...(choice.actions ?? [])]);
+  const { logs, intents, events } = executeDialogueActions(
+    playerId,
+    npcId,
+    [
+      ...(node.actions ?? []),
+      ...(choice.actions ?? []),
+      ...choiceShorthandToActions(choice),
+    ],
+  );
 
   const nextNodeId = choice.nextNodeId ?? choice.next;
   const ended = Boolean(choice.endsDialogue ?? choice.end);

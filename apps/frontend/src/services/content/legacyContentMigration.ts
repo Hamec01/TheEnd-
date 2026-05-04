@@ -5,6 +5,7 @@ import type {
   AdminMerchant,
   AdminNpc,
   AdminQuest,
+  AdminQuestInteraction,
   AdminQuestItem,
   AdminQuestMarker,
   AdminSkill,
@@ -20,6 +21,7 @@ const LEGACY_WORLD_MAP_STORAGE_PREFIX = 'theend.worldMap.zones.dev';
 const LEGACY_DIALOGUES_KEY = 'theend.dialogues';
 const LEGACY_NPCS_KEY = 'theend.npcs';
 const LEGACY_QUESTS_KEY = 'theend.quests';
+const LEGACY_QUEST_INTERACTIONS_KEY = 'theend.questInteractions';
 const LEGACY_QUEST_ITEMS_KEY = 'theend.questItems';
 const LEGACY_QUEST_MARKERS_KEY = 'theend.questMap.markers';
 
@@ -169,6 +171,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
   const dialogues = readLegacyArray<AdminDialogue>(LEGACY_DIALOGUES_KEY);
   const npcs = readLegacyArray<AdminNpc>(LEGACY_NPCS_KEY);
   const quests = readLegacyArray<AdminQuest>(LEGACY_QUESTS_KEY);
+  const questInteractions = readLegacyArray<AdminQuestInteraction>(LEGACY_QUEST_INTERACTIONS_KEY);
   const questItems = readLegacyArray<AdminQuestItem>(LEGACY_QUEST_ITEMS_KEY);
   const questMarkers = readLegacyArray<AdminQuestMarker>(LEGACY_QUEST_MARKERS_KEY);
   const worldMap = readLegacyWorldMap();
@@ -182,6 +185,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
     || dialogues.length > 0
     || npcs.length > 0
     || quests.length > 0
+    || questInteractions.length > 0
     || questItems.length > 0
     || questMarkers.length > 0
     || Boolean(worldMap && (worldMap.zones.length > 0 || worldMap.regions.length > 0));
@@ -200,6 +204,7 @@ function collectLegacySnapshot(): Partial<ContentSnapshot> | null {
     dialogues,
     npcs,
     quests,
+    questInteractions,
     questItems,
     questMarkers,
     worldMap: worldMap
@@ -272,6 +277,9 @@ function shouldImportLegacy(remote: ContentSnapshot, legacy: Partial<ContentSnap
     return true;
   }
   if (hasMissingIds(remote.quests, legacy.quests) || hasNewerEntries(remote.quests, legacy.quests)) {
+    return true;
+  }
+  if (hasMissingIds(remote.questInteractions, legacy.questInteractions) || hasNewerEntries(remote.questInteractions, legacy.questInteractions)) {
     return true;
   }
   if (hasMissingIds(remote.questItems, legacy.questItems) || hasNewerEntries(remote.questItems, legacy.questItems)) {

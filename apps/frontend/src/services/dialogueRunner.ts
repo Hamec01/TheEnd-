@@ -310,6 +310,9 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
 
     const choice = currentNode.choices.find((entry) => entry.id === choiceId) ?? null;
     if (!choice) {
+      if (choiceId === '__leave__') {
+        return { ended: true, movedToNodeId: null, logs: [], intents: [], events: [] };
+      }
       dispatch({ type: 'ERROR', text: `Dialogue choice not found: ${choiceId}` });
       return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
     }

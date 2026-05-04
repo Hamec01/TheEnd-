@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto';
 import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-runtime.service';
 import type { CustomCombatNpcDto, RuntimeBattleMapDto } from './dto.start-combat.dto';
 import type { AdminItem } from '../content/content.types';
 
@@ -58,6 +59,7 @@ interface CombatSession {
   activeEffects: Array<{ type: CombatSkillType.CrushingBlock | CombatSkillType.Rage; remainingRounds: number }>;
   enemyTempoBreaks: Array<{ targetId: string; remainingRounds: number }>;
   damageContribution: number;
+  skillCooldowns: SkillCooldownEntry[];
 }
 
 export interface CombatActionResult {
@@ -73,6 +75,7 @@ export class CombatService {
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
     private readonly arenaService: ArenaService,
+    private readonly skillRuntime: SkillRuntimeService,
   ) {}
 
   private readonly sessions = new Map<string, CombatSession>();
@@ -728,6 +731,7 @@ export class CombatService {
       activeEffects: [],
       enemyTempoBreaks: [],
       damageContribution: 0,
+      skillCooldowns: [],
     });
 
     return {
@@ -833,6 +837,8 @@ export class CombatService {
       destinationX?: number;
       destinationY?: number;
       skillType?: CombatSkillType;
+      skillId?: string;
+      skillLevel?: number;
     },
   ): Promise<CombatActionResult> {
     const session = this.sessions.get(combatId);
@@ -874,6 +880,8 @@ export class CombatService {
           destinationX: undefined,
           destinationY: undefined,
           skillType: undefined,
+          skillId: undefined,
+          skillLevel: undefined,
         };
       })()
       : playerAction;
@@ -890,7 +898,66 @@ export class CombatService {
 
     let powerStrikeActive = false;
     const skillLogs: string[] = [];
-    const selectedSkill = effectiveAction.actionType === ActionType.Attack
+
+    // ── New skill system: AdminSkillDefinition + skillId ──────────────────────
+    if (effectiveAction.skillId && effectiveAction.actionType === ActionType.Attack) {
+      const targetEntity = state.entities.find((e) => e.id === effectiveAction.targetId) ?? null;
+      const result = await this.skillRuntime.executeSkill(
+        session.playerId,
+        effectiveAction.skillId,
+        effectiveAction.skillLevel ?? 1,
+        session.skillCooldowns,
+        playerEntity,
+        targetEntity,
+      );
+
+      // Apply resource costs to entity
+      if (result.resourcesSpent.mp) {
+        playerEntity.currentMp = Math.max(0, playerEntity.currentMp - result.resourcesSpent.mp);
+      }
+      if (result.resourcesSpent.stamina) {
+        playerEntity.currentStamina = Math.max(0, playerEntity.currentStamina - result.resourcesSpent.stamina);
+      }
+      if (result.resourcesSpent.hp) {
+        playerEntity.currentHp = Math.max(0, playerEntity.currentHp - result.resourcesSpent.hp);
+      }
+
+      // Apply damage
+      for (const dmg of result.damageDone) {
+        const dmgTarget = state.entities.find((e) => e.id === dmg.targetId);
+        if (dmgTarget) {
+          dmgTarget.currentHp = Math.max(0, dmgTarget.currentHp - dmg.amount);
+          dmgTarget.isAlive = dmgTarget.currentHp > 0;
+        }
+      }
+
+      // Apply healing
+      for (const heal of result.healingDone) {
+        const healTarget = state.entities.find((e) => e.id === heal.targetId);
+        if (healTarget) {
+          healTarget.currentHp = Math.min(healTarget.maxHp, healTarget.currentHp + heal.amount);
+        }
+      }
+
+      skillLogs.push(...result.logs);
+
+      // Track cooldown
+      if (result.cooldownStarted > 0) {
+        const existing = session.skillCooldowns.find((c) => c.skillId === effectiveAction.skillId);
+        if (existing) {
+          existing.remainingRounds = result.cooldownStarted;
+        } else {
+          session.skillCooldowns.push({
+            skillId: effectiveAction.skillId,
+            remainingRounds: result.cooldownStarted,
+            oncePerCombat: result.oncePerCombat,
+          });
+        }
+      }
+    }
+
+    // ── Legacy skill system: CombatSkillType ─────────────────────────────────
+    const selectedSkill = !effectiveAction.skillId && effectiveAction.actionType === ActionType.Attack
       ? effectiveAction.skillType ?? CombatSkillType.None
       : CombatSkillType.None;
     const magicPenaltyMultiplier = 0.5;
@@ -1148,6 +1215,14 @@ export class CombatService {
       effect.remainingRounds -= 1;
     }
     session.activeEffects = session.activeEffects.filter((item) => item.remainingRounds > 0);
+
+    // Decrement skill cooldowns
+    for (const cd of session.skillCooldowns) {
+      if (!cd.oncePerCombat) {
+        cd.remainingRounds -= 1;
+      }
+    }
+    session.skillCooldowns = session.skillCooldowns.filter((cd) => cd.remainingRounds > 0 || cd.oncePerCombat);
 
     for (const debuff of session.enemyTempoBreaks) {
       debuff.remainingRounds -= 1;

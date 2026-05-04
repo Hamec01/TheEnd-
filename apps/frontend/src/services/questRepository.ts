@@ -1,6 +1,7 @@
 import type {
   PlayerQuestState,
   QuestDefinition,
+  QuestInteractionDefinition,
   QuestItemDefinition,
   RandomQuestCooldown,
 } from '../types/quest';
@@ -15,6 +16,7 @@ const PLAYER_QUESTS_KEY = 'theend.playerQuests';
 const RANDOM_ZONE_COOLDOWNS_KEY = 'theend.questRandomZoneCooldowns';
 
 let questsCache: QuestDefinition[] = [];
+let questInteractionsCache: QuestInteractionDefinition[] = [];
 let questItemsCache: QuestItemDefinition[] = [];
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
@@ -51,9 +53,11 @@ export async function ensureQuestsLoaded(force = false): Promise<void> {
   if (!loadPromise) {
     loadPromise = Promise.all([
       getContentCollection<QuestDefinition>('quests'),
+      getContentCollection<QuestInteractionDefinition>('questInteractions'),
       getContentCollection<QuestItemDefinition>('questItems'),
-    ]).then(([quests, items]) => {
+    ]).then(([quests, interactions, items]) => {
       questsCache = quests;
+      questInteractionsCache = interactions;
       questItemsCache = items;
       loaded = true;
       loadPromise = null;
@@ -113,6 +117,31 @@ export async function duplicateQuest(id: string): Promise<QuestDefinition> {
   return saveQuest(copy);
 }
 
+export function getQuestInteractions(): QuestInteractionDefinition[] {
+  return [...questInteractionsCache];
+}
+
+export function getQuestInteractionById(id: string): QuestInteractionDefinition | null {
+  return questInteractionsCache.find((interaction) => interaction.id === id) ?? null;
+}
+
+export async function saveQuestInteraction(interaction: QuestInteractionDefinition): Promise<QuestInteractionDefinition> {
+  await ensureQuestsLoaded();
+  const exists = questInteractionsCache.some((entry) => entry.id === interaction.id);
+  const saved = exists
+    ? await updateContentEntry<QuestInteractionDefinition>('questInteractions', interaction.id, interaction)
+    : await createContentEntry<QuestInteractionDefinition>('questInteractions', interaction);
+  invalidate();
+  await ensureQuestsLoaded(true);
+  return saved;
+}
+
+export async function deleteQuestInteraction(id: string): Promise<void> {
+  await deleteContentEntry('questInteractions', id);
+  invalidate();
+  await ensureQuestsLoaded(true);
+}
+
 export function getQuestItems(): QuestItemDefinition[] {
   return [...questItemsCache];
 }
@@ -143,6 +172,7 @@ export async function exportQuestsJson(): Promise<string> {
   return JSON.stringify(
     {
       quests: questsCache,
+      questInteractions: questInteractionsCache,
       questItems: questItemsCache,
     },
     null,
@@ -150,13 +180,19 @@ export async function exportQuestsJson(): Promise<string> {
   );
 }
 
-export async function importQuestsJson(raw: string): Promise<{ quests: number; questItems: number }> {
-  const parsed = JSON.parse(raw) as { quests?: QuestDefinition[]; questItems?: QuestItemDefinition[] };
+export async function importQuestsJson(raw: string): Promise<{ quests: number; questInteractions: number; questItems: number }> {
+  const parsed = JSON.parse(raw) as {
+    quests?: QuestDefinition[];
+    questInteractions?: QuestInteractionDefinition[];
+    questItems?: QuestItemDefinition[];
+  };
   const quests = Array.isArray(parsed.quests) ? parsed.quests : [];
+  const questInteractions = Array.isArray(parsed.questInteractions) ? parsed.questInteractions : [];
   const questItems = Array.isArray(parsed.questItems) ? parsed.questItems : [];
 
   await ensureQuestsLoaded();
   const questIds = new Set(questsCache.map((entry) => entry.id));
+  const questInteractionIds = new Set(questInteractionsCache.map((entry) => entry.id));
   const questItemIds = new Set(questItemsCache.map((entry) => entry.id));
 
   let questCount = 0;
@@ -171,6 +207,20 @@ export async function importQuestsJson(raw: string): Promise<{ quests: number; q
       questIds.add(entry.id.trim());
     }
     questCount += 1;
+  }
+
+  let questInteractionCount = 0;
+  for (const entry of questInteractions) {
+    if (!entry?.id?.trim()) {
+      continue;
+    }
+    if (questInteractionIds.has(entry.id.trim())) {
+      await updateContentEntry<QuestInteractionDefinition>('questInteractions', entry.id.trim(), entry);
+    } else {
+      await createContentEntry<QuestInteractionDefinition>('questInteractions', entry);
+      questInteractionIds.add(entry.id.trim());
+    }
+    questInteractionCount += 1;
   }
 
   let questItemCount = 0;
@@ -191,6 +241,7 @@ export async function importQuestsJson(raw: string): Promise<{ quests: number; q
   await ensureQuestsLoaded(true);
   return {
     quests: questCount,
+    questInteractions: questInteractionCount,
     questItems: questItemCount,
   };
 }

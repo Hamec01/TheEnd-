@@ -400,6 +400,9 @@ export async function sendCombatAction(payload: {
   destinationX?: number;
   destinationY?: number;
   skillType?: CombatSkillType;
+  /** New skill system */
+  skillId?: string;
+  skillLevel?: number;
 }): Promise<CombatActionResult> {
   const res = await fetch(`${API_BASE}/combat/action`, {
     method: 'POST',
@@ -440,6 +443,77 @@ export async function useCombatItem(payload: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+// ── Character skills + loadout ─────────────────────────────────────────────
+
+export interface CharacterSkillRow {
+  id: string;
+  characterId: string;
+  skillId: string;
+  level: number;
+  learnedAt: string;
+  sourceType: string;
+  sourceId: string | null;
+  definition: import('@theend/rpg-domain').AdminSkillDefinition | null;
+}
+
+export interface CombatSkillSlot {
+  slotIndex: number;
+  skillId: string | null;
+  unlocked: boolean;
+  slotType: 'ANY' | 'MAGIC' | 'PHYSICAL' | 'PASSIVE' | 'RUNE' | 'SHAMANIC';
+}
+
+export interface CharacterSkillLoadout {
+  characterId: string;
+  slots: CombatSkillSlot[];
+}
+
+export async function getCharacterSkills(characterId: string): Promise<CharacterSkillRow[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills`);
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+export async function learnSkill(
+  characterId: string,
+  payload: { skillId: string; sourceType: string; sourceId?: string },
+): Promise<CharacterSkillRow> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills/learn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+export async function getSkillLoadout(characterId: string): Promise<CharacterSkillLoadout> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skill-loadout`);
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+export async function updateSkillLoadout(
+  characterId: string,
+  slots: Array<{ slotIndex: number; skillId: string | null }>,
+): Promise<CharacterSkillLoadout> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skill-loadout`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
   });
   if (!res.ok) {
     throw new Error(await res.text());

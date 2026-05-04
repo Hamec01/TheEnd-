@@ -238,6 +238,168 @@ export interface QuestItemDefinition {
   showInQuestInventory: boolean;
 }
 
+export type QuestInteractionRequirementType =
+  | 'quest_not_started'
+  | 'quest_active'
+  | 'quest_completed'
+  | 'quest_failed'
+  | 'objective_completed'
+  | 'objective_not_completed'
+  | 'step_completed'
+  | 'step_not_completed'
+  | 'has_item'
+  | 'missing_item'
+  | 'has_quest_item'
+  | 'missing_quest_item'
+  | 'has_skill'
+  | 'missing_skill'
+  | 'has_flag'
+  | 'flag_equals'
+  | 'race_is'
+  | 'class_is'
+  | 'level_min'
+  | 'level_max'
+  | 'faction_relation_min';
+
+export interface QuestInteractionRequirement {
+  type: QuestInteractionRequirementType;
+  questId?: string;
+  objectiveId?: string;
+  stepId?: string;
+  itemId?: string;
+  questItemId?: string;
+  skillId?: string;
+  flagKey?: string;
+  value?: unknown;
+  raceId?: string;
+  classId?: string;
+  factionId?: string;
+  amount?: number;
+}
+
+export type QuestInteractionEffectType =
+  | 'complete_objective'
+  | 'complete_step'
+  | 'complete_quest'
+  | 'start_quest'
+  | 'fail_quest'
+  | 'give_rewards'
+  | 'give_item'
+  | 'take_item'
+  | 'give_quest_item'
+  | 'take_quest_item'
+  | 'give_skill'
+  | 'give_gold'
+  | 'give_experience'
+  | 'set_flag'
+  | 'unlock_location'
+  | 'unlock_dialogue'
+  | 'open_dialogue'
+  | 'open_shop'
+  | 'start_combat';
+
+export interface QuestInteractionEffect {
+  type: QuestInteractionEffectType;
+  questId?: string;
+  objectiveId?: string;
+  stepId?: string;
+  itemId?: string;
+  questItemId?: string;
+  skillId?: string;
+  dialogueId?: string;
+  locationId?: string;
+  shopId?: string;
+  enemyId?: string;
+  flagKey?: string;
+  value?: unknown;
+  amount?: number;
+}
+
+export interface QuestInteractionChoice {
+  id: string;
+  text: string;
+  resultText?: string;
+  imageId?: string;
+  requirements?: QuestInteractionRequirement[];
+  effects?: QuestInteractionEffect[];
+  close?: boolean;
+
+  // Legacy compatibility fields.
+  completeObjectiveId?: string;
+  completeStepId?: string;
+  completeQuest?: boolean;
+  giveRewards?: boolean;
+  nextQuestId?: string;
+  startQuestId?: string;
+  setFlag?: {
+    key: string;
+    value: unknown;
+  };
+}
+
+export type QuestInteractionTriggerType =
+  | 'zone_inspect'
+  | 'zone_enter'
+  | 'marker_reached'
+  | 'object_interact'
+  | 'item_use'
+  | 'npc_interact'
+  | 'manual';
+
+export interface QuestInteractionDefinition {
+  id: string;
+  title: string;
+  triggerType: QuestInteractionTriggerType;
+
+  zoneId?: string;
+  markerId?: string;
+  objectId?: string;
+  itemId?: string;
+  npcId?: string;
+
+  questId?: string;
+  stepId?: string;
+  objectiveId?: string;
+
+  text: string;
+  imageId?: string;
+  isActive?: boolean;
+  requirements?: QuestInteractionRequirement[];
+  choices: QuestInteractionChoice[];
+  consumeOnUse?: boolean;
+  hideAfterQuestCompleted?: boolean;
+  hideAfterObjectiveCompleted?: boolean;
+  hideAfterStepCompleted?: boolean;
+
+  // Legacy compatibility fields.
+  requiredQuestId?: string;
+  requiredQuestStatus?: 'active' | 'completed' | 'failed';
+  requiredObjectiveId?: string;
+  requiredItemId?: string;
+  requiredQuestItemId?: string;
+}
+
+export type QuestInteractionEvent =
+  | { type: 'zone_inspect'; zoneId: string }
+  | { type: 'zone_enter'; zoneId: string }
+  | { type: 'marker_reached'; markerId: string; zoneId?: string }
+  | { type: 'object_interact'; objectId: string; zoneId?: string }
+  | { type: 'item_use'; itemId: string }
+  | { type: 'npc_interact'; npcId: string }
+  | { type: 'manual'; interactionId?: string };
+
+export interface QuestInteractionEffectResult {
+  logs: string[];
+  completedQuestIds: string[];
+  startedQuestIds: string[];
+  grantedRewardLines: string[];
+  events: Array<
+    | { type: 'open_dialogue'; dialogueId: string }
+    | { type: 'open_shop'; shopId?: string }
+    | { type: 'start_combat'; enemyId?: string }
+  >;
+}
+
 export type QuestMarkerType =
   | 'quest_start'
   | 'quest_objective'
@@ -263,6 +425,11 @@ export interface QuestMarkerDefinition {
   visibleToPlayer: boolean;
   conditionIds: string[];
   imageUrl?: string;
+  isActive?: boolean;
+  requirements?: QuestInteractionRequirement[];
+  hideAfterQuestCompleted?: boolean;
+  hideAfterObjectiveCompleted?: boolean;
+  hideAfterStepCompleted?: boolean;
 }
 
 export type QuestZoneType =
@@ -305,9 +472,12 @@ export interface QuestValidationWorldData {
   npcIds: string[];
   itemIds: string[];
   questItemIds: string[];
+  skillIds: string[];
   professionIds: string[];
   markerIds: string[];
   zoneIds: string[];
+  interactionQuestIds?: string[];
+  dialogueCompletableQuestIds?: string[];
   dialogueIds: string[];
   kingdoms: string[];
   factions: string[];

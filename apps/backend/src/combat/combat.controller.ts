@@ -41,6 +41,8 @@ export class CombatController {
       destinationX: dto.destinationX,
       destinationY: dto.destinationY,
       skillType: dto.skillType,
+      skillId: dto.skillId,
+      skillLevel: dto.skillLevel,
     });
   }
 

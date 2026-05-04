@@ -1,10 +1,10 @@
 import {
   ActionType,
-  CombatSkillType,
   MovementType,
   TargetZone,
   TeamSide,
   getBattlefieldDistance,
+  type AdminSkillDefinition,
   getItemById,
   type ItemDefinition,
   type ArenaBattleState,
@@ -30,9 +30,9 @@ interface BattlePanelProps {
     gridOffsetX?: number;
     gridOffsetY?: number;
   };
-  selectedSkill: CombatSkillType;
-  learnedSkills: CombatSkillType[];
-  onSkillChange: (skill: CombatSkillType) => void;
+  selectedSkillId: string | null;
+  availableSkills: Array<{ skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  onSkillChange: (skillId: string | null) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
   onBattleFinished?: (next: ArenaBattleState, hubState?: ArenaHubState) => Promise<void> | void;
@@ -101,8 +101,8 @@ export function BattlePanel({
   inventory,
   mapImageUrl,
   mapCalibration,
-  selectedSkill,
-  learnedSkills,
+  selectedSkillId,
+  availableSkills,
   onSkillChange,
   onStateChange,
   onStatus,
@@ -130,25 +130,9 @@ export function BattlePanel({
   const [inspectEntityId, setInspectEntityId] = useState<string | null>(null);
   const isSubmittingRef = useRef(false);
   const autoSubmittedRoundRef = useRef<number>(-1);
-
-  const availableSkills = useMemo(
-    () => [
-      { id: CombatSkillType.None, label: 'Базовая атака' },
-      ...learnedSkills.map((skill) => ({
-        id: skill,
-        label: {
-          [CombatSkillType.PowerStrike]: 'Power Strike',
-          [CombatSkillType.CrushingBlock]: 'Crushing Block',
-          [CombatSkillType.Rage]: 'Rage',
-          [CombatSkillType.Fireball]: 'Пламя Фелдана',
-          [CombatSkillType.FrostLance]: 'Frost Lance',
-          [CombatSkillType.ShieldBash]: 'Таран Арклейна',
-          [CombatSkillType.Whirlwind]: 'Whirlwind',
-          [CombatSkillType.None]: 'Базовая атака',
-        }[skill],
-      })),
-    ],
-    [learnedSkills],
+  const selectedSkill = useMemo(
+    () => availableSkills.find((skill) => skill.skillId === selectedSkillId) ?? null,
+    [availableSkills, selectedSkillId],
   );
 
   const battleInventoryItems = useMemo(
@@ -344,7 +328,8 @@ export function BattlePanel({
         movementType: effectiveMovementType,
         destinationX: effectiveDestinationX,
         destinationY: effectiveDestinationY,
-        skillType: effectiveActionType === ActionType.Attack ? selectedSkill : undefined,
+        skillId: effectiveActionType === ActionType.Attack ? selectedSkill?.skillId : undefined,
+        skillLevel: effectiveActionType === ActionType.Attack ? selectedSkill?.level : undefined,
       });
       const nextState = result.state;
 
@@ -497,7 +482,7 @@ export function BattlePanel({
                 maxMp={player.maxMp}
                 availableSkills={availableSkills}
                 inventoryItems={battleInventoryItems}
-                selectedSkill={selectedSkill}
+                selectedSkillId={selectedSkillId}
                 actionWarning={actionWarning ?? actionHint}
                 onActionTypeChange={setActionType}
                 onSkillChange={onSkillChange}

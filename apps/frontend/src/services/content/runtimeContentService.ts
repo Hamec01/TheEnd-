@@ -1,7 +1,8 @@
 import { getMerchantItems, MERCHANTS, type ItemDefinition, type Merchant } from '@theend/rpg-domain';
-import type { AdminItem, AdminMerchant } from './models';
+import type { AdminItem, AdminMerchant, AdminSkill } from './models';
 import { itemsService } from './itemsService';
 import { merchantsService } from './merchantsService';
+import { skillsService } from './skillsService';
 import { getDomainItemWithFallback } from './seedService';
 
 const USE_SEED_FALLBACK = String(import.meta.env.VITE_USE_SEED_FALLBACK ?? 'true').trim().toLowerCase() !== 'false';
@@ -16,11 +17,12 @@ function mapMerchantType(type: AdminMerchant['type']): Merchant['merchantType'] 
   return 'supplier';
 }
 
-export async function loadRuntimeAdminContent(): Promise<{ items: AdminItem[]; merchants: AdminMerchant[] }> {
-  const [items, merchants] = await Promise.all([itemsService.getAll(), merchantsService.getAll()]);
+export async function loadRuntimeAdminContent(): Promise<{ items: AdminItem[]; merchants: AdminMerchant[]; skills: AdminSkill[] }> {
+  const [items, merchants, skills] = await Promise.all([itemsService.getAll(), merchantsService.getAll(), skillsService.getAll()]);
   return {
     items: items.filter((item) => item.isEnabled),
     merchants: merchants.filter((merchant) => merchant.isEnabled),
+    skills: skills.filter((skill) => skill.isPublished && !skill.isHidden),
   };
 }
 

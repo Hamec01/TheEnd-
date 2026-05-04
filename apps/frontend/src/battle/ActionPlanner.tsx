@@ -1,9 +1,10 @@
 import {
   ActionType,
-  CombatSkillType,
   DistanceBand,
   MovementType,
   TargetZone,
+  getSkillCostSummary,
+  type AdminSkillDefinition,
   type ArenaCombatEntity,
 } from '@theend/rpg-domain';
 import { useMemo, useState } from 'react';
@@ -21,7 +22,7 @@ interface ActionPlannerProps {
   maxStamina: number;
   currentMp: number;
   maxMp: number;
-  availableSkills: Array<{ id: CombatSkillType; label: string }>;
+  availableSkills: Array<{ skillId: string; label: string; level: number; definition: AdminSkillDefinition }>;
   inventoryItems: Array<{
     id: string;
     name: string;
@@ -30,10 +31,10 @@ interface ActionPlannerProps {
     itemType: string;
     quantity: number;
   }>;
-  selectedSkill: CombatSkillType;
+  selectedSkillId: string | null;
   actionWarning?: string | null;
   onActionTypeChange: (actionType: ActionType) => void;
-  onSkillChange: (skill: CombatSkillType) => void;
+  onSkillChange: (skillId: string | null) => void;
   onTargetChange: (id: string) => void;
   onAttackZoneChange: (zone: TargetZone) => void;
   onDefenseZonesChange: (zones: TargetZone[]) => void;
@@ -88,20 +89,6 @@ const ACTION_COSTS: Record<ActionType, number> = {
   [ActionType.Defend]: 8,
   [ActionType.Move]: 0,
   [ActionType.Wait]: 0,
-};
-
-const SKILL_MANA_COSTS: Partial<Record<CombatSkillType, number>> = {
-  [CombatSkillType.None]: 0,
-  [CombatSkillType.PowerStrike]: 15,
-  [CombatSkillType.CrushingBlock]: 20,
-  [CombatSkillType.Rage]: 25,
-  [CombatSkillType.Fireball]: 18,
-  [CombatSkillType.FrostLance]: 16,
-};
-
-const SKILL_STAMINA_COSTS: Partial<Record<CombatSkillType, number>> = {
-  [CombatSkillType.ShieldBash]: 14,
-  [CombatSkillType.Whirlwind]: 22,
 };
 
 function getGuardLabel(defenseZones: TargetZone[]): string {
@@ -204,15 +191,29 @@ export function ActionPlanner(props: ActionPlannerProps) {
   const [activePanelTab, setActivePanelTab] = useState<'skills' | 'inventory'>('skills');
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<string | null>(null);
   const selectedDefenseZones = props.defenseZones.slice(0, 2);
-  const skillOptions = props.availableSkills.filter((skill) => skill.id !== CombatSkillType.None);
+  const skillOptions = props.availableSkills;
   const selectedInventoryEntry = useMemo(
     () => props.inventoryItems.find((item) => item.id === selectedInventoryItem) ?? null,
     [props.inventoryItems, selectedInventoryItem],
   );
 
   const estimatedCost = getEstimatedTotalCost(props.actionType, props.movementType);
-  const manaCost = SKILL_MANA_COSTS[props.selectedSkill] ?? 0;
-  const skillStaminaCost = SKILL_STAMINA_COSTS[props.selectedSkill] ?? 0;
+  const selectedSkill = useMemo(
+    () => props.availableSkills.find((skill) => skill.skillId === props.selectedSkillId) ?? null,
+    [props.availableSkills, props.selectedSkillId],
+  );
+  const resourceSummary = useMemo(
+    () => selectedSkill ? getSkillCostSummary(selectedSkill.definition, selectedSkill.level) : [],
+    [selectedSkill],
+  );
+  const manaCost = useMemo(
+    () => resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('mp') ? sum + entry.amount : sum, 0),
+    [resourceSummary],
+  );
+  const skillStaminaCost = useMemo(
+    () => resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('stamina') ? sum + entry.amount : sum, 0),
+    [resourceSummary],
+  );
   const totalStaminaLoad = estimatedCost + skillStaminaCost;
   const selectedEnemy = props.enemies.find((enemy) => enemy.id === props.selectedTargetId) ?? null;
 
@@ -221,18 +222,18 @@ export function ActionPlanner(props: ActionPlannerProps) {
       <h3>Actions</h3>
 
       <div className="planner-main-actions" role="group" aria-label="Main actions">
-        <button type="button" className={props.actionType === ActionType.Attack && props.selectedSkill === CombatSkillType.None ? 'is-active' : ''} onClick={() => {
+        <button type="button" className={props.actionType === ActionType.Attack && !props.selectedSkillId ? 'is-active' : ''} onClick={() => {
           props.onActionTypeChange(ActionType.Attack);
-          if (props.selectedSkill !== CombatSkillType.None) {
-            props.onSkillChange(CombatSkillType.None);
+          if (props.selectedSkillId) {
+            props.onSkillChange(null);
           }
         }}>
           Атаковать
         </button>
-        <button type="button" className={props.actionType === ActionType.Attack && props.selectedSkill !== CombatSkillType.None ? 'is-active' : ''} onClick={() => {
+        <button type="button" className={props.actionType === ActionType.Attack && Boolean(props.selectedSkillId) ? 'is-active' : ''} onClick={() => {
           props.onActionTypeChange(ActionType.Attack);
-          if (props.selectedSkill === CombatSkillType.None && skillOptions.length > 0) {
-            props.onSkillChange(skillOptions[0]!.id);
+          if (!props.selectedSkillId && skillOptions.length > 0) {
+            props.onSkillChange(skillOptions[0]!.skillId);
           }
         }}>
           Навык
@@ -262,18 +263,17 @@ export function ActionPlanner(props: ActionPlannerProps) {
           <label htmlFor="skill-select">Навык</label>
           <select
             id="skill-select"
-            value={props.selectedSkill}
+            value={props.selectedSkillId ?? ''}
             onChange={(event) => {
-              const skill = event.target.value as CombatSkillType;
-              props.onSkillChange(skill);
+              props.onSkillChange(event.target.value || null);
               props.onActionTypeChange(ActionType.Attack);
             }}
             disabled={skillOptions.length === 0}
             className="compact-select"
           >
-            <option value={CombatSkillType.None}>None</option>
+            <option value="">Basic attack</option>
             {skillOptions.map((skill) => (
-              <option key={skill.id} value={skill.id}>{skill.label}</option>
+              <option key={skill.skillId} value={skill.skillId}>{skill.label} (lvl {skill.level})</option>
             ))}
           </select>
         </div>
@@ -331,11 +331,11 @@ export function ActionPlanner(props: ActionPlannerProps) {
           <div className="skill-icon-grid">
             {props.availableSkills.map((skill) => (
               <button
-                key={skill.id}
+                key={skill.skillId}
                 type="button"
-                className={`skill-icon-item ${props.selectedSkill === skill.id ? 'is-active' : ''}`}
+                className={`skill-icon-item ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
                 onClick={() => {
-                  props.onSkillChange(skill.id);
+                  props.onSkillChange(skill.skillId);
                   props.onActionTypeChange(ActionType.Attack);
                 }}
                 title={skill.label}
@@ -347,11 +347,12 @@ export function ActionPlanner(props: ActionPlannerProps) {
           </div>
 
           <div className="battle-detail-popover">
-            <strong>{props.availableSkills.find((item) => item.id === props.selectedSkill)?.label ?? 'Basic Attack'}</strong>
+            <strong>{selectedSkill?.label ?? 'Basic Attack'}</strong>
             <p>Target: {selectedEnemy?.name ?? 'None'}</p>
             <p>Mana cost: {manaCost}</p>
             <p>Stamina cost: {skillStaminaCost + ACTION_COSTS[props.actionType]}</p>
             <p>Move cost: {props.movementType ? MOVEMENT_COSTS[props.movementType] : 0}</p>
+            {selectedSkill ? <p>Skill level: {selectedSkill.level}</p> : null}
           </div>
         </div>
       )}

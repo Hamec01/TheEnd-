@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CombatSkillType,
+  type AdminSkillDefinition,
   EMPTY_EQUIPMENT,
   ITEMS,
   RACE_DEFINITIONS,
@@ -22,15 +22,21 @@ import {
   allocateStats,
   buyArenaItem,
   createCharacter,
+  getCharacterSkills,
   type ArenaHubState,
+  type CharacterSkillLoadout,
+  type CharacterSkillRow,
   type CustomArenaNpcPayload,
   equipArenaItem,
   getArenaHubState,
+  getSkillLoadout,
+  learnSkill,
   listCharacters,
   loginAccount,
   registerAccount,
   startCombat,
   startCustomCombat,
+  updateSkillLoadout,
   sellArenaItem,
   unequipArenaItem,
   useCombatItem as consumeCombatItem,
@@ -41,7 +47,7 @@ import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
-import type { AdminItem, AdminMerchant, StoredImage } from './services/content/models';
+import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
 import {
   HUMAN_ORIGINS,
   STARTING_ELEMENT_SKILLS,
@@ -129,14 +135,6 @@ type ArenaSetupMode = '1v1' | '1v3' | '1v10' | 'random';
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
 
-interface SkillOffer {
-  id: CombatSkillType;
-  name: string;
-  cost: number;
-  resource: string;
-  description: string;
-}
-
 interface HubStatePayload {
   character: ArenaCharacter;
   inventory: InventoryState;
@@ -212,34 +210,6 @@ const LAST_ACCOUNT_LOGIN_STORAGE_KEY = 'theend.lastAccountLogin';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
 const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
-
-const SKILL_OFFERS: SkillOffer[] = [
-  {
-    id: CombatSkillType.Fireball,
-    name: 'Пламя Фелдана',
-    cost: 120,
-    resource: 'MP 18',
-    description: 'Огненный урон по одной цели: INT x1.8 (сейчас -50% для не-мага).',
-  },
-  {
-    id: CombatSkillType.ShieldBash,
-    name: 'Таран Арклейна',
-    cost: 110,
-    resource: 'Stamina 14',
-    description: 'Удар щитом: урон CON x0.8, -16 STA цели и -35% ATK/DEF points на следующий раунд.',
-  },
-];
-
-const SKILL_NAMES: Record<CombatSkillType, string> = {
-  [CombatSkillType.None]: 'Базовая атака',
-  [CombatSkillType.PowerStrike]: 'Power Strike',
-  [CombatSkillType.CrushingBlock]: 'Crushing Block',
-  [CombatSkillType.Rage]: 'Rage',
-  [CombatSkillType.Fireball]: 'Пламя Фелдана',
-  [CombatSkillType.FrostLance]: 'Frost Lance',
-  [CombatSkillType.ShieldBash]: 'Таран Арклейна',
-  [CombatSkillType.Whirlwind]: 'Whirlwind',
-};
 
 const MERCHANT_TYPE_LABELS: Record<Merchant['merchantType'], string> = {
   weaponsmith: 'Оружие и дуэльные наборы',
@@ -663,6 +633,7 @@ function getPlayerRouteFromState(
   overlayPanel: OverlayPanel,
   isBattleWindowOpen: boolean,
   combatRoutePending: boolean,
+  characterPageFocus: CharacterPageFocus,
 ): PlayerPath {
   if (phase !== 'hub') {
     return '/';
@@ -677,7 +648,19 @@ function getPlayerRouteFromState(
   }
 
   if (overlayPanel === 'character') {
-    return '/inventory';
+    switch (characterPageFocus) {
+      case 'character':
+        return '/character';
+      case 'stats':
+        return '/stats';
+      case 'skills':
+        return '/skills';
+      case 'equipment':
+        return '/equipment';
+      case 'inventory':
+      default:
+        return '/inventory';
+    }
   }
 
   return '/map';
@@ -737,7 +720,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
   const [merchantMode, setMerchantMode] = useState<MerchantMode>('buy');
   const [sellOnlyAvailable, setSellOnlyAvailable] = useState(false);
-  const [selectedCombatSkill, setSelectedCombatSkill] = useState<CombatSkillType>(CombatSkillType.None);
+  const [selectedCombatSkillId, setSelectedCombatSkillId] = useState<string | null>(null);
   const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
   const [npcTemplates, setNpcTemplates] = useState<ArenaNpcTemplate[]>([]);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
@@ -756,13 +739,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [isBattleWindowOpen, setBattleWindowOpen] = useState(false);
   const [battleSummary, setBattleSummary] = useState<BattleSummary | null>(null);
   const [combatRoutePending, setCombatRoutePending] = useState(false);
-  const [learnedSkills, setLearnedSkills] = useState<CombatSkillType[]>([]);
 
   const [pendingStatAllocation, setPendingStatAllocation] = useState<StatAllocation>({});
   const [allocatingStats, setAllocatingStats] = useState(false);
   const [runtimeAdminItems, setRuntimeAdminItems] = useState<AdminItem[]>([]);
   const [runtimeAdminMerchants, setRuntimeAdminMerchants] = useState<AdminMerchant[]>([]);
+  const [runtimeAdminSkills, setRuntimeAdminSkills] = useState<AdminSkill[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+  const [characterSkills, setCharacterSkills] = useState<CharacterSkillRow[]>([]);
+  const [skillLoadout, setSkillLoadout] = useState<CharacterSkillLoadout | null>(null);
 
   const [restoringSession, setRestoringSession] = useState(true);
 
@@ -964,8 +949,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return combatState.entities.find((entity) => entity.id === playerCombatId) ?? null;
   }, [combatState, playerCombatId]);
   const activePlayerRoute = useMemo(
-    () => getPlayerRouteFromState(phase, overlayPanel, isBattleWindowOpen, combatRoutePending),
-    [combatRoutePending, isBattleWindowOpen, overlayPanel, phase],
+    () => getPlayerRouteFromState(phase, overlayPanel, isBattleWindowOpen, combatRoutePending, characterPageFocus),
+    [characterPageFocus, combatRoutePending, isBattleWindowOpen, overlayPanel, phase],
   );
   const requestedPlayerRoute = useMemo<PlayerPath>(
     () => (phase === 'hub' && currentPlayerRoute === '/' ? '/map' : currentPlayerRoute),
@@ -1003,6 +988,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       .then(([content, images]) => {
         setRuntimeAdminItems(content.items);
         setRuntimeAdminMerchants(content.merchants);
+        setRuntimeAdminSkills(content.skills);
         setRuntimeImages(images);
       })
       .catch(() => {
@@ -1016,6 +1002,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     runtimeContentRefreshRef.current = refreshPromise;
     return refreshPromise;
+  }, []);
+
+  const refreshCharacterSkills = useCallback(async (characterId: string) => {
+    const [skills, loadout] = await Promise.all([
+      getCharacterSkills(characterId),
+      getSkillLoadout(characterId),
+    ]);
+    setCharacterSkills(skills);
+    setSkillLoadout(loadout);
   }, []);
 
   useEffect(() => {
@@ -1115,31 +1110,18 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   useEffect(() => {
     if (!character) {
-      setLearnedSkills([]);
+      setCharacterSkills([]);
+      setSkillLoadout(null);
+      setSelectedCombatSkillId(null);
       return;
     }
 
-    const saved = window.localStorage.getItem(`theend.learnedSkills.${character.id}`);
-    if (!saved) {
-      setLearnedSkills([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as CombatSkillType[];
-      setLearnedSkills(parsed.filter((skill) => skill !== CombatSkillType.None));
-    } catch {
-      setLearnedSkills([]);
-    }
-  }, [character?.id]);
-
-  useEffect(() => {
-    if (!character) {
-      return;
-    }
-
-    window.localStorage.setItem(`theend.learnedSkills.${character.id}`, JSON.stringify(learnedSkills));
-  }, [character, learnedSkills]);
+    void refreshCharacterSkills(character.id).catch(() => {
+      setCharacterSkills([]);
+      setSkillLoadout(null);
+      setSelectedCombatSkillId(null);
+    });
+  }, [character?.id, refreshCharacterSkills]);
 
   useEffect(() => {
     if (!selectedSellItemId && visibleSellEntries.length > 0) {
@@ -1373,6 +1355,47 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       }
       setCharacterPageFocus('inventory');
       setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/character') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setCharacterPageFocus('character');
+      setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/stats') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setCharacterPageFocus('stats');
+      setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/skills') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setCharacterPageFocus('skills');
+      setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/equipment') {
+      if (isBattleWindowOpen) {
+        setBattleWindowOpen(false);
+      }
+      setCharacterPageFocus('equipment');
+      setOverlayPanel('character');
+      return;
+    }
+
+    if (requestedPlayerRoute === '/journal') {
+      // Journal is handled within WorldMapScreen
       return;
     }
 
@@ -1694,10 +1717,52 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }
 
   function openSkillsOverlay(): void {
-    onNavigate?.('/inventory');
+    onNavigate?.('/skills');
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
-    setStatus('Открыта страница персонажа: раздел навыков.');
+    setStatus('Открыта страница навыков.');
+  }
+
+  function openCharacterOverlay(): void {
+    onNavigate?.('/character');
+    setCharacterPageFocus('character');
+    setOverlayPanel('character');
+    setStatus('Открыта страница персонажа.');
+  }
+
+  function openEquipmentOverlay(): void {
+    onNavigate?.('/equipment');
+    setCharacterPageFocus('equipment');
+    setOverlayPanel('character');
+    setStatus('Открыта страница экипировки.');
+  }
+
+  function changeCharacterOverlayFocus(nextFocus: CharacterPageFocus): void {
+    switch (nextFocus) {
+      case 'character':
+        openCharacterOverlay();
+        return;
+      case 'inventory':
+        onNavigate?.('/inventory');
+        setCharacterPageFocus('inventory');
+        setOverlayPanel('character');
+        setStatus('Открыт инвентарь.');
+        return;
+      case 'stats':
+        onNavigate?.('/stats');
+        setCharacterPageFocus('stats');
+        setOverlayPanel('character');
+        setStatus('Открыта страница статов.');
+        return;
+      case 'skills':
+        openSkillsOverlay();
+        return;
+      case 'equipment':
+        openEquipmentOverlay();
+        return;
+      default:
+        return;
+    }
   }
 
   function openArenaOverlay(): void {
@@ -1732,29 +1797,54 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setNpcTemplates((current) => current.filter((npc) => npc.id !== npcId));
   }
 
-  function handleBuySkill(skillId: CombatSkillType): void {
-    const offer = SKILL_OFFERS.find((entry) => entry.id === skillId);
-    if (!offer) {
+  const battleSkillOptions = useMemo(() => {
+    const bySkillId = new Map(characterSkills.map((entry) => [entry.skillId, entry]));
+    return (skillLoadout?.slots ?? [])
+      .filter((slot) => slot.unlocked && Boolean(slot.skillId))
+      .map((slot) => {
+        const skillId = slot.skillId as string;
+        const row = bySkillId.get(skillId) ?? null;
+        const definition = row?.definition ?? runtimeAdminSkills.find((skill) => skill.id === skillId) ?? null;
+        if (!definition || definition.isPassive || definition.isActive === false || !definition.isPublished || definition.isHidden) {
+          return null;
+        }
+        return {
+          skillId,
+          level: row?.level ?? 1,
+          label: definition.name || skillId,
+          definition,
+        };
+      })
+      .filter((entry, index, list): entry is { skillId: string; level: number; label: string; definition: AdminSkillDefinition } => Boolean(entry)
+        && list.findIndex((candidate) => candidate?.skillId === entry?.skillId) === index);
+  }, [characterSkills, runtimeAdminSkills, skillLoadout?.slots]);
+
+  useEffect(() => {
+    if (selectedCombatSkillId && battleSkillOptions.some((entry) => entry.skillId === selectedCombatSkillId)) {
+      return;
+    }
+    setSelectedCombatSkillId(null);
+  }, [battleSkillOptions, selectedCombatSkillId]);
+
+  const handleLearnCharacterSkill = useCallback(async (skillId: string) => {
+    if (!character) {
       return;
     }
 
-    if (learnedSkills.includes(skillId)) {
-      setStatus(`Навык уже изучен: ${offer.name}`);
+    const learned = await learnSkill(character.id, { skillId, sourceType: 'teacher' });
+    await refreshCharacterSkills(character.id);
+    setStatus(`Изучен навык: ${learned.definition?.name ?? learned.skillId}`);
+  }, [character, refreshCharacterSkills]);
+
+  const handleSaveCharacterSkillLoadout = useCallback(async (slots: Array<{ slotIndex: number; skillId: string | null }>) => {
+    if (!character) {
       return;
     }
 
-    if (inventory.gold < offer.cost) {
-      setStatus(`Недостаточно золота для навыка ${offer.name}.`);
-      return;
-    }
-
-    setInventory((current) => ({
-      ...current,
-      gold: current.gold - offer.cost,
-    }));
-    setLearnedSkills((current) => [...current, skillId]);
-    setStatus(`Изучен навык: ${offer.name}`);
-  }
+    const nextLoadout = await updateSkillLoadout(character.id, slots);
+    setSkillLoadout(nextLoadout);
+    setStatus('Боевой loadout сохранён.');
+  }, [character]);
 
   async function handleBattleFinished(nextState: ArenaBattleState, resolvedHubState?: ArenaHubState): Promise<void> {
     if (!character || !playerCombatId) {
@@ -2210,17 +2300,19 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           }}
           chatLines={chatLines}
           onOpenStats={() => {
-            onNavigate?.('/inventory');
+            onNavigate?.('/stats');
             setCharacterPageFocus('stats');
             setOverlayPanel('character');
-            setStatus('Открыта страница персонажа: раздел характеристик.');
+            setStatus('Открыта страница статов.');
           }}
           onOpenInventory={() => {
             onNavigate?.('/inventory');
             setCharacterPageFocus('inventory');
             setOverlayPanel('character');
-            setStatus('Открыта страница персонажа: раздел инвентаря.');
+            setStatus('Открыт инвентарь.');
           }}
+          onOpenCharacter={openCharacterOverlay}
+          onOpenEquipment={openEquipmentOverlay}
           onOpenClan={() => setOverlayPanel('clan')}
           onExit={() => setExitDialogOpen(true)}
           onOpenMerchant={openMerchantOverlay}
@@ -2242,7 +2334,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             character={character}
             inventory={inventory}
             equipment={equipment}
-            learnedSkills={learnedSkills}
+            learnedSkills={characterSkills}
+            availableSkills={runtimeAdminSkills}
+            skillLoadout={skillLoadout}
             pendingStatAllocation={pendingStatAllocation}
             freePointsLeft={freePointsLeft}
             allocatingStats={allocatingStats}
@@ -2259,7 +2353,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onApplyStatAllocation={applyStatAllocation}
             onResetStatAllocation={() => setPendingStatAllocation({})}
             onRespecStats={respecStats}
+            onLearnSkill={handleLearnCharacterSkill}
+            onSaveSkillLoadout={handleSaveCharacterSkillLoadout}
             onUseItem={handleUseConsumable}
+            onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={playerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
@@ -2489,49 +2586,6 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           </div>
         ) : null}
 
-        {overlayPanel === 'skills' ? (
-          <div className="battle-overlay" role="dialog" aria-modal="true">
-            <section className="card battle-window wm-modal">
-              <div className="battle-window-head">
-                <h2>Учитель навыков</h2>
-                <button onClick={() => setOverlayPanel(null)}>✕</button>
-              </div>
-              <p className="gold" style={{ display: 'inline-flex', marginBottom: '10px' }}>🪙 {inventory.gold}</p>
-
-              <div className="profile-grid">
-                <section className="inner-card full-width-skills">
-                  <h3>Навыки учителя</h3>
-                  <p className="muted">Купленный навык сразу доступен в бою. Магические навыки сейчас работают с штрафом 50% к силе.</p>
-                  {SKILL_OFFERS.map((skill) => {
-                    const learned = learnedSkills.includes(skill.id);
-                    return (
-                      <div key={skill.id} className={`skill-entry ${learned ? 'is-selected' : ''}`}>
-                        <div>
-                          <strong>{skill.name}</strong>
-                          <p className="muted">{skill.resource}. {skill.description}</p>
-                          <p className="muted">Цена обучения: {skill.cost} золота</p>
-                        </div>
-                        <div className="skill-entry-actions">
-                          {learned ? (
-                            <span className="inventory-badge enabled">Изучен</span>
-                          ) : (
-                            <button onClick={() => handleBuySkill(skill.id)}>Купить</button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </section>
-              </div>
-
-              <div className="profile-actions">
-                <p className="muted">Купленные навыки автоматически появляются в бою в селекторе Skill.</p>
-                <p className="muted">В раунде можно выбрать обычную атаку или любой изученный навык.</p>
-              </div>
-            </section>
-          </div>
-        ) : null}
-
         {overlayPanel === 'clan' ? (
           <div className="battle-overlay" role="dialog" aria-modal="true">
             <section className="card battle-window wm-modal">
@@ -2631,9 +2685,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                   gridOffsetX: activeCombatBattleMap.gridOffsetX,
                   gridOffsetY: activeCombatBattleMap.gridOffsetY,
                 }}
-                selectedSkill={selectedCombatSkill}
-                learnedSkills={learnedSkills}
-                onSkillChange={setSelectedCombatSkill}
+                selectedSkillId={selectedCombatSkillId}
+                availableSkills={battleSkillOptions}
+                onSkillChange={setSelectedCombatSkillId}
                 onStateChange={setCombatState}
                 onStatus={setStatus}
                 onBattleFinished={handleBattleFinished}

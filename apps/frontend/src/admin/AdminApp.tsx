@@ -10,6 +10,7 @@ import { LootTablesPage } from './pages/LootTablesPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { MerchantsPage } from './pages/MerchantsPage';
 import { QuestItemsPage } from './pages/QuestItemsPage';
+import { QuestInteractionsPage } from './pages/QuestInteractionsPage';
 import { QuestsPage } from './pages/QuestsPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { NpcsPage } from './pages/NpcsPage';
@@ -23,7 +24,7 @@ interface AdminAppProps {
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/backup';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/backup';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
@@ -31,6 +32,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     || path === '/admin/skills'
     || path === '/admin/quests'
     || path === '/admin/quest-items'
+    || path === '/admin/quest-interactions'
     || path === '/admin/merchants'
     || path === '/admin/materials'
     || path === '/admin/npcs'
@@ -61,6 +63,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Квесты';
       case '/admin/quest-items':
         return 'Квестовые предметы';
+      case '/admin/quest-interactions':
+        return 'Quest Interactions';
       case '/admin/merchants':
         return 'Торговцы';
       case '/admin/materials':
@@ -114,6 +118,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/quest-items':
       page = <QuestItemsPage />;
+      break;
+    case '/admin/quest-interactions':
+      page = <QuestInteractionsPage />;
       break;
     case '/admin/merchants':
       page = <MerchantsPage />;

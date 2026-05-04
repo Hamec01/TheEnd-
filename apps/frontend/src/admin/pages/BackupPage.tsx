@@ -32,6 +32,7 @@ function validateImportPayload(value: unknown): Partial<ContentSnapshot> {
     'dialogues',
     'npcs',
     'quests',
+    'questInteractions',
     'questItems',
     'questMarkers',
     'battleMaps',

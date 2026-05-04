@@ -83,7 +83,11 @@ export function validateQuest(quest: QuestDefinition, worldData: QuestValidation
     errors.push('Active quest must have a title.');
   }
   if (quest.status === 'active' && triggers.length === 0) {
-    errors.push('Active quest must have at least one trigger.');
+    const completableByInteraction = Boolean(worldData.interactionQuestIds?.includes(quest.id));
+    const completableByDialogue = Boolean(worldData.dialogueCompletableQuestIds?.includes(quest.id));
+    if (!completableByInteraction && !completableByDialogue) {
+      errors.push('Active quest must have at least one trigger or a completion path via interaction/dialogue effects.');
+    }
   }
   if (quest.status === 'active' && steps.length === 0) {
     errors.push('Active quest must have at least one step.');

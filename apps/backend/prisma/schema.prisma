@@ -37,9 +37,13 @@ model Character {
   speed           Int
   willpower       Int
 
+  combatMastery Int @default(0)
+
   createdAt DateTime @default(now())
   inventoryItems CharacterInventoryItem[]
   equipment CharacterEquipment?
+  skills     CharacterSkill[]
+  skillLoadout CharacterSkillLoadout?
 
   @@index([accountId])
 }
@@ -78,4 +82,24 @@ model ContentStore {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+model CharacterSkill {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  skillId     String
+  level       Int       @default(1)
+  learnedAt   DateTime  @default(now())
+  sourceType  String
+  sourceId    String?
+
+  @@unique([characterId, skillId])
+  @@index([characterId])
+}
+
+model CharacterSkillLoadout {
+  characterId String    @id
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  slots       Json      @default("[]")
 }

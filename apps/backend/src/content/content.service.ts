@@ -32,6 +32,8 @@ import type {
   MerchantItem,
   NpcDefinition,
   QuestDefinition,
+  QuestInteractionDefinition,
+  QuestInteractionRequirement,
   QuestItemDefinition,
   QuestMarkerDefinition,
   StoredImage,
@@ -50,6 +52,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'dialogues',
   'npcs',
   'quests',
+  'questInteractions',
   'questItems',
   'questMarkers',
   'battleMaps',
@@ -398,6 +401,7 @@ function createEmptyDatabase(): ContentDatabase {
     dialogues: [],
     npcs: [],
     quests: [],
+    questInteractions: [],
     questItems: [],
     questMarkers: [],
     battleMaps: [],
@@ -424,6 +428,7 @@ function createSeedDatabase(): ContentDatabase {
     dialogues: [],
     npcs: [],
     quests: [],
+    questInteractions: [],
     questItems: [],
     questMarkers: [],
     battleMaps: [],
@@ -697,6 +702,11 @@ function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
     visibleToPlayer: marker.visibleToPlayer !== false,
     conditionIds: Array.isArray(marker.conditionIds) ? marker.conditionIds.map((id) => String(id).trim()).filter(Boolean) : [],
     imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
+    isActive: marker.isActive === false ? false : undefined,
+    requirements: Array.isArray(marker.requirements) ? marker.requirements as QuestInteractionRequirement[] : undefined,
+    hideAfterQuestCompleted: marker.hideAfterQuestCompleted === true ? true : undefined,
+    hideAfterObjectiveCompleted: marker.hideAfterObjectiveCompleted === true ? true : undefined,
+    hideAfterStepCompleted: marker.hideAfterStepCompleted === true ? true : undefined,
   };
 }
 
@@ -732,6 +742,145 @@ function normalizeQuestInput(input: QuestDefinition): QuestDefinition {
     flags: input.flags && typeof input.flags === 'object' ? clone(input.flags) : {},
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeQuestInteractionInput(input: QuestInteractionDefinition): QuestInteractionDefinition {
+  const normalizeText = (value: unknown): string | undefined => {
+    const text = String(value ?? '').trim();
+    return text.length > 0 ? text : undefined;
+  };
+
+  const triggerType = String(input.triggerType ?? 'zone_inspect').trim();
+  const safeTriggerType: QuestInteractionDefinition['triggerType'] =
+    triggerType === 'zone_enter'
+    || triggerType === 'marker_reached'
+    || triggerType === 'object_interact'
+    || triggerType === 'item_use'
+    || triggerType === 'npc_interact'
+    || triggerType === 'manual'
+      ? triggerType
+      : 'zone_inspect';
+
+  const normalizedRequirements = Array.isArray(input.requirements)
+    ? input.requirements
+      .map((requirement) => ({
+        ...requirement,
+        type: String(requirement?.type ?? '').trim() as any,
+        questId: normalizeText(requirement?.questId),
+        objectiveId: normalizeText(requirement?.objectiveId),
+        stepId: normalizeText(requirement?.stepId),
+        itemId: normalizeText(requirement?.itemId),
+        questItemId: normalizeText(requirement?.questItemId),
+        skillId: normalizeText(requirement?.skillId),
+        flagKey: normalizeText(requirement?.flagKey),
+        raceId: normalizeText(requirement?.raceId),
+        classId: normalizeText(requirement?.classId),
+        factionId: normalizeText(requirement?.factionId),
+        amount: typeof requirement?.amount === 'number' && Number.isFinite(requirement.amount)
+          ? requirement.amount
+          : undefined,
+      }))
+      .filter((requirement) => Boolean(requirement.type))
+    : [];
+
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    title: String(input.title ?? '').trim(),
+    zoneId: normalizeText(input.zoneId),
+    markerId: normalizeText(input.markerId),
+    objectId: normalizeText(input.objectId),
+    itemId: normalizeText(input.itemId),
+    npcId: normalizeText(input.npcId),
+    questId: normalizeText(input.questId),
+    stepId: normalizeText(input.stepId),
+    objectiveId: normalizeText(input.objectiveId),
+    triggerType: safeTriggerType,
+    text: String(input.text ?? '').trim(),
+    imageId: normalizeText(input.imageId),
+    choices: Array.isArray(input.choices)
+      ? input.choices
+        .map((choice) => ({
+          ...choice,
+          id: String(choice?.id ?? '').trim(),
+          text: String(choice?.text ?? '').trim(),
+          resultText: normalizeText(choice?.resultText),
+          imageId: normalizeText(choice?.imageId),
+          requirements: Array.isArray(choice?.requirements)
+            ? choice.requirements
+              .map((requirement) => ({
+                ...requirement,
+                type: String(requirement?.type ?? '').trim() as any,
+                questId: normalizeText(requirement?.questId),
+                objectiveId: normalizeText(requirement?.objectiveId),
+                stepId: normalizeText(requirement?.stepId),
+                itemId: normalizeText(requirement?.itemId),
+                questItemId: normalizeText(requirement?.questItemId),
+                skillId: normalizeText(requirement?.skillId),
+                flagKey: normalizeText(requirement?.flagKey),
+                raceId: normalizeText(requirement?.raceId),
+                classId: normalizeText(requirement?.classId),
+                factionId: normalizeText(requirement?.factionId),
+                amount: typeof requirement?.amount === 'number' && Number.isFinite(requirement.amount)
+                  ? requirement.amount
+                  : undefined,
+              }))
+              .filter((requirement) => Boolean(requirement.type))
+            : [],
+          effects: Array.isArray(choice?.effects)
+            ? choice.effects
+              .map((effect) => ({
+                ...effect,
+                type: String(effect?.type ?? '').trim() as any,
+                questId: normalizeText(effect?.questId),
+                objectiveId: normalizeText(effect?.objectiveId),
+                stepId: normalizeText(effect?.stepId),
+                itemId: normalizeText(effect?.itemId),
+                questItemId: normalizeText(effect?.questItemId),
+                skillId: normalizeText(effect?.skillId),
+                dialogueId: normalizeText(effect?.dialogueId),
+                locationId: normalizeText(effect?.locationId),
+                shopId: normalizeText(effect?.shopId),
+                enemyId: normalizeText(effect?.enemyId),
+                flagKey: normalizeText(effect?.flagKey),
+                amount: typeof effect?.amount === 'number' && Number.isFinite(effect.amount)
+                  ? effect.amount
+                  : undefined,
+              }))
+              .filter((effect) => Boolean(effect.type))
+            : [],
+          close: choice?.close === true,
+          completeObjectiveId: normalizeText(choice?.completeObjectiveId),
+          completeStepId: normalizeText(choice?.completeStepId),
+          completeQuest: choice?.completeQuest === true,
+          giveRewards: choice?.giveRewards === true,
+          nextQuestId: normalizeText(choice?.nextQuestId),
+          startQuestId: normalizeText(choice?.startQuestId),
+          setFlag: choice?.setFlag && typeof choice.setFlag === 'object' && String(choice.setFlag.key ?? '').trim()
+            ? {
+                key: String(choice.setFlag.key).trim(),
+                value: choice.setFlag.value,
+              }
+            : undefined,
+        }))
+        .filter((choice) => Boolean(choice.id && choice.text))
+      : [],
+    isActive: input.isActive !== false,
+    requirements: normalizedRequirements,
+    consumeOnUse: input.consumeOnUse === true,
+    hideAfterQuestCompleted: input.hideAfterQuestCompleted === true,
+    hideAfterObjectiveCompleted: input.hideAfterObjectiveCompleted === true,
+    hideAfterStepCompleted: input.hideAfterStepCompleted === true,
+    requiredQuestId: normalizeText(input.requiredQuestId),
+    requiredQuestStatus: input.requiredQuestStatus === 'completed' || input.requiredQuestStatus === 'failed'
+      ? input.requiredQuestStatus
+      : input.requiredQuestStatus === 'active'
+        ? 'active'
+        : undefined,
+    requiredObjectiveId: normalizeText(input.requiredObjectiveId),
+    requiredItemId: normalizeText(input.requiredItemId),
+    requiredQuestItemId: normalizeText(input.requiredQuestItemId),
   };
 }
 
@@ -1024,6 +1173,11 @@ export class ContentService implements OnModuleInit {
       errors.push(`Duplicate quest ids: ${duplicateQuests.join(', ')}`);
     }
 
+    const duplicateQuestInteractions = findDuplicateIds(db.questInteractions);
+    if (duplicateQuestInteractions.length > 0) {
+      errors.push(`Duplicate quest interaction ids: ${duplicateQuestInteractions.join(', ')}`);
+    }
+
     const duplicateQuestItems = findDuplicateIds(db.questItems);
     if (duplicateQuestItems.length > 0) {
       errors.push(`Duplicate quest item ids: ${duplicateQuestItems.join(', ')}`);
@@ -1141,6 +1295,9 @@ export class ContentService implements OnModuleInit {
       dialogues: Array.isArray(raw.dialogues) ? raw.dialogues.map((entry) => normalizeDialogueInput(entry as DialogueDefinition)).filter((d) => Boolean(d.id)) : [],
       npcs: Array.isArray(raw.npcs) ? raw.npcs.map((entry) => normalizeNpcInput(entry as NpcDefinition)).filter((n) => Boolean(n.id)) : [],
       quests: Array.isArray(raw.quests) ? raw.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition)).filter((q) => Boolean(q.id)) : [],
+      questInteractions: Array.isArray(raw.questInteractions)
+        ? raw.questInteractions.map((entry) => normalizeQuestInteractionInput(entry as QuestInteractionDefinition)).filter((q) => Boolean(q.id))
+        : [],
       questItems: Array.isArray(raw.questItems) ? raw.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition)).filter((q) => Boolean(q.id)) : [],
       questMarkers: Array.isArray(raw.questMarkers) ? raw.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id)) : [],
       battleMaps: Array.isArray(raw.battleMaps) ? clone(raw.battleMaps as BattleMapDefinition[]).filter((map) => Boolean(map.id)) : [],
@@ -1313,6 +1470,8 @@ export class ContentService implements OnModuleInit {
       nextEntry = normalizeNpcInput(payload as unknown as NpcDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'quests') {
       nextEntry = normalizeQuestInput(payload as unknown as QuestDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questInteractions') {
+      nextEntry = normalizeQuestInteractionInput(payload as unknown as QuestInteractionDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questItems') {
       nextEntry = normalizeQuestItemInput(payload as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
@@ -1351,6 +1510,8 @@ export class ContentService implements OnModuleInit {
       merged = normalizeNpcInput(mergedBase as unknown as NpcDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'quests') {
       merged = normalizeQuestInput(mergedBase as unknown as QuestDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'questInteractions') {
+      merged = normalizeQuestInteractionInput(mergedBase as unknown as QuestInteractionDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questItems') {
       merged = normalizeQuestItemInput(mergedBase as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
@@ -1418,6 +1579,10 @@ export class ContentService implements OnModuleInit {
     if (Array.isArray(payload.quests) && payload.quests.length > 0) {
       const normalized = payload.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition));
       db.quests = mergeById(db.quests, normalized);
+    }
+    if (Array.isArray(payload.questInteractions) && payload.questInteractions.length > 0) {
+      const normalized = payload.questInteractions.map((entry) => normalizeQuestInteractionInput(entry as QuestInteractionDefinition));
+      db.questInteractions = mergeById(db.questInteractions, normalized);
     }
     if (Array.isArray(payload.questItems) && payload.questItems.length > 0) {
       const normalized = payload.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition));

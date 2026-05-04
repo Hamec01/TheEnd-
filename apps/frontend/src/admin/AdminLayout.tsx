@@ -19,6 +19,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin/skills', label: 'Skills' },
       { path: '/admin/quests', label: 'Квесты' },
       { path: '/admin/quest-items', label: 'Квестовые предметы' },
+      { path: '/admin/quest-interactions', label: 'Quest Interactions' },
       { path: '/admin/npcs', label: 'Персонажи' },
       { path: '/admin/dialogues', label: 'Диалоги' },
       { path: '/admin/merchants', label: 'Торговцы' },

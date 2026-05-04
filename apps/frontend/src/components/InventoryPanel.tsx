@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
+import type { CharacterSkillLoadout, CharacterSkillRow } from '../api';
 import type { AdminItem } from '../services/content/models';
+import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
 import {
@@ -17,7 +19,9 @@ interface InventoryPanelProps {
   character: ArenaCharacter;
   inventory: InventoryState;
   equipment: Equipment;
-  learnedSkills: string[];
+  learnedSkills: CharacterSkillRow[];
+  availableSkills: Array<import('@theend/rpg-domain').AdminSkillDefinition>;
+  skillLoadout: CharacterSkillLoadout | null;
   pendingStatAllocation: Partial<Record<PrimaryStat, number>>;
   freePointsLeft: number;
   allocatingStats: boolean;
@@ -30,7 +34,10 @@ interface InventoryPanelProps {
   onApplyStatAllocation: () => Promise<void>;
   onResetStatAllocation?: () => void;
   onRespecStats?: () => Promise<void> | void;
+  onLearnSkill?: (skillId: string) => Promise<void>;
+  onSaveSkillLoadout?: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
+  onChangeFocus?: (focus: CharacterPageFocus) => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
@@ -70,29 +77,29 @@ const LAYOUT_SLOT_BY_CORE_SLOT: Record<keyof Equipment, EquipmentSlotId> = {
 };
 
 const SLOT_LABELS: Record<EquipmentSlotId, string> = {
-  helmet: 'Helmet / Шлем',
-  necklace: 'Necklace / Амулет',
-  armor: 'Armor / Броня',
-  outerwear: 'Outerwear / Плащ',
-  belt: 'Belt / Пояс',
-  leftHand: 'Left Hand / Левая рука',
-  gloves: 'Gloves / Перчатки',
-  rightHand: 'Right Hand / Правая рука',
-  ring1: 'Ring 1',
-  ring2: 'Ring 2',
-  ring3: 'Ring 3',
-  legs: 'Legs / Ноги',
-  boots: 'Boots / Сапоги',
-  quick1: 'Quick 1',
-  quick2: 'Quick 2',
-  quick3: 'Quick 3',
-  quick4: 'Quick 4',
-  quick5: 'Quick 5',
-  quick6: 'Quick 6',
-  quick7: 'Quick 7',
-  quick8: 'Quick 8',
-  quick9: 'Quick 9',
-  quick10: 'Quick 10',
+  helmet: 'Шлем',
+  necklace: 'Амулет',
+  armor: 'Броня',
+  outerwear: 'Плащ',
+  belt: 'Пояс',
+  leftHand: 'Левая рука',
+  gloves: 'Перчатки',
+  rightHand: 'Правая рука',
+  ring1: 'Кольцо 1',
+  ring2: 'Кольцо 2',
+  ring3: 'Кольцо 3',
+  legs: 'Поножи',
+  boots: 'Сапоги',
+  quick1: 'Быстрый слот 1',
+  quick2: 'Быстрый слот 2',
+  quick3: 'Быстрый слот 3',
+  quick4: 'Быстрый слот 4',
+  quick5: 'Быстрый слот 5',
+  quick6: 'Быстрый слот 6',
+  quick7: 'Быстрый слот 7',
+  quick8: 'Быстрый слот 8',
+  quick9: 'Быстрый слот 9',
+  quick10: 'Быстрый слот 10',
 };
 
 const ALL_SLOT_IDS = Object.keys(SLOT_LABELS) as EquipmentSlotId[];
@@ -112,53 +119,92 @@ const STATS_ORDER: PrimaryStat[] = [
 
 const STAT_LABELS: Record<PrimaryStat, string> = {
   hp: 'HP',
-  mp: 'Mana',
-  stamina: 'Stamina',
-  strength: 'Strength',
-  constitution: 'Constitution',
-  dexterity: 'Dexterity',
-  intelligence: 'Intelligence',
-  luck: 'Luck',
-  perception: 'Perception',
-  willpower: 'Willpower',
+  mp: 'Мана',
+  stamina: 'Выносливость',
+  strength: 'Сила',
+  constitution: 'Телосложение',
+  dexterity: 'Ловкость',
+  intelligence: 'Интеллект',
+  luck: 'Удача',
+  perception: 'Восприятие',
+  willpower: 'Воля',
 };
 
 const STAT_HINTS: Record<PrimaryStat, string> = {
-  hp: 'Определяет запас жизни и то, сколько урона персонаж переживёт.',
-  mp: 'Ресурс для магии, умений и особых эффектов.',
-  stamina: 'Тратится на удары, защиту, рывки и другие боевые действия.',
-  strength: 'Увеличивает силу ударов в ближнем бою и требования к тяжёлому оружию.',
-  constitution: 'Даёт выживаемость, защиту и снижает входящий физический урон.',
-  dexterity: 'Помогает с уклонением, точностью и работой ловкого оружия.',
-  intelligence: 'Усиливает магию и магический урон.',
-  luck: 'Влияет на криты, удачные броски и общую боевую удачу.',
-  perception: 'Даёт инициативу, меткость и бонус к точным атакам.',
-  willpower: 'Повышает магическую стойкость, контроль и ману-реген.',
-};
-
-const SKILL_NAMES: Record<string, string> = {
-  NONE: 'Базовая атака',
-  POWER_STRIKE: 'Power Strike',
-  CRUSHING_BLOCK: 'Crushing Block',
-  RAGE: 'Rage',
-  FIREBALL: 'Пламя Фелдана',
-  FROST_LANCE: 'Frost Lance',
-  SHIELD_BASH: 'Таран Арклейна',
-  WHIRLWIND: 'Whirlwind',
+  hp: 'Здоровье персонажа. Если HP падает до нуля, персонаж проигрывает бой.',
+  mp: 'Ресурс для магии, стихийных заклинаний и некоторых особых способностей.',
+  stamina: 'Ресурс для физических навыков, блоков, тяжёлых атак и активных действий в бою.',
+  strength: 'Влияет на физический урон, тяжёлое оружие и силовые проверки.',
+  constitution: 'Влияет на здоровье, защиту, сопротивление физическому урону и тяжёлую броню.',
+  dexterity: 'Влияет на точность, уклонение, инициативу и лёгкое оружие.',
+  intelligence: 'Влияет на магический урон, объём маны, обучение магии и силу заклинаний.',
+  luck: 'Влияет на шанс критического удара, редкую добычу и случайные проверки.',
+  perception: 'Влияет на точность, инициативу, обнаружение ловушек и скрытых объектов.',
+  willpower: 'Влияет на сопротивление магии, страху, контролю, проклятиям и ментальным эффектам.',
 };
 
 const ITEM_STAT_LABELS: Record<string, string> = {
-  strength: 'Strength',
-  dexterity: 'Dexterity',
-  constitution: 'Constitution',
-  intelligence: 'Intelligence',
-  stamina: 'Stamina',
-  perception: 'Perception',
-  luck: 'Luck',
-  willpower: 'Willpower',
+  strength: 'Сила',
+  dexterity: 'Ловкость',
+  constitution: 'Телосложение',
+  intelligence: 'Интеллект',
+  stamina: 'Выносливость',
+  perception: 'Восприятие',
+  luck: 'Удача',
+  willpower: 'Воля',
   hp: 'HP',
-  mp: 'MP',
+  mp: 'Мана',
 };
+
+const EQUIPMENT_ORDER: Array<keyof Equipment> = [
+  'weapon',
+  'shield',
+  'helmet',
+  'armor',
+  'outerwear',
+  'gloves',
+  'belt',
+  'legs',
+  'boots',
+  'necklace',
+  'ring1',
+  'ring2',
+  'ring3',
+];
+
+const EQUIPMENT_LABELS: Record<keyof Equipment, string> = {
+  weapon: 'Оружие',
+  shield: 'Щит',
+  helmet: 'Шлем',
+  armor: 'Броня',
+  outerwear: 'Плащ',
+  belt: 'Пояс',
+  gloves: 'Перчатки',
+  necklace: 'Амулет',
+  ring1: 'Кольцо 1',
+  ring2: 'Кольцо 2',
+  ring3: 'Кольцо 3',
+  legs: 'Поножи',
+  boots: 'Сапоги',
+};
+
+const INVENTORY_FILTER_LABELS = {
+  all: 'Все',
+  weapon: 'Оружие',
+  armor: 'Броня',
+  consumable: 'Расходники',
+  quest: 'Квестовые',
+  material: 'Материалы',
+} satisfies Record<'all' | 'weapon' | 'armor' | 'consumable' | 'quest' | 'material', string>;
+
+const INVENTORY_SORT_LABELS = {
+  name: 'имени',
+  type: 'типу',
+  rarity: 'редкости',
+  price: 'цене',
+  damage: 'урону',
+  defense: 'защите',
+} satisfies Record<'name' | 'type' | 'rarity' | 'price' | 'damage' | 'defense', string>;
 
 function formatItemStatLabel(value: string): string {
   return ITEM_STAT_LABELS[value] ?? value;
@@ -226,6 +272,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   inventory,
   equipment,
   learnedSkills,
+  availableSkills,
+  skillLoadout,
   pendingStatAllocation,
   freePointsLeft,
   allocatingStats,
@@ -238,7 +286,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onApplyStatAllocation,
   onResetStatAllocation,
   onRespecStats,
+  onLearnSkill,
+  onSaveSkillLoadout,
   onUseItem,
+  onChangeFocus,
   playerAvatarUrl,
   resolveItemById,
   resolveAdminItemById,
@@ -246,11 +297,20 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemDetailOpen, setItemDetailOpen] = useState(false);
-  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
-  const [skillTab, setSkillTab] = useState<'skills' | 'abilities' | 'passives' | 'status'>('skills');
   const [silhouetteBroken, setSilhouetteBroken] = useState(false);
   const [silhouetteSrc, setSilhouetteSrc] = useState<string>(() => getRaceSilhouette(character.race));
   const [hoverPreview, setHoverPreview] = useState<{ itemId: string; x: number; y: number } | null>(null);
+  // Collapsible modules for character overview page (set of collapsed module keys)
+  const [collapsedModules, setCollapsedModules] = useState<Set<string>>(() => new Set(['stats', 'combat', 'breakdown', 'progression', 'skills']));
+  // Inventory sorting/filter
+  const [inventorySort, setInventorySort] = useState<'name' | 'type' | 'rarity' | 'price' | 'damage' | 'defense'>('type');
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'consumable' | 'quest' | 'material'>('all');
+  // Skills page: selected skill + selected loadout slot
+  const [selectedLearnedSkillId, setSelectedLearnedSkillId] = useState<string | null>(null);
+  const [selectedLoadoutSlotIndex, setSelectedLoadoutSlotIndex] = useState<number | null>(null);
+  const [skillsFilter, setSkillsFilter] = useState<'all' | 'magic' | 'elemental' | 'physical' | 'passive' | 'rune'>('all');
+  // Loadout presets (stored in localStorage)
+  const [activePresetIndex, setActivePresetIndex] = useState<0 | 1 | 2>(0);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -513,18 +573,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     };
   }, []);
 
-  const skillItems = useMemo(
-    () => learnedSkills.map((skillId) => ({
-      id: skillId,
-      name: SKILL_NAMES[skillId] ?? skillId,
-      type: skillTab,
-      description: skillTab === 'status' ? 'Статусный эффект из текущего билда.' : 'Детали будут расширены в следующем обновлении.',
-    })),
-    [learnedSkills, skillTab],
-  );
-
-  const selectedSkill = skillItems.find((skill) => skill.id === selectedSkillId) ?? null;
-
   async function equipToSlot(slotId: EquipmentSlotId, item: ItemDefinition): Promise<void> {
     const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
     if (!coreSlot) {
@@ -603,17 +651,557 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   const hasPendingAllocation = Object.keys(pendingStatAllocation).length > 0;
 
-  return (
-    <div className="battle-overlay" role="dialog" aria-modal="true">
-      <section className="card battle-window wm-modal character-page-modal">
-        <div className="battle-window-head">
-          <h2>Character Page - {character.name}</h2>
-          <button onClick={onClose}>✕</button>
-        </div>
+  function toggleModule(key: string): void {
+    setCollapsedModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
 
-        <div className="character-page-grid">
-          <section ref={leftColumnRef} className={`character-column character-left ${focusedColumnClass === 'left' ? 'is-focused' : ''}`}>
-            <section className="character-status-card">
+  function isModuleCollapsed(key: string): boolean {
+    return collapsedModules.has(key);
+  }
+
+  function getPresetsStorageKey(): string {
+    return `theend.loadoutPresets.${character.id}`;
+  }
+
+  interface CharacterLoadoutPreset {
+    id: string;
+    name: string;
+    index: 0 | 1 | 2;
+    slots: Array<{ slotIndex: number; entryType: 'skill' | 'item'; entryId: string }>;
+  }
+
+  function loadPresets(): CharacterLoadoutPreset[] {
+    try {
+      const raw = window.localStorage.getItem(getPresetsStorageKey());
+      if (!raw) return [
+        { id: 'preset_0', name: 'Preset 1', index: 0, slots: [] },
+        { id: 'preset_1', name: 'Preset 2', index: 1, slots: [] },
+        { id: 'preset_2', name: 'Preset 3', index: 2, slots: [] },
+      ];
+      return JSON.parse(raw) as CharacterLoadoutPreset[];
+    } catch {
+      return [
+        { id: 'preset_0', name: 'Preset 1', index: 0, slots: [] },
+        { id: 'preset_1', name: 'Preset 2', index: 1, slots: [] },
+        { id: 'preset_2', name: 'Preset 3', index: 2, slots: [] },
+      ];
+    }
+  }
+
+  function savePresets(presets: CharacterLoadoutPreset[]): void {
+    window.localStorage.setItem(getPresetsStorageKey(), JSON.stringify(presets));
+  }
+
+  async function saveCurrentLoadoutAsPreset(presetIndex: 0 | 1 | 2): Promise<void> {
+    const currentSlots = (skillLoadout?.slots ?? [])
+      .filter((slot) => slot.unlocked && Boolean(slot.skillId))
+      .map((slot) => ({
+        slotIndex: slot.slotIndex,
+        entryType: 'skill' as const,
+        entryId: slot.skillId as string,
+      }));
+    const presets = loadPresets();
+    presets[presetIndex] = {
+      ...presets[presetIndex],
+      slots: currentSlots,
+    };
+    savePresets(presets);
+    onStatus(`Preset ${presetIndex + 1} saved.`);
+  }
+
+  async function applyPreset(presetIndex: 0 | 1 | 2): Promise<void> {
+    const presets = loadPresets();
+    const preset = presets[presetIndex];
+    if (!preset) return;
+    const newSlots = preset.slots
+      .filter((s) => s.entryType === 'skill')
+      .map((s) => ({ slotIndex: s.slotIndex, skillId: s.entryId }));
+    if (onSaveSkillLoadout) {
+      await onSaveSkillLoadout(newSlots);
+    }
+    setActivePresetIndex(presetIndex);
+    onStatus(`Preset ${presetIndex + 1} loaded.`);
+  }
+
+  // Sorted/filtered inventory entries
+  const sortedFilteredInventory = useMemo(() => {
+    let entries = [...inventoryEntries];
+    if (inventoryFilter !== 'all') {
+      entries = entries.filter((entry) => {
+        const type = entry.item.itemType;
+        switch (inventoryFilter) {
+          case 'weapon': return type === 'weapon';
+          case 'armor': return type === 'helmet' || type === 'armor' || type === 'gloves' || type === 'boots' || type === 'legs' || type === 'outerwear' || type === 'belt' || type === 'shield' || type === 'necklace' || type === 'ring';
+          case 'consumable': return type === 'consumable';
+          default: return true;
+        }
+      });
+    }
+    entries.sort((a, b) => {
+      switch (inventorySort) {
+        case 'name': return a.item.name.localeCompare(b.item.name);
+        case 'type': return a.item.itemType.localeCompare(b.item.itemType);
+        case 'rarity': {
+          const order = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
+          return (order[a.item.rarity as keyof typeof order] ?? 9) - (order[b.item.rarity as keyof typeof order] ?? 9);
+        }
+        case 'price': return b.item.price - a.item.price;
+        case 'damage': {
+          const damageA = resolveAdminItemById?.(a.item.id)?.damageMax ?? 0;
+          const damageB = resolveAdminItemById?.(b.item.id)?.damageMax ?? 0;
+          return damageB - damageA;
+        }
+        case 'defense': {
+          const armorA = resolveAdminItemById?.(a.item.id)?.armorValue ?? 0;
+          const armorB = resolveAdminItemById?.(b.item.id)?.armorValue ?? 0;
+          return armorB - armorA;
+        }
+        default: return 0;
+      }
+    });
+    return entries;
+  }, [inventoryEntries, inventoryFilter, inventorySort, resolveAdminItemById]);
+
+  const STAT_EXPLANATIONS = STAT_HINTS;
+
+  const equippedSummary = useMemo(
+    () => EQUIPMENT_ORDER.map((slot) => {
+      const itemId = equipment[slot];
+      const item = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
+      return {
+        slot,
+        label: EQUIPMENT_LABELS[slot],
+        item,
+      };
+    }),
+    [equipment, resolveItemById],
+  );
+
+  const learnedSkillsSummary = useMemo(
+    () => learnedSkills
+      .map((entry) => ({
+        id: entry.skillId,
+        level: entry.level,
+        name: entry.definition?.name ?? availableSkills.find((skill) => skill.id === entry.skillId)?.name ?? entry.skillId,
+      }))
+      .slice(0, 6),
+    [availableSkills, learnedSkills],
+  );
+
+  // Shared fragments
+
+  function renderPageHeader() {
+    return (
+      <div className="battle-window-head">
+        <h2>{character.name}</h2>
+        <button onClick={onClose} aria-label="Закрыть окно персонажа">×</button>
+      </div>
+    );
+  }
+
+  /** The full-detail item popup used by Inventory and Equipment pages */
+  function renderItemPopup() {
+    if (!itemDetailOpen || !selectedItem) return null;
+    return (
+      <div
+        className="character-item-popup-backdrop"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            setItemDetailOpen(false);
+          }
+        }}
+      >
+        <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Детали предмета">
+          <div className="character-item-popup-head">
+            <div className="character-item-popup-title">
+              <span
+                className="character-item-popup-icon"
+                style={resolveItemImage?.(selectedItem)
+                  ? {
+                      backgroundImage: `url("${resolveItemImage(selectedItem)}")`,
+                      backgroundSize: 'contain',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'center',
+                    }
+                  : undefined}
+              />
+              <div>
+                <h3>{selectedItem.name}</h3>
+                <p className="muted">{selectedItem.itemType} / {selectedItem.itemSubType} / {selectedItem.rarity}</p>
+              </div>
+            </div>
+            <button type="button" className="character-item-popup-close" onClick={() => setItemDetailOpen(false)}>×</button>
+          </div>
+          <div className="character-item-popup-body">
+            <section className="character-item-popup-main">
+              {selectedItem.itemType === 'weapon' ? (
+                <p className="muted">Хват: {selectedItemHandsRequired === 2 ? 'Двуручное' : 'Одноручное'}</p>
+              ) : null}
+              <p>{selectedDescription}</p>
+              {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+              {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+                <p className="muted">Урон: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+              ) : null}
+              {typeof selectedAdminItem?.armorValue === 'number' ? (
+                <p className="muted">Защита: {selectedAdminItem.armorValue}</p>
+              ) : null}
+              {selectedIsTwoHandedWeapon && equipment.shield ? (
+                <p className="muted">Если надеть это оружие, предмет в левой руке вернётся в рюкзак.</p>
+              ) : null}
+              {shieldBlockedByTwoHandedWeapon ? (
+                <p className="muted">Нельзя надеть этот предмет в левую руку, пока экипировано двуручное оружие.</p>
+              ) : null}
+              <p className="muted">
+                Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}
+              </p>
+              <p className="muted">
+                Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}
+              </p>
+            </section>
+            <section className="character-item-compare">
+              <div className="character-item-compare-items">
+                <div>
+                  <span>Сейчас экипировано</span>
+                  <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
+                  <small>{comparisonSlotId ? SLOT_LABELS[comparisonSlotId] : 'Нет слота'}</small>
+                </div>
+                <div>
+                  <span>Выбранный предмет</span>
+                  <strong>{selectedItem.name}</strong>
+                  <small>{selectedAlreadyEquipped ? 'Уже экипирован' : selectedInventoryEntry ? 'В рюкзаке' : 'Экипирован'}</small>
+                </div>
+              </div>
+              {itemDamageComparison ? (
+                <p className="muted">
+                  Сравнение урона: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
+                </p>
+              ) : null}
+              {itemArmorComparison ? (
+                <p className="muted">
+                  Сравнение защиты: {itemArmorComparison.current} → {itemArmorComparison.next}
+                </p>
+              ) : null}
+              {itemStatDiffRows.length > 0 ? (
+                <div className="character-item-compare-grid">
+                  {itemStatDiffRows.map((row) => (
+                    <p key={`popup-stat-${row.key}`}>
+                      <span>{row.label}</span>
+                      <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                      <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
+                        {row.diff > 0 ? `+${row.diff}` : row.diff}
+                      </em>
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              <div className="character-item-compare-grid">
+                {itemComparisonRows.map((row) => {
+                  const delta = Number((row.after - row.before).toFixed(1));
+                  return (
+                    <p key={row.label}>
+                      <span>{row.label}</span>
+                      <strong>{row.before} → {row.after}</strong>
+                      <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
+                        {delta > 0 ? `+${delta}` : delta}
+                      </em>
+                    </p>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+          <div className="character-item-actions character-item-popup-actions">
+            <button
+              disabled={selectedAlreadyEquipped || !selectedInventoryEntry}
+              onClick={() => { void equipSelectedItem(); }}
+            >
+              {selectedAlreadyEquipped ? 'Надето' : 'Надеть'}
+            </button>
+            <button
+              disabled={!selectedEquippedSlotId}
+              onClick={() => {
+                if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); }
+              }}
+            >
+              Снять
+            </button>
+            <button
+              disabled={selectedItem.itemType !== 'consumable'}
+              onClick={() => {
+                if (onUseItem) { void onUseItem(selectedItem.id); }
+                else { onStatus('Use action is not available in this context.'); }
+              }}
+            >
+              Использовать
+            </button>
+            <button disabled>Выбросить</button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  /** Paper doll used by both Character Overview and Equipment pages */
+  function renderPaperDoll() {
+    return (
+      <section className="character-paperdoll-card">
+        <div className="character-paperdoll-canvas inventory-wrapper">
+          {!silhouetteBroken ? (
+            <PaperDoll
+              race={paperDollRace}
+              imageSrc={silhouetteSrc}
+              slotItems={equippedByLayoutSlot}
+              slotLabels={SLOT_LABELS}
+              resolveItemImage={resolveItemImage}
+              canDropItemInSlot={(slotId, itemId) => {
+                try {
+                  const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                  if (!item) return false;
+                  if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) return false;
+                  return canEquipItemInSlot(item, slotId);
+                } catch { return false; }
+              }}
+              debug={paperDollDebug}
+              onImageError={() => {
+                const fallback = getRaceSilhouetteFallback(paperDollRace as any);
+                if (silhouetteSrc !== fallback) { setSilhouetteSrc(fallback); return; }
+                setSilhouetteBroken(true);
+              }}
+              onSlotClick={(slotId) => {
+                const equippedItem = equippedByLayoutSlot[slotId] ?? null;
+                if (equippedItem) { setSelectedItemId(equippedItem.id); setItemDetailOpen(true); return; }
+                if (selectedItem) { void equipToSlot(slotId, selectedItem); }
+              }}
+              onSlotDrop={(slotId, itemId) => {
+                try {
+                  const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                  if (item) { void equipToSlot(slotId, item); }
+                } catch { /* ignore invalid drop */ }
+              }}
+              onSlotContextMenu={(slotId) => {
+                if (equippedByLayoutSlot[slotId]) { void unequipFromSlot(slotId); }
+              }}
+            />
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+  function renderHoverPreviewCard() {
+    if (!hoverPreview || !hoverItem) {
+      return null;
+    }
+
+    return (
+      <aside className="character-item-hover-card" style={{ left: hoverPreview.x, top: hoverPreview.y }} role="tooltip">
+        <div className="character-item-hover-head">
+          <strong>{hoverItem.name}</strong>
+          <small>{hoverItem.itemType} / {hoverItem.itemSubType} / {hoverItem.rarity}</small>
+        </div>
+        <p className="muted">{hoverItem.description || 'Описание отсутствует.'}</p>
+        <p className="muted">Бонусы: {Object.entries(hoverItem.bonuses).map(([key, value]) => `${formatItemStatLabel(key)} ${value ?? 0}`).join(', ') || 'нет'}</p>
+        <p className="muted">Требования: {Object.entries(hoverItem.requiredStats).map(([key, value]) => `${formatItemStatLabel(key)} ${value ?? 0}`).join(', ') || 'нет'}</p>
+        <div className="character-item-inline-compare-head">
+          <span>Сравнение со слотом</span>
+          <strong>{hoverComparison.currentItem?.name ?? 'Слот пуст'}</strong>
+        </div>
+        <div className="character-item-inline-compare-grid">
+          {hoverComparison.rows.map((row) => {
+            const delta = Number((row.after - row.before).toFixed(1));
+            return (
+              <p key={row.label}>
+                <span>{row.label}</span>
+                <strong>{row.before} → {row.after}</strong>
+                <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>{delta > 0 ? `+${delta}` : delta}</em>
+              </p>
+            );
+          })}
+        </div>
+      </aside>
+    );
+  }
+
+  function renderSelectedItemDetails(title: string, emptyText: string, showEquipAction: boolean, showUnequipAction: boolean) {
+    return (
+      <section className="character-item-detail-card">
+        <h3>{title}</h3>
+        {selectedItem ? (
+          <>
+            <strong>{selectedItem.name}</strong>
+            <p className="muted">Тип: {selectedItem.itemType} / {selectedItem.itemSubType}</p>
+            {selectedItem.itemType === 'weapon' ? (
+              <p className="muted">Хват: {selectedItemHandsRequired === 2 ? 'Двуручное' : 'Одноручное'}</p>
+            ) : null}
+            <p className="muted">Редкость: {selectedItem.rarity}</p>
+            <p>{selectedDescription}</p>
+            {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
+            {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
+              <p className="muted">Урон: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
+            ) : null}
+            {typeof selectedAdminItem?.armorValue === 'number' ? (
+              <p className="muted">Защита: {selectedAdminItem.armorValue}</p>
+            ) : null}
+            <p className="muted">Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}</p>
+            <p className="muted">Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}</p>
+            <div className="character-item-inline-compare-head">
+              <span>Сравнение со слотом</span>
+              <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
+            </div>
+            {itemDamageComparison ? (
+              <p className="muted">Сравнение урона: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}</p>
+            ) : null}
+            {itemArmorComparison ? (
+              <p className="muted">Сравнение защиты: {itemArmorComparison.current} → {itemArmorComparison.next}</p>
+            ) : null}
+            {itemStatDiffRows.length > 0 ? (
+              <div className="character-item-inline-compare-grid">
+                {itemStatDiffRows.map((row) => (
+                  <p key={`stat-${row.key}`}>
+                    <span>{row.label}</span>
+                    <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
+                    <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>{row.diff > 0 ? `+${row.diff}` : row.diff}</em>
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            <div className="character-item-inline-compare-grid">
+              {itemComparisonRows.map((row) => {
+                const delta = Number((row.after - row.before).toFixed(1));
+                return (
+                  <p key={row.label}>
+                    <span>{row.label}</span>
+                    <strong>{row.before} → {row.after}</strong>
+                    <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>{delta > 0 ? `+${delta}` : delta}</em>
+                  </p>
+                );
+              })}
+            </div>
+            <div className="character-item-actions">
+              {showEquipAction ? (
+                <button disabled={selectedAlreadyEquipped || !selectedInventoryEntry} onClick={() => { void equipSelectedItem(); }}>
+                  {selectedAlreadyEquipped ? 'Надето' : 'Надеть'}
+                </button>
+              ) : null}
+              {showUnequipAction ? (
+                <button disabled={!selectedEquippedSlotId} onClick={() => { if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); } }}>
+                  Снять
+                </button>
+              ) : null}
+              <button disabled={selectedItem.itemType !== 'consumable'} onClick={() => { if (onUseItem) { void onUseItem(selectedItem.id); } else { onStatus('Использование предмета недоступно в этом режиме.'); } }}>
+                Использовать
+              </button>
+              <button disabled>Выбросить</button>
+            </div>
+          </>
+        ) : (
+          <p className="muted">{emptyText}</p>
+        )}
+      </section>
+    );
+  }
+
+  function renderEquipmentSummary(interactive = false) {
+    return (
+      <section className="character-meta-card character-equipment-summary-card">
+        <h3>Экипировка</h3>
+        <div className="character-equipment-summary-list">
+          {equippedSummary.map((entry) => {
+            const content = (
+              <>
+                <span>{entry.label}</span>
+                <strong>{entry.item?.name ?? 'Пусто'}</strong>
+              </>
+            );
+
+            if (!interactive || !entry.item) {
+              return <div key={entry.slot} className="character-equipment-summary-row">{content}</div>;
+            }
+
+            return (
+              <button
+                key={entry.slot}
+                type="button"
+                className={`character-equipment-summary-row ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+                onClick={() => {
+                  setSelectedItemId(entry.item?.id ?? null);
+                  setItemDetailOpen(true);
+                }}
+              >
+                {content}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  function renderInventoryCards(
+    entries: Array<{ item: ItemDefinition; quantity: number }>,
+    compact = false,
+  ) {
+    return (
+      <div className={`character-inventory-grid ${compact ? 'is-compact' : ''}`}>
+        {entries.map((entry) => (
+          <button
+            key={entry.item.id}
+            type="button"
+            className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+            onMouseEnter={(event) => {
+              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+              const cardWidth = Math.min(360, window.innerWidth - 24);
+              const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
+              const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+              setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
+              setSelectedItemId(entry.item.id);
+            }}
+            onFocus={() => { setSelectedItemId(entry.item.id); }}
+            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
+            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
+            onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData('text/theend-item-id', entry.item.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+          >
+            <span
+              className="character-item-icon"
+              style={resolveItemImage?.(entry.item)
+                ? {
+                    backgroundImage: `url("${resolveItemImage(entry.item)}")`,
+                    backgroundSize: 'contain',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center',
+                  }
+                : undefined}
+            />
+            <span className="character-item-name">{entry.item.name}</span>
+            <span className="character-item-qty">x{entry.quantity}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderCharacterOverview() {
+    const overviewInventory = inventoryEntries.slice(0, 12);
+
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body inventory-panel-body--overview">
+          <div className="character-overview-layout">
+            <section className="character-status-card character-overview-hero">
               <div className="character-status-head">
                 {playerAvatarUrl ? (
                   <img src={playerAvatarUrl} alt={character.name} className="character-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -622,318 +1210,155 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 )}
                 <div>
                   <strong>{character.name}</strong>
-                  <p className="muted">Race: {character.race}</p>
+                  <p className="muted">Раса: {character.race}</p>
+                  <p className="muted">Уровень {character.level}</p>
                 </div>
               </div>
               <div className="character-status-bars">
                 <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
-                <p><span>Mana</span><strong>{character.activeStats.mp}</strong></p>
-                <p><span>Stamina</span><strong>{character.activeStats.stamina}</strong></p>
-                <p><span>Gold</span><strong>{inventory.gold}</strong></p>
-                <p><span>Total Defense</span><strong>{derivedPreview.totalDefense}</strong></p>
-                <p><span>Min Damage</span><strong>{derivedPreview.minDamage}</strong></p>
+                <p><span>Мана</span><strong>{character.activeStats.mp}</strong></p>
+                <p><span>Выносливость</span><strong>{character.activeStats.stamina}</strong></p>
+                <p><span>Золото</span><strong>{inventory.gold}</strong></p>
+                <p><span>Опыт</span><strong>{character.exp}</strong></p>
+                <p><span>До уровня</span><strong>{expToNextLevel}</strong></p>
               </div>
             </section>
 
-            <section className="character-paperdoll-card">
-              <div className="character-paperdoll-canvas inventory-wrapper">
-                {!silhouetteBroken ? (
-                  <PaperDoll
-                    race={paperDollRace}
-                    imageSrc={silhouetteSrc}
-                    slotItems={equippedByLayoutSlot}
-                    slotLabels={SLOT_LABELS}
-                    resolveItemImage={resolveItemImage}
-                    canDropItemInSlot={(slotId, itemId) => {
-                      try {
-                        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-                        if (!item) {
-                          return false;
-                        }
+            <div className="character-overview-paperdoll">
+              {renderPaperDoll()}
+              {renderEquipmentSummary(true)}
+            </div>
 
-                        if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) {
-                          return false;
-                        }
-
-                        return canEquipItemInSlot(item, slotId);
-                      } catch {
-                        return false;
-                      }
-                    }}
-                    debug={paperDollDebug}
-                    onImageError={() => {
-                      const fallback = getRaceSilhouetteFallback(paperDollRace as any);
-                      if (silhouetteSrc !== fallback) {
-                        setSilhouetteSrc(fallback);
-                        return;
-                      }
-                      setSilhouetteBroken(true);
-                    }}
-                    onSlotClick={(slotId) => {
-                      const equippedItem = equippedByLayoutSlot[slotId] ?? null;
-                      if (equippedItem) {
-                        setSelectedItemId(equippedItem.id);
-                        setItemDetailOpen(true);
-                        return;
-                      }
-
-                      if (selectedItem) {
-                        void equipToSlot(slotId, selectedItem);
-                      }
-                    }}
-                    onSlotDrop={(slotId, itemId) => {
-                      try {
-                        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-                        if (item) {
-                          void equipToSlot(slotId, item);
-                        }
-                      } catch {
-                        // ignore invalid drop payload
-                      }
-                    }}
-                    onSlotContextMenu={(slotId) => {
-                      if (equippedByLayoutSlot[slotId]) {
-                        void unequipFromSlot(slotId);
-                      }
-                    }}
-                  />
-                ) : null}
-              </div>
-            </section>
-          </section>
-
-          <section ref={centerColumnRef} className={`character-column character-center ${focusedColumnClass === 'center' ? 'is-focused' : ''}`}>
-            <section className="character-backpack-card">
+            <section className="character-backpack-card character-overview-inventory-card">
               <div className="character-backpack-head">
-                <h3>Рюкзак / Backpack</h3>
-                <p className="gold">🪙 {inventory.gold}</p>
-              </div>
-
-              <div className="character-inventory-grid-wrap">
-                <div className="character-inventory-grid">
-                  {inventoryEntries.map((entry) => (
-                    <button
-                      key={entry.item.id}
-                      type="button"
-                      className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
-                      onMouseEnter={(event) => {
-                        const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                        const cardWidth = Math.min(360, window.innerWidth - 24);
-                        const nextX = rect.right + cardWidth + 18 <= window.innerWidth
-                          ? rect.right + 12
-                          : Math.max(12, rect.left - cardWidth - 12);
-                        const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
-                        setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
-                        setSelectedItemId(entry.item.id);
-                      }}
-                      onFocus={() => {
-                        setSelectedItemId(entry.item.id);
-                      }}
-                      onMouseLeave={() => {
-                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
-                      }}
-                      onBlur={() => {
-                        setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current));
-                      }}
-                      onClick={() => {
-                        setHoverPreview(null);
-                        setSelectedItemId(entry.item.id);
-                        setItemDetailOpen(true);
-                      }}
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData('text/theend-item-id', entry.item.id);
-                        event.dataTransfer.effectAllowed = 'move';
-                      }}
-                    >
-                      <span
-                        className="character-item-icon"
-                        style={resolveItemImage?.(entry.item)
-                          ? {
-                              backgroundImage: `url("${resolveItemImage(entry.item)}")`,
-                              backgroundSize: 'contain',
-                              backgroundRepeat: 'no-repeat',
-                              backgroundPosition: 'center',
-                            }
-                          : undefined}
-                      >
-                      </span>
-                      <span className="character-item-name">{entry.item.name}</span>
-                      <span className="character-item-qty">x{entry.quantity}</span>
-                    </button>
-                  ))}
+                <div>
+                  <h3>Рюкзак</h3>
+                  <p className="muted">Компактный обзор предметов, экипировки и текущего выбора.</p>
                 </div>
+                {onChangeFocus ? <button type="button" onClick={() => onChangeFocus('inventory')}>Полный инвентарь</button> : null}
+              </div>
+              <div className="character-inventory-grid-wrap">
+                {overviewInventory.length > 0 ? renderInventoryCards(overviewInventory, true) : <p className="muted">Рюкзак пуст.</p>}
               </div>
             </section>
 
-            <section className="character-item-detail-card">
-              <h3>Item Details</h3>
-              {selectedItem ? (
-                <>
-                  <strong>{selectedItem.name}</strong>
-                  <p className="muted">Type: {selectedItem.itemType} / {selectedItem.itemSubType}</p>
-                  {selectedItem.itemType === 'weapon' ? (
-                    <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed / Двуручное' : 'One-handed / Одноручное'}</p>
-                  ) : null}
-                  <p className="muted">Rarity: {selectedItem.rarity}</p>
-                  <p>{selectedDescription}</p>
-                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
-                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
-                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
-                  ) : null}
-                  {typeof selectedAdminItem?.armorValue === 'number' ? (
-                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
-                  ) : null}
-                  {selectedIsTwoHandedWeapon && equipment.shield ? (
-                    <p className="muted">Equipping this weapon will remove the offhand item and leave it in your inventory.</p>
-                  ) : null}
-                  {shieldBlockedByTwoHandedWeapon ? (
-                    <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
-                  ) : null}
-                  <p className="muted">
-                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
-                  </p>
-                  <p className="muted">
-                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
-                  </p>
-                  <div className="character-item-inline-compare-head">
-                    <span>Сравнение со слотом</span>
-                    <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
+            <div className="character-overview-side">
+              <section className="character-meta-card">
+                <button type="button" className="character-module-toggle" onClick={() => toggleModule('equipment')}>Снаряжение {isModuleCollapsed('equipment') ? '+' : '−'}</button>
+                {!isModuleCollapsed('equipment') ? (
+                  <div className="character-overview-combat-summary">
+                    <p><span>Мин. урон</span><strong>{derivedPreview.minDamage}</strong></p>
+                    <p><span>Макс. урон</span><strong>{derivedPreview.maxDamage}</strong></p>
+                    <p><span>Защита</span><strong>{derivedPreview.totalDefense}</strong></p>
+                    <p><span>Инициатива</span><strong>{derivedPreview.initiative}</strong></p>
+                    <p><span>Попадание</span><strong>{derivedPreview.hitChance}%</strong></p>
+                    <p><span>Уклонение</span><strong>{derivedPreview.evasion}%</strong></p>
                   </div>
-                  {itemDamageComparison ? (
-                    <p className="muted">
-                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
-                    </p>
-                  ) : null}
-                  {itemArmorComparison ? (
-                    <p className="muted">
-                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
-                    </p>
-                  ) : null}
-                  {itemStatDiffRows.length > 0 ? (
-                    <div className="character-item-inline-compare-grid">
-                      {itemStatDiffRows.map((row) => (
-                        <p key={`stat-${row.key}`}>
-                          <span>{row.label}</span>
-                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
-                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
-                            {row.diff > 0 ? `+${row.diff}` : row.diff}
-                          </em>
-                        </p>
+                ) : null}
+              </section>
+              <section className="character-meta-card">
+                <button type="button" className="character-module-toggle" onClick={() => toggleModule('stats')}>Краткие характеристики {isModuleCollapsed('stats') ? '+' : '−'}</button>
+                {!isModuleCollapsed('stats') ? (
+                  <div className="character-overview-stat-summary">
+                    <p><span>Сила</span><strong>{previewStats.strength}</strong></p>
+                    <p><span>Телосложение</span><strong>{previewStats.constitution}</strong></p>
+                    <p><span>Ловкость</span><strong>{previewStats.dexterity}</strong></p>
+                    <p><span>Интеллект</span><strong>{previewStats.intelligence}</strong></p>
+                    <p><span>Защита</span><strong>{derivedPreview.totalDefense}</strong></p>
+                    <p><span>Крит</span><strong>{derivedPreview.critChance}%</strong></p>
+                  </div>
+                ) : null}
+              </section>
+              <section className="character-meta-card">
+                <button type="button" className="character-module-toggle" onClick={() => toggleModule('skills')}>Изученные навыки {isModuleCollapsed('skills') ? '+' : '−'}</button>
+                {!isModuleCollapsed('skills') ? (
+                  learnedSkillsSummary.length > 0 ? (
+                    <div className="character-overview-skills-summary">
+                      {learnedSkillsSummary.map((skill) => (
+                        <div key={skill.id} className="character-overview-skill-pill">
+                          <strong>{skill.name}</strong>
+                          <span>ур. {skill.level}</span>
+                        </div>
                       ))}
                     </div>
-                  ) : null}
-                  <div className="character-item-inline-compare-grid">
-                    {itemComparisonRows.map((row) => {
-                      const delta = Number((row.after - row.before).toFixed(1));
-                      return (
-                        <p key={row.label}>
-                          <span>{row.label}</span>
-                          <strong>{row.before} → {row.after}</strong>
-                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
-                            {delta > 0 ? `+${delta}` : delta}
-                          </em>
-                        </p>
-                      );
-                    })}
-                  </div>
-                  <div className="character-item-actions">
-                    <button
-                      disabled={selectedAlreadyEquipped}
-                      onClick={() => {
-                        void equipSelectedItem();
-                      }}
-                    >
-                      {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
-                    </button>
-                    <button
-                      disabled={!selectedEquippedSlotId}
-                      onClick={() => {
-                        if (selectedEquippedSlotId) {
-                          void unequipFromSlot(selectedEquippedSlotId);
-                        }
-                      }}
-                    >
-                      Unequip
-                    </button>
-                    <button
-                      disabled={selectedItem.itemType !== 'consumable'}
-                      onClick={() => {
-                        if (onUseItem) {
-                          void onUseItem(selectedItem.id);
-                        } else {
-                          onStatus('Use action is not available in this context.');
-                        }
-                      }}
-                    >
-                      Use
-                    </button>
-                    <button disabled>Drop</button>
-                  </div>
-                </>
-              ) : (
-                <p className="muted">Select an item from backpack.</p>
-              )}
+                  ) : <p className="muted">Навыки ещё не изучены.</p>
+                ) : null}
+              </section>
+              {renderSelectedItemDetails('Текущий предмет', 'Выберите предмет в рюкзаке или на силуэте, чтобы сразу увидеть сравнение.', true, true)}
+            </div>
+          </div>
+          {renderHoverPreviewCard()}
+        </div>
+        {renderItemPopup()}
+      </>
+    );
+  }
+
+  function renderInventoryPage() {
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body">
+          <div className="character-inventory-layout">
+            <div className="character-inventory-side">
+              {renderPaperDoll()}
+              {renderEquipmentSummary(true)}
+            </div>
+            <section className="character-backpack-card">
+              <div className="character-backpack-head">
+                <div>
+                  <h3>Рюкзак</h3>
+                  <p className="gold">Золото: {inventory.gold}</p>
+                </div>
+                <div className="character-inventory-controls">
+                  <label>
+                    Сортировка
+                    <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
+                      {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>По {label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Фильтр
+                    <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
+                      {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div className="character-inventory-grid-wrap">
+                {renderInventoryCards(sortedFilteredInventory)}
+              </div>
             </section>
+            {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке, чтобы посмотреть описание и сравнение.', true, true)}
+          </div>
+          {renderHoverPreviewCard()}
+        </div>
+        {renderItemPopup()}
+      </>
+    );
+  }
 
-            {hoverPreview && hoverItem ? (
-              <aside
-                className="character-item-hover-card"
-                style={{ left: hoverPreview.x, top: hoverPreview.y }}
-                role="tooltip"
-              >
-                <div className="character-item-hover-head">
-                  <strong>{hoverItem.name}</strong>
-                  <small>{hoverItem.itemType} / {hoverItem.itemSubType} / {hoverItem.rarity}</small>
-                </div>
-                <p className="muted">{hoverItem.description || 'Описание отсутствует.'}</p>
-                <p className="muted">
-                  Бонусы: {Object.entries(hoverItem.bonuses).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
-                </p>
-                <p className="muted">
-                  Требования: {Object.entries(hoverItem.requiredStats).map(([key, value]) => `${key} ${value ?? 0}`).join(', ') || 'none'}
-                </p>
-                <div className="character-item-inline-compare-head">
-                  <span>Сравнение со слотом</span>
-                  <strong>{hoverComparison.currentItem?.name ?? 'Слот пуст'}</strong>
-                </div>
-                <div className="character-item-inline-compare-grid">
-                  {hoverComparison.rows.map((row) => {
-                    const delta = Number((row.after - row.before).toFixed(1));
-                    return (
-                      <p key={row.label}>
-                        <span>{row.label}</span>
-                        <strong>{row.before} → {row.after}</strong>
-                        <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
-                          {delta > 0 ? `+${delta}` : delta}
-                        </em>
-                      </p>
-                    );
-                  })}
-                </div>
-              </aside>
-            ) : null}
-          </section>
-
-          <section ref={rightColumnRef} className={`character-column character-right ${focusedColumnClass === 'right' ? 'is-focused' : ''}`}>
+  function renderStatsPage() {
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body inventory-panel-body--stats">
+          <div className="character-stats-layout">
             <section className="character-stats-card">
-              <h3>Stats</h3>
-              <p className="muted">Free points: {freePointsLeft}</p>
+              <h3>Статы</h3>
+              <p className="muted">Свободные очки: {freePointsLeft}</p>
               <div className="character-stats-list">
                 {STATS_ORDER.map((stat) => (
                   <div key={stat} className="character-stat-row">
                     <span className="character-stat-label">
                       {STAT_LABELS[stat]}
-                      <button
-                        type="button"
-                        className="stat-help-chip"
-                        title={STAT_HINTS[stat]}
-                        aria-label={`Что делает параметр ${STAT_LABELS[stat]}`}
-                      >
-                        ?
-                      </button>
+                      <button type="button" className="stat-help-chip" title={STAT_HINTS[stat]} aria-label={`Что делает параметр ${STAT_LABELS[stat]}`}>?</button>
                     </span>
-                    <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` -> ${previewStats[stat]}` : ''}</strong>
+                    <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` → ${previewStats[stat]}` : ''}</strong>
                     <div className="mini-stepper">
                       <button disabled={freePointsLeft <= 0} onClick={() => onAdjustStat(stat, 1)}>+</button>
                       <button disabled={(pendingStatAllocation[stat] ?? 0) <= 0} onClick={() => onAdjustStat(stat, -1)}>-</button>
@@ -943,263 +1368,121 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               </div>
               <div className="character-item-actions">
                 <button disabled={allocatingStats || !hasPendingAllocation || freePointsLeft < 0} onClick={() => void onApplyStatAllocation()}>
-                  {allocatingStats ? 'Applying...' : 'Apply'}
+                  {allocatingStats ? 'Применение...' : 'Применить'}
                 </button>
-                <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Revert</button>
-                <button
-                  type="button"
-                  onClick={() => void onRespecStats?.()}
-                  title="Сбросить распределение характеристик и вернуть все очки для перераспределения."
-                >
-                  Respec
-                </button>
+                <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Откатить</button>
+                <button type="button" onClick={() => void onRespecStats?.()} title="Сбросить распределение характеристик и вернуть все очки для перераспределения.">Сбросить</button>
               </div>
             </section>
-
             <section className="character-meta-card">
-              <h3>Combat Overview</h3>
-              <p className="muted">Preview values depend on the current build. Exact hit and block results still depend on distance, target zone and defense choice in battle.</p>
-              <p>HP: {character.activeStats.hp}{' -> '}{previewStats.hp}</p>
-              <p>Mana: {character.activeStats.mp}{' -> '}{previewStats.mp}</p>
-              <p>Stamina: {character.activeStats.stamina}{' -> '}{previewStats.stamina}</p>
-              <p>Total Defense: {derivedBase.totalDefense}{' -> '}{derivedPreview.totalDefense}</p>
-              <p>Min Damage: {derivedBase.minDamage}{' -> '}{derivedPreview.minDamage}</p>
-              <p>Max Damage: {derivedBase.maxDamage}{' -> '}{derivedPreview.maxDamage}</p>
-              <p>Crit Chance: {derivedBase.critChance}%{' -> '}{derivedPreview.critChance}%</p>
-              <p>Initiative: {derivedBase.initiative}{' -> '}{derivedPreview.initiative}</p>
-              <p>Hit Chance: {derivedPreview.hitChance}%</p>
-              <p>Evasion: {derivedPreview.evasion}%</p>
-              <p>Block Chance: {derivedPreview.blockChance}%</p>
-              <p>Physical Resistance: {derivedPreview.physicalResistance}</p>
-              <p>Magic Resistance: {derivedPreview.magicResistance}</p>
-              <p>STA Load: {derivedPreview.staminaLoad}</p>
+              <h3>Пояснения</h3>
+              <div className="character-stat-explanations">
+                {STATS_ORDER.map((stat) => (
+                  <article key={stat}>
+                    <strong>{STAT_LABELS[stat]}</strong>
+                    <p>{STAT_EXPLANATIONS[stat]}</p>
+                  </article>
+                ))}
+              </div>
             </section>
-
             <section className="character-meta-card">
-              <h3>Breakdown</h3>
-              <p>Defense: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
-              <p>Damage: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
-              <p>Crit: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <h3>Боевой обзор</h3>
+              <p className="muted">Предпросмотр показывает итоговые значения текущей сборки и незакреплённых очков.</p>
+              <p>HP: {character.activeStats.hp} → {previewStats.hp}</p>
+              <p>Мана: {character.activeStats.mp} → {previewStats.mp}</p>
+              <p>Выносливость: {character.activeStats.stamina} → {previewStats.stamina}</p>
+              <p>Общая защита: {derivedBase.totalDefense} → {derivedPreview.totalDefense}</p>
+              <p>Мин. урон: {derivedBase.minDamage} → {derivedPreview.minDamage}</p>
+              <p>Макс. урон: {derivedBase.maxDamage} → {derivedPreview.maxDamage}</p>
+              <p>Шанс крита: {derivedBase.critChance}% → {derivedPreview.critChance}%</p>
+              <p>Инициатива: {derivedBase.initiative} → {derivedPreview.initiative}</p>
+              <p>Шанс попадания: {derivedPreview.hitChance}%</p>
+              <p>Уклонение: {derivedPreview.evasion}%</p>
+              <p>Шанс блока: {derivedPreview.blockChance}%</p>
+              <p>Физ. сопротивление: {derivedPreview.physicalResistance}</p>
+              <p>Маг. сопротивление: {derivedPreview.magicResistance}</p>
+              <p>Нагрузка выносливости: {derivedPreview.staminaLoad}</p>
             </section>
-
             <section className="character-meta-card">
-              <h3>Level / Progression</h3>
-              <p>Level: {character.level}</p>
-              <p>EXP: {character.exp} / {levelProgress.next}</p>
+              <h3>Разбор</h3>
+              <p>Защита: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Урон: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              <p>Крит: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+            </section>
+            <section className="character-meta-card">
+              <h3>Прогресс</h3>
+              <p>Уровень: {character.level}</p>
+              <p>Опыт: {character.exp} / {levelProgress.next}</p>
               <div style={{ margin: '0.4rem 0 0.6rem' }}>
                 <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`,
-                      height: '100%',
-                      borderRadius: 999,
-                      background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)',
-                    }}
-                  />
+                  <div style={{ width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)' }} />
                 </div>
               </div>
               <p>До следующего уровня: {expToNextLevel} XP</p>
-              <p>Внутри текущего уровня: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
-              <p>Free stat points: {freePointsLeft}</p>
-              <p>Faction: None</p>
-              <p>Reputation: None</p>
-              <p>Professions: Не изучено</p>
-              <p>Class: None</p>
-              <p>Race: {character.race}</p>
-            </section>
-
-            <section className="character-skills-card">
-              <div className="character-skills-tabs">
-                <button className={skillTab === 'skills' ? 'is-active' : ''} onClick={() => setSkillTab('skills')}>Skills</button>
-                <button className={skillTab === 'abilities' ? 'is-active' : ''} onClick={() => setSkillTab('abilities')}>Abilities</button>
-                <button className={skillTab === 'passives' ? 'is-active' : ''} onClick={() => setSkillTab('passives')}>Passives</button>
-                <button className={skillTab === 'status' ? 'is-active' : ''} onClick={() => setSkillTab('status')}>Status</button>
-              </div>
-
-              <div className="character-skills-list">
-                {skillItems.length > 0 ? skillItems.map((skill) => (
-                  <button
-                    key={skill.id}
-                    type="button"
-                    className={`character-skill-card ${selectedSkillId === skill.id ? 'is-active' : ''}`}
-                    onClick={() => setSelectedSkillId(skill.id)}
-                  >
-                    <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
-                    <span>
-                      <strong>{skill.name}</strong>
-                      <small>{skill.type}</small>
-                    </span>
-                  </button>
-                )) : (
-                  <p className="muted">Навыки пока не изучены</p>
-                )}
-              </div>
-
-              <div className="character-skill-detail">
-                {selectedSkill ? (
-                  <>
-                    <strong>{selectedSkill.name}</strong>
-                    <p>{selectedSkill.description}</p>
-                    <p>Mana cost: variable</p>
-                    <p>Stamina cost: variable</p>
-                    <p>Cooldown: none</p>
-                  </>
-                ) : (
-                  <p className="muted">Select a skill or state to inspect.</p>
-                )}
-              </div>
-            </section>
-          </section>
-        </div>
-
-        {itemDetailOpen && selectedItem ? (
-          <div
-            className="character-item-popup-backdrop"
-            role="presentation"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) {
-                setItemDetailOpen(false);
-              }
-            }}
-          >
-            <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Item details">
-              <div className="character-item-popup-head">
-                <div className="character-item-popup-title">
-                  <span
-                    className="character-item-popup-icon"
-                    style={resolveItemImage?.(selectedItem)
-                      ? {
-                          backgroundImage: `url("${resolveItemImage(selectedItem)}")`,
-                          backgroundSize: 'contain',
-                          backgroundRepeat: 'no-repeat',
-                          backgroundPosition: 'center',
-                        }
-                      : undefined}
-                  />
-                  <div>
-                    <h3>{selectedItem.name}</h3>
-                    <p className="muted">{selectedItem.itemType} / {selectedItem.itemSubType} / {selectedItem.rarity}</p>
-                  </div>
-                </div>
-                <button type="button" className="character-item-popup-close" onClick={() => setItemDetailOpen(false)}>×</button>
-              </div>
-
-              <div className="character-item-popup-body">
-                <section className="character-item-popup-main">
-                  {selectedItem.itemType === 'weapon' ? (
-                    <p className="muted">Hands: {selectedItemHandsRequired === 2 ? 'Two-handed' : 'One-handed'}</p>
-                  ) : null}
-                  <p>{selectedDescription}</p>
-                  {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
-                  {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
-                    <p className="muted">Damage: {selectedAdminItem?.damageMin ?? 0}-{selectedAdminItem?.damageMax ?? selectedAdminItem?.damageMin ?? 0}</p>
-                  ) : null}
-                  {typeof selectedAdminItem?.armorValue === 'number' ? (
-                    <p className="muted">Armor: {selectedAdminItem.armorValue}</p>
-                  ) : null}
-                  {selectedIsTwoHandedWeapon && equipment.shield ? (
-                    <p className="muted">Equipping this weapon will move the offhand item back to the backpack.</p>
-                  ) : null}
-                  {shieldBlockedByTwoHandedWeapon ? (
-                    <p className="muted">Cannot equip this offhand item while a two-handed weapon is worn.</p>
-                  ) : null}
-                  <p className="muted">
-                    Bonuses: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'none'}
-                  </p>
-                  <p className="muted">
-                    Requirements: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'none'}
-                  </p>
-                </section>
-
-                <section className="character-item-compare">
-                  <div className="character-item-compare-items">
-                    <div>
-                      <span>Equipped</span>
-                      <strong>{comparisonCurrentItem?.name ?? 'Empty slot'}</strong>
-                      <small>{comparisonSlotId ? SLOT_LABELS[comparisonSlotId] : 'No slot'}</small>
-                    </div>
-                    <div>
-                      <span>Selected</span>
-                      <strong>{selectedItem.name}</strong>
-                      <small>{selectedAlreadyEquipped ? 'Already equipped' : selectedInventoryEntry ? 'In backpack' : 'Equipped'}</small>
-                    </div>
-                  </div>
-                  {itemDamageComparison ? (
-                    <p className="muted">
-                      Damage compare: {(itemDamageComparison.currentMin ?? 0)}-{(itemDamageComparison.currentMax ?? itemDamageComparison.currentMin ?? 0)} → {(itemDamageComparison.nextMin ?? 0)}-{(itemDamageComparison.nextMax ?? itemDamageComparison.nextMin ?? 0)}
-                    </p>
-                  ) : null}
-                  {itemArmorComparison ? (
-                    <p className="muted">
-                      Armor compare: {itemArmorComparison.current} → {itemArmorComparison.next}
-                    </p>
-                  ) : null}
-                  {itemStatDiffRows.length > 0 ? (
-                    <div className="character-item-compare-grid">
-                      {itemStatDiffRows.map((row) => (
-                        <p key={`popup-stat-${row.key}`}>
-                          <span>{row.label}</span>
-                          <strong>{row.current > 0 ? `+${row.current}` : row.current} → {row.next > 0 ? `+${row.next}` : row.next}</strong>
-                          <em className={row.diff > 0 ? 'is-up' : row.diff < 0 ? 'is-down' : ''}>
-                            {row.diff > 0 ? `+${row.diff}` : row.diff}
-                          </em>
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="character-item-compare-grid">
-                    {itemComparisonRows.map((row) => {
-                      const delta = Number((row.after - row.before).toFixed(1));
-                      return (
-                        <p key={row.label}>
-                          <span>{row.label}</span>
-                          <strong>{row.before} → {row.after}</strong>
-                          <em className={delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : ''}>
-                            {delta > 0 ? `+${delta}` : delta}
-                          </em>
-                        </p>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
-
-              <div className="character-item-actions character-item-popup-actions">
-                <button
-                  disabled={selectedAlreadyEquipped || !selectedInventoryEntry}
-                  onClick={() => {
-                    void equipSelectedItem();
-                  }}
-                >
-                  {selectedAlreadyEquipped ? 'Equipped' : 'Equip'}
-                </button>
-                <button
-                  disabled={!selectedEquippedSlotId}
-                  onClick={() => {
-                    if (selectedEquippedSlotId) {
-                      void unequipFromSlot(selectedEquippedSlotId);
-                    }
-                  }}
-                >
-                  Unequip
-                </button>
-                <button
-                  disabled={selectedItem.itemType !== 'consumable'}
-                  onClick={() => {
-                    if (onUseItem) {
-                      void onUseItem(selectedItem.id);
-                    } else {
-                      onStatus('Use action is not available in this context.');
-                    }
-                  }}
-                >
-                  Use
-                </button>
-                <button disabled>Drop</button>
-              </div>
+              <p>Прогресс внутри уровня: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
+              <p>Свободные очки: {freePointsLeft}</p>
+              <p>Раса: {character.race}</p>
             </section>
           </div>
-        ) : null}
+        </div>
+      </>
+    );
+  }
+
+  function renderSkillsPage() {
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body">
+          <div className="character-skills-layout">
+            <section className="character-meta-card character-skills-toolbar">
+              <div>
+                <h3>Боевой набор</h3>
+                <p className="muted">Переключение пресетов доступно вне боя. Каждый пресет хранит раскладку слотов.</p>
+              </div>
+              <div className="character-loadout-presets">
+                {[0, 1, 2].map((presetIndex) => (
+                  <div key={presetIndex} className="character-loadout-preset-actions">
+                    <button type="button" className={activePresetIndex === presetIndex ? 'is-active' : ''} onClick={() => { void applyPreset(presetIndex as 0 | 1 | 2); }}>
+                      Пресет {presetIndex + 1}
+                    </button>
+                    <button type="button" onClick={() => { void saveCurrentLoadoutAsPreset(presetIndex as 0 | 1 | 2); }}>
+                      Сохранить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="character-skills-card">
+              <CharacterSkillsPage
+                learnedSkills={learnedSkills}
+                availableSkills={availableSkills}
+                loadout={skillLoadout}
+                onLearnSkill={onLearnSkill ?? (async () => undefined)}
+                onSaveLoadout={onSaveSkillLoadout ?? (async () => undefined)}
+                onStatus={onStatus}
+              />
+            </section>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  function renderEquipmentPage() {
+    return renderInventoryPage();
+  }
+
+  // â”€â”€ main return â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  return (
+    <div className="battle-overlay" role="dialog" aria-modal="true">
+      <section className="card battle-window wm-modal character-page-modal">
+        {focusSection === 'character' && renderCharacterOverview()}
+        {focusSection === 'inventory' && renderInventoryPage()}
+        {focusSection === 'stats' && renderStatsPage()}
+        {focusSection === 'skills' && renderSkillsPage()}
+        {focusSection === 'equipment' && renderEquipmentPage()}
       </section>
     </div>
   );

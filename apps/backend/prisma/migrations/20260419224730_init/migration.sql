@@ -3,7 +3,7 @@ CREATE TABLE "Account" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "login" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
@@ -26,7 +26,7 @@ CREATE TABLE "Character" (
     "luck" INTEGER NOT NULL,
     "speed" INTEGER NOT NULL,
     "willpower" INTEGER NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Character_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
