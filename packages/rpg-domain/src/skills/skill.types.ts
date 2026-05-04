@@ -188,6 +188,8 @@ export interface SkillAcquisitionConfig {
   isAdminOnly: boolean;
 }
 
+export type SkillAvailabilityChannel = 'trainer' | 'quest' | 'dialogue' | 'item' | 'hidden' | 'admin';
+
 export interface SkillClassScalingConfig {
   classId: string;
   role: SkillClassRole;
@@ -295,6 +297,19 @@ export interface SkillDefinition {
   tags: string[];
   isPublished: boolean;
   isHidden: boolean;
+
+  // Explicit generic-training availability settings.
+  acquisitionMode?: SkillAvailabilityChannel;
+  isTrainable?: boolean;
+  requiredLevel?: number;
+  requiredQuestId?: string;
+  requiredCompletedQuestId?: string;
+  requiredQuestItemId?: string;
+  requiredNpcId?: string;
+  requiredClassIds?: string[];
+  requiredRaceIds?: string[];
+  requiredKnownSkillIds?: string[];
+
   adminNotes?: string;
   createdAt: string;
   updatedAt: string;
