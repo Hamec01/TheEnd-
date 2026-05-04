@@ -92,23 +92,23 @@ import type { NpcDefinition } from "../types/npc";
 type LocationView = "map" | "city";
 type ActiveWorldModal =
   | {
-      type: "merchant";
-      locationId: string;
-      merchantId: string;
-    }
+    type: "merchant";
+    locationId: string;
+    merchantId: string;
+  }
   | {
-      type: "npc";
-      locationId?: string;
-      npcId: string;
-    }
+    type: "npc";
+    locationId?: string;
+    npcId: string;
+  }
   | {
-      type: "encounter";
-      locationId: string;
-    }
+    type: "encounter";
+    locationId: string;
+  }
   | {
-      type: "location";
-      locationId: string;
-    }
+    type: "location";
+    locationId: string;
+  }
   | null;
 type SidePanelKey =
   | "adminEditor"
@@ -492,28 +492,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [npcQuestSceneModal, setNpcQuestSceneModal] = useState<
     | null
     | {
-        npcId: string;
-        npcName: string;
-        portrait?: string;
-        stages: Array<{
-          questId: string;
-          questTitle: string;
-          stepTitle: string | null;
-          journalText: string | null;
-          objectives: Array<{ id: string; text: string; completed: boolean }>;
-        }>;
-        selectedQuestId: string;
-      }
+      npcId: string;
+      npcName: string;
+      portrait?: string;
+      stages: Array<{
+        questId: string;
+        questTitle: string;
+        stepTitle: string | null;
+        journalText: string | null;
+        objectives: Array<{ id: string; text: string; completed: boolean }>;
+      }>;
+      selectedQuestId: string;
+    }
   >(null);
   const [randomEventModal, setRandomEventModal] = useState<
     | null
     | {
-        zoneId: string;
-        zoneName: string;
-        questId: string;
-        questTitle: string;
-        questText: string;
-      }
+      zoneId: string;
+      zoneName: string;
+      questId: string;
+      questTitle: string;
+      questText: string;
+    }
   >(null);
   const dialoguePlayer = useMemo(
     () => ({ id: character.id, level: character.level, race: character.race }),
@@ -661,8 +661,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () =>
       locationView === "city" && selectedCityLocationId && activeCity?.locations
         ? (activeCity.locations.find(
-            (location) => location.id === selectedCityLocationId,
-          ) ?? null)
+          (location) => location.id === selectedCityLocationId,
+        ) ?? null)
         : null,
     [activeCity?.locations, locationView, selectedCityLocationId],
   );
@@ -1153,6 +1153,100 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setSystemChat((prev) => [...prev, ...next].slice(-12));
   }, [questDefinitions, resolveItemById]);
 
+  const applyCompletedQuestRewardsToChat = useCallback(
+    (completedQuestIds: string[]) => {
+      if (completedQuestIds.length === 0) {
+        return;
+      }
+
+      const now = Date.now();
+      const rewardLines: ChatMessage[] = [];
+
+      for (const completedQuestId of completedQuestIds) {
+        const questTitle =
+          questDefinitions.find((entry) => entry.id === completedQuestId)
+            ?.title ?? completedQuestId;
+
+        const result = applyQuestRewards(character.id, completedQuestId);
+
+        rewardLines.push({
+          id: `sys-quest-complete-${now}-${completedQuestId}`,
+          text: `Квест завершён: ${questTitle}`,
+          type: "system",
+        });
+
+        if (result.applied && result.rewards.length > 0) {
+          for (const reward of result.rewards) {
+            if (reward.startsWith("gold:+")) {
+              const amount = reward.slice("gold:+".length);
+              rewardLines.push({
+                id: `sys-quest-gold-${now}-${completedQuestId}-${rewardLines.length}`,
+                text: `Получено золото: ${amount}`,
+                type: "system",
+              });
+              continue;
+            }
+
+            if (reward.startsWith("experience:+")) {
+              const amount = reward.slice("experience:+".length);
+              rewardLines.push({
+                id: `sys-quest-xp-${now}-${completedQuestId}-${rewardLines.length}`,
+                text: `Получен опыт: ${amount}`,
+                type: "system",
+              });
+              continue;
+            }
+
+            if (reward.startsWith("item:")) {
+              const itemId = reward.slice("item:".length);
+              const name = resolveItemById
+                ? resolveItemById(itemId)?.name ?? itemId
+                : itemId;
+
+              rewardLines.push({
+                id: `sys-quest-item-${now}-${completedQuestId}-${rewardLines.length}`,
+                text: `Получен предмет: ${name}`,
+                type: "system",
+              });
+              continue;
+            }
+
+            if (reward.startsWith("quest_item:")) {
+              const itemId = reward.slice("quest_item:".length);
+
+              rewardLines.push({
+                id: `sys-quest-qitem-${now}-${completedQuestId}-${rewardLines.length}`,
+                text: `Получен квестовый предмет: ${itemId}`,
+                type: "system",
+              });
+              continue;
+            }
+
+            if (reward.startsWith("skill:")) {
+              const skillId = reward.slice("skill:".length);
+
+              rewardLines.push({
+                id: `sys-quest-skill-${now}-${completedQuestId}-${rewardLines.length}`,
+                text: `Получен навык: ${skillId}`,
+                type: "system",
+              });
+              continue;
+            }
+
+            rewardLines.push({
+              id: `sys-quest-reward-${now}-${completedQuestId}-${rewardLines.length}`,
+              text: `Награда: ${reward}`,
+              type: "system",
+            });
+          }
+        }
+      }
+
+      setSystemChat((prev) => [...prev, ...rewardLines].slice(-12));
+    },
+    [character.id, questDefinitions, resolveItemById],
+  );
+
   const quickButtons = useMemo(
     () => [
       {
@@ -1250,22 +1344,46 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       };
       setSystemChat((prev) => [...prev, entry].slice(-12));
 
-      const questEventResult = handleQuestEvent(
-        {
-          id: character.id,
-          level: character.level,
-          race: character.race,
-          itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
-        },
+      const questRuntimePlayer = {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        itemIds: inventory.items
+          .filter((item) => item.quantity > 0)
+          .map((item) => item.itemId),
+      };
+
+      const zoneEnterResult = handleQuestEvent(
+        questRuntimePlayer,
         { type: "zone_enter", zoneId: zone.id },
       );
-      appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
+
+      const enterZoneResult = handleQuestEvent(
+        questRuntimePlayer,
+        { type: "enter_zone", zoneId: zone.id } as any,
+      );
+
+      appendQuestRuntimeLogsToSystemChat([
+        ...zoneEnterResult.logs,
+        ...enterZoneResult.logs,
+      ]);
+
+      applyCompletedQuestRewardsToChat([
+        ...zoneEnterResult.completedQuestIds,
+        ...enterZoneResult.completedQuestIds,
+      ]);
+
       if (
-        questEventResult.startedQuestIds.length > 0 ||
-        questEventResult.advancedQuestIds.length > 0 ||
-        questEventResult.completedQuestIds.length > 0 ||
-        questEventResult.completedObjectiveIds.length > 0 ||
-        questEventResult.failedQuestIds.length > 0
+        zoneEnterResult.startedQuestIds.length > 0 ||
+        zoneEnterResult.advancedQuestIds.length > 0 ||
+        zoneEnterResult.completedQuestIds.length > 0 ||
+        zoneEnterResult.completedObjectiveIds.length > 0 ||
+        zoneEnterResult.failedQuestIds.length > 0 ||
+        enterZoneResult.startedQuestIds.length > 0 ||
+        enterZoneResult.advancedQuestIds.length > 0 ||
+        enterZoneResult.completedQuestIds.length > 0 ||
+        enterZoneResult.completedObjectiveIds.length > 0 ||
+        enterZoneResult.failedQuestIds.length > 0
       ) {
         setPlayerQuestStates(
           getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
@@ -1394,6 +1512,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStatus,
       playerQuestStates,
       appendQuestRuntimeLogsToSystemChat,
+      applyCompletedQuestRewardsToChat,
       worldMapMode,
     ],
   );
@@ -1418,11 +1537,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
 
     appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
+
+    applyCompletedQuestRewardsToChat(questEventResult.completedQuestIds);
+
     setPlayerQuestStates(
       getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
     );
   }, [
     appendQuestRuntimeLogsToSystemChat,
+    applyCompletedQuestRewardsToChat,
     character.id,
     character.level,
     character.race,
@@ -1879,156 +2002,156 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (!result) {
         return;
       }
-        const playerLogLines: string[] = [];
-        for (const rawLine of result.logs ?? []) {
-          const line = rawLine.trim();
-          if (!line) {
-            continue;
-          }
-
-          if (line.endsWith("event emitted.")) {
-            continue;
-          }
-          if (line.startsWith("Unhandled action:")) {
-            continue;
-          }
-          if (line.startsWith("Quest flag set:")) {
-            continue;
-          }
-          if (line.startsWith("Global flag set:")) {
-            continue;
-          }
-          if (line.startsWith("NPC disposition updated for")) {
-            continue;
-          }
-          if (line.startsWith("Dialogue ended.")) {
-            continue;
-          }
-
-          if (line.startsWith("Quest started:")) {
-            const questId = line.slice("Quest started:".length).trim();
-            const questTitle =
-              questDefinitions.find((entry) => entry.id === questId)?.title ??
-              null;
-            playerLogLines.push(
-              questTitle ? `\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442: ${questTitle}` : "\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.",
-            );
-            onStatus("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.");
-            continue;
-          }
-          if (line.startsWith("Quest completed:")) {
-            const questId = line.slice("Quest completed:".length).trim();
-            const questTitle =
-              questDefinitions.find((entry) => entry.id === questId)?.title ??
-              null;
-            playerLogLines.push(
-              questTitle ? `\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d: ${questTitle}` : "\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d.",
-            );
-            continue;
-          }
-          if (line.startsWith("Quest advanced:")) {
-            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.");
-            continue;
-          }
-          if (line.startsWith("Quest failed:")) {
-            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u043e\u0432\u0430\u043b\u0435\u043d.");
-            continue;
-          }
-          if (line.startsWith("Gold granted:")) {
-            const amount = line.slice("Gold granted:".length).trim();
-            playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
-            continue;
-          }
-          if (line.startsWith("Gold removed:")) {
-            const amount = line.slice("Gold removed:".length).trim();
-            playerLogLines.push(`\u041f\u043e\u0442\u0440\u0430\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
-            continue;
-          }
-          if (line.startsWith("Item granted:")) {
-            const itemId = line.slice("Item granted:".length).trim();
-            const name = resolveItemById
-              ? (resolveItemById(itemId)?.name ?? itemId)
-              : itemId;
-            playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
-            continue;
-          }
-          if (line.startsWith("Item removed:")) {
-            const itemId = line.slice("Item removed:".length).trim();
-            const name = resolveItemById
-              ? (resolveItemById(itemId)?.name ?? itemId)
-              : itemId;
-            playerLogLines.push(`\u041f\u043e\u0442\u0435\u0440\u044f\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
-            continue;
-          }
-          if (line.startsWith("Quest item granted:")) {
-            playerLogLines.push("\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442.");
-            continue;
-          }
-          if (line.startsWith("Quest item removed:")) {
-            playerLogLines.push("\u041a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u043f\u043e\u0442\u0435\u0440\u044f\u043d.");
-            continue;
-          }
-          if (line.startsWith("Location unlocked:")) {
-            playerLogLines.push("\u041e\u0442\u043a\u0440\u044b\u0442\u0430 \u043d\u043e\u0432\u0430\u044f \u043b\u043e\u043a\u0430\u0446\u0438\u044f.");
-            continue;
-          }
-
-          // For any remaining logs, avoid leaking internal IDs to the player.
+      const playerLogLines: string[] = [];
+      for (const rawLine of result.logs ?? []) {
+        const line = rawLine.trim();
+        if (!line) {
+          continue;
         }
 
-        if (playerLogLines.length > 0) {
-          const now = Date.now();
-          const next = playerLogLines.map((text) => ({
-            id: `sys-dialogue-${now}-${nextSystemChatIdRef.current++}`,
-            text,
-            type: "system" as const,
-          }));
-          setSystemChat((prev) => [...prev, ...next].slice(-12));
+        if (line.endsWith("event emitted.")) {
+          continue;
+        }
+        if (line.startsWith("Unhandled action:")) {
+          continue;
+        }
+        if (line.startsWith("Quest flag set:")) {
+          continue;
+        }
+        if (line.startsWith("Global flag set:")) {
+          continue;
+        }
+        if (line.startsWith("NPC disposition updated for")) {
+          continue;
+        }
+        if (line.startsWith("Dialogue ended.")) {
+          continue;
         }
 
-        setPlayerQuestStates(
-          getAllPlayerQuestStates().filter(
-            (entry) => entry.playerId === character.id,
-          ),
-        );
-
-        let modalClosed = false;
-        for (const intent of result.intents ?? []) {
-          if (intent.type === "OPEN_SHOP") {
-            const npc = npcs.find((entry) => entry.id === dialogueNpcId) ?? null;
-            const traderId = npc?.traderId?.trim() || intent.merchantId?.trim();
-            if (!traderId) {
-              onStatus("\u0414\u043b\u044f openShop \u043d\u0435\u0442 traderId \u0443 NPC.");
-              continue;
-            }
-            dialogueRunner.closeDialogue();
-            setActiveWorldModal(null);
-            onOpenMerchant(traderId);
-            modalClosed = true;
-            break;
-          }
-          if (intent.type === "START_COMBAT") {
-            dialogueRunner.closeDialogue();
-            setActiveWorldModal(null);
-            void onStartCombat();
-            modalClosed = true;
-            break;
-          }
-          if (intent.type === "OPEN_TRAINING") {
-            dialogueRunner.closeDialogue();
-            setActiveWorldModal(null);
-            onOpenSkills();
-            modalClosed = true;
-            break;
-          }
+        if (line.startsWith("Quest started:")) {
+          const questId = line.slice("Quest started:".length).trim();
+          const questTitle =
+            questDefinitions.find((entry) => entry.id === questId)?.title ??
+            null;
+          playerLogLines.push(
+            questTitle ? `\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442: ${questTitle}` : "\u041d\u043e\u0432\u044b\u0439 \u043a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.",
+          );
+          onStatus("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u0438\u043d\u044f\u0442.");
+          continue;
+        }
+        if (line.startsWith("Quest completed:")) {
+          const questId = line.slice("Quest completed:".length).trim();
+          const questTitle =
+            questDefinitions.find((entry) => entry.id === questId)?.title ??
+            null;
+          playerLogLines.push(
+            questTitle ? `\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d: ${questTitle}` : "\u041a\u0432\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d.",
+          );
+          continue;
+        }
+        if (line.startsWith("Quest advanced:")) {
+          playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.");
+          continue;
+        }
+        if (line.startsWith("Quest failed:")) {
+          playerLogLines.push("\u041a\u0432\u0435\u0441\u0442 \u043f\u0440\u043e\u0432\u0430\u043b\u0435\u043d.");
+          continue;
+        }
+        if (line.startsWith("Gold granted:")) {
+          const amount = line.slice("Gold granted:".length).trim();
+          playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
+          continue;
+        }
+        if (line.startsWith("Gold removed:")) {
+          const amount = line.slice("Gold removed:".length).trim();
+          playerLogLines.push(`\u041f\u043e\u0442\u0440\u0430\u0447\u0435\u043d\u043e \u0437\u043e\u043b\u043e\u0442\u043e: ${amount}`);
+          continue;
+        }
+        if (line.startsWith("Item granted:")) {
+          const itemId = line.slice("Item granted:".length).trim();
+          const name = resolveItemById
+            ? (resolveItemById(itemId)?.name ?? itemId)
+            : itemId;
+          playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
+          continue;
+        }
+        if (line.startsWith("Item removed:")) {
+          const itemId = line.slice("Item removed:".length).trim();
+          const name = resolveItemById
+            ? (resolveItemById(itemId)?.name ?? itemId)
+            : itemId;
+          playerLogLines.push(`\u041f\u043e\u0442\u0435\u0440\u044f\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
+          continue;
+        }
+        if (line.startsWith("Quest item granted:")) {
+          playerLogLines.push("\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442.");
+          continue;
+        }
+        if (line.startsWith("Quest item removed:")) {
+          playerLogLines.push("\u041a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442 \u043f\u043e\u0442\u0435\u0440\u044f\u043d.");
+          continue;
+        }
+        if (line.startsWith("Location unlocked:")) {
+          playerLogLines.push("\u041e\u0442\u043a\u0440\u044b\u0442\u0430 \u043d\u043e\u0432\u0430\u044f \u043b\u043e\u043a\u0430\u0446\u0438\u044f.");
+          continue;
         }
 
-        if (modalClosed) {
-          return;
-        }
-        if (result.ended) {
+        // For any remaining logs, avoid leaking internal IDs to the player.
+      }
+
+      if (playerLogLines.length > 0) {
+        const now = Date.now();
+        const next = playerLogLines.map((text) => ({
+          id: `sys-dialogue-${now}-${nextSystemChatIdRef.current++}`,
+          text,
+          type: "system" as const,
+        }));
+        setSystemChat((prev) => [...prev, ...next].slice(-12));
+      }
+
+      setPlayerQuestStates(
+        getAllPlayerQuestStates().filter(
+          (entry) => entry.playerId === character.id,
+        ),
+      );
+
+      let modalClosed = false;
+      for (const intent of result.intents ?? []) {
+        if (intent.type === "OPEN_SHOP") {
+          const npc = npcs.find((entry) => entry.id === dialogueNpcId) ?? null;
+          const traderId = npc?.traderId?.trim() || intent.merchantId?.trim();
+          if (!traderId) {
+            onStatus("\u0414\u043b\u044f openShop \u043d\u0435\u0442 traderId \u0443 NPC.");
+            continue;
+          }
           dialogueRunner.closeDialogue();
+          setActiveWorldModal(null);
+          onOpenMerchant(traderId);
+          modalClosed = true;
+          break;
         }
+        if (intent.type === "START_COMBAT") {
+          dialogueRunner.closeDialogue();
+          setActiveWorldModal(null);
+          void onStartCombat();
+          modalClosed = true;
+          break;
+        }
+        if (intent.type === "OPEN_TRAINING") {
+          dialogueRunner.closeDialogue();
+          setActiveWorldModal(null);
+          onOpenSkills();
+          modalClosed = true;
+          break;
+        }
+      }
+
+      if (modalClosed) {
+        return;
+      }
+      if (result.ended) {
+        dialogueRunner.closeDialogue();
+      }
     },
     [
       character.id,
@@ -2360,17 +2483,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         importedZones.length === 1
           ? getZoneCenter(importedZones[0])
           : (importedZones
-              .reduce(
-                (acc, zone) => {
-                  const center = getZoneCenter(zone);
-                  return [acc[0] + center[0], acc[1] + center[1]] as [
-                    number,
-                    number,
-                  ];
-                },
-                [0, 0] as [number, number],
-              )
-              .map((value) => value / importedZones.length) as [
+            .reduce(
+              (acc, zone) => {
+                const center = getZoneCenter(zone);
+                return [acc[0] + center[0], acc[1] + center[1]] as [
+                  number,
+                  number,
+                ];
+              },
+              [0, 0] as [number, number],
+            )
+            .map((value) => value / importedZones.length) as [
               number,
               number,
             ]);
@@ -2399,10 +2522,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       prev.map((zone) =>
         zone.id === zoneId
           ? {
-              ...zone,
-              isVisibleToPlayer: !zone.isVisibleToPlayer,
-              updatedAt: Date.now(),
-            }
+            ...zone,
+            isVisibleToPlayer: !zone.isVisibleToPlayer,
+            updatedAt: Date.now(),
+          }
           : zone,
       ),
     );
@@ -2672,8 +2795,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const canTalk = Boolean(npc?.canTalk);
       const canQuest = Boolean(
         npc?.canGiveQuests ||
-          npc?.questBindings.length ||
-          modalLocation?.questIds.length,
+        npc?.questBindings.length ||
+        modalLocation?.questIds.length,
       );
       const canTrain = Boolean(npc?.canTrain);
       const canTrade = Boolean(npc?.canTrade);
