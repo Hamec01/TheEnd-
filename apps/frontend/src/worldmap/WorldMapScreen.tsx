@@ -2388,20 +2388,48 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (result.ended) {
         dialogueRunner.closeDialogue();
       }
-    },
-    [
-      character.id,
-      dialogueRunner,
-      npcs,
-      onOpenMerchant,
-      onOpenSkills,
-      onGrantSkill,
-      onStartCombat,
-      onStatus,
-      questDefinitions,
-      resolveItemById,
-    ],
-  );
+      const questIntents = result.intents.filter((intent) => (
+        intent.type === 'QUEST_STARTED' || intent.type === 'QUEST_ADVANCED' || intent.type === 'QUEST_COMPLETED'
+      ));
+      for (const intent of questIntents) {
+        setDialogueLogs((prev) => [...prev, `Intent: ${intent.type} (${intent.questId})`].slice(-20));
+      }
+      if (questIntents.length > 0) {
+        setPlayerQuestStates(getAllPlayerQuestStates().filter((state) => state.playerId === character.id));
+      }
+      for (const intent of questIntents) {
+        if (intent.type !== 'QUEST_STARTED') {
+          continue;
+        }
+        const quest = getAllQuests().find((entry) => entry.id === intent.questId);
+        const questEntry: ChatMessage = {
+          id: `sys-quest-dialogue-${Date.now()}-${intent.questId}`,
+          text: `Новый квест: ${quest?.title ?? intent.questId}`,
+          type: 'system',
+        };
+        setSystemChat((prev) => [...prev, questEntry].slice(-12));
+      }
+
+      const modalIntents = result.intents.filter((intent) => (
+        intent.type === 'OPEN_SHOP' || intent.type === 'START_COMBAT' || intent.type === 'OPEN_TRAINING'
+      ));
+      const primaryModalIntent = modalIntents[0];
+      if (primaryModalIntent?.type === 'OPEN_SHOP') {
+        onOpenMerchant(primaryModalIntent.merchantId);
+      } else if (primaryModalIntent?.type === 'START_COMBAT') {
+        void onStartCombat();
+      } else if (primaryModalIntent?.type === 'OPEN_TRAINING') {
+        onOpenSkills();
+      }
+
+      if (modalIntents.length > 1) {
+        const ignored = modalIntents.slice(1).map((intent) => intent.type).join(', ');
+        setDialogueLogs((prev) => [...prev, `Ignored intents: ${ignored}`].slice(-20));
+      }
+    } catch (error) {
+      onStatus((error as Error).message);
+    }
+  }, [activeDialogue, activeDialogueNode, character.id, onOpenMerchant, onOpenSkills, onStartCombat, onStatus, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
