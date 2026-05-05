@@ -1394,8 +1394,6 @@ export function resolveRound(params: {
     if (!entity.isAlive) {
       continue;
     }
-    entity.currentStamina = Math.min(entity.maxStamina, entity.currentStamina + getStaminaRegen(entity));
-    entity.currentMp = Math.min(entity.maxMp, entity.currentMp + getManaRegen(entity));
     entity.initiative = calculateInitiative(entity);
   }
 

@@ -821,7 +821,7 @@ describe('arena battle round resolver', () => {
     expect(getBattlefieldDistance(left, right)).toBe(5);
   });
 
-  it('regenerates stamina and mana at round start instead of full refill', () => {
+  it('exposes stamina and mana regen formulas without auto-regenerating at round start', () => {
     expect(getStaminaRegen({ constitution: 9 })).toBe(12);
     expect(getManaRegen({ willpower: 11 })).toBe(8);
 
@@ -883,8 +883,8 @@ describe('arena battle round resolver', () => {
       random: () => 0.5,
     });
 
-    expect(next.entities.find((x) => x.id === 'p1')!.currentStamina).toBe(14);
-    expect(next.entities.find((x) => x.id === 'p1')!.currentMp).toBe(11);
+    expect(next.entities.find((x) => x.id === 'p1')!.currentStamina).toBe(2);
+    expect(next.entities.find((x) => x.id === 'p1')!.currentMp).toBe(3);
   });
 
   it('allows attack after one-cell movement', () => {

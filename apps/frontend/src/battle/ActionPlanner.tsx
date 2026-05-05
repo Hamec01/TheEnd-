@@ -292,6 +292,44 @@ export function ActionPlanner(props: ActionPlannerProps) {
         </div>
       </div>
 
+      <section className="battle-quickbar" aria-label="Боевые быстрые слоты">
+        <div className="battle-quickbar-head">
+          <strong>Боевые слоты</strong>
+          <span>Клавиши 1-0</span>
+        </div>
+        <div className="battle-quickbar-grid">
+          <button
+            type="button"
+            className={`battle-quickbar-slot battle-quickbar-basic ${props.selectedSkillId ? '' : 'is-active'}`}
+            onClick={() => {
+              props.onSkillChange(null);
+              props.onActionTypeChange(ActionType.Attack);
+            }}
+            title="Базовая атака"
+          >
+            <span className="battle-quickbar-key">LMB</span>
+            <span className="battle-quickbar-name">Базовая атака</span>
+          </button>
+
+          {skillOptions.map((skill) => (
+            <button
+              key={skill.slotId}
+              type="button"
+              className={`battle-quickbar-slot ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
+              onClick={() => {
+                props.onSkillChange(skill.skillId);
+                props.onActionTypeChange(ActionType.Attack);
+              }}
+              title={`${formatQuickSlotLabel(skill.slotId)}: ${skill.label}`}
+            >
+              <span className="battle-quickbar-key">{formatQuickSlotLabel(skill.slotId)}</span>
+              <span className="battle-quickbar-name">{skill.label}</span>
+              <span className="battle-quickbar-meta">lvl {skill.level}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className="planner-status-rows">
         <div className="planner-status-row"><span>Дистанция:</span><strong>{DISTANCE_LABELS[props.currentDistance]}</strong></div>
         <div className="planner-status-row"><span>Защита:</span><strong>{getGuardLabel(props.defenseZones)}</strong></div>

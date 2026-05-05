@@ -4034,6 +4034,94 @@ h3 {
   gap: 8px;
 }
 
+.battle-quickbar {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(162, 126, 70, 0.5);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(48, 35, 20, 0.88), rgba(21, 16, 11, 0.92)),
+    radial-gradient(circle at top left, rgba(214, 167, 95, 0.14), transparent 46%);
+}
+
+.battle-quickbar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.battle-quickbar-head strong {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.battle-quickbar-head span {
+  color: rgba(214, 194, 157, 0.72);
+  font-size: 0.66rem;
+}
+
+.battle-quickbar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.battle-quickbar-slot {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(143, 110, 60, 0.56);
+  background: rgba(26, 20, 13, 0.88);
+}
+
+.battle-quickbar-slot.is-active {
+  border-color: rgba(236, 190, 109, 0.92);
+  background: linear-gradient(180deg, rgba(74, 53, 24, 0.92), rgba(34, 25, 15, 0.94));
+  box-shadow: 0 0 0 1px rgba(236, 190, 109, 0.22);
+}
+
+.battle-quickbar-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  height: 24px;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(202, 163, 92, 0.62);
+  background: rgba(72, 49, 20, 0.84);
+  color: rgba(247, 226, 182, 0.98);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.battle-quickbar-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  text-align: left;
+}
+
+.battle-quickbar-meta {
+  color: rgba(214, 194, 157, 0.72);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.battle-quickbar-basic {
+  grid-column: 1 / -1;
+}
+
 .arena-editor-modal {
   max-width: 920px;
 }

@@ -1196,6 +1196,15 @@ export class CombatService {
         playerEntity.currentHp = Math.max(0, playerEntity.currentHp - result.resourcesSpent.hp);
       }
 
+      const spentParts = [
+        result.resourcesSpent.mp ? `${result.resourcesSpent.mp} MP` : null,
+        result.resourcesSpent.stamina ? `${result.resourcesSpent.stamina} STA` : null,
+        result.resourcesSpent.hp ? `${result.resourcesSpent.hp} HP` : null,
+      ].filter(Boolean);
+      if (spentParts.length > 0) {
+        skillLogs.push(`${playerEntity.name} spends ${spentParts.join(', ')}`);
+      }
+
       // Apply damage
       for (const dmg of result.damageDone) {
         const dmgTarget = state.entities.find((e) => e.id === dmg.targetId);
