@@ -75,6 +75,16 @@ export interface CharacterActionSlot {
   itemInstanceId?: string | null;
 }
 
+export interface CharacterActionBarSlot {
+  slotId: CharacterActionSlot['slotId'];
+  order: number;
+  entryKind: 'skill' | 'item' | 'empty';
+  skillId?: string;
+  itemId?: string;
+  itemInstanceId?: string | null;
+  isLocked?: false;
+}
+
 export interface CharacterHotbarSlot {
   slotIndex: number;
   itemId: string | null;
@@ -316,11 +326,34 @@ export async function getCharacterActionSlots(characterId: string): Promise<Char
   return res.json();
 }
 
+export async function getCharacterActionBar(characterId: string): Promise<CharacterActionBarSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-bar`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 export async function updateCharacterActionSlots(
   characterId: string,
   slots: Array<{ slotIndex?: number; slotId?: CharacterActionSlot['slotId']; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>,
 ): Promise<CharacterActionSlot[]> {
   const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-slots`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function updateCharacterActionBar(
+  characterId: string,
+  slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>,
+): Promise<CharacterActionBarSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-bar`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ slots }),
@@ -488,7 +521,7 @@ export async function sendCombatAction(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return res.json();
 }

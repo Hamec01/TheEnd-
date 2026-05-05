@@ -462,37 +462,72 @@ export function BattlePanel({
     const effectiveMovementType = effectiveActionType === ActionType.Wait ? undefined : movementType ?? undefined;
     const effectiveDestinationX = effectiveActionType === ActionType.Wait ? undefined : selectedMoveTile?.x;
     const effectiveDestinationY = effectiveActionType === ActionType.Wait ? undefined : selectedMoveTile?.y;
+    const fallbackTargetId = selectedTargetId || enemies[0]?.id || null;
 
-    if (!player || !selectedTargetId) {
+    if (!player || !fallbackTargetId) {
+      console.warn('[combatAction] rejected', {
+        reason: !player ? 'player-missing' : 'target-missing',
+        combatId,
+        playerId,
+        selectedTargetId,
+        fallbackTargetId,
+      });
+      onStatus(!player ? 'Player entity not found.' : 'Выберите цель для действия.');
       return;
     }
     if (effectiveMovementType && !selectedMoveTile) {
+      console.warn('[combatAction] rejected', {
+        reason: 'move-tile-missing',
+        combatId,
+        actorId: player.id,
+        actionType: effectiveActionType,
+        movementType: effectiveMovementType,
+      });
       onStatus('Выберите клетку движения.');
       return;
     }
     if (!actionTypeOverride && actionWarning) {
+      console.warn('[combatAction] rejected', {
+        reason: 'action-warning',
+        combatId,
+        actorId: player.id,
+        actionType: effectiveActionType,
+        warning: actionWarning,
+      });
       onStatus(actionWarning);
       return;
     }
 
+    const payload = {
+      combatId,
+      actorId: player.id,
+      targetId: fallbackTargetId,
+      attackZone,
+      defenseZones,
+      attackPointsSpent: 0,
+      defensePointsSpent: 0,
+      actionType: effectiveActionType,
+      movementType: effectiveMovementType,
+      destinationX: effectiveDestinationX,
+      destinationY: effectiveDestinationY,
+      skillId: effectiveActionType === ActionType.Attack ? selectedSkill?.skillId : undefined,
+      skillLevel: effectiveActionType === ActionType.Attack ? selectedSkill?.level : undefined,
+    };
+
+    console.info('[combatAction] payload', payload);
+
     try {
       isSubmittingRef.current = true;
-      const result = await sendCombatAction({
+      const result = await sendCombatAction(payload);
+      const nextState = result.state;
+      console.info('[combatAction] resolved', {
         combatId,
         actorId: player.id,
-        targetId: selectedTargetId,
-        attackZone,
-        defenseZones,
-        attackPointsSpent: 0,
-        defensePointsSpent: 0,
         actionType: effectiveActionType,
-        movementType: effectiveMovementType,
-        destinationX: effectiveDestinationX,
-        destinationY: effectiveDestinationY,
-        skillId: effectiveActionType === ActionType.Attack ? selectedSkill?.skillId : undefined,
-        skillLevel: effectiveActionType === ActionType.Attack ? selectedSkill?.level : undefined,
+        roundNumber: nextState.roundNumber,
+        isFinished: nextState.isFinished,
+        logCount: nextState.logs.length,
       });
-      const nextState = result.state;
 
       onStateChange(nextState);
       setSelectedMoveTile(null);
@@ -505,7 +540,14 @@ export function BattlePanel({
         onStatus(`Round ${nextState.roundNumber} resolved.`);
       }
     } catch (error) {
-      onStatus(`Round error: ${(error as Error).message}`);
+      const message = error instanceof Error && error.message.trim().length > 0
+        ? error.message
+        : 'Unknown combat error.';
+      console.warn('[combatAction] rejected', {
+        payload,
+        message,
+      });
+      onStatus(`Action rejected: ${message}`);
     } finally {
       isSubmittingRef.current = false;
     }
@@ -514,10 +556,13 @@ export function BattlePanel({
     attackZone,
     combatId,
     defenseZones,
+    enemies,
     movementType,
+    onBattleFinished,
     onStateChange,
     onStatus,
     player,
+    playerId,
     selectedMoveTile,
     selectedSkill,
     selectedTargetId,
@@ -691,8 +736,10 @@ export function BattlePanel({
                 onStatusMessage={onStatus}
                 onQuickAttack={(targetId) => {
                   setSelectedTargetId(targetId);
+                  onSkillChange(null);
                   setActionType(ActionType.Attack);
-              }}
+                  onStatus('Базовая атака выбрана. Нажмите "СДЕЛАТЬ ХОД".');
+                }}
               onQuickMove={applyMoveSelection}
               onMoveTileSelect={applyMoveSelection}
               onCancelSelection={() => setSelectedMoveTile(null)}

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
 import { ArenaService } from './arena.service';
+import { UpdateActionBarDto } from './dto.update-action-bar.dto';
 import { UpdateActionSlotsDto } from './dto.update-action-slots.dto';
 import { UpdateCharacterResourcesDto } from './dto.update-character-resources.dto';
 import { UpdateHotbarDto } from './dto.update-hotbar.dto';
@@ -13,6 +14,11 @@ export class CharacterRuntimeController {
     return this.arenaService.getOrCreateActionSlots(characterId);
   }
 
+  @Get('action-bar')
+  async getActionBar(@Param('characterId') characterId: string) {
+    return this.arenaService.getOrCreateActionBar(characterId);
+  }
+
   @Patch('action-slots')
   async updateActionSlots(@Param('characterId') characterId: string, @Body() dto: UpdateActionSlotsDto) {
     return this.arenaService.updateActionSlots(
@@ -22,6 +28,21 @@ export class CharacterRuntimeController {
         slotIndex: slot.slotIndex,
         kind: slot.kind ?? null,
         refId: slot.refId ?? null,
+        itemInstanceId: slot.itemInstanceId ?? null,
+      })),
+    );
+  }
+
+  @Patch('action-bar')
+  async updateActionBar(@Param('characterId') characterId: string, @Body() dto: UpdateActionBarDto) {
+    return this.arenaService.updateActionBar(
+      characterId,
+      (dto.slots ?? []).map((slot) => ({
+        slotId: slot.slotId,
+        order: slot.order,
+        entryKind: slot.entryKind,
+        skillId: slot.skillId ?? null,
+        itemId: slot.itemId ?? null,
         itemInstanceId: slot.itemInstanceId ?? null,
       })),
     );

@@ -2,7 +2,7 @@
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
-import type { CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
+import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { AdminItem } from '../services/content/models';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { PaperDoll } from './PaperDoll';
@@ -37,7 +37,7 @@ interface InventoryPanelProps {
   onRespecStats?: () => Promise<void> | void;
   onLearnSkill?: (skillId: string) => Promise<void>;
   onSaveSkillLoadout?: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
-  onSaveActionSlots?: (slots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
+  onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
@@ -477,11 +477,25 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       }
     }
 
-    console.info('[actionSlots] assign', { slotIndex, kind: itemId ? 'item' : null, refId: itemId });
+    const actionBarSlotId = slotId as CharacterActionBarSlot['slotId'];
+    console.info(itemId ? '[actionBar] assignItem' : '[actionBar] clear', {
+      characterId: character.id,
+      slotId: actionBarSlotId,
+      entryKind: itemId ? 'item' : 'empty',
+      itemId,
+      result: 'requested',
+    });
     try {
-      await onSaveActionSlots([{ slotIndex, kind: itemId ? 'item' : null, refId: itemId, itemInstanceId: null }]);
+      await onSaveActionSlots([{
+        slotId: actionBarSlotId,
+        order: slotIndex,
+        entryKind: itemId ? 'item' : 'empty',
+        itemId: itemId ?? undefined,
+        itemInstanceId: null,
+      }]);
     } catch (error) {
-      onStatus(`Не удалось сохранить action slot: ${(error as Error).message}`);
+      console.warn('[actionBar] reject', { characterId: character.id, slotId: actionBarSlotId, entryKind: itemId ? 'item' : 'empty', itemId, result: 'save-failed', message: (error as Error).message });
+      onStatus(`Не удалось сохранить action-bar: ${(error as Error).message}`);
     }
   }
 
@@ -842,21 +856,28 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
-    console.info('[actionSlots] assign', { characterId: character.id, slotIndex, kind: skillId ? 'skill' : null, refId: skillId });
+    const actionBarSlotId = slotId as CharacterActionBarSlot['slotId'];
+    console.info(skillId ? '[actionBar] assignSkill' : '[actionBar] clear', {
+      characterId: character.id,
+      slotId: actionBarSlotId,
+      entryKind: skillId ? 'skill' : 'empty',
+      skillId,
+      result: 'requested',
+    });
     if (!onSaveActionSlots) {
       return;
     }
 
     try {
       setIsSavingSkillLoadout(true);
-      console.info('[actionSlots] save', {
+      console.info('[actionBar] save', {
         characterId: character.id,
-        slots: [{ slotIndex, kind: skillId ? 'skill' : null, refId: skillId, itemInstanceId: null }],
+        slots: [{ slotId: actionBarSlotId, order: slotIndex, entryKind: skillId ? 'skill' : 'empty', skillId: skillId ?? undefined, itemInstanceId: null }],
       });
-      await onSaveActionSlots([{ slotIndex, kind: skillId ? 'skill' : null, refId: skillId, itemInstanceId: null }]);
+      await onSaveActionSlots([{ slotId: actionBarSlotId, order: slotIndex, entryKind: skillId ? 'skill' : 'empty', skillId: skillId ?? undefined, itemInstanceId: null }]);
     } catch (error) {
-      console.warn('[actionSlots] save failed', error);
-      onStatus(`Не удалось сохранить active slot: ${(error as Error).message}`);
+      console.warn('[actionBar] reject', { characterId: character.id, slotId: actionBarSlotId, entryKind: skillId ? 'skill' : 'empty', skillId, result: 'save-failed', message: (error as Error).message });
+      onStatus(`Не удалось сохранить action-bar: ${(error as Error).message}`);
     } finally {
       setIsSavingSkillLoadout(false);
     }
@@ -1174,7 +1195,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               }}
               onSlotContextMenu={(slotId) => {
                 if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
-                  console.info('[actionSlots] clear', { slotIndex: QUICK_SLOT_IDS.indexOf(slotId) });
+                  console.info('[actionBar] clear', { characterId: character.id, slotId, entryKind: 'empty', result: 'requested' });
                   void assignItemToActionSlot(slotId, null);
                 } else if (equippedByLayoutSlot[slotId]) {
                   void unequipFromSlot(slotId);
@@ -1260,7 +1281,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               }}
               onSlotContextMenu={(slotId) => {
                 if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
-                  console.info('[actionSlots] clear', { slotIndex: QUICK_SLOT_IDS.indexOf(slotId) });
+                  console.info('[actionBar] clear', { characterId: character.id, slotId, entryKind: 'empty', result: 'requested' });
                   void assignSkillToQuickSlot(slotId, null);
                 } else if (equippedByLayoutSlot[slotId]) {
                   void unequipFromSlot(slotId);

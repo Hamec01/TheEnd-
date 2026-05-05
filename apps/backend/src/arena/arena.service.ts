@@ -15,6 +15,7 @@ const ACTION_SLOT_IDS = ['quick1', 'quick2', 'quick3', 'quick4', 'quick5', 'quic
 export type CharacterActionSlotId = (typeof ACTION_SLOT_IDS)[number];
 
 export type CharacterActionSlotKind = 'skill' | 'item' | null;
+export type CharacterActionBarEntryKind = 'skill' | 'item' | 'empty';
 
 export interface CharacterActionSlot {
   slotId: CharacterActionSlotId;
@@ -22,6 +23,16 @@ export interface CharacterActionSlot {
   kind: CharacterActionSlotKind;
   refId: string | null;
   itemInstanceId?: string | null;
+}
+
+export interface CharacterActionBarSlot {
+  slotId: CharacterActionSlotId;
+  order: number;
+  entryKind: CharacterActionBarEntryKind;
+  skillId?: string;
+  itemId?: string;
+  itemInstanceId?: string | null;
+  isLocked: false;
 }
 
 export interface CharacterHotbarSlot {
@@ -76,6 +87,108 @@ export class ArenaService implements OnModuleInit {
     }
 
     return ACTION_SLOT_IDS.indexOf(slotId as CharacterActionSlotId);
+  }
+
+  private resolveActionBarSlotIndex(slotId?: string | null, order?: number): number {
+    if (typeof order === 'number' && order >= 0 && order < HOTBAR_SLOT_COUNT) {
+      return order;
+    }
+
+    return this.toActionSlotIndex(slotId);
+  }
+
+  private toActionBarSlot(slot: CharacterActionSlot): CharacterActionBarSlot {
+    if (slot.kind === 'skill' && slot.refId) {
+      return {
+        slotId: slot.slotId,
+        order: slot.slotIndex,
+        entryKind: 'skill',
+        skillId: slot.refId,
+        isLocked: false,
+      };
+    }
+
+    if (slot.kind === 'item' && slot.refId) {
+      return {
+        slotId: slot.slotId,
+        order: slot.slotIndex,
+        entryKind: 'item',
+        itemId: slot.refId,
+        itemInstanceId: slot.itemInstanceId ?? null,
+        isLocked: false,
+      };
+    }
+
+    return {
+      slotId: slot.slotId,
+      order: slot.slotIndex,
+      entryKind: 'empty',
+      isLocked: false,
+    };
+  }
+
+  private getCharacterSkillModel(): {
+    findFirst(args: { where: { characterId: string; skillId: string }; select: { id: true } }): Promise<{ id: string } | null>;
+  } | null {
+    return (this.prisma as unknown as {
+      characterSkill?: {
+        findFirst(args: { where: { characterId: string; skillId: string }; select: { id: true } }): Promise<{ id: string } | null>;
+      };
+    }).characterSkill ?? null;
+  }
+
+  private async warnAboutActionBarEntries(characterId: string, slots: CharacterActionSlot[]): Promise<void> {
+    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      where: { characterId },
+      select: { id: true, itemId: true, quantity: true },
+    });
+    const inventoryItemIds = new Set(inventoryRows.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId));
+    const inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+    const skillModel = this.getCharacterSkillModel();
+
+    for (const slot of slots) {
+      if (slot.kind === 'skill' && slot.refId) {
+        const skillId = slot.refId;
+        const skillDef = this.contentService.getCollectionEntry('skills', skillId) as Record<string, unknown> | null;
+        if (!skillDef) {
+          console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'skill', skillId, result: 'missing-skill-definition' });
+          continue;
+        }
+
+        if (!skillModel) {
+          console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'skill', skillId, result: 'skill-knowledge-check-unavailable' });
+          continue;
+        }
+
+        const knownSkill = await skillModel.findFirst({ where: { characterId, skillId }, select: { id: true } });
+        if (!knownSkill) {
+          console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'skill', skillId, result: 'skill-not-learned-preserved' });
+        }
+        continue;
+      }
+
+      if (slot.kind === 'item' && slot.refId) {
+        const itemId = slot.refId;
+        try {
+          this.contentService.resolveItemById(itemId);
+        } catch {
+          const rawItem = this.contentService.getCollectionEntry('items', itemId) as Record<string, unknown> | null;
+          if (!rawItem) {
+            console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'item', itemId, result: 'missing-item-definition' });
+            continue;
+          }
+        }
+
+        if (slot.itemInstanceId && !inventoryInstanceIds.has(slot.itemInstanceId)) {
+          console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'item', itemId, itemInstanceId: slot.itemInstanceId, result: 'item-instance-missing-preserved' });
+          continue;
+        }
+
+        if (!slot.itemInstanceId && !inventoryItemIds.has(itemId)) {
+          console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'item', itemId, result: 'item-not-in-inventory-preserved' });
+        }
+      }
+    }
   }
 
   private async ensureEquipmentSchema(): Promise<void> {
@@ -375,6 +488,14 @@ export class ArenaService implements OnModuleInit {
     return current;
   }
 
+  async getOrCreateActionBar(characterId: string): Promise<CharacterActionBarSlot[]> {
+    const slots = await this.getOrCreateActionSlots(characterId);
+    await this.warnAboutActionBarEntries(characterId, slots);
+    const actionBar = slots.map((slot) => this.toActionBarSlot(slot));
+    console.info('[actionBar] load', { characterId, slots: actionBar });
+    return actionBar;
+  }
+
   async updateHotbar(
     characterId: string,
     updates: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
@@ -468,6 +589,104 @@ export class ArenaService implements OnModuleInit {
 
     await this.writeCharacterActionSlots(characterId, next);
     return next;
+  }
+
+  async updateActionBar(
+    characterId: string,
+    updates: Array<{ slotId?: string | null; order?: number; entryKind?: CharacterActionBarEntryKind; skillId?: string | null; itemId?: string | null; itemInstanceId?: string | null }>,
+  ): Promise<CharacterActionBarSlot[]> {
+    await this.ensureCharacterExists(characterId);
+
+    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      where: { characterId },
+      select: { id: true, itemId: true, quantity: true },
+    });
+    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    const inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+    const skillModel = this.getCharacterSkillModel();
+    const normalizedUpdates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }> = [];
+
+    for (const update of updates) {
+      const slotIndex = this.resolveActionBarSlotIndex(update.slotId, update.order);
+      if (slotIndex < 0 || slotIndex >= HOTBAR_SLOT_COUNT) {
+        console.warn('[actionBar] reject', { characterId, slotId: update.slotId ?? null, order: update.order ?? null, result: 'invalid-slot' });
+        throw new BadRequestException(`Action bar slot ${update.slotId ?? update.order ?? 'unknown'} not found.`);
+      }
+
+      const slotId = this.toActionSlotId(slotIndex);
+      const entryKind = update.entryKind ?? 'empty';
+
+      if (entryKind === 'empty') {
+        console.info('[actionBar] clear', { characterId, slotId, entryKind, result: 'cleared' });
+        normalizedUpdates.push({ slotId, slotIndex, kind: null, refId: null, itemInstanceId: null });
+        continue;
+      }
+
+      if (entryKind === 'skill') {
+        const skillId = typeof update.skillId === 'string' ? update.skillId.trim() : '';
+        if (skillId.length === 0) {
+          console.warn('[actionBar] reject', { characterId, slotId, entryKind, result: 'missing-skill-id' });
+          throw new BadRequestException(`Skill entry for ${slotId} is missing skillId.`);
+        }
+
+        const skillDef = this.contentService.getCollectionEntry('skills', skillId) as Record<string, unknown> | null;
+        if (!skillDef) {
+          console.warn('[actionBar] reject', { characterId, slotId, entryKind, skillId, result: 'missing-skill-definition' });
+          throw new BadRequestException(`Skill not found: ${skillId}`);
+        }
+
+        if (!skillModel) {
+          console.warn('[actionBar] warning', { characterId, slotId, entryKind, skillId, result: 'skill-knowledge-check-unavailable' });
+        } else {
+          const knownSkill = await skillModel.findFirst({ where: { characterId, skillId }, select: { id: true } });
+          if (!knownSkill) {
+            console.warn('[actionBar] warning', { characterId, slotId, entryKind, skillId, result: 'skill-not-learned-preserved' });
+          }
+        }
+
+        console.info('[actionBar] assignSkill', { characterId, slotId, entryKind, skillId, result: 'saved' });
+        normalizedUpdates.push({ slotId, slotIndex, kind: 'skill', refId: skillId, itemInstanceId: null });
+        continue;
+      }
+
+      const itemId = typeof update.itemId === 'string' ? update.itemId.trim() : '';
+      if (itemId.length === 0) {
+        console.warn('[actionBar] reject', { characterId, slotId, entryKind, result: 'missing-item-id' });
+        throw new BadRequestException(`Item entry for ${slotId} is missing itemId.`);
+      }
+
+      try {
+        this.contentService.resolveItemById(itemId);
+      } catch {
+        const rawItem = this.contentService.getCollectionEntry('items', itemId) as Record<string, unknown> | null;
+        if (!rawItem) {
+          console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, result: 'missing-item-definition' });
+          throw new BadRequestException(`Item not found: ${itemId}`);
+        }
+      }
+
+      const itemInstanceId = typeof update.itemInstanceId === 'string' && update.itemInstanceId.trim().length > 0
+        ? update.itemInstanceId.trim()
+        : null;
+      if (itemInstanceId && !inventoryInstanceIds.has(itemInstanceId)) {
+        console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'missing-item-instance' });
+        throw new BadRequestException(`Item instance is not available in inventory: ${itemInstanceId}`);
+      }
+
+      const quantity = inventoryByItemId.get(itemId) ?? 0;
+      if (quantity <= 0) {
+        console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, result: 'item-not-in-inventory' });
+        throw new BadRequestException(`Item is not available in inventory: ${itemId}`);
+      }
+
+      console.info('[actionBar] assignItem', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'saved' });
+      normalizedUpdates.push({ slotId, slotIndex, kind: 'item', refId: itemId, itemInstanceId });
+    }
+
+    await this.updateActionSlots(characterId, normalizedUpdates);
+    const actionBar = await this.getOrCreateActionBar(characterId);
+    console.info('[actionBar] save', { characterId, slots: actionBar });
+    return actionBar;
   }
 
   async getCharacterResources(characterId: string): Promise<CharacterResourceState> {

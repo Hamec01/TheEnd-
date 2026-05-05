@@ -22,10 +22,11 @@ import {
   allocateStats,
   buyArenaItem,
   createCharacter,
+  type CharacterActionBarSlot,
   type CharacterActionSlot,
   type CharacterHotbarSlot,
   getCharacterSkills,
-  getCharacterActionSlots,
+  getCharacterActionBar,
   type ArenaHubState,
   type CharacterSkillLoadout,
   type CharacterSkillRow,
@@ -41,7 +42,7 @@ import {
   registerAccount,
   startCombat,
   startCustomCombat,
-  updateCharacterActionSlots,
+  updateCharacterActionBar,
   updateCharacterHotbar,
   updateSkillLoadout,
   sellArenaItem,
@@ -281,6 +282,48 @@ function createEmptyActionSlots(): CharacterActionSlot[] {
     refId: null,
     itemInstanceId: null,
   }));
+}
+
+function actionBarSlotToActionSlot(slot: CharacterActionBarSlot): CharacterActionSlot {
+  if (slot.entryKind === 'skill') {
+    return {
+      slotId: slot.slotId,
+      slotIndex: slot.order,
+      kind: 'skill',
+      refId: slot.skillId ?? null,
+      itemInstanceId: null,
+    };
+  }
+
+  if (slot.entryKind === 'item') {
+    return {
+      slotId: slot.slotId,
+      slotIndex: slot.order,
+      kind: 'item',
+      refId: slot.itemId ?? null,
+      itemInstanceId: slot.itemInstanceId ?? null,
+    };
+  }
+
+  return {
+    slotId: slot.slotId,
+    slotIndex: slot.order,
+    kind: null,
+    refId: null,
+    itemInstanceId: null,
+  };
+}
+
+function actionBarToActionSlots(slots: CharacterActionBarSlot[]): CharacterActionSlot[] {
+  const base = createEmptyActionSlots();
+  for (const slot of slots) {
+    const slotIndex = typeof slot.order === 'number' ? slot.order : Number(slot.slotId.replace('quick', '')) - 1;
+    if (slotIndex < 0 || slotIndex >= base.length) {
+      continue;
+    }
+    base[slotIndex] = actionBarSlotToActionSlot({ ...slot, order: slotIndex });
+  }
+  return base;
 }
 
 function getWeaponDamagePreview(item: ItemDefinition): string {
@@ -1049,7 +1092,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const [skills, loadout, actionSlotResult] = await Promise.allSettled([
       getCharacterSkills(characterId),
       getSkillLoadout(characterId),
-      getCharacterActionSlots(characterId),
+      getCharacterActionBar(characterId),
     ]);
 
     if (skills.status === 'fulfilled') {
@@ -1067,10 +1110,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
 
     if (actionSlotResult.status === 'fulfilled') {
-      console.info('[actionSlots] load', { characterId, slots: actionSlotResult.value });
-      setActionSlots(actionSlotResult.value);
+      console.info('[actionBar] load', { characterId, slots: actionSlotResult.value });
+      setActionSlots(actionBarToActionSlots(actionSlotResult.value));
     } else {
-      console.warn('[actionSlots] Failed to load character action slots. Falling back to empty slots.', actionSlotResult.reason);
+      console.warn('[actionBar] reject', { characterId, result: 'load-failed', reason: actionSlotResult.reason });
       setActionSlots(createEmptyActionSlots());
     }
   }, []);
@@ -1972,15 +2015,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus('Быстрые слоты сохранены.');
   }, [character]);
 
-  const handleSaveCharacterActionSlots = useCallback(async (slots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>) => {
+  const handleSaveCharacterActionSlots = useCallback(async (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>) => {
     if (!character) {
       return;
     }
 
-    console.info('[actionSlots] save', { characterId: character.id, slots });
-    const nextSlots = await updateCharacterActionSlots(character.id, slots);
-    setActionSlots(nextSlots);
-    setStatus('Активные слоты сохранены.');
+    console.info('[actionBar] save', { characterId: character.id, slots });
+    const nextSlots = await updateCharacterActionBar(character.id, slots);
+    setActionSlots(actionBarToActionSlots(nextSlots));
+    setStatus('Action-bar сохранён.');
   }, [character]);
 
   async function handleBattleFinished(nextState: ArenaBattleState, resolvedHubState?: ArenaHubState): Promise<void> {
