@@ -433,6 +433,42 @@ export function BattlePanel({
     return null;
   }, [actionType, selectedMoveTile, targetInRange]);
 
+  const pendingActionSummary = useMemo(() => {
+    const targetLabel = selectedEnemy?.name ?? 'без цели';
+    const parts: string[] = [];
+
+    if (movementType && selectedMoveTile) {
+      const movementLabel = movementType === MovementType.Step
+        ? 'Шаг'
+        : movementType === MovementType.Extra
+          ? 'Рывок на 2 клетки'
+          : movementType === MovementType.Dash
+            ? 'Дэш'
+            : 'Отход';
+      parts.push(`${movementLabel} -> ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}`);
+    }
+
+    if (actionType === ActionType.Attack) {
+      parts.push(selectedSkill ? `Навык ${selectedSkill.label} -> ${targetLabel}` : `Базовая атака -> ${targetLabel}`);
+    } else if (actionType === ActionType.Defend) {
+      parts.push(`Защита -> ${defenseZones.map((zone) => zone.toLowerCase()).join(', ')}`);
+    } else if (actionType === ActionType.Move) {
+      parts.push(selectedMoveTile ? `Перемещение -> ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}` : 'Перемещение не выбрано');
+    } else if (actionType === ActionType.Wait) {
+      parts.push('Ожидание');
+    }
+
+    return parts;
+  }, [actionType, defenseZones, movementType, selectedEnemy?.name, selectedMoveTile, selectedSkill]);
+
+  const resetPendingAction = useCallback(() => {
+    setActionType(ActionType.Attack);
+    setMovementType(null);
+    setSelectedMoveTile(null);
+    onSkillChange(null);
+    onStatus('Боевой план сброшен.');
+  }, [onSkillChange, onStatus]);
+
   const secondsLeft = useMemo(() => {
     if (!state.turnDeadlineAt || state.isFinished) {
       return null;
@@ -687,7 +723,7 @@ export function BattlePanel({
               <CombatLogPanel logs={state.logs} />
             </div>
 
-              <BattleField
+            <BattleField
                 entities={state.entities}
                 battlefieldTiles={state.battlefieldTiles}
                 battleMapWidth={state.battleMapWidth}
@@ -709,23 +745,40 @@ export function BattlePanel({
                 onQuickAttack={(targetId) => {
                   setSelectedTargetId(targetId);
                   setActionType(ActionType.Attack);
-              }}
-              onQuickMove={applyMoveSelection}
-              onMoveTileSelect={applyMoveSelection}
-              onCancelSelection={() => setSelectedMoveTile(null)}
-              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
-              playerVisualState={feedback.playerVisualState}
-              enemyVisualState={feedback.enemyVisualState}
-              floatingText={feedback.floatingText}
-              animationTick={state.logs.length}
+                  onStatus('Атака поставлена в план. Подтвердите ход.');
+                }}
+                onQuickMove={(tile) => {
+                  applyMoveSelection(tile);
+                  onStatus('Перемещение поставлено в план. Подтвердите ход.');
+                }}
+                onMoveTileSelect={applyMoveSelection}
+                onCancelSelection={() => setSelectedMoveTile(null)}
+                onInspectEntity={(entityId) => setInspectEntityId(entityId)}
+                playerVisualState={feedback.playerVisualState}
+                enemyVisualState={feedback.enemyVisualState}
+                floatingText={feedback.floatingText}
+                animationTick={state.logs.length}
             />
 
             <div className="battle-center-controls card">
+              <div className="battle-pending-action" aria-live="polite">
+                <div className="battle-pending-action-head">
+                  <strong>Текущий план</strong>
+                  <button type="button" className="battle-pending-reset" onClick={resetPendingAction}>Сбросить</button>
+                </div>
+                <div className="battle-pending-action-body">
+                  {pendingActionSummary.map((line) => (
+                    <span key={line} className="battle-pending-chip">{line}</span>
+                  ))}
+                  {actionWarning ? <span className="battle-pending-warning">{actionWarning}</span> : null}
+                  {!actionWarning && actionHint ? <span className="battle-pending-hint">{actionHint}</span> : null}
+                </div>
+              </div>
               <button
                 type="button"
                 className="confirm-turn-button battle-confirm-large"
                 disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
-                title={actionWarning ?? actionHint ?? undefined}
+                title={actionWarning ?? actionHint ?? (pendingActionSummary.length > 0 ? pendingActionSummary.join(' | ') : undefined)}
                 onClick={submitRound}
               >
                 СДЕЛАТЬ ХОД

@@ -3931,7 +3931,73 @@ h3 {
   display: flex;
   justify-content: flex-start;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 8px;
+}
+
+.battle-pending-action {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: min(100%, 320px);
+}
+
+.battle-pending-action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.battle-pending-action-head strong {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.battle-pending-reset {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(164, 130, 78, 0.5);
+  background: rgba(34, 26, 17, 0.88);
+  color: rgba(228, 212, 182, 0.9);
+}
+
+.battle-pending-action-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.battle-pending-chip,
+.battle-pending-warning,
+.battle-pending-hint {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  line-height: 1.2;
+}
+
+.battle-pending-chip {
+  border: 1px solid rgba(171, 137, 84, 0.44);
+  background: rgba(39, 30, 20, 0.88);
+}
+
+.battle-pending-warning {
+  border: 1px solid rgba(200, 100, 76, 0.5);
+  background: rgba(86, 34, 25, 0.78);
+  color: rgba(255, 214, 206, 0.94);
+}
+
+.battle-pending-hint {
+  border: 1px solid rgba(92, 121, 157, 0.46);
+  background: rgba(27, 40, 57, 0.8);
+  color: rgba(215, 229, 244, 0.92);
 }
 
 .battle-confirm-large {
@@ -4008,6 +4074,158 @@ h3 {
 .battle-side-panel-tabs button.is-active {
   border-color: rgba(231, 185, 104, 0.86);
   box-shadow: 0 0 0 1px rgba(231, 185, 104, 0.28);
+}
+
+.battle-command-deck {
+  display: grid;
+  gap: 10px;
+}
+
+.battle-command-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 10px;
+}
+
+.battle-command-head h3 {
+  margin: 0;
+}
+
+.battle-command-head p {
+  margin: 2px 0 0;
+  color: rgba(219, 199, 161, 0.74);
+  font-size: 0.72rem;
+}
+
+.battle-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.battle-command-actions button,
+.battle-target-chip,
+.battle-consumable-card {
+  min-height: 34px;
+}
+
+.battle-target-strip,
+.battle-skill-focus,
+.battle-consumables {
+  display: grid;
+  gap: 8px;
+}
+
+.battle-target-strip-head,
+.battle-consumables-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.battle-target-strip-head strong,
+.battle-consumables-head strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.battle-target-strip-head span,
+.battle-consumables-head span {
+  color: rgba(214, 194, 157, 0.68);
+  font-size: 0.68rem;
+}
+
+.battle-target-chip-grid,
+.battle-consumables-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.battle-target-chip,
+.battle-consumable-card {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(134, 104, 62, 0.46);
+  background: rgba(24, 19, 13, 0.86);
+  text-align: left;
+}
+
+.battle-target-chip.is-active,
+.battle-consumable-card.is-active {
+  border-color: rgba(236, 190, 109, 0.9);
+  background: linear-gradient(180deg, rgba(75, 53, 24, 0.92), rgba(37, 28, 18, 0.94));
+  box-shadow: 0 0 0 1px rgba(236, 190, 109, 0.16);
+}
+
+.battle-target-chip small,
+.battle-consumable-card small,
+.battle-consumable-meta {
+  color: rgba(214, 194, 157, 0.72);
+  font-size: 0.68rem;
+}
+
+.battle-skill-focus {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  padding: 10px;
+  border: 1px solid rgba(149, 117, 71, 0.42);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(34, 26, 17, 0.88), rgba(20, 16, 11, 0.92));
+}
+
+.battle-skill-focus-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.battle-skill-focus-copy strong {
+  font-size: 0.88rem;
+}
+
+.battle-skill-focus-copy span {
+  color: rgba(214, 194, 157, 0.76);
+  font-size: 0.72rem;
+}
+
+.battle-skill-focus-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: start;
+  justify-content: flex-end;
+}
+
+.battle-skill-focus-metrics span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(170, 136, 84, 0.42);
+  background: rgba(44, 34, 23, 0.84);
+  font-size: 0.7rem;
+}
+
+.battle-defense-utilities {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.battle-consumable-name {
+  font-size: 0.76rem;
+}
+
+.battle-consumable-detail {
+  margin-top: 0;
 }
 
 .planner-status-rows {
