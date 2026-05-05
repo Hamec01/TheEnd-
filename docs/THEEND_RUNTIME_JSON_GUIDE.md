@@ -107,8 +107,10 @@ Other effect types still require explicit `actions[]` in dialogues.
 ```javascript
 {
   "type": "condition_type",
-  "value": "depends_on_type"  // Can be string, number, or boolean
-  "key": "optional_for_flags" // Only for flag conditions
+  "value": "depends_on_type",   // Can be string, number, or boolean
+  "key": "optional_for_flags",  // For flag conditions
+  "questId": "optional_quest_id",
+  "objectiveId": "optional_objective_id"
 }
 ```
 
@@ -120,8 +122,8 @@ Other effect types still require explicit `actions[]` in dialogues.
 | **quest_completed** | WORKS | `{"type": "quest_completed", "value": "quest_id"}` | Completed quests | `{"type": "quest_completed", "value": "starter_quest"}` |
 | **quest_not_started** | WORKS | `{"type": "quest_not_started", "value": "quest_id"}` | Never started quests | `{"type": "quest_not_started", "value": "advanced_quest"}` |
 | **quest_failed** | WORKS | `{"type": "quest_failed", "value": "quest_id"}` | Failed quest state | `{"type": "quest_failed", "value": "timed_quest"}` |
-| **objective_completed** | ❌ **BROKEN** | `{"type": "objective_completed", "value": "?"}` | **NOT IMPLEMENTED** | Not supported in dialogue |
-| **objective_not_completed** | ❌ **BROKEN** | `{"type": "objective_not_completed", "value": "?"}` | **NOT IMPLEMENTED** | Not supported in dialogue |
+| **objective_completed** | WORKS | `{"type": "objective_completed", "questId": "fireball_unlock_start", "objectiveId": "obj_open_chest"}` | Player quest state (`completedObjectiveIds`) | Works in dialogue conditions |
+| **objective_not_completed** | WORKS | `{"type": "objective_not_completed", "questId": "fireball_unlock_start", "objectiveId": "obj_open_chest"}` | Player quest state (`completedObjectiveIds`) | Works in dialogue conditions |
 | **has_item** | WORKS | `{"type": "has_item", "value": "item_id"}` | `theend.player.items[]` | `{"type": "has_item", "value": "training_sword_wood_01"}` |
 | **has_quest_item** | PARTIAL | `{"type": "has_quest_item", "value": "quest_item_id"}` | `theend.player.questItems[]` | Only works if quest item was GIVEN by action |
 | **gold_at_least** | WORKS | `{"type": "gold_at_least", "value": 100}` | `theend.player.gold` | `{"type": "gold_at_least", "value": 50}` |
@@ -147,11 +149,8 @@ The `has_quest_item` condition only works correctly if:
 {"type": "has_quest_item", "value": "feralas_emblem"}
 
 // RELIABLE:
-{"type": "objective_completed", "value": "fireball_unlock_start"}
-// But wait! This isn't supported in dialogue conditions!
+{"type": "objective_completed", "questId": "fireball_unlock_start", "objectiveId": "obj_open_chest"}
 ```
-
-⚠️ **CRITICAL BUG**: `objective_completed` condition is **NOT IMPLEMENTED** in dialogue conditions, though it's mentioned in type definitions.
 
 ---
 
@@ -298,9 +297,7 @@ The `has_quest_item` condition only works correctly if:
   "nextNodeId": "node_end",
   "endsDialogue": true,
   "conditions": [
-    {"type": "quest_active", "value": "fireball_unlock_start"}
-    // WORKAROUND: Cannot use has_quest_item or objective_completed here!
-    // Must check via quest_active only
+    {"type": "objective_completed", "questId": "fireball_unlock_start", "objectiveId": "obj_open_chest"}
   ],
   "actions": [
     {"type": "completeObjective", "questId": "fireball_unlock_start", "objectiveId": "obj_return"},
@@ -313,14 +310,13 @@ The `has_quest_item` condition only works correctly if:
 
 ## Known Issues & Workarounds
 
-### Issue 1: `objective_completed` Not Supported in Dialogue Conditions
-**Impact**: Can't check if objective is done before showing dialogue option  
-**Workaround**: Use `quest_active` + UI logic; or assume objective auto-progresses  
-**Fix**: Add handler in `evaluateDialogueConditions()` (see FIXES section)
+### Issue 1: `objective_completed` / `objective_not_completed` in Dialogue Conditions
+**Status**: FIXED  
+**Current behavior**: Both condition types are supported with `questId` + `objectiveId` shape.
 
 ### Issue 2: `has_quest_item` Unreliable in Dialogue
 **Impact**: Quest item checks fail in dialogue conditions  
-**Workaround**: Use `objective_completed` in quest interactions where it works  
+**Workaround**: Prefer objective-based checks (`objective_completed`) in dialogue/quest flows  
 **Fix**: Ensure quest item detection uses same storage keys everywhere
 
 ### Issue 3: Zone Inspect Objective Auto-Progress
@@ -393,7 +389,7 @@ console.log((JSON.parse(localStorage.getItem('theend.player.questItems')) || [])
 1. ✅ **Setup**: `obj_open_chest` completed, quest still active
 2. ✅ Return to Erdon
 3. ✅ Should see "Научи меня этому слову" branchnode
-4. ✅ See "Я запомню" choice (quest_active check passes)
+4. ✅ See "Я запомню" choice (`objective_completed` check passes)
 5. ✅ Click choice
 6. ✅ **Verify**: `localStorage.theend.player.learnedSkills` contains `"Fireball"`
 7. ✅ **Verify**: `questState.status === "completed"` and `questState.completedObjectiveIds` includes both objectives
@@ -405,7 +401,7 @@ console.log((JSON.parse(localStorage.getItem('theend.player.questItems')) || [])
 | Category | WORKS | PARTIAL | BROKEN |
 |---|---|---|---|
 | **Dialogue Actions** | startQuest, completeObjective, completeQuest, failQuest, setQuestFlag, giveItem, giveQuestItem, giveGold, addReputation, openShop, startCombat | unlockLocation, unlockDialogue | — |
-| **Dialogue Conditions** | quest_active, quest_completed, quest_not_started, quest_failed, has_item, has_quest_item, player_level, player_race, player_profession, npc_disposition, global_flag, quest_flag | has_quest_item (unreliable) | objective_completed, objective_not_completed, faction_reputation, kingdom_reputation, time_of_day |
+| **Dialogue Conditions** | quest_active, quest_completed, quest_not_started, quest_failed, objective_completed, objective_not_completed, has_item, has_quest_item, player_level, player_race, player_profession, npc_disposition, global_flag, quest_flag | has_quest_item (unreliable) | faction_reputation, kingdom_reputation, time_of_day |
 | **Quest Interaction Triggers** | zone_inspect, object_interact | — | zone_enter, marker_reached, item_use, npc_interact, manual |
 | **Quest Interaction Requirements** | quest_active, quest_completed, quest_not_started, objective_completed, objective_not_completed, has_quest_item, flag_true, flag_false | — | missing_quest_item, has_skill, missing_skill, flag_equals, level_min, level_max |
 | **Quest Interaction Effects** | give_quest_item, complete_objective, set_flag, give_gold, give_experience, give_skill, complete_quest | — | complete_step, start_quest, give_rewards, give_item, take_quest_item, take_item, open_dialogue, open_shop, start_combat |

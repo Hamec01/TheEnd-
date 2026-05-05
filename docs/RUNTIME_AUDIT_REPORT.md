@@ -185,16 +185,16 @@ dialogueChoice {
 ### ⚠️ Unsafe Pattern: Effects Array in Dialogue
 
 ```javascript
-// WRONG - will not execute
+// WRONG for non-supported effect types in dialogue
 dialogueChoice {
-  "effects": [  // ← NOT PARSED in dialogues
-    {"type": "startQuest", "questId": "..."}
+  "effects": [
+    {"type": "give_gold", "amount": 100} // <- not supported in dialogue effects bridge
   ]
 }
 
-// RIGHT - use actions instead
+// RIGHT - use actions, or supported quest-related bridge types
 dialogueChoice {
-  "actions": [  // ← This works
+  "actions": [
     {"type": "startQuest", "questId": "..."}
   ]
 }
