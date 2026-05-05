@@ -2,7 +2,6 @@ import type {
   ActionType,
   ArenaBattleState,
   ArenaCombatEntity,
-  CombatSkillType,
   Equipment,
   InventoryState,
   MovementType,
@@ -15,6 +14,7 @@ import type {
 } from '@theend/rpg-domain';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+export const MAX_COMBAT_ENEMIES = 10;
 
 // Type aliases for battle UI components
 export type CombatState = ArenaBattleState;
@@ -54,9 +54,41 @@ export interface ArenaHubState {
     freePoints: number;
     baseStats: StatBlock;
     activeStats: StatBlock;
+    currentHp: number;
+    maxHp: number;
+    currentMp: number;
+    maxMp: number;
+    currentStamina: number;
+    maxStamina: number;
+    hpRegenPerTurn?: number;
   };
   inventory: InventoryState;
   equipment: Equipment;
+  actionSlots: CharacterActionSlot[];
+}
+
+export interface CharacterActionSlot {
+  slotId: 'quick1' | 'quick2' | 'quick3' | 'quick4' | 'quick5' | 'quick6' | 'quick7' | 'quick8' | 'quick9' | 'quick10';
+  slotIndex: number;
+  kind: 'skill' | 'item' | null;
+  refId: string | null;
+  itemInstanceId?: string | null;
+}
+
+export interface CharacterHotbarSlot {
+  slotIndex: number;
+  itemId: string | null;
+  itemInstanceId?: string | null;
+}
+
+export interface CharacterResourceState {
+  currentHp: number;
+  maxHp: number;
+  currentMp: number;
+  maxMp: number;
+  currentStamina: number;
+  maxStamina: number;
+  hpRegenPerTurn: number;
 }
 
 export interface CombatActionResult {
@@ -268,6 +300,52 @@ export async function getArenaHubState(characterId: string): Promise<ArenaHubSta
   return res.json();
 }
 
+export async function getCharacterHotbar(characterId: string): Promise<CharacterHotbarSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/hotbar`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function getCharacterActionSlots(characterId: string): Promise<CharacterActionSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-slots`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function updateCharacterActionSlots(
+  characterId: string,
+  slots: Array<{ slotIndex?: number; slotId?: CharacterActionSlot['slotId']; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>,
+): Promise<CharacterActionSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-slots`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function updateCharacterHotbar(
+  characterId: string,
+  slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
+): Promise<CharacterHotbarSlot[]> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/hotbar`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slots }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 async function readErrorMessage(res: Response): Promise<string> {
   const raw = await res.text();
 
@@ -350,10 +428,11 @@ export async function startCombat(
   playerId: string;
   state: ArenaBattleState;
 }> {
+  const normalizedEnemyCount = Math.max(1, Math.min(MAX_COMBAT_ENEMIES, enemyCount));
   const res = await fetch(`${API_BASE}/combat/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, enemyCount, battleMap }),
+    body: JSON.stringify({ characterId, enemyCount: normalizedEnemyCount, battleMap }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -370,13 +449,14 @@ export async function startCustomCombat(
   playerId: string;
   state: ArenaBattleState;
 }> {
+  const normalizedCustomEnemies = customEnemies.slice(0, MAX_COMBAT_ENEMIES);
   const res = await fetch(`${API_BASE}/combat/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       characterId,
-      enemyCount: Math.max(1, customEnemies.length),
-      customEnemies,
+      enemyCount: Math.max(1, normalizedCustomEnemies.length),
+      customEnemies: normalizedCustomEnemies,
       battleMap,
     }),
   });
@@ -399,8 +479,6 @@ export async function sendCombatAction(payload: {
   preferredDistance?: DistanceBand;
   destinationX?: number;
   destinationY?: number;
-  skillType?: CombatSkillType;
-  /** New skill system */
   skillId?: string;
   skillLevel?: number;
 }): Promise<CombatActionResult> {
@@ -434,10 +512,12 @@ export async function useCombatItem(payload: {
   combatId: string;
   actorId: string;
   itemId: string;
+  targetId?: string;
 }): Promise<{
   state: ArenaBattleState;
   inventory: InventoryState['items'];
   gold: number;
+  actionSlots?: CharacterActionSlot[];
 }> {
   const res = await fetch(`${API_BASE}/combat/use-item`, {
     method: 'POST',

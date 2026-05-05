@@ -3,6 +3,7 @@ import {
   MovementType,
   TargetZone,
   TeamSide,
+  getSkillCostSummary,
   getBattlefieldDistance,
   type AdminSkillDefinition,
   getItemById,
@@ -12,7 +13,8 @@ import {
   type InventoryState,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { sendCombatAction, type ArenaHubState } from '../api';
+import { sendCombatAction, type ArenaHubState, type CharacterActionSlot } from '../api';
+import type { AdminItem } from '../services/content/models';
 import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
@@ -24,6 +26,7 @@ interface BattlePanelProps {
   playerId: string;
   state: ArenaBattleState;
   inventory: InventoryState;
+  actionSlots: CharacterActionSlot[];
   mapImageUrl?: string;
   mapCalibration?: {
     cellSizePx?: number;
@@ -31,15 +34,106 @@ interface BattlePanelProps {
     gridOffsetY?: number;
   };
   selectedSkillId: string | null;
-  availableSkills: Array<{ skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  availableSkills: Array<{ slotId: CharacterActionSlot['slotId']; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
   onSkillChange: (skillId: string | null) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
+  onUseItem?: (itemId: string, targetId?: string) => Promise<void> | void;
   onBattleFinished?: (next: ArenaBattleState, hubState?: ArenaHubState) => Promise<void> | void;
   onClose?: () => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
+  resolveAdminItemById?: (itemId: string) => AdminItem | null;
   playerEquipment?: Equipment;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toFiniteAmount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function accumulateResourceCost(costs: { mana: number; stamina: number; hp: number }, resource: unknown, amount: unknown): void {
+  const key = String(resource ?? '').trim().toLowerCase();
+  const safeAmount = toFiniteAmount(amount);
+  if (safeAmount <= 0) {
+    return;
+  }
+  if (key === 'mana' || key === 'mp') {
+    costs.mana += safeAmount;
+    return;
+  }
+  if (key === 'stamina' || key === 'sta') {
+    costs.stamina += safeAmount;
+    return;
+  }
+  if (key === 'hp' || key === 'health') {
+    costs.hp += safeAmount;
+  }
+}
+
+function normalizeAdminItemCosts(rawItem: AdminItem | null): { mana: number; stamina: number; hp: number } {
+  const costs = { mana: 0, stamina: 0, hp: 0 };
+  const raw = toRecord(rawItem as unknown);
+  if (!raw) {
+    return costs;
+  }
+  accumulateResourceCost(costs, 'mana', raw.manaCost);
+  accumulateResourceCost(costs, 'stamina', raw.staminaCost);
+  accumulateResourceCost(costs, 'hp', raw.hpCost);
+
+  const directCosts = Array.isArray(raw.costs) ? raw.costs : [];
+  for (const entry of directCosts) {
+    const record = toRecord(entry);
+    if (record) {
+      accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
+    }
+  }
+
+  const nestedCosts = toRecord(raw.costs);
+  const nestedResources = Array.isArray(nestedCosts?.resources) ? nestedCosts.resources : [];
+  for (const entry of nestedResources) {
+    const record = toRecord(entry);
+    if (record) {
+      accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
+    }
+  }
+
+  return costs;
+}
+
+function normalizeAdminItemEffects(rawItem: AdminItem | null): Array<{ type: string; amount: number; target?: string }> {
+  const raw = toRecord(rawItem as unknown);
+  if (!raw) {
+    return [];
+  }
+
+  const sources: unknown[] = [];
+  const singleEffect = toRecord(raw.useEffect);
+  if (singleEffect) {
+    sources.push(singleEffect);
+  }
+  if (Array.isArray(raw.effects)) {
+    sources.push(...raw.effects);
+  }
+  if (Array.isArray(raw.combatEffects)) {
+    sources.push(...raw.combatEffects);
+  }
+
+  return sources
+    .map((entry) => toRecord(entry))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry) => ({
+      type: String(entry.type ?? '').trim().toLowerCase(),
+      amount: toFiniteAmount(entry.amount),
+      target: typeof entry.target === 'string' ? entry.target : undefined,
+    }))
+    .filter((entry) => entry.type.length > 0);
 }
 
 function parseZoneFromLogText(text: string): TargetZone | null {
@@ -99,6 +193,7 @@ export function BattlePanel({
   playerId,
   state,
   inventory,
+  actionSlots,
   mapImageUrl,
   mapCalibration,
   selectedSkillId,
@@ -106,10 +201,12 @@ export function BattlePanel({
   onSkillChange,
   onStateChange,
   onStatus,
+  onUseItem,
   onBattleFinished,
   onClose,
   playerAvatarUrl,
   resolveItemById,
+  resolveAdminItemById,
   playerEquipment,
 }: BattlePanelProps) {
   const player = useMemo(() => state.entities.find((item) => item.id === playerId), [state, playerId]);
@@ -136,24 +233,77 @@ export function BattlePanel({
   );
 
   const battleInventoryItems = useMemo(
-    () => inventory.items
-      .map((entry) => {
-        const item = resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId);
-        if (!item) {
+    () => actionSlots
+      .filter((slot) => slot.kind === 'item' && Boolean(slot.refId))
+      .map((slot) => {
+        const itemId = slot.refId;
+        if (!itemId) {
           return null;
         }
+        const quantity = inventory.items.find((entry) => entry.itemId === itemId)?.quantity ?? 0;
+        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+        if (!item) {
+          return {
+            id: itemId,
+            name: itemId,
+            description: 'Missing item definition.',
+            icon: '?',
+            itemType: 'missing',
+            quantity,
+            disabled: true,
+            disabledReason: 'Предмет не найден в контенте.',
+            effectSummary: 'Definition missing',
+            costSummary: null,
+          };
+        }
+        const adminItem = resolveAdminItemById ? resolveAdminItemById(itemId) : null;
+        const costs = normalizeAdminItemCosts(adminItem);
+        const effects = normalizeAdminItemEffects(adminItem);
+        const wantsEnemyTarget = effects.some((effect) => effect.type === 'damage_target' || String(effect.target ?? '').toLowerCase().includes('enemy'));
+        const costSummary = [
+          costs.mana > 0 ? `${costs.mana} mana` : null,
+          costs.stamina > 0 ? `${costs.stamina} stamina` : null,
+          costs.hp > 0 ? `${costs.hp} HP` : null,
+        ].filter(Boolean).join(', ') || null;
+        const effectSummary = effects.length > 0
+          ? effects.map((effect) => `${effect.type}${effect.amount > 0 ? ` ${effect.amount}` : ''}`).join(', ')
+          : (item.description || null);
+        const notEnoughMana = costs.mana > (player?.currentMp ?? 0);
+        const notEnoughStamina = costs.stamina > (player?.currentStamina ?? 0);
+        const invalidTarget = wantsEnemyTarget && !enemies.some((enemy) => enemy.id === selectedTargetId);
+        const disabledReason = quantity <= 0
+          ? 'Количество закончилось.'
+          : notEnoughMana
+            ? 'Not enough mana'
+            : notEnoughStamina
+              ? 'Not enough stamina'
+              : invalidTarget
+                ? 'Нет цели для предмета.'
+                : null;
         return {
           id: item.id,
           name: item.name,
           description: item.description,
           icon: item.icon,
           itemType: item.itemType,
-          quantity: entry.quantity,
+          quantity,
+          disabled: Boolean(disabledReason),
+          disabledReason,
+          effectSummary,
+          costSummary,
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; description: string; icon: string; itemType: string; quantity: number }>,
-    [inventory.items, resolveItemById],
+      .filter(Boolean) as Array<{ id: string; name: string; description: string; icon: string; itemType: string; quantity: number; disabled?: boolean; disabledReason?: string | null; effectSummary?: string | null; costSummary?: string | null }>,
+    [actionSlots, enemies, inventory.items, player?.currentMp, player?.currentStamina, resolveAdminItemById, resolveItemById, selectedTargetId],
   );
+
+  useEffect(() => {
+    console.info('[combatItems] loaded', battleInventoryItems);
+  }, [battleInventoryItems]);
+
+  useEffect(() => {
+    console.info('[combatSkills] loaded', availableSkills.map((entry) => entry.skillId));
+  }, [availableSkills]);
 
   const lastLog = state.logs.at(-1);
   const recentLogs = useMemo(() => state.logs.slice(-8), [state.logs]);
@@ -258,8 +408,19 @@ export function BattlePanel({
     if (getActionCost(actionType, movementType) > (player?.currentStamina ?? 0)) {
       return 'Недостаточно stamina для выбранной комбинации действий.';
     }
+    if (selectedSkill) {
+      const resourceSummary = getSkillCostSummary(selectedSkill.definition, selectedSkill.level);
+      const manaCost = resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('mp') ? sum + entry.amount : sum, 0);
+      const staminaCost = resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('stamina') ? sum + entry.amount : sum, 0);
+      if (manaCost > (player?.currentMp ?? 0)) {
+        return 'Not enough mana';
+      }
+      if (staminaCost + getActionCost(actionType, movementType) > (player?.currentStamina ?? 0)) {
+        return 'Not enough stamina';
+      }
+    }
     return null;
-  }, [actionType, movementType, player?.currentStamina]);
+  }, [actionType, movementType, player?.currentMp, player?.currentStamina, selectedSkill]);
 
   // Soft hint — shown in UI but does NOT disable the button
   const actionHint = useMemo(() => {
@@ -419,12 +580,29 @@ export function BattlePanel({
         event.preventDefault();
         setActionType(ActionType.Wait);
         void submitRoundWithAction(ActionType.Wait);
+        return;
+      }
+
+      if (!event.ctrlKey && !event.altKey && !event.metaKey) {
+        const quickSlotIndex = event.key === '0'
+          ? 9
+          : /^[1-9]$/.test(event.key)
+            ? Number(event.key) - 1
+            : -1;
+        if (quickSlotIndex >= 0) {
+          const quickSkill = availableSkills.find((skill) => skill.slotIndex === quickSlotIndex) ?? null;
+          if (quickSkill) {
+            event.preventDefault();
+            onSkillChange(quickSkill.skillId);
+            setActionType(ActionType.Attack);
+          }
+        }
       }
     };
 
     window.addEventListener('keydown', handleHotkeys);
     return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [submitRound, submitRoundWithAction]);
+  }, [availableSkills, onSkillChange, submitRound, submitRoundWithAction]);
 
   if (!player) {
     return <p>Player entity not found.</p>;
@@ -489,6 +667,12 @@ export function BattlePanel({
                 onTargetChange={setSelectedTargetId}
                 onAttackZoneChange={setAttackZone}
                 onDefenseZonesChange={setDefenseZones}
+                onUseInventoryItem={(itemId) => {
+                  console.info('[combatItems] use', { itemId, targetId: selectedTargetId });
+                  if (onUseItem) {
+                    void onUseItem(itemId, selectedTargetId);
+                  }
+                }}
                 onSubmit={submitRound}
                 showSubmitButton={false}
                 disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}

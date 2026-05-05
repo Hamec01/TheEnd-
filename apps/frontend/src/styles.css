@@ -4422,7 +4422,7 @@ h3 {
 .skill-icon-item,
 .item-icon-item {
   display: grid;
-  grid-template-columns: 26px 1fr;
+  grid-template-columns: auto 26px 1fr;
   gap: 6px;
   align-items: center;
   min-height: 34px;
@@ -4449,6 +4449,29 @@ h3 {
   font-weight: 700;
 }
 
+.skill-slot-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  padding: 0 0.35rem;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 162, 92, 0.58);
+  background: rgba(60, 40, 17, 0.78);
+  color: rgba(244, 220, 168, 0.96);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.skill-icon-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .skill-icon-label,
 .item-icon-label {
   min-width: 0;
@@ -4456,6 +4479,17 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.68rem;
+}
+
+.skill-icon-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(214, 194, 157, 0.72);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .battle-detail-popover {

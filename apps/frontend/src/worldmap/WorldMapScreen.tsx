@@ -97,7 +97,7 @@ import {
 import { ensureDialoguesLoaded } from "../services/dialogueRepository";
 import { getAllDialogues } from "../services/dialogueRepository";
 import { useDialogueRunner } from "../services/dialogueRunner";
-import { selectBestInteractionForNpc } from "../services/npcInteractionSelector";
+import { getNpcQuestMarker, selectBestInteractionForNpc } from "../services/npcInteractionSelector";
 import { getNearbyMappedNpcs } from "../services/npcMapRuntime";
 import {
   createLocationAutoTriggerKey,
@@ -682,6 +682,42 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }, [npcs, selectedNpcForInteractionId]);
   const npcById = useMemo(() => new Map(npcs.map((npc) => [npc.id, npc])), [npcs]);
+  const npcQuestMarkerPlayer = useMemo<QuestRuntimePlayer>(() => {
+    const activeQuestIds = playerQuestStates
+      .filter((entry) => entry.playerId === character.id && entry.status === "active")
+      .map((entry) => entry.questId);
+    const completedQuestIds = playerQuestStates
+      .filter((entry) => entry.playerId === character.id && entry.status === "completed")
+      .map((entry) => entry.questId);
+    const itemIds = inventory.items
+      .filter((entry) => entry.quantity > 0)
+      .map((entry) => entry.itemId);
+
+    return {
+      id: character.id,
+      level: character.level,
+      race: character.race,
+      gold: inventory.gold,
+      itemIds,
+      activeQuestIds,
+      completedQuestIds,
+    };
+  }, [character.id, character.level, character.race, inventory.gold, inventory.items, playerQuestStates]);
+  const npcQuestMarkerById = useMemo(() => {
+    const dialogues = getAllDialogues();
+    return new Map(
+      npcs.map((npc) => [
+        npc.id,
+        getNpcQuestMarker({
+          npc,
+          player: npcQuestMarkerPlayer,
+          questDefinitions,
+          playerQuestStates,
+          dialogues,
+        }),
+      ]),
+    );
+  }, [npcQuestMarkerPlayer, npcs, playerQuestStates, questDefinitions]);
   const cityMerchantById = useMemo(
     () => new Map(cityMerchants.map((merchant) => [merchant.id, merchant])),
     [cityMerchants],
@@ -3167,6 +3203,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               >
                 {locationNpcs.map((npc) => {
                   const npcPortrait = npc.fullImageUrl ?? npc.portraitUrl ?? npc.iconUrl;
+                  const questMarker = npcQuestMarkerById.get(npc.id) ?? null;
                   return (
                     <button
                       key={npc.id}
@@ -3191,6 +3228,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                     >
                       <div
                         style={{
+                          position: "relative",
                           width: 72,
                           height: 72,
                           borderRadius: 10,
@@ -3201,6 +3239,37 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                           placeItems: "center",
                         }}
                       >
+                        {questMarker ? (
+                          <span
+                            aria-hidden="true"
+                            title={questMarker === "progress" ? "Есть активный квестовый прогресс" : "Доступен новый квест"}
+                            style={{
+                              position: "absolute",
+                              top: -8,
+                              right: -6,
+                              minWidth: 24,
+                              height: 24,
+                              padding: "0 6px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(228, 186, 113, 0.9)",
+                              background: questMarker === "progress"
+                                ? "radial-gradient(circle at 30% 30%, rgba(225, 244, 203, 0.98), rgba(128, 163, 91, 0.96))"
+                                : "radial-gradient(circle at 30% 30%, rgba(255, 241, 201, 0.98), rgba(168, 123, 44, 0.96))",
+                              color: questMarker === "progress" ? "#1d2812" : "#2b1a0a",
+                              boxShadow: "0 4px 10px rgba(0, 0, 0, 0.4)",
+                              display: "grid",
+                              placeItems: "center",
+                              fontSize: 15,
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              textShadow: "none",
+                              pointerEvents: "none",
+                              zIndex: 1,
+                            }}
+                          >
+                            {questMarker === "progress" ? "?" : "!"}
+                          </span>
+                        ) : null}
                         {npcPortrait ? (
                           <img
                             src={npcPortrait}

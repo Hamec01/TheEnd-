@@ -22,7 +22,7 @@ interface ActionPlannerProps {
   maxStamina: number;
   currentMp: number;
   maxMp: number;
-  availableSkills: Array<{ skillId: string; label: string; level: number; definition: AdminSkillDefinition }>;
+  availableSkills: Array<{ slotId: string; slotIndex: number; skillId: string; label: string; level: number; definition: AdminSkillDefinition }>;
   inventoryItems: Array<{
     id: string;
     name: string;
@@ -30,6 +30,10 @@ interface ActionPlannerProps {
     icon: string;
     itemType: string;
     quantity: number;
+    disabled?: boolean;
+    disabledReason?: string | null;
+    effectSummary?: string | null;
+    costSummary?: string | null;
   }>;
   selectedSkillId: string | null;
   actionWarning?: string | null;
@@ -38,6 +42,7 @@ interface ActionPlannerProps {
   onTargetChange: (id: string) => void;
   onAttackZoneChange: (zone: TargetZone) => void;
   onDefenseZonesChange: (zones: TargetZone[]) => void;
+  onUseInventoryItem?: (itemId: string) => void | Promise<void>;
   onSubmit: () => void;
   disabled: boolean;
   showSubmitButton?: boolean;
@@ -103,6 +108,14 @@ function getGuardLabel(defenseZones: TargetZone[]): string {
 
 function getEstimatedTotalCost(actionType: ActionType, movementType: MovementType | null): number {
   return ACTION_COSTS[actionType] + (movementType ? MOVEMENT_COSTS[movementType] : 0);
+}
+
+function formatQuickSlotLabel(slotId: string): string {
+  const match = slotId.match(/quick(\d+)/i);
+  if (!match) {
+    return slotId;
+  }
+  return `Q${match[1]}`;
 }
 
 interface BodyTargetSelectorProps {
@@ -273,7 +286,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
           >
             <option value="">Basic attack</option>
             {skillOptions.map((skill) => (
-              <option key={skill.skillId} value={skill.skillId}>{skill.label} (lvl {skill.level})</option>
+              <option key={skill.slotId} value={skill.skillId}>{formatQuickSlotLabel(skill.slotId)} · {skill.label} (lvl {skill.level})</option>
             ))}
           </select>
         </div>
@@ -331,23 +344,28 @@ export function ActionPlanner(props: ActionPlannerProps) {
           <div className="skill-icon-grid">
             {props.availableSkills.map((skill) => (
               <button
-                key={skill.skillId}
+                key={skill.slotId}
                 type="button"
                 className={`skill-icon-item ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
                 onClick={() => {
                   props.onSkillChange(skill.skillId);
                   props.onActionTypeChange(ActionType.Attack);
                 }}
-                title={skill.label}
+                title={`${formatQuickSlotLabel(skill.slotId)}: ${skill.label}`}
               >
+                <span className="skill-slot-badge">{formatQuickSlotLabel(skill.slotId)}</span>
                 <span className="skill-icon-glyph">{skill.label.slice(0, 2).toUpperCase()}</span>
-                <span className="skill-icon-label">{skill.label}</span>
+                <span className="skill-icon-copy">
+                  <span className="skill-icon-label">{skill.label}</span>
+                  <span className="skill-icon-meta">{skill.slotId} · lvl {skill.level}</span>
+                </span>
               </button>
             ))}
           </div>
 
           <div className="battle-detail-popover">
             <strong>{selectedSkill?.label ?? 'Basic Attack'}</strong>
+            {selectedSkill ? <p>Slot: {selectedSkill.slotId}</p> : null}
             <p>Target: {selectedEnemy?.name ?? 'None'}</p>
             <p>Mana cost: {manaCost}</p>
             <p>Stamina cost: {skillStaminaCost + ACTION_COSTS[props.actionType]}</p>
@@ -367,7 +385,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
                   type="button"
                   className={`item-icon-item ${selectedInventoryItem === item.id ? 'is-active' : ''}`}
                   onClick={() => setSelectedInventoryItem(item.id)}
-                  title={`${item.name} x${item.quantity}`}
+                  title={`${item.name} x${item.quantity}${item.disabledReason ? ` — ${item.disabledReason}` : ''}`}
                 >
                   <span className="item-icon-glyph">{item.name.slice(0, 1)}</span>
                   <span className="item-icon-label">{item.name} x{item.quantity}</span>
@@ -387,6 +405,20 @@ export function ActionPlanner(props: ActionPlannerProps) {
                 <p>{selectedInventoryEntry.description}</p>
                 <p>Type: {selectedInventoryEntry.itemType}</p>
                 <p>Quantity: {selectedInventoryEntry.quantity}</p>
+                {selectedInventoryEntry.effectSummary ? <p>Effect: {selectedInventoryEntry.effectSummary}</p> : null}
+                {selectedInventoryEntry.costSummary ? <p>Cost: {selectedInventoryEntry.costSummary}</p> : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!props.onUseInventoryItem || selectedInventoryEntry.disabled}
+                  onClick={() => {
+                    if (props.onUseInventoryItem && !selectedInventoryEntry.disabled) {
+                      void props.onUseInventoryItem(selectedInventoryEntry.id);
+                    }
+                  }}
+                >
+                  {selectedInventoryEntry.disabled ? (selectedInventoryEntry.disabledReason ?? 'Недоступно') : 'Использовать'}
+                </button>
               </>
             ) : (
               <p>Select an item to inspect.</p>

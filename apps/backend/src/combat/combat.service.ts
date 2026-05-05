@@ -5,7 +5,6 @@ import {
   BATTLEFIELD_GRID_SIZE,
   BattlefieldTrapState,
   BattlefieldTileType,
-  CombatSkillType,
   DistanceBand,
   MovementType,
   TargetZone,
@@ -27,7 +26,7 @@ import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-runtime.service';
-import type { CustomCombatNpcDto, RuntimeBattleMapDto } from './dto.start-combat.dto';
+import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto } from './dto.start-combat.dto';
 import type { AdminItem } from '../content/content.types';
 
 interface CharacterRecord {
@@ -56,10 +55,21 @@ type WeaponCombatProfile = Pick<AdminItem, 'attackRange' | 'pierceTargets' | 'sp
 interface CombatSession {
   state: ArenaBattleState;
   playerId: string;
-  activeEffects: Array<{ type: CombatSkillType.CrushingBlock | CombatSkillType.Rage; remainingRounds: number }>;
-  enemyTempoBreaks: Array<{ targetId: string; remainingRounds: number }>;
   damageContribution: number;
   skillCooldowns: SkillCooldownEntry[];
+}
+
+interface NormalizedResourceCosts {
+  mana: number;
+  stamina: number;
+  hp: number;
+}
+
+interface NormalizedItemEffect {
+  type: string;
+  amount: number;
+  statusId?: string;
+  target?: string;
 }
 
 export interface CombatActionResult {
@@ -93,6 +103,253 @@ export class CombatService {
       perception: character.speed,
       willpower: character.willpower,
     };
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private toFiniteAmount(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+
+  private accumulateResourceCost(costs: NormalizedResourceCosts, resource: unknown, amount: unknown): void {
+    const key = String(resource ?? '').trim().toLowerCase();
+    const safeAmount = this.toFiniteAmount(amount);
+    if (safeAmount <= 0) {
+      return;
+    }
+    if (key === 'mana' || key === 'mp') {
+      costs.mana += safeAmount;
+      return;
+    }
+    if (key === 'stamina' || key === 'sta') {
+      costs.stamina += safeAmount;
+      return;
+    }
+    if (key === 'hp' || key === 'health') {
+      costs.hp += safeAmount;
+    }
+  }
+
+  private normalizeResourceCosts(rawValue: unknown): NormalizedResourceCosts {
+    const costs: NormalizedResourceCosts = { mana: 0, stamina: 0, hp: 0 };
+    const raw = this.toRecord(rawValue);
+    if (!raw) {
+      return costs;
+    }
+
+    this.accumulateResourceCost(costs, 'mana', raw.manaCost);
+    this.accumulateResourceCost(costs, 'stamina', raw.staminaCost);
+    this.accumulateResourceCost(costs, 'hp', raw.hpCost);
+
+    const directCosts = Array.isArray(raw.costs) ? raw.costs : [];
+    for (const entry of directCosts) {
+      const record = this.toRecord(entry);
+      if (!record) {
+        continue;
+      }
+      this.accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
+    }
+
+    const nestedCosts = this.toRecord(raw.costs);
+    const nestedResources = Array.isArray(nestedCosts?.resources) ? nestedCosts.resources : [];
+    for (const entry of nestedResources) {
+      const record = this.toRecord(entry);
+      if (!record) {
+        continue;
+      }
+      this.accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
+    }
+
+    return costs;
+  }
+
+  private normalizeItemEffects(item: { itemType: string; itemSubType?: string } | null, rawValue: unknown): NormalizedItemEffect[] {
+    const raw = this.toRecord(rawValue);
+    const sources: unknown[] = [];
+    const singleEffect = raw ? this.toRecord(raw.useEffect) : null;
+    if (singleEffect) {
+      sources.push(singleEffect);
+    }
+    if (Array.isArray(raw?.effects)) {
+      sources.push(...raw.effects);
+    }
+    if (Array.isArray(raw?.combatEffects)) {
+      sources.push(...raw.combatEffects);
+    }
+
+    const normalized = sources
+      .map((entry) => this.toRecord(entry))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+      .map((entry) => ({
+        type: String(entry.type ?? '').trim().toLowerCase(),
+        amount: this.toFiniteAmount(entry.amount),
+        statusId: typeof entry.statusId === 'string' ? entry.statusId : undefined,
+        target: typeof entry.target === 'string' ? entry.target : undefined,
+      }))
+      .filter((entry) => entry.type.length > 0);
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+
+    if (item?.itemSubType === 'potion_hp') {
+      return [{ type: 'heal_hp', amount: 40, target: 'self' }];
+    }
+    if (item?.itemSubType === 'potion_mp') {
+      return [{ type: 'restore_mana', amount: 30, target: 'self' }];
+    }
+    if (item?.itemType === 'consumable') {
+      return [{ type: 'restore_stamina', amount: 25, target: 'self' }];
+    }
+
+    return [];
+  }
+
+  private describeResourceCosts(costs: NormalizedResourceCosts): string | null {
+    const parts = [
+      costs.mana > 0 ? `${costs.mana} mana` : null,
+      costs.stamina > 0 ? `${costs.stamina} stamina` : null,
+      costs.hp > 0 ? `${costs.hp} HP` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
+  }
+
+  private ensureSufficientResources(entity: { id?: string; currentMp: number; currentStamina: number; currentHp: number }, costs: NormalizedResourceCosts): void {
+    console.info('[resourceCost] check', { entityId: entity.id, costs });
+    if (costs.mana > entity.currentMp) {
+      throw new BadRequestException('Not enough mana');
+    }
+    if (costs.stamina > entity.currentStamina) {
+      throw new BadRequestException('Not enough stamina');
+    }
+    if (costs.hp >= entity.currentHp) {
+      throw new BadRequestException('Not enough HP');
+    }
+  }
+
+  private spendEntityResources(entity: { id?: string; currentMp: number; currentStamina: number; currentHp: number }, costs: NormalizedResourceCosts): void {
+    console.info('[resourceCost] spend', { entityId: entity.id, costs });
+    entity.currentMp = Math.max(0, entity.currentMp - costs.mana);
+    entity.currentStamina = Math.max(0, entity.currentStamina - costs.stamina);
+    entity.currentHp = Math.max(0, entity.currentHp - costs.hp);
+  }
+
+  private resolveItemEffectTarget(
+    effect: NormalizedItemEffect,
+    actor: ArenaBattleState['entities'][number],
+    state: ArenaBattleState,
+    targetId?: string,
+  ) {
+    const targetMode = String(effect.target ?? '').trim().toLowerCase();
+    if (effect.type === 'damage_target' || targetMode.includes('enemy')) {
+      const target = state.entities.find((entity) => entity.id === targetId);
+      if (!target || !target.isAlive || target.team === actor.team) {
+        throw new BadRequestException('Invalid enemy target for item.');
+      }
+      return target;
+    }
+    if (targetMode.includes('ally')) {
+      const ally = state.entities.find((entity) => entity.id === targetId && entity.team === actor.team && entity.isAlive);
+      return ally ?? actor;
+    }
+    return actor;
+  }
+
+  private applyItemEffect(
+    effect: NormalizedItemEffect,
+    actor: ArenaBattleState['entities'][number],
+    state: ArenaBattleState,
+    round: number,
+    targetId?: string,
+  ): Array<{ round: number; actorId: string; targetId?: string; type: 'INFO' | 'HIT'; amount?: number; text: string }> {
+    const target = this.resolveItemEffectTarget(effect, actor, state, targetId);
+    switch (effect.type) {
+      case 'heal_hp': {
+        const healed = Math.max(0, Math.min(target.maxHp - target.currentHp, effect.amount));
+        target.currentHp += healed;
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'INFO', text: `${actor.name} heals ${target.name} for ${healed}` }];
+      }
+      case 'restore_mana': {
+        const restored = Math.max(0, Math.min(target.maxMp - target.currentMp, effect.amount));
+        target.currentMp += restored;
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'INFO', text: `${actor.name} restores ${restored} mana to ${target.name}` }];
+      }
+      case 'restore_stamina': {
+        const restored = Math.max(0, Math.min(target.maxStamina - target.currentStamina, effect.amount));
+        target.currentStamina += restored;
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'INFO', text: `${actor.name} restores ${restored} stamina to ${target.name}` }];
+      }
+      case 'damage_target': {
+        if (target.id === actor.id) {
+          throw new BadRequestException('Offensive item requires an enemy target.');
+        }
+        const damage = Math.max(0, effect.amount);
+        target.currentHp = Math.max(0, target.currentHp - damage);
+        target.isAlive = target.currentHp > 0;
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'HIT', amount: damage, text: `${actor.name} uses an item on ${target.name} for ${damage}` }];
+      }
+      case 'apply_status':
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'INFO', text: `${actor.name} applies ${effect.statusId ?? 'status'} to ${target.name}` }];
+      case 'remove_status':
+        return [{ round, actorId: actor.id, targetId: target.id, type: 'INFO', text: `${actor.name} removes ${effect.statusId ?? 'status'} from ${target.name}` }];
+      default:
+        throw new BadRequestException(`Unsupported item effect: ${effect.type}`);
+    }
+  }
+
+  private applyEndOfRoundRegeneration(state: ArenaBattleState): void {
+    // Regen runs after the round is resolved so both sides spend resources first, then recover once per full cycle.
+    const round = state.roundNumber;
+    const roundLogs = state.lastRound?.logs;
+    for (const entity of state.entities) {
+      if (!entity.isAlive) {
+        continue;
+      }
+
+      const staminaRegen = Math.max(0, 5 + Math.floor(entity.constitution / 2) + Math.floor(entity.willpower / 4));
+      const manaRegen = Math.max(0, 3 + Math.floor(entity.intelligence / 3) + Math.floor(entity.willpower / 3));
+      const hpRegen = Math.max(0, typeof (entity as { hpRegenPerTurn?: number }).hpRegenPerTurn === 'number'
+        ? (entity as { hpRegenPerTurn?: number }).hpRegenPerTurn ?? 0
+        : 0);
+
+      const appliedStamina = Math.max(0, Math.min(entity.maxStamina - entity.currentStamina, staminaRegen));
+      const appliedMana = Math.max(0, Math.min(entity.maxMp - entity.currentMp, manaRegen));
+      const appliedHp = Math.max(0, Math.min(entity.maxHp - entity.currentHp, hpRegen));
+
+      if (appliedStamina <= 0 && appliedMana <= 0 && appliedHp <= 0) {
+        continue;
+      }
+
+      entity.currentStamina += appliedStamina;
+      entity.currentMp += appliedMana;
+      entity.currentHp += appliedHp;
+
+      console.info('[resourceRegen] apply', {
+        entityId: entity.id,
+        stamina: appliedStamina,
+        mana: appliedMana,
+        hp: appliedHp,
+      });
+
+      const textParts = [
+        appliedStamina > 0 ? `+${appliedStamina} stamina` : null,
+        appliedMana > 0 ? `+${appliedMana} mana` : null,
+        appliedHp > 0 ? `+${appliedHp} HP` : null,
+      ].filter(Boolean);
+      const logEntry = {
+        round,
+        actorId: entity.id,
+        type: 'INFO' as const,
+        text: `${entity.name} regenerates ${textParts.join(', ')}`,
+      };
+      state.logs.push(logEntry);
+      roundLogs?.push(logEntry);
+    }
   }
 
   private normalizePlayerActionPoints(
@@ -270,20 +527,6 @@ export class CombatService {
       itemName,
       hubState,
     };
-  }
-
-  private upsertEffect(
-    effects: Array<{ type: CombatSkillType.CrushingBlock | CombatSkillType.Rage; remainingRounds: number }>,
-    effectType: CombatSkillType.CrushingBlock | CombatSkillType.Rage,
-    rounds: number,
-  ): void {
-    const existing = effects.find((item) => item.type === effectType);
-    if (existing) {
-      existing.remainingRounds = Math.max(existing.remainingRounds, rounds);
-      return;
-    }
-
-    effects.push({ type: effectType, remainingRounds: rounds });
   }
 
   private toCombatEntity(character: CharacterRecord, team: TeamSide, position: number) {
@@ -685,6 +928,14 @@ export class CombatService {
     }
 
     const player = this.toCombatEntity(character, TeamSide.Left, 1);
+    const resourceState = await this.arenaService.getCharacterResources(characterId);
+    player.currentHp = resourceState.currentHp;
+    player.currentMp = resourceState.currentMp;
+    player.currentStamina = resourceState.currentStamina;
+    player.maxHp = resourceState.maxHp;
+    player.maxMp = resourceState.maxMp;
+    player.maxStamina = resourceState.maxStamina;
+    (player as { hpRegenPerTurn?: number }).hpRegenPerTurn = resourceState.hpRegenPerTurn;
     const playerStats: StatBlock = {
       hp: player.maxHp,
       mp: player.maxMp,
@@ -698,10 +949,12 @@ export class CombatService {
       willpower: player.willpower,
     };
 
-    const normalizedCustomEnemies = customEnemies.filter((enemy) => enemy.name.trim().length > 0);
+    const normalizedCustomEnemies = customEnemies
+      .filter((enemy) => enemy.name.trim().length > 0)
+      .slice(0, MAX_COMBAT_ENEMIES);
     const count = normalizedCustomEnemies.length > 0
       ? normalizedCustomEnemies.length
-      : Math.max(1, Math.min(5, enemyCount));
+      : Math.max(1, Math.min(MAX_COMBAT_ENEMIES, enemyCount));
 
     const enemies = normalizedCustomEnemies.length > 0
       ? normalizedCustomEnemies.map((enemy, index) => this.createCustomEnemy(enemy, 3 + index))
@@ -728,8 +981,6 @@ export class CombatService {
     this.sessions.set(combatId, {
       state,
       playerId: player.id,
-      activeEffects: [],
-      enemyTempoBreaks: [],
       damageContribution: 0,
       skillCooldowns: [],
     });
@@ -749,7 +1000,7 @@ export class CombatService {
     return session.state;
   }
 
-  async useCombatItem(payload: { combatId: string; actorId: string; itemId: string }) {
+  async useCombatItem(payload: { combatId: string; actorId: string; itemId: string; targetId?: string }) {
     const session = this.sessions.get(payload.combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
@@ -760,8 +1011,15 @@ export class CombatService {
     }
 
     const item = this.contentService.resolveItemById(payload.itemId);
-    if (item.itemType !== 'consumable') {
-      throw new BadRequestException('Only consumables can be used in combat.');
+    const rawItem = this.contentService.getCollectionEntry('items', payload.itemId) as Record<string, unknown> | null;
+    const costs = this.normalizeResourceCosts(rawItem);
+    const effects = this.normalizeItemEffects(item, rawItem);
+    const actionSlots = await this.arenaService.getOrCreateActionSlots(payload.actorId);
+    if (!actionSlots.some((slot) => slot.kind === 'item' && slot.refId === payload.itemId)) {
+      throw new BadRequestException('Item is not assigned to an action slot.');
+    }
+    if (effects.length === 0) {
+      throw new BadRequestException('Item has no usable combat effects configured.');
     }
 
     const actor = session.state.entities.find((entity) => entity.id === payload.actorId);
@@ -777,13 +1035,20 @@ export class CombatService {
       throw new BadRequestException('Item is not available in inventory.');
     }
 
-    if (item.itemSubType === 'potion_hp') {
-      actor.currentHp = Math.min(actor.maxHp, actor.currentHp + 40);
-    } else if (item.itemSubType === 'potion_mp') {
-      actor.currentMp = Math.min(actor.maxMp, actor.currentMp + 30);
-    } else {
-      actor.currentStamina = Math.min(actor.maxStamina, actor.currentStamina + 25);
+    for (const effect of effects) {
+      this.resolveItemEffectTarget(effect, actor, session.state, payload.targetId);
     }
+
+    this.ensureSufficientResources(actor, costs);
+    this.spendEntityResources(actor, costs);
+    console.info('[combatItems] use', {
+      itemId: payload.itemId,
+      actorId: payload.actorId,
+      targetId: payload.targetId,
+      costs,
+    });
+
+    const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, session.state, session.state.roundNumber, payload.targetId));
 
     if (inventoryEntry.quantity === 1) {
       await this.prisma.characterInventoryItem.delete({ where: { id: inventoryEntry.id } });
@@ -793,6 +1058,22 @@ export class CombatService {
         data: { quantity: inventoryEntry.quantity - 1 },
       });
     }
+
+    let nextActionSlots = actionSlots;
+    if (inventoryEntry.quantity === 1) {
+      const clearedSlots = actionSlots
+        .filter((slot) => slot.kind === 'item' && slot.refId === payload.itemId)
+        .map((slot) => ({ slotIndex: slot.slotIndex, kind: null, refId: null, itemInstanceId: null }));
+      if (clearedSlots.length > 0) {
+        nextActionSlots = await this.arenaService.updateActionSlots(payload.actorId, clearedSlots);
+      }
+    }
+
+    await this.arenaService.updateCharacterResources(payload.actorId, {
+      currentHp: actor.currentHp,
+      currentMp: actor.currentMp,
+      currentStamina: actor.currentStamina,
+    });
 
     const latestInventory = await this.prisma.characterInventoryItem.findMany({
       where: { characterId: payload.actorId },
@@ -805,20 +1086,21 @@ export class CombatService {
       select: { gold: true },
     });
 
-    const logText = `${actor.name} uses ${item.name}`;
+    const costText = this.describeResourceCosts(costs);
     const infoLog = {
       round: session.state.roundNumber,
       actorId: actor.id,
       type: 'INFO' as const,
-      text: logText,
+      text: `${actor.name} uses ${item.name}${costText ? ` (${costText})` : ''}`,
     };
-    session.state.logs.push(infoLog);
-    session.state.lastRound?.logs.push(infoLog);
+    session.state.logs.push(infoLog, ...effectLogs);
+    session.state.lastRound?.logs.push(infoLog, ...effectLogs);
 
     return {
       state: session.state,
       inventory: latestInventory,
       gold: character?.gold ?? 0,
+      actionSlots: nextActionSlots,
     };
   }
 
@@ -836,7 +1118,6 @@ export class CombatService {
       preferredDistance?: DistanceBand;
       destinationX?: number;
       destinationY?: number;
-      skillType?: CombatSkillType;
       skillId?: string;
       skillLevel?: number;
     },
@@ -879,7 +1160,6 @@ export class CombatService {
           preferredDistance: undefined,
           destinationX: undefined,
           destinationY: undefined,
-          skillType: undefined,
           skillId: undefined,
           skillLevel: undefined,
         };
@@ -891,12 +1171,6 @@ export class CombatService {
       throw new BadRequestException('Not enough stamina for selected action points.');
     }
 
-    const hasRage = session.activeEffects.some((item) => item.type === CombatSkillType.Rage && item.remainingRounds > 0);
-    const hasCrushing = session.activeEffects.some(
-      (item) => item.type === CombatSkillType.CrushingBlock && item.remainingRounds > 0,
-    );
-
-    let powerStrikeActive = false;
     const skillLogs: string[] = [];
 
     // ── New skill system: AdminSkillDefinition + skillId ──────────────────────
@@ -956,77 +1230,6 @@ export class CombatService {
       }
     }
 
-    // ── Legacy skill system: CombatSkillType ─────────────────────────────────
-    const selectedSkill = !effectiveAction.skillId && effectiveAction.actionType === ActionType.Attack
-      ? effectiveAction.skillType ?? CombatSkillType.None
-      : CombatSkillType.None;
-    const magicPenaltyMultiplier = 0.5;
-
-    const skillCostMap: Record<CombatSkillType, number> = {
-      [CombatSkillType.None]: 0,
-      [CombatSkillType.PowerStrike]: 15,
-      [CombatSkillType.CrushingBlock]: 20,
-      [CombatSkillType.Rage]: 25,
-      [CombatSkillType.Fireball]: 18,
-      [CombatSkillType.FrostLance]: 16,
-      [CombatSkillType.ShieldBash]: 14,
-      [CombatSkillType.Whirlwind]: 22,
-    };
-
-    const skillResourceMap: Record<CombatSkillType, 'mp' | 'stamina'> = {
-      [CombatSkillType.None]: 'mp',
-      [CombatSkillType.PowerStrike]: 'mp',
-      [CombatSkillType.CrushingBlock]: 'mp',
-      [CombatSkillType.Rage]: 'mp',
-      [CombatSkillType.Fireball]: 'mp',
-      [CombatSkillType.FrostLance]: 'mp',
-      [CombatSkillType.ShieldBash]: 'stamina',
-      [CombatSkillType.Whirlwind]: 'stamina',
-    };
-
-    const cost = skillCostMap[selectedSkill];
-    if (cost > 0) {
-      const resourceType = skillResourceMap[selectedSkill];
-      if (resourceType === 'mp') {
-        if (playerEntity.currentMp < cost) {
-          throw new BadRequestException('Not enough MP for selected skill.');
-        }
-        playerEntity.currentMp -= cost;
-      } else {
-        if (playerEntity.currentStamina < cost) {
-          throw new BadRequestException('Not enough stamina for selected skill.');
-        }
-        playerEntity.currentStamina -= cost;
-      }
-
-      if (selectedSkill === CombatSkillType.PowerStrike) {
-        powerStrikeActive = true;
-        skillLogs.push(`${playerEntity.name} uses Power Strike`);
-      }
-      if (selectedSkill === CombatSkillType.CrushingBlock) {
-        this.upsertEffect(session.activeEffects, CombatSkillType.CrushingBlock, 2);
-        skillLogs.push(`${playerEntity.name} uses Crushing Block`);
-      }
-      if (selectedSkill === CombatSkillType.Rage) {
-        this.upsertEffect(session.activeEffects, CombatSkillType.Rage, 3);
-        skillLogs.push(`${playerEntity.name} enters Rage`);
-      }
-      if (selectedSkill === CombatSkillType.Fireball) {
-        skillLogs.push(`${playerEntity.name} casts Fireball`);
-      }
-      if (selectedSkill === CombatSkillType.FrostLance) {
-        skillLogs.push(`${playerEntity.name} casts Frost Lance`);
-      }
-      if (selectedSkill === CombatSkillType.ShieldBash) {
-        skillLogs.push(`${playerEntity.name} uses Shield Bash`);
-      }
-      if (selectedSkill === CombatSkillType.Whirlwind) {
-        skillLogs.push(`${playerEntity.name} uses Whirlwind`);
-      }
-    }
-
-    const crushingActiveNow = hasCrushing || selectedSkill === CombatSkillType.CrushingBlock;
-    const rageActiveNow = hasRage || selectedSkill === CombatSkillType.Rage;
     const normalizedPoints = this.normalizePlayerActionPoints(effectiveAction, playerEntity.currentStamina);
 
     const buffedPlayerAction: ArenaCombatAction = {
@@ -1035,9 +1238,7 @@ export class CombatService {
       attackZone: effectiveAction.attackZone,
       defenseZones: effectiveAction.defenseZones,
       attackPointsSpent: normalizedPoints.attackPointsSpent,
-      defensePointsSpent: crushingActiveNow
-        ? Math.max(0, Math.ceil(normalizedPoints.defensePointsSpent * 1.4))
-        : normalizedPoints.defensePointsSpent,
+      defensePointsSpent: normalizedPoints.defensePointsSpent,
       actionType: effectiveAction.actionType,
       movementType: effectiveAction.movementType,
       preferredDistance: effectiveAction.preferredDistance,
@@ -1045,46 +1246,9 @@ export class CombatService {
       destinationY: effectiveAction.destinationY,
     };
 
-    const originalStrength = playerEntity.strength;
-    const originalConstitution = playerEntity.constitution;
-
-    if (rageActiveNow) {
-      playerEntity.strength = Math.max(1, playerEntity.strength + 15);
-      playerEntity.constitution = Math.max(1, playerEntity.constitution - 10);
-    }
-
-    if (powerStrikeActive) {
-      playerEntity.strength = Math.max(1, playerEntity.strength + Math.max(1, Math.ceil(originalStrength * 0.25)));
-    }
-
-    const tempoBrokenTargets = new Set(
-      session.enemyTempoBreaks
-        .filter((item) => item.remainingRounds > 0)
-        .map((item) => item.targetId),
-    );
-
     const enemyActions: ArenaCombatAction[] = state.entities
       .filter((item) => item.team !== TeamSide.Left && item.isAlive)
-      .map((item) => {
-        const npcAction = createNpcAction(state, item.id);
-        if (!tempoBrokenTargets.has(item.id)) {
-          return npcAction;
-        }
-
-        const reducedAttack = Math.max(
-          npcAction.actionType === ActionType.Attack ? 1 : 0,
-          Math.floor(npcAction.attackPointsSpent * 0.65),
-        );
-        const reducedDefense = Math.max(0, Math.floor(npcAction.defensePointsSpent * 0.65));
-
-        skillLogs.push(`${item.name} loses tempo: -35% ATK/DEF points this round`);
-
-        return {
-          ...npcAction,
-          attackPointsSpent: reducedAttack,
-          defensePointsSpent: reducedDefense,
-        };
-      });
+      .map((item) => createNpcAction(state, item.id));
 
     const allActions: ArenaCombatAction[] = [
       buffedPlayerAction,
@@ -1117,104 +1281,14 @@ export class CombatService {
       nextState.lastRound?.logs.push(timeoutLog);
     }
 
-    if (selectedSkill === CombatSkillType.Fireball && selectedTarget?.isAlive && playerHitTargetThisRound) {
-      const extraDamage = Math.max(4, Math.floor(playerEntity.intelligence * 1.8 * magicPenaltyMultiplier));
-      selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - extraDamage);
-      selectedTarget.isAlive = selectedTarget.currentHp > 0;
-      const fireballLog = {
-        round: nextState.roundNumber,
-        actorId: playerEntity.id,
-        targetId: selectedTarget.id,
-        type: 'HIT' as const,
-        amount: extraDamage,
-        text: `${playerEntity.name} hits ${selectedTarget.name} with Fireball for ${extraDamage} (non-mage penalty)`,
-      };
-      nextState.logs.push(fireballLog);
-      nextState.lastRound?.logs.push(fireballLog);
-    }
-
-    if (selectedSkill === CombatSkillType.FrostLance && selectedTarget?.isAlive && playerHitTargetThisRound) {
-      const extraDamage = Math.max(3, Math.floor(playerEntity.intelligence * 1.4 * magicPenaltyMultiplier));
-      selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - extraDamage);
-      selectedTarget.perception = Math.max(1, selectedTarget.perception - 1);
-      selectedTarget.isAlive = selectedTarget.currentHp > 0;
-      const frostLog = {
-        round: nextState.roundNumber,
-        actorId: playerEntity.id,
-        targetId: selectedTarget.id,
-        type: 'HIT' as const,
-        amount: extraDamage,
-        text: `${playerEntity.name} impales ${selectedTarget.name} with Frost Lance for ${extraDamage} (non-mage penalty)`,
-      };
-      nextState.logs.push(frostLog);
-      nextState.lastRound?.logs.push(frostLog);
-    }
-
     const isAdjacentToTarget = Boolean(
       playerInNextState
       && selectedTarget
       && this.getBattlefieldCellDistance(playerInNextState, selectedTarget) <= 1,
     );
 
-    if (selectedSkill === CombatSkillType.ShieldBash && selectedTarget?.isAlive && playerHitTargetThisRound && isAdjacentToTarget) {
-      const bashDamage = Math.max(4, Math.floor(playerEntity.constitution * 0.8));
-      selectedTarget.currentHp = Math.max(0, selectedTarget.currentHp - bashDamage);
-      selectedTarget.currentStamina = Math.max(0, selectedTarget.currentStamina - 16);
-      selectedTarget.isAlive = selectedTarget.currentHp > 0;
-
-      const existingTempoBreak = session.enemyTempoBreaks.find((item) => item.targetId === selectedTarget.id);
-      if (existingTempoBreak) {
-        existingTempoBreak.remainingRounds = Math.max(existingTempoBreak.remainingRounds, 1);
-      } else {
-        session.enemyTempoBreaks.push({
-          targetId: selectedTarget.id,
-          remainingRounds: 1,
-        });
-      }
-
-      const bashLog = {
-        round: nextState.roundNumber,
-        actorId: playerEntity.id,
-        targetId: selectedTarget.id,
-        type: 'HIT' as const,
-        amount: bashDamage,
-        text: `${playerEntity.name} bashes ${selectedTarget.name} for ${bashDamage}; stamina -16, tempo broken`,
-      };
-      nextState.logs.push(bashLog);
-      nextState.lastRound?.logs.push(bashLog);
-    }
-
-    if (selectedSkill === CombatSkillType.Whirlwind && playerInNextState && playerHitTargetThisRound) {
-      const aliveEnemies = nextState.entities.filter((item) =>
-        item.team === TeamSide.Right
-        && item.isAlive
-        && this.getBattlefieldCellDistance(playerInNextState, item) <= 1);
-      for (const enemy of aliveEnemies) {
-        const aoeDamage = Math.max(5, Math.floor(playerEntity.strength * 0.9));
-        enemy.currentHp = Math.max(0, enemy.currentHp - aoeDamage);
-        enemy.isAlive = enemy.currentHp > 0;
-        const aoeLog = {
-          round: nextState.roundNumber,
-          actorId: playerEntity.id,
-          targetId: enemy.id,
-          type: 'HIT' as const,
-          amount: aoeDamage,
-          text: `${playerEntity.name} hits ${enemy.name} with Whirlwind for ${aoeDamage}`,
-        };
-        nextState.logs.push(aoeLog);
-        nextState.lastRound?.logs.push(aoeLog);
-      }
-    }
-
+    this.applyEndOfRoundRegeneration(nextState);
     this.refreshBattleResult(nextState);
-
-    playerEntity.strength = originalStrength;
-    playerEntity.constitution = originalConstitution;
-
-    for (const effect of session.activeEffects) {
-      effect.remainingRounds -= 1;
-    }
-    session.activeEffects = session.activeEffects.filter((item) => item.remainingRounds > 0);
 
     // Decrement skill cooldowns
     for (const cd of session.skillCooldowns) {
@@ -1223,11 +1297,6 @@ export class CombatService {
       }
     }
     session.skillCooldowns = session.skillCooldowns.filter((cd) => cd.remainingRounds > 0 || cd.oncePerCombat);
-
-    for (const debuff of session.enemyTempoBreaks) {
-      debuff.remainingRounds -= 1;
-    }
-    session.enemyTempoBreaks = session.enemyTempoBreaks.filter((item) => item.remainingRounds > 0);
 
     if (skillLogs.length > 0) {
       const entries = skillLogs.map((text) => ({
@@ -1248,9 +1317,11 @@ export class CombatService {
     session.damageContribution += roundDamage;
 
     let finishedHubState: Awaited<ReturnType<ArenaService['getHubState']>> | undefined;
+    let victoryRewards: Awaited<ReturnType<CombatService['applyVictoryRewards']>> | undefined;
 
     if (nextState.isFinished && nextState.winner === TeamSide.Left) {
-      const rewards = await this.applyVictoryRewards(playerId, nextState, session.damageContribution);
+      victoryRewards = await this.applyVictoryRewards(playerId, nextState, session.damageContribution);
+      const rewards = victoryRewards;
       if (rewards.progression.gainedExp > 0) {
         const expLog = {
           round: nextState.roundNumber,
@@ -1302,13 +1373,12 @@ export class CombatService {
           nextState.lastRound.logs.push(lootLog);
         }
       }
-
-      finishedHubState = rewards.hubState;
     }
 
     if (nextState.isFinished && !playerEntity.isAlive) {
       session.damageContribution = 0;
       playerEntity.currentHp = playerEntity.maxHp;
+      playerEntity.currentMp = playerEntity.maxMp;
       playerEntity.currentStamina = playerEntity.maxStamina;
       playerEntity.isAlive = true;
 
@@ -1322,6 +1392,19 @@ export class CombatService {
       if (nextState.lastRound) {
         nextState.lastRound.logs.push(reviveLog);
       }
+    }
+
+    const persistedPlayer = nextState.entities.find((entity) => entity.id === playerId);
+    if (persistedPlayer) {
+      await this.arenaService.updateCharacterResources(playerId, {
+        currentHp: persistedPlayer.currentHp,
+        currentMp: persistedPlayer.currentMp,
+        currentStamina: persistedPlayer.currentStamina,
+      });
+    }
+
+    if (victoryRewards) {
+      finishedHubState = await this.arenaService.getHubState(playerId);
     }
 
     return {

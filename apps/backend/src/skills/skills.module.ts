@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ArenaModule } from '../arena/arena.module';
 import { ContentModule } from '../content/content.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SkillsController } from './skills.controller';
@@ -8,7 +9,7 @@ import { SkillRuntimeService } from './skill-runtime.service';
 import { CharacterSkillsController } from './character-skills.controller';
 
 @Module({
-  imports: [ContentModule, PrismaModule],
+  imports: [ArenaModule, ContentModule, PrismaModule],
   controllers: [SkillsController, CharacterSkillsController],
   providers: [SkillsService, SkillLearningService, SkillRuntimeService],
   exports: [SkillLearningService, SkillRuntimeService],

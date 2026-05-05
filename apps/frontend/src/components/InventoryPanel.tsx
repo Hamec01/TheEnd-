@@ -2,7 +2,7 @@
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
-import type { CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
+import type { CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { AdminItem } from '../services/content/models';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { PaperDoll } from './PaperDoll';
@@ -22,6 +22,7 @@ interface InventoryPanelProps {
   learnedSkills: CharacterSkillRow[];
   availableSkills: Array<import('@theend/rpg-domain').AdminSkillDefinition>;
   skillLoadout: CharacterSkillLoadout | null;
+  actionSlots: CharacterActionSlot[];
   pendingStatAllocation: Partial<Record<PrimaryStat, number>>;
   freePointsLeft: number;
   allocatingStats: boolean;
@@ -36,6 +37,8 @@ interface InventoryPanelProps {
   onRespecStats?: () => Promise<void> | void;
   onLearnSkill?: (skillId: string) => Promise<void>;
   onSaveSkillLoadout?: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
+  onSaveActionSlots?: (slots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
+  onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
   playerAvatarUrl?: string;
@@ -275,6 +278,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   learnedSkills,
   availableSkills,
   skillLoadout,
+  actionSlots,
   pendingStatAllocation,
   freePointsLeft,
   allocatingStats,
@@ -289,6 +293,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onRespecStats,
   onLearnSkill,
   onSaveSkillLoadout,
+  onSaveActionSlots,
+  onSaveHotbar,
   onUseItem,
   onChangeFocus,
   playerAvatarUrl,
@@ -358,6 +364,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     [inventoryEntries],
   );
 
+  const actionSlotsBySlot = useMemo(
+    () => new Map(actionSlots.map((slot) => [slot.slotIndex, slot])),
+    [actionSlots],
+  );
+
   const selectedInventoryEntry = useMemo(
     () => (selectedItemId ? inventoryByItemId.get(selectedItemId) ?? null : null),
     [inventoryByItemId, selectedItemId],
@@ -395,6 +406,84 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     return full;
   }, [equipment, equippedWeapon, resolveItemById, weaponOccupiesBothHands]);
+
+  const paperDollSlotItems = useMemo(() => {
+    const full: Partial<Record<EquipmentSlotId, ItemDefinition | null>> = { ...equippedByLayoutSlot };
+
+    for (const slotId of QUICK_SLOT_IDS) {
+      const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+      const actionSlot = actionSlotsBySlot.get(slotIndex);
+      const itemId = actionSlot?.kind === 'item' ? actionSlot.refId : null;
+      full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
+    }
+
+    return full;
+  }, [actionSlotsBySlot, equippedByLayoutSlot, resolveItemById]);
+
+  const actionSlotQuickContent = useMemo(() => {
+    const content: Partial<Record<EquipmentSlotId, string>> = {};
+    for (const slotId of QUICK_SLOT_IDS) {
+      const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+      const slot = actionSlotsBySlot.get(slotIndex);
+      if (!slot?.kind || !slot.refId) {
+        continue;
+      }
+      if (slot.kind === 'item') {
+        const quantity = inventoryByItemId.get(slot.refId)?.quantity ?? 0;
+        content[slotId] = quantity > 0 ? `x${quantity}` : '0';
+        continue;
+      }
+
+      const learned = learnedSkills.find((entry) => entry.skillId === slot.refId) ?? null;
+      const def = learned?.definition ?? availableSkills.find((entry) => entry.id === slot.refId) ?? null;
+      content[slotId] = def ? def.name.slice(0, 2).toUpperCase() : '??';
+    }
+    return content;
+  }, [actionSlotsBySlot, availableSkills, inventoryByItemId, learnedSkills]);
+
+  function isUsableHotbarItem(item: ItemDefinition | null): boolean {
+    if (!item) {
+      return false;
+    }
+
+    const adminItem = (resolveAdminItemById ? resolveAdminItemById(item.id) : null) as (AdminItem & Record<string, unknown>) | null;
+    return item.itemType === 'consumable'
+      || adminItem?.slot === 'quick'
+      || adminItem?.type === 'potion'
+      || adminItem?.isUsable === true
+      || adminItem?.usableInCombat === true
+      || adminItem?.isCombatUsable === true
+      || Boolean(adminItem?.useEffect)
+      || (Array.isArray(adminItem?.effects) && adminItem.effects.length > 0)
+      || (Array.isArray(adminItem?.combatEffects) && adminItem.combatEffects.length > 0);
+  }
+
+  async function assignItemToActionSlot(slotId: EquipmentSlotId, itemId: string | null): Promise<void> {
+    const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+    if (slotIndex < 0) {
+      return;
+    }
+
+    if (!onSaveActionSlots) {
+      onStatus('Сохранение active slots недоступно.');
+      return;
+    }
+
+    if (itemId) {
+      const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+      if (!isUsableHotbarItem(item)) {
+        onStatus('В быстрые слоты можно ставить только используемые предметы.');
+        return;
+      }
+    }
+
+    console.info('[actionSlots] assign', { slotIndex, kind: itemId ? 'item' : null, refId: itemId });
+    try {
+      await onSaveActionSlots([{ slotIndex, kind: itemId ? 'item' : null, refId: itemId, itemInstanceId: null }]);
+    } catch (error) {
+      onStatus(`Не удалось сохранить action slot: ${(error as Error).message}`);
+    }
+  }
 
   function findEquippedSlotId(itemId: string): EquipmentSlotId | null {
     const equippedCoreSlot = findEquippedCoreSlot(equipment, itemId);
@@ -742,10 +831,35 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   // ── Skills page helpers ──────────────────────────────────────────────
-  function assignSkillToQuickSlot(slotId: EquipmentSlotId, skillId: string | null): void {
+  async function assignSkillToQuickSlot(slotId: EquipmentSlotId, skillId: string | null): Promise<void> {
     const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
-    if (slotIndex < 0) return;
-    setSkillsDraftSlots((prev) => prev.map((s) => s.slotIndex === slotIndex ? { ...s, skillId } : s));
+    if (slotIndex < 0) {
+      return;
+    }
+
+    if (skillId && !skillsLearnedIds.has(skillId)) {
+      onStatus('Можно назначать только уже изученные навыки.');
+      return;
+    }
+
+    console.info('[actionSlots] assign', { characterId: character.id, slotIndex, kind: skillId ? 'skill' : null, refId: skillId });
+    if (!onSaveActionSlots) {
+      return;
+    }
+
+    try {
+      setIsSavingSkillLoadout(true);
+      console.info('[actionSlots] save', {
+        characterId: character.id,
+        slots: [{ slotIndex, kind: skillId ? 'skill' : null, refId: skillId, itemInstanceId: null }],
+      });
+      await onSaveActionSlots([{ slotIndex, kind: skillId ? 'skill' : null, refId: skillId, itemInstanceId: null }]);
+    } catch (error) {
+      console.warn('[actionSlots] save failed', error);
+      onStatus(`Не удалось сохранить active slot: ${(error as Error).message}`);
+    } finally {
+      setIsSavingSkillLoadout(false);
+    }
   }
 
   async function saveSkillsLoadout(): Promise<void> {
@@ -854,15 +968,17 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   );
   const skillsQuickContent = useMemo<Partial<Record<EquipmentSlotId, string>>>(() => {
     const result: Partial<Record<EquipmentSlotId, string>> = {};
-    for (const slot of skillsDraftSlots) {
-      if (!slot.unlocked || !slot.skillId) continue;
+    for (const slot of actionSlots) {
+      if (slot.kind !== 'skill' || !slot.refId) continue;
       const slotId = QUICK_SLOT_IDS[slot.slotIndex];
       if (!slotId) continue;
-      const def = availableSkills.find((s) => s.id === slot.skillId);
-      result[slotId] = (def?.name ?? slot.skillId).slice(0, 2).toUpperCase();
+      const def = availableSkills.find((s) => s.id === slot.refId);
+      result[slotId] = def
+        ? def.name.slice(0, 2).toUpperCase()
+        : '??';
     }
     return result;
-  }, [availableSkills, skillsDraftSlots]);
+  }, [actionSlots, availableSkills]);
   const skillsSelectedDef = useMemo(() => {
     if (!selectedLearnedSkillId) return null;
     const learned = skillsLearnedFull.find((e) => e.skillId === selectedLearnedSkillId);
@@ -1019,13 +1135,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             <PaperDoll
               race={paperDollRace}
               imageSrc={silhouetteSrc}
-              slotItems={equippedByLayoutSlot}
+              slotItems={paperDollSlotItems}
               slotLabels={SLOT_LABELS}
+              slotTextContent={actionSlotQuickContent}
               resolveItemImage={resolveItemImage}
               canDropItemInSlot={(slotId, itemId) => {
                 try {
                   const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
                   if (!item) return false;
+                  if ((QUICK_SLOT_IDS as string[]).includes(slotId)) return isUsableHotbarItem(item);
                   if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) return false;
                   return canEquipItemInSlot(item, slotId);
                 } catch { return false; }
@@ -1037,18 +1155,30 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 setSilhouetteBroken(true);
               }}
               onSlotClick={(slotId) => {
-                const equippedItem = equippedByLayoutSlot[slotId] ?? null;
-                if (equippedItem) { setSelectedItemId(equippedItem.id); setItemDetailOpen(true); return; }
+                const isQuickSlot = (QUICK_SLOT_IDS as string[]).includes(slotId);
+                const displayedItem = paperDollSlotItems[slotId] ?? null;
+                if (displayedItem) { setSelectedItemId(displayedItem.id); setItemDetailOpen(true); return; }
+                if (selectedItem && isQuickSlot) { void assignItemToActionSlot(slotId, selectedItem.id); return; }
                 if (selectedItem) { void equipToSlot(slotId, selectedItem); }
               }}
               onSlotDrop={(slotId, itemId) => {
                 try {
                   const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-                  if (item) { void equipToSlot(slotId, item); }
+                  if (!item) { return; }
+                  if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                    void assignItemToActionSlot(slotId, item.id);
+                    return;
+                  }
+                  void equipToSlot(slotId, item);
                 } catch { /* ignore invalid drop */ }
               }}
               onSlotContextMenu={(slotId) => {
-                if (equippedByLayoutSlot[slotId]) { void unequipFromSlot(slotId); }
+                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                  console.info('[actionSlots] clear', { slotIndex: QUICK_SLOT_IDS.indexOf(slotId) });
+                  void assignItemToActionSlot(slotId, null);
+                } else if (equippedByLayoutSlot[slotId]) {
+                  void unequipFromSlot(slotId);
+                }
               }}
             />
           ) : null}
@@ -1066,13 +1196,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             <PaperDoll
               race={paperDollRace}
               imageSrc={silhouetteSrc}
-              slotItems={equippedByLayoutSlot}
+              slotItems={paperDollSlotItems}
               slotLabels={SLOT_LABELS}
               slotTextContent={skillsQuickContent}
               selectedSlotId={selectedQuickSlotId}
               resolveItemImage={resolveItemImage}
               canDropItemInSlot={(slotId, itemId) => {
-                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) return false;
+                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                  try {
+                    const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                    return isUsableHotbarItem(item);
+                  } catch { return false; }
+                }
                 try {
                   const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
                   if (!item) return false;
@@ -1090,17 +1225,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 const isQuickSlot = (QUICK_SLOT_IDS as string[]).includes(slotId);
                 if (isQuickSlot) {
                   const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
-                  const currentSkillId = skillsDraftSlots.find((s) => s.slotIndex === slotIndex)?.skillId ?? null;
+                  const currentSlot = actionSlotsBySlot.get(slotIndex);
+                  const currentSkillId = currentSlot?.kind === 'skill' ? currentSlot.refId : null;
                   if (selectedLearnedSkillId && !currentSkillId) {
-                    // Assign currently-selected skill to this empty slot
-                    assignSkillToQuickSlot(slotId, selectedLearnedSkillId);
+                    void assignSkillToQuickSlot(slotId, selectedLearnedSkillId);
                     setSelectedQuickSlotId(null);
                   } else if (currentSkillId) {
-                    // Show the skill assigned to this slot
                     setSelectedLearnedSkillId(currentSkillId);
                     setSelectedQuickSlotId(slotId === selectedQuickSlotId ? null : slotId);
                   } else {
-                    // Select empty slot waiting for assignment
                     setSelectedQuickSlotId(slotId === selectedQuickSlotId ? null : slotId);
                   }
                 } else {
@@ -1110,21 +1243,25 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 }
               }}
               onSlotDrop={(slotId, itemId) => {
-                if (!(QUICK_SLOT_IDS as string[]).includes(slotId)) {
-                  try {
-                    const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-                    if (item) { void equipToSlot(slotId, item); }
-                  } catch { /* ignore */ }
-                }
+                try {
+                  const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                  if (!item) { return; }
+                  if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                    void assignItemToActionSlot(slotId, item.id);
+                    return;
+                  }
+                  void equipToSlot(slotId, item);
+                } catch { /* ignore */ }
               }}
               onSkillDrop={(slotId, skillId) => {
                 if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
-                  assignSkillToQuickSlot(slotId, skillId);
+                  void assignSkillToQuickSlot(slotId, skillId);
                 }
               }}
               onSlotContextMenu={(slotId) => {
                 if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
-                  assignSkillToQuickSlot(slotId, null);
+                  console.info('[actionSlots] clear', { slotIndex: QUICK_SLOT_IDS.indexOf(slotId) });
+                  void assignSkillToQuickSlot(slotId, null);
                 } else if (equippedByLayoutSlot[slotId]) {
                   void unequipFromSlot(slotId);
                 }
@@ -1642,7 +1779,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                           }}
                           onClick={() => {
                             if (selectedQuickSlotId) {
-                              assignSkillToQuickSlot(selectedQuickSlotId, entry.skillId);
+                              void assignSkillToQuickSlot(selectedQuickSlotId, entry.skillId);
                               setSelectedQuickSlotId(null);
                             }
                             setSelectedLearnedSkillId(entry.skillId);
@@ -1727,7 +1864,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          assignSkillToQuickSlot(selectedQuickSlotId, skillsSelectedDef.def.id);
+                          void assignSkillToQuickSlot(selectedQuickSlotId, skillsSelectedDef.def.id);
                           setSelectedQuickSlotId(null);
                         }}
                       >

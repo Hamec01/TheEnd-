@@ -12,6 +12,8 @@ import {
 } from 'class-validator';
 import { Race } from '@theend/rpg-domain';
 
+export const MAX_COMBAT_ENEMIES = 10;
+
 class EquipmentPayloadDto {
   @IsOptional()
   @IsString()
@@ -423,11 +425,11 @@ export class StartCombatDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(5)
+  @Max(MAX_COMBAT_ENEMIES)
   enemyCount?: number;
 
   @IsOptional()
-  @ArrayMaxSize(5)
+  @ArrayMaxSize(MAX_COMBAT_ENEMIES)
   @ValidateNested({ each: true })
   @Type(() => CustomCombatNpcDto)
   customEnemies?: CustomCombatNpcDto[];

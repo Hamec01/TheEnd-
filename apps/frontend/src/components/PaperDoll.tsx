@@ -133,7 +133,7 @@ export function PaperDoll({
 
             const equippedItem = slotItems[slot.id] ?? null;
             const label = slotLabels[slot.id] ?? slot.id;
-            const textBadge = !equippedItem ? (slotTextContent?.[slot.id] ?? null) : null;
+            const textBadge = slotTextContent?.[slot.id] ?? null;
             const isSelected = slot.id === selectedSlotId;
 
             return (
@@ -194,7 +194,7 @@ export function PaperDoll({
                   }
                   onSlotDrop(slot.id, itemId);
                 }}
-                title={equippedItem ? `${label}: ${equippedItem.name}` : textBadge ? `${label}: ${textBadge}` : label}
+                title={equippedItem ? `${label}: ${equippedItem.name}${textBadge ? ` (${textBadge})` : ''}` : textBadge ? `${label}: ${textBadge}` : label}
                 data-slot-id={slot.id}
               >
                 {debug ? <span className="paper-doll-slot-id">{slot.id}</span> : null}
@@ -217,6 +217,7 @@ export function PaperDoll({
                       <span>{equippedItem.name}</span>
                       <small>{equippedItem.itemType} / {equippedItem.itemSubType}</small>
                     </span>
+                    {textBadge ? <span className="paper-doll-slot-skill-badge">{textBadge}</span> : null}
                   </>
                 ) : textBadge ? (
                   <>

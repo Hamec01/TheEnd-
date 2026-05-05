@@ -15,6 +15,7 @@ type UseCombatItemResponse = {
   state: ArenaBattleState;
   inventory: Array<{ itemId: string; quantity: number }>;
   gold: number;
+  actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>;
 };
 
 @Controller('combat')
@@ -40,7 +41,6 @@ export class CombatController {
       preferredDistance: dto.preferredDistance,
       destinationX: dto.destinationX,
       destinationY: dto.destinationY,
-      skillType: dto.skillType,
       skillId: dto.skillId,
       skillLevel: dto.skillLevel,
     });

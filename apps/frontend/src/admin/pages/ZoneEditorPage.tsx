@@ -38,6 +38,13 @@ const ADMIN_EDITOR_CHARACTER = {
     perception: 5,
     willpower: 5,
   },
+  currentHp: 120,
+  maxHp: 120,
+  currentMp: 40,
+  maxMp: 40,
+  currentStamina: 80,
+  maxStamina: 80,
+  hpRegenPerTurn: 0,
 } as const;
 
 export function ZoneEditorPage() {

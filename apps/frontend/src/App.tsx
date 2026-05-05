@@ -22,7 +22,10 @@ import {
   allocateStats,
   buyArenaItem,
   createCharacter,
+  type CharacterActionSlot,
+  type CharacterHotbarSlot,
   getCharacterSkills,
+  getCharacterActionSlots,
   type ArenaHubState,
   type CharacterSkillLoadout,
   type CharacterSkillRow,
@@ -34,9 +37,12 @@ import {
   learnSkill,
   listCharacters,
   loginAccount,
+  MAX_COMBAT_ENEMIES,
   registerAccount,
   startCombat,
   startCustomCombat,
+  updateCharacterActionSlots,
+  updateCharacterHotbar,
   updateSkillLoadout,
   sellArenaItem,
   unequipArenaItem,
@@ -140,6 +146,7 @@ interface HubStatePayload {
   character: ArenaCharacter;
   inventory: InventoryState;
   equipment: Equipment;
+  actionSlots: CharacterActionSlot[];
 }
 
 interface ArenaNpcTemplate {
@@ -256,6 +263,24 @@ function createEmptySkillLoadout(characterId: string): CharacterSkillLoadout {
       slotType: 'ANY' as const,
     })),
   };
+}
+
+function createEmptyItemHotbar(): CharacterHotbarSlot[] {
+  return Array.from({ length: 10 }, (_, slotIndex) => ({
+    slotIndex,
+    itemId: null,
+    itemInstanceId: null,
+  }));
+}
+
+function createEmptyActionSlots(): CharacterActionSlot[] {
+  return Array.from({ length: 10 }, (_, slotIndex) => ({
+    slotId: (`quick${slotIndex + 1}` as CharacterActionSlot['slotId']),
+    slotIndex,
+    kind: null,
+    refId: null,
+    itemInstanceId: null,
+  }));
 }
 
 function getWeaponDamagePreview(item: ItemDefinition): string {
@@ -747,6 +772,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
   const [equipment, setEquipment] = useState<Equipment>({ ...EMPTY_EQUIPMENT });
+  const [actionSlots, setActionSlots] = useState<CharacterActionSlot[]>(() => createEmptyActionSlots());
 
   const [combatId, setCombatId] = useState<string | null>(null);
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
@@ -1020,9 +1046,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, []);
 
   const refreshCharacterSkills = useCallback(async (characterId: string) => {
-    const [skills, loadout] = await Promise.allSettled([
+    const [skills, loadout, actionSlotResult] = await Promise.allSettled([
       getCharacterSkills(characterId),
       getSkillLoadout(characterId),
+      getCharacterActionSlots(characterId),
     ]);
 
     if (skills.status === 'fulfilled') {
@@ -1037,6 +1064,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     } else {
       console.warn('[skills] Failed to load character loadout. Falling back to default slots.', loadout.reason);
       setSkillLoadout(createEmptySkillLoadout(characterId));
+    }
+
+    if (actionSlotResult.status === 'fulfilled') {
+      console.info('[actionSlots] load', { characterId, slots: actionSlotResult.value });
+      setActionSlots(actionSlotResult.value);
+    } else {
+      console.warn('[actionSlots] Failed to load character action slots. Falling back to empty slots.', actionSlotResult.reason);
+      setActionSlots(createEmptyActionSlots());
     }
   }, []);
 
@@ -1477,6 +1512,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCharacter(hub.character);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
+    setActionSlots(hub.actionSlots ?? createEmptyActionSlots());
     const profile = loadCharacterProfile(hub.character.id);
     if (profile?.avatarUrl) {
       setPlayerAvatarUrl(profile.avatarUrl);
@@ -1850,25 +1886,27 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const battleSkillOptions = useMemo(() => {
     const bySkillId = new Map(characterSkills.map((entry) => [entry.skillId, entry]));
-    return (skillLoadout?.slots ?? [])
-      .filter((slot) => slot.unlocked && Boolean(slot.skillId))
+    return actionSlots
+      .filter((slot) => slot.kind === 'skill' && Boolean(slot.refId))
       .map((slot) => {
-        const skillId = slot.skillId as string;
+        const skillId = slot.refId as string;
         const row = bySkillId.get(skillId) ?? null;
         const definition = row?.definition ?? runtimeAdminSkills.find((skill) => skill.id === skillId) ?? null;
-        if (!definition || definition.isPassive || definition.isActive === false || !definition.isPublished || definition.isHidden) {
+        if (!definition || definition.isActive === false || definition.isPassive || !definition.isPublished || definition.isHidden) {
           return null;
         }
         return {
+          slotId: slot.slotId,
+          slotIndex: slot.slotIndex,
           skillId,
           level: row?.level ?? 1,
           label: definition.name || skillId,
           definition,
         };
       })
-      .filter((entry, index, list): entry is { skillId: string; level: number; label: string; definition: AdminSkillDefinition } => Boolean(entry)
-        && list.findIndex((candidate) => candidate?.skillId === entry?.skillId) === index);
-  }, [characterSkills, runtimeAdminSkills, skillLoadout?.slots]);
+      .filter((entry, index, list): entry is { slotId: CharacterActionSlot['slotId']; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition } => Boolean(entry)
+        && list.findIndex((candidate) => candidate?.slotIndex === entry?.slotIndex) === index);
+  }, [actionSlots, characterSkills, runtimeAdminSkills]);
 
   useEffect(() => {
     if (selectedCombatSkillId && battleSkillOptions.some((entry) => entry.skillId === selectedCombatSkillId)) {
@@ -1914,6 +1952,36 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const nextLoadout = await updateSkillLoadout(character.id, slots);
     setSkillLoadout(nextLoadout);
     setStatus('Боевой loadout сохранён.');
+  }, [character]);
+
+  const handleSaveCharacterHotbar = useCallback(async (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => {
+    if (!character) {
+      return;
+    }
+
+    console.info('[hotbar] save', { characterId: character.id, slots });
+    const nextHotbar = await updateCharacterHotbar(character.id, slots);
+    setActionSlots((current) => current.map((slot) => {
+      const update = nextHotbar.find((entry) => entry.slotIndex === slot.slotIndex);
+      if (!update) {
+        return slot;
+      }
+      return update.itemId
+        ? { slotId: slot.slotId, slotIndex: update.slotIndex, kind: 'item' as const, refId: update.itemId, itemInstanceId: update.itemInstanceId ?? null }
+        : { slotId: slot.slotId, slotIndex: update.slotIndex, kind: null, refId: null, itemInstanceId: null };
+    }));
+    setStatus('Быстрые слоты сохранены.');
+  }, [character]);
+
+  const handleSaveCharacterActionSlots = useCallback(async (slots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>) => {
+    if (!character) {
+      return;
+    }
+
+    console.info('[actionSlots] save', { characterId: character.id, slots });
+    const nextSlots = await updateCharacterActionSlots(character.id, slots);
+    setActionSlots(nextSlots);
+    setStatus('Активные слоты сохранены.');
   }, [character]);
 
   async function handleBattleFinished(nextState: ArenaBattleState, resolvedHubState?: ArenaHubState): Promise<void> {
@@ -1974,15 +2042,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     try {
       const battleMapPayload = toRuntimeBattleMapPayload(battleMapIdOverride ? resolveBattleMapForCombat(battleMapIdOverride) : selectedBattleMap);
       const customEnemies = options?.customEnemies ?? (activeArenaNpcs.length > 0 ? activeArenaNpcs.map(toCustomNpcPayload) : null);
-      const started = customEnemies && customEnemies.length > 0
-        ? await startCustomCombat(character.id, customEnemies, battleMapPayload)
-        : await startCombat(character.id, options?.enemyCount ?? 3, battleMapPayload);
+      const normalizedCustomEnemies = customEnemies?.slice(0, MAX_COMBAT_ENEMIES) ?? null;
+      const started = normalizedCustomEnemies && normalizedCustomEnemies.length > 0
+        ? await startCustomCombat(character.id, normalizedCustomEnemies, battleMapPayload)
+        : await startCombat(character.id, Math.max(1, Math.min(MAX_COMBAT_ENEMIES, options?.enemyCount ?? 3)), battleMapPayload);
       setOverlayPanel(null);
       setCombatId(started.combatId);
       setPlayerCombatId(started.playerId);
       setCombatState(started.state);
       setBattleWindowOpen(true);
-      setStatus(customEnemies && customEnemies.length > 0 ? `Battle started against ${customEnemies.length} arena NPC.` : 'Battle started.');
+      setStatus(normalizedCustomEnemies && normalizedCustomEnemies.length > 0 ? `Battle started against ${normalizedCustomEnemies.length} arena NPC.` : 'Battle started.');
     } catch (error) {
       battleStartSnapshotRef.current = null;
       setStatus(`Battle error: ${(error as Error).message}`);
@@ -2010,7 +2079,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function handleUseConsumable(itemId: string): Promise<void> {
+  async function handleUseConsumable(itemId: string, targetId?: string): Promise<void> {
     if (!combatId || !playerCombatId || !combatState || combatState.isFinished) {
       setStatus('Consumables can be used only during an active battle.');
       return;
@@ -2021,6 +2090,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         combatId,
         actorId: playerCombatId,
         itemId,
+        targetId,
       });
       setCombatState(result.state);
       setInventory((prev) => ({
@@ -2028,6 +2098,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         gold: result.gold,
         items: result.inventory,
       }));
+      if (result.actionSlots) {
+        setActionSlots(result.actionSlots);
+      }
       setStatus(`${resolveItem(itemId).name} used.`);
     } catch (error) {
       setStatus(`Consumable error: ${(error as Error).message}`);
@@ -2407,6 +2480,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             learnedSkills={characterSkills}
             availableSkills={runtimeAdminSkills}
             skillLoadout={skillLoadout}
+            actionSlots={actionSlots}
             pendingStatAllocation={pendingStatAllocation}
             freePointsLeft={freePointsLeft}
             allocatingStats={allocatingStats}
@@ -2425,6 +2499,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onRespecStats={respecStats}
             onLearnSkill={handleLearnCharacterSkill}
             onSaveSkillLoadout={handleSaveCharacterSkillLoadout}
+            onSaveActionSlots={handleSaveCharacterActionSlots}
+            onSaveHotbar={handleSaveCharacterHotbar}
             onUseItem={handleUseConsumable}
             onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={playerAvatarUrl}
@@ -2749,6 +2825,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 playerId={playerCombatId!}
                 state={combatState}
                 inventory={inventory}
+                actionSlots={actionSlots}
                 mapImageUrl={activeCombatBattleMap.imageUrl}
                 mapCalibration={{
                   cellSizePx: activeCombatBattleMap.cellSizePx,
@@ -2760,10 +2837,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 onSkillChange={setSelectedCombatSkillId}
                 onStateChange={setCombatState}
                 onStatus={setStatus}
+                onUseItem={handleUseConsumable}
                 onBattleFinished={handleBattleFinished}
                 onClose={() => setBattleWindowOpen(false)}
                 playerAvatarUrl={playerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+                resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
                 playerEquipment={equipment}
               />
             </section>

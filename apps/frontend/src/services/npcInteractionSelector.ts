@@ -11,6 +11,8 @@ export type BestNpcInteraction =
   | { kind: 'dialogue'; npcId: string; dialogueId: string }
   | { kind: 'npc_menu'; npcId: string };
 
+export type NpcQuestMarkerMode = 'available' | 'progress' | null;
+
 export interface QuestNpcStage {
   questId: string;
   questTitle: string;
@@ -22,6 +24,223 @@ export interface QuestNpcStage {
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+const DIALOGUE_CONDITION_ALIASES: Record<string, string> = {
+  playerLevel: 'player_level',
+  playerRace: 'player_race',
+  playerProfession: 'player_profession',
+  questActive: 'quest_active',
+  questCompleted: 'quest_completed',
+  questNotStarted: 'quest_not_started',
+  objectiveNotCompleted: 'objective_not_completed',
+  missingItem: 'missing_item',
+  missingQuestItem: 'missing_quest_item',
+  hasSkill: 'has_skill',
+  missingSkill: 'missing_skill',
+  hasFlag: 'has_flag',
+  flagEquals: 'flag_equals',
+  raceIs: 'race_is',
+  classIs: 'class_is',
+  levelMin: 'level_min',
+  levelMax: 'level_max',
+  factionRelationMin: 'faction_relation_min',
+  questFailed: 'quest_failed',
+  objectiveCompleted: 'objective_completed',
+  hasItem: 'has_item',
+  hasQuestItem: 'has_quest_item',
+  goldAtLeast: 'gold_at_least',
+  factionReputation: 'faction_reputation',
+  kingdomReputation: 'kingdom_reputation',
+  npcDisposition: 'npc_disposition',
+  globalFlag: 'global_flag',
+  questFlag: 'quest_flag',
+};
+
+const SUPPORTED_DIALOGUE_CONDITION_TYPES = new Set([
+  'player_level',
+  'player_race',
+  'player_profession',
+  'quest_active',
+  'quest_completed',
+  'quest_not_started',
+  'quest_failed',
+  'objective_completed',
+  'objective_not_completed',
+  'has_item',
+  'missing_item',
+  'has_quest_item',
+  'missing_quest_item',
+  'has_skill',
+  'missing_skill',
+  'has_flag',
+  'flag_equals',
+  'race_is',
+  'class_is',
+  'level_min',
+  'level_max',
+  'faction_relation_min',
+  'faction_reputation',
+  'kingdom_reputation',
+  'gold_at_least',
+  'npc_disposition',
+  'global_flag',
+  'quest_flag',
+  'time_of_day',
+]);
+
+function normalizeDialogueConditionType(raw: unknown): string {
+  const value = String(raw ?? '').trim();
+  if (!value) {
+    return '';
+  }
+  return DIALOGUE_CONDITION_ALIASES[value] ?? value;
+}
+
+function evaluateDialogueConditionsStrict(
+  player: QuestRuntimePlayer,
+  npc: NpcDefinition,
+  conditions: Array<{ type?: string }> | undefined,
+  context: string,
+): boolean {
+  for (const condition of asArray(conditions)) {
+    const normalizedType = normalizeDialogueConditionType(condition.type);
+    if (!normalizedType || !SUPPORTED_DIALOGUE_CONDITION_TYPES.has(normalizedType)) {
+      console.warn(`[npcQuestMarker] Unsupported condition type in ${context}: ${String(condition.type ?? '')}`);
+      return false;
+    }
+  }
+  return evaluateDialogueConditions(player, npc, (conditions as any[]) ?? []);
+}
+
+function normalizeActionType(raw: unknown): string {
+  return String(raw ?? '').trim().replace(/_/g, '').toLowerCase();
+}
+
+function getDialogueStartNodeStrict(player: QuestRuntimePlayer, npc: NpcDefinition, dialogue: DialogueDefinition): DialogueNode | null {
+  if (dialogue.status !== 'active') {
+    return null;
+  }
+
+  const configuredStart = dialogue.startNodeId?.trim()
+    ? asArray(dialogue.nodes).find((node) => node.id === dialogue.startNodeId.trim()) ?? null
+    : null;
+
+  if (configuredStart && evaluateDialogueConditionsStrict(player, npc, configuredStart.conditions as Array<{ type?: string }> | undefined, `dialogue ${dialogue.id} start node ${configuredStart.id}`)) {
+    return configuredStart;
+  }
+
+  for (const node of asArray(dialogue.nodes)) {
+    if (evaluateDialogueConditionsStrict(player, npc, node.conditions as Array<{ type?: string }> | undefined, `dialogue ${dialogue.id} node ${node.id}`)) {
+      return node;
+    }
+  }
+
+  return null;
+}
+
+function getMarkerStartableQuestIds(player: QuestRuntimePlayer, questIds: string[]): string[] {
+  const uniqueQuestIds = [...new Set(questIds.map((questId) => questId.trim()).filter(Boolean))];
+  return uniqueQuestIds.filter((questId) => {
+    const existing = player.activeQuestIds?.includes(questId)
+      || player.completedQuestIds?.includes(questId)
+      || false;
+    if (existing) {
+      return false;
+    }
+    const quest = getQuestById(questId);
+    return Boolean(quest && canStartQuest(player, quest));
+  });
+}
+
+function collectDialogueQuestStartIdsFromStartNode(player: QuestRuntimePlayer, npc: NpcDefinition, dialogue: DialogueDefinition): string[] {
+  const startNode = getDialogueStartNodeStrict(player, npc, dialogue);
+  if (!startNode) {
+    return [];
+  }
+
+  const questIds: string[] = [];
+  for (const action of asArray(startNode.actions)) {
+    if (normalizeActionType(action.type) === 'startquest' && typeof action.questId === 'string' && action.questId.trim()) {
+      questIds.push(action.questId.trim());
+    }
+  }
+
+  for (const choice of asArray(startNode.choices)) {
+    if (!evaluateDialogueConditionsStrict(player, npc, choice.conditions as Array<{ type?: string }> | undefined, `dialogue ${dialogue.id} choice ${choice.id}`)) {
+      continue;
+    }
+    if (typeof choice.giveQuest === 'string' && choice.giveQuest.trim()) {
+      questIds.push(choice.giveQuest.trim());
+    }
+    for (const action of asArray(choice.actions)) {
+      if (normalizeActionType(action.type) === 'startquest' && typeof action.questId === 'string' && action.questId.trim()) {
+        questIds.push(action.questId.trim());
+      }
+    }
+  }
+
+  return questIds;
+}
+
+function nodeHasQuestProgressActions(node: DialogueNode, activeQuestIds: Set<string>): boolean {
+  const hasRelevantQuestId = (questId: string | undefined): boolean => {
+    if (!questId) {
+      return false;
+    }
+    return activeQuestIds.has(questId.trim());
+  };
+
+  for (const action of asArray(node.actions)) {
+    const type = normalizeActionType(action.type);
+    if (type === 'completeobjective' || type === 'completestep' || type === 'completequest' || type === 'advancequest') {
+      if (!action.questId || hasRelevantQuestId(action.questId)) {
+        return true;
+      }
+    }
+    if ((type === 'giverewards' || type === 'givegold' || type === 'giveitem' || type === 'givequestitem') && action.questId && hasRelevantQuestId(action.questId)) {
+      return true;
+    }
+  }
+
+  for (const choice of asArray(node.choices)) {
+    const completeStepQuestId = typeof choice.completeStep === 'object' && choice.completeStep ? choice.completeStep.questId : undefined;
+    const completeObjectiveQuestId = typeof choice.completeObjective === 'object' && choice.completeObjective ? choice.completeObjective.questId : undefined;
+    if ((typeof choice.completeQuest === 'string' && hasRelevantQuestId(choice.completeQuest))
+      || (completeStepQuestId && hasRelevantQuestId(completeStepQuestId))
+      || (completeObjectiveQuestId && hasRelevantQuestId(completeObjectiveQuestId))) {
+      return true;
+    }
+    for (const action of asArray(choice.actions)) {
+      const type = normalizeActionType(action.type);
+      if (type === 'completeobjective' || type === 'completestep' || type === 'completequest' || type === 'advancequest') {
+        if (!action.questId || hasRelevantQuestId(action.questId)) {
+          return true;
+        }
+      }
+      if ((type === 'giverewards' || type === 'givegold' || type === 'giveitem' || type === 'givequestitem') && action.questId && hasRelevantQuestId(action.questId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function dialogueHasQuestProgressAtStart(player: QuestRuntimePlayer, npc: NpcDefinition, dialogue: DialogueDefinition, activeQuestIds: Set<string>): boolean {
+  const startNode = getDialogueStartNodeStrict(player, npc, dialogue);
+  if (!startNode) {
+    return false;
+  }
+
+  const filteredChoices = asArray(startNode.choices).filter((choice) => evaluateDialogueConditionsStrict(
+    player,
+    npc,
+    choice.conditions as Array<{ type?: string }> | undefined,
+    `dialogue ${dialogue.id} choice ${choice.id}`,
+  ));
+
+  return nodeHasQuestProgressActions({ ...startNode, choices: filteredChoices }, activeQuestIds);
 }
 
 function objectiveNpcId(objective: QuestObjective): string | null {
@@ -272,13 +491,62 @@ export function selectQuestStartAvailable(params: {
 
   const available: Array<{ questId: string; title: string }> = [];
   for (const binding of bindings) {
+    if (!evaluateDialogueConditionsStrict(player, npc, binding.conditions as Array<{ type?: string }> | undefined, `npc quest binding ${npc.id}:${binding.questId}`)) {
+      continue;
+    }
     const quest = getQuestById(binding.questId);
     if (!quest) {
       continue;
     }
-    if (canStartQuest(player, quest)) {
+    if (getMarkerStartableQuestIds(player, [quest.id]).length > 0) {
       available.push({ questId: quest.id, title: quest.title });
     }
   }
   return available;
+}
+
+export function getNpcQuestMarker(params: {
+  npc: NpcDefinition;
+  player: QuestRuntimePlayer;
+  questDefinitions: QuestDefinition[];
+  playerQuestStates: PlayerQuestState[];
+  dialogues: DialogueDefinition[];
+}): NpcQuestMarkerMode {
+  const { npc, player, questDefinitions, playerQuestStates, dialogues } = params;
+
+  const activeStates = playerQuestStates.filter((state) => state.playerId === player.id && state.status === 'active');
+  const activeQuestIds = new Set(activeStates.map((state) => state.questId));
+  const questById = new Map(questDefinitions.map((quest) => [quest.id, quest]));
+
+  for (const state of activeStates) {
+    const quest = questById.get(state.questId) ?? null;
+    if (!quest) {
+      continue;
+    }
+    if (buildQuestStage(npc.id, quest, state)) {
+      return 'progress';
+    }
+  }
+
+  const bindingDialogueIds = new Set(asArray(npc.dialogues).map((binding) => binding.dialogueId));
+  const candidateDialogues = dialogues.filter((dialogue) => dialogue.status === 'active' && (dialogue.npcId === npc.id || bindingDialogueIds.has(dialogue.id)));
+
+  for (const dialogue of candidateDialogues) {
+    if (dialogueHasQuestProgressAtStart(player, npc, dialogue, activeQuestIds)) {
+      return 'progress';
+    }
+  }
+
+  if (selectQuestStartAvailable({ npc, player }).length > 0) {
+    return 'available';
+  }
+
+  for (const dialogue of candidateDialogues) {
+    const startableQuestIds = getMarkerStartableQuestIds(player, collectDialogueQuestStartIdsFromStartNode(player, npc, dialogue));
+    if (startableQuestIds.length > 0) {
+      return 'available';
+    }
+  }
+
+  return null;
 }

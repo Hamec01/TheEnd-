@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AdminSkillDefinition, ArenaCombatEntity } from '@theend/rpg-domain';
 import { DamageKind, SkillResourceType, SkillType, validateSkillDefinition } from '@theend/rpg-domain';
+import { ArenaService } from '../arena/arena.service';
 import { ContentService } from '../content/content.service';
 import { SkillLearningService } from './skill-learning.service';
 
@@ -37,6 +38,7 @@ export interface SkillExecutionResult {
 export class SkillRuntimeService {
   constructor(
     private readonly contentService: ContentService,
+    private readonly arenaService: ArenaService,
     private readonly skillLearning: SkillLearningService,
   ) {}
 
@@ -65,12 +67,11 @@ export class SkillRuntimeService {
       return { valid: false, reason: `Character has not learned skill: ${skillId}` };
     }
 
-    // Check loadout
-    const loadout = await this.skillLearning.getOrCreateLoadout(characterId);
-    const slots = loadout.slots;
-    const equipped = slots.some((s) => s.unlocked && s.skillId === skillId);
+    // Check visible action slots
+    const actionSlots = await this.arenaService.getOrCreateActionSlots(characterId);
+    const equipped = actionSlots.some((slot) => slot.kind === 'skill' && slot.refId === skillId);
     if (!equipped) {
-      return { valid: false, reason: `Skill ${skillId} is not equipped in loadout` };
+      return { valid: false, reason: `Skill ${skillId} is not assigned to an action slot` };
     }
 
     // Cooldown check

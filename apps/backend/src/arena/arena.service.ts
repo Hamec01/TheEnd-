@@ -10,6 +10,50 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type InventoryItemRow = { id: string; itemId: string; quantity: number };
 
+const ACTION_SLOT_IDS = ['quick1', 'quick2', 'quick3', 'quick4', 'quick5', 'quick6', 'quick7', 'quick8', 'quick9', 'quick10'] as const;
+
+export type CharacterActionSlotId = (typeof ACTION_SLOT_IDS)[number];
+
+export type CharacterActionSlotKind = 'skill' | 'item' | null;
+
+export interface CharacterActionSlot {
+  slotId: CharacterActionSlotId;
+  slotIndex: number;
+  kind: CharacterActionSlotKind;
+  refId: string | null;
+  itemInstanceId?: string | null;
+}
+
+export interface CharacterHotbarSlot {
+  slotIndex: number;
+  itemId: string | null;
+  itemInstanceId?: string | null;
+}
+
+export interface CharacterResourceState {
+  currentHp: number;
+  maxHp: number;
+  currentMp: number;
+  maxMp: number;
+  currentStamina: number;
+  maxStamina: number;
+  hpRegenPerTurn: number;
+}
+
+type StoredHotbarMap = Record<string, CharacterHotbarSlot[] | undefined>;
+type StoredActionSlotMap = Record<string, CharacterActionSlot[] | undefined>;
+type StoredResourceMap = Record<string, {
+  currentHp?: number;
+  currentMp?: number;
+  currentStamina?: number;
+  hpRegenPerTurn?: number;
+} | undefined>;
+
+const CHARACTER_ACTION_SLOTS_STORE_KEY = 'character-action-slots-v1';
+const CHARACTER_HOTBAR_STORE_KEY = 'character-item-hotbars-v1';
+const CHARACTER_RESOURCES_STORE_KEY = 'character-runtime-resources-v1';
+const HOTBAR_SLOT_COUNT = 10;
+
 @Injectable()
 export class ArenaService implements OnModuleInit {
   constructor(
@@ -20,6 +64,18 @@ export class ArenaService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     await this.ensureEquipmentSchema();
     await this.sanitizeAllCharactersInventoryAndEquipment();
+  }
+
+  private toActionSlotId(slotIndex: number): CharacterActionSlotId {
+    return ACTION_SLOT_IDS[slotIndex] ?? ACTION_SLOT_IDS[0];
+  }
+
+  private toActionSlotIndex(slotId: string | null | undefined): number {
+    if (!slotId) {
+      return -1;
+    }
+
+    return ACTION_SLOT_IDS.indexOf(slotId as CharacterActionSlotId);
   }
 
   private async ensureEquipmentSchema(): Promise<void> {
@@ -78,6 +134,390 @@ export class ArenaService implements OnModuleInit {
       legs: record?.legs ?? null,
       boots: record?.boots ?? null,
     };
+  }
+
+  private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
+    const row = await this.prisma.contentStore.findUnique({ where: { key } });
+    if (!row || !row.value || typeof row.value !== 'object' || Array.isArray(row.value)) {
+      return {} as TMap;
+    }
+    return row.value as unknown as TMap;
+  }
+
+  private async writeMap(key: string, value: Record<string, unknown>): Promise<void> {
+    const jsonValue = value as Prisma.InputJsonValue;
+    await this.prisma.contentStore.upsert({
+      where: { key },
+      create: { key, value: jsonValue },
+      update: { value: jsonValue },
+    });
+  }
+
+  private async ensureCharacterExists(characterId: string): Promise<void> {
+    const character = await this.prisma.character.findUnique({ where: { id: characterId }, select: { id: true } });
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+  }
+
+  private createEmptyHotbar(): CharacterHotbarSlot[] {
+    return Array.from({ length: HOTBAR_SLOT_COUNT }, (_, slotIndex) => ({
+      slotIndex,
+      itemId: null,
+      itemInstanceId: null,
+    }));
+  }
+
+  private createEmptyActionSlots(): CharacterActionSlot[] {
+    return Array.from({ length: HOTBAR_SLOT_COUNT }, (_, slotIndex) => ({
+      slotId: this.toActionSlotId(slotIndex),
+      slotIndex,
+      kind: null,
+      refId: null,
+      itemInstanceId: null,
+    }));
+  }
+
+  private normalizeHotbarSlots(slots: unknown): CharacterHotbarSlot[] {
+    const base = this.createEmptyHotbar();
+    if (!Array.isArray(slots)) {
+      return base;
+    }
+
+    for (const entry of slots) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const raw = entry as Record<string, unknown>;
+      const slotIndex = typeof raw.slotIndex === 'number' ? raw.slotIndex : -1;
+      if (slotIndex < 0 || slotIndex >= HOTBAR_SLOT_COUNT) {
+        continue;
+      }
+
+      base[slotIndex] = {
+        slotIndex,
+        itemId: typeof raw.itemId === 'string' && raw.itemId.trim().length > 0 ? raw.itemId.trim() : null,
+        itemInstanceId: typeof raw.itemInstanceId === 'string' && raw.itemInstanceId.trim().length > 0
+          ? raw.itemInstanceId.trim()
+          : null,
+      };
+    }
+
+    return base;
+  }
+
+  private normalizeActionSlots(slots: unknown): CharacterActionSlot[] {
+    const base = this.createEmptyActionSlots();
+    if (!Array.isArray(slots)) {
+      return base;
+    }
+
+    for (const entry of slots) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const raw = entry as Record<string, unknown>;
+      const slotIndexFromId = typeof raw.slotId === 'string' ? this.toActionSlotIndex(raw.slotId) : -1;
+      const slotIndex = typeof raw.slotIndex === 'number' ? raw.slotIndex : slotIndexFromId;
+      if (slotIndex < 0 || slotIndex >= HOTBAR_SLOT_COUNT) {
+        continue;
+      }
+
+      const kind = raw.kind === 'skill' || raw.kind === 'item' ? raw.kind : null;
+      const refId = typeof raw.refId === 'string' && raw.refId.trim().length > 0 ? raw.refId.trim() : null;
+      base[slotIndex] = {
+        slotId: this.toActionSlotId(slotIndex),
+        slotIndex,
+        kind: kind && refId ? kind : null,
+        refId: kind && refId ? refId : null,
+        itemInstanceId: typeof raw.itemInstanceId === 'string' && raw.itemInstanceId.trim().length > 0
+          ? raw.itemInstanceId.trim()
+          : null,
+      };
+    }
+
+    return base;
+  }
+
+  private isItemUsableInHotbar(itemId: string): boolean {
+    const rawItem = this.contentService.getCollectionEntry('items', itemId) as Record<string, unknown> | null;
+
+    try {
+      const item = this.contentService.resolveItemById(itemId);
+      return item.itemType === 'consumable';
+    } catch {
+      // Fall through to raw admin item checks.
+    }
+
+    if (!rawItem) {
+      return false;
+    }
+
+    return rawItem.slot === 'quick'
+      || rawItem.type === 'potion'
+      || rawItem.isUsable === true
+      || rawItem.usableInCombat === true
+      || rawItem.isCombatUsable === true
+      || Object.prototype.hasOwnProperty.call(rawItem, 'useEffect')
+      || (Array.isArray(rawItem.effects) && rawItem.effects.length > 0)
+      || (Array.isArray(rawItem.combatEffects) && rawItem.combatEffects.length > 0);
+  }
+
+  private async readCharacterHotbar(characterId: string): Promise<CharacterHotbarSlot[]> {
+    const map = await this.readMap<StoredHotbarMap>(CHARACTER_HOTBAR_STORE_KEY);
+    return this.normalizeHotbarSlots(map[characterId]);
+  }
+
+  private async readCharacterActionSlots(characterId: string): Promise<CharacterActionSlot[]> {
+    const map = await this.readMap<StoredActionSlotMap>(CHARACTER_ACTION_SLOTS_STORE_KEY);
+    return this.normalizeActionSlots(map[characterId]);
+  }
+
+  private async writeCharacterHotbar(characterId: string, slots: CharacterHotbarSlot[]): Promise<void> {
+    const map = await this.readMap<StoredHotbarMap>(CHARACTER_HOTBAR_STORE_KEY);
+    map[characterId] = this.normalizeHotbarSlots(slots);
+    await this.writeMap(CHARACTER_HOTBAR_STORE_KEY, map);
+  }
+
+  private async writeCharacterActionSlots(characterId: string, slots: CharacterActionSlot[]): Promise<void> {
+    const map = await this.readMap<StoredActionSlotMap>(CHARACTER_ACTION_SLOTS_STORE_KEY);
+    map[characterId] = this.normalizeActionSlots(slots);
+    await this.writeMap(CHARACTER_ACTION_SLOTS_STORE_KEY, map);
+  }
+
+  private async readCharacterResourceMap(characterId: string): Promise<StoredResourceMap[string]> {
+    const map = await this.readMap<StoredResourceMap>(CHARACTER_RESOURCES_STORE_KEY);
+    return map[characterId];
+  }
+
+  private async writeCharacterResourceMap(characterId: string, value: NonNullable<StoredResourceMap[string]>): Promise<void> {
+    const map = await this.readMap<StoredResourceMap>(CHARACTER_RESOURCES_STORE_KEY);
+    map[characterId] = value;
+    await this.writeMap(CHARACTER_RESOURCES_STORE_KEY, map);
+  }
+
+  private buildResourceState(activeStats: StatBlock, stored?: StoredResourceMap[string]): CharacterResourceState {
+    const maxHp = Math.max(1, activeStats.hp);
+    const maxMp = Math.max(0, activeStats.mp);
+    const maxStamina = Math.max(0, activeStats.stamina);
+
+    return {
+      currentHp: Math.max(0, Math.min(maxHp, typeof stored?.currentHp === 'number' ? stored.currentHp : maxHp)),
+      maxHp,
+      currentMp: Math.max(0, Math.min(maxMp, typeof stored?.currentMp === 'number' ? stored.currentMp : maxMp)),
+      maxMp,
+      currentStamina: Math.max(0, Math.min(maxStamina, typeof stored?.currentStamina === 'number' ? stored.currentStamina : maxStamina)),
+      maxStamina,
+      hpRegenPerTurn: typeof stored?.hpRegenPerTurn === 'number' ? Math.max(0, stored.hpRegenPerTurn) : 0,
+    };
+  }
+
+  async getOrCreateHotbar(characterId: string): Promise<CharacterHotbarSlot[]> {
+    await this.ensureCharacterExists(characterId);
+
+    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      where: { characterId },
+      select: { itemId: true, quantity: true },
+    });
+    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+
+    const current = await this.readCharacterHotbar(characterId);
+    const reconciled = this.normalizeHotbarSlots(current).map((slot) => {
+      if (!slot.itemId) {
+        return slot;
+      }
+
+      const quantity = inventoryByItemId.get(slot.itemId) ?? 0;
+      if (quantity <= 0 || !this.isItemUsableInHotbar(slot.itemId)) {
+        return { ...slot, itemId: null, itemInstanceId: null };
+      }
+
+      return slot;
+    });
+
+    if (JSON.stringify(current) !== JSON.stringify(reconciled)) {
+      await this.writeCharacterHotbar(characterId, reconciled);
+    }
+
+    return reconciled;
+  }
+
+  async getOrCreateActionSlots(characterId: string): Promise<CharacterActionSlot[]> {
+    await this.ensureCharacterExists(characterId);
+
+    const current = await this.readCharacterActionSlots(characterId);
+    const hasSavedEntries = current.some((slot) => slot.kind && slot.refId);
+    if (hasSavedEntries) {
+      return current;
+    }
+
+    const legacyHotbar = await this.readCharacterHotbar(characterId);
+    const migrated = this.createEmptyActionSlots().map((slot) => {
+      const legacy = legacyHotbar.find((entry) => entry.slotIndex === slot.slotIndex);
+      if (!legacy?.itemId) {
+        return slot;
+      }
+      return {
+        slotId: slot.slotId,
+        slotIndex: slot.slotIndex,
+        kind: 'item' as const,
+        refId: legacy.itemId,
+        itemInstanceId: legacy.itemInstanceId ?? null,
+      };
+    });
+
+    if (migrated.some((slot) => slot.kind && slot.refId)) {
+      await this.writeCharacterActionSlots(characterId, migrated);
+      return migrated;
+    }
+
+    await this.writeCharacterActionSlots(characterId, current);
+    return current;
+  }
+
+  async updateHotbar(
+    characterId: string,
+    updates: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
+  ): Promise<CharacterHotbarSlot[]> {
+    await this.ensureCharacterExists(characterId);
+
+    const current = await this.getOrCreateHotbar(characterId);
+    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      where: { characterId },
+      select: { itemId: true, quantity: true },
+    });
+    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    const next = this.normalizeHotbarSlots(current);
+
+    for (const update of updates) {
+      const slot = next.find((entry) => entry.slotIndex === update.slotIndex);
+      if (!slot) {
+        throw new BadRequestException(`Hotbar slot ${update.slotIndex} not found.`);
+      }
+
+      if (!update.itemId) {
+        slot.itemId = null;
+        slot.itemInstanceId = null;
+        continue;
+      }
+
+      const quantity = inventoryByItemId.get(update.itemId) ?? 0;
+      if (quantity <= 0) {
+        throw new BadRequestException(`Item is not available in inventory: ${update.itemId}`);
+      }
+      if (!this.isItemUsableInHotbar(update.itemId)) {
+        throw new BadRequestException('Only usable items can be assigned to the hotbar.');
+      }
+
+      slot.itemId = update.itemId;
+      slot.itemInstanceId = update.itemInstanceId ?? null;
+    }
+
+    await this.writeCharacterHotbar(characterId, next);
+    return next;
+  }
+
+  async updateActionSlots(
+    characterId: string,
+    updates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }>,
+  ): Promise<CharacterActionSlot[]> {
+    await this.ensureCharacterExists(characterId);
+
+    const current = await this.getOrCreateActionSlots(characterId);
+    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      where: { characterId },
+      select: { itemId: true, quantity: true },
+    });
+    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    const next = this.normalizeActionSlots(current);
+
+    for (const update of updates) {
+      const resolvedSlotIndex = typeof update.slotIndex === 'number'
+        ? update.slotIndex
+        : this.toActionSlotIndex(update.slotId);
+      const slot = next.find((entry) => entry.slotIndex === resolvedSlotIndex);
+      if (!slot) {
+        throw new BadRequestException(`Action slot ${update.slotId ?? update.slotIndex ?? 'unknown'} not found.`);
+      }
+
+      if (!update.kind || !update.refId) {
+        slot.kind = null;
+        slot.refId = null;
+        slot.itemInstanceId = null;
+        continue;
+      }
+
+      if (update.kind === 'item') {
+        const quantity = inventoryByItemId.get(update.refId) ?? 0;
+        if (quantity <= 0) {
+          throw new BadRequestException(`Item is not available in inventory: ${update.refId}`);
+        }
+        if (!this.isItemUsableInHotbar(update.refId)) {
+          throw new BadRequestException('Only usable items can be assigned to action slots.');
+        }
+        slot.kind = 'item';
+        slot.refId = update.refId;
+        slot.itemInstanceId = update.itemInstanceId ?? null;
+        continue;
+      }
+
+      slot.kind = 'skill';
+      slot.refId = update.refId;
+      slot.itemInstanceId = null;
+    }
+
+    await this.writeCharacterActionSlots(characterId, next);
+    return next;
+  }
+
+  async getCharacterResources(characterId: string): Promise<CharacterResourceState> {
+    const character = await this.prisma.character.findUnique({
+      where: { id: characterId },
+      include: { equipment: true },
+    });
+
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const baseStats = this.toBaseStats(character);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, this.fromEquipmentRecord(character.equipment));
+    const stored = await this.readCharacterResourceMap(characterId);
+    const resourceState = this.buildResourceState(activeStats, stored);
+
+    await this.writeCharacterResourceMap(characterId, {
+      currentHp: resourceState.currentHp,
+      currentMp: resourceState.currentMp,
+      currentStamina: resourceState.currentStamina,
+      hpRegenPerTurn: resourceState.hpRegenPerTurn,
+    });
+
+    return resourceState;
+  }
+
+  async updateCharacterResources(
+    characterId: string,
+    updates: Partial<Pick<CharacterResourceState, 'currentHp' | 'currentMp' | 'currentStamina' | 'hpRegenPerTurn'>>,
+  ): Promise<CharacterResourceState> {
+    const current = await this.getCharacterResources(characterId);
+    const next: CharacterResourceState = {
+      ...current,
+      currentHp: typeof updates.currentHp === 'number' ? Math.max(0, Math.min(current.maxHp, updates.currentHp)) : current.currentHp,
+      currentMp: typeof updates.currentMp === 'number' ? Math.max(0, Math.min(current.maxMp, updates.currentMp)) : current.currentMp,
+      currentStamina: typeof updates.currentStamina === 'number'
+        ? Math.max(0, Math.min(current.maxStamina, updates.currentStamina))
+        : current.currentStamina,
+      hpRegenPerTurn: typeof updates.hpRegenPerTurn === 'number' ? Math.max(0, updates.hpRegenPerTurn) : current.hpRegenPerTurn,
+    };
+
+    await this.writeCharacterResourceMap(characterId, {
+      currentHp: next.currentHp,
+      currentMp: next.currentMp,
+      currentStamina: next.currentStamina,
+      hpRegenPerTurn: next.hpRegenPerTurn,
+    });
+
+    return next;
   }
 
   private async sanitizeAllCharactersInventoryAndEquipment(): Promise<void> {
@@ -347,6 +787,8 @@ export class ArenaService implements OnModuleInit {
 
     const baseStats = this.toBaseStats(character);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const resources = await this.getCharacterResources(characterId);
+    const actionSlots = await this.getOrCreateActionSlots(characterId);
 
     return {
       character: {
@@ -358,9 +800,17 @@ export class ArenaService implements OnModuleInit {
         freePoints: character.freePoints,
         baseStats,
         activeStats,
+        currentHp: resources.currentHp,
+        maxHp: resources.maxHp,
+        currentMp: resources.currentMp,
+        maxMp: resources.maxMp,
+        currentStamina: resources.currentStamina,
+        maxStamina: resources.maxStamina,
+        hpRegenPerTurn: resources.hpRegenPerTurn,
       },
       inventory,
       equipment,
+      actionSlots,
     };
   }
 

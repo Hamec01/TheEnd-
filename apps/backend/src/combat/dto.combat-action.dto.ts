@@ -1,4 +1,4 @@
-import { ActionType, CombatSkillType, DistanceBand, MovementType, TargetZone } from '@theend/rpg-domain';
+import { ActionType, DistanceBand, MovementType, TargetZone } from '@theend/rpg-domain';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export class CombatActionDto {
@@ -49,10 +49,6 @@ export class CombatActionDto {
   @IsInt()
   @Min(0)
   destinationY?: number;
-
-  @IsOptional()
-  @IsEnum(CombatSkillType)
-  skillType?: CombatSkillType;
 
   /** New skill system: AdminSkillDefinition.id */
   @IsOptional()

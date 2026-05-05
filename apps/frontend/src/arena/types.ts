@@ -9,6 +9,13 @@ export interface ArenaCharacter {
   freePoints: number;
   baseStats: StatBlock;
   activeStats: StatBlock;
+  currentHp: number;
+  maxHp: number;
+  currentMp: number;
+  maxMp: number;
+  currentStamina: number;
+  maxStamina: number;
+  hpRegenPerTurn?: number;
 }
 
 export interface ArenaPlayerState {
