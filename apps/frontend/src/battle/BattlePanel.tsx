@@ -1,7 +1,6 @@
 import {
   ActionType,
   MovementType,
-  SkillTargetType,
   TargetZone,
   TeamSide,
   getSkillCostSummary,
@@ -35,7 +34,7 @@ interface BattlePanelProps {
     gridOffsetY?: number;
   };
   selectedSkillId: string | null;
-  availableSkills: Array<{ slotId: CharacterActionSlot['slotId']; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  availableSkills: Array<{ skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
   onSkillChange: (skillId: string | null) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
@@ -231,13 +230,6 @@ export function BattlePanel({
   const selectedSkill = useMemo(
     () => availableSkills.find((skill) => skill.skillId === selectedSkillId) ?? null,
     [availableSkills, selectedSkillId],
-  );
-  const selfTargetSkills = useMemo(
-    () => availableSkills.filter((skill) => {
-      const targetType = skill.definition.target?.targetType;
-      return targetType === SkillTargetType.SELF || targetType === SkillTargetType.SINGLE_ALLY || targetType === SkillTargetType.ALL_ALLIES;
-    }),
-    [availableSkills],
   );
 
   const battleInventoryItems = useMemo(
@@ -441,42 +433,6 @@ export function BattlePanel({
     return null;
   }, [actionType, selectedMoveTile, targetInRange]);
 
-  const pendingActionSummary = useMemo(() => {
-    const targetLabel = selectedEnemy?.name ?? 'без цели';
-    const parts: string[] = [];
-
-    if (movementType && selectedMoveTile) {
-      const movementLabel = movementType === MovementType.Step
-        ? 'Шаг'
-        : movementType === MovementType.Extra
-          ? 'Рывок на 2 клетки'
-          : movementType === MovementType.Dash
-            ? 'Дэш'
-            : 'Отход';
-      parts.push(`${movementLabel} -> ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}`);
-    }
-
-    if (actionType === ActionType.Attack) {
-      parts.push(selectedSkill ? `Навык ${selectedSkill.label} -> ${targetLabel}` : `Базовая атака -> ${targetLabel}`);
-    } else if (actionType === ActionType.Defend) {
-      parts.push(`Защита -> ${defenseZones.map((zone) => zone.toLowerCase()).join(', ')}`);
-    } else if (actionType === ActionType.Move) {
-      parts.push(selectedMoveTile ? `Перемещение -> ${selectedMoveTile.x + 1}:${selectedMoveTile.y + 1}` : 'Перемещение не выбрано');
-    } else if (actionType === ActionType.Wait) {
-      parts.push('Ожидание');
-    }
-
-    return parts;
-  }, [actionType, defenseZones, movementType, selectedEnemy?.name, selectedMoveTile, selectedSkill]);
-
-  const resetPendingAction = useCallback(() => {
-    setActionType(ActionType.Attack);
-    setMovementType(null);
-    setSelectedMoveTile(null);
-    onSkillChange(null);
-    onStatus('Боевой план сброшен.');
-  }, [onSkillChange, onStatus]);
-
   const secondsLeft = useMemo(() => {
     if (!state.turnDeadlineAt || state.isFinished) {
       return null;
@@ -585,13 +541,6 @@ export function BattlePanel({
     await submitRoundWithAction();
   }, [submitRoundWithAction]);
 
-  const useBattleItem = useCallback(async (itemId: string, targetId?: string): Promise<void> => {
-    if (!onUseItem) {
-      return;
-    }
-    await onUseItem(itemId, targetId);
-  }, [onUseItem]);
-
   const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
     setMovementType(tile.movementType);
     setSelectedMoveTile({ x: tile.x, y: tile.y });
@@ -629,36 +578,14 @@ export function BattlePanel({
           return;
         }
         event.preventDefault();
-        void submitRound();
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        resetPendingAction();
-        return;
-      }
-
-      if (!event.ctrlKey && !event.altKey && !event.metaKey) {
-        const quickSlotIndex = event.key === '0'
-          ? 9
-          : /^[1-9]$/.test(event.key)
-            ? Number(event.key) - 1
-            : -1;
-        if (quickSlotIndex >= 0) {
-          const quickSkill = availableSkills.find((skill) => skill.slotIndex === quickSlotIndex) ?? null;
-          if (quickSkill) {
-            event.preventDefault();
-            onSkillChange(quickSkill.skillId);
-            setActionType(ActionType.Attack);
-          }
-        }
+        setActionType(ActionType.Wait);
+        void submitRoundWithAction(ActionType.Wait);
       }
     };
 
     window.addEventListener('keydown', handleHotkeys);
     return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [availableSkills, onSkillChange, resetPendingAction, submitRound]);
+  }, [submitRound, submitRoundWithAction]);
 
   if (!player) {
     return <p>Player entity not found.</p>;
@@ -699,101 +626,8 @@ export function BattlePanel({
                 subtitle="You"
               />
             </div>
-          </div>
 
-          <div className="battle-center-column battle-column">
-            <div className="battle-center-log card">
-              <CombatLogPanel logs={state.logs} />
-            </div>
-
-            <BattleField
-                entities={state.entities}
-                battlefieldTiles={state.battlefieldTiles}
-                battleMapWidth={state.battleMapWidth}
-                battleMapHeight={state.battleMapHeight}
-                viewportWidth={state.viewportWidth}
-                viewportHeight={state.viewportHeight}
-                mapImageUrl={mapImageUrl}
-                mapCalibration={mapCalibration}
-                distance={state.distance}
-                selectedTargetId={selectedTargetId}
-                playerId={playerId}
-                playerAvatarUrl={playerAvatarUrl}
-                movementType={movementType}
-                selectedMoveTile={selectedMoveTile}
-                lastLog={lastLog}
-                recentLogs={recentLogs}
-                availableSkills={availableSkills}
-                selfTargetSkills={selfTargetSkills}
-                inventoryItems={battleInventoryItems}
-                selectedSkillId={selectedSkillId}
-                onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
-                onStatusMessage={onStatus}
-                onQuickAttack={(targetId) => {
-                  setSelectedTargetId(targetId);
-                  onSkillChange(null);
-                  setActionType(ActionType.Attack);
-                  onStatus('Атака поставлена в план. Подтвердите ход.');
-                }}
-                onQuickSkill={(skillId: string, targetId?: string) => {
-                  if (targetId) {
-                    setSelectedTargetId(targetId);
-                  }
-                  onSkillChange(skillId);
-                  setActionType(ActionType.Attack);
-                  onStatus('Навык поставлен в план. Подтвердите ход.');
-                }}
-                onQuickItem={(itemId: string, targetId?: string) => {
-                  void useBattleItem(itemId, targetId);
-                }}
-                onQuickMove={(tile) => {
-                  applyMoveSelection(tile);
-                  onStatus('Перемещение поставлено в план. Подтвердите ход.');
-                }}
-                onQuickWait={() => {
-                  setActionType(ActionType.Wait);
-                  onStatus('Ожидание поставлено в план. Подтвердите ход.');
-                }}
-                onResetDefense={() => {
-                  setActionType(ActionType.Attack);
-                  setDefenseZones([]);
-                  onStatus('Защита сброшена: персонаж идет в размен.');
-                }}
-                onMoveTileSelect={applyMoveSelection}
-                onCancelSelection={resetPendingAction}
-                onInspectEntity={(entityId) => setInspectEntityId(entityId)}
-                playerVisualState={feedback.playerVisualState}
-                enemyVisualState={feedback.enemyVisualState}
-                floatingText={feedback.floatingText}
-                animationTick={state.logs.length}
-            />
-
-            <div className="battle-center-controls card">
-              <div className="battle-center-controls-top">
-                <div className="battle-pending-action" aria-live="polite">
-                  <div className="battle-pending-action-head">
-                    <strong>Текущий план</strong>
-                    <button type="button" className="battle-pending-reset" onClick={resetPendingAction}>Сбросить</button>
-                  </div>
-                  <div className="battle-pending-action-body">
-                    {pendingActionSummary.map((line) => (
-                      <span key={line} className="battle-pending-chip">{line}</span>
-                    ))}
-                    {actionWarning ? <span className="battle-pending-warning">{actionWarning}</span> : null}
-                    {!actionWarning && actionHint ? <span className="battle-pending-hint">{actionHint}</span> : null}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="confirm-turn-button battle-confirm-large"
-                  disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
-                  title={actionWarning ?? actionHint ?? (pendingActionSummary.length > 0 ? pendingActionSummary.join(' | ') : undefined)}
-                  onClick={submitRound}
-                >
-                  СДЕЛАТЬ ХОД
-                </button>
-              </div>
-
+            <div className="column-command-section">
               <ActionPlanner
                 enemies={enemies}
                 selectedTargetId={selectedTargetId}
@@ -828,6 +662,57 @@ export function BattlePanel({
                 recentHitZone={lastHitZone}
                 recentBlockedZone={recentBlockedZone}
               />
+            </div>
+          </div>
+
+          <div className="battle-center-column battle-column">
+            <div className="battle-center-log card">
+              <CombatLogPanel logs={state.logs} />
+            </div>
+
+              <BattleField
+                entities={state.entities}
+                battlefieldTiles={state.battlefieldTiles}
+                battleMapWidth={state.battleMapWidth}
+                battleMapHeight={state.battleMapHeight}
+                viewportWidth={state.viewportWidth}
+                viewportHeight={state.viewportHeight}
+                mapImageUrl={mapImageUrl}
+                mapCalibration={mapCalibration}
+                distance={state.distance}
+                selectedTargetId={selectedTargetId}
+                playerId={playerId}
+                playerAvatarUrl={playerAvatarUrl}
+                movementType={movementType}
+                selectedMoveTile={selectedMoveTile}
+                lastLog={lastLog}
+                recentLogs={recentLogs}
+                onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
+                onStatusMessage={onStatus}
+                onQuickAttack={(targetId) => {
+                  setSelectedTargetId(targetId);
+                  setActionType(ActionType.Attack);
+              }}
+              onQuickMove={applyMoveSelection}
+              onMoveTileSelect={applyMoveSelection}
+              onCancelSelection={() => setSelectedMoveTile(null)}
+              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
+              playerVisualState={feedback.playerVisualState}
+              enemyVisualState={feedback.enemyVisualState}
+              floatingText={feedback.floatingText}
+              animationTick={state.logs.length}
+            />
+
+            <div className="battle-center-controls card">
+              <button
+                type="button"
+                className="confirm-turn-button battle-confirm-large"
+                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
+                title={actionWarning ?? actionHint ?? undefined}
+                onClick={submitRound}
+              >
+                СДЕЛАТЬ ХОД
+              </button>
             </div>
           </div>
 

@@ -5,6 +5,7 @@ import {
   BATTLEFIELD_GRID_SIZE,
   BattlefieldTrapState,
   BattlefieldTileType,
+  CombatSkillType,
   DistanceBand,
   MovementType,
   TargetZone,
@@ -55,6 +56,8 @@ type WeaponCombatProfile = Pick<AdminItem, 'attackRange' | 'pierceTargets' | 'sp
 interface CombatSession {
   state: ArenaBattleState;
   playerId: string;
+  activeEffects: Array<{ type: CombatSkillType.CrushingBlock | CombatSkillType.Rage; remainingRounds: number }>;
+  enemyTempoBreaks: Array<{ targetId: string; remainingRounds: number }>;
   damageContribution: number;
   skillCooldowns: SkillCooldownEntry[];
 }
@@ -529,6 +532,20 @@ export class CombatService {
     };
   }
 
+  private upsertEffect(
+    effects: Array<{ type: CombatSkillType.CrushingBlock | CombatSkillType.Rage; remainingRounds: number }>,
+    effectType: CombatSkillType.CrushingBlock | CombatSkillType.Rage,
+    rounds: number,
+  ): void {
+    const existing = effects.find((item) => item.type === effectType);
+    if (existing) {
+      existing.remainingRounds = Math.max(existing.remainingRounds, rounds);
+      return;
+    }
+
+    effects.push({ type: effectType, remainingRounds: rounds });
+  }
+
   private toCombatEntity(character: CharacterRecord, team: TeamSide, position: number) {
     const baseStats = this.toBaseStats(character);
     const equipment = this.normalizeEquipment(character.equipment);
@@ -981,6 +998,8 @@ export class CombatService {
     this.sessions.set(combatId, {
       state,
       playerId: player.id,
+      activeEffects: [],
+      enemyTempoBreaks: [],
       damageContribution: 0,
       skillCooldowns: [],
     });
@@ -1171,6 +1190,11 @@ export class CombatService {
       throw new BadRequestException('Not enough stamina for selected action points.');
     }
 
+    const hasRage = session.activeEffects.some((item) => item.type === CombatSkillType.Rage && item.remainingRounds > 0);
+    const hasCrushing = session.activeEffects.some(
+      (item) => item.type === CombatSkillType.CrushingBlock && item.remainingRounds > 0,
+    );
+
     const skillLogs: string[] = [];
 
     // ── New skill system: AdminSkillDefinition + skillId ──────────────────────
@@ -1194,15 +1218,6 @@ export class CombatService {
       }
       if (result.resourcesSpent.hp) {
         playerEntity.currentHp = Math.max(0, playerEntity.currentHp - result.resourcesSpent.hp);
-      }
-
-      const spentParts = [
-        result.resourcesSpent.mp ? `${result.resourcesSpent.mp} MP` : null,
-        result.resourcesSpent.stamina ? `${result.resourcesSpent.stamina} STA` : null,
-        result.resourcesSpent.hp ? `${result.resourcesSpent.hp} HP` : null,
-      ].filter(Boolean);
-      if (spentParts.length > 0) {
-        skillLogs.push(`${playerEntity.name} spends ${spentParts.join(', ')}`);
       }
 
       // Apply damage
@@ -1239,6 +1254,8 @@ export class CombatService {
       }
     }
 
+    const crushingActiveNow = hasCrushing;
+    const rageActiveNow = hasRage;
     const normalizedPoints = this.normalizePlayerActionPoints(effectiveAction, playerEntity.currentStamina);
 
     const buffedPlayerAction: ArenaCombatAction = {
@@ -1247,7 +1264,9 @@ export class CombatService {
       attackZone: effectiveAction.attackZone,
       defenseZones: effectiveAction.defenseZones,
       attackPointsSpent: normalizedPoints.attackPointsSpent,
-      defensePointsSpent: normalizedPoints.defensePointsSpent,
+      defensePointsSpent: crushingActiveNow
+        ? Math.max(0, Math.ceil(normalizedPoints.defensePointsSpent * 1.4))
+        : normalizedPoints.defensePointsSpent,
       actionType: effectiveAction.actionType,
       movementType: effectiveAction.movementType,
       preferredDistance: effectiveAction.preferredDistance,
@@ -1255,9 +1274,42 @@ export class CombatService {
       destinationY: effectiveAction.destinationY,
     };
 
+    const originalStrength = playerEntity.strength;
+    const originalConstitution = playerEntity.constitution;
+
+    if (rageActiveNow) {
+      playerEntity.strength = Math.max(1, playerEntity.strength + 15);
+      playerEntity.constitution = Math.max(1, playerEntity.constitution - 10);
+    }
+
+    const tempoBrokenTargets = new Set(
+      session.enemyTempoBreaks
+        .filter((item) => item.remainingRounds > 0)
+        .map((item) => item.targetId),
+    );
+
     const enemyActions: ArenaCombatAction[] = state.entities
       .filter((item) => item.team !== TeamSide.Left && item.isAlive)
-      .map((item) => createNpcAction(state, item.id));
+      .map((item) => {
+        const npcAction = createNpcAction(state, item.id);
+        if (!tempoBrokenTargets.has(item.id)) {
+          return npcAction;
+        }
+
+        const reducedAttack = Math.max(
+          npcAction.actionType === ActionType.Attack ? 1 : 0,
+          Math.floor(npcAction.attackPointsSpent * 0.65),
+        );
+        const reducedDefense = Math.max(0, Math.floor(npcAction.defensePointsSpent * 0.65));
+
+        skillLogs.push(`${item.name} loses tempo: -35% ATK/DEF points this round`);
+
+        return {
+          ...npcAction,
+          attackPointsSpent: reducedAttack,
+          defensePointsSpent: reducedDefense,
+        };
+      });
 
     const allActions: ArenaCombatAction[] = [
       buffedPlayerAction,
@@ -1299,6 +1351,14 @@ export class CombatService {
     this.applyEndOfRoundRegeneration(nextState);
     this.refreshBattleResult(nextState);
 
+    playerEntity.strength = originalStrength;
+    playerEntity.constitution = originalConstitution;
+
+    for (const effect of session.activeEffects) {
+      effect.remainingRounds -= 1;
+    }
+    session.activeEffects = session.activeEffects.filter((item) => item.remainingRounds > 0);
+
     // Decrement skill cooldowns
     for (const cd of session.skillCooldowns) {
       if (!cd.oncePerCombat) {
@@ -1306,6 +1366,11 @@ export class CombatService {
       }
     }
     session.skillCooldowns = session.skillCooldowns.filter((cd) => cd.remainingRounds > 0 || cd.oncePerCombat);
+
+    for (const debuff of session.enemyTempoBreaks) {
+      debuff.remainingRounds -= 1;
+    }
+    session.enemyTempoBreaks = session.enemyTempoBreaks.filter((item) => item.remainingRounds > 0);
 
     if (skillLogs.length > 0) {
       const entries = skillLogs.map((text) => ({

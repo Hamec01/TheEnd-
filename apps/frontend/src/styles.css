@@ -1592,25 +1592,6 @@ h3 {
   margin-bottom: 0;
 }
 
-.combat-log-ticker {
-  display: grid;
-  gap: 6px;
-  margin: 0 0 8px;
-}
-
-.combat-log-ticker-item {
-  display: block;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(150, 118, 75, 0.32);
-  background: rgba(28, 21, 15, 0.88);
-  font-size: 0.72rem;
-}
-
-.combat-log-ticker-item strong {
-  margin-right: 6px;
-}
-
 .combat-log-round {
   opacity: 0.72;
   margin-right: 6px;
@@ -3652,8 +3633,8 @@ h3 {
 }
 
 .battle-fullscreen-root .battle-left-column {
-  flex: 0 0 236px;
-  width: 236px;
+  flex: 0 0 340px;
+  width: 340px;
 }
 
 .battle-fullscreen-root .battle-center-column {
@@ -3661,8 +3642,8 @@ h3 {
 }
 
 .battle-fullscreen-root .battle-right-column {
-  flex: 0 0 248px;
-  width: 248px;
+  flex: 0 0 300px;
+  width: 300px;
 }
 
 .battle-fullscreen-root .column-player-section,
@@ -3685,7 +3666,7 @@ h3 {
 
 .battle-fullscreen-root .battle-center-log {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 150px;
   max-height: 200px;
   overflow: hidden;
@@ -3946,117 +3927,11 @@ h3 {
   z-index: 1300;
 }
 
-.tactical-context-menu {
-  display: grid;
-  gap: 6px;
-  min-width: 176px;
-  max-width: 280px;
-  padding: 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(152, 121, 75, 0.52);
-  background: linear-gradient(180deg, rgba(38, 29, 21, 0.97), rgba(18, 14, 11, 0.98));
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
-}
-
-.tactical-context-menu button {
-  width: 100%;
-  text-align: left;
-  min-height: 32px;
-  font-size: 0.74rem;
-}
-
-.tactical-context-group {
-  display: grid;
-  gap: 4px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(150, 118, 75, 0.28);
-}
-
-.tactical-context-group-title {
-  font-size: 0.66rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: rgba(213, 194, 157, 0.72);
-}
-
 .battle-center-controls {
   display: flex;
-  flex-direction: column;
   justify-content: flex-start;
-  align-items: stretch;
-  gap: 10px;
+  align-items: center;
   padding: 8px;
-}
-
-.battle-center-controls-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.battle-pending-action {
-  display: grid;
-  gap: 8px;
-  flex: 1 1 320px;
-  min-width: min(100%, 320px);
-}
-
-.battle-pending-action-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.battle-pending-action-head strong {
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.battle-pending-reset {
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(164, 130, 78, 0.5);
-  background: rgba(34, 26, 17, 0.88);
-  color: rgba(228, 212, 182, 0.9);
-}
-
-.battle-pending-action-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.battle-pending-chip,
-.battle-pending-warning,
-.battle-pending-hint {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  line-height: 1.2;
-}
-
-.battle-pending-chip {
-  border: 1px solid rgba(171, 137, 84, 0.44);
-  background: rgba(39, 30, 20, 0.88);
-}
-
-.battle-pending-warning {
-  border: 1px solid rgba(200, 100, 76, 0.5);
-  background: rgba(86, 34, 25, 0.78);
-  color: rgba(255, 214, 206, 0.94);
-}
-
-.battle-pending-hint {
-  border: 1px solid rgba(92, 121, 157, 0.46);
-  background: rgba(27, 40, 57, 0.8);
-  color: rgba(215, 229, 244, 0.92);
 }
 
 .battle-confirm-large {
@@ -4135,182 +4010,6 @@ h3 {
   box-shadow: 0 0 0 1px rgba(231, 185, 104, 0.28);
 }
 
-.battle-command-deck {
-  display: grid;
-  gap: 10px;
-}
-
-.battle-fullscreen-root .action-planner.battle-command-deck {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-}
-
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-command-head,
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-quickbar,
-.battle-fullscreen-root .action-planner.battle-command-deck > .planner-targeting-layout,
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-consumables {
-  grid-column: 1 / -1;
-}
-
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-target-strip,
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-skill-focus,
-.battle-fullscreen-root .action-planner.battle-command-deck > .planner-status-rows,
-.battle-fullscreen-root .action-planner.battle-command-deck > .battle-detail-popover {
-  grid-column: span 1;
-}
-
-.battle-command-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 10px;
-}
-
-.battle-command-head h3 {
-  margin: 0;
-}
-
-.battle-command-head p {
-  margin: 2px 0 0;
-  color: rgba(219, 199, 161, 0.74);
-  font-size: 0.72rem;
-}
-
-.battle-command-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.battle-command-actions button,
-.battle-target-chip,
-.battle-consumable-card {
-  min-height: 34px;
-}
-
-.battle-target-strip,
-.battle-skill-focus,
-.battle-consumables {
-  display: grid;
-  gap: 8px;
-}
-
-.battle-target-strip-head,
-.battle-consumables-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.battle-target-strip-head strong,
-.battle-consumables-head strong {
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.battle-target-strip-head span,
-.battle-consumables-head span {
-  color: rgba(214, 194, 157, 0.68);
-  font-size: 0.68rem;
-}
-
-.battle-target-chip-grid,
-.battle-consumables-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.battle-target-chip,
-.battle-consumable-card {
-  display: grid;
-  gap: 2px;
-  justify-items: start;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(134, 104, 62, 0.46);
-  background: rgba(24, 19, 13, 0.86);
-  text-align: left;
-}
-
-.battle-target-chip.is-active,
-.battle-consumable-card.is-active {
-  border-color: rgba(236, 190, 109, 0.9);
-  background: linear-gradient(180deg, rgba(75, 53, 24, 0.92), rgba(37, 28, 18, 0.94));
-  box-shadow: 0 0 0 1px rgba(236, 190, 109, 0.16);
-}
-
-.battle-target-chip small,
-.battle-consumable-card small,
-.battle-consumable-meta {
-  color: rgba(214, 194, 157, 0.72);
-  font-size: 0.68rem;
-}
-
-.battle-skill-focus {
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  padding: 10px;
-  border: 1px solid rgba(149, 117, 71, 0.42);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(34, 26, 17, 0.88), rgba(20, 16, 11, 0.92));
-}
-
-.battle-skill-focus-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.battle-skill-focus-copy strong {
-  font-size: 0.88rem;
-}
-
-.battle-skill-focus-copy span {
-  color: rgba(214, 194, 157, 0.76);
-  font-size: 0.72rem;
-}
-
-.battle-skill-focus-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-content: start;
-  justify-content: flex-end;
-}
-
-.battle-skill-focus-metrics span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(170, 136, 84, 0.42);
-  background: rgba(44, 34, 23, 0.84);
-  font-size: 0.7rem;
-}
-
-.battle-defense-utilities {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-
-.battle-consumable-name {
-  font-size: 0.76rem;
-}
-
-.battle-consumable-detail {
-  margin-top: 0;
-}
-
-.battle-fullscreen-root .battle-target-chip-grid,
-.battle-fullscreen-root .battle-consumables-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .planner-status-rows {
   display: grid;
   gap: 4px;
@@ -4333,94 +4032,6 @@ h3 {
 .battle-side-panel-content {
   display: grid;
   gap: 8px;
-}
-
-.battle-quickbar {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid rgba(162, 126, 70, 0.5);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(48, 35, 20, 0.88), rgba(21, 16, 11, 0.92)),
-    radial-gradient(circle at top left, rgba(214, 167, 95, 0.14), transparent 46%);
-}
-
-.battle-quickbar-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: baseline;
-}
-
-.battle-quickbar-head strong {
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.battle-quickbar-head span {
-  color: rgba(214, 194, 157, 0.72);
-  font-size: 0.66rem;
-}
-
-.battle-quickbar-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.battle-quickbar-slot {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid rgba(143, 110, 60, 0.56);
-  background: rgba(26, 20, 13, 0.88);
-}
-
-.battle-quickbar-slot.is-active {
-  border-color: rgba(236, 190, 109, 0.92);
-  background: linear-gradient(180deg, rgba(74, 53, 24, 0.92), rgba(34, 25, 15, 0.94));
-  box-shadow: 0 0 0 1px rgba(236, 190, 109, 0.22);
-}
-
-.battle-quickbar-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.4rem;
-  height: 24px;
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  border: 1px solid rgba(202, 163, 92, 0.62);
-  background: rgba(72, 49, 20, 0.84);
-  color: rgba(247, 226, 182, 0.98);
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.battle-quickbar-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.76rem;
-  text-align: left;
-}
-
-.battle-quickbar-meta {
-  color: rgba(214, 194, 157, 0.72);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-}
-
-.battle-quickbar-basic {
-  grid-column: 1 / -1;
 }
 
 .arena-editor-modal {
@@ -4811,7 +4422,7 @@ h3 {
 .skill-icon-item,
 .item-icon-item {
   display: grid;
-  grid-template-columns: auto 26px 1fr;
+  grid-template-columns: 26px 1fr;
   gap: 6px;
   align-items: center;
   min-height: 34px;
@@ -4838,29 +4449,6 @@ h3 {
   font-weight: 700;
 }
 
-.skill-slot-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.2rem;
-  padding: 0 0.35rem;
-  height: 24px;
-  border-radius: 999px;
-  border: 1px solid rgba(201, 162, 92, 0.58);
-  background: rgba(60, 40, 17, 0.78);
-  color: rgba(244, 220, 168, 0.96);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.skill-icon-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .skill-icon-label,
 .item-icon-label {
   min-width: 0;
@@ -4868,17 +4456,6 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.68rem;
-}
-
-.skill-icon-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(214, 194, 157, 0.72);
-  font-size: 0.58rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .battle-detail-popover {
@@ -9240,9 +8817,7 @@ body:has(.page.page--scroll) {
 
 .battle-fullscreen-root .battle-center-column,
 .battle-window:not(.wm-modal) .battle-center-column {
-  display: grid;
-  grid-template-rows: minmax(148px, 210px) minmax(320px, 1fr) auto;
-  min-height: 0;
+  grid-template-rows: minmax(148px, 210px) minmax(0, 1fr) auto;
 }
 
 .battle-fullscreen-root .battle-center-log,
@@ -9271,9 +8846,9 @@ body:has(.page.page--scroll) {
   padding: 4px;
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  min-height: 320px;
-  max-height: none;
+  height: 600px;
+  min-height: 600px;
+  max-height: 600px;
 }
 
 .tactical-battlefield {
@@ -9290,7 +8865,7 @@ body:has(.page.page--scroll) {
 @media (max-height: 760px) {
   .battle-fullscreen-root .battle-center-column,
   .battle-window:not(.wm-modal) .battle-center-column {
-    grid-template-rows: minmax(104px, 138px) minmax(260px, 1fr) auto;
+    grid-template-rows: minmax(104px, 138px) minmax(0, 1fr) auto;
   }
 
   .battle-fullscreen-root .battle-center-log,
@@ -9298,17 +8873,6 @@ body:has(.page.page--scroll) {
     min-height: 104px;
     max-height: 138px;
   }
-}
-
-.battle-fullscreen-root .battle-field.tactical-field,
-.battle-window:not(.wm-modal) .battle-field.tactical-field {
-  min-height: 320px;
-}
-
-.battle-fullscreen-root .battle-center-controls,
-.battle-window:not(.wm-modal) .battle-center-controls {
-  max-height: min(34vh, 340px);
-  overflow: auto;
 }
 
 .admin-editor-page {

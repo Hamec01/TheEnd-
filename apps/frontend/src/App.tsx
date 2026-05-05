@@ -1896,7 +1896,6 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           return null;
         }
         return {
-          slotId: slot.slotId,
           slotIndex: slot.slotIndex,
           skillId,
           level: row?.level ?? 1,
@@ -1904,7 +1903,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           definition,
         };
       })
-      .filter((entry, index, list): entry is { slotId: CharacterActionSlot['slotId']; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition } => Boolean(entry)
+      .filter((entry, index, list): entry is { slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition } => Boolean(entry)
         && list.findIndex((candidate) => candidate?.slotIndex === entry?.slotIndex) === index);
   }, [actionSlots, characterSkills, runtimeAdminSkills]);
 

@@ -22,7 +22,7 @@ interface ActionPlannerProps {
   maxStamina: number;
   currentMp: number;
   maxMp: number;
-  availableSkills: Array<{ slotId: string; slotIndex: number; skillId: string; label: string; level: number; definition: AdminSkillDefinition }>;
+  availableSkills: Array<{ skillId: string; label: string; level: number; definition: AdminSkillDefinition }>;
   inventoryItems: Array<{
     id: string;
     name: string;
@@ -110,14 +110,6 @@ function getEstimatedTotalCost(actionType: ActionType, movementType: MovementTyp
   return ACTION_COSTS[actionType] + (movementType ? MOVEMENT_COSTS[movementType] : 0);
 }
 
-function formatQuickSlotLabel(slotId: string): string {
-  const match = slotId.match(/quick(\d+)/i);
-  if (!match) {
-    return slotId;
-  }
-  return `Q${match[1]}`;
-}
-
 interface BodyTargetSelectorProps {
   mode: 'attack' | 'defense';
   selectedZones: TargetZone[];
@@ -201,6 +193,7 @@ function BodyTargetSelector({
 }
 
 export function ActionPlanner(props: ActionPlannerProps) {
+  const [activePanelTab, setActivePanelTab] = useState<'skills' | 'inventory'>('skills');
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<string | null>(null);
   const selectedDefenseZones = props.defenseZones.slice(0, 2);
   const skillOptions = props.availableSkills;
@@ -228,116 +221,68 @@ export function ActionPlanner(props: ActionPlannerProps) {
   );
   const totalStaminaLoad = estimatedCost + skillStaminaCost;
   const selectedEnemy = props.enemies.find((enemy) => enemy.id === props.selectedTargetId) ?? null;
-  const modeLabel = props.actionType === ActionType.Defend
-    ? 'Защитная стойка'
-    : props.actionType === ActionType.Wait
-      ? 'Ожидание'
-      : props.selectedSkillId
-        ? 'Навык подготовлен'
-        : 'Базовая атака готова';
 
   return (
-    <div className="action-planner compact-planner inner-card battle-command-deck">
-      <div className="battle-command-head">
-        <div>
-          <h3>Боевой пульт</h3>
-          <p>{modeLabel}</p>
-        </div>
-        <div className="battle-command-actions" role="group" aria-label="Боевой режим">
-          <button
-            type="button"
-            className={props.actionType === ActionType.Attack ? 'is-active' : ''}
-            onClick={() => props.onActionTypeChange(ActionType.Attack)}
-          >
-            Бой
-          </button>
-          <button
-            type="button"
-            className={props.actionType === ActionType.Defend ? 'is-active' : ''}
-            onClick={() => props.onActionTypeChange(ActionType.Defend)}
-          >
-            Защита
-          </button>
-          <button
-            type="button"
-            className={props.actionType === ActionType.Wait ? 'is-active' : ''}
-            onClick={() => props.onActionTypeChange(ActionType.Wait)}
-          >
-            Пауза
-          </button>
-        </div>
+    <div className="action-planner compact-planner inner-card">
+      <h3>Actions</h3>
+
+      <div className="planner-main-actions" role="group" aria-label="Main actions">
+        <button type="button" className={props.actionType === ActionType.Attack && !props.selectedSkillId ? 'is-active' : ''} onClick={() => {
+          props.onActionTypeChange(ActionType.Attack);
+          if (props.selectedSkillId) {
+            props.onSkillChange(null);
+          }
+        }}>
+          Атаковать
+        </button>
+        <button type="button" className={props.actionType === ActionType.Attack && Boolean(props.selectedSkillId) ? 'is-active' : ''} onClick={() => {
+          props.onActionTypeChange(ActionType.Attack);
+          if (!props.selectedSkillId && skillOptions.length > 0) {
+            props.onSkillChange(skillOptions[0]!.skillId);
+          }
+        }}>
+          Навык
+        </button>
+        <button type="button" className={props.actionType === ActionType.Defend ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Defend)}>
+          Защита
+        </button>
+        <button type="button" className={props.actionType === ActionType.Move ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Move)}>
+          Движение
+        </button>
+        <button type="button" className={props.actionType === ActionType.Wait ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Wait)}>
+          Ожидание
+        </button>
       </div>
 
-      <section className="battle-target-strip" aria-label="Цели">
-        <div className="battle-target-strip-head">
-          <strong>Цели</strong>
-          <span>ЛКМ или RMB на карте тоже меняют цель</span>
+      <div className="planner-selects-row">
+        <div className="planner-select-item">
+          <label htmlFor="target-select">Враг</label>
+          <select id="target-select" value={props.selectedTargetId} onChange={(event) => props.onTargetChange(event.target.value)} className="compact-select">
+            {props.enemies.map((enemy) => (
+              <option key={enemy.id} value={enemy.id}>{enemy.name}</option>
+            ))}
+          </select>
         </div>
-        <div className="battle-target-chip-grid">
-          {props.enemies.map((enemy) => (
-            <button
-              key={enemy.id}
-              type="button"
-              className={`battle-target-chip ${enemy.id === props.selectedTargetId ? 'is-active' : ''}`}
-              onClick={() => props.onTargetChange(enemy.id)}
-            >
-              <span>{enemy.name}</span>
-              <small>{enemy.currentHp}/{enemy.maxHp} HP</small>
-            </button>
-          ))}
-        </div>
-      </section>
 
-      <section className="battle-quickbar" aria-label="Боевые быстрые слоты">
-        <div className="battle-quickbar-head">
-          <strong>Боевые слоты</strong>
-          <span>Основной способ выбора атаки, клавиши 1-0</span>
-        </div>
-        <div className="battle-quickbar-grid">
-          <button
-            type="button"
-            className={`battle-quickbar-slot battle-quickbar-basic ${props.selectedSkillId ? '' : 'is-active'}`}
-            onClick={() => {
-              props.onSkillChange(null);
+        <div className="planner-select-item">
+          <label htmlFor="skill-select">Навык</label>
+          <select
+            id="skill-select"
+            value={props.selectedSkillId ?? ''}
+            onChange={(event) => {
+              props.onSkillChange(event.target.value || null);
               props.onActionTypeChange(ActionType.Attack);
             }}
-            title="Базовая атака"
+            disabled={skillOptions.length === 0}
+            className="compact-select"
           >
-            <span className="battle-quickbar-key">LMB</span>
-            <span className="battle-quickbar-name">Базовая атака</span>
-          </button>
-
-          {skillOptions.map((skill) => (
-            <button
-              key={skill.slotId}
-              type="button"
-              className={`battle-quickbar-slot ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
-              onClick={() => {
-                props.onSkillChange(skill.skillId);
-                props.onActionTypeChange(ActionType.Attack);
-              }}
-              title={`${formatQuickSlotLabel(skill.slotId)}: ${skill.label}`}
-            >
-              <span className="battle-quickbar-key">{formatQuickSlotLabel(skill.slotId)}</span>
-              <span className="battle-quickbar-name">{skill.label}</span>
-              <span className="battle-quickbar-meta">lvl {skill.level}</span>
-            </button>
-          ))}
+            <option value="">Basic attack</option>
+            {skillOptions.map((skill) => (
+              <option key={skill.skillId} value={skill.skillId}>{skill.label} (lvl {skill.level})</option>
+            ))}
+          </select>
         </div>
-      </section>
-
-      <section className="battle-skill-focus" aria-label="Фокус действия">
-        <div className="battle-skill-focus-copy">
-          <strong>{selectedSkill?.label ?? 'Базовая атака'}</strong>
-          <span>{selectedEnemy ? `Цель: ${selectedEnemy.name}` : 'Цель не выбрана'}</span>
-        </div>
-        <div className="battle-skill-focus-metrics">
-          <span>MP {manaCost}</span>
-          <span>STA {skillStaminaCost + ACTION_COSTS[props.actionType]}</span>
-          <span>Move {props.movementType ? MOVEMENT_COSTS[props.movementType] : 0}</span>
-          {selectedSkill ? <span>Lvl {selectedSkill.level}</span> : <span>LMB</span>}
-        </div>
-      </section>
+      </div>
 
       <div className="planner-status-rows">
         <div className="planner-status-row"><span>Дистанция:</span><strong>{DISTANCE_LABELS[props.currentDistance]}</strong></div>
@@ -360,14 +305,6 @@ export function ActionPlanner(props: ActionPlannerProps) {
         />
 
         <div>
-          <div className="battle-defense-utilities">
-            <button type="button" className="secondary-button" onClick={() => props.onDefenseZonesChange([])}>
-              Сбросить защиту
-            </button>
-            <button type="button" className={props.actionType === ActionType.Defend ? 'secondary-button is-active' : 'secondary-button'} onClick={() => props.onActionTypeChange(ActionType.Defend)}>
-              Встать в защиту
-            </button>
-          </div>
           <BodyTargetSelector
             mode="defense"
             maxSelections={2}
@@ -377,65 +314,105 @@ export function ActionPlanner(props: ActionPlannerProps) {
             title="Зоны защиты"
             recentBlockedZone={props.recentBlockedZone}
           />
+          <button type="button" className="secondary-button" onClick={() => props.onDefenseZonesChange([])}>
+            Сбросить защиту
+          </button>
         </div>
       </div>
 
       {props.actionWarning ? <div className="battle-detail-popover"><p>{props.actionWarning}</p></div> : null}
 
-      <section className="battle-consumables" aria-label="Боевые предметы">
-        <div className="battle-consumables-head">
-          <strong>Боевые предметы</strong>
-          <span>Доступные из action slots</span>
-        </div>
-        {props.inventoryItems.length > 0 ? (
-          <div className="battle-consumables-grid">
-            {props.inventoryItems.map((item) => (
+      <div className="battle-side-panel-tabs">
+        <button type="button" className={activePanelTab === 'skills' ? 'is-active' : ''} onClick={() => setActivePanelTab('skills')}>
+          Skills
+        </button>
+        <button type="button" className={activePanelTab === 'inventory' ? 'is-active' : ''} onClick={() => setActivePanelTab('inventory')}>
+          Inventory
+        </button>
+      </div>
+
+      {activePanelTab === 'skills' && (
+        <div className="battle-side-panel-content">
+          <div className="skill-icon-grid">
+            {props.availableSkills.map((skill) => (
               <button
-                key={item.id}
+                key={skill.skillId}
                 type="button"
-                className={`battle-consumable-card ${selectedInventoryItem === item.id ? 'is-active' : ''}`}
-                onClick={() => setSelectedInventoryItem(item.id)}
-                title={`${item.name} x${item.quantity}${item.disabledReason ? ` — ${item.disabledReason}` : ''}`}
+                className={`skill-icon-item ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
+                onClick={() => {
+                  props.onSkillChange(skill.skillId);
+                  props.onActionTypeChange(ActionType.Attack);
+                }}
+                title={skill.label}
               >
-                <span className="battle-consumable-name">{item.name}</span>
-                <span className="battle-consumable-meta">x{item.quantity}</span>
-                {item.costSummary ? <small>{item.costSummary}</small> : <small>Без стоимости</small>}
+                <span className="skill-icon-glyph">{skill.label.slice(0, 2).toUpperCase()}</span>
+                <span className="skill-icon-label">{skill.label}</span>
               </button>
             ))}
           </div>
-        ) : (
-          <div className="battle-detail-popover">
-            <p>Боевые предметы не назначены.</p>
-          </div>
-        )}
 
-        <div className="battle-detail-popover battle-consumable-detail">
-          {selectedInventoryEntry ? (
-            <>
-              <strong>{selectedInventoryEntry.name}</strong>
-              <p>{selectedInventoryEntry.description}</p>
-              <p>Тип: {selectedInventoryEntry.itemType}</p>
-              <p>Количество: {selectedInventoryEntry.quantity}</p>
-              {selectedInventoryEntry.effectSummary ? <p>Эффект: {selectedInventoryEntry.effectSummary}</p> : null}
-              {selectedInventoryEntry.costSummary ? <p>Стоимость: {selectedInventoryEntry.costSummary}</p> : null}
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={!props.onUseInventoryItem || selectedInventoryEntry.disabled}
-                onClick={() => {
-                  if (props.onUseInventoryItem && !selectedInventoryEntry.disabled) {
-                    void props.onUseInventoryItem(selectedInventoryEntry.id);
-                  }
-                }}
-              >
-                {selectedInventoryEntry.disabled ? (selectedInventoryEntry.disabledReason ?? 'Недоступно') : 'Использовать'}
-              </button>
-            </>
-          ) : (
-            <p>Выберите предмет, чтобы просмотреть и применить его.</p>
-          )}
+          <div className="battle-detail-popover">
+            <strong>{selectedSkill?.label ?? 'Basic Attack'}</strong>
+            <p>Target: {selectedEnemy?.name ?? 'None'}</p>
+            <p>Mana cost: {manaCost}</p>
+            <p>Stamina cost: {skillStaminaCost + ACTION_COSTS[props.actionType]}</p>
+            <p>Move cost: {props.movementType ? MOVEMENT_COSTS[props.movementType] : 0}</p>
+            {selectedSkill ? <p>Skill level: {selectedSkill.level}</p> : null}
+          </div>
         </div>
-      </section>
+      )}
+
+      {activePanelTab === 'inventory' && (
+        <div className="battle-side-panel-content">
+          {props.inventoryItems.length > 0 ? (
+            <div className="item-icon-grid">
+              {props.inventoryItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`item-icon-item ${selectedInventoryItem === item.id ? 'is-active' : ''}`}
+                  onClick={() => setSelectedInventoryItem(item.id)}
+                  title={`${item.name} x${item.quantity}${item.disabledReason ? ` — ${item.disabledReason}` : ''}`}
+                >
+                  <span className="item-icon-glyph">{item.name.slice(0, 1)}</span>
+                  <span className="item-icon-label">{item.name} x{item.quantity}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="battle-detail-popover">
+              <p>Inventory is empty.</p>
+            </div>
+          )}
+
+          <div className="battle-detail-popover">
+            {selectedInventoryEntry ? (
+              <>
+                <strong>{selectedInventoryEntry.name}</strong>
+                <p>{selectedInventoryEntry.description}</p>
+                <p>Type: {selectedInventoryEntry.itemType}</p>
+                <p>Quantity: {selectedInventoryEntry.quantity}</p>
+                {selectedInventoryEntry.effectSummary ? <p>Effect: {selectedInventoryEntry.effectSummary}</p> : null}
+                {selectedInventoryEntry.costSummary ? <p>Cost: {selectedInventoryEntry.costSummary}</p> : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!props.onUseInventoryItem || selectedInventoryEntry.disabled}
+                  onClick={() => {
+                    if (props.onUseInventoryItem && !selectedInventoryEntry.disabled) {
+                      void props.onUseInventoryItem(selectedInventoryEntry.id);
+                    }
+                  }}
+                >
+                  {selectedInventoryEntry.disabled ? (selectedInventoryEntry.disabledReason ?? 'Недоступно') : 'Использовать'}
+                </button>
+              </>
+            ) : (
+              <p>Select an item to inspect.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {props.showSubmitButton !== false && (
         <button className="confirm-turn-button" disabled={props.disabled} onClick={props.onSubmit}>
