@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel } from '../adminUi';
@@ -26,6 +27,7 @@ import type {
 } from '../../types/npc';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'guard', 'enemy', 'boss', 'companion', 'random_encounter', 'story_character', 'monster', 'animal'];
@@ -92,6 +94,8 @@ export function NpcsPage() {
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<NpcTab>('basic');
   const [statusText, setStatusText] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
 
   const [dialogueIds, setDialogueIds] = useState<string[]>([]);
   const [questIds, setQuestIds] = useState<string[]>([]);
@@ -157,6 +161,34 @@ export function NpcsPage() {
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
 
     const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'content' || payload.scope === 'all') {
+        void Promise.all([
+          ensureDialoguesLoaded(),
+          ensureQuestsLoaded(),
+          ensureQuestMarkersLoaded(),
+          skillsService.getAll(),
+          itemsService.getAll(),
+          merchantsService.getAll(),
+          lootTablesService.getAll(),
+        ]).then(([, , , skills, items, merchants, lootTables]) => {
+          setSkillIds(skills.map((entry) => entry.id));
+          setItemIds(items.map((entry) => entry.id));
+          setTraderOptions(merchants.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            city: entry.city,
+            enabled: entry.isEnabled,
+            assortment: entry.items.length,
+          })));
+          setLootTableIds(lootTables.map((entry) => entry.id));
+          setQuestIds(getAllQuests().map((entry) => entry.id));
+          setQuestItemIds(getQuestItems().map((entry) => entry.id));
+          setDialogueIds(getAllDialogues().map((entry) => entry.id));
+          setMarkerIds(getQuestMarkers().map((entry) => entry.id));
+          refresh();
+        }).catch(() => undefined);
+      }
+
       if (payload.scope === 'worldMap' || payload.scope === 'all') {
         void refreshZonesFromBackend().then(setZones).catch(() => undefined);
       }
@@ -256,6 +288,10 @@ export function NpcsPage() {
   }
 
   async function saveCurrent() {
+    if (isSaving) {
+      return;
+    }
+
     const prepared: NpcDefinition = {
       ...draft,
       id: draft.id.trim() || `npc_${Math.random().toString(36).slice(2, 8)}`,
@@ -274,12 +310,37 @@ export function NpcsPage() {
       return;
     }
 
-    const saved = await saveNpc(prepared);
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: prepared.id,
+      onSave: () => saveNpc(prepared),
+      onAfterSave: () => Promise.resolve(refresh()),
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+    if (!saved) {
+      setIsSaving(false);
+      return;
+    }
+
     setDraft(saved);
     setSelectedId(saved.id);
     refresh();
-    setStatusText(`NPC сохранен: ${saved.id}`);
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatusText(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatusText(`NPC сохранен: ${saved.id}`);
+    }
+    setIsSaving(false);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveCurrent,
+  });
 
   async function duplicateSelected() {
     if (!selectedId) {
@@ -696,12 +757,13 @@ export function NpcsPage() {
         </label>
 
         <div className="admin-actions-row">
-          <button onClick={saveCurrent}>{selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ'}</button>
+          <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ')}</button>
           <button disabled={!selectedId} onClick={duplicateSelected}>ДУБЛИРОВАТЬ</button>
           <button disabled={!selectedId} onClick={disableSelected}>ОТКЛЮЧИТЬ</button>
           <button disabled={!selectedId} onClick={removeSelected}>УДАЛИТЬ</button>
         </div>
 
+        <AdminSaveStatus value={saveState} />
         <p className="muted">{statusText}</p>
       </section>
     </div>

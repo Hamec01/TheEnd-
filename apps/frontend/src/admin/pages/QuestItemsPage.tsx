@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import { getContentCollection, getContentEntry } from '../../services/content/contentApi';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { deleteQuestItem, ensureQuestsLoaded, getAllQuests, getQuestItems, saveQuestItem } from '../../services/questRepository';
 import type { StoredImage } from '../../services/content/models';
 import type { QuestItemDefinition } from '../../types/quest';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 function emptyQuestItem(): QuestItemDefinition {
   return {
@@ -35,6 +38,9 @@ export function QuestItemsPage() {
   const [draft, setDraft] = useState<QuestItemDefinition>(emptyQuestItem());
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   async function refresh() {
     await ensureQuestsLoaded();
@@ -77,19 +83,66 @@ export function QuestItemsPage() {
   }
 
   async function saveCurrent() {
-    try {
-      const saved = await saveQuestItem({
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: draft.id || 'quest_item',
+      onSave: async () => saveQuestItem({
         ...draft,
         id: draft.id.trim() || uid('quest_item'),
         name: draft.name.trim(),
-      });
-      setSelectedId(saved.id);
-      setDraft(saved);
-      await refresh();
-      setStatus(`Квестовый предмет сохранен: ${saved.id}`);
-    } catch (error) {
-      setStatus(translateAdminErrorMessage((error as Error).message));
+      }),
+      onAfterSave: async (entry) => {
+        const verified = await getContentEntry<QuestItemDefinition>('questItems', entry.id);
+        if (!verified) {
+          throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+        }
+      },
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+
+    if (!saved) {
+      setIsSaving(false);
+      return;
     }
+
+    setSelectedId(saved.id);
+    setDraft(saved);
+    await refresh();
+
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatus(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatus(`Квестовый предмет сохранен: ${saved.id}`);
+    }
+    setIsSaving(false);
+  }
+
+  async function debugPersistence() {
+    const selected = draft.id.trim();
+    const [cached, persisted] = await Promise.all([
+      Promise.resolve(getQuestItems()),
+      getContentCollection<QuestItemDefinition>('questItems').catch(() => []),
+    ]);
+
+    const cachedExists = selected ? cached.some((entry) => entry.id.trim() === selected) : false;
+    const persistedExists = selected ? persisted.some((entry) => entry.id.trim() === selected) : false;
+
+    setDebugInfo([
+      `collection: questItems`,
+      `count(cache): ${cached.length}`,
+      `count(persisted): ${persisted.length}`,
+      `selectedId: ${selected || '-'}`,
+      `exists(cache): ${cachedExists ? 'yes' : 'no'}`,
+      `exists(persisted): ${persistedExists ? 'yes' : 'no'}`,
+      `source: cache + backend content`,
+    ].join(' | '));
   }
 
   async function removeCurrent() {
@@ -109,6 +162,12 @@ export function QuestItemsPage() {
     }
     return resolveStoredImageSource(imageKey, images);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveCurrent,
+  });
 
   return (
     <div className="admin-two-col">
@@ -202,11 +261,14 @@ export function QuestItemsPage() {
         </section>
 
         <div className="admin-actions-row">
-          <button onClick={saveCurrent}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'Сохранить' : 'Создать')}</button>
           <button disabled={!selectedId} onClick={removeCurrent}>Удалить</button>
+          <button type="button" onClick={() => { void debugPersistence(); }}>Проверить сохранение / Debug content</button>
         </div>
 
+        <AdminSaveStatus value={saveState} />
         <p className="muted">{status}</p>
+        {debugInfo ? <p className="muted">{debugInfo}</p> : null}
       </section>
     </div>
   );

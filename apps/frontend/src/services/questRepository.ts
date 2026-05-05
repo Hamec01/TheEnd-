@@ -7,6 +7,7 @@ import type {
 } from '../types/quest';
 import {
   createContentEntry,
+  getContentEntry,
   deleteContentEntry,
   getContentCollection,
   updateContentEntry,
@@ -73,29 +74,60 @@ function invalidate(): void {
   loaded = false;
 }
 
+function normalizeEntityId(id: string | undefined): string {
+  return String(id ?? '').trim();
+}
+
+async function verifyCollectionEntry<T>(collection: 'quests' | 'questInteractions' | 'questItems', id: string): Promise<T> {
+  const verified = await getContentEntry<T>(collection, id);
+  if (!verified) {
+    throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+  }
+  return verified;
+}
+
 export function getAllQuests(): QuestDefinition[] {
   return [...questsCache];
 }
 
 export function getQuestById(id: string): QuestDefinition | null {
-  return questsCache.find((quest) => quest.id === id) ?? null;
+  const normalizedId = normalizeEntityId(id);
+  return questsCache.find((quest) => normalizeEntityId(quest.id) === normalizedId) ?? null;
 }
 
 export async function saveQuest(quest: QuestDefinition): Promise<QuestDefinition> {
   await ensureQuestsLoaded();
-  const exists = questsCache.some((entry) => entry.id === quest.id);
+  const normalizedId = normalizeEntityId(quest.id);
+  if (!normalizedId) {
+    throw new Error('Quest id is required.');
+  }
+
+  const normalizedQuest: QuestDefinition = {
+    ...quest,
+    id: normalizedId,
+    title: quest.title?.trim() || normalizedId,
+  };
+
+  const exists = questsCache.some((entry) => normalizeEntityId(entry.id) === normalizedId);
   const saved = exists
-    ? await updateContentEntry<QuestDefinition>('quests', quest.id, quest)
-    : await createContentEntry<QuestDefinition>('quests', quest);
-  invalidate();
-  await ensureQuestsLoaded(true);
-  return saved;
+    ? await updateContentEntry<QuestDefinition>('quests', normalizedId, normalizedQuest)
+    : await createContentEntry<QuestDefinition>('quests', normalizedQuest);
+
+  const verified = await verifyCollectionEntry<QuestDefinition>('quests', normalizedId);
+  questsCache = exists
+    ? questsCache.map((entry) => normalizeEntityId(entry.id) === normalizedId ? verified : entry)
+    : [...questsCache, verified];
+
+  return verified;
 }
 
 export async function deleteQuest(id: string): Promise<void> {
-  await deleteContentEntry('quests', id);
-  invalidate();
-  await ensureQuestsLoaded(true);
+  const normalizedId = normalizeEntityId(id);
+  if (!normalizedId) {
+    return;
+  }
+  await deleteContentEntry('quests', normalizedId);
+  questsCache = questsCache.filter((entry) => normalizeEntityId(entry.id) !== normalizedId);
 }
 
 export async function duplicateQuest(id: string): Promise<QuestDefinition> {
@@ -122,24 +154,43 @@ export function getQuestInteractions(): QuestInteractionDefinition[] {
 }
 
 export function getQuestInteractionById(id: string): QuestInteractionDefinition | null {
-  return questInteractionsCache.find((interaction) => interaction.id === id) ?? null;
+  const normalizedId = normalizeEntityId(id);
+  return questInteractionsCache.find((interaction) => normalizeEntityId(interaction.id) === normalizedId) ?? null;
 }
 
 export async function saveQuestInteraction(interaction: QuestInteractionDefinition): Promise<QuestInteractionDefinition> {
   await ensureQuestsLoaded();
-  const exists = questInteractionsCache.some((entry) => entry.id === interaction.id);
+  const normalizedId = normalizeEntityId(interaction.id);
+  if (!normalizedId) {
+    throw new Error('Quest interaction id is required.');
+  }
+
+  const normalizedInteraction: QuestInteractionDefinition = {
+    ...interaction,
+    id: normalizedId,
+    title: interaction.title?.trim() || normalizedId,
+  };
+
+  const exists = questInteractionsCache.some((entry) => normalizeEntityId(entry.id) === normalizedId);
   const saved = exists
-    ? await updateContentEntry<QuestInteractionDefinition>('questInteractions', interaction.id, interaction)
-    : await createContentEntry<QuestInteractionDefinition>('questInteractions', interaction);
-  invalidate();
-  await ensureQuestsLoaded(true);
-  return saved;
+    ? await updateContentEntry<QuestInteractionDefinition>('questInteractions', normalizedId, normalizedInteraction)
+    : await createContentEntry<QuestInteractionDefinition>('questInteractions', normalizedInteraction);
+
+  const verified = await verifyCollectionEntry<QuestInteractionDefinition>('questInteractions', normalizedId);
+  questInteractionsCache = exists
+    ? questInteractionsCache.map((entry) => normalizeEntityId(entry.id) === normalizedId ? verified : entry)
+    : [...questInteractionsCache, verified];
+
+  return verified;
 }
 
 export async function deleteQuestInteraction(id: string): Promise<void> {
-  await deleteContentEntry('questInteractions', id);
-  invalidate();
-  await ensureQuestsLoaded(true);
+  const normalizedId = normalizeEntityId(id);
+  if (!normalizedId) {
+    return;
+  }
+  await deleteContentEntry('questInteractions', normalizedId);
+  questInteractionsCache = questInteractionsCache.filter((entry) => normalizeEntityId(entry.id) !== normalizedId);
 }
 
 export function getQuestItems(): QuestItemDefinition[] {
@@ -147,24 +198,46 @@ export function getQuestItems(): QuestItemDefinition[] {
 }
 
 export function getQuestItemById(id: string): QuestItemDefinition | null {
-  return questItemsCache.find((item) => item.id === id) ?? null;
+  const normalizedId = normalizeEntityId(id);
+  return questItemsCache.find((item) => normalizeEntityId(item.id) === normalizedId) ?? null;
 }
 
 export async function saveQuestItem(item: QuestItemDefinition): Promise<QuestItemDefinition> {
   await ensureQuestsLoaded();
-  const exists = questItemsCache.some((entry) => entry.id === item.id);
+
+  const normalizedId = normalizeEntityId(item.id);
+  if (!normalizedId) {
+    throw new Error('Quest item id is required.');
+  }
+
+  const normalizedItem: QuestItemDefinition = {
+    ...item,
+    id: normalizedId,
+    name: item.name?.trim() || normalizedId,
+    description: item.description?.trim?.() ?? item.description,
+    linkedQuestId: item.linkedQuestId?.trim() || undefined,
+  };
+
+  const exists = questItemsCache.some((entry) => normalizeEntityId(entry.id) === normalizedId);
   const saved = exists
-    ? await updateContentEntry<QuestItemDefinition>('questItems', item.id, item)
-    : await createContentEntry<QuestItemDefinition>('questItems', item);
-  invalidate();
-  await ensureQuestsLoaded(true);
-  return saved;
+    ? await updateContentEntry<QuestItemDefinition>('questItems', normalizedId, normalizedItem)
+    : await createContentEntry<QuestItemDefinition>('questItems', normalizedItem);
+
+  const verified = await verifyCollectionEntry<QuestItemDefinition>('questItems', normalizedId);
+  questItemsCache = exists
+    ? questItemsCache.map((entry) => normalizeEntityId(entry.id) === normalizedId ? verified : entry)
+    : [...questItemsCache, verified];
+
+  return verified;
 }
 
 export async function deleteQuestItem(id: string): Promise<void> {
-  await deleteContentEntry('questItems', id);
-  invalidate();
-  await ensureQuestsLoaded(true);
+  const normalizedId = normalizeEntityId(id);
+  if (!normalizedId) {
+    return;
+  }
+  await deleteContentEntry('questItems', normalizedId);
+  questItemsCache = questItemsCache.filter((entry) => normalizeEntityId(entry.id) !== normalizedId);
 }
 
 export async function exportQuestsJson(): Promise<string> {

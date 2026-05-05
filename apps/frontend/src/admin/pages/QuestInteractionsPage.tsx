@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
   deleteQuestInteraction,
   ensureQuestsLoaded,
@@ -13,6 +15,7 @@ import { getAllZones } from '../../services/worldRepository';
 import { getContentCollection } from '../../services/content/contentApi';
 import type { AdminItem, AdminSkill } from '../../services/content/models';
 import type { QuestInteractionDefinition, QuestInteractionChoice } from '../../types/quest';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const TRIGGER_TYPES: QuestInteractionDefinition['triggerType'][] = [
   'zone_inspect',
@@ -131,6 +134,8 @@ export function QuestInteractionsPage() {
   const [choicesJson, setChoicesJson] = useState('[]');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
 
   async function refresh() {
     await Promise.all([ensureQuestsLoaded(), ensureQuestMarkersLoaded()]);
@@ -159,6 +164,14 @@ export function QuestInteractionsPage() {
 
   useEffect(() => {
     void refresh();
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'content' || payload.scope === 'worldMap' || payload.scope === 'all') {
+        void refresh();
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -248,6 +261,10 @@ export function QuestInteractionsPage() {
   }
 
   async function saveCurrent() {
+    if (isSaving) {
+      return;
+    }
+
     try {
       const prepared = normalizeInteraction({
         ...draft,
@@ -262,15 +279,41 @@ export function QuestInteractionsPage() {
         return;
       }
 
-      const saved = await saveQuestInteraction(prepared);
+      setIsSaving(true);
+      const saved = await runSaveWithFeedback({
+        setState: setSaveState,
+        saveLabel: prepared.id,
+        onSave: () => saveQuestInteraction(prepared),
+        onAfterSave: refresh,
+        successLabel: (entry) => `Сохранено: ${entry.id}`,
+      });
+      if (!saved) {
+        setIsSaving(false);
+        return;
+      }
+
       setSelectedId(saved.id);
       setDraft(saved);
       await refresh();
-      setStatus(`Quest interaction сохранен: ${saved.id}`);
+      const warning = getIdQualityWarning(saved.id);
+      if (warning) {
+        setStatus(`Предупреждение: ${warning}`);
+        setSaveState({ state: 'warning', message: warning });
+      } else {
+        setStatus(`Quest interaction сохранен: ${saved.id}`);
+      }
+      setIsSaving(false);
     } catch (error) {
+      setIsSaving(false);
       setStatus(translateAdminErrorMessage((error as Error).message));
     }
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveCurrent,
+  });
 
   async function removeCurrent() {
     if (!selectedId) {
@@ -477,10 +520,11 @@ export function QuestInteractionsPage() {
         </label>
 
         <div className="admin-actions-row">
-          <button onClick={saveCurrent}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'Сохранить' : 'Создать')}</button>
           <button disabled={!selectedId} onClick={removeCurrent}>Удалить</button>
         </div>
 
+        <AdminSaveStatus value={saveState} />
         <p className="muted">{status}</p>
       </section>
     </div>

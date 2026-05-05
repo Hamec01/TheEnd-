@@ -5,7 +5,6 @@ import type { QuestRuntimePlayer } from './questRuntime';
 import { canStartQuest } from './questRuntime';
 import { getQuestById } from './questRepository';
 import { evaluateDialogueConditions, getStartNode } from './dialogueRuntime';
-import { isDialogueCompleted } from './dialogueProgressStore';
 
 export type BestNpcInteraction =
   | { kind: 'quest_scene'; npcId: string; questStages: QuestNpcStage[] }
@@ -172,7 +171,7 @@ function dialogueAvailable(player: QuestRuntimePlayer, npc: NpcDefinition, dialo
   if (dialogue.status !== 'active') {
     return false;
   }
-  const start = getStartNode(dialogue);
+  const start = getStartNode(dialogue, player, npc);
   if (!start) {
     return false;
   }
@@ -230,24 +229,9 @@ export function selectBestInteractionForNpc(params: {
     (npc.dialogues ?? []).map((binding) => [binding.dialogueId, Number(binding.priority ?? 0)]),
   );
 
-  const allowDialogue = (dialogue: DialogueDefinition): boolean => {
-    const record = isDialogueCompleted(npc.id, dialogue.id);
-    if (!record) {
-      return true;
-    }
-    if (record.questId) {
-      const quest = getQuestById(record.questId);
-      if (quest?.isRepeatable) {
-        return true;
-      }
-    }
-    return false;
-  };
-
   const candidates = dialogues
     .filter((dialogue) => dialogueAvailable(player, npc, dialogue))
-    .filter((dialogue) => dialogueHasValidStart(dialogue))
-    .filter((dialogue) => allowDialogue(dialogue));
+    .filter((dialogue) => dialogueHasValidStart(dialogue));
 
   const scoreDialogue = (dialogue: DialogueDefinition): number => {
     const bindingPriority = bindingPriorityByDialogueId.get(dialogue.id) ?? 0;

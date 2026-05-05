@@ -593,7 +593,30 @@ function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition 
       canMakeContract: false,
       canLoseControl: false,
     },
-    requirements: input.requirements ?? {},
+    requirements: {
+      ...(input.requirements ?? {}),
+      requiredQuestIds: Array.isArray(input.requirements?.requiredQuestIds)
+        ? input.requirements.requiredQuestIds.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      requiredItems: Array.isArray(input.requirements?.requiredItems)
+        ? input.requirements.requiredItems.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      allowedClasses: Array.isArray(input.requirements?.allowedClasses)
+        ? input.requirements.allowedClasses.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      forbiddenClasses: Array.isArray(input.requirements?.forbiddenClasses)
+        ? input.requirements.forbiddenClasses.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      allowedRaces: Array.isArray(input.requirements?.allowedRaces)
+        ? input.requirements.allowedRaces.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      forbiddenRaces: Array.isArray(input.requirements?.forbiddenRaces)
+        ? input.requirements.forbiddenRaces.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      requiredSkills: Array.isArray(input.requirements?.requiredSkills)
+        ? input.requirements.requiredSkills.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+    },
     acquisition: input.acquisition ?? {
       methods: [],
       isStarterSkill: false,
@@ -613,6 +636,31 @@ function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition 
     tags: Array.isArray(input.tags) ? input.tags : [],
     isPublished: Boolean(input.isPublished),
     isHidden: Boolean(input.isHidden),
+    acquisitionMode: input.acquisitionMode === 'trainer'
+      || input.acquisitionMode === 'quest'
+      || input.acquisitionMode === 'dialogue'
+      || input.acquisitionMode === 'item'
+      || input.acquisitionMode === 'hidden'
+      || input.acquisitionMode === 'admin'
+      ? input.acquisitionMode
+      : undefined,
+    isTrainable: input.isTrainable === true,
+    requiredLevel: typeof input.requiredLevel === 'number' && Number.isFinite(input.requiredLevel)
+      ? Math.max(0, Math.round(input.requiredLevel))
+      : undefined,
+    requiredQuestId: input.requiredQuestId?.trim() || undefined,
+    requiredCompletedQuestId: input.requiredCompletedQuestId?.trim() || undefined,
+    requiredQuestItemId: input.requiredQuestItemId?.trim() || undefined,
+    requiredNpcId: input.requiredNpcId?.trim() || undefined,
+    requiredClassIds: Array.isArray(input.requiredClassIds)
+      ? input.requiredClassIds.map((entry) => String(entry).trim()).filter(Boolean)
+      : [],
+    requiredRaceIds: Array.isArray(input.requiredRaceIds)
+      ? input.requiredRaceIds.map((entry) => String(entry).trim()).filter(Boolean)
+      : [],
+    requiredKnownSkillIds: Array.isArray(input.requiredKnownSkillIds)
+      ? input.requiredKnownSkillIds.map((entry) => String(entry).trim()).filter(Boolean)
+      : [],
     adminNotes: input.adminNotes?.trim() || undefined,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,

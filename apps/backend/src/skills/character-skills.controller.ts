@@ -17,7 +17,20 @@ export class CharacterSkillsController {
     @Param('characterId') characterId: string,
     @Body() dto: LearnSkillDto,
   ) {
-    return this.skillLearning.learnSkill(characterId, dto.skillId, dto.sourceType, dto.sourceId);
+    return this.skillLearning.learnSkillFromTraining(characterId, dto.skillId, dto.sourceId);
+  }
+
+  @Post('skills/grant')
+  async grantSkill(
+    @Param('characterId') characterId: string,
+    @Body() dto: LearnSkillDto,
+  ) {
+    return this.skillLearning.grantSkillToCharacter(
+      characterId,
+      dto.skillId,
+      dto.sourceType ?? 'admin',
+      dto.sourceId,
+    );
   }
 
   @Get('skill-loadout')

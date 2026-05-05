@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { AdminSkillDefinition, ArenaCombatEntity } from '@theend/rpg-domain';
 import { DamageKind, SkillResourceType, SkillType, validateSkillDefinition } from '@theend/rpg-domain';
 import { ContentService } from '../content/content.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { SkillLearningService } from './skill-learning.service';
 
 export interface SkillCooldownEntry {
   skillId: string;
@@ -37,7 +37,7 @@ export interface SkillExecutionResult {
 export class SkillRuntimeService {
   constructor(
     private readonly contentService: ContentService,
-    private readonly prisma: PrismaService,
+    private readonly skillLearning: SkillLearningService,
   ) {}
 
   async validateSkillUse(
@@ -60,18 +60,14 @@ export class SkillRuntimeService {
     }
 
     // Check character knows skill
-    const known = await this.prisma.characterSkill.findUnique({
-      where: { characterId_skillId: { characterId, skillId } },
-    });
+    const known = await this.skillLearning.knowsSkill(characterId, skillId);
     if (!known) {
       return { valid: false, reason: `Character has not learned skill: ${skillId}` };
     }
 
     // Check loadout
-    const loadout = await this.prisma.characterSkillLoadout.findUnique({
-      where: { characterId },
-    });
-    const slots = (loadout?.slots ?? []) as Array<{ skillId: string | null; unlocked: boolean }>;
+    const loadout = await this.skillLearning.getOrCreateLoadout(characterId);
+    const slots = loadout.slots;
     const equipped = slots.some((s) => s.unlocked && s.skillId === skillId);
     if (!equipped) {
       return { valid: false, reason: `Skill ${skillId} is not equipped in loadout` };

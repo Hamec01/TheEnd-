@@ -48,6 +48,11 @@ export function syncLevels(levels: SkillLevelData[] | undefined, maxLevel: numbe
 export function normalizeSkillDraft(skill: AdminSkillDefinition): AdminSkillDefinition {
   return {
     ...skill,
+    acquisitionMode: skill.acquisitionMode ?? 'admin',
+    isTrainable: skill.isTrainable === true,
+    requiredClassIds: skill.requiredClassIds ?? [],
+    requiredRaceIds: skill.requiredRaceIds ?? [],
+    requiredKnownSkillIds: skill.requiredKnownSkillIds ?? [],
     subtypes: skill.subtypes ?? [],
     tags: skill.tags ?? [],
     levels: syncLevels(skill.levels, skill.maxLevel),

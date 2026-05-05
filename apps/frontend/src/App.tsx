@@ -29,6 +29,7 @@ import {
   type CustomArenaNpcPayload,
   equipArenaItem,
   getArenaHubState,
+  grantSkill,
   getSkillLoadout,
   learnSkill,
   listCharacters,
@@ -210,6 +211,8 @@ const LAST_ACCOUNT_LOGIN_STORAGE_KEY = 'theend.lastAccountLogin';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
 const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
+const PLAYER_SKILLS_STORAGE_KEY = 'theend.player.skills';
+const PENDING_SKILL_GRANT_KEY = 'theend.pendingSkillGrant';
 
 const MERCHANT_TYPE_LABELS: Record<Merchant['merchantType'], string> = {
   weaponsmith: 'Оружие и дуэльные наборы',
@@ -241,6 +244,18 @@ function normalizeCityName(value: string | null | undefined): string {
     .toLowerCase()
     .replace(/ё/g, 'е')
     .replace(/\s+/g, ' ');
+}
+
+function createEmptySkillLoadout(characterId: string): CharacterSkillLoadout {
+  return {
+    characterId,
+    slots: Array.from({ length: 10 }, (_, slotIndex) => ({
+      slotIndex,
+      skillId: null,
+      unlocked: slotIndex < 2,
+      slotType: 'ANY' as const,
+    })),
+  };
 }
 
 function getWeaponDamagePreview(item: ItemDefinition): string {
@@ -1005,12 +1020,24 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, []);
 
   const refreshCharacterSkills = useCallback(async (characterId: string) => {
-    const [skills, loadout] = await Promise.all([
+    const [skills, loadout] = await Promise.allSettled([
       getCharacterSkills(characterId),
       getSkillLoadout(characterId),
     ]);
-    setCharacterSkills(skills);
-    setSkillLoadout(loadout);
+
+    if (skills.status === 'fulfilled') {
+      setCharacterSkills(skills.value);
+    } else {
+      console.warn('[skills] Failed to load character skills. Falling back to empty list.', skills.reason);
+      setCharacterSkills([]);
+    }
+
+    if (loadout.status === 'fulfilled') {
+      setSkillLoadout(loadout.value);
+    } else {
+      console.warn('[skills] Failed to load character loadout. Falling back to default slots.', loadout.reason);
+      setSkillLoadout(createEmptySkillLoadout(characterId));
+    }
   }, []);
 
   useEffect(() => {
@@ -1113,6 +1140,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setCharacterSkills([]);
       setSkillLoadout(null);
       setSelectedCombatSkillId(null);
+      window.localStorage.setItem(PLAYER_SKILLS_STORAGE_KEY, JSON.stringify([]));
       return;
     }
 
@@ -1122,6 +1150,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setSelectedCombatSkillId(null);
     });
   }, [character?.id, refreshCharacterSkills]);
+
+  useEffect(() => {
+    const skillIds = characterSkills
+      .map((entry) => entry.skillId)
+      .filter((skillId) => typeof skillId === 'string' && skillId.trim().length > 0);
+    window.localStorage.setItem(PLAYER_SKILLS_STORAGE_KEY, JSON.stringify(skillIds));
+  }, [characterSkills]);
 
   useEffect(() => {
     if (!selectedSellItemId && visibleSellEntries.length > 0) {
@@ -1720,6 +1755,22 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     onNavigate?.('/skills');
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
+
+    const pendingRaw = window.localStorage.getItem(PENDING_SKILL_GRANT_KEY);
+    if (pendingRaw) {
+      window.localStorage.removeItem(PENDING_SKILL_GRANT_KEY);
+      try {
+        const pending = JSON.parse(pendingRaw) as { skillId?: unknown; sourceNpcId?: unknown };
+        const pendingSkillId = typeof pending.skillId === 'string' ? pending.skillId.trim() : '';
+        const pendingSourceNpcId = typeof pending.sourceNpcId === 'string' ? pending.sourceNpcId : undefined;
+        if (pendingSkillId) {
+          void handleGrantCharacterSkill(pendingSkillId, pendingSourceNpcId);
+        }
+      } catch {
+        // Ignore malformed pending skill grant payload.
+      }
+    }
+
     setStatus('Открыта страница навыков.');
   }
 
@@ -1835,6 +1886,25 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     await refreshCharacterSkills(character.id);
     setStatus(`Изучен навык: ${learned.definition?.name ?? learned.skillId}`);
   }, [character, refreshCharacterSkills]);
+
+  const handleGrantCharacterSkill = useCallback(async (skillId: string, sourceNpcId?: string) => {
+    if (!character) {
+      return;
+    }
+
+    const normalizedInputSkillId = String(skillId).trim();
+    const resolvedSkillId = runtimeAdminSkills.find((entry) => entry.id === normalizedInputSkillId)?.id
+      ?? runtimeAdminSkills.find((entry) => entry.id.toLowerCase() === normalizedInputSkillId.toLowerCase())?.id
+      ?? normalizedInputSkillId;
+
+    const granted = await grantSkill(character.id, {
+      skillId: resolvedSkillId,
+      sourceType: 'dialogue',
+      sourceId: sourceNpcId,
+    });
+    await refreshCharacterSkills(character.id);
+    setStatus(`Получен навык: ${granted.definition?.name ?? granted.skillId}`);
+  }, [character, refreshCharacterSkills, runtimeAdminSkills]);
 
   const handleSaveCharacterSkillLoadout = useCallback(async (slots: Array<{ slotIndex: number; skillId: string | null }>) => {
     if (!character) {

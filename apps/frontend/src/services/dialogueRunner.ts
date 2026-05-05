@@ -4,7 +4,6 @@ import type { NpcDefinition } from '../types/npc';
 import { handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
 import { getDialogueById, getDialoguesByNpc } from './dialogueRepository';
 import { getNpcById } from './npcRepository';
-import { getQuestById } from './questRepository';
 import {
   evaluateDialogueConditions,
   executeDialogueActions,
@@ -13,7 +12,7 @@ import {
   type DialogueRuntimeEvent,
   type DialogueRuntimeIntent,
 } from './dialogueRuntime';
-import { isDialogueCompleted, markDialogueCompleted } from './dialogueProgressStore';
+import { markDialogueCompleted } from './dialogueProgressStore';
 import { selectBestInteractionForNpc } from './npcInteractionSelector';
 
 export type DialogueSourceType = 'npc' | 'location' | 'quest' | 'item' | 'zone' | 'system';
@@ -113,20 +112,6 @@ function reducer(state: DialogueRunnerState, action: DialogueRunnerAction): Dial
 }
 
 function pickNpcDialogue(player: QuestRuntimePlayer, npc: NpcDefinition): DialogueDefinition | null {
-  const filterCompleted = (dialogue: DialogueDefinition): boolean => {
-    const record = isDialogueCompleted(npc.id, dialogue.id);
-    if (!record) {
-      return true;
-    }
-    if (record.questId) {
-      const quest = getQuestById(record.questId);
-      if (quest?.isRepeatable) {
-        return true;
-      }
-    }
-    return false;
-  };
-
   const bindingByDialogueId = new Map((npc.dialogues ?? []).map((binding) => [binding.dialogueId, binding]));
 
   const bindingDialogues = (npc.dialogues ?? [])
@@ -136,8 +121,7 @@ function pickNpcDialogue(player: QuestRuntimePlayer, npc: NpcDefinition): Dialog
 
   const npcDialogues = getDialoguesByNpc(npc.id);
   const all = Array.from(new Map([...bindingDialogues, ...npcDialogues].map((d) => [d.id, d])).values())
-    .filter((dialogue) => dialogue.status === 'active')
-    .filter(filterCompleted);
+    .filter((dialogue) => dialogue.status === 'active');
 
   const selected = selectBestInteractionForNpc({
     npc,
@@ -234,7 +218,8 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       dispatch({ type: 'ERROR', text: `Dialogue not found: ${dialogueId}` });
       return;
     }
-    const start = getStartNode(definition);
+    const npc = context.npcId ? getNpcById(context.npcId) : null;
+    const start = getStartNode(definition, params.player, npc);
     if (!start) {
       dispatch({ type: 'OPEN', dialogueId, nodeId: definition.startNodeId || 'missing', context: { ...context, sourceType: context.sourceType ?? 'system' } });
       dispatch({ type: 'ERROR', text: `Start node not found: ${definition.startNodeId}` });
@@ -254,8 +239,8 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
     const picked = pickNpcDialogue(params.player, npc);
     if (!picked) {
       const systemDialogue: DialogueDefinition = {
-        id: '__system__already_talked',
-        title: 'Already talked',
+        id: '__system__no_dialogue',
+        title: 'Нет доступной реплики',
         npcId,
         status: 'active',
         description: '',
@@ -264,7 +249,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
           {
             id: 'start',
             speaker: 'npc',
-            text: 'Мы уже говорили.',
+            text: 'Нет доступной реплики.',
             choices: [{ id: 'leave', text: 'Уйти', end: true } as any],
           },
         ],

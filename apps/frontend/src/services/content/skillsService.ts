@@ -92,6 +92,16 @@ export function emptySkill(): AdminSkillDefinition {
     tags: [],
     isPublished: false,
     isHidden: false,
+    acquisitionMode: 'admin',
+    isTrainable: false,
+    requiredLevel: undefined,
+    requiredQuestId: undefined,
+    requiredCompletedQuestId: undefined,
+    requiredQuestItemId: undefined,
+    requiredNpcId: undefined,
+    requiredClassIds: [],
+    requiredRaceIds: [],
+    requiredKnownSkillIds: [],
     adminNotes: '',
     createdAt: now,
     updatedAt: now,
@@ -123,6 +133,16 @@ export function normalizeSkill(skill: AdminSkillDefinition): AdminSkillDefinitio
     tags: skill.tags ?? [],
     classScaling: skill.classScaling ?? [],
     raceRules: skill.raceRules ?? [],
+    acquisitionMode: skill.acquisitionMode ?? 'admin',
+    isTrainable: skill.isTrainable === true,
+    requiredLevel: typeof skill.requiredLevel === 'number' ? Math.max(0, Math.floor(skill.requiredLevel)) : undefined,
+    requiredQuestId: skill.requiredQuestId?.trim() || undefined,
+    requiredCompletedQuestId: skill.requiredCompletedQuestId?.trim() || undefined,
+    requiredQuestItemId: skill.requiredQuestItemId?.trim() || undefined,
+    requiredNpcId: skill.requiredNpcId?.trim() || undefined,
+    requiredClassIds: skill.requiredClassIds ?? [],
+    requiredRaceIds: skill.requiredRaceIds ?? [],
+    requiredKnownSkillIds: skill.requiredKnownSkillIds ?? [],
     createdAt: skill.createdAt || nowIso(),
     updatedAt: nowIso(),
   };
@@ -148,20 +168,31 @@ export const skillsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    return normalizeSkill(await createContentEntry<AdminSkillDefinition>('skills', normalized));
+    const saved = normalizeSkill(await createContentEntry<AdminSkillDefinition>('skills', normalized));
+    const verified = await getContentEntry<AdminSkillDefinition>('skills', saved.id);
+    if (!verified) {
+      throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+    }
+    return normalizeSkill(verified);
   },
 
   async update(id: string, patch: Partial<AdminSkillDefinition>): Promise<AdminSkillDefinition> {
-    const found = await this.getById(id);
+    const normalizedId = id.trim();
+    const found = await this.getById(normalizedId);
     if (!found) {
-      throw new Error(`Skill not found: ${id}`);
+      throw new Error(`Skill not found: ${normalizedId}`);
     }
     const merged = normalizeSkill({ ...found, ...patch, id: found.id });
     const errors = validateSkill(merged);
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    return normalizeSkill(await updateContentEntry<AdminSkillDefinition>('skills', id, merged));
+    const saved = normalizeSkill(await updateContentEntry<AdminSkillDefinition>('skills', normalizedId, merged));
+    const verified = await getContentEntry<AdminSkillDefinition>('skills', saved.id);
+    if (!verified) {
+      throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+    }
+    return normalizeSkill(verified);
   },
 
   async delete(id: string): Promise<void> {

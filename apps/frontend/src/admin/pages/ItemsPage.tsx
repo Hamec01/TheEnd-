@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import type { AdminItem, DamageCategory, ElementType, HandsRequired, ItemRarity, ItemSlot, ItemType, MagicSchool, PhysicalType, StatKey, StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
@@ -19,6 +20,7 @@ import {
   translateRarity,
   translateStatKey,
 } from '../adminUi';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const STAT_KEYS: StatKey[] = ['hp', 'mp', 'stamina', 'strength', 'constitution', 'dexterity', 'intelligence', 'luck', 'perception', 'willpower'];
 const ITEM_TYPES: ItemType[] = ['weapon', 'armor', 'potion', 'material', 'quest', 'misc'];
@@ -82,6 +84,8 @@ export function ItemsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
   const [rangePanelOpen, setRangePanelOpen] = useState(false);
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
@@ -223,6 +227,10 @@ export function ItemsPage() {
   }, [draft.name, draft.subtype, draft.type]);
 
   async function createOrUpdate() {
+    if (isSaving) {
+      return;
+    }
+
     const id = draft.id.trim() || uid('item');
     const normalized: AdminItem = {
       ...draft,
@@ -238,20 +246,46 @@ export function ItemsPage() {
       return;
     }
 
-    try {
-      if (selectedId) {
-        await itemsService.update(selectedId, normalized);
-        setStatus(`Предмет обновлён: ${selectedId}`);
-      } else {
-        await itemsService.create(normalized);
-        setStatus(`Предмет создан: ${id}`);
-        setSelectedId(id);
-      }
-      await refresh();
-    } catch (error) {
-      setStatus(translateAdminErrorMessage((error as Error).message));
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: id,
+      onSave: () => (selectedId
+        ? itemsService.update(selectedId, normalized)
+        : itemsService.create(normalized)),
+      onAfterSave: async (entry) => {
+        const verified = await itemsService.getById(entry.id);
+        if (!verified) {
+          throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+        }
+      },
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+
+    if (!saved) {
+      setIsSaving(false);
+      return;
     }
+
+    setSelectedId(saved.id);
+    setDraft(saved);
+    await refresh();
+
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatus(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatus(selectedId ? `Предмет обновлён: ${saved.id}` : `Предмет создан: ${saved.id}`);
+    }
+    setIsSaving(false);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: createOrUpdate,
+  });
 
   async function duplicateSelected() {
     if (!selectedId) {
@@ -585,11 +619,13 @@ export function ItemsPage() {
         </label>
 
         <div className="admin-actions-row">
-          <button onClick={() => { void createOrUpdate(); }}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button disabled={isSaving} onClick={() => { void createOrUpdate(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'Сохранить' : 'Создать')}</button>
           <button disabled={!selectedId} onClick={() => { void duplicateSelected(); }}>Дублировать</button>
           <button disabled={!selectedId} onClick={() => { void disableSelected(); }}>Отключить</button>
           <button disabled={!selectedId} onClick={() => { void deleteSelected(); }}>Удалить</button>
         </div>
+
+        <AdminSaveStatus value={saveState} />
 
         <section className="card admin-item-preview">
           <div className="admin-item-preview-layout">

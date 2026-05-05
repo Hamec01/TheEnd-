@@ -485,12 +485,35 @@ export async function getCharacterSkills(characterId: string): Promise<Character
 
 export async function learnSkill(
   characterId: string,
-  payload: { skillId: string; sourceType: string; sourceId?: string },
+  payload: { skillId: string; sourceType?: string; sourceId?: string },
 ): Promise<CharacterSkillRow> {
+  const body = {
+    ...payload,
+    sourceType: payload.sourceType ?? 'teacher',
+  };
   const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills/learn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+export async function grantSkill(
+  characterId: string,
+  payload: { skillId: string; sourceType?: string; sourceId?: string },
+): Promise<CharacterSkillRow> {
+  const body = {
+    ...payload,
+    sourceType: payload.sourceType ?? 'dialogue',
+  };
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills/grant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     throw new Error(await res.text());

@@ -2,7 +2,7 @@
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
-import type { CharacterSkillLoadout, CharacterSkillRow } from '../api';
+import type { CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { AdminItem } from '../services/content/models';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { PaperDoll } from './PaperDoll';
@@ -103,6 +103,7 @@ const SLOT_LABELS: Record<EquipmentSlotId, string> = {
 };
 
 const ALL_SLOT_IDS = Object.keys(SLOT_LABELS) as EquipmentSlotId[];
+const QUICK_SLOT_IDS: EquipmentSlotId[] = ['quick1', 'quick2', 'quick3', 'quick4', 'quick5', 'quick6', 'quick7', 'quick8', 'quick9', 'quick10'];
 
 const STATS_ORDER: PrimaryStat[] = [
   'hp',
@@ -311,6 +312,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [skillsFilter, setSkillsFilter] = useState<'all' | 'magic' | 'elemental' | 'physical' | 'passive' | 'rune'>('all');
   // Loadout presets (stored in localStorage)
   const [activePresetIndex, setActivePresetIndex] = useState<0 | 1 | 2>(0);
+  // Skills page state
+  const [skillsDraftSlots, setSkillsDraftSlots] = useState<CombatSkillSlot[]>([]);
+  const [selectedQuickSlotId, setSelectedQuickSlotId] = useState<EquipmentSlotId | null>(null);
+  const [isSavingSkillLoadout, setIsSavingSkillLoadout] = useState(false);
+  const [learningSkillId, setLearningSkillId] = useState<string | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -564,6 +570,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }, [paperDollRace]);
 
   useEffect(() => {
+    setSkillsDraftSlots(skillLoadout?.slots ?? []);
+  }, [skillLoadout]);
+
+  useEffect(() => {
     const clearHoverPreview = () => setHoverPreview(null);
     window.addEventListener('scroll', clearHoverPreview, true);
     window.addEventListener('resize', clearHoverPreview);
@@ -731,6 +741,39 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     onStatus(`Preset ${presetIndex + 1} loaded.`);
   }
 
+  // ── Skills page helpers ──────────────────────────────────────────────
+  function assignSkillToQuickSlot(slotId: EquipmentSlotId, skillId: string | null): void {
+    const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+    if (slotIndex < 0) return;
+    setSkillsDraftSlots((prev) => prev.map((s) => s.slotIndex === slotIndex ? { ...s, skillId } : s));
+  }
+
+  async function saveSkillsLoadout(): Promise<void> {
+    if (!onSaveSkillLoadout) return;
+    try {
+      setIsSavingSkillLoadout(true);
+      await onSaveSkillLoadout(skillsDraftSlots.map((s) => ({ slotIndex: s.slotIndex, skillId: s.skillId })));
+      onStatus('Боевой набор сохранён.');
+    } catch (error) {
+      onStatus(`Не удалось сохранить: ${(error as Error).message}`);
+    } finally {
+      setIsSavingSkillLoadout(false);
+    }
+  }
+
+  async function handleLearnSkill(skillId: string): Promise<void> {
+    if (!onLearnSkill) return;
+    try {
+      setLearningSkillId(skillId);
+      await onLearnSkill(skillId);
+      setSelectedLearnedSkillId(skillId);
+    } catch (error) {
+      onStatus(`Не удалось изучить навык: ${(error as Error).message}`);
+    } finally {
+      setLearningSkillId(null);
+    }
+  }
+
   // Sorted/filtered inventory entries
   const sortedFilteredInventory = useMemo(() => {
     let entries = [...inventoryEntries];
@@ -795,6 +838,49 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       .slice(0, 6),
     [availableSkills, learnedSkills],
   );
+
+  // ── Skills page derived data ─────────────────────────────────────────
+  const skillsLearnedIds = useMemo(() => new Set(learnedSkills.map((s) => s.skillId)), [learnedSkills]);
+  const skillsLearnable = useMemo(
+    () => availableSkills.filter((s) => s.isPublished && !s.isHidden && !skillsLearnedIds.has(s.id)),
+    [availableSkills, skillsLearnedIds],
+  );
+  const skillsLearnedFull = useMemo(
+    () => learnedSkills.map((entry) => ({
+      ...entry,
+      definition: entry.definition ?? availableSkills.find((s) => s.id === entry.skillId) ?? null,
+    })),
+    [availableSkills, learnedSkills],
+  );
+  const skillsQuickContent = useMemo<Partial<Record<EquipmentSlotId, string>>>(() => {
+    const result: Partial<Record<EquipmentSlotId, string>> = {};
+    for (const slot of skillsDraftSlots) {
+      if (!slot.unlocked || !slot.skillId) continue;
+      const slotId = QUICK_SLOT_IDS[slot.slotIndex];
+      if (!slotId) continue;
+      const def = availableSkills.find((s) => s.id === slot.skillId);
+      result[slotId] = (def?.name ?? slot.skillId).slice(0, 2).toUpperCase();
+    }
+    return result;
+  }, [availableSkills, skillsDraftSlots]);
+  const skillsSelectedDef = useMemo(() => {
+    if (!selectedLearnedSkillId) return null;
+    const learned = skillsLearnedFull.find((e) => e.skillId === selectedLearnedSkillId);
+    if (learned?.definition) return { def: learned.definition, level: learned.level };
+    const available = skillsLearnable.find((s) => s.id === selectedLearnedSkillId);
+    if (available) return { def: available, level: 1 };
+    return null;
+  }, [selectedLearnedSkillId, skillsLearnedFull, skillsLearnable]);
+  const skillsAssignedCount = useMemo(
+    () => skillsDraftSlots.filter((s) => s.unlocked && s.skillId).length,
+    [skillsDraftSlots],
+  );
+  const skillsHasDraftChanges = useMemo(() => {
+    if (!skillLoadout) return false;
+    const original = skillLoadout.slots;
+    if (original.length !== skillsDraftSlots.length) return true;
+    return original.some((slot, index) => slot.skillId !== skillsDraftSlots[index]?.skillId);
+  }, [skillLoadout, skillsDraftSlots]);
 
   // Shared fragments
 
@@ -919,32 +1005,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               </div>
             </section>
           </div>
-          <div className="character-item-actions character-item-popup-actions">
-            <button
-              disabled={selectedAlreadyEquipped || !selectedInventoryEntry}
-              onClick={() => { void equipSelectedItem(); }}
-            >
-              {selectedAlreadyEquipped ? 'Надето' : 'Надеть'}
-            </button>
-            <button
-              disabled={!selectedEquippedSlotId}
-              onClick={() => {
-                if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); }
-              }}
-            >
-              Снять
-            </button>
-            <button
-              disabled={selectedItem.itemType !== 'consumable'}
-              onClick={() => {
-                if (onUseItem) { void onUseItem(selectedItem.id); }
-                else { onStatus('Use action is not available in this context.'); }
-              }}
-            >
-              Использовать
-            </button>
-            <button disabled>Выбросить</button>
-          </div>
         </section>
       </div>
     );
@@ -996,6 +1056,86 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       </section>
     );
   }
+
+  /** Paper doll for the Skills page: equipment slots work normally, quick slots accept skill assignments */
+  function renderSkillsPaperDoll() {
+    return (
+      <section className="character-paperdoll-card">
+        <div className="character-paperdoll-canvas inventory-wrapper">
+          {!silhouetteBroken ? (
+            <PaperDoll
+              race={paperDollRace}
+              imageSrc={silhouetteSrc}
+              slotItems={equippedByLayoutSlot}
+              slotLabels={SLOT_LABELS}
+              slotTextContent={skillsQuickContent}
+              selectedSlotId={selectedQuickSlotId}
+              resolveItemImage={resolveItemImage}
+              canDropItemInSlot={(slotId, itemId) => {
+                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) return false;
+                try {
+                  const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                  if (!item) return false;
+                  if (slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield) return false;
+                  return canEquipItemInSlot(item, slotId);
+                } catch { return false; }
+              }}
+              debug={paperDollDebug}
+              onImageError={() => {
+                const fallback = getRaceSilhouetteFallback(paperDollRace as any);
+                if (silhouetteSrc !== fallback) { setSilhouetteSrc(fallback); return; }
+                setSilhouetteBroken(true);
+              }}
+              onSlotClick={(slotId) => {
+                const isQuickSlot = (QUICK_SLOT_IDS as string[]).includes(slotId);
+                if (isQuickSlot) {
+                  const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+                  const currentSkillId = skillsDraftSlots.find((s) => s.slotIndex === slotIndex)?.skillId ?? null;
+                  if (selectedLearnedSkillId && !currentSkillId) {
+                    // Assign currently-selected skill to this empty slot
+                    assignSkillToQuickSlot(slotId, selectedLearnedSkillId);
+                    setSelectedQuickSlotId(null);
+                  } else if (currentSkillId) {
+                    // Show the skill assigned to this slot
+                    setSelectedLearnedSkillId(currentSkillId);
+                    setSelectedQuickSlotId(slotId === selectedQuickSlotId ? null : slotId);
+                  } else {
+                    // Select empty slot waiting for assignment
+                    setSelectedQuickSlotId(slotId === selectedQuickSlotId ? null : slotId);
+                  }
+                } else {
+                  const equippedItem = equippedByLayoutSlot[slotId] ?? null;
+                  if (equippedItem) { setSelectedItemId(equippedItem.id); setItemDetailOpen(true); }
+                  else if (selectedItem) { void equipToSlot(slotId, selectedItem); }
+                }
+              }}
+              onSlotDrop={(slotId, itemId) => {
+                if (!(QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                  try {
+                    const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+                    if (item) { void equipToSlot(slotId, item); }
+                  } catch { /* ignore */ }
+                }
+              }}
+              onSkillDrop={(slotId, skillId) => {
+                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                  assignSkillToQuickSlot(slotId, skillId);
+                }
+              }}
+              onSlotContextMenu={(slotId) => {
+                if ((QUICK_SLOT_IDS as string[]).includes(slotId)) {
+                  assignSkillToQuickSlot(slotId, null);
+                } else if (equippedByLayoutSlot[slotId]) {
+                  void unequipFromSlot(slotId);
+                }
+              }}
+            />
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   function renderHoverPreviewCard() {
     if (!hoverPreview || !hoverItem) {
       return null;
@@ -1084,22 +1224,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   </p>
                 );
               })}
-            </div>
-            <div className="character-item-actions">
-              {showEquipAction ? (
-                <button disabled={selectedAlreadyEquipped || !selectedInventoryEntry} onClick={() => { void equipSelectedItem(); }}>
-                  {selectedAlreadyEquipped ? 'Надето' : 'Надеть'}
-                </button>
-              ) : null}
-              {showUnequipAction ? (
-                <button disabled={!selectedEquippedSlotId} onClick={() => { if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); } }}>
-                  Снять
-                </button>
-              ) : null}
-              <button disabled={selectedItem.itemType !== 'consumable'} onClick={() => { if (onUseItem) { void onUseItem(selectedItem.id); } else { onStatus('Использование предмета недоступно в этом режиме.'); } }}>
-                Использовать
-              </button>
-              <button disabled>Выбросить</button>
             </div>
           </>
         ) : (
@@ -1300,40 +1424,43 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         {renderPageHeader()}
         <div className="inventory-panel-body">
           <div className="character-inventory-layout">
+            {/* Left: paper doll only — slots visible on silhouette, hover shows details */}
             <div className="character-inventory-side">
               {renderPaperDoll()}
-              {renderEquipmentSummary(true)}
             </div>
-            <section className="character-backpack-card">
-              <div className="character-backpack-head">
-                <div>
-                  <h3>Рюкзак</h3>
-                  <p className="gold">Золото: {inventory.gold}</p>
+            {/* Right: inventory grid + item details (scrollable column) */}
+            <div className="character-inventory-right-col">
+              <section className="character-backpack-card">
+                <div className="character-backpack-head">
+                  <div>
+                    <h3>Рюкзак</h3>
+                    <p className="gold">Золото: {inventory.gold}</p>
+                  </div>
+                  <div className="character-inventory-controls">
+                    <label>
+                      Сортировка
+                      <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
+                        {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>По {label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Фильтр
+                      <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
+                        {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                 </div>
-                <div className="character-inventory-controls">
-                  <label>
-                    Сортировка
-                    <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
-                      {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>По {label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Фильтр
-                    <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
-                      {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </label>
+                <div className="character-inventory-grid-wrap">
+                  {renderInventoryCards(sortedFilteredInventory)}
                 </div>
-              </div>
-              <div className="character-inventory-grid-wrap">
-                {renderInventoryCards(sortedFilteredInventory)}
-              </div>
-            </section>
-            {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке, чтобы посмотреть описание и сравнение.', true, true)}
+              </section>
+              {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true)}
+            </div>
           </div>
           {renderHoverPreviewCard()}
         </div>
@@ -1348,6 +1475,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         {renderPageHeader()}
         <div className="inventory-panel-body inventory-panel-body--stats">
           <div className="character-stats-layout">
+            {/* Left column: base stats with +/- buttons */}
             <section className="character-stats-card">
               <h3>Статы</h3>
               <p className="muted">Свободные очки: {freePointsLeft}</p>
@@ -1374,55 +1502,66 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <button type="button" onClick={() => void onRespecStats?.()} title="Сбросить распределение характеристик и вернуть все очки для перераспределения.">Сбросить</button>
               </div>
             </section>
-            <section className="character-meta-card">
-              <h3>Пояснения</h3>
-              <div className="character-stat-explanations">
-                {STATS_ORDER.map((stat) => (
-                  <article key={stat}>
-                    <strong>{STAT_LABELS[stat]}</strong>
-                    <p>{STAT_EXPLANATIONS[stat]}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-            <section className="character-meta-card">
-              <h3>Боевой обзор</h3>
-              <p className="muted">Предпросмотр показывает итоговые значения текущей сборки и незакреплённых очков.</p>
-              <p>HP: {character.activeStats.hp} → {previewStats.hp}</p>
-              <p>Мана: {character.activeStats.mp} → {previewStats.mp}</p>
-              <p>Выносливость: {character.activeStats.stamina} → {previewStats.stamina}</p>
-              <p>Общая защита: {derivedBase.totalDefense} → {derivedPreview.totalDefense}</p>
-              <p>Мин. урон: {derivedBase.minDamage} → {derivedPreview.minDamage}</p>
-              <p>Макс. урон: {derivedBase.maxDamage} → {derivedPreview.maxDamage}</p>
-              <p>Шанс крита: {derivedBase.critChance}% → {derivedPreview.critChance}%</p>
-              <p>Инициатива: {derivedBase.initiative} → {derivedPreview.initiative}</p>
-              <p>Шанс попадания: {derivedPreview.hitChance}%</p>
-              <p>Уклонение: {derivedPreview.evasion}%</p>
-              <p>Шанс блока: {derivedPreview.blockChance}%</p>
-              <p>Физ. сопротивление: {derivedPreview.physicalResistance}</p>
-              <p>Маг. сопротивление: {derivedPreview.magicResistance}</p>
-              <p>Нагрузка выносливости: {derivedPreview.staminaLoad}</p>
-            </section>
-            <section className="character-meta-card">
-              <h3>Разбор</h3>
-              <p>Защита: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
-              <p>Урон: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
-              <p>Крит: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
-            </section>
-            <section className="character-meta-card">
-              <h3>Прогресс</h3>
-              <p>Уровень: {character.level}</p>
-              <p>Опыт: {character.exp} / {levelProgress.next}</p>
-              <div style={{ margin: '0.4rem 0 0.6rem' }}>
-                <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-                  <div style={{ width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)' }} />
+
+            {/* Right column: derived stats, progress, breakdown, collapsible explanations */}
+            <div className="character-stats-right-col">
+              <section className="character-meta-card">
+                <h3>Боевой обзор</h3>
+                <p className="muted">Предпросмотр учитывает незакреплённые очки.</p>
+                <div className="character-overview-combat-summary">
+                  <p><span>HP</span><strong>{character.activeStats.hp}{previewStats.hp !== character.activeStats.hp ? ` → ${previewStats.hp}` : ''}</strong></p>
+                  <p><span>Мана</span><strong>{character.activeStats.mp}{previewStats.mp !== character.activeStats.mp ? ` → ${previewStats.mp}` : ''}</strong></p>
+                  <p><span>Выносливость</span><strong>{character.activeStats.stamina}{previewStats.stamina !== character.activeStats.stamina ? ` → ${previewStats.stamina}` : ''}</strong></p>
+                  <p><span>Защита</span><strong>{derivedBase.totalDefense}{derivedPreview.totalDefense !== derivedBase.totalDefense ? ` → ${derivedPreview.totalDefense}` : ''}</strong></p>
+                  <p><span>Мин. урон</span><strong>{derivedBase.minDamage}{derivedPreview.minDamage !== derivedBase.minDamage ? ` → ${derivedPreview.minDamage}` : ''}</strong></p>
+                  <p><span>Макс. урон</span><strong>{derivedBase.maxDamage}{derivedPreview.maxDamage !== derivedBase.maxDamage ? ` → ${derivedPreview.maxDamage}` : ''}</strong></p>
+                  <p><span>Крит</span><strong>{derivedBase.critChance}%{derivedPreview.critChance !== derivedBase.critChance ? ` → ${derivedPreview.critChance}%` : ''}</strong></p>
+                  <p><span>Инициатива</span><strong>{derivedBase.initiative}{derivedPreview.initiative !== derivedBase.initiative ? ` → ${derivedPreview.initiative}` : ''}</strong></p>
+                  <p><span>Попадание</span><strong>{derivedPreview.hitChance}%</strong></p>
+                  <p><span>Уклонение</span><strong>{derivedPreview.evasion}%</strong></p>
+                  <p><span>Блок</span><strong>{derivedPreview.blockChance}%</strong></p>
+                  <p><span>Физ. сопр.</span><strong>{derivedPreview.physicalResistance}</strong></p>
+                  <p><span>Маг. сопр.</span><strong>{derivedPreview.magicResistance}</strong></p>
+                  <p><span>Нагр. выносл.</span><strong>{derivedPreview.staminaLoad}</strong></p>
                 </div>
-              </div>
-              <p>До следующего уровня: {expToNextLevel} XP</p>
-              <p>Прогресс внутри уровня: {levelProgress.gainedInsideLevel} / {levelProgress.totalInsideLevel}</p>
-              <p>Свободные очки: {freePointsLeft}</p>
-              <p>Раса: {character.race}</p>
-            </section>
+              </section>
+
+              <section className="character-meta-card">
+                <h3>Прогресс</h3>
+                <p><span>Уровень</span><strong>{character.level}</strong></p>
+                <p className="muted">Опыт: {character.exp} / {levelProgress.next}</p>
+                <div style={{ margin: '0.4rem 0 0.6rem' }}>
+                  <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                    <div style={{ width: `${levelProgress.totalInsideLevel > 0 ? Math.max(0, Math.min(100, (levelProgress.gainedInsideLevel / levelProgress.totalInsideLevel) * 100)) : 0}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #b6d36b 0%, #e6c15a 100%)' }} />
+                  </div>
+                </div>
+                <p className="muted">До следующего уровня: {expToNextLevel} XP</p>
+                <p className="muted">Раса: {character.race}</p>
+              </section>
+
+              <section className="character-meta-card">
+                <h3>Разбор</h3>
+                <p className="muted">Защита: {derivedPreview.defenseBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+                <p className="muted">Урон: {derivedPreview.damageBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+                <p className="muted">Крит: {derivedPreview.critBreakdown.map((entry) => `${entry.label} ${entry.value}`).join(' | ')}</p>
+              </section>
+
+              <section className="character-meta-card">
+                <button type="button" className="character-module-toggle" onClick={() => toggleModule('explanations')}>
+                  Пояснения {isModuleCollapsed('explanations') ? '+' : '−'}
+                </button>
+                {!isModuleCollapsed('explanations') && (
+                  <div className="character-stat-explanations">
+                    {STATS_ORDER.map((stat) => (
+                      <article key={stat}>
+                        <strong>{STAT_LABELS[stat]}</strong>
+                        <p>{STAT_EXPLANATIONS[stat]}</p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         </div>
       </>
@@ -1435,6 +1574,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         {renderPageHeader()}
         <div className="inventory-panel-body">
           <div className="character-skills-layout">
+            {/* ── Preset toolbar ────────────────────────────────────── */}
             <section className="character-meta-card character-skills-toolbar">
               <div>
                 <h3>Боевой набор</h3>
@@ -1453,16 +1593,157 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 ))}
               </div>
             </section>
-            <section className="character-skills-card">
-              <CharacterSkillsPage
-                learnedSkills={learnedSkills}
-                availableSkills={availableSkills}
-                loadout={skillLoadout}
-                onLearnSkill={onLearnSkill ?? (async () => undefined)}
-                onSaveLoadout={onSaveSkillLoadout ?? (async () => undefined)}
-                onStatus={onStatus}
-              />
-            </section>
+
+            {/* ── Main 3-column area ────────────────────────────────── */}
+            <div className="character-skills-3col">
+
+              {/* LEFT: paper doll with quick skill slots */}
+              <div className="character-skills-paperdoll-col">
+                {renderSkillsPaperDoll()}
+                <div className="character-skills-slot-hint">
+                  {selectedQuickSlotId
+                    ? <p className="muted">Слот {QUICK_SLOT_IDS.indexOf(selectedQuickSlotId) + 1} выбран — кликните навык чтобы назначить</p>
+                    : <p className="muted">Кликните слот (внизу силуэта) для назначения навыка. ПКМ — убрать.</p>
+                  }
+                  <button
+                    type="button"
+                    disabled={!skillsHasDraftChanges || isSavingSkillLoadout}
+                    onClick={() => { void saveSkillsLoadout(); }}
+                  >
+                    {isSavingSkillLoadout
+                      ? 'Сохранение...'
+                      : `Сохранить набор (${skillsAssignedCount}/${skillsDraftSlots.filter((s) => s.unlocked).length})`
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {/* CENTER: learned skills + learnable */}
+              <div className="character-skills-list-col">
+                <section className="inner-card skills-card-section">
+                  <div className="skills-section-head">
+                    <div>
+                      <h3 style={{ marginTop: 0 }}>Изученные навыки</h3>
+                      <p className="muted">Кликните навык чтобы выбрать, затем кликните слот на силуэте.</p>
+                    </div>
+                    <span className="skills-count-chip">{skillsLearnedFull.length}</span>
+                  </div>
+                  {skillsLearnedFull.length > 0 ? (
+                    <div className="skills-card-grid">
+                      {skillsLearnedFull.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className={`character-skill-card ${selectedLearnedSkillId === entry.skillId ? 'is-active' : ''}`}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/theend-skill-id', entry.skillId);
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
+                          onClick={() => {
+                            if (selectedQuickSlotId) {
+                              assignSkillToQuickSlot(selectedQuickSlotId, entry.skillId);
+                              setSelectedQuickSlotId(null);
+                            }
+                            setSelectedLearnedSkillId(entry.skillId);
+                          }}
+                          onMouseEnter={() => setSelectedLearnedSkillId(entry.skillId)}
+                        >
+                          <span className="character-skill-icon">{(entry.definition?.name ?? entry.skillId).slice(0, 2).toUpperCase()}</span>
+                          <span className="skills-card-copy">
+                            <strong>{entry.definition?.name ?? entry.skillId}</strong>
+                            <small>Ур. {entry.level} · {entry.definition?.type ?? 'unknown'}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">Персонаж пока не изучил ни одного навыка.</p>
+                  )}
+                </section>
+
+                <section className="inner-card skills-training-section">
+                  <div className="skills-section-head">
+                    <div>
+                      <h3 style={{ margin: 0 }}>Обучение</h3>
+                      <span className="muted">Доступные навыки для изучения.</span>
+                    </div>
+                  </div>
+                  {skillsLearnable.length > 0 ? (
+                    <div className="skills-training-grid">
+                      {skillsLearnable.map((skill) => (
+                        <article key={skill.id} className="skill-training-card">
+                          <div className="skill-training-card-head">
+                            <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
+                            <div>
+                              <strong>{skill.name}</strong>
+                              <small>{skill.type}</small>
+                            </div>
+                          </div>
+                          <p className="muted">{skill.shortDescription || skill.gameplayDescription || 'Описание пока не заполнено.'}</p>
+                          <button
+                            type="button"
+                            disabled={learningSkillId === skill.id}
+                            onClick={() => { void handleLearnSkill(skill.id); }}
+                          >
+                            {learningSkillId === skill.id ? 'Обучение...' : 'Изучить'}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted" style={{ marginTop: 12 }}>Все доступные навыки уже изучены или ещё не опубликованы.</p>
+                  )}
+                </section>
+              </div>
+
+              {/* RIGHT: skill detail */}
+              <section className="inner-card skills-detail-section">
+                <h3 style={{ marginTop: 0 }}>Детали навыка</h3>
+                {skillsSelectedDef ? (
+                  <>
+                    <div className="skills-detail-head">
+                      <span className="character-skill-icon skills-detail-icon">{skillsSelectedDef.def.name.slice(0, 2).toUpperCase()}</span>
+                      <div>
+                        <strong>{skillsSelectedDef.def.name}</strong>
+                        <p className="muted">ID: {skillsSelectedDef.def.id} · Уровень {skillsSelectedDef.level}/{skillsSelectedDef.def.maxLevel}</p>
+                      </div>
+                    </div>
+                    <div className="skills-detail-facts">
+                      <p><span>Тип</span><strong>{skillsSelectedDef.def.type}</strong></p>
+                      <p><span>Навык</span><strong>{skillsSelectedDef.def.name}</strong></p>
+                      <p><span>Макс. уровень</span><strong>{skillsSelectedDef.def.maxLevel}</strong></p>
+                      <p><span>Перезарядка</span><strong>{skillsSelectedDef.def.cooldown.cooldownTurns} ходов</strong></p>
+                    </div>
+                    <p className="skills-detail-text" style={{ whiteSpace: 'pre-wrap' }}>
+                      {[
+                        skillsSelectedDef.def.gameplayDescription?.trim() || skillsSelectedDef.def.shortDescription?.trim() || 'Описание не заполнено.',
+                        `Ресурсы: ${skillsSelectedDef.def.costs.isFree ? 'без затрат' : 'смотри описание'}`,
+                        `Перезарядка: ${skillsSelectedDef.def.cooldown.cooldownTurns} ходов`,
+                        `Тип: ${skillsSelectedDef.def.type}`,
+                      ].join('\n')}
+                    </p>
+                    {selectedQuickSlotId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          assignSkillToQuickSlot(selectedQuickSlotId, skillsSelectedDef.def.id);
+                          setSelectedQuickSlotId(null);
+                        }}
+                      >
+                        → Назначить в слот {QUICK_SLOT_IDS.indexOf(selectedQuickSlotId) + 1}
+                      </button>
+                    ) : (
+                      <p className="muted" style={{ marginTop: 8, fontSize: '0.82rem' }}>
+                        Выберите слот на силуэте, чтобы назначить этот навык.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="muted">Выберите навык, чтобы посмотреть детали.</p>
+                )}
+              </section>
+            </div>
           </div>
         </div>
       </>
@@ -1473,12 +1754,178 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return renderInventoryPage();
   }
 
+  function renderCombinedCharacterPage() {
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body inventory-panel-body--combined">
+          <div className="combined-char-layout">
+
+            {/* ── LEFT: Stats + Derived ─────────────────────────────────── */}
+            <div className="combined-char-left">
+              {/* Character hero */}
+              <section className="character-meta-card combined-char-hero">
+                <div className="character-status-head">
+                  {playerAvatarUrl ? (
+                    <img src={playerAvatarUrl} alt={character.name} className="character-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <div className="character-avatar-circle">{character.name.charAt(0).toUpperCase()}</div>
+                  )}
+                  <div>
+                    <strong>{character.name}</strong>
+                    <p className="muted">Раса: {character.race}</p>
+                    <p className="muted">Ур. {character.level}</p>
+                  </div>
+                </div>
+                <div className="combined-char-hero-bars">
+                  <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
+                  <p><span>Мана</span><strong>{character.activeStats.mp}</strong></p>
+                  <p><span>Выносл.</span><strong>{character.activeStats.stamina}</strong></p>
+                  <p><span>Золото</span><strong>{inventory.gold}</strong></p>
+                  <p><span>Опыт</span><strong>{character.exp} / {levelProgress.next}</strong></p>
+                </div>
+              </section>
+
+              {/* Base stats with allocation */}
+              <section className="character-stats-card">
+                <h3>Статы</h3>
+                <p className="muted">Свободные очки: {freePointsLeft}</p>
+                <div className="character-stats-list combined-char-stats-list">
+                  {STATS_ORDER.map((stat) => (
+                    <div key={stat} className="character-stat-row">
+                      <span className="character-stat-label">
+                        {STAT_LABELS[stat]}
+                        <button type="button" className="stat-help-chip" title={STAT_HINTS[stat]} aria-label={`Что делает ${STAT_LABELS[stat]}`}>?</button>
+                      </span>
+                      <strong>{character.activeStats[stat]}{previewStats[stat] !== character.activeStats[stat] ? ` → ${previewStats[stat]}` : ''}</strong>
+                      <div className="mini-stepper">
+                        <button disabled={freePointsLeft <= 0} onClick={() => onAdjustStat(stat, 1)}>+</button>
+                        <button disabled={(pendingStatAllocation[stat] ?? 0) <= 0} onClick={() => onAdjustStat(stat, -1)}>-</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="character-item-actions">
+                  <button disabled={allocatingStats || !hasPendingAllocation || freePointsLeft < 0} onClick={() => void onApplyStatAllocation()}>
+                    {allocatingStats ? 'Применение...' : 'Применить'}
+                  </button>
+                  <button type="button" disabled={!hasPendingAllocation} onClick={() => onResetStatAllocation?.()}>Откатить</button>
+                </div>
+              </section>
+
+              {/* Derived stats compact */}
+              <section className="character-meta-card">
+                <h3>Боевые показатели</h3>
+                <div className="combined-char-derived">
+                  <p><span>Защита</span><strong>{derivedPreview.totalDefense}</strong></p>
+                  <p><span>Мин. урон</span><strong>{derivedPreview.minDamage}</strong></p>
+                  <p><span>Макс. урон</span><strong>{derivedPreview.maxDamage}</strong></p>
+                  <p><span>Крит</span><strong>{derivedPreview.critChance}%</strong></p>
+                  <p><span>Инициатива</span><strong>{derivedPreview.initiative}</strong></p>
+                  <p><span>Попадание</span><strong>{derivedPreview.hitChance}%</strong></p>
+                  <p><span>Уклонение</span><strong>{derivedPreview.evasion}%</strong></p>
+                  <p><span>Блок</span><strong>{derivedPreview.blockChance}%</strong></p>
+                  <p><span>Физ. сопр.</span><strong>{derivedPreview.physicalResistance}</strong></p>
+                  <p><span>Маг. сопр.</span><strong>{derivedPreview.magicResistance}</strong></p>
+                </div>
+              </section>
+            </div>
+
+            {/* ── CENTER: Paper Doll ───────────────────────────────────── */}
+            <div className="combined-char-center">
+              {renderPaperDoll()}
+            </div>
+
+            {/* ── RIGHT: Skills ────────────────────────────────────────── */}
+            <div className="combined-char-right">
+              {/* Preset toolbar */}
+              <section className="character-meta-card character-skills-toolbar">
+                <div>
+                  <h3>Боевой набор</h3>
+                </div>
+                <div className="character-loadout-presets">
+                  {[0, 1, 2].map((presetIndex) => (
+                    <div key={presetIndex} className="character-loadout-preset-actions">
+                      <button type="button" className={activePresetIndex === presetIndex ? 'is-active' : ''} onClick={() => { void applyPreset(presetIndex as 0 | 1 | 2); }}>
+                        Пресет {presetIndex + 1}
+                      </button>
+                      <button type="button" onClick={() => { void saveCurrentLoadoutAsPreset(presetIndex as 0 | 1 | 2); }}>
+                        Сохранить
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              {/* Skills page */}
+              <section className="character-skills-card">
+                <CharacterSkillsPage
+                  learnedSkills={learnedSkills}
+                  availableSkills={availableSkills}
+                  loadout={skillLoadout}
+                  playerContext={{
+                    playerId: character.id,
+                    level: character.level,
+                    race: String(character.race ?? ''),
+                    classId: null,
+                    npcId: null,
+                  }}
+                  onLearnSkill={onLearnSkill ?? (async () => undefined)}
+                  onSaveLoadout={onSaveSkillLoadout ?? (async () => undefined)}
+                  onStatus={onStatus}
+                />
+              </section>
+            </div>
+
+            {/* ── BOTTOM: Inventory + Item Details ─────────────────────── */}
+            <div className="combined-char-bottom">
+              <section className="character-backpack-card">
+                <div className="character-backpack-head">
+                  <div>
+                    <h3>Рюкзак</h3>
+                  </div>
+                  <div className="character-inventory-controls">
+                    <label>
+                      Сортировка
+                      <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
+                        {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>По {label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Фильтр
+                      <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
+                        {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div className="character-inventory-grid-wrap">
+                  {sortedFilteredInventory.length > 0
+                    ? renderInventoryCards(sortedFilteredInventory, true)
+                    : <p className="muted">Рюкзак пуст.</p>}
+                </div>
+              </section>
+              {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true)}
+            </div>
+
+          </div>
+          {renderHoverPreviewCard()}
+        </div>
+        {renderItemPopup()}
+      </>
+    );
+  }
+
+
   // â”€â”€ main return â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
       <section className="card battle-window wm-modal character-page-modal">
-        {focusSection === 'character' && renderCharacterOverview()}
+        {focusSection === 'character' && renderCombinedCharacterPage()}
         {focusSection === 'inventory' && renderInventoryPage()}
         {focusSection === 'stats' && renderStatsPage()}
         {focusSection === 'skills' && renderSkillsPage()}

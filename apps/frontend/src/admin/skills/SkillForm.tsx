@@ -1,7 +1,9 @@
 import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisitionConfig, type SkillRequirementConfig } from '@theend/rpg-domain';
 import { useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import type { AdminSaveViewModel } from '../adminSaveTools';
 import { SkillAcquisitionEditor } from './SkillAcquisitionEditor';
 import { SkillEffectsEditor } from './SkillEffectsEditor';
 import { SkillJsonField } from './SkillJsonField';
@@ -18,6 +20,8 @@ interface SkillFormProps {
   previewLevel: number;
   iconSrc?: string;
   status: string;
+  saveState: AdminSaveViewModel;
+  isSaving: boolean;
   onChange: (next: AdminSkillDefinition) => void;
   onPreviewLevelChange: (next: number) => void;
   onSave: () => void;
@@ -43,7 +47,7 @@ const TABS: Array<{ id: SkillTab; label: string }> = [
 ];
 
 export function SkillForm(props: SkillFormProps) {
-  const { draft, selectedId, previewLevel, iconSrc, status, onChange, onPreviewLevelChange, onSave, onDuplicate, onDelete, onTogglePublish } = props;
+  const { draft, selectedId, previewLevel, iconSrc, status, saveState, isSaving, onChange, onPreviewLevelChange, onSave, onDuplicate, onDelete, onTogglePublish } = props;
   const [activeTab, setActiveTab] = useState<SkillTab>('basic');
 
   function patch(patchValue: Partial<AdminSkillDefinition>) {
@@ -161,6 +165,71 @@ export function SkillForm(props: SkillFormProps) {
               <AdminFieldLabel label="Admin Notes" hint="Внутренние заметки редактора. Здесь можно фиксировать исключения вроде dwarf magic exception." />
               <textarea rows={3} value={draft.adminNotes ?? ''} onChange={(event) => patch({ adminNotes: event.target.value || undefined })} />
             </label>
+
+            <label>
+              <AdminFieldLabel label="Получение" hint="Как навык должен выдаваться: обычное обучение, квест, диалог, предмет, скрытый или только админ." />
+              <select
+                value={draft.acquisitionMode ?? 'admin'}
+                onChange={(event) => patch({ acquisitionMode: event.target.value as AdminSkillDefinition['acquisitionMode'] })}
+              >
+                <option value="trainer">trainer</option>
+                <option value="quest">quest</option>
+                <option value="dialogue">dialogue</option>
+                <option value="item">item</option>
+                <option value="hidden">hidden</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <label className="zone-editor-checkbox">
+              <input
+                type="checkbox"
+                checked={draft.isTrainable === true}
+                onChange={(event) => patch({ isTrainable: event.target.checked })}
+              />
+              <AdminFieldLabel label="Доступен для обычного обучения" hint="Только такие навыки показываются в разделе Обучение у игрока." />
+            </label>
+            <label>
+              <AdminFieldLabel label="Required level" hint="Минимальный уровень для обычного обучения." />
+              <input
+                type="number"
+                min={0}
+                value={draft.requiredLevel ?? ''}
+                onChange={(event) => patch({ requiredLevel: event.target.value === '' ? undefined : Number(event.target.value) })}
+              />
+            </label>
+            <label>
+              <AdminFieldLabel label="Required completed quest" hint="ID квеста, который должен быть завершён, чтобы навык можно было обучить." />
+              <input value={draft.requiredCompletedQuestId ?? ''} onChange={(event) => patch({ requiredCompletedQuestId: event.target.value || undefined })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="Required quest item" hint="ID квестового предмета, который должен быть у игрока." />
+              <input value={draft.requiredQuestItemId ?? ''} onChange={(event) => patch({ requiredQuestItemId: event.target.value || undefined })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="Required NPC / trainer" hint="ID NPC, у которого можно изучить навык в обычном обучении." />
+              <input value={draft.requiredNpcId ?? ''} onChange={(event) => patch({ requiredNpcId: event.target.value || undefined })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="Required known skills" hint="Через запятую: навыки, которые должны быть уже изучены." />
+              <input
+                value={formatCommaList(draft.requiredKnownSkillIds)}
+                onChange={(event) => patch({ requiredKnownSkillIds: parseCommaList(event.target.value) })}
+              />
+            </label>
+            <label>
+              <AdminFieldLabel label="Allowed class IDs" hint="Через запятую: если список непустой, обучение доступно только этим классам." />
+              <input
+                value={formatCommaList(draft.requiredClassIds)}
+                onChange={(event) => patch({ requiredClassIds: parseCommaList(event.target.value) })}
+              />
+            </label>
+            <label>
+              <AdminFieldLabel label="Allowed race IDs" hint="Через запятую: если список непустой, обучение доступно только этим расам." />
+              <input
+                value={formatCommaList(draft.requiredRaceIds)}
+                onChange={(event) => patch({ requiredRaceIds: parseCommaList(event.target.value) })}
+              />
+            </label>
           </div>
         ) : null}
 
@@ -273,12 +342,13 @@ export function SkillForm(props: SkillFormProps) {
       </div>
 
       <div className="admin-actions-row">
-        <button onClick={onSave}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+        <button disabled={isSaving} onClick={onSave}>{isSaving ? 'Сохранение...' : (selectedId ? 'Сохранить' : 'Создать')}</button>
         <button disabled={!selectedId} onClick={onDuplicate}>Дублировать</button>
         <button disabled={!selectedId} onClick={onTogglePublish}>{draft.isPublished ? 'Снять публикацию' : 'Опубликовать'}</button>
         <button disabled={!selectedId} onClick={onDelete}>Удалить</button>
       </div>
 
+      <AdminSaveStatus value={saveState} />
       <p className="muted">{translatedStatus}</p>
     </section>
   );

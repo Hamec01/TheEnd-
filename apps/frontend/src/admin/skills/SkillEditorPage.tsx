@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SkillType, AdminSkillDefinition } from '@theend/rpg-domain';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { imageService } from '../../services/content/imageService';
 import type { StoredImage } from '../../services/content/models';
 import { skillsService, emptySkill, normalizeSkill, validateSkill } from '../../services/content/skillsService';
@@ -22,6 +23,8 @@ export function SkillEditorPage() {
   const [hiddenFilter, setHiddenFilter] = useState<HiddenFilter>('all');
   const [previewLevel, setPreviewLevel] = useState(1);
   const [status, setStatus] = useState('Ready');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Ready' });
+  const [isSaving, setIsSaving] = useState(false);
 
   async function refresh() {
     try {
@@ -84,6 +87,10 @@ export function SkillEditorPage() {
   }
 
   async function saveSkill() {
+    if (isSaving) {
+      return;
+    }
+
     const normalized = normalizeSkillDraft(normalizeSkill(draft));
     const errors = validateSkill(normalized);
     if (errors.length > 0) {
@@ -91,22 +98,46 @@ export function SkillEditorPage() {
       return;
     }
 
-    try {
-      if (selectedId) {
-        const saved = await skillsService.update(selectedId, normalized);
-        setDraft(normalizeSkillDraft(saved));
-        setStatus(`Skill updated: ${saved.id}`);
-      } else {
-        const created = await skillsService.create(normalized);
-        setSelectedId(created.id);
-        setDraft(normalizeSkillDraft(created));
-        setStatus(`Skill created: ${created.id}`);
-      }
-      await refresh();
-    } catch (error) {
-      setStatus((error as Error).message);
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: normalized.id,
+      onSave: () => (selectedId
+        ? skillsService.update(selectedId, normalized)
+        : skillsService.create(normalized)),
+      onAfterSave: async (entry) => {
+        const verified = await skillsService.getById(entry.id);
+        if (!verified) {
+          throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+        }
+      },
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+
+    if (!saved) {
+      setIsSaving(false);
+      return;
     }
+
+    setSelectedId(saved.id);
+    setDraft(normalizeSkillDraft(saved));
+    await refresh();
+
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatus(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatus(selectedId ? `Skill updated: ${saved.id}` : `Skill created: ${saved.id}`);
+    }
+    setIsSaving(false);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveSkill,
+  });
 
   async function duplicateSkill() {
     if (!selectedId) {
@@ -170,6 +201,8 @@ export function SkillEditorPage() {
         previewLevel={clampLevel(previewLevel, draft.maxLevel)}
         iconSrc={resolveSkillIcon(draft)}
         status={status}
+        saveState={saveState}
+        isSaving={isSaving}
         onChange={(next) => setDraft(normalizeSkillDraft(next))}
         onPreviewLevelChange={setPreviewLevel}
         onSave={() => { void saveSkill(); }}

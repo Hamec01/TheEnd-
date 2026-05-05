@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import type { AdminSkillDefinition } from '@theend/rpg-domain';
 import { SkillType, validateSkillDefinition } from '@theend/rpg-domain';
-import type { PrismaClient } from '@prisma/client';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CharacterSkill, CharacterSkillSourceType } from './character-skill.types';
+import type { CharacterSkill, CharacterSkillLoadout, CharacterSkillSourceType, CombatSkillSlot } from './character-skill.types';
 import { createDefaultLoadout, getUnlockedSlotCount } from './character-skill.types';
 
 const MAGIC_SKILL_TYPES = new Set<SkillType>([
@@ -16,9 +17,28 @@ const MAGIC_SKILL_TYPES = new Set<SkillType>([
 ]);
 
 const DWARF_RACES = new Set(['race_dwarf', 'DWARF', 'dwarf']);
+const GENERIC_TRAINING_SOURCE_TYPES = new Set<CharacterSkillSourceType>(['teacher', 'academy']);
+
+const CHARACTER_SKILLS_STORE_KEY = 'character-skills-v1';
+const CHARACTER_LOADOUTS_STORE_KEY = 'character-skill-loadouts-v1';
+
+type StoredCharacterSkill = {
+  id: string;
+  characterId: string;
+  skillId: string;
+  level: number;
+  learnedAt: string;
+  sourceType: CharacterSkillSourceType;
+  sourceId?: string | null;
+};
+
+type StoredCharacterSkillMap = Record<string, StoredCharacterSkill[]>;
+type StoredCharacterLoadoutMap = Record<string, CombatSkillSlot[]>;
 
 @Injectable()
 export class SkillLearningService {
+  private readonly logger = new Logger(SkillLearningService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
@@ -26,10 +46,8 @@ export class SkillLearningService {
 
   async getCharacterSkills(characterId: string): Promise<Array<CharacterSkill & { definition: AdminSkillDefinition | null }>> {
     await this.contentService.ensureInitialized();
-    const rows = await this.prisma.characterSkill.findMany({
-      where: { characterId },
-      orderBy: { learnedAt: 'asc' },
-    });
+    await this.ensureCharacterExists(characterId);
+    const rows = await this.readCharacterSkills(characterId);
 
     return rows.map((row) => ({
       id: row.id,
@@ -37,16 +55,28 @@ export class SkillLearningService {
       skillId: row.skillId,
       level: row.level,
       learnedAt: row.learnedAt,
-      sourceType: row.sourceType as CharacterSkillSourceType,
+      sourceType: row.sourceType,
       sourceId: row.sourceId,
       definition: this.contentService.getCollectionEntry('skills', row.skillId) as AdminSkillDefinition | null,
-    }));
+    })).sort((a, b) => a.learnedAt.getTime() - b.learnedAt.getTime());
   }
 
   async learnSkill(
     characterId: string,
     skillId: string,
     sourceType: CharacterSkillSourceType,
+    sourceId?: string,
+  ): Promise<{ skill: CharacterSkill; definition: AdminSkillDefinition; blockedReason?: string }> {
+    if (GENERIC_TRAINING_SOURCE_TYPES.has(sourceType)) {
+      return this.learnSkillFromTraining(characterId, skillId, sourceId);
+    }
+
+    return this.grantSkillToCharacter(characterId, skillId, sourceType, sourceId);
+  }
+
+  async learnSkillFromTraining(
+    characterId: string,
+    skillId: string,
     sourceId?: string,
   ): Promise<{ skill: CharacterSkill; definition: AdminSkillDefinition; blockedReason?: string }> {
     await this.contentService.ensureInitialized();
@@ -62,12 +92,8 @@ export class SkillLearningService {
       throw new BadRequestException(`Skill definition invalid: ${defErrors[0]}`);
     }
 
-    if (!skillDef.isPublished) {
-      throw new BadRequestException('Skill is not published');
-    }
-    if (skillDef.isHidden) {
-      throw new BadRequestException('Skill is hidden');
-    }
+    this.assertSkillIsUsable(skillDef, skillId);
+    this.assertSkillIsTrainable(skillDef, skillId, sourceId);
 
     // Load character
     const character = await this.prisma.character.findUnique({
@@ -83,13 +109,103 @@ export class SkillLearningService {
     }
 
     // Check already learned
-    const existing = await this.prisma.characterSkill.findUnique({
-      where: { characterId_skillId: { characterId, skillId } },
-    });
+    const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
     if (existing) {
       throw new BadRequestException('Character already knows this skill');
     }
 
+    await this.assertTrainingRequirements(characterId, character, skillDef, sourceId);
+
+    const row = await this.createCharacterSkill({
+      characterId,
+      skillId,
+      level: 1,
+      sourceType: 'teacher',
+      sourceId: sourceId ?? null,
+    });
+
+    return {
+      skill: {
+        id: row.id,
+        characterId: row.characterId,
+        skillId: row.skillId,
+        level: row.level,
+        learnedAt: row.learnedAt,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+      },
+      definition: skillDef,
+    };
+  }
+
+  async grantSkillToCharacter(
+    characterId: string,
+    skillId: string,
+    sourceType: CharacterSkillSourceType,
+    sourceId?: string,
+  ): Promise<{ skill: CharacterSkill; definition: AdminSkillDefinition; blockedReason?: string }> {
+    await this.contentService.ensureInitialized();
+
+    const skillDef = this.contentService.getCollectionEntry('skills', skillId) as AdminSkillDefinition | null;
+    if (!skillDef) {
+      throw new NotFoundException(`Skill not found: ${skillId}`);
+    }
+
+    const character = await this.prisma.character.findUnique({
+      where: { id: characterId },
+      select: {
+        id: true, race: true, level: true,
+        strength: true, endurance: true, dexterity: true,
+        intelligence: true, luck: true, speed: true, willpower: true,
+      },
+    });
+    if (!character) {
+      throw new NotFoundException(`Character not found: ${characterId}`);
+    }
+
+    const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
+    if (existing) {
+      throw new BadRequestException('Character already knows this skill');
+    }
+
+    const row = await this.createCharacterSkill({
+      characterId,
+      skillId,
+      level: 1,
+      sourceType,
+      sourceId: sourceId ?? null,
+    });
+
+    return {
+      skill: {
+        id: row.id,
+        characterId: row.characterId,
+        skillId: row.skillId,
+        level: row.level,
+        learnedAt: row.learnedAt,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+      },
+      definition: skillDef,
+    };
+  }
+
+  private async assertTrainingRequirements(
+    characterId: string,
+    character: {
+      race: string;
+      level: number;
+      strength: number;
+      endurance: number;
+      dexterity: number;
+      intelligence: number;
+      luck: number;
+      speed: number;
+      willpower: number;
+    },
+    skillDef: AdminSkillDefinition,
+    sourceId?: string,
+  ): Promise<void> {
     // Race restrictions
     const req = skillDef.requirements;
 
@@ -135,44 +251,83 @@ export class SkillLearningService {
       }
     }
 
-    // Quest requirements (content-based check)
-    if (req.requiredQuestIds && req.requiredQuestIds.length > 0) {
-      // We can only verify against available player quest states if passed in;
-      // for now throw a descriptive error - caller should validate upstream
-      // This is intentionally lenient at the service level since quest state
-      // is managed by the quest runtime (localStorage / worldmap).
-      // Teacher NPC flow validates this before calling learnSkill.
+    const requiredKnownSkillIds = [
+      ...(skillDef.requiredKnownSkillIds ?? []),
+      ...(req.requiredSkills ?? []),
+    ];
+    if (requiredKnownSkillIds.length > 0) {
+      const known = new Set((await this.readCharacterSkills(characterId)).map((entry) => entry.skillId));
+      const missing = requiredKnownSkillIds.find((requiredSkillId) => !known.has(requiredSkillId));
+      if (missing) {
+        throw new BadRequestException(`Requires known skill ${missing}`);
+      }
     }
 
-    const row = await this.prisma.characterSkill.create({
-      data: {
-        characterId,
-        skillId,
-        level: 1,
-        sourceType,
-        sourceId: sourceId ?? null,
-      },
-    });
+    const requiredLevel = skillDef.requiredLevel;
+    if (typeof requiredLevel === 'number' && character.level < requiredLevel) {
+      throw new BadRequestException(`Requires character level ${requiredLevel}`);
+    }
 
-    return {
-      skill: {
-        id: row.id,
-        characterId: row.characterId,
-        skillId: row.skillId,
-        level: row.level,
-        learnedAt: row.learnedAt,
-        sourceType: row.sourceType as CharacterSkillSourceType,
-        sourceId: row.sourceId,
-      },
-      definition: skillDef,
-    };
+    if (skillDef.requiredRaceIds && skillDef.requiredRaceIds.length > 0 && !skillDef.requiredRaceIds.includes(character.race)) {
+      throw new BadRequestException(`Race ${character.race} cannot learn this skill`);
+    }
+
+    if (skillDef.requiredClassIds && skillDef.requiredClassIds.length > 0) {
+      throw new BadRequestException(`Skill requires one of classes: ${skillDef.requiredClassIds.join(', ')}`);
+    }
+
+    const requiredNpcId = skillDef.requiredNpcId?.trim();
+    if (requiredNpcId && requiredNpcId !== (sourceId ?? '').trim()) {
+      throw new BadRequestException(`Skill can only be learned from trainer ${requiredNpcId}`);
+    }
+
+    if (skillDef.requiredQuestId?.trim()) {
+      throw new BadRequestException(`Requires quest state: ${skillDef.requiredQuestId.trim()}`);
+    }
+    if (skillDef.requiredCompletedQuestId?.trim()) {
+      throw new BadRequestException(`Requires completed quest: ${skillDef.requiredCompletedQuestId.trim()}`);
+    }
+
+    const requiredItems = [
+      ...(req.requiredItems ?? []),
+      ...(skillDef.requiredQuestItemId ? [skillDef.requiredQuestItemId] : []),
+    ].map((entry) => String(entry).trim()).filter(Boolean);
+    if (requiredItems.length > 0) {
+      const ownedItemIds = new Set(await this.readCharacterItemIds(characterId));
+      const missing = requiredItems.find((requiredItemId) => !ownedItemIds.has(requiredItemId));
+      if (missing) {
+        throw new BadRequestException(`Requires item: ${missing}`);
+      }
+    }
+
+    if ((req.requiredQuestIds ?? []).length > 0) {
+      const firstRequiredQuestId = req.requiredQuestIds?.[0] ?? 'unknown';
+      throw new BadRequestException(`Requires completed quest: ${firstRequiredQuestId}`);
+    }
+  }
+
+  private assertSkillIsUsable(skillDef: AdminSkillDefinition, skillId: string): void {
+    if (!skillDef.isPublished) {
+      throw new BadRequestException(`Skill is not published: ${skillId}`);
+    }
+    if (skillDef.isHidden) {
+      throw new BadRequestException(`Skill is hidden: ${skillId}`);
+    }
+  }
+
+  private assertSkillIsTrainable(skillDef: AdminSkillDefinition, skillId: string, sourceId?: string): void {
+    if (skillDef.isTrainable !== true || skillDef.acquisitionMode !== 'trainer') {
+      throw new BadRequestException(`Skill is not available for generic training: ${skillId}`);
+    }
+
+    const trainerLocked = skillDef.requiredNpcId?.trim();
+    if (trainerLocked && trainerLocked !== (sourceId ?? '').trim()) {
+      throw new BadRequestException(`Skill can only be learned from trainer ${trainerLocked}`);
+    }
   }
 
   async knowsSkill(characterId: string, skillId: string): Promise<boolean> {
-    const row = await this.prisma.characterSkill.findUnique({
-      where: { characterId_skillId: { characterId, skillId } },
-    });
-    return row !== null;
+    return (await this.readCharacterSkills(characterId)).some((entry) => entry.skillId === skillId);
   }
 
   async grantQuestSkillRewards(
@@ -185,7 +340,7 @@ export class SkillLearningService {
 
     for (const skillId of skillIds) {
       try {
-        await this.learnSkill(characterId, skillId, 'quest', questId);
+        await this.grantSkillToCharacter(characterId, skillId, 'quest', questId);
         results.push({ skillId, granted: true });
       } catch (error) {
         results.push({ skillId, granted: false, reason: (error as Error).message });
@@ -195,48 +350,36 @@ export class SkillLearningService {
     return results;
   }
 
-  async getOrCreateLoadout(characterId: string): Promise<import('./character-skill.types').CharacterSkillLoadout> {
-    const character = await this.prisma.character.findUnique({
-      where: { id: characterId },
-      select: { combatMastery: true },
-    });
-    const combatMastery = character?.combatMastery ?? 0;
+  async getOrCreateLoadout(characterId: string): Promise<CharacterSkillLoadout> {
+    const character = await this.ensureCharacterExists(characterId);
+    const combatMastery = typeof (character as { combatMastery?: unknown }).combatMastery === 'number'
+      ? Number((character as { combatMastery?: number }).combatMastery)
+      : 0;
 
-    const existing = await this.prisma.characterSkillLoadout.findUnique({
-      where: { characterId },
-    });
-
-    if (existing) {
-      const slots = existing.slots as unknown as import('./character-skill.types').CombatSkillSlot[];
-      // Update unlock status based on current combat mastery
+    const existing = await this.readCharacterLoadout(characterId);
+    if (existing.length > 0) {
       const unlocked = getUnlockedSlotCount(combatMastery);
-      const updatedSlots = slots.map((slot) => ({
+      const updatedSlots = existing.map((slot) => ({
         ...slot,
         unlocked: slot.slotIndex < unlocked,
       }));
+      await this.writeCharacterLoadout(characterId, updatedSlots);
       return { characterId, slots: updatedSlots };
     }
 
     const slots = createDefaultLoadout(combatMastery);
-    await this.prisma.characterSkillLoadout.create({
-      data: { characterId, slots: slots as unknown as import('@prisma/client').Prisma.JsonArray },
-    });
+    await this.writeCharacterLoadout(characterId, slots);
     return { characterId, slots };
   }
 
   async updateLoadout(
     characterId: string,
     updates: Array<{ slotIndex: number; skillId: string | null }>,
-  ): Promise<import('./character-skill.types').CharacterSkillLoadout> {
+  ): Promise<CharacterSkillLoadout> {
     await this.contentService.ensureInitialized();
     const loadout = await this.getOrCreateLoadout(characterId);
 
-    const learnedSkillIds = new Set(
-      (await this.prisma.characterSkill.findMany({
-        where: { characterId },
-        select: { skillId: true },
-      })).map((r) => r.skillId),
-    );
+    const learnedSkillIds = new Set((await this.readCharacterSkills(characterId)).map((entry) => entry.skillId));
 
     const nextSlots = [...loadout.slots];
     const equippedSkillIds = new Set(
@@ -305,11 +448,7 @@ export class SkillLearningService {
       nextSlots[slotIdx] = { ...slot, skillId: update.skillId };
     }
 
-    await this.prisma.characterSkillLoadout.upsert({
-      where: { characterId },
-      create: { characterId, slots: nextSlots as unknown as import('@prisma/client').Prisma.JsonArray },
-      update: { slots: nextSlots as unknown as import('@prisma/client').Prisma.JsonArray },
-    });
+    await this.writeCharacterLoadout(characterId, nextSlots);
 
     return { characterId, slots: nextSlots };
   }
@@ -328,5 +467,241 @@ export class SkillLearningService {
       }
     }
     return result;
+  }
+
+  private async ensureCharacterExists(characterId: string) {
+    const character = await this.prisma.character.findUnique({ where: { id: characterId } });
+    if (!character) {
+      throw new NotFoundException(`Character not found: ${characterId}`);
+    }
+    return character;
+  }
+
+  private getCharacterSkillModel(): {
+    findMany?: (args: unknown) => Promise<Array<Record<string, unknown>>>;
+    findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
+    create?: (args: unknown) => Promise<Record<string, unknown>>;
+  } {
+    return (this.prisma as unknown as { characterSkill?: unknown }).characterSkill as {
+      findMany?: (args: unknown) => Promise<Array<Record<string, unknown>>>;
+      findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
+      create?: (args: unknown) => Promise<Record<string, unknown>>;
+    };
+  }
+
+  private getCharacterSkillLoadoutModel(): {
+    findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
+    create?: (args: unknown) => Promise<Record<string, unknown>>;
+    upsert?: (args: unknown) => Promise<Record<string, unknown>>;
+  } {
+    return (this.prisma as unknown as { characterSkillLoadout?: unknown }).characterSkillLoadout as {
+      findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
+      create?: (args: unknown) => Promise<Record<string, unknown>>;
+      upsert?: (args: unknown) => Promise<Record<string, unknown>>;
+    };
+  }
+
+  private normalizeSkillRow(row: Record<string, unknown>): CharacterSkill | null {
+    const id = typeof row.id === 'string' ? row.id : '';
+    const characterId = typeof row.characterId === 'string' ? row.characterId : '';
+    const skillId = typeof row.skillId === 'string' ? row.skillId : '';
+    const level = typeof row.level === 'number' ? row.level : 1;
+    const sourceType = typeof row.sourceType === 'string' ? row.sourceType as CharacterSkillSourceType : 'admin';
+    const sourceId = typeof row.sourceId === 'string' || row.sourceId === null ? row.sourceId : null;
+    const learnedRaw = row.learnedAt;
+    const learnedAt = learnedRaw instanceof Date
+      ? learnedRaw
+      : typeof learnedRaw === 'string'
+        ? new Date(learnedRaw)
+        : new Date();
+
+    if (!id || !characterId || !skillId || Number.isNaN(learnedAt.getTime())) {
+      return null;
+    }
+
+    return {
+      id,
+      characterId,
+      skillId,
+      level,
+      learnedAt,
+      sourceType,
+      sourceId,
+    };
+  }
+
+  private normalizeLoadoutSlots(slots: unknown): CombatSkillSlot[] {
+    if (!Array.isArray(slots)) {
+      return [];
+    }
+
+    const normalized = slots
+      .map((slot) => {
+        if (!slot || typeof slot !== 'object') {
+          return null;
+        }
+        const raw = slot as Record<string, unknown>;
+        const slotIndex = typeof raw.slotIndex === 'number' ? raw.slotIndex : -1;
+        const unlocked = Boolean(raw.unlocked);
+        const skillId = typeof raw.skillId === 'string' || raw.skillId === null ? raw.skillId : null;
+        const slotType = typeof raw.slotType === 'string' ? raw.slotType : 'ANY';
+        if (slotIndex < 0) {
+          return null;
+        }
+        return {
+          slotIndex,
+          unlocked,
+          skillId,
+          slotType: (['ANY', 'MAGIC', 'PHYSICAL', 'PASSIVE', 'RUNE', 'SHAMANIC'].includes(slotType)
+            ? slotType
+            : 'ANY') as CombatSkillSlot['slotType'],
+        };
+      })
+      .filter((slot): slot is CombatSkillSlot => slot !== null)
+      .sort((a, b) => a.slotIndex - b.slotIndex);
+
+    return normalized;
+  }
+
+  private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
+    const row = await this.prisma.contentStore.findUnique({ where: { key } });
+    if (!row || !row.value || typeof row.value !== 'object' || Array.isArray(row.value)) {
+      return {} as TMap;
+    }
+    return row.value as unknown as TMap;
+  }
+
+  private async writeMap(key: string, value: Record<string, unknown>): Promise<void> {
+    const jsonValue = value as Prisma.InputJsonValue;
+    await this.prisma.contentStore.upsert({
+      where: { key },
+      create: { key, value: jsonValue },
+      update: { value: jsonValue },
+    });
+  }
+
+  private async readCharacterItemIds(characterId: string): Promise<string[]> {
+    try {
+      const rows = await this.prisma.characterInventoryItem.findMany({
+        where: { characterId },
+        select: { itemId: true },
+      });
+      return rows.map((row) => row.itemId);
+    } catch (error) {
+      this.logger.warn(`Unable to read inventory items for ${characterId}: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  private async readCharacterSkills(characterId: string): Promise<CharacterSkill[]> {
+    const model = this.getCharacterSkillModel();
+    if (model?.findMany) {
+      try {
+        const rows = await model.findMany({
+          where: { characterId },
+          orderBy: { learnedAt: 'asc' },
+        });
+        return rows
+          .map((row) => this.normalizeSkillRow(row))
+          .filter((row): row is CharacterSkill => row !== null);
+      } catch (error) {
+        this.logger.warn(`Falling back to content-store skill rows for ${characterId}: ${(error as Error).message}`);
+      }
+    }
+
+    const map = await this.readMap<StoredCharacterSkillMap>(CHARACTER_SKILLS_STORE_KEY);
+    const rawRows = Array.isArray(map[characterId]) ? map[characterId] : [];
+    return rawRows
+      .map((row) => this.normalizeSkillRow(row as unknown as Record<string, unknown>))
+      .filter((row): row is CharacterSkill => row !== null)
+      .sort((a, b) => a.learnedAt.getTime() - b.learnedAt.getTime());
+  }
+
+  private async createCharacterSkill(input: {
+    characterId: string;
+    skillId: string;
+    level: number;
+    sourceType: CharacterSkillSourceType;
+    sourceId: string | null;
+  }): Promise<CharacterSkill> {
+    const model = this.getCharacterSkillModel();
+    if (model?.create) {
+      try {
+        const row = await model.create({
+          data: {
+            characterId: input.characterId,
+            skillId: input.skillId,
+            level: input.level,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
+          },
+        });
+        const normalized = this.normalizeSkillRow(row);
+        if (normalized) {
+          return normalized;
+        }
+      } catch (error) {
+        this.logger.warn(`Falling back to content-store skill create for ${input.characterId}: ${(error as Error).message}`);
+      }
+    }
+
+    const map = await this.readMap<StoredCharacterSkillMap>(CHARACTER_SKILLS_STORE_KEY);
+    const list = Array.isArray(map[input.characterId]) ? map[input.characterId] : [];
+    const row: StoredCharacterSkill = {
+      id: randomUUID(),
+      characterId: input.characterId,
+      skillId: input.skillId,
+      level: input.level,
+      learnedAt: new Date().toISOString(),
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+    };
+    map[input.characterId] = [...list, row];
+    await this.writeMap(CHARACTER_SKILLS_STORE_KEY, map);
+
+    return {
+      ...row,
+      learnedAt: new Date(row.learnedAt),
+    };
+  }
+
+  private async readCharacterLoadout(characterId: string): Promise<CombatSkillSlot[]> {
+    const model = this.getCharacterSkillLoadoutModel();
+    if (model?.findUnique) {
+      try {
+        const row = await model.findUnique({ where: { characterId } });
+        const slots = this.normalizeLoadoutSlots((row as { slots?: unknown } | null)?.slots ?? []);
+        if (slots.length > 0) {
+          return slots;
+        }
+      } catch (error) {
+        this.logger.warn(`Falling back to content-store loadout rows for ${characterId}: ${(error as Error).message}`);
+      }
+    }
+
+    const map = await this.readMap<StoredCharacterLoadoutMap>(CHARACTER_LOADOUTS_STORE_KEY);
+    return this.normalizeLoadoutSlots(map[characterId]);
+  }
+
+  private async writeCharacterLoadout(characterId: string, slots: CombatSkillSlot[]): Promise<void> {
+    const normalizedSlots = this.normalizeLoadoutSlots(slots);
+
+    const model = this.getCharacterSkillLoadoutModel();
+    if (model?.upsert) {
+      try {
+        await model.upsert({
+          where: { characterId },
+          create: { characterId, slots: normalizedSlots },
+          update: { slots: normalizedSlots },
+        });
+        return;
+      } catch (error) {
+        this.logger.warn(`Falling back to content-store loadout upsert for ${characterId}: ${(error as Error).message}`);
+      }
+    }
+
+    const map = await this.readMap<StoredCharacterLoadoutMap>(CHARACTER_LOADOUTS_STORE_KEY);
+    map[characterId] = normalizedSlots;
+    await this.writeMap(CHARACTER_LOADOUTS_STORE_KEY, map);
   }
 }

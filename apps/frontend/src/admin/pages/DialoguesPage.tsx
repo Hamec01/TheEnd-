@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminFieldLabel } from '../adminUi';
+import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
   deleteDialogue,
   duplicateDialogue,
@@ -15,6 +17,7 @@ import { itemsService } from '../../services/content/itemsService';
 import { skillsService } from '../../services/content/skillsService';
 import { validateDialogue } from '../../services/dialogueValidator';
 import type { DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 function emptyDialogue(): DialogueDefinition {
   const now = new Date().toISOString();
@@ -59,6 +62,8 @@ export function DialoguesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DialogueDefinition>(emptyDialogue());
   const [statusText, setStatusText] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
   const [nodesJson, setNodesJson] = useState('[]');
 
   const [npcIds, setNpcIds] = useState<string[]>([]);
@@ -66,6 +71,25 @@ export function DialoguesPage() {
   const [itemIds, setItemIds] = useState<string[]>([]);
   const [questItemIds, setQuestItemIds] = useState<string[]>([]);
   const [skillIds, setSkillIds] = useState<string[]>([]);
+
+  async function refreshReferences() {
+    await Promise.all([
+      ensureDialoguesLoaded(),
+      ensureNpcsLoaded(),
+      ensureQuestsLoaded(),
+    ]);
+
+    const [items, skills] = await Promise.all([
+      itemsService.getAll().catch(() => []),
+      skillsService.getAll().catch(() => []),
+    ]);
+
+    setItemIds(items.map((entry) => entry.id));
+    setSkillIds(skills.map((entry) => entry.id));
+    setNpcIds(getAllNpcs().map((entry) => entry.id));
+    setQuestIds(getAllQuests().map((entry) => entry.id));
+    setQuestItemIds(getQuestItems().map((entry) => entry.id));
+  }
 
   function refresh() {
     const all = getAllDialogues();
@@ -77,20 +101,19 @@ export function DialoguesPage() {
   }
 
   useEffect(() => {
-    void Promise.all([
-      ensureDialoguesLoaded(),
-      ensureNpcsLoaded(),
-      ensureQuestsLoaded(),
-      itemsService.getAll(),
-      skillsService.getAll(),
-    ]).then(([, , , items, skills]) => {
-      setItemIds(items.map((entry) => entry.id));
-      setSkillIds(skills.map((entry) => entry.id));
-      setNpcIds(getAllNpcs().map((entry) => entry.id));
-      setQuestIds(getAllQuests().map((entry) => entry.id));
-      setQuestItemIds(getQuestItems().map((entry) => entry.id));
+    void refreshReferences().then(() => {
       refresh();
     });
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'content' || payload.scope === 'all') {
+        void refreshReferences().then(() => {
+          refresh();
+        });
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -137,6 +160,10 @@ export function DialoguesPage() {
   }
 
   async function saveCurrent() {
+    if (isSaving) {
+      return;
+    }
+
     const prepared: DialogueDefinition = {
       ...draft,
       id: draft.id.trim() || `dlg_${Math.random().toString(36).slice(2, 8)}`,
@@ -153,12 +180,37 @@ export function DialoguesPage() {
       return;
     }
 
-    const saved = await saveDialogue(prepared);
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: prepared.id,
+      onSave: () => saveDialogue(prepared),
+      onAfterSave: refreshReferences,
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+    if (!saved) {
+      setIsSaving(false);
+      return;
+    }
+
     setSelectedId(saved.id);
     setDraft(saved);
     refresh();
-    setStatusText(`Диалог сохранен: ${saved.id}`);
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatusText(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatusText(`Диалог сохранен: ${saved.id}`);
+    }
+    setIsSaving(false);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveCurrent,
+  });
 
   async function duplicateSelectedDialogue() {
     if (!selectedId) {
@@ -286,11 +338,12 @@ export function DialoguesPage() {
         </section>
 
         <div className="admin-actions-row">
-          <button onClick={saveCurrent}>{selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ'}</button>
+          <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ')}</button>
           <button disabled={!selectedId} onClick={duplicateSelectedDialogue}>ДУБЛИРОВАТЬ</button>
           <button disabled={!selectedId} onClick={deleteSelectedDialogue}>УДАЛИТЬ</button>
         </div>
 
+        <AdminSaveStatus value={saveState} />
         <p className="muted">{statusText}</p>
       </section>
     </div>

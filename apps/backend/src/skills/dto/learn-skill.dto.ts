@@ -6,8 +6,9 @@ export class LearnSkillDto {
   @Length(1, 100)
   skillId!: string;
 
+  @IsOptional()
   @IsString()
-  sourceType!: CharacterSkillSourceType;
+  sourceType?: CharacterSkillSourceType;
 
   @IsOptional()
   @IsString()

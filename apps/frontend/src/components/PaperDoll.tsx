@@ -7,10 +7,15 @@ interface PaperDollProps {
   imageSrc: string;
   slotItems: Partial<Record<EquipmentSlotId, ItemDefinition | null>>;
   slotLabels: Partial<Record<EquipmentSlotId, string>>;
+  /** Text badge to display in a slot when there is no item (used for skill assignments in quick slots) */
+  slotTextContent?: Partial<Record<EquipmentSlotId, string>>;
+  /** Slot to highlight as selected (e.g. waiting for a skill to be assigned) */
+  selectedSlotId?: EquipmentSlotId | null;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
   canDropItemInSlot?: (slotId: EquipmentSlotId, itemId: string) => boolean;
   onSlotClick: (slotId: EquipmentSlotId) => void;
   onSlotDrop: (slotId: EquipmentSlotId, itemId: string) => void;
+  onSkillDrop?: (slotId: EquipmentSlotId, skillId: string) => void;
   onSlotContextMenu?: (slotId: EquipmentSlotId) => void;
   debug?: boolean;
   onImageError?: () => void;
@@ -46,10 +51,13 @@ export function PaperDoll({
   imageSrc,
   slotItems,
   slotLabels,
+  slotTextContent,
+  selectedSlotId,
   resolveItemImage,
   canDropItemInSlot,
   onSlotClick,
   onSlotDrop,
+  onSkillDrop,
   onSlotContextMenu,
   debug = false,
   onImageError,
@@ -125,12 +133,14 @@ export function PaperDoll({
 
             const equippedItem = slotItems[slot.id] ?? null;
             const label = slotLabels[slot.id] ?? slot.id;
+            const textBadge = !equippedItem ? (slotTextContent?.[slot.id] ?? null) : null;
+            const isSelected = slot.id === selectedSlotId;
 
             return (
               <button
                 key={slot.id}
                 type="button"
-                className={`paper-doll-slot ${debug ? 'is-debug' : ''} ${equippedItem ? 'is-equipped' : 'is-empty'}`}
+                className={`paper-doll-slot ${debug ? 'is-debug' : ''} ${equippedItem || textBadge ? 'is-equipped' : 'is-empty'} ${isSelected ? 'is-selected' : ''}`}
                 style={{
                   left: `${rect.left}px`,
                   top: `${rect.top}px`,
@@ -155,16 +165,26 @@ export function PaperDoll({
                 }}
                 onDragOver={(event) => {
                   const itemId = event.dataTransfer.getData('text/theend-item-id');
+                  const skillId = event.dataTransfer.getData('text/theend-skill-id');
+                  if (skillId && onSkillDrop) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                    return;
+                  }
                   if (itemId && canDropItemInSlot && !canDropItemInSlot(slot.id, itemId)) {
                     event.dataTransfer.dropEffect = 'none';
                     return;
                   }
-
                   event.preventDefault();
                   event.dataTransfer.dropEffect = 'move';
                 }}
                 onDrop={(event) => {
                   event.preventDefault();
+                  const skillId = event.dataTransfer.getData('text/theend-skill-id');
+                  if (skillId) {
+                    onSkillDrop?.(slot.id, skillId);
+                    return;
+                  }
                   const itemId = event.dataTransfer.getData('text/theend-item-id');
                   if (!itemId) {
                     return;
@@ -174,7 +194,7 @@ export function PaperDoll({
                   }
                   onSlotDrop(slot.id, itemId);
                 }}
-                title={equippedItem ? `${label}: ${equippedItem.name}` : label}
+                title={equippedItem ? `${label}: ${equippedItem.name}` : textBadge ? `${label}: ${textBadge}` : label}
                 data-slot-id={slot.id}
               >
                 {debug ? <span className="paper-doll-slot-id">{slot.id}</span> : null}
@@ -196,6 +216,14 @@ export function PaperDoll({
                       <strong>{label}</strong>
                       <span>{equippedItem.name}</span>
                       <small>{equippedItem.itemType} / {equippedItem.itemSubType}</small>
+                    </span>
+                  </>
+                ) : textBadge ? (
+                  <>
+                    <span className="paper-doll-slot-skill-badge">{textBadge}</span>
+                    <span className="paper-doll-slot-tooltip" role="tooltip">
+                      <strong>{label}</strong>
+                      <span>{textBadge}</span>
                     </span>
                   </>
                 ) : null}

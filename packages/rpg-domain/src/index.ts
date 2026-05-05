@@ -48,6 +48,7 @@ export type {
 	SkillCostConfig,
 	SkillDamageComponent,
 	SkillDefinition as AdminSkillDefinition,
+	SkillAvailabilityChannel,
 	SkillEffectComponent,
 	SkillHealingComponent,
 	SkillLevelData,

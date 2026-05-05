@@ -67,6 +67,18 @@ function readArray(key: string): string[] {
   }
 }
 
+function hasKnownSkill(knownSkillIds: string[], skillId: string): boolean {
+  const normalized = String(skillId).trim();
+  if (!normalized) {
+    return false;
+  }
+  const lowered = normalized.toLowerCase();
+  return knownSkillIds.some((entry) => {
+    const candidate = String(entry).trim();
+    return candidate === normalized || candidate.toLowerCase() === lowered;
+  });
+}
+
 function writeArray(key: string, values: string[]): void {
   if (typeof window === 'undefined') {
     return;
@@ -259,12 +271,12 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         }
         break;
       case 'has_skill':
-        if (typeof value === 'string' && !readArray('theend.player.skills').includes(String(value))) {
+        if (typeof value === 'string' && !hasKnownSkill(readArray('theend.player.skills'), String(value))) {
           return false;
         }
         break;
       case 'missing_skill':
-        if (typeof value === 'string' && readArray('theend.player.skills').includes(String(value))) {
+        if (typeof value === 'string' && hasKnownSkill(readArray('theend.player.skills'), String(value))) {
           return false;
         }
         break;
@@ -369,8 +381,23 @@ export function getAvailableDialoguesForNpc(player: QuestRuntimePlayer, npcId: s
   });
 }
 
-export function getStartNode(dialogue: DialogueDefinition): DialogueNode | null {
-  return dialogue.nodes.find((node) => node.id === dialogue.startNodeId) ?? null;
+export function getStartNode(
+  dialogue: DialogueDefinition,
+  player?: QuestRuntimePlayer,
+  npc?: NpcDefinition | null,
+): DialogueNode | null {
+  const nodes = Array.isArray(dialogue.nodes) ? dialogue.nodes : [];
+  const configuredStart = nodes.find((node) => node.id === dialogue.startNodeId) ?? null;
+
+  if (!player) {
+    return configuredStart;
+  }
+
+  if (configuredStart && evaluateDialogueConditions(player, npc ?? null, configuredStart.conditions ?? [])) {
+    return configuredStart;
+  }
+
+  return nodes.find((node) => evaluateDialogueConditions(player, npc ?? null, node.conditions ?? [])) ?? configuredStart;
 }
 
 export function getAvailableChoices(

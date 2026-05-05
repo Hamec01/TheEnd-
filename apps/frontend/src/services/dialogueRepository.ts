@@ -3,6 +3,7 @@ import {
   createContentEntry,
   deleteContentEntry,
   getContentCollection,
+  getContentEntry,
   updateContentEntry,
 } from './content/contentApi';
 
@@ -31,33 +32,61 @@ function invalidateCache(): void {
   loaded = false;
 }
 
+function normalizeId(id: string | undefined): string {
+  return String(id ?? '').trim();
+}
+
 export function getAllDialogues(): DialogueDefinition[] {
   return [...cache];
 }
 
 export function getDialogueById(id: string): DialogueDefinition | null {
-  return cache.find((entry) => entry.id === id) ?? null;
+  const normalizedId = normalizeId(id);
+  return cache.find((entry) => normalizeId(entry.id) === normalizedId) ?? null;
 }
 
 export function getDialoguesByNpc(npcId: string): DialogueDefinition[] {
-  return cache.filter((entry) => entry.npcId === npcId);
+  const normalizedNpcId = normalizeId(npcId);
+  return cache.filter((entry) => normalizeId(entry.npcId) === normalizedNpcId);
 }
 
 export async function saveDialogue(dialogue: DialogueDefinition): Promise<DialogueDefinition> {
   await ensureDialoguesLoaded();
-  const exists = cache.some((entry) => entry.id === dialogue.id);
+  const normalizedId = normalizeId(dialogue.id);
+  if (!normalizedId) {
+    throw new Error('Dialogue id is required.');
+  }
+
+  const normalizedDialogue: DialogueDefinition = {
+    ...dialogue,
+    id: normalizedId,
+    title: dialogue.title?.trim() || normalizedId,
+  };
+
+  const exists = cache.some((entry) => normalizeId(entry.id) === normalizedId);
   const saved = exists
-    ? await updateContentEntry<DialogueDefinition>('dialogues', dialogue.id, dialogue)
-    : await createContentEntry<DialogueDefinition>('dialogues', dialogue);
-  invalidateCache();
-  await ensureDialoguesLoaded(true);
-  return saved;
+    ? await updateContentEntry<DialogueDefinition>('dialogues', normalizedId, normalizedDialogue)
+    : await createContentEntry<DialogueDefinition>('dialogues', normalizedDialogue);
+
+  const verified = await getContentEntry<DialogueDefinition>('dialogues', normalizedId);
+  if (!verified) {
+    throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+  }
+
+  cache = exists
+    ? cache.map((entry) => normalizeId(entry.id) === normalizedId ? verified : entry)
+    : [...cache, verified];
+
+  return verified;
 }
 
 export async function deleteDialogue(id: string): Promise<void> {
-  await deleteContentEntry('dialogues', id);
-  invalidateCache();
-  await ensureDialoguesLoaded(true);
+  const normalizedId = normalizeId(id);
+  if (!normalizedId) {
+    return;
+  }
+  await deleteContentEntry('dialogues', normalizedId);
+  cache = cache.filter((entry) => normalizeId(entry.id) !== normalizedId);
 }
 
 export async function duplicateDialogue(id: string): Promise<DialogueDefinition> {

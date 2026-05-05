@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { itemsService } from '../../services/content/itemsService';
+import { skillsService } from '../../services/content/skillsService';
+import { ensureDialoguesLoaded, getAllDialogues } from '../../services/dialogueRepository';
 import { QUEST_SEED_CITIES, QUEST_SEED_FACTIONS, QUEST_SEED_KINGDOMS } from '../../services/questWorldSeed';
 import { cityService } from '../../services/cityRepository';
 import {
@@ -13,12 +17,16 @@ import {
   ensureQuestsLoaded,
   exportQuestsJson,
   getAllQuests,
+  getQuestInteractions,
+  getQuestItems,
   importQuestsJson,
   saveQuest,
 } from '../../services/questRepository';
 import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
+import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { validateQuest } from '../../services/questValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
+import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import type {
   QuestCategory,
   QuestCondition,
@@ -129,23 +137,43 @@ function uniqueId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildValidationWorldData(quests: QuestDefinition[], zones: WorldMapZone[]) {
-  const npcIds = getAllNpcs().map((entry) => entry.id);
+function buildValidationWorldData(input: {
+  zones: WorldMapZone[];
+  npcIds: string[];
+  itemIds: string[];
+  questItemIds: string[];
+  skillIds: string[];
+  markerIds: string[];
+  interactionQuestIds: string[];
+  dialogueCompletableQuestIds: string[];
+  dialogueIds: string[];
+}) {
   return {
-    npcIds,
-    itemIds: [],
-    questItemIds: [],
-    skillIds: [],
+    npcIds: input.npcIds,
+    itemIds: input.itemIds,
+    questItemIds: input.questItemIds,
+    skillIds: input.skillIds,
     professionIds: ['archer', 'blacksmith', 'alchemist', 'hunter'],
-    markerIds: [],
-    zoneIds: zones.map((zone) => zone.id),
-    interactionQuestIds: [],
-    dialogueCompletableQuestIds: [],
-    dialogueIds: quests.flatMap((quest) => asArray(quest.triggers).map((trigger) => trigger.dialogueId)).filter(Boolean) as string[],
+    markerIds: input.markerIds,
+    zoneIds: input.zones.map((zone) => zone.id),
+    interactionQuestIds: input.interactionQuestIds,
+    dialogueCompletableQuestIds: input.dialogueCompletableQuestIds,
+    dialogueIds: input.dialogueIds,
     kingdoms: [...QUEST_SEED_KINGDOMS],
     factions: [...QUEST_SEED_FACTIONS],
     cities: [...QUEST_SEED_CITIES],
   };
+}
+
+interface ValidationSources {
+  npcIds: string[];
+  itemIds: string[];
+  questItemIds: string[];
+  skillIds: string[];
+  markerIds: string[];
+  interactionQuestIds: string[];
+  dialogueCompletableQuestIds: string[];
+  dialogueIds: string[];
 }
 
 export function QuestsPage() {
@@ -161,8 +189,17 @@ export function QuestsPage() {
   const [cityFilter, setCityFilter] = useState<'all' | string>('all');
   const [factionFilter, setFactionFilter] = useState<'all' | string>('all');
   const [status, setStatus] = useState('Готово');
+  const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
+  const [isSaving, setIsSaving] = useState(false);
   const [validation, setValidation] = useState<QuestValidationResult>({ errors: [], warnings: [] });
   const [npcIds, setNpcIds] = useState<string[]>([]);
+  const [itemIds, setItemIds] = useState<string[]>([]);
+  const [questItemIds, setQuestItemIds] = useState<string[]>([]);
+  const [skillIds, setSkillIds] = useState<string[]>([]);
+  const [markerIds, setMarkerIds] = useState<string[]>([]);
+  const [interactionQuestIds, setInteractionQuestIds] = useState<string[]>([]);
+  const [dialogueCompletableQuestIds, setDialogueCompletableQuestIds] = useState<string[]>([]);
+  const [dialogueIds, setDialogueIds] = useState<string[]>([]);
   const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
 
   const [stepsJson, setStepsJson] = useState('[]');
@@ -170,6 +207,55 @@ export function QuestsPage() {
   const [rewardsJson, setRewardsJson] = useState('[]');
   const [failureJson, setFailureJson] = useState('[]');
   const [triggersJson, setTriggersJson] = useState('[]');
+
+  async function refreshValidationSources(): Promise<ValidationSources> {
+    await Promise.all([
+      ensureNpcsLoaded(),
+      ensureQuestsLoaded(),
+      ensureQuestMarkersLoaded(),
+      ensureDialoguesLoaded(),
+    ]);
+
+    const [items, skills] = await Promise.all([
+      itemsService.getAll().catch(() => []),
+      skillsService.getAll().catch(() => []),
+    ]);
+
+    const allQuests = getAllQuests();
+    const interactions = getQuestInteractions();
+    const dialogues = getAllDialogues();
+
+    const nextSources: ValidationSources = {
+      npcIds: getAllNpcs().map((entry) => entry.id.trim()),
+      itemIds: items.map((entry) => entry.id.trim()),
+      questItemIds: getQuestItems().map((entry) => entry.id.trim()),
+      skillIds: skills.map((entry) => entry.id.trim()),
+      markerIds: getQuestMarkers().map((entry) => entry.id.trim()),
+      interactionQuestIds: interactions.map((entry) => (entry.questId ?? '').trim()).filter(Boolean),
+      dialogueCompletableQuestIds: dialogues.flatMap((dialogue) =>
+      asArray(dialogue.nodes).flatMap((node) =>
+        asArray(node.choices)
+          .map((choice) => (choice.completeQuest ?? '').trim())
+          .filter(Boolean),
+      ),
+      ),
+      dialogueIds: dialogues.map((entry) => entry.id.trim()),
+    };
+
+    setNpcIds(nextSources.npcIds);
+    setItemIds(nextSources.itemIds);
+    setQuestItemIds(nextSources.questItemIds);
+    setSkillIds(nextSources.skillIds);
+    setMarkerIds(nextSources.markerIds);
+    setInteractionQuestIds(nextSources.interactionQuestIds);
+    setDialogueCompletableQuestIds(nextSources.dialogueCompletableQuestIds);
+    setDialogueIds(nextSources.dialogueIds);
+
+    // Keep quest list current for validation that references active in-memory data.
+    setQuests(allQuests);
+
+    return nextSources;
+  }
 
   async function refresh() {
     await Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded()]);
@@ -186,6 +272,7 @@ export function QuestsPage() {
     }
 
     setNpcIds(getAllNpcs().map((entry) => entry.id));
+    await refreshValidationSources();
   }
 
   useEffect(() => {
@@ -196,6 +283,9 @@ export function QuestsPage() {
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
 
     const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope === 'content' || payload.scope === 'all') {
+        void refresh().catch(() => undefined);
+      }
       if (payload.scope === 'worldMap' || payload.scope === 'all') {
         void refreshZonesFromBackend().then(setZones).catch(() => undefined);
       }
@@ -229,9 +319,19 @@ export function QuestsPage() {
     setFailureJson(JSON.stringify(safeDraft.failureConsequences, null, 2));
     setTriggersJson(JSON.stringify(safeDraft.triggers, null, 2));
 
-    const worldData = buildValidationWorldData(quests, zones);
+    const worldData = buildValidationWorldData({
+      zones,
+      npcIds,
+      itemIds,
+      questItemIds,
+      skillIds,
+      markerIds,
+      interactionQuestIds,
+      dialogueCompletableQuestIds,
+      dialogueIds,
+    });
     setValidation(validateQuest(safeDraft, worldData));
-  }, [draft, quests, zones]);
+  }, [dialogueCompletableQuestIds, dialogueIds, draft, interactionQuestIds, itemIds, markerIds, questItemIds, quests, skillIds, zones]);
 
   const visibleQuests = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -296,7 +396,22 @@ export function QuestsPage() {
   }
 
   async function saveCurrent() {
-    const worldData = buildValidationWorldData(quests, zones);
+    if (isSaving) {
+      return;
+    }
+
+    const sources = await refreshValidationSources();
+    const worldData = buildValidationWorldData({
+      zones,
+      npcIds: sources.npcIds,
+      itemIds: sources.itemIds,
+      questItemIds: sources.questItemIds,
+      skillIds: sources.skillIds,
+      markerIds: sources.markerIds,
+      interactionQuestIds: sources.interactionQuestIds,
+      dialogueCompletableQuestIds: sources.dialogueCompletableQuestIds,
+      dialogueIds: sources.dialogueIds,
+    });
     const safeDraft = normalizeQuestDraft(draft);
     const result = validateQuest(safeDraft, worldData);
     setValidation(result);
@@ -319,15 +434,34 @@ export function QuestsPage() {
       triggers: asArray(safeParseJson<QuestTrigger[]>(triggersJson, safeDraft.triggers)),
     };
 
-    try {
-      const saved = await saveQuest(prepared);
-      setSelectedId(saved.id);
-      setDraft(normalizeQuestDraft(saved));
-      await refresh();
-      setStatus(`Квест сохранен: ${saved.id}`);
-    } catch (error) {
-      setStatus(translateAdminErrorMessage((error as Error).message));
+    setIsSaving(true);
+    const saved = await runSaveWithFeedback({
+      setState: setSaveState,
+      saveLabel: prepared.id,
+      onSave: () => saveQuest(prepared),
+      onAfterSave: async () => {
+        await refreshValidationSources();
+      },
+      successLabel: (entry) => `Сохранено: ${entry.id}`,
+    });
+
+    if (!saved) {
+      setStatus('Не удалось сохранить квест.');
+      setIsSaving(false);
+      return;
     }
+
+    setSelectedId(saved.id);
+    setDraft(normalizeQuestDraft(saved));
+    await refresh();
+    const warning = getIdQualityWarning(saved.id);
+    if (warning) {
+      setStatus(`Предупреждение: ${warning}`);
+      setSaveState({ state: 'warning', message: warning });
+    } else {
+      setStatus(`Квест сохранен: ${saved.id}`);
+    }
+    setIsSaving(false);
   }
 
   async function duplicateSelectedQuest() {
@@ -414,12 +548,29 @@ export function QuestsPage() {
     }
   }
 
-  function validateCurrentQuest() {
-    const worldData = buildValidationWorldData(quests, zones);
+  async function validateCurrentQuest() {
+    const sources = await refreshValidationSources();
+    const worldData = buildValidationWorldData({
+      zones,
+      npcIds: sources.npcIds,
+      itemIds: sources.itemIds,
+      questItemIds: sources.questItemIds,
+      skillIds: sources.skillIds,
+      markerIds: sources.markerIds,
+      interactionQuestIds: sources.interactionQuestIds,
+      dialogueCompletableQuestIds: sources.dialogueCompletableQuestIds,
+      dialogueIds: sources.dialogueIds,
+    });
     const result = validateQuest(normalizeQuestDraft(draft), worldData);
     setValidation(result);
     setStatus(`Проверка: ${result.errors.length} ошибок, ${result.warnings.length} предупреждений.`);
   }
+
+  useAdminSaveShortcut({
+    enabled: true,
+    isSaving,
+    onSave: saveCurrent,
+  });
 
   function updateTriggerZone(index: number, zoneId: string) {
     patch({
@@ -669,7 +820,7 @@ export function QuestsPage() {
         <section className="card admin-item-preview">
           <h4>Validation</h4>
           <div className="admin-actions-row">
-            <button type="button" onClick={validateCurrentQuest}>ПРОВЕРИТЬ КВЕСТ</button>
+            <button type="button" onClick={() => { void validateCurrentQuest(); }}>ПРОВЕРИТЬ КВЕСТ</button>
           </div>
           <p>Ошибки: {validation.errors.length}</p>
           {validation.errors.map((error) => <p key={error} className="muted">• {error}</p>)}
@@ -678,12 +829,13 @@ export function QuestsPage() {
         </section>
 
         <div className="admin-actions-row">
-          <button onClick={() => { void saveCurrent(); }}>{selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ'}</button>
+          <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ')}</button>
           <button disabled={!selectedId} onClick={() => { void duplicateSelectedQuest(); }}>ДУБЛИРОВАТЬ</button>
           <button disabled={!selectedId} onClick={() => { void disableSelectedQuest(); }}>ОТКЛЮЧИТЬ</button>
           <button disabled={!selectedId} onClick={() => { void deleteSelectedQuest(); }}>УДАЛИТЬ</button>
         </div>
 
+        <AdminSaveStatus value={saveState} />
         <p className="muted">{status}</p>
       </section>
 

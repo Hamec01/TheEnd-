@@ -6762,6 +6762,31 @@ body:has(.page.page--scroll) {
   display: block;
 }
 
+/* ── Selected quick slot highlight ─────────────────────────────────── */
+.paper-doll-slot.is-selected {
+  border: 2px solid rgba(221, 185, 120, 0.9) !important;
+  box-shadow: 0 0 0 2px rgba(221, 185, 120, 0.35), inset 0 0 8px rgba(221, 185, 120, 0.15);
+  background: rgba(221, 185, 120, 0.12) !important;
+}
+
+/* ── Skill text badge inside quick slot ─────────────────────────────── */
+.paper-doll-slot-skill-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(221, 185, 120, 0.95);
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+.paper-doll-slot.is-equipped:hover .paper-doll-slot-skill-badge + .paper-doll-slot-tooltip {
+  display: block;
+}
+
 .paper-doll-slot-id {
   position: absolute;
   left: 0;
@@ -6914,7 +6939,7 @@ body:has(.page.page--scroll) {
   .character-paperdoll-canvas {
     min-height: 560px;
   }
-
+}
 
 .character-page-modal {
   display: grid;
@@ -6925,8 +6950,8 @@ body:has(.page.page--scroll) {
 .inventory-panel-body {
   min-height: 0;
   max-height: calc(94vh - 74px);
-  height: calc(94vh - 74px);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 6px 6px;
 }
 
@@ -6941,21 +6966,22 @@ body:has(.page.page--scroll) {
 .character-skills-layout,
 .character-equipment-layout {
   display: grid;
-  min-height: 0;
-  height: 100%;
   gap: 12px;
+}
+
+.character-skills-layout {
+  grid-template-rows: auto auto;
 }
 
 .character-overview-layout {
   grid-template-columns: minmax(300px, 0.88fr) minmax(340px, 1fr) minmax(320px, 0.95fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  align-items: stretch;
+  grid-template-rows: auto auto;
+  align-items: start;
 }
 
 .character-overview-side,
 .character-inventory-side {
   display: grid;
-  min-height: 0;
   gap: 12px;
 }
 
@@ -7013,8 +7039,14 @@ body:has(.page.page--scroll) {
 }
 
 .character-inventory-layout {
-  grid-template-columns: minmax(300px, 0.88fr) minmax(360px, 1.15fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(280px, 0.72fr) minmax(360px, 1.28fr);
   align-items: stretch;
+}
+
+.character-inventory-right-col {
+  display: grid;
+  gap: 12px;
+  align-content: start;
 }
 
 .character-inventory-controls {
@@ -7043,12 +7075,14 @@ body:has(.page.page--scroll) {
 }
 
 .character-stats-layout {
-  grid-template-columns: minmax(320px, 0.85fr) minmax(320px, 0.9fr) minmax(280px, 0.85fr);
-  align-items: stretch;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(320px, 1.1fr);
+  align-items: start;
 }
 
-.character-stats-layout .character-meta-card:last-child {
-  grid-column: 2 / 4;
+.character-stats-right-col {
+  display: grid;
+  gap: 12px;
+  align-content: start;
 }
 
 .character-paperdoll-card,
@@ -7057,22 +7091,20 @@ body:has(.page.page--scroll) {
 .character-stats-card,
 .character-meta-card,
 .character-skills-card {
-  min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .character-backpack-card,
 .character-overview-inventory-card {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
 }
 
 .character-inventory-grid-wrap,
 .character-equipment-summary-list,
 .character-stat-explanations,
 .character-overview-skills-summary {
-  min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .character-inventory-grid.is-compact {
@@ -7135,6 +7167,45 @@ body:has(.page.page--scroll) {
   min-height: 0;
 }
 
+/* New RPG skills layout */
+.skills-panel-shell {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 12px;
+}
+
+.skills-panel-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.85fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.skills-panel-left {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.skills-panel-left .skills-card-section,
+.skills-panel-left .skills-training-section {
+  overflow-y: visible;
+}
+
+.skills-panel-left .skills-card-grid,
+.skills-panel-left .skills-training-grid {
+  max-height: none;
+}
+
+.skills-loadout-bottom {
+  overflow-y: visible;
+}
+
+.skills-loadout-bottom .skills-loadout-grid {
+  max-height: none;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
 .skills-section-head {
   display: flex;
   justify-content: space-between;
@@ -7158,13 +7229,10 @@ body:has(.page.page--scroll) {
 .skills-loadout-grid {
   display: grid;
   gap: 10px;
-  min-height: 0;
 }
 
 .skills-card-grid {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  max-height: 32vh;
-  overflow-y: auto;
 }
 
 .skills-card-copy {
@@ -7197,8 +7265,7 @@ body:has(.page.page--scroll) {
 .skills-detail-section,
 .skills-training-section,
 .skills-loadout-section {
-  min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .skill-training-card,
@@ -7214,8 +7281,7 @@ body:has(.page.page--scroll) {
 }
 
 .skills-training-grid {
-  max-height: 28vh;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .skill-training-card-head {
@@ -7231,8 +7297,6 @@ body:has(.page.page--scroll) {
 .skills-loadout-grid {
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   margin-top: 12px;
-  max-height: 30vh;
-  overflow-y: auto;
 }
 
 .skills-loadout-slot {
@@ -7248,20 +7312,152 @@ body:has(.page.page--scroll) {
   font-weight: 700;
 }
 
+/* ── Skills page 3-column layout ────────────────────────────────────── */
+.character-skills-3col {
+  display: grid;
+  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr) minmax(260px, 340px);
+  gap: 12px;
+  align-items: start;
+}
+
+.character-skills-paperdoll-col {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.character-skills-list-col {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.character-skills-slot-hint {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+@media (max-width: 1200px) {
+  .character-skills-3col {
+    grid-template-columns: 1fr 1fr;
+  }
+  .character-skills-paperdoll-col {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 800px) {
+  .character-skills-3col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Combined Character Page ────────────────────────────────────────── */
+
+.combined-char-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 310px;
+  grid-template-rows: auto auto;
+  gap: 12px;
+}
+
+/* Left column: stats */
+.combined-char-left {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+/* Center column: paper doll */
+.combined-char-center {
+  display: grid;
+  align-content: start;
+}
+
+/* Right column: skills */
+.combined-char-right {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+/* Override skills internals — these are now no-ops since base rules were fixed,
+   kept for combined-char context specificity */
+.combined-char-right .skills-panel-shell {
+  height: auto;
+  grid-template-rows: auto;
+}
+
+/* Bottom row: inventory + item details */
+.combined-char-bottom {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.7fr);
+  align-content: start;
+  gap: 12px;
+}
+
+.combined-char-hero {
+  display: grid;
+  gap: 8px;
+}
+
+.combined-char-hero-bars {
+  display: grid;
+  gap: 4px;
+}
+
+.combined-char-hero-bars p {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
+.combined-char-stats-list {
+  display: grid;
+  gap: 6px;
+}
+
+.combined-char-derived {
+  display: grid;
+  gap: 4px;
+}
+
+.combined-char-derived p {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
 @media (max-width: 1180px) {
   .character-overview-layout,
   .character-inventory-layout,
   .character-stats-layout,
   .skills-inventory-top-row,
-  .skills-inventory-bottom-row {
+  .skills-inventory-bottom-row,
+  .skills-panel-main {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
   }
 
-  .character-stats-layout .character-meta-card:last-child {
-    grid-column: auto;
+  .skills-panel-shell {
+    grid-template-rows: auto;
   }
-}
+
+  .skills-panel-left {
+    overflow-y: visible;
+  }
+
+  .combined-char-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .combined-char-bottom {
+    grid-template-columns: 1fr;
+  }
 }
 
 .inventory-selected-item-panel {

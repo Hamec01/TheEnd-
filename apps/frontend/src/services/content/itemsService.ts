@@ -181,20 +181,31 @@ export const itemsService = {
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    return normalize(await createContentEntry<AdminItem>('items', base));
+    const saved = normalize(await createContentEntry<AdminItem>('items', base));
+    const verified = await getContentEntry<AdminItem>('items', saved.id);
+    if (!verified) {
+      throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+    }
+    return normalize(verified);
   },
 
   async update(id: string, patch: Partial<AdminItem>): Promise<AdminItem> {
-    const found = await this.getById(id);
+    const normalizedId = id.trim();
+    const found = await this.getById(normalizedId);
     if (!found) {
-      throw new Error(`Item not found: ${id}`);
+      throw new Error(`Item not found: ${normalizedId}`);
     }
     const merged = normalize({ ...found, ...patch, id: found.id, updatedAt: nowIso() });
     const errors = validateItem(merged);
     if (errors.length > 0) {
       throw new Error(errors.join(', '));
     }
-    return normalize(await updateContentEntry<AdminItem>('items', id, merged));
+    const saved = normalize(await updateContentEntry<AdminItem>('items', normalizedId, merged));
+    const verified = await getContentEntry<AdminItem>('items', saved.id);
+    if (!verified) {
+      throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+    }
+    return normalize(verified);
   },
 
   async disable(id: string): Promise<AdminItem> {

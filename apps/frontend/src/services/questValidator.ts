@@ -14,7 +14,8 @@ function hasId(list: string[], id: string | undefined): boolean {
   if (!id) {
     return true;
   }
-  return list.includes(id);
+  const normalizedId = id.trim();
+  return list.some((entry) => String(entry).trim() === normalizedId);
 }
 
 function validateRewardReferences(
