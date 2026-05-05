@@ -80,6 +80,41 @@ export async function saveDialogue(dialogue: DialogueDefinition): Promise<Dialog
   return verified;
 }
 
+export async function renameDialogue(oldId: string, dialogue: DialogueDefinition): Promise<DialogueDefinition> {
+  await ensureDialoguesLoaded();
+
+  const fromId = normalizeId(oldId);
+  const toId = normalizeId(dialogue.id);
+  if (!fromId || !toId) {
+    throw new Error('Dialogue id is required.');
+  }
+  if (fromId === toId) {
+    return saveDialogue(dialogue);
+  }
+
+  const alreadyExists = cache.some((entry) => normalizeId(entry.id) === toId);
+  if (alreadyExists) {
+    throw new Error(`Duplicate dialogue id: ${toId}`);
+  }
+
+  const normalizedDialogue: DialogueDefinition = {
+    ...dialogue,
+    id: toId,
+    title: dialogue.title?.trim() || toId,
+  };
+
+  await createContentEntry<DialogueDefinition>('dialogues', normalizedDialogue);
+  await deleteContentEntry('dialogues', fromId);
+
+  invalidateCache();
+  await ensureDialoguesLoaded(true);
+  const verified = await getContentEntry<DialogueDefinition>('dialogues', toId);
+  if (!verified) {
+    throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+  }
+  return verified;
+}
+
 export async function deleteDialogue(id: string): Promise<void> {
   const normalizedId = normalizeId(id);
   if (!normalizedId) {

@@ -11,7 +11,7 @@ import { merchantsService } from '../../services/content/merchantsService';
 import { skillsService } from '../../services/content/skillsService';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
-import { ensureNpcsLoaded, getAllNpcs, saveNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
+import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
 import { validateNpc } from '../../services/npcValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { cityService } from '../../services/cityRepository';
@@ -314,7 +314,7 @@ export function NpcsPage() {
     const saved = await runSaveWithFeedback({
       setState: setSaveState,
       saveLabel: prepared.id,
-      onSave: () => saveNpc(prepared),
+      onSave: () => (selectedId && prepared.id !== selectedId ? renameNpc(selectedId, prepared) : saveNpc(prepared)),
       onAfterSave: () => Promise.resolve(refresh()),
       successLabel: (entry) => `Сохранено: ${entry.id}`,
     });

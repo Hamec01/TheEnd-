@@ -121,6 +121,36 @@ export async function saveQuest(quest: QuestDefinition): Promise<QuestDefinition
   return verified;
 }
 
+export async function renameQuest(oldId: string, quest: QuestDefinition): Promise<QuestDefinition> {
+  await ensureQuestsLoaded();
+  const fromId = normalizeEntityId(oldId);
+  const toId = normalizeEntityId(quest.id);
+  if (!fromId || !toId) {
+    throw new Error('Quest id is required.');
+  }
+  if (fromId === toId) {
+    return saveQuest(quest);
+  }
+
+  const alreadyExists = questsCache.some((entry) => normalizeEntityId(entry.id) === toId);
+  if (alreadyExists) {
+    throw new Error(`Duplicate quest id: ${toId}`);
+  }
+
+  const normalizedQuest: QuestDefinition = {
+    ...quest,
+    id: toId,
+    title: quest.title?.trim() || toId,
+  };
+
+  await createContentEntry<QuestDefinition>('quests', normalizedQuest);
+  await deleteContentEntry('quests', fromId);
+
+  invalidate();
+  await ensureQuestsLoaded(true);
+  return verifyCollectionEntry<QuestDefinition>('quests', toId);
+}
+
 export async function deleteQuest(id: string): Promise<void> {
   const normalizedId = normalizeEntityId(id);
   if (!normalizedId) {
@@ -184,6 +214,36 @@ export async function saveQuestInteraction(interaction: QuestInteractionDefiniti
   return verified;
 }
 
+export async function renameQuestInteraction(oldId: string, interaction: QuestInteractionDefinition): Promise<QuestInteractionDefinition> {
+  await ensureQuestsLoaded();
+  const fromId = normalizeEntityId(oldId);
+  const toId = normalizeEntityId(interaction.id);
+  if (!fromId || !toId) {
+    throw new Error('Quest interaction id is required.');
+  }
+  if (fromId === toId) {
+    return saveQuestInteraction(interaction);
+  }
+
+  const alreadyExists = questInteractionsCache.some((entry) => normalizeEntityId(entry.id) === toId);
+  if (alreadyExists) {
+    throw new Error(`Duplicate quest interaction id: ${toId}`);
+  }
+
+  const normalizedInteraction: QuestInteractionDefinition = {
+    ...interaction,
+    id: toId,
+    title: interaction.title?.trim() || toId,
+  };
+
+  await createContentEntry<QuestInteractionDefinition>('questInteractions', normalizedInteraction);
+  await deleteContentEntry('questInteractions', fromId);
+
+  invalidate();
+  await ensureQuestsLoaded(true);
+  return verifyCollectionEntry<QuestInteractionDefinition>('questInteractions', toId);
+}
+
 export async function deleteQuestInteraction(id: string): Promise<void> {
   const normalizedId = normalizeEntityId(id);
   if (!normalizedId) {
@@ -229,6 +289,38 @@ export async function saveQuestItem(item: QuestItemDefinition): Promise<QuestIte
     : [...questItemsCache, verified];
 
   return verified;
+}
+
+export async function renameQuestItem(oldId: string, item: QuestItemDefinition): Promise<QuestItemDefinition> {
+  await ensureQuestsLoaded();
+  const fromId = normalizeEntityId(oldId);
+  const toId = normalizeEntityId(item.id);
+  if (!fromId || !toId) {
+    throw new Error('Quest item id is required.');
+  }
+  if (fromId === toId) {
+    return saveQuestItem(item);
+  }
+
+  const alreadyExists = questItemsCache.some((entry) => normalizeEntityId(entry.id) === toId);
+  if (alreadyExists) {
+    throw new Error(`Duplicate quest item id: ${toId}`);
+  }
+
+  const normalizedItem: QuestItemDefinition = {
+    ...item,
+    id: toId,
+    name: item.name?.trim() || toId,
+    description: item.description?.trim?.() ?? item.description,
+    linkedQuestId: item.linkedQuestId?.trim() || undefined,
+  };
+
+  await createContentEntry<QuestItemDefinition>('questItems', normalizedItem);
+  await deleteContentEntry('questItems', fromId);
+
+  invalidate();
+  await ensureQuestsLoaded(true);
+  return verifyCollectionEntry<QuestItemDefinition>('questItems', toId);
 }
 
 export async function deleteQuestItem(id: string): Promise<void> {

@@ -251,7 +251,9 @@ export function ItemsPage() {
       setState: setSaveState,
       saveLabel: id,
       onSave: () => (selectedId
-        ? itemsService.update(selectedId, normalized)
+        ? (normalized.id !== selectedId
+          ? itemsService.rename(selectedId, normalized.id, normalized)
+          : itemsService.update(selectedId, normalized))
         : itemsService.create(normalized)),
       onAfterSave: async (entry) => {
         const verified = await itemsService.getById(entry.id);

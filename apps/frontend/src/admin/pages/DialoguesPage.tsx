@@ -9,6 +9,7 @@ import {
   exportDialoguesJson,
   getAllDialogues,
   importDialoguesJson,
+  renameDialogue,
   saveDialogue,
 } from '../../services/dialogueRepository';
 import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
@@ -184,7 +185,7 @@ export function DialoguesPage() {
     const saved = await runSaveWithFeedback({
       setState: setSaveState,
       saveLabel: prepared.id,
-      onSave: () => saveDialogue(prepared),
+      onSave: () => (selectedId && prepared.id !== selectedId ? renameDialogue(selectedId, prepared) : saveDialogue(prepared)),
       onAfterSave: refreshReferences,
       successLabel: (entry) => `Сохранено: ${entry.id}`,
     });

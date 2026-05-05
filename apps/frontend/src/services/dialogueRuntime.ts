@@ -19,11 +19,11 @@ import { getQuestById } from './questRepository';
 import type { DialogueAction, DialogueChoice, DialogueCondition, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
 
-const PLAYER_GOLD_KEY = 'theend.player.gold';
-const PLAYER_FLAGS_KEY = 'theend.player.flags';
-const PLAYER_ITEMS_KEY = 'theend.player.items';
-const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
-const PLAYER_REP_KEY = 'theend.player.reputation';
+  const PLAYER_GOLD_KEY = 'theend.player.gold';
+  const PLAYER_FLAGS_KEY = 'theend.player.flags';
+  const PLAYER_ITEMS_KEY = 'theend.player.items';
+  const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
+  const PLAYER_REP_KEY = 'theend.player.reputation';
 
 export type DialogueRuntimeEvent =
   | { type: 'openShop'; npcId: string; merchantId?: string | null }
@@ -36,6 +36,7 @@ export type DialogueRuntimeIntent =
   | { type: 'OPEN_SHOP'; merchantId?: string | null }
   | { type: 'START_COMBAT' }
   | { type: 'OPEN_TRAINING'; skillId?: string | null }
+  | { type: 'GRANT_SKILL'; skillId: string }
   | { type: 'QUEST_STARTED'; questId: string }
   | { type: 'QUEST_ADVANCED'; questId: string }
   | { type: 'QUEST_COMPLETED'; questId: string };
@@ -672,8 +673,12 @@ export function executeDialogueActions(
         events.push({ type: 'startCombat', npcId });
         break;
       case 'trainSkill':
-        intents.push({ type: 'OPEN_TRAINING', skillId: action.skillId ?? null });
-        events.push({ type: 'trainSkill', npcId, skillId: action.skillId ?? null });
+        if (action.skillId) {
+          const skillId = String(action.skillId).trim();
+          if (skillId) {
+            intents.push({ type: 'GRANT_SKILL', skillId });
+          }
+        }
         break;
       case 'unlockLocation':
         logs.push(`Location unlocked: ${action.locationId ?? action.key ?? 'unknown'}`);

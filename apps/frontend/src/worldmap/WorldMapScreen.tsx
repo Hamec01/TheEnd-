@@ -388,6 +388,7 @@ interface WorldMapScreenProps {
   onStartBattleMap?: (battleMapId: string) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
   onOpenSkills: () => void;
+  onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
   onStatus: (text: string) => void;
   cityMerchants?: AdminMerchant[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -420,6 +421,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onStartBattleMap,
     onOpenMerchant,
     onOpenSkills,
+    onGrantSkill,
     onStatus,
     cityMerchants = [],
     resolveItemById,
@@ -2302,6 +2304,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           playerLogLines.push(`\u041f\u043e\u0442\u0435\u0440\u044f\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442: ${name}`);
           continue;
         }
+        if (line.startsWith("Skill granted:")) {
+          const skillId = line.slice("Skill granted:".length).trim();
+          playerLogLines.push(`\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043d\u0430\u0432\u044b\u043a: ${skillId}`);
+          continue;
+        }
         if (line.startsWith("Quest item granted:")) {
           playerLogLines.push("\u041f\u043e\u043b\u0443\u0447\u0435\u043d \u043a\u0432\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u043f\u0440\u0435\u0434\u043c\u0435\u0442.");
           continue;
@@ -2363,6 +2370,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           modalClosed = true;
           break;
         }
+        if (intent.type === "GRANT_SKILL") {
+          if (!onGrantSkill) {
+            onStatus("Навык не может быть выдан: отсутствует обработчик onGrantSkill.");
+            continue;
+          }
+          const npcId = dialogueNpcId ?? undefined;
+          void onGrantSkill(intent.skillId, npcId);
+          modalClosed = false;
+          continue;
+        }
       }
 
       if (modalClosed) {
@@ -2378,6 +2395,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       npcs,
       onOpenMerchant,
       onOpenSkills,
+      onGrantSkill,
       onStartCombat,
       onStatus,
       questDefinitions,

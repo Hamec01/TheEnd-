@@ -6,7 +6,7 @@ import { getPlayerQuestState } from '../services/questRuntime';
 const PLAYER_ITEMS_KEY = 'theend.player.items';
 const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
 
-interface SkillTrainingPlayerContext {
+export interface SkillTrainingPlayerContext {
   playerId: string;
   level: number;
   race?: string | null;
@@ -40,7 +40,7 @@ function readArray(key: string): string[] {
   }
 }
 
-function canShowSkillInTraining(
+export function canShowSkillInTraining(
   skill: AdminSkillDefinition,
   context: SkillTrainingPlayerContext,
   learnedSkillIds: Set<string>,

@@ -8,6 +8,7 @@ import {
   getAllQuests,
   getQuestInteractions,
   getQuestItems,
+  renameQuestInteraction,
   saveQuestInteraction,
 } from '../../services/questRepository';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
@@ -283,7 +284,7 @@ export function QuestInteractionsPage() {
       const saved = await runSaveWithFeedback({
         setState: setSaveState,
         saveLabel: prepared.id,
-        onSave: () => saveQuestInteraction(prepared),
+        onSave: () => (selectedId && prepared.id !== selectedId ? renameQuestInteraction(selectedId, prepared) : saveQuestInteraction(prepared)),
         onAfterSave: refresh,
         successLabel: (entry) => `Сохранено: ${entry.id}`,
       });

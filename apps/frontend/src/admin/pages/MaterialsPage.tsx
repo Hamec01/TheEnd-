@@ -98,8 +98,14 @@ export function MaterialsPage() {
 
     try {
       if (selectedId) {
-        await materialsService.update(selectedId, normalized);
-        setStatus(`Материал обновлён: ${selectedId}`);
+        if (normalized.id !== selectedId) {
+          const created = await materialsService.rename(selectedId, normalized.id, normalized);
+          setSelectedId(created.id);
+          setStatus(`Материал переименован: ${created.id}`);
+        } else {
+          await materialsService.update(selectedId, normalized);
+          setStatus(`Материал обновлён: ${selectedId}`);
+        }
       } else {
         await materialsService.create(normalized);
         setSelectedId(id);

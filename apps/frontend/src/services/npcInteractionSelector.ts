@@ -39,6 +39,9 @@ const DIALOGUE_CONDITION_ALIASES: Record<string, string> = {
   hasSkill: 'has_skill',
   missingSkill: 'missing_skill',
   hasFlag: 'has_flag',
+  missingFlag: 'missing_flag',
+  flagTrue: 'flag_true',
+  flagFalse: 'flag_false',
   flagEquals: 'flag_equals',
   raceIs: 'race_is',
   classIs: 'class_is',
@@ -74,6 +77,9 @@ const SUPPORTED_DIALOGUE_CONDITION_TYPES = new Set([
   'has_skill',
   'missing_skill',
   'has_flag',
+  'missing_flag',
+  'flag_true',
+  'flag_false',
   'flag_equals',
   'race_is',
   'class_is',
@@ -97,20 +103,66 @@ function normalizeDialogueConditionType(raw: unknown): string {
   return DIALOGUE_CONDITION_ALIASES[value] ?? value;
 }
 
+const PLAYER_FLAGS_KEY = 'theend.player.flags';
+
+function readPlayerFlags(): Record<string, unknown> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(window.localStorage.getItem(PLAYER_FLAGS_KEY) ?? '{}') as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeFlagKey(condition: any): string {
+  return String(condition?.flagKey ?? condition?.key ?? condition?.value ?? '').trim();
+}
+
+function isFlagTruthy(value: unknown): boolean {
+  return value === true;
+}
+
 function evaluateDialogueConditionsStrict(
   player: QuestRuntimePlayer,
   npc: NpcDefinition,
   conditions: Array<{ type?: string }> | undefined,
   context: string,
 ): boolean {
-  for (const condition of asArray(conditions)) {
+  const remainingConditions: any[] = [];
+  const flags = readPlayerFlags();
+
+  for (const condition of asArray(conditions) as any[]) {
     const normalizedType = normalizeDialogueConditionType(condition.type);
     if (!normalizedType || !SUPPORTED_DIALOGUE_CONDITION_TYPES.has(normalizedType)) {
       console.warn(`[npcQuestMarker] Unsupported condition type in ${context}: ${String(condition.type ?? '')}`);
       return false;
     }
+
+    if (normalizedType === 'has_flag' || normalizedType === 'flag_true') {
+      const key = normalizeFlagKey(condition);
+      if (!key || !Object.prototype.hasOwnProperty.call(flags, key) || !isFlagTruthy(flags[key])) {
+        return false;
+      }
+      continue;
+    }
+
+    if (normalizedType === 'missing_flag' || normalizedType === 'flag_false') {
+      const key = normalizeFlagKey(condition);
+      if (!key) {
+        return false;
+      }
+      if (!Object.prototype.hasOwnProperty.call(flags, key) || flags[key] === false) {
+        continue;
+      }
+      return false;
+    }
+
+    remainingConditions.push(condition);
   }
-  return evaluateDialogueConditions(player, npc, (conditions as any[]) ?? []);
+
+  return evaluateDialogueConditions(player, npc, remainingConditions);
 }
 
 function normalizeActionType(raw: unknown): string {

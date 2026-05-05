@@ -59,6 +59,32 @@ export const lootTablesService = {
     return updateContentEntry<LootTable>('lootTables', id, merged);
   },
 
+  async rename(oldId: string, nextId: string, payload: LootTable): Promise<LootTable> {
+    const fromId = oldId.trim();
+    const toId = nextId.trim();
+    if (!fromId || !toId) {
+      throw new Error('Loot table id is required.');
+    }
+    if (fromId === toId) {
+      return this.update(fromId, payload);
+    }
+
+    const existing = await this.getById(toId);
+    if (existing) {
+      throw new Error(`Duplicate loot table id: ${toId}`);
+    }
+
+    const normalized: LootTable = { ...payload, id: toId, updatedAt: nowIso() };
+    const errors = validateLootTable(normalized);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
+
+    const created = await this.create(normalized);
+    await this.delete(fromId);
+    return created;
+  },
+
   async delete(id: string): Promise<void> {
     await deleteContentEntry('lootTables', id);
   },

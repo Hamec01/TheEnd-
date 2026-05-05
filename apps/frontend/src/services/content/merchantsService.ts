@@ -60,6 +60,32 @@ export const merchantsService = {
     return updateContentEntry<AdminMerchant>('merchants', id, merged);
   },
 
+  async rename(oldId: string, nextId: string, payload: AdminMerchant): Promise<AdminMerchant> {
+    const fromId = oldId.trim();
+    const toId = nextId.trim();
+    if (!fromId || !toId) {
+      throw new Error('Merchant id is required.');
+    }
+    if (fromId === toId) {
+      return this.update(fromId, payload);
+    }
+
+    const existing = await this.getById(toId);
+    if (existing) {
+      throw new Error(`Duplicate merchant id: ${toId}`);
+    }
+
+    const normalized: AdminMerchant = { ...payload, id: toId, updatedAt: nowIso() };
+    const errors = validateMerchant(normalized);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
+
+    const created = await this.create(normalized);
+    await this.delete(fromId);
+    return created;
+  },
+
   async disable(id: string): Promise<AdminMerchant> {
     return this.update(id, { isEnabled: false });
   },

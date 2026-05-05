@@ -50,6 +50,35 @@ export async function saveNpc(npc: NpcDefinition): Promise<NpcDefinition> {
   return saved;
 }
 
+export async function renameNpc(oldId: string, npc: NpcDefinition): Promise<NpcDefinition> {
+  await ensureNpcsLoaded();
+
+  const fromId = String(oldId ?? '').trim();
+  const toId = String(npc.id ?? '').trim();
+  if (!fromId || !toId) {
+    throw new Error('NPC id is required.');
+  }
+  if (fromId === toId) {
+    return saveNpc(npc);
+  }
+
+  const alreadyExists = cache.some((entry) => entry.id === toId);
+  if (alreadyExists) {
+    throw new Error(`Duplicate npc id: ${toId}`);
+  }
+
+  await createContentEntry<NpcDefinition>('npcs', { ...npc, id: toId });
+  await deleteContentEntry('npcs', fromId);
+
+  invalidateCache();
+  await ensureNpcsLoaded(true);
+  const verified = cache.find((entry) => entry.id === toId) ?? null;
+  if (!verified) {
+    throw new Error('Сохранение не подтверждено: запись не найдена после сохранения.');
+  }
+  return verified;
+}
+
 export async function deleteNpc(id: string): Promise<void> {
   await deleteContentEntry('npcs', id);
   invalidateCache();

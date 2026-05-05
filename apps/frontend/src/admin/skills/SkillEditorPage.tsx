@@ -102,9 +102,15 @@ export function SkillEditorPage() {
     const saved = await runSaveWithFeedback({
       setState: setSaveState,
       saveLabel: normalized.id,
-      onSave: () => (selectedId
-        ? skillsService.update(selectedId, normalized)
-        : skillsService.create(normalized)),
+      onSave: () => {
+        if (!selectedId) {
+          return skillsService.create(normalized);
+        }
+        if (normalized.id && normalized.id !== selectedId) {
+          return skillsService.rename(selectedId, normalized.id, normalized);
+        }
+        return skillsService.update(selectedId, normalized);
+      },
       onAfterSave: async (entry) => {
         const verified = await skillsService.getById(entry.id);
         if (!verified) {

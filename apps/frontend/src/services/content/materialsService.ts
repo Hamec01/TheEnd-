@@ -49,6 +49,32 @@ export const materialsService = {
     return updateContentEntry<Material>('materials', id, merged);
   },
 
+  async rename(oldId: string, nextId: string, payload: Material): Promise<Material> {
+    const fromId = oldId.trim();
+    const toId = nextId.trim();
+    if (!fromId || !toId) {
+      throw new Error('Material id is required.');
+    }
+    if (fromId === toId) {
+      return this.update(fromId, payload);
+    }
+
+    const existing = await this.getById(toId);
+    if (existing) {
+      throw new Error(`Duplicate material id: ${toId}`);
+    }
+
+    const normalized: Material = { ...payload, id: toId, updatedAt: nowIso() };
+    const errors = validateMaterial(normalized);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
+
+    const created = await this.create(normalized);
+    await this.delete(fromId);
+    return created;
+  },
+
   async disable(id: string): Promise<Material> {
     return this.update(id, { isEnabled: false });
   },

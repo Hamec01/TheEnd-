@@ -208,6 +208,32 @@ export const itemsService = {
     return normalize(verified);
   },
 
+  async rename(oldId: string, nextId: string, payload: AdminItem): Promise<AdminItem> {
+    const fromId = oldId.trim();
+    const toId = nextId.trim();
+    if (!fromId || !toId) {
+      throw new Error('Item id is required.');
+    }
+    if (fromId === toId) {
+      return this.update(fromId, payload);
+    }
+
+    const existing = await this.getById(toId);
+    if (existing) {
+      throw new Error(`Duplicate item id: ${toId}`);
+    }
+
+    const normalized = normalize({ ...payload, id: toId, updatedAt: nowIso() });
+    const errors = validateItem(normalized);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
+
+    const created = await this.create(normalized);
+    await this.delete(fromId);
+    return created;
+  },
+
   async disable(id: string): Promise<AdminItem> {
     return this.update(id, { isEnabled: false });
   },

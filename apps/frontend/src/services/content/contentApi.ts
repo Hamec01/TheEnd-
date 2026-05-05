@@ -100,7 +100,12 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T;
   }
 
-  return res.json();
+  const raw = await res.text();
+  if (!raw.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(raw) as T;
 }
 
 async function getContentSnapshotRaw(): Promise<ContentSnapshot> {

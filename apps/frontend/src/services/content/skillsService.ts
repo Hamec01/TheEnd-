@@ -198,4 +198,30 @@ export const skillsService = {
   async delete(id: string): Promise<void> {
     await deleteContentEntry('skills', id);
   },
+
+  async rename(oldId: string, nextId: string, payload: AdminSkillDefinition): Promise<AdminSkillDefinition> {
+    const fromId = oldId.trim();
+    const toId = nextId.trim();
+    if (!fromId || !toId) {
+      throw new Error('Skill id is required.');
+    }
+    if (fromId === toId) {
+      return this.update(fromId, payload);
+    }
+
+    const existing = await this.getById(toId);
+    if (existing) {
+      throw new Error(`Duplicate skills id: ${toId}`);
+    }
+
+    const normalized = normalizeSkill({ ...payload, id: toId });
+    const errors = validateSkill(normalized);
+    if (errors.length > 0) {
+      throw new Error(errors.join(', '));
+    }
+
+    const created = await this.create(normalized);
+    await this.delete(fromId);
+    return created;
+  },
 };

@@ -5,7 +5,7 @@ import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { getContentCollection, getContentEntry } from '../../services/content/contentApi';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
-import { deleteQuestItem, ensureQuestsLoaded, getAllQuests, getQuestItems, saveQuestItem } from '../../services/questRepository';
+import { deleteQuestItem, ensureQuestsLoaded, getAllQuests, getQuestItems, renameQuestItem, saveQuestItem } from '../../services/questRepository';
 import type { StoredImage } from '../../services/content/models';
 import type { QuestItemDefinition } from '../../types/quest';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
@@ -91,11 +91,19 @@ export function QuestItemsPage() {
     const saved = await runSaveWithFeedback({
       setState: setSaveState,
       saveLabel: draft.id || 'quest_item',
-      onSave: async () => saveQuestItem({
-        ...draft,
-        id: draft.id.trim() || uid('quest_item'),
-        name: draft.name.trim(),
-      }),
+      onSave: async () => {
+        const prepared: QuestItemDefinition = {
+          ...draft,
+          id: draft.id.trim() || uid('quest_item'),
+          name: draft.name.trim(),
+        };
+
+        if (selectedId && prepared.id !== selectedId) {
+          return renameQuestItem(selectedId, prepared);
+        }
+
+        return saveQuestItem(prepared);
+      },
       onAfterSave: async (entry) => {
         const verified = await getContentEntry<QuestItemDefinition>('questItems', entry.id);
         if (!verified) {

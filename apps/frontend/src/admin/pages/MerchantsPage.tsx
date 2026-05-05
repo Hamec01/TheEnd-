@@ -183,6 +183,13 @@ export function MerchantsPage() {
 
     try {
       if (selectedId) {
+        if (normalized.id !== selectedId) {
+          const created = await merchantsService.rename(selectedId, normalized.id, normalized);
+          setSelectedId(created.id);
+          await refresh(created.id);
+          setStatus(`Merchant renamed: ${created.id}`);
+          return;
+        }
         await merchantsService.update(selectedId, normalized);
         await refresh(selectedId);
         setStatus(`Торговец обновлён: ${selectedId}`);

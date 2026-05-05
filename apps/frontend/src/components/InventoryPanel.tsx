@@ -4,7 +4,7 @@ import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgr
 import type { ArenaCharacter } from '../arena/types';
 import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { AdminItem } from '../services/content/models';
-import { CharacterSkillsPage } from './CharacterSkillsPage';
+import { CharacterSkillsPage, canShowSkillInTraining } from './CharacterSkillsPage';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
 import {
@@ -973,12 +973,22 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       .slice(0, 6),
     [availableSkills, learnedSkills],
   );
+  const skillsPlayerContext = useMemo(
+    () => ({
+      playerId: character.id,
+      level: character.level,
+      race: String(character.race ?? ''),
+      classId: null,
+      npcId: null,
+    }),
+    [character.id, character.level, character.race],
+  );
 
   // ── Skills page derived data ─────────────────────────────────────────
   const skillsLearnedIds = useMemo(() => new Set(learnedSkills.map((s) => s.skillId)), [learnedSkills]);
   const skillsLearnable = useMemo(
-    () => availableSkills.filter((s) => s.isPublished && !s.isHidden && !skillsLearnedIds.has(s.id)),
-    [availableSkills, skillsLearnedIds],
+    () => availableSkills.filter((skill) => canShowSkillInTraining(skill, skillsPlayerContext, skillsLearnedIds)),
+    [availableSkills, skillsLearnedIds, skillsPlayerContext],
   );
   const skillsLearnedFull = useMemo(
     () => learnedSkills.map((entry) => ({

@@ -20,6 +20,7 @@ import {
   getQuestInteractions,
   getQuestItems,
   importQuestsJson,
+  renameQuest,
   saveQuest,
 } from '../../services/questRepository';
 import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
@@ -438,7 +439,7 @@ export function QuestsPage() {
     const saved = await runSaveWithFeedback({
       setState: setSaveState,
       saveLabel: prepared.id,
-      onSave: () => saveQuest(prepared),
+      onSave: () => (selectedId && prepared.id !== selectedId ? renameQuest(selectedId, prepared) : saveQuest(prepared)),
       onAfterSave: async () => {
         await refreshValidationSources();
       },

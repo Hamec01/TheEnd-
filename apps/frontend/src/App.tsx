@@ -2502,6 +2502,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onExit={() => setExitDialogOpen(true)}
           onOpenMerchant={openMerchantOverlay}
           onOpenSkills={openSkillsOverlay}
+          onGrantSkill={handleGrantCharacterSkill}
           onStartCombat={openCombat}
           onStartBattleMap={(battleMapId) => {
             openArenaSetup(battleMapId);

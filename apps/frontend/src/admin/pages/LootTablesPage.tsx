@@ -98,8 +98,14 @@ export function LootTablesPage() {
 
     try {
       if (selectedId) {
-        await lootTablesService.update(selectedId, normalized);
-        setStatus(`Таблица добычи обновлена: ${selectedId}`);
+        if (normalized.id !== selectedId) {
+          const created = await lootTablesService.rename(selectedId, normalized.id, normalized);
+          setSelectedId(created.id);
+          setStatus(`Таблица добычи переименована: ${created.id}`);
+        } else {
+          await lootTablesService.update(selectedId, normalized);
+          setStatus(`Таблица добычи обновлена: ${selectedId}`);
+        }
       } else {
         await lootTablesService.create(normalized);
         setSelectedId(id);
