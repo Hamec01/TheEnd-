@@ -3633,8 +3633,8 @@ h3 {
 }
 
 .battle-fullscreen-root .battle-left-column {
-  flex: 0 0 340px;
-  width: 340px;
+  flex: 0 0 236px;
+  width: 236px;
 }
 
 .battle-fullscreen-root .battle-center-column {
@@ -3642,8 +3642,8 @@ h3 {
 }
 
 .battle-fullscreen-root .battle-right-column {
-  flex: 0 0 300px;
-  width: 300px;
+  flex: 0 0 248px;
+  width: 248px;
 }
 
 .battle-fullscreen-root .column-player-section,
@@ -3929,11 +3929,18 @@ h3 {
 
 .battle-center-controls {
   display: flex;
+  flex-direction: column;
   justify-content: flex-start;
+  align-items: stretch;
+  gap: 10px;
+  padding: 8px;
+}
+
+.battle-center-controls-top {
+  display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 8px;
 }
 
 .battle-pending-action {
@@ -4081,6 +4088,25 @@ h3 {
   gap: 10px;
 }
 
+.battle-fullscreen-root .action-planner.battle-command-deck {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-command-head,
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-quickbar,
+.battle-fullscreen-root .action-planner.battle-command-deck > .planner-targeting-layout,
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-consumables {
+  grid-column: 1 / -1;
+}
+
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-target-strip,
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-skill-focus,
+.battle-fullscreen-root .action-planner.battle-command-deck > .planner-status-rows,
+.battle-fullscreen-root .action-planner.battle-command-deck > .battle-detail-popover {
+  grid-column: span 1;
+}
+
 .battle-command-head {
   display: flex;
   justify-content: space-between;
@@ -4226,6 +4252,11 @@ h3 {
 
 .battle-consumable-detail {
   margin-top: 0;
+}
+
+.battle-fullscreen-root .battle-target-chip-grid,
+.battle-fullscreen-root .battle-consumables-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .planner-status-rows {

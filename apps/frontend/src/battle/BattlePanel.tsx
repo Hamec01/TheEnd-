@@ -679,43 +679,6 @@ export function BattlePanel({
                 subtitle="You"
               />
             </div>
-
-            <div className="column-command-section">
-              <ActionPlanner
-                enemies={enemies}
-                selectedTargetId={selectedTargetId}
-                actionType={actionType}
-                attackZone={attackZone}
-                defenseZones={defenseZones}
-                currentDistance={state.distance}
-                movementType={movementType}
-                selectedMoveTile={selectedMoveTile}
-                currentStamina={player.currentStamina}
-                maxStamina={player.maxStamina}
-                currentMp={player.currentMp}
-                maxMp={player.maxMp}
-                availableSkills={availableSkills}
-                inventoryItems={battleInventoryItems}
-                selectedSkillId={selectedSkillId}
-                actionWarning={actionWarning ?? actionHint}
-                onActionTypeChange={setActionType}
-                onSkillChange={onSkillChange}
-                onTargetChange={setSelectedTargetId}
-                onAttackZoneChange={setAttackZone}
-                onDefenseZonesChange={setDefenseZones}
-                onUseInventoryItem={(itemId) => {
-                  console.info('[combatItems] use', { itemId, targetId: selectedTargetId });
-                  if (onUseItem) {
-                    void onUseItem(itemId, selectedTargetId);
-                  }
-                }}
-                onSubmit={submitRound}
-                showSubmitButton={false}
-                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
-                recentHitZone={lastHitZone}
-                recentBlockedZone={recentBlockedZone}
-              />
-            </div>
           </div>
 
           <div className="battle-center-column battle-column">
@@ -761,28 +724,65 @@ export function BattlePanel({
             />
 
             <div className="battle-center-controls card">
-              <div className="battle-pending-action" aria-live="polite">
-                <div className="battle-pending-action-head">
-                  <strong>Текущий план</strong>
-                  <button type="button" className="battle-pending-reset" onClick={resetPendingAction}>Сбросить</button>
+              <div className="battle-center-controls-top">
+                <div className="battle-pending-action" aria-live="polite">
+                  <div className="battle-pending-action-head">
+                    <strong>Текущий план</strong>
+                    <button type="button" className="battle-pending-reset" onClick={resetPendingAction}>Сбросить</button>
+                  </div>
+                  <div className="battle-pending-action-body">
+                    {pendingActionSummary.map((line) => (
+                      <span key={line} className="battle-pending-chip">{line}</span>
+                    ))}
+                    {actionWarning ? <span className="battle-pending-warning">{actionWarning}</span> : null}
+                    {!actionWarning && actionHint ? <span className="battle-pending-hint">{actionHint}</span> : null}
+                  </div>
                 </div>
-                <div className="battle-pending-action-body">
-                  {pendingActionSummary.map((line) => (
-                    <span key={line} className="battle-pending-chip">{line}</span>
-                  ))}
-                  {actionWarning ? <span className="battle-pending-warning">{actionWarning}</span> : null}
-                  {!actionWarning && actionHint ? <span className="battle-pending-hint">{actionHint}</span> : null}
-                </div>
+                <button
+                  type="button"
+                  className="confirm-turn-button battle-confirm-large"
+                  disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
+                  title={actionWarning ?? actionHint ?? (pendingActionSummary.length > 0 ? pendingActionSummary.join(' | ') : undefined)}
+                  onClick={submitRound}
+                >
+                  СДЕЛАТЬ ХОД
+                </button>
               </div>
-              <button
-                type="button"
-                className="confirm-turn-button battle-confirm-large"
+
+              <ActionPlanner
+                enemies={enemies}
+                selectedTargetId={selectedTargetId}
+                actionType={actionType}
+                attackZone={attackZone}
+                defenseZones={defenseZones}
+                currentDistance={state.distance}
+                movementType={movementType}
+                selectedMoveTile={selectedMoveTile}
+                currentStamina={player.currentStamina}
+                maxStamina={player.maxStamina}
+                currentMp={player.currentMp}
+                maxMp={player.maxMp}
+                availableSkills={availableSkills}
+                inventoryItems={battleInventoryItems}
+                selectedSkillId={selectedSkillId}
+                actionWarning={actionWarning ?? actionHint}
+                onActionTypeChange={setActionType}
+                onSkillChange={onSkillChange}
+                onTargetChange={setSelectedTargetId}
+                onAttackZoneChange={setAttackZone}
+                onDefenseZonesChange={setDefenseZones}
+                onUseInventoryItem={(itemId) => {
+                  console.info('[combatItems] use', { itemId, targetId: selectedTargetId });
+                  if (onUseItem) {
+                    void onUseItem(itemId, selectedTargetId);
+                  }
+                }}
+                onSubmit={submitRound}
+                showSubmitButton={false}
                 disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
-                title={actionWarning ?? actionHint ?? (pendingActionSummary.length > 0 ? pendingActionSummary.join(' | ') : undefined)}
-                onClick={submitRound}
-              >
-                СДЕЛАТЬ ХОД
-              </button>
+                recentHitZone={lastHitZone}
+                recentBlockedZone={recentBlockedZone}
+              />
             </div>
           </div>
 
