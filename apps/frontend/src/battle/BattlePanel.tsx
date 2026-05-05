@@ -1,6 +1,7 @@
 import {
   ActionType,
   MovementType,
+  SkillTargetType,
   TargetZone,
   TeamSide,
   getSkillCostSummary,
@@ -230,6 +231,13 @@ export function BattlePanel({
   const selectedSkill = useMemo(
     () => availableSkills.find((skill) => skill.skillId === selectedSkillId) ?? null,
     [availableSkills, selectedSkillId],
+  );
+  const selfTargetSkills = useMemo(
+    () => availableSkills.filter((skill) => {
+      const targetType = skill.definition.target?.targetType;
+      return targetType === SkillTargetType.SELF || targetType === SkillTargetType.SINGLE_ALLY || targetType === SkillTargetType.ALL_ALLIES;
+    }),
+    [availableSkills],
   );
 
   const battleInventoryItems = useMemo(
@@ -577,6 +585,13 @@ export function BattlePanel({
     await submitRoundWithAction();
   }, [submitRoundWithAction]);
 
+  const useBattleItem = useCallback(async (itemId: string, targetId?: string): Promise<void> => {
+    if (!onUseItem) {
+      return;
+    }
+    await onUseItem(itemId, targetId);
+  }, [onUseItem]);
+
   const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
     setMovementType(tile.movementType);
     setSelectedMoveTile({ x: tile.x, y: tile.y });
@@ -614,8 +629,13 @@ export function BattlePanel({
           return;
         }
         event.preventDefault();
-        setActionType(ActionType.Wait);
-        void submitRoundWithAction(ActionType.Wait);
+        void submitRound();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        resetPendingAction();
         return;
       }
 
@@ -638,7 +658,7 @@ export function BattlePanel({
 
     window.addEventListener('keydown', handleHotkeys);
     return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [availableSkills, onSkillChange, submitRound, submitRoundWithAction]);
+  }, [availableSkills, onSkillChange, resetPendingAction, submitRound]);
 
   if (!player) {
     return <p>Player entity not found.</p>;
@@ -703,19 +723,44 @@ export function BattlePanel({
                 selectedMoveTile={selectedMoveTile}
                 lastLog={lastLog}
                 recentLogs={recentLogs}
+                availableSkills={availableSkills}
+                selfTargetSkills={selfTargetSkills}
+                inventoryItems={battleInventoryItems}
+                selectedSkillId={selectedSkillId}
                 onTargetSelect={(targetId) => setSelectedTargetId(targetId)}
                 onStatusMessage={onStatus}
                 onQuickAttack={(targetId) => {
                   setSelectedTargetId(targetId);
+                  onSkillChange(null);
                   setActionType(ActionType.Attack);
                   onStatus('Атака поставлена в план. Подтвердите ход.');
+                }}
+                onQuickSkill={(skillId: string, targetId?: string) => {
+                  if (targetId) {
+                    setSelectedTargetId(targetId);
+                  }
+                  onSkillChange(skillId);
+                  setActionType(ActionType.Attack);
+                  onStatus('Навык поставлен в план. Подтвердите ход.');
+                }}
+                onQuickItem={(itemId: string, targetId?: string) => {
+                  void useBattleItem(itemId, targetId);
                 }}
                 onQuickMove={(tile) => {
                   applyMoveSelection(tile);
                   onStatus('Перемещение поставлено в план. Подтвердите ход.');
                 }}
+                onQuickWait={() => {
+                  setActionType(ActionType.Wait);
+                  onStatus('Ожидание поставлено в план. Подтвердите ход.');
+                }}
+                onResetDefense={() => {
+                  setActionType(ActionType.Attack);
+                  setDefenseZones([]);
+                  onStatus('Защита сброшена: персонаж идет в размен.');
+                }}
                 onMoveTileSelect={applyMoveSelection}
-                onCancelSelection={() => setSelectedMoveTile(null)}
+                onCancelSelection={resetPendingAction}
                 onInspectEntity={(entityId) => setInspectEntityId(entityId)}
                 playerVisualState={feedback.playerVisualState}
                 enemyVisualState={feedback.enemyVisualState}

@@ -4,6 +4,7 @@ import {
   MovementType,
   TeamSide,
   getBattlefieldTilePlacements,
+  type AdminSkillDefinition,
   type ArenaCombatEntity,
   type CombatLogEntry,
   type BattlefieldTile,
@@ -34,10 +35,18 @@ interface BattleFieldProps {
   onMoveTileSelect?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
   onTargetSelect?: (targetId: string) => void;
   onQuickAttack?: (targetId: string) => void;
+  onQuickSkill?: (skillId: string, targetId?: string) => void;
+  onQuickItem?: (itemId: string, targetId?: string) => void;
   onQuickMove?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
+  onQuickWait?: () => void;
+  onResetDefense?: () => void;
   onInspectEntity?: (entityId: string) => void;
   onCancelSelection?: () => void;
   onStatusMessage?: (text: string) => void;
+  availableSkills?: Array<{ slotId: string; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  selfTargetSkills?: Array<{ slotId: string; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  inventoryItems?: Array<{ id: string; name: string; description: string; icon: string; itemType: string; quantity: number; disabled?: boolean; disabledReason?: string | null; effectSummary?: string | null; costSummary?: string | null }>;
+  selectedSkillId?: string | null;
   playerVisualState?: 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
   enemyVisualState?: 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
   floatingText?: string | null;
@@ -49,7 +58,7 @@ interface BattleFieldProps {
 interface ContextMenu {
   x: number;
   y: number;
-  type: 'enemy' | 'cell';
+  type: 'enemy' | 'cell' | 'self';
   targetId?: string;
   tileX?: number;
   tileY?: number;
@@ -185,10 +194,18 @@ export function BattleField({
   onMoveTileSelect,
   onTargetSelect,
   onQuickAttack,
+  onQuickSkill,
+  onQuickItem,
   onQuickMove,
+  onQuickWait,
+  onResetDefense,
   onInspectEntity,
   onCancelSelection,
   onStatusMessage,
+  availableSkills = [],
+  selfTargetSkills = [],
+  inventoryItems = [],
+  selectedSkillId = null,
 }: BattleFieldProps) {
     function getRacePortrait(entity: ArenaCombatEntity): string {
       if (entity.avatarUrl) {
@@ -528,13 +545,13 @@ export function BattleField({
       : null;
   };
 
-  const openContextMenu = (clientX: number, clientY: number, type: 'enemy' | 'cell', tileX?: number, tileY?: number, targetId?: string) => {
+  const openContextMenu = (clientX: number, clientY: number, type: 'enemy' | 'cell' | 'self', tileX?: number, tileY?: number, targetId?: string) => {
     const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) {
       return;
     }
-    const menuWidth = 176;
-    const menuHeight = type === 'enemy' ? 126 : 84;
+    const menuWidth = type === 'enemy' ? 260 : type === 'self' ? 248 : 186;
+    const menuHeight = type === 'enemy' ? 280 : type === 'self' ? 240 : 104;
     const relativeX = clientX - rect.left;
     const relativeY = clientY - rect.top;
 
@@ -580,10 +597,22 @@ export function BattleField({
     }
   };
 
-  const handleContextMenuAction = (action: 'move' | 'attack' | 'move-closer' | 'disengage') => {
+  const handleContextMenuAction = (action: 'move' | 'attack' | 'move-closer' | 'disengage' | 'wait' | 'reset-defense') => {
     if (action === 'attack' && contextMenu.targetId) {
       onTargetSelect?.(contextMenu.targetId);
       onQuickAttack?.(contextMenu.targetId);
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'wait') {
+      onQuickWait?.();
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'reset-defense') {
+      onResetDefense?.();
       closeContextMenu();
       return;
     }
@@ -713,7 +742,7 @@ export function BattleField({
     <div className="battle-field tactical-field">
       <div className="tactical-header">
         <h3>Tactical Battlefield</h3>
-        <div className="tactical-distance-indicator">Distance: {distance} | Camera locked on player</div>
+        <div className="tactical-distance-indicator">Distance: {distance} | RMB: action menu | Space: confirm | Esc: cancel</div>
       </div>
 
       <div
@@ -777,8 +806,12 @@ export function BattleField({
                     if (entityInfo && entityInfo.isAlive) {
                       if (entityInfo.team === TeamSide.Right) {
                         onTargetSelect?.(entityInfo.id);
+                        openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
+                      } else if (entityInfo.id === playerId) {
+                        openContextMenu(e.clientX, e.clientY, 'self', x, y, entityInfo.id);
+                      } else {
+                        openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
                       }
-                      openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
                     } else if (movablePositions.has(`${x}:${y}`)) {
                       openContextMenu(e.clientX, e.clientY, 'cell', x, y);
                     } else {
@@ -841,7 +874,38 @@ export function BattleField({
           <div ref={menuRef} className="tactical-context-menu" style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}>
             {contextMenu.type === 'enemy' && (
               <>
-                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Атаковать</button> : null}
+                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Базовая атака</button> : null}
+                {contextEntity?.team === TeamSide.Right && availableSkills.length > 0 ? (
+                  <div className="tactical-context-group">
+                    <span className="tactical-context-group-title">Навыки</span>
+                    {availableSkills.slice(0, 6).map((skill) => (
+                      <button
+                        key={skill.slotId}
+                        type="button"
+                        className={selectedSkillId === skill.skillId ? 'is-active' : ''}
+                        onClick={() => {
+                          if (contextMenu.targetId) {
+                            onTargetSelect?.(contextMenu.targetId);
+                          }
+                          onQuickSkill?.(skill.skillId, contextMenu.targetId);
+                          closeContextMenu();
+                        }}
+                      >
+                        {skill.slotId.toUpperCase()} · {skill.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {contextEntity?.team === TeamSide.Right && inventoryItems.filter((item) => !item.disabled).length > 0 ? (
+                  <div className="tactical-context-group">
+                    <span className="tactical-context-group-title">Предметы</span>
+                    {inventoryItems.filter((item) => !item.disabled).slice(0, 4).map((item) => (
+                      <button key={item.id} type="button" onClick={() => { onQuickItem?.(item.id, contextMenu.targetId); closeContextMenu(); }}>
+                        {item.name} x{item.quantity}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <button type="button" onClick={() => { if (contextMenu.targetId) { onInspectEntity?.(contextMenu.targetId); } closeContextMenu(); }}>🔍 Осмотреть</button>
                 {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('move-closer')}>⇢ Подойти ближе</button> : null}
                 <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
@@ -865,6 +929,33 @@ export function BattleField({
                 </>
               );
             })()}
+            {contextMenu.type === 'self' && (
+              <>
+                {selfTargetSkills.length > 0 ? (
+                  <div className="tactical-context-group">
+                    <span className="tactical-context-group-title">Self skills</span>
+                    {selfTargetSkills.slice(0, 5).map((skill) => (
+                      <button key={skill.slotId} type="button" onClick={() => { onQuickSkill?.(skill.skillId, playerId); closeContextMenu(); }}>
+                        {skill.slotId.toUpperCase()} · {skill.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {inventoryItems.filter((item) => !item.disabled).length > 0 ? (
+                  <div className="tactical-context-group">
+                    <span className="tactical-context-group-title">Self items</span>
+                    {inventoryItems.filter((item) => !item.disabled).slice(0, 4).map((item) => (
+                      <button key={item.id} type="button" onClick={() => { onQuickItem?.(item.id, playerId); closeContextMenu(); }}>
+                        {item.name} x{item.quantity}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <button type="button" onClick={() => handleContextMenuAction('reset-defense')}>🗙 Сбросить защиту</button>
+                <button type="button" onClick={() => handleContextMenuAction('wait')}>⌛ Ожидание</button>
+                <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
+              </>
+            )}
           </div>
         )}
       </div>
