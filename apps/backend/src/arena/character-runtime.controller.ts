@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Put } from '@nestjs/common';
 import { ArenaService } from './arena.service';
 import { UpdateActionBarDto } from './dto.update-action-bar.dto';
 import { UpdateActionSlotsDto } from './dto.update-action-slots.dto';
@@ -76,5 +76,17 @@ export class CharacterRuntimeController {
     @Body() dto: UpdateCharacterResourcesDto,
   ) {
     return this.arenaService.updateCharacterResources(characterId, dto);
+  }
+
+  @Put('quest-states/:questId')
+  async saveQuestState(
+    @Param('characterId') characterId: string,
+    @Param('questId') questId: string,
+    @Body() state: Record<string, unknown>,
+  ) {
+    return this.arenaService.saveCharacterQuestState(characterId, {
+      ...state,
+      questId,
+    });
   }
 }

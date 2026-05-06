@@ -167,10 +167,13 @@ export interface DialogueRunnerApi {
   openDialogueForNpc: (npcId: string, context?: Omit<DialogueContext, 'npcId' | 'sourceType'>) => void;
   closeDialogue: () => void;
   restartDialogue: () => void;
-  selectChoice: (choiceId: string) => DialogueChoiceResult | null;
+  selectChoice: (choiceId: string) => Promise<DialogueChoiceResult | null>;
 }
 
-export function useDialogueRunner(params: { player: QuestRuntimePlayer }): DialogueRunnerApi {
+export function useDialogueRunner(params: {
+  player: QuestRuntimePlayer;
+  onStartQuest?: (questId: string) => Promise<void> | void;
+}): DialogueRunnerApi {
   const [state, dispatch] = useReducer(reducer, CLOSED_STATE);
 
   const dialogue = useMemo(() => {
@@ -281,7 +284,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
     openDialogue(state.dialogueId, state.context);
   }, [openDialogue, state]);
 
-  const selectChoice = useCallback((choiceId: string): DialogueChoiceResult | null => {
+  const selectChoice = useCallback(async (choiceId: string): Promise<DialogueChoiceResult | null> => {
     if (!state.isOpen || !dialogue) {
       return null;
     }
@@ -308,10 +311,33 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
     }
 
-    const derivedActions: any[] = [];
-    if (choice.giveQuest) {
-      derivedActions.push({ id: `auto-${choice.id}-giveQuest`, type: 'startQuest', questId: choice.giveQuest });
+    const effectActions = Array.isArray(choice.effects) ? choice.effects : [];
+    const questIdsToStart = new Set<string>();
+
+    if (typeof choice.giveQuest === 'string' && choice.giveQuest.trim()) {
+      questIdsToStart.add(choice.giveQuest.trim());
     }
+    for (const effect of effectActions) {
+      if (
+        effect &&
+        effect.type === 'start_quest' &&
+        typeof effect.questId === 'string' &&
+        effect.questId.trim()
+      ) {
+        questIdsToStart.add(effect.questId.trim());
+      }
+    }
+
+    const derivedActions: any[] = Array.from(questIdsToStart).map((questId) => ({
+      id: `auto-${choice.id}-startQuest-${questId}`,
+      type: 'startQuest',
+      questId,
+    }));
+    if (import.meta.env.DEV && questIdsToStart.size > 0) {
+      // eslint-disable-next-line no-console
+      console.log('[dialogueRunner] choice quest starts:', Array.from(questIdsToStart));
+    }
+
     if (choice.completeQuest) {
       derivedActions.push({ id: `auto-${choice.id}-completeQuest`, type: 'completeQuest', questId: choice.completeQuest });
     }
@@ -359,6 +385,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
     const executed = executeDialogueActions(params.player.id, npcId ?? 'system', [
       ...(currentNode.actions ?? []),
       ...(choice.actions ?? []),
+      ...effectActions.filter((effect) => !(effect.type === 'start_quest' && typeof effect.questId === 'string' && questIdsToStart.has(effect.questId.trim()))),
       ...derivedActions,
     ], params.player);
 
@@ -380,6 +407,37 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       ],
       events: executed.events ?? [],
     };
+
+    const startedQuestIds = Array.from(new Set(
+      merged.intents
+        .filter((intent) => intent.type === 'QUEST_STARTED')
+        .map((intent) => intent.questId),
+    ));
+    for (const questId of startedQuestIds) {
+      await params.onStartQuest?.(questId);
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log('[dialogueRunner] quest started:', questId);
+      }
+    }
+    if (import.meta.env.DEV) {
+      const startedQuestIdsSet = new Set(startedQuestIds);
+      for (const questId of questIdsToStart) {
+        if (startedQuestIdsSet.has(questId)) {
+          continue;
+        }
+        const duplicateLogFound = (merged.logs ?? []).some((line) => (
+          line === `Quest already active: ${questId}` ||
+          line === `Quest not repeatable: ${questId}` ||
+          line === `Quest cannot start (${questId}): Quest already active/completed and not repeatable.`
+        ));
+        if (duplicateLogFound) {
+          // eslint-disable-next-line no-console
+          console.log('[dialogueRunner] quest already active/completed:', questId);
+        }
+      }
+    }
+
     const ended = (choice.endsDialogue ?? choice.end) === true;
     const nextNodeIdRaw = choice.nextNodeId ?? choice.next;
     const nextNodeId = typeof nextNodeIdRaw === 'string' ? nextNodeIdRaw.trim() : '';
@@ -433,7 +491,7 @@ export function useDialogueRunner(params: { player: QuestRuntimePlayer }): Dialo
       dispatch({ type: 'NOTICE', text: 'Choice has no next or end.' });
     }
     return { ended: false, movedToNodeId: null, ...merged };
-  }, [dialogue, params.player, state]);
+  }, [dialogue, params.onStartQuest, params.player, state]);
 
   return {
     state,

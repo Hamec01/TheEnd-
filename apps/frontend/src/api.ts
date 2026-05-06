@@ -379,6 +379,22 @@ export async function updateCharacterHotbar(
   return res.json();
 }
 
+export async function saveCharacterQuestState(
+  characterId: string,
+  questId: string,
+  state: unknown,
+): Promise<unknown> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/quest-states/${encodeURIComponent(questId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 async function readErrorMessage(res: Response): Promise<string> {
   const raw = await res.text();
 

@@ -274,6 +274,27 @@ function loadUiBoolean(key: string, fallback: boolean): boolean {
   return fallback;
 }
 
+function getDialogueChoiceKey(choice: {
+  id?: string | null;
+  text?: string | null;
+  next?: string | null;
+  nextNodeId?: string | null;
+  giveQuest?: string | null;
+  end?: boolean | null;
+  endsDialogue?: boolean | null;
+}): string {
+  const id = String(choice.id ?? "").trim();
+  if (id) {
+    return id;
+  }
+
+  const text = String(choice.text ?? "").trim();
+  const next = String(choice.next ?? choice.nextNodeId ?? "").trim();
+  const giveQuest = String(choice.giveQuest ?? "").trim();
+  const end = (choice.end ?? choice.endsDialogue) ? "end" : "";
+  return `${text}:${next}:${giveQuest}:${end}`;
+}
+
 function loadPlayerPosition(characterId: string): { x: number; y: number } {
   if (typeof window === "undefined") {
     return DEFAULT_PLAYER_POSITION;
@@ -546,7 +567,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => ({ id: character.id, level: character.level, race: character.race }),
     [character.id, character.level, character.race],
   );
-  const dialogueRunner = useDialogueRunner({ player: dialoguePlayer });
+  const refreshPlayerQuestStates = useCallback(() => {
+    setPlayerQuestStates(
+      getAllPlayerQuestStates().filter((state) => state.playerId === character.id),
+    );
+  }, [character.id]);
+  const dialogueRunner = useDialogueRunner({
+    player: dialoguePlayer,
+    onStartQuest: refreshPlayerQuestStates,
+  });
 
   const [selectedCityLocationId, setSelectedCityLocationId] = useState<
     string | null
@@ -2222,11 +2251,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, []);
 
   const handleSelectDialogueChoice = useCallback(
-    (choiceId: string) => {
+    async (choiceId: string) => {
       try {
       const dialogueNpcId =
         dialogueRunner.state.isOpen ? (dialogueRunner.state.context.npcId ?? null) : null;
-      const result = dialogueRunner.selectChoice(choiceId);
+      const result = await dialogueRunner.selectChoice(choiceId);
       if (!result) {
         return;
       }
@@ -2436,7 +2465,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch (error) {
       onStatus((error as Error).message);
     }
-  }, [activeDialogue, activeDialogueNode, character.id, onOpenMerchant, onOpenSkills, onStartCombat, onStatus, selectedNpcForInteraction]);
+  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onOpenMerchant, onOpenSkills, onStartCombat, onStatus, questDefinitions, resolveItemById, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
@@ -3833,7 +3862,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", margin: "12px 0" }}>
               {npcQuestSceneModal.stages.map((stage) => (
                 <button
-                  key={stage.questId}
+                  key={`${stage.questId}:${stage.stepTitle ?? stage.questTitle}`}
                   className={stage.questId === npcQuestSceneModal.selectedQuestId ? "is-active" : ""}
                   onClick={() =>
                     setNpcQuestSceneModal((prev) =>
@@ -3864,7 +3893,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               {activeStage.objectives.length > 0 ? (
                 <div style={{ marginTop: 10 }}>
                   {activeStage.objectives.map((obj) => (
-                    <p key={obj.id} className="muted" style={{ margin: "6px 0" }}>
+                    <p key={obj.id || `${obj.text}:${obj.completed ? "done" : "todo"}`} className="muted" style={{ margin: "6px 0" }}>
                       {obj.completed ? "✓" : "•"} {obj.text}
                     </p>
                   ))}
@@ -4024,7 +4053,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           >
             {dialogueRunner.choices.map((choice) => (
               <button
-                key={choice.id}
+                key={getDialogueChoiceKey(choice)}
                 disabled={choice.disabled}
                 onClick={() => handleSelectDialogueChoice(choice.id)}
               >

@@ -65,6 +65,7 @@ type StoredResourceMap = Record<string, {
 const CHARACTER_ACTION_SLOTS_STORE_KEY = 'character-action-slots-v1';
 const CHARACTER_HOTBAR_STORE_KEY = 'character-item-hotbars-v1';
 const CHARACTER_RESOURCES_STORE_KEY = 'character-runtime-resources-v1';
+const CHARACTER_QUEST_STATES_STORE_KEY = 'character-quest-states-v1';
 const HOTBAR_SLOT_COUNT = 10;
 
 @Injectable()
@@ -493,6 +494,34 @@ export class ArenaService implements OnModuleInit {
     await this.writeMap(CHARACTER_HOTBAR_STORE_KEY, map);
   }
 
+  async saveCharacterQuestState(characterId: string, state: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const character = isFileStorageMode()
+      ? await this.runtimeStore.getCharacterById(characterId)
+      : await this.prisma.character.findUnique({ where: { id: characterId }, select: { id: true } });
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const questId = String(state.questId ?? '').trim();
+    if (!questId) {
+      throw new BadRequestException('questId is required.');
+    }
+
+    const map = await this.readMap<Record<string, Record<string, unknown>[]>>(CHARACTER_QUEST_STATES_STORE_KEY);
+    const current = Array.isArray(map[characterId]) ? map[characterId] : [];
+    const nextState = {
+      ...state,
+      playerId: characterId,
+      questId,
+    };
+    map[characterId] = [
+      ...current.filter((entry) => String(entry?.questId ?? '').trim() !== questId),
+      nextState,
+    ];
+    await this.writeMap(CHARACTER_QUEST_STATES_STORE_KEY, map);
+    return nextState;
+  }
+
   private async writeCharacterActionSlots(characterId: string, slots: CharacterActionSlot[]): Promise<void> {
     const map = await this.readMap<StoredActionSlotMap>(CHARACTER_ACTION_SLOTS_STORE_KEY);
     map[characterId] = this.normalizeActionSlots(slots);
@@ -533,6 +562,7 @@ export class ArenaService implements OnModuleInit {
     } else {
       const char = await this.runtimeStore.getCharacterById(characterId);
       if (!char) throw new NotFoundException('Character not found.');
+      return this.readCharacterHotbar(characterId);
     }
 
     const inventoryRows = await this.prisma.characterInventoryItem.findMany({
@@ -603,7 +633,9 @@ export class ArenaService implements OnModuleInit {
 
   async getOrCreateActionBar(characterId: string): Promise<CharacterActionBarSlot[]> {
     const slots = await this.getOrCreateActionSlots(characterId);
-    await this.warnAboutActionBarEntries(characterId, slots);
+    if (!isFileStorageMode()) {
+      await this.warnAboutActionBarEntries(characterId, slots);
+    }
     const actionBar = slots.map((slot) => this.toActionBarSlot(slot));
     console.info('[actionBar] load', { characterId, slots: actionBar });
     return actionBar;

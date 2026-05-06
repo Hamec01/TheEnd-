@@ -56,6 +56,7 @@ export interface DialogueChoice {
 
   conditions?: DialogueCondition[];
   actions?: DialogueAction[];
+  effects?: DialogueAction[];
 
   hiddenIfConditionsFail?: boolean;
   disabledIfConditionsFail?: boolean;

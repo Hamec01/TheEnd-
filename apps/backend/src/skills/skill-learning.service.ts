@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import type { AdminSkillDefinition } from '@theend/rpg-domain';
 import { SkillType, validateSkillDefinition } from '@theend/rpg-domain';
+import { isFileStorageMode } from '../config/storage-mode';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CharacterSkill, CharacterSkillLoadout, CharacterSkillSourceType, CombatSkillSlot } from './character-skill.types';
@@ -46,6 +47,9 @@ export class SkillLearningService {
 
   async getCharacterSkills(characterId: string): Promise<Array<CharacterSkill & { definition: AdminSkillDefinition | null }>> {
     await this.contentService.ensureInitialized();
+    if (isFileStorageMode()) {
+      return [];
+    }
     await this.ensureCharacterExists(characterId);
     const rows = await this.readCharacterSkills(characterId);
 
@@ -351,6 +355,10 @@ export class SkillLearningService {
   }
 
   async getOrCreateLoadout(characterId: string): Promise<CharacterSkillLoadout> {
+    if (isFileStorageMode()) {
+      return { characterId, slots: createDefaultLoadout(0) };
+    }
+
     const character = await this.ensureCharacterExists(characterId);
     const combatMastery = typeof (character as { combatMastery?: unknown }).combatMastery === 'number'
       ? Number((character as { combatMastery?: number }).combatMastery)

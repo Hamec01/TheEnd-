@@ -12,6 +12,7 @@ import {
   getContentCollection,
   updateContentEntry,
 } from './content/contentApi';
+import { saveCharacterQuestState } from '../api';
 
 const PLAYER_QUESTS_KEY = 'theend.playerQuests';
 const RANDOM_ZONE_COOLDOWNS_KEY = 'theend.questRandomZoneCooldowns';
@@ -419,6 +420,13 @@ export function savePlayerQuestState(state: PlayerQuestState): void {
   const current = getAllPlayerQuestStates();
   const next = [...current.filter((entry) => !(entry.playerId === state.playerId && entry.questId === state.questId)), state];
   writeArray(PLAYER_QUESTS_KEY, next);
+
+  void saveCharacterQuestState(state.playerId, state.questId, state).catch((error) => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn('[quests] Failed to persist quest state:', error);
+    }
+  });
 }
 
 export function getRandomZoneCooldowns(): RandomQuestCooldown[] {
