@@ -6,6 +6,7 @@ import { SkillType, validateSkillDefinition } from '@theend/rpg-domain';
 import { isFileStorageMode } from '../config/storage-mode';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 import type { CharacterSkill, CharacterSkillLoadout, CharacterSkillSourceType, CombatSkillSlot } from './character-skill.types';
 import { createDefaultLoadout, getUnlockedSlotCount } from './character-skill.types';
 
@@ -43,13 +44,11 @@ export class SkillLearningService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
+    private readonly runtimeStore: RuntimeCharacterStore,
   ) {}
 
   async getCharacterSkills(characterId: string): Promise<Array<CharacterSkill & { definition: AdminSkillDefinition | null }>> {
     await this.contentService.ensureInitialized();
-    if (isFileStorageMode()) {
-      return [];
-    }
     await this.ensureCharacterExists(characterId);
     const rows = await this.readCharacterSkills(characterId);
 
@@ -99,18 +98,18 @@ export class SkillLearningService {
     this.assertSkillIsUsable(skillDef, skillId);
     this.assertSkillIsTrainable(skillDef, skillId, sourceId);
 
-    // Load character
-    const character = await this.prisma.character.findUnique({
-      where: { id: characterId },
-      select: {
-        id: true, race: true, level: true,
-        strength: true, endurance: true, dexterity: true,
-        intelligence: true, luck: true, speed: true, willpower: true,
-      },
-    });
-    if (!character) {
-      throw new NotFoundException(`Character not found: ${characterId}`);
-    }
+    const characterRecord = await this.ensureCharacterExists(characterId);
+    const character = {
+      race: String(characterRecord.race ?? ''),
+      level: Number(characterRecord.level ?? 0) || 0,
+      strength: Number(characterRecord.strength ?? 0) || 0,
+      endurance: Number(characterRecord.endurance ?? 0) || 0,
+      dexterity: Number(characterRecord.dexterity ?? 0) || 0,
+      intelligence: Number(characterRecord.intelligence ?? 0) || 0,
+      luck: Number(characterRecord.luck ?? 0) || 0,
+      speed: Number(characterRecord.speed ?? 0) || 0,
+      willpower: Number(characterRecord.willpower ?? 0) || 0,
+    };
 
     // Check already learned
     const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
@@ -155,17 +154,7 @@ export class SkillLearningService {
       throw new NotFoundException(`Skill not found: ${skillId}`);
     }
 
-    const character = await this.prisma.character.findUnique({
-      where: { id: characterId },
-      select: {
-        id: true, race: true, level: true,
-        strength: true, endurance: true, dexterity: true,
-        intelligence: true, luck: true, speed: true, willpower: true,
-      },
-    });
-    if (!character) {
-      throw new NotFoundException(`Character not found: ${characterId}`);
-    }
+    await this.ensureCharacterExists(characterId);
 
     const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
     if (existing) {
@@ -355,10 +344,6 @@ export class SkillLearningService {
   }
 
   async getOrCreateLoadout(characterId: string): Promise<CharacterSkillLoadout> {
-    if (isFileStorageMode()) {
-      return { characterId, slots: createDefaultLoadout(0) };
-    }
-
     const character = await this.ensureCharacterExists(characterId);
     const combatMastery = typeof (character as { combatMastery?: unknown }).combatMastery === 'number'
       ? Number((character as { combatMastery?: number }).combatMastery)
@@ -478,11 +463,19 @@ export class SkillLearningService {
   }
 
   private async ensureCharacterExists(characterId: string) {
+    if (isFileStorageMode()) {
+      const character = await this.runtimeStore.getCharacterById(characterId);
+      if (!character) {
+        throw new NotFoundException(`Character not found: ${characterId}`);
+      }
+      return character as unknown as Record<string, unknown>;
+    }
+
     const character = await this.prisma.character.findUnique({ where: { id: characterId } });
     if (!character) {
       throw new NotFoundException(`Character not found: ${characterId}`);
     }
-    return character;
+    return character as unknown as Record<string, unknown>;
   }
 
   private getCharacterSkillModel(): {
@@ -490,6 +483,9 @@ export class SkillLearningService {
     findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
     create?: (args: unknown) => Promise<Record<string, unknown>>;
   } {
+    if (isFileStorageMode()) {
+      return {};
+    }
     return (this.prisma as unknown as { characterSkill?: unknown }).characterSkill as {
       findMany?: (args: unknown) => Promise<Array<Record<string, unknown>>>;
       findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
@@ -502,6 +498,9 @@ export class SkillLearningService {
     create?: (args: unknown) => Promise<Record<string, unknown>>;
     upsert?: (args: unknown) => Promise<Record<string, unknown>>;
   } {
+    if (isFileStorageMode()) {
+      return {};
+    }
     return (this.prisma as unknown as { characterSkillLoadout?: unknown }).characterSkillLoadout as {
       findUnique?: (args: unknown) => Promise<Record<string, unknown> | null>;
       create?: (args: unknown) => Promise<Record<string, unknown>>;
@@ -572,6 +571,14 @@ export class SkillLearningService {
   }
 
   private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
+    if (isFileStorageMode()) {
+      const data = await this.runtimeStore.readArenaData(key);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return {} as TMap;
+      }
+      return data as unknown as TMap;
+    }
+
     const row = await this.prisma.contentStore.findUnique({ where: { key } });
     if (!row || !row.value || typeof row.value !== 'object' || Array.isArray(row.value)) {
       return {} as TMap;
@@ -580,6 +587,11 @@ export class SkillLearningService {
   }
 
   private async writeMap(key: string, value: Record<string, unknown>): Promise<void> {
+    if (isFileStorageMode()) {
+      await this.runtimeStore.writeArenaData(key, value);
+      return;
+    }
+
     const jsonValue = value as Prisma.InputJsonValue;
     await this.prisma.contentStore.upsert({
       where: { key },
@@ -589,6 +601,19 @@ export class SkillLearningService {
   }
 
   private async readCharacterItemIds(characterId: string): Promise<string[]> {
+    if (isFileStorageMode()) {
+      const character = await this.runtimeStore.getCharacterById(characterId);
+      const rawItems = Array.isArray((character as { inventoryItems?: unknown } | null | undefined)?.inventoryItems)
+        ? (character as { inventoryItems?: Array<Record<string, unknown>> }).inventoryItems ?? []
+        : [];
+
+      const ids = rawItems
+        .map((entry) => (entry && typeof entry === 'object' ? String((entry as { itemId?: unknown }).itemId ?? '').trim() : ''))
+        .filter((itemId) => itemId.length > 0);
+
+      return [...new Set(ids)];
+    }
+
     try {
       const rows = await this.prisma.characterInventoryItem.findMany({
         where: { characterId },

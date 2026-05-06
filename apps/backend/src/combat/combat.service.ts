@@ -118,6 +118,105 @@ export class CombatService {
     return value as Record<string, unknown>;
   }
 
+  private normalizeRuntimeInventoryItems(value: unknown): Array<{ id: string; itemId: string; quantity: number }> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const merged = new Map<string, { id: string; itemId: string; quantity: number }>();
+
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const raw = entry as Record<string, unknown>;
+      const rawItemId = typeof raw.itemId === 'string' ? raw.itemId.trim() : '';
+      if (!rawItemId) {
+        continue;
+      }
+
+      const rawId = typeof raw.id === 'string' ? raw.id.trim() : '';
+      const id = rawId.length > 0 ? rawId : `local_inv_${randomUUID()}`;
+
+      const rawQuantity = typeof raw.quantity === 'number' ? raw.quantity : Number(raw.quantity);
+      const quantity = Number.isFinite(rawQuantity) ? Math.max(0, Math.floor(rawQuantity)) : 0;
+      if (quantity <= 0) {
+        continue;
+      }
+
+      const existing = merged.get(rawItemId);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        merged.set(rawItemId, { id, itemId: rawItemId, quantity });
+      }
+    }
+
+    return [...merged.values()];
+  }
+
+  private async readRuntimeInventoryItems(characterId: string): Promise<Array<{ id: string; itemId: string; quantity: number }>> {
+    const character = await this.runtimeStore.getCharacterById(characterId);
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    return this.normalizeRuntimeInventoryItems((character as { inventoryItems?: unknown }).inventoryItems);
+  }
+
+  private async writeRuntimeInventoryItems(characterId: string, inventoryItems: Array<{ id: string; itemId: string; quantity: number }>): Promise<void> {
+    const updated = await this.runtimeStore.updateCharacter(characterId, {
+      inventoryItems: this.normalizeRuntimeInventoryItems(inventoryItems),
+    });
+
+    if (!updated) {
+      throw new NotFoundException('Character not found.');
+    }
+  }
+
+  private async updateRuntimeInventoryItemQuantity(characterId: string, itemId: string, delta: number): Promise<void> {
+    const normalizedItemId = String(itemId ?? '').trim();
+    if (!normalizedItemId) {
+      throw new BadRequestException('itemId is required.');
+    }
+
+    const safeDelta = Math.trunc(delta);
+    if (safeDelta === 0) {
+      return;
+    }
+
+    const current = await this.readRuntimeInventoryItems(characterId);
+    const index = current.findIndex((row) => row.itemId === normalizedItemId);
+
+    if (index < 0) {
+      if (safeDelta < 0) {
+        throw new BadRequestException('Item is not available in inventory.');
+      }
+
+      await this.writeRuntimeInventoryItems(characterId, [
+        ...current,
+        { id: `local_inv_${randomUUID()}`, itemId: normalizedItemId, quantity: safeDelta },
+      ]);
+      return;
+    }
+
+    const row = current[index]!;
+    const nextQuantity = row.quantity + safeDelta;
+    if (nextQuantity < 0) {
+      throw new BadRequestException('Item is not available in inventory.');
+    }
+
+    if (nextQuantity === 0) {
+      current.splice(index, 1);
+      await this.writeRuntimeInventoryItems(characterId, current);
+      return;
+    }
+
+    current[index] = { ...row, quantity: nextQuantity };
+    await this.writeRuntimeInventoryItems(characterId, current);
+  }
+
   private toFiniteAmount(value: unknown): number {
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
   }
@@ -478,6 +577,10 @@ export class CombatService {
     itemName: string | null;
     hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
   }> {
+    if (isFileStorageMode()) {
+      return this.applyVictoryRewardsFileMode(characterId, state, damageContribution);
+    }
+
     const gainedExp = Math.max(0, Math.floor(damageContribution));
     const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
     const droppedItemId = this.rollCombatDrop(state);
@@ -529,6 +632,68 @@ export class CombatService {
     const hubState = await this.arenaService.getHubState(characterId);
     return {
       progression,
+      gainedGold,
+      itemName,
+      hubState,
+    };
+  }
+
+  private async applyVictoryRewardsFileMode(characterId: string, state: ArenaBattleState, damageContribution: number): Promise<{
+    progression: { gainedExp: number; levelsGained: number };
+    gainedGold: number;
+    itemName: string | null;
+    hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
+  }> {
+    const gainedExp = Math.max(0, Math.floor(damageContribution));
+    const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
+    const droppedItemId = this.rollCombatDrop(state);
+
+    const character = await this.runtimeStore.getCharacterById(characterId);
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const currentLevel = Number((character as { level?: unknown }).level ?? 0) || 0;
+    const currentExp = Number((character as { exp?: unknown }).exp ?? 0) || 0;
+    const currentFreePoints = Number((character as { freePoints?: unknown }).freePoints ?? 0) || 0;
+    const currentGold = Number((character as { gold?: unknown }).gold ?? 0) || 0;
+
+    let nextLevel = currentLevel;
+    const nextExp = currentExp + gainedExp;
+    let levelsGained = 0;
+
+    while (nextExp >= getRequiredExpForNextLevel(nextLevel)) {
+      nextLevel += 1;
+      levelsGained += 1;
+    }
+
+    let itemName: string | null = null;
+    if (droppedItemId) {
+      try {
+        const item = this.contentService.resolveItemById(droppedItemId);
+        itemName = item.name ?? null;
+      } catch {
+        itemName = null;
+      }
+      if (itemName) {
+        await this.updateRuntimeInventoryItemQuantity(characterId, droppedItemId, 1);
+      }
+    }
+
+    const updated = await this.runtimeStore.updateCharacter(characterId, {
+      exp: nextExp,
+      level: nextLevel,
+      freePoints: currentFreePoints + levelsGained * 5,
+      gold: currentGold + gainedGold,
+    });
+
+    if (!updated) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const hubState = await this.arenaService.getHubState(characterId);
+    return {
+      progression: { gainedExp, levelsGained },
       gainedGold,
       itemName,
       hubState,
@@ -1079,9 +1244,11 @@ export class CombatService {
       throw new BadRequestException('Actor cannot use items now.');
     }
 
-    const inventoryEntry = await this.prisma.characterInventoryItem.findUnique({
-      where: { characterId_itemId: { characterId: payload.actorId, itemId: payload.itemId } },
-    });
+    const inventoryEntry = isFileStorageMode()
+      ? (await this.readRuntimeInventoryItems(payload.actorId)).find((entry) => entry.itemId === payload.itemId) ?? null
+      : await this.prisma.characterInventoryItem.findUnique({
+        where: { characterId_itemId: { characterId: payload.actorId, itemId: payload.itemId } },
+      });
 
     if (!inventoryEntry || inventoryEntry.quantity <= 0) {
       throw new BadRequestException('Item is not available in inventory.');
@@ -1102,7 +1269,9 @@ export class CombatService {
 
     const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, session.state, session.state.roundNumber, payload.targetId));
 
-    if (inventoryEntry.quantity === 1) {
+    if (isFileStorageMode()) {
+      await this.updateRuntimeInventoryItemQuantity(payload.actorId, payload.itemId, -1);
+    } else if (inventoryEntry.quantity === 1) {
       await this.prisma.characterInventoryItem.delete({ where: { id: inventoryEntry.id } });
     } else {
       await this.prisma.characterInventoryItem.update({
@@ -1127,16 +1296,22 @@ export class CombatService {
       currentStamina: actor.currentStamina,
     });
 
-    const latestInventory = await this.prisma.characterInventoryItem.findMany({
-      where: { characterId: payload.actorId },
-      select: { itemId: true, quantity: true },
-      orderBy: { itemId: 'asc' },
-    });
+    const latestInventory = isFileStorageMode()
+      ? (await this.readRuntimeInventoryItems(payload.actorId))
+        .map((row) => ({ itemId: row.itemId, quantity: row.quantity }))
+        .sort((a, b) => a.itemId.localeCompare(b.itemId))
+      : await this.prisma.characterInventoryItem.findMany({
+        where: { characterId: payload.actorId },
+        select: { itemId: true, quantity: true },
+        orderBy: { itemId: 'asc' },
+      });
 
-    const character = await this.prisma.character.findUnique({
-      where: { id: payload.actorId },
-      select: { gold: true },
-    });
+    const characterGold = isFileStorageMode()
+      ? Number(((await this.runtimeStore.getCharacterById(payload.actorId)) as { gold?: unknown } | null | undefined)?.gold ?? 0) || 0
+      : (await this.prisma.character.findUnique({
+        where: { id: payload.actorId },
+        select: { gold: true },
+      }))?.gold ?? 0;
 
     const costText = this.describeResourceCosts(costs);
     const infoLog = {
@@ -1151,7 +1326,7 @@ export class CombatService {
     return {
       state: session.state,
       inventory: latestInventory,
-      gold: character?.gold ?? 0,
+      gold: characterGold,
       actionSlots: nextActionSlots,
     };
   }

@@ -5,6 +5,7 @@ import {
   type InventoryState,
   type StatBlock,
 } from '@theend/rpg-domain';
+import { randomUUID } from 'crypto';
 import { ContentService } from '../content/content.service';
 import { isDatabaseEnabled, isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
@@ -111,45 +112,140 @@ export class ArenaService implements OnModuleInit {
     };
   }
 
-  private async getCharacterArenaStateForFileMode(characterId: string) {
+  private normalizeRuntimeInventoryItems(value: unknown): Array<{ id: string; itemId: string; quantity: number }> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const merged = new Map<string, { id: string; itemId: string; quantity: number }>();
+
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const raw = entry as Record<string, unknown>;
+      const rawItemId = typeof raw.itemId === 'string' ? raw.itemId.trim() : '';
+      if (!rawItemId) {
+        continue;
+      }
+
+      const rawId = typeof raw.id === 'string' ? raw.id.trim() : '';
+      const id = rawId.length > 0 ? rawId : `local_inv_${randomUUID()}`;
+
+      const rawQuantity = typeof raw.quantity === 'number' ? raw.quantity : Number(raw.quantity);
+      const quantity = Number.isFinite(rawQuantity) ? Math.max(0, Math.floor(rawQuantity)) : 0;
+      if (quantity <= 0) {
+        continue;
+      }
+
+      const existing = merged.get(rawItemId);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        merged.set(rawItemId, { id, itemId: rawItemId, quantity });
+      }
+    }
+
+    return [...merged.values()];
+  }
+
+  private normalizeRuntimeEquipment(value: unknown): Equipment {
+    return this.contentService.normalizeEquipment((value ?? null) as Partial<Equipment> | null);
+  }
+
+  private async requireRuntimeCharacter(characterId: string): Promise<Record<string, unknown>> {
     const character = await this.runtimeStore.getCharacterById(characterId);
     if (!character) {
       throw new NotFoundException('Character not found.');
     }
+    return character as Record<string, unknown>;
+  }
+
+  private async readRuntimeInventoryItems(characterId: string): Promise<Array<{ id: string; itemId: string; quantity: number }>> {
+    const character = await this.requireRuntimeCharacter(characterId);
+    return this.normalizeRuntimeInventoryItems((character as { inventoryItems?: unknown }).inventoryItems);
+  }
+
+  private async writeRuntimeInventoryItems(characterId: string, inventoryItems: Array<{ id: string; itemId: string; quantity: number }>): Promise<void> {
+    await this.runtimeStore.updateCharacter(characterId, { inventoryItems: this.normalizeRuntimeInventoryItems(inventoryItems) });
+  }
+
+  private async readRuntimeEquipment(characterId: string): Promise<Equipment> {
+    const character = await this.requireRuntimeCharacter(characterId);
+    return this.normalizeRuntimeEquipment((character as { equipment?: unknown }).equipment ?? null);
+  }
+
+  private async writeRuntimeEquipment(characterId: string, equipment: Equipment): Promise<void> {
+    await this.runtimeStore.updateCharacter(characterId, { equipment: equipment });
+  }
+
+  private async updateRuntimeInventoryItemQuantity(characterId: string, itemId: string, delta: number): Promise<void> {
+    const normalizedItemId = String(itemId ?? '').trim();
+    if (!normalizedItemId) {
+      throw new BadRequestException('itemId is required.');
+    }
+
+    const safeDelta = Math.trunc(delta);
+    if (safeDelta === 0) {
+      return;
+    }
+
+    const current = await this.readRuntimeInventoryItems(characterId);
+    const index = current.findIndex((row) => row.itemId === normalizedItemId);
+
+    if (index < 0) {
+      if (safeDelta < 0) {
+        throw new BadRequestException('Item is not in inventory.');
+      }
+
+      await this.writeRuntimeInventoryItems(characterId, [
+        ...current,
+        { id: `local_inv_${randomUUID()}`, itemId: normalizedItemId, quantity: safeDelta },
+      ]);
+      return;
+    }
+
+    const row = current[index]!;
+    const nextQuantity = row.quantity + safeDelta;
+    if (nextQuantity < 0) {
+      throw new BadRequestException('Item is not in inventory.');
+    }
+
+    if (nextQuantity === 0) {
+      current.splice(index, 1);
+      await this.writeRuntimeInventoryItems(characterId, current);
+      return;
+    }
+
+    current[index] = { ...row, quantity: nextQuantity };
+    await this.writeRuntimeInventoryItems(characterId, current);
+  }
+
+  private async getCharacterArenaStateForFileMode(characterId: string) {
+    const character = await this.requireRuntimeCharacter(characterId);
 
     const baseStats = this.toBaseStats(character);
-    const emptyEquipment: Equipment = {
-      weapon: null,
-      helmet: null,
-      necklace: null,
-      armor: null,
-      outerwear: null,
-      belt: null,
-      gloves: null,
-      shield: null,
-      ring1: null,
-      ring2: null,
-      ring3: null,
-      legs: null,
-      boots: null,
-    };
-    const activeStats = this.contentService.getStatsWithEquipment(baseStats, emptyEquipment);
-    const resources = this.buildResourceState(activeStats);
+    const equipment = this.normalizeRuntimeEquipment((character as { equipment?: unknown }).equipment ?? null);
+    const inventoryItems = this.normalizeRuntimeInventoryItems((character as { inventoryItems?: unknown }).inventoryItems);
+
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const resources = await this.getCharacterResources(characterId);
     const actionSlots = await this.getOrCreateActionSlots(characterId);
 
     const inventory: InventoryState = {
-      gold: character.gold || 0,
-      items: [],
+      gold: Number((character as { gold?: unknown }).gold ?? 0) || 0,
+      items: inventoryItems.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity })),
     };
 
     return {
       character: {
-        id: character.id,
-        name: character.name,
-        race: character.race,
-        level: character.level || 0,
-        exp: character.exp || 0,
-        freePoints: character.freePoints || 0,
+        id: String((character as { id?: unknown }).id ?? ''),
+        name: String((character as { name?: unknown }).name ?? ''),
+        race: String((character as { race?: unknown }).race ?? ''),
+        level: Number((character as { level?: unknown }).level ?? 0) || 0,
+        exp: Number((character as { exp?: unknown }).exp ?? 0) || 0,
+        freePoints: Number((character as { freePoints?: unknown }).freePoints ?? 0) || 0,
         baseStats,
         activeStats,
         currentHp: resources.currentHp,
@@ -161,7 +257,7 @@ export class ArenaService implements OnModuleInit {
         hpRegenPerTurn: resources.hpRegenPerTurn,
       },
       inventory,
-      equipment: emptyEquipment,
+      equipment,
       actionSlots,
     };
   }
@@ -645,20 +741,23 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterHotbarSlot[]> {
-    if (!isFileStorageMode()) {
+    let inventoryByItemId: Map<string, number>;
+
+    if (isFileStorageMode()) {
+      await this.requireRuntimeCharacter(characterId);
+      const inventoryRows = await this.readRuntimeInventoryItems(characterId);
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    } else {
       this.assertDatabaseEnabled();
       await this.ensureCharacterExists(characterId);
-    } else {
-      const char = await this.runtimeStore.getCharacterById(characterId);
-      if (!char) throw new NotFoundException('Character not found.');
+      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+        where: { characterId },
+        select: { itemId: true, quantity: true },
+      });
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
     }
 
     const current = await this.getOrCreateHotbar(characterId);
-    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
-      where: { characterId },
-      select: { itemId: true, quantity: true },
-    });
-    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
     const next = this.normalizeHotbarSlots(current);
 
     for (const update of updates) {
@@ -693,15 +792,23 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterActionSlot[]> {
-    this.assertDatabaseEnabled();
-    await this.ensureCharacterExists(characterId);
+    let inventoryByItemId: Map<string, number>;
+
+    if (isFileStorageMode()) {
+      await this.requireRuntimeCharacter(characterId);
+      const inventoryRows = await this.readRuntimeInventoryItems(characterId);
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    } else {
+      this.assertDatabaseEnabled();
+      await this.ensureCharacterExists(characterId);
+      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+        where: { characterId },
+        select: { itemId: true, quantity: true },
+      });
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    }
 
     const current = await this.getOrCreateActionSlots(characterId);
-    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
-      where: { characterId },
-      select: { itemId: true, quantity: true },
-    });
-    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
     const next = this.normalizeActionSlots(current);
 
     for (const update of updates) {
@@ -747,16 +854,26 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotId?: string | null; order?: number; entryKind?: CharacterActionBarEntryKind; skillId?: string | null; itemId?: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterActionBarSlot[]> {
-    this.assertDatabaseEnabled();
-    await this.ensureCharacterExists(characterId);
+    let inventoryByItemId: Map<string, number>;
+    let inventoryInstanceIds: Set<string>;
 
-    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
-      where: { characterId },
-      select: { id: true, itemId: true, quantity: true },
-    });
-    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
-    const inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
-    const skillModel = this.getCharacterSkillModel();
+    if (isFileStorageMode()) {
+      await this.requireRuntimeCharacter(characterId);
+      const inventoryRows = await this.readRuntimeInventoryItems(characterId);
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+      inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+    } else {
+      this.assertDatabaseEnabled();
+      await this.ensureCharacterExists(characterId);
+      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+        where: { characterId },
+        select: { id: true, itemId: true, quantity: true },
+      });
+      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+      inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+    }
+
+    const skillModel = isFileStorageMode() ? null : this.getCharacterSkillModel();
     const normalizedUpdates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }> = [];
 
     for (const update of updates) {
@@ -1174,6 +1291,9 @@ export class ArenaService implements OnModuleInit {
   }
 
   async buyItem(characterId: string, itemId: string, merchantId: string) {
+    if (isFileStorageMode()) {
+      return this.buyItemFileMode(characterId, itemId, merchantId);
+    }
     this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
@@ -1208,6 +1328,9 @@ export class ArenaService implements OnModuleInit {
   }
 
   async sellItem(characterId: string, itemId: string, quantity = 1) {
+    if (isFileStorageMode()) {
+      return this.sellItemFileMode(characterId, itemId, quantity);
+    }
     this.assertDatabaseEnabled();
     const item = this.contentService.resolveItemById(itemId);
     const safeQuantity = Math.max(1, Math.floor(quantity));
@@ -1255,6 +1378,9 @@ export class ArenaService implements OnModuleInit {
   }
 
   async equipItem(characterId: string, itemId: string, preferredSlot?: keyof Equipment) {
+    if (isFileStorageMode()) {
+      return this.equipItemFileMode(characterId, itemId, preferredSlot);
+    }
     this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const hasItem = state.inventory.items.find((entry) => entry.itemId === itemId && entry.quantity > 0);
@@ -1297,6 +1423,9 @@ export class ArenaService implements OnModuleInit {
   }
 
   async unequipItem(characterId: string, slot: keyof Equipment) {
+    if (isFileStorageMode()) {
+      return this.unequipItemFileMode(characterId, slot);
+    }
     this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const currentItem = state.equipment[slot];
@@ -1321,6 +1450,95 @@ export class ArenaService implements OnModuleInit {
 
       await this.incrementInventoryItem(tx, characterId, currentItem);
     });
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  private async buyItemFileMode(characterId: string, itemId: string, merchantId: string) {
+    const character = await this.requireRuntimeCharacter(characterId);
+    const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
+    const gold = Number((character as { gold?: unknown }).gold ?? 0) || 0;
+
+    if (gold < price) {
+      throw new BadRequestException('Недостаточно золота.');
+    }
+
+    await this.runtimeStore.updateCharacter(characterId, { gold: gold - price });
+    await this.updateRuntimeInventoryItemQuantity(characterId, itemId, 1);
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  private async sellItemFileMode(characterId: string, itemId: string, quantity = 1) {
+    await this.requireRuntimeCharacter(characterId);
+    const item = this.contentService.resolveItemById(itemId);
+    const safeQuantity = Math.max(1, Math.floor(quantity));
+    const inventoryItems = await this.readRuntimeInventoryItems(characterId);
+
+    const row = inventoryItems.find((entry) => entry.itemId === itemId);
+    if (!row || row.quantity < safeQuantity) {
+      throw new BadRequestException('Недостаточно предметов для продажи.');
+    }
+
+    const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
+    const goldGain = sellPrice * safeQuantity;
+
+    const character = await this.requireRuntimeCharacter(characterId);
+    const currentGold = Number((character as { gold?: unknown }).gold ?? 0) || 0;
+    await this.runtimeStore.updateCharacter(characterId, { gold: currentGold + goldGain });
+    await this.updateRuntimeInventoryItemQuantity(characterId, itemId, -safeQuantity);
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  private async equipItemFileMode(characterId: string, itemId: string, preferredSlot?: keyof Equipment) {
+    const character = await this.requireRuntimeCharacter(characterId);
+    const baseStats = this.toBaseStats(character);
+    const equipment = await this.readRuntimeEquipment(characterId);
+    const inventoryItems = await this.readRuntimeInventoryItems(characterId);
+    const hasItem = inventoryItems.some((entry) => entry.itemId === itemId && entry.quantity > 0);
+    if (!hasItem) {
+      throw new BadRequestException('Item is not in inventory.');
+    }
+
+    const check = this.contentService.canEquipItem(baseStats, itemId, equipment, preferredSlot);
+    if (!check.ok) {
+      throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
+    }
+
+    const nextEquipment = this.contentService.equipItem(equipment, itemId, preferredSlot);
+    const returnedItems = new Map<string, number>();
+    for (const slot of Object.keys(equipment) as Array<keyof Equipment>) {
+      const previousItemId = equipment[slot];
+      if (previousItemId && previousItemId !== nextEquipment[slot]) {
+        returnedItems.set(previousItemId, (returnedItems.get(previousItemId) ?? 0) + 1);
+      }
+    }
+
+    await this.updateRuntimeInventoryItemQuantity(characterId, itemId, -1);
+    for (const [returnedItemId, qty] of returnedItems) {
+      await this.updateRuntimeInventoryItemQuantity(characterId, returnedItemId, qty);
+    }
+    await this.writeRuntimeEquipment(characterId, nextEquipment);
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  private async unequipItemFileMode(characterId: string, slot: keyof Equipment) {
+    await this.requireRuntimeCharacter(characterId);
+    const equipment = await this.readRuntimeEquipment(characterId);
+    const currentItem = equipment[slot];
+    if (!currentItem) {
+      throw new BadRequestException('Slot is already empty.');
+    }
+
+    const nextEquipment: Equipment = {
+      ...equipment,
+      [slot]: null,
+    };
+
+    await this.writeRuntimeEquipment(characterId, nextEquipment);
+    await this.updateRuntimeInventoryItemQuantity(characterId, currentItem, 1);
 
     return this.getCharacterArenaState(characterId);
   }
