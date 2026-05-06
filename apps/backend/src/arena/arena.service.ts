@@ -77,7 +77,7 @@ export class ArenaService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
     private readonly runtimeStore: RuntimeCharacterStore,
-  ) {}
+  ) { }
 
   async onModuleInit(): Promise<void> {
     if (!isDatabaseEnabled()) {
@@ -465,7 +465,21 @@ export class ArenaService implements OnModuleInit {
   }
 
   private async ensureCharacterExists(characterId: string): Promise<void> {
-    const character = await this.prisma.character.findUnique({ where: { id: characterId }, select: { id: true } });
+    if (isFileStorageMode()) {
+      const character = await this.runtimeStore.getCharacterById(characterId);
+
+      if (!character) {
+        throw new NotFoundException('Character not found.');
+      }
+
+      return;
+    }
+
+    const character = await this.prisma.character.findUnique({
+      where: { id: characterId },
+      select: { id: true },
+    });
+
     if (!character) {
       throw new NotFoundException('Character not found.');
     }

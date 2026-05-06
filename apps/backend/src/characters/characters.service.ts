@@ -18,7 +18,7 @@ import { RuntimeCharacterStore, type RuntimeCharacterRecord } from './runtime-ch
 export class CharactersService {
   private readonly runtimeStore = new RuntimeCharacterStore();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   getRuntimeStorageHealth(): {
     runtimeStorage: 'readable-writable' | 'unavailable';
@@ -113,9 +113,11 @@ export class CharactersService {
       return this.runtimeStore.createCharacter(character);
     }
 
+    const { combatMastery: _combatMastery, ...prismaCharacterData } = data;
+
     const createData = {
       account: { connect: { id: resolvedAccountId } },
-      ...data,
+      ...prismaCharacterData,
       equipment: { create: {} },
     };
 
