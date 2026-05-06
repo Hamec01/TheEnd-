@@ -45,12 +45,14 @@ export class HealthController {
       contentStorage: 'readable-writable';
       runtimeStorage?: 'readable-writable' | 'unavailable';
       runtimeFile?: string;
+      runtimeFilePath?: string;
     };
 
     if (storageMode === 'file') {
       const runtimeHealth = this.charactersService.getRuntimeStorageHealth();
       response.runtimeStorage = runtimeHealth.runtimeStorage;
       response.runtimeFile = runtimeHealth.runtimeFile;
+      response.runtimeFilePath = runtimeHealth.runtimeFilePath;
     }
 
     return response;

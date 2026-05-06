@@ -4,6 +4,8 @@ coverage/
 .env
 .env.*
 apps/backend/prisma/dev.db
+apps/backend/data/theend_content.local.json
+apps/backend/data/theend_runtime.local.json
 apps/backend/data/*.local.json
 apps/backend/data/*runtime*.local.json
 apps/backend/data/*.tmp

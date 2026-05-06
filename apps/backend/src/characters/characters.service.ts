@@ -20,11 +20,16 @@ export class CharactersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  getRuntimeStorageHealth(): { runtimeStorage: 'readable-writable' | 'unavailable'; runtimeFile: string } {
+  getRuntimeStorageHealth(): {
+    runtimeStorage: 'readable-writable' | 'unavailable';
+    runtimeFile: string;
+    runtimeFilePath: string;
+  } {
     const health = this.runtimeStore.getStorageHealth();
     return {
       runtimeStorage: health.runtimeStorage,
       runtimeFile: this.runtimeStore.getRuntimeFileName(),
+      runtimeFilePath: this.runtimeStore.getRuntimeFilePath(),
     };
   }
 
