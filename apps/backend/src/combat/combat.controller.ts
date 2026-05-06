@@ -18,7 +18,7 @@ type UseCombatItemResponse = {
   actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>;
 };
 
-@Controller('combat')
+@Controller(['combat', 'api/combat'])
 export class CombatController {
   constructor(private readonly combatService: CombatService) {}
 

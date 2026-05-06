@@ -5,7 +5,7 @@ import { UpdateActionSlotsDto } from './dto.update-action-slots.dto';
 import { UpdateCharacterResourcesDto } from './dto.update-character-resources.dto';
 import { UpdateHotbarDto } from './dto.update-hotbar.dto';
 
-@Controller('characters/:characterId')
+@Controller(['characters/:characterId', 'api/characters/:characterId'])
 export class CharacterRuntimeController {
   constructor(private readonly arenaService: ArenaService) {}
 

@@ -8,6 +8,7 @@ import {
 import { ContentService } from '../content/content.service';
 import { isDatabaseEnabled, isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
+import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 
 type InventoryItemRow = { id: string; itemId: string; quantity: number };
 
@@ -73,6 +74,7 @@ export class ArenaService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
+    private readonly runtimeStore: RuntimeCharacterStore,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -91,6 +93,76 @@ export class ArenaService implements OnModuleInit {
     if (!isDatabaseEnabled()) {
       throw new ServiceUnavailableException('Arena endpoints require database storage. Database is disabled in local file content storage mode.');
     }
+  }
+
+  private toBaseStats(character: any): StatBlock {
+    return {
+      hp: character.hpBase || 0,
+      mp: character.mpBase || 0,
+      stamina: character.staminaBase || 0,
+      strength: character.strength || 0,
+      dexterity: character.dexterity || 0,
+      constitution: character.endurance || 0,
+      intelligence: character.intelligence || 0,
+      luck: character.luck || 0,
+      perception: character.speed || 0,
+      willpower: character.willpower || 0,
+    };
+  }
+
+  private async getCharacterArenaStateForFileMode(characterId: string) {
+    const character = await this.runtimeStore.getCharacterById(characterId);
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const baseStats = this.toBaseStats(character);
+    const emptyEquipment: Equipment = {
+      weapon: null,
+      helmet: null,
+      necklace: null,
+      armor: null,
+      outerwear: null,
+      belt: null,
+      gloves: null,
+      shield: null,
+      ring1: null,
+      ring2: null,
+      ring3: null,
+      legs: null,
+      boots: null,
+    };
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, emptyEquipment);
+    const resources = this.buildResourceState(activeStats);
+    const actionSlots = await this.getOrCreateActionSlots(characterId);
+
+    const inventory: InventoryState = {
+      gold: character.gold || 0,
+      items: [],
+    };
+
+    return {
+      character: {
+        id: character.id,
+        name: character.name,
+        race: character.race,
+        level: character.level || 0,
+        exp: character.exp || 0,
+        freePoints: character.freePoints || 0,
+        baseStats,
+        activeStats,
+        currentHp: resources.currentHp,
+        maxHp: resources.maxHp,
+        currentMp: resources.currentMp,
+        maxMp: resources.maxMp,
+        currentStamina: resources.currentStamina,
+        maxStamina: resources.maxStamina,
+        hpRegenPerTurn: resources.hpRegenPerTurn,
+      },
+      inventory,
+      equipment: emptyEquipment,
+      actionSlots,
+    };
   }
 
   private toActionSlotId(slotIndex: number): CharacterActionSlotId {
@@ -266,6 +338,14 @@ export class ArenaService implements OnModuleInit {
   }
 
   private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
+    if (isFileStorageMode()) {
+      // In file mode, read from runtime storage
+      const data = await this.runtimeStore.readArenaData(key);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return {} as TMap;
+      }
+      return data as unknown as TMap;
+    }
     const row = await this.prisma.contentStore.findUnique({ where: { key } });
     if (!row || !row.value || typeof row.value !== 'object' || Array.isArray(row.value)) {
       return {} as TMap;
@@ -274,6 +354,11 @@ export class ArenaService implements OnModuleInit {
   }
 
   private async writeMap(key: string, value: Record<string, unknown>): Promise<void> {
+    if (isFileStorageMode()) {
+      // In file mode, write to runtime storage
+      await this.runtimeStore.writeArenaData(key, value);
+      return;
+    }
     const jsonValue = value as Prisma.InputJsonValue;
     await this.prisma.contentStore.upsert({
       where: { key },
@@ -442,8 +527,13 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateHotbar(characterId: string): Promise<CharacterHotbarSlot[]> {
-    this.assertDatabaseEnabled();
-    await this.ensureCharacterExists(characterId);
+    if (!isFileStorageMode()) {
+      this.assertDatabaseEnabled();
+      await this.ensureCharacterExists(characterId);
+    } else {
+      const char = await this.runtimeStore.getCharacterById(characterId);
+      if (!char) throw new NotFoundException('Character not found.');
+    }
 
     const inventoryRows = await this.prisma.characterInventoryItem.findMany({
       where: { characterId },
@@ -473,8 +563,13 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateActionSlots(characterId: string): Promise<CharacterActionSlot[]> {
-    this.assertDatabaseEnabled();
-    await this.ensureCharacterExists(characterId);
+    if (!isFileStorageMode()) {
+      this.assertDatabaseEnabled();
+      await this.ensureCharacterExists(characterId);
+    } else {
+      const char = await this.runtimeStore.getCharacterById(characterId);
+      if (!char) throw new NotFoundException('Character not found.');
+    }
 
     const current = await this.readCharacterActionSlots(characterId);
     const hasSavedEntries = current.some((slot) => slot.kind && slot.refId);
@@ -507,7 +602,6 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateActionBar(characterId: string): Promise<CharacterActionBarSlot[]> {
-    this.assertDatabaseEnabled();
     const slots = await this.getOrCreateActionSlots(characterId);
     await this.warnAboutActionBarEntries(characterId, slots);
     const actionBar = slots.map((slot) => this.toActionBarSlot(slot));
@@ -519,8 +613,13 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterHotbarSlot[]> {
-    this.assertDatabaseEnabled();
-    await this.ensureCharacterExists(characterId);
+    if (!isFileStorageMode()) {
+      this.assertDatabaseEnabled();
+      await this.ensureCharacterExists(characterId);
+    } else {
+      const char = await this.runtimeStore.getCharacterById(characterId);
+      if (!char) throw new NotFoundException('Character not found.');
+    }
 
     const current = await this.getOrCreateHotbar(characterId);
     const inventoryRows = await this.prisma.characterInventoryItem.findMany({
@@ -968,33 +1067,11 @@ export class ArenaService implements OnModuleInit {
     });
   }
 
-  private toBaseStats(character: {
-    hpBase: number;
-    mpBase: number;
-    staminaBase: number;
-    strength: number;
-    endurance: number;
-    dexterity: number;
-    intelligence: number;
-    luck: number;
-    speed: number;
-    willpower: number;
-  }): StatBlock {
-    return {
-      hp: character.hpBase,
-      mp: character.mpBase,
-      stamina: character.staminaBase,
-      strength: character.strength,
-      dexterity: character.dexterity,
-      constitution: character.endurance,
-      luck: character.luck,
-      intelligence: character.intelligence,
-      perception: character.speed,
-      willpower: character.willpower,
-    };
-  }
-
   private async getCharacterArenaState(characterId: string) {
+    if (isFileStorageMode()) {
+      return this.getCharacterArenaStateForFileMode(characterId);
+    }
+
     const character = await this.prisma.character.findUnique({
       where: { id: characterId },
       include: {
@@ -1058,7 +1135,6 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getHubState(characterId: string) {
-    this.assertDatabaseEnabled();
     return this.getCharacterArenaState(characterId);
   }
 

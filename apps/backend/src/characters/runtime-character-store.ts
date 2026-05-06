@@ -24,6 +24,7 @@ interface RuntimeDataFile {
   runtime: {
     accounts: RuntimeAccountRecord[];
     characters: RuntimeCharacterRecord[];
+    arenaData?: Record<string, unknown>;
   };
 }
 
@@ -217,6 +218,21 @@ export class RuntimeCharacterStore {
     return true;
   }
 
+  async readArenaData(key: string): Promise<unknown> {
+    const runtime = this.readRuntime();
+    const arenaData = runtime.runtime.arenaData ?? {};
+    return arenaData[key];
+  }
+
+  async writeArenaData(key: string, value: unknown): Promise<void> {
+    const runtime = this.readRuntime();
+    if (!runtime.runtime.arenaData) {
+      runtime.runtime.arenaData = {};
+    }
+    runtime.runtime.arenaData[key] = value;
+    this.writeRuntime(runtime);
+  }
+
   private ensureRuntimeFile(): void {
     const dirPath = dirname(this.runtimeFilePath);
     mkdirSync(dirPath, { recursive: true });
@@ -238,6 +254,7 @@ export class RuntimeCharacterStore {
       runtime: {
         accounts: [],
         characters: [],
+        arenaData: {},
       },
     };
   }
@@ -248,12 +265,14 @@ export class RuntimeCharacterStore {
       const parsed = JSON.parse(raw) as Partial<RuntimeDataFile>;
       const accounts = Array.isArray(parsed.runtime?.accounts) ? parsed.runtime.accounts : [];
       const characters = Array.isArray(parsed.runtime?.characters) ? parsed.runtime.characters : [];
+      const arenaData = typeof parsed.runtime?.arenaData === 'object' ? parsed.runtime.arenaData : {};
 
       return {
         schemaVersion: Number(parsed.schemaVersion ?? RUNTIME_SCHEMA_VERSION),
         runtime: {
           accounts,
           characters,
+          arenaData,
         },
       };
     } catch {

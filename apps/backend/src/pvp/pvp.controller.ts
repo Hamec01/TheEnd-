@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { PvpService } from './pvp.service';
 
-@Controller('pvp')
+@Controller(['pvp', 'api/pvp'])
 export class PvpController {
   constructor(private readonly pvpService: PvpService) {}
 

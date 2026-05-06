@@ -5,7 +5,7 @@ import { SellItemDto } from './dto.sell-item.dto';
 import { UnequipItemDto } from './dto.unequip-item.dto';
 import { ArenaService } from './arena.service';
 
-@Controller('arena')
+@Controller(['arena', 'api/arena'])
 export class ArenaController {
   constructor(private readonly arenaService: ArenaService) {}
 

@@ -3,7 +3,7 @@ import { SkillLearningService } from './skill-learning.service';
 import { LearnSkillDto } from './dto/learn-skill.dto';
 import { UpdateLoadoutDto } from './dto/update-loadout.dto';
 
-@Controller('characters/:characterId')
+@Controller(['characters/:characterId', 'api/characters/:characterId'])
 export class CharacterSkillsController {
   constructor(private readonly skillLearning: SkillLearningService) {}
 

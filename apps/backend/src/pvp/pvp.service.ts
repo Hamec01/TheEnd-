@@ -1,12 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Race, StatBlock, Equipment } from '@theend/rpg-domain';
+import { isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
+import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 
 @Injectable()
 export class PvpService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly runtimeStore: RuntimeCharacterStore,
+  ) {}
 
   async listNearbyPlayers(characterId: string) {
+    // In file mode, only one character exists, so no other characters to challenge
+    if (isFileStorageMode()) {
+      return [];
+    }
+
     const players = await this.prisma.character.findMany({
       where: { id: { not: characterId } },
       orderBy: { createdAt: 'desc' },
@@ -33,6 +43,17 @@ export class PvpService {
     }
     if (challengerId === targetId) {
       throw new BadRequestException('Cannot challenge self.');
+    }
+
+    if (isFileStorageMode()) {
+      // In file mode, verify challenger exists
+      const challenger = await this.runtimeStore.getCharacterById(challengerId);
+      if (!challenger) {
+        throw new NotFoundException('Challenger character not found.');
+      }
+
+      // In file mode, cannot challenge another character (only self exists)
+      throw new NotFoundException('Target character not found.');
     }
 
     const challenger = await this.prisma.character.findUnique({
