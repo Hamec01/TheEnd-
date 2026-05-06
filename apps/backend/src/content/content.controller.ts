@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
-import type { ContentDatabase, WorldMapContent } from './content.types';
+import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
 
-@Controller('content')
+@Controller(['content', 'api/content'])
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
 
@@ -13,15 +13,19 @@ export class ContentController {
   }
 
   @Get('export')
-  async exportContent(): Promise<ContentDatabase> {
+  async exportContent(): Promise<ContentBackupEnvelope> {
     await this.contentService.ensureInitialized();
     return this.contentService.exportFullContent();
   }
 
   @Post('import')
-  async importContent(@Body() payload?: Partial<ContentDatabase>): Promise<ContentDatabase> {
+  async importContent(@Body() payload?: unknown): Promise<ContentImportResult> {
     await this.contentService.ensureInitialized();
-    return this.contentService.importFullContent(payload ?? {});
+    const rawMode = payload && typeof payload === 'object' && !Array.isArray(payload) && 'mode' in payload
+      ? ((payload as { mode?: ContentImportMode }).mode ?? 'replace')
+      : 'replace';
+    const mode: ContentImportMode = rawMode === 'merge' || rawMode === 'dryRun' ? rawMode : 'replace';
+    return this.contentService.importFullContent(payload ?? {}, mode);
   }
 
   @Post('import-local')

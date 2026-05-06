@@ -9,14 +9,36 @@ import {
   validateAllocation,
 } from '@theend/rpg-domain';
 import { PrismaService } from '../prisma/prisma.service';
+import { isFileStorageMode } from '../config/storage-mode';
 import { CreateCharacterDto, normalizeAllocation } from './dto.create-character.dto';
 import { AllocateStatsDto } from './dto.allocate-stats.dto';
+import { RuntimeCharacterStore, type RuntimeCharacterRecord } from './runtime-character-store';
 
 @Injectable()
 export class CharactersService {
+  private readonly runtimeStore = new RuntimeCharacterStore();
+
   constructor(private readonly prisma: PrismaService) {}
 
+  getRuntimeStorageHealth(): { runtimeStorage: 'readable-writable' | 'unavailable'; runtimeFile: string } {
+    const health = this.runtimeStore.getStorageHealth();
+    return {
+      runtimeStorage: health.runtimeStorage,
+      runtimeFile: this.runtimeStore.getRuntimeFileName(),
+    };
+  }
+
+  private isFileMode(): boolean {
+    return isFileStorageMode();
+  }
+
   private async resolveAccountId(accountId?: string): Promise<string> {
+    if (this.isFileMode()) {
+      const normalized = String(accountId ?? '').trim() || `guest_${randomUUID()}`;
+      await this.runtimeStore.upsertAccount(normalized);
+      return normalized;
+    }
+
     if (accountId) {
       const account = await this.prisma.account.findUnique({ where: { id: accountId } });
       if (!account) {
@@ -55,7 +77,6 @@ export class CharactersService {
     const spent = getAllocationCost(allocation);
 
     const data = {
-      account: { connect: { id: resolvedAccountId } },
       name: dto.name,
       race: dto.race,
       level: 0,
@@ -72,20 +93,55 @@ export class CharactersService {
       luck: finalStats.luck,
       speed: finalStats.perception,
       willpower: finalStats.willpower,
+      combatMastery: 0,
+    };
+
+    if (this.isFileMode()) {
+      const now = new Date().toISOString();
+      const character: RuntimeCharacterRecord = {
+        id: randomUUID(),
+        accountId: resolvedAccountId,
+        ...data,
+        createdAt: now,
+        updatedAt: now,
+      };
+      return this.runtimeStore.createCharacter(character);
+    }
+
+    const createData = {
+      account: { connect: { id: resolvedAccountId } },
+      ...data,
       equipment: { create: {} },
     };
 
-    return this.prisma.character.create({ data });
+    return this.prisma.character.create({ data: createData });
   }
 
-  async listForAccount(accountId: string) {
+  async listForAccount(accountId?: string) {
+    if (this.isFileMode()) {
+      return this.runtimeStore.listCharacters(accountId);
+    }
+
+    const normalizedAccountId = String(accountId ?? '').trim();
+    if (!normalizedAccountId) {
+      return [];
+    }
+
     return this.prisma.character.findMany({
-      where: { accountId },
+      where: { accountId: normalizedAccountId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getById(id: string) {
+    if (this.isFileMode()) {
+      const character = await this.runtimeStore.getCharacterById(id);
+      if (!character) {
+        throw new NotFoundException('Character not found.');
+      }
+      return character;
+    }
+
     const character = await this.prisma.character.findUnique({ where: { id } });
     if (!character) {
       throw new NotFoundException('Character not found.');
@@ -94,7 +150,7 @@ export class CharactersService {
   }
 
   async allocateStats(id: string, dto: AllocateStatsDto) {
-    const character = await this.prisma.character.findUnique({ where: { id } });
+    const character = await this.getById(id);
     if (!character) {
       throw new NotFoundException('Character not found.');
     }
@@ -145,6 +201,17 @@ export class CharactersService {
       }
     }
 
+    if (this.isFileMode()) {
+      const updated = await this.runtimeStore.updateCharacter(id, {
+        ...updateData,
+        freePoints: character.freePoints - spent,
+      });
+      if (!updated) {
+        throw new NotFoundException('Character not found.');
+      }
+      return updated;
+    }
+
     return this.prisma.character.update({
       where: { id },
       data: {
@@ -152,5 +219,46 @@ export class CharactersService {
         freePoints: character.freePoints - spent,
       },
     });
+  }
+
+  async updateCharacter(id: string, payload: Record<string, unknown>) {
+    if (this.isFileMode()) {
+      const updated = await this.runtimeStore.updateCharacter(id, payload);
+      if (!updated) {
+        throw new NotFoundException('Character not found.');
+      }
+      return updated;
+    }
+
+    const updates: {
+      name?: string;
+      race?: string;
+    } = {};
+
+    if (typeof payload.name === 'string' && payload.name.trim().length >= 3) {
+      updates.name = payload.name.trim();
+    }
+    if (typeof payload.race === 'string' && payload.race.trim().length > 0) {
+      updates.race = payload.race.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return this.getById(id);
+    }
+
+    return this.prisma.character.update({
+      where: { id },
+      data: updates,
+    });
+  }
+
+  async deleteCharacter(id: string): Promise<{ ok: boolean; id: string }> {
+    if (this.isFileMode()) {
+      const deleted = await this.runtimeStore.deleteCharacter(id);
+      return { ok: deleted, id };
+    }
+
+    await this.prisma.character.delete({ where: { id } });
+    return { ok: true, id };
   }
 }

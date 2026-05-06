@@ -41,10 +41,9 @@ export function readCollection<T>(name: keyof DbShape): T[] {
 }
 
 export function writeCollection<T>(name: keyof DbShape, values: T[]): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(key(name), JSON.stringify(values));
+  void name;
+  void values;
+  throw new Error('Admin content must be saved through the backend content API, not browser localStorage.');
 }
 
 export function resetContentStorage(): void {

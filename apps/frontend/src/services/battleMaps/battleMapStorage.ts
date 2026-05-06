@@ -10,7 +10,6 @@ import type {
 } from '@theend/rpg-domain';
 import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from '../content/contentApi';
 
-const BATTLE_MAPS_STORAGE_KEY = 'theend.battleMaps';
 export const DEFAULT_BATTLE_MAP_ID = 'battlemap_arklein_arena_test';
 let battleMapsCache: BattleMapDefinition[] | null = null;
 
@@ -453,38 +452,12 @@ export function loadBattleMaps(): BattleMapDefinition[] {
     return battleMapsCache;
   }
 
-  if (typeof window === 'undefined') {
-    battleMapsCache = [createDefaultBattleMap()];
-    return battleMapsCache;
-  }
-  const raw = window.localStorage.getItem(BATTLE_MAPS_STORAGE_KEY);
-  if (!raw) {
-    const defaults = [createDefaultBattleMap()];
-    battleMapsCache = defaults;
-    return defaults;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<BattleMapDefinition>[];
-    const normalized = Array.isArray(parsed) ? parsed.map((map) => normalizeBattleMap(map)) : [createDefaultBattleMap()];
-    if (!normalized.some((map) => map.id === DEFAULT_BATTLE_MAP_ID)) {
-      normalized.unshift(createDefaultBattleMap());
-    }
-    battleMapsCache = normalized;
-    return normalized;
-  } catch {
-    const defaults = [createDefaultBattleMap()];
-    battleMapsCache = defaults;
-    return defaults;
-  }
+  battleMapsCache = [createDefaultBattleMap()];
+  return battleMapsCache;
 }
 
 export function saveBattleMaps(maps: BattleMapDefinition[]): void {
   battleMapsCache = maps.map((map) => normalizeBattleMap(map));
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(BATTLE_MAPS_STORAGE_KEY, JSON.stringify(battleMapsCache));
 }
 
 export async function loadBattleMapsFromStore(): Promise<BattleMapDefinition[]> {

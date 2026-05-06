@@ -13,7 +13,7 @@ import type {
   TeamSide,
 } from '@theend/rpg-domain';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
 export const MAX_COMBAT_ENEMIES = 10;
 
 // Type aliases for battle UI components

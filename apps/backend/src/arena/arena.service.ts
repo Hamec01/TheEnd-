@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
   type Equipment,
@@ -6,6 +6,7 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import { ContentService } from '../content/content.service';
+import { isDatabaseEnabled, isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
 
 type InventoryItemRow = { id: string; itemId: string; quantity: number };
@@ -67,14 +68,29 @@ const HOTBAR_SLOT_COUNT = 10;
 
 @Injectable()
 export class ArenaService implements OnModuleInit {
+  private readonly logger = new Logger(ArenaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (!isDatabaseEnabled()) {
+      if (isFileStorageMode()) {
+        this.logger.log('Local file mode active: skipping Prisma database initialization.');
+      }
+      return;
+    }
+
     await this.ensureEquipmentSchema();
     await this.sanitizeAllCharactersInventoryAndEquipment();
+  }
+
+  private assertDatabaseEnabled(): void {
+    if (!isDatabaseEnabled()) {
+      throw new ServiceUnavailableException('Arena endpoints require database storage. Database is disabled in local file content storage mode.');
+    }
   }
 
   private toActionSlotId(slotIndex: number): CharacterActionSlotId {
@@ -426,6 +442,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateHotbar(characterId: string): Promise<CharacterHotbarSlot[]> {
+    this.assertDatabaseEnabled();
     await this.ensureCharacterExists(characterId);
 
     const inventoryRows = await this.prisma.characterInventoryItem.findMany({
@@ -456,6 +473,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateActionSlots(characterId: string): Promise<CharacterActionSlot[]> {
+    this.assertDatabaseEnabled();
     await this.ensureCharacterExists(characterId);
 
     const current = await this.readCharacterActionSlots(characterId);
@@ -489,6 +507,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getOrCreateActionBar(characterId: string): Promise<CharacterActionBarSlot[]> {
+    this.assertDatabaseEnabled();
     const slots = await this.getOrCreateActionSlots(characterId);
     await this.warnAboutActionBarEntries(characterId, slots);
     const actionBar = slots.map((slot) => this.toActionBarSlot(slot));
@@ -500,6 +519,7 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterHotbarSlot[]> {
+    this.assertDatabaseEnabled();
     await this.ensureCharacterExists(characterId);
 
     const current = await this.getOrCreateHotbar(characterId);
@@ -542,6 +562,7 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterActionSlot[]> {
+    this.assertDatabaseEnabled();
     await this.ensureCharacterExists(characterId);
 
     const current = await this.getOrCreateActionSlots(characterId);
@@ -595,6 +616,7 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Array<{ slotId?: string | null; order?: number; entryKind?: CharacterActionBarEntryKind; skillId?: string | null; itemId?: string | null; itemInstanceId?: string | null }>,
   ): Promise<CharacterActionBarSlot[]> {
+    this.assertDatabaseEnabled();
     await this.ensureCharacterExists(characterId);
 
     const inventoryRows = await this.prisma.characterInventoryItem.findMany({
@@ -690,6 +712,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getCharacterResources(characterId: string): Promise<CharacterResourceState> {
+    this.assertDatabaseEnabled();
     const character = await this.prisma.character.findUnique({
       where: { id: characterId },
       include: { equipment: true },
@@ -718,6 +741,7 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Partial<Pick<CharacterResourceState, 'currentHp' | 'currentMp' | 'currentStamina' | 'hpRegenPerTurn'>>,
   ): Promise<CharacterResourceState> {
+    this.assertDatabaseEnabled();
     const current = await this.getCharacterResources(characterId);
     const next: CharacterResourceState = {
       ...current,
@@ -1034,10 +1058,12 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getHubState(characterId: string) {
+    this.assertDatabaseEnabled();
     return this.getCharacterArenaState(characterId);
   }
 
   async buyItem(characterId: string, itemId: string, merchantId: string) {
+    this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
 
@@ -1071,6 +1097,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async sellItem(characterId: string, itemId: string, quantity = 1) {
+    this.assertDatabaseEnabled();
     const item = this.contentService.resolveItemById(itemId);
     const safeQuantity = Math.max(1, Math.floor(quantity));
     const state = await this.getCharacterArenaState(characterId);
@@ -1117,6 +1144,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async equipItem(characterId: string, itemId: string, preferredSlot?: keyof Equipment) {
+    this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const hasItem = state.inventory.items.find((entry) => entry.itemId === itemId && entry.quantity > 0);
     if (!hasItem) {
@@ -1158,6 +1186,7 @@ export class ArenaService implements OnModuleInit {
   }
 
   async unequipItem(characterId: string, slot: keyof Equipment) {
+    this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
     const currentItem = state.equipment[slot];
     if (!currentItem) {

@@ -1,9 +1,9 @@
 import { getWorldMapContent } from './content/contentApi';
-import { DEV_ZONE_STORAGE_KEY, validateEditorDataJson } from '../worldmap/zoneEditorStorage';
+import { validateEditorDataJson } from '../worldmap/zoneEditorStorage';
 import { WORLD_MAP_ZONES } from '../worldmap/worldMapNodes';
 import type { ZoneType, WorldMapZone } from '../worldmap/zoneEditorTypes';
 
-const WORLD_ZONES_CACHE_KEY = 'theend.worldMap.zones.cache';
+let zonesCache: WorldMapZone[] | null = null;
 
 function cloneZone(zone: WorldMapZone): WorldMapZone {
   return {
@@ -52,55 +52,14 @@ function getFallbackZones(): WorldMapZone[] {
   return cloneZones(WORLD_MAP_ZONES);
 }
 
-function readCachedZones(): WorldMapZone[] | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(WORLD_ZONES_CACHE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
-    return normalizeZones(parsed.filter(Boolean) as WorldMapZone[]);
-  } catch {
-    return null;
-  }
-}
-
-function readLegacyEditorZones(): WorldMapZone[] | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(DEV_ZONE_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  const result = validateEditorDataJson(raw);
-  if (!result.valid) {
-    return null;
-  }
-
-  return normalizeZones(result.zones);
-}
-
 function writeCachedZones(zones: WorldMapZone[]): WorldMapZone[] {
   const normalized = normalizeZones(zones);
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(WORLD_ZONES_CACHE_KEY, JSON.stringify(normalized));
-  }
+  zonesCache = normalized;
   return normalized;
 }
 
 export function getAllZones(): WorldMapZone[] {
-  return cloneZones(readCachedZones() ?? readLegacyEditorZones() ?? getFallbackZones());
+  return cloneZones(zonesCache ?? getFallbackZones());
 }
 
 export function getZoneById(id: string | undefined | null): WorldMapZone | null {

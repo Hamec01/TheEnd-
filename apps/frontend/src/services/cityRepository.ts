@@ -1,7 +1,6 @@
 import type { City, CityLocation } from '../types/city';
 import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from './content/contentApi';
 
-const CITY_STORAGE_KEY = 'theend.admin.cities.v1';
 const LEGACY_ARKLEIN_IDS = new Set(['argos_arklein', 'arklein', 'arclein', 'arkea', 'аркея', 'аркейн', 'арклейн']);
 
 function nowIso(): string {
@@ -182,35 +181,6 @@ function seedCities(): City[] {
   ];
 }
 
-function readRawCities(): City[] | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(CITY_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as City[] : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCities(cities: City[]): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(CITY_STORAGE_KEY, JSON.stringify(cities));
-}
-
-function clearLegacyCities(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.removeItem(CITY_STORAGE_KEY);
-}
-
 function normalizeCityId(id: string): string {
   const normalized = id.trim().toLowerCase().replace(/ё/g, 'е');
   return LEGACY_ARKLEIN_IDS.has(normalized) ? 'city_arklein' : id.trim();
@@ -244,13 +214,11 @@ async function hydrateBackendCities(): Promise<City[]> {
     return existing;
   }
 
-  const legacy = readRawCities();
-  const initialCities = (legacy && legacy.length > 0 ? legacy : seedCities()).map(normalizeCity);
+  const initialCities = seedCities().map(normalizeCity);
   const persisted: City[] = [];
   for (const city of initialCities) {
     persisted.push(await createContentEntry<City>('cities', city));
   }
-  clearLegacyCities();
   return persisted.map(normalizeCity);
 }
 

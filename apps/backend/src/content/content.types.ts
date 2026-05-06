@@ -613,6 +613,37 @@ export interface ContentDatabase {
   worldMap: WorldMapContent;
 }
 
+export type ContentImportMode = 'replace' | 'merge' | 'dryRun';
+
+export interface ContentBackupMetadata {
+  schemaVersion: number;
+  game: 'TheEnd';
+  exportedAt: string;
+  exportedBy: 'admin';
+  appEnv?: string;
+  gitCommit?: string;
+  contentCounts: Record<string, number>;
+}
+
+export interface ContentBackupEnvelope {
+  schemaVersion: number;
+  game: 'TheEnd';
+  exportedAt: string;
+  exportedBy: 'admin';
+  appEnv?: string;
+  gitCommit?: string;
+  contentCounts: Record<string, number>;
+  content: ContentDatabase;
+}
+
+export interface ContentImportResult {
+  mode: ContentImportMode;
+  dryRun: boolean;
+  snapshot: ContentDatabase;
+  warnings: string[];
+  errors: string[];
+}
+
 export type ContentCollectionName =
   | 'items'
   | 'skills'

@@ -5,6 +5,7 @@ import { createDefaultEditorSettings } from './zoneEditorTypes';
 
 export const DEV_ZONE_STORAGE_KEY = 'theend.worldMap.zones.dev';
 export const EDITOR_SETTINGS_STORAGE_KEY = 'theend.worldMap.editor.settings';
+let editorDataDraft: EditorDataPayload | null = null;
 
 const ZONE_TYPES: ZoneType[] = [
   'city',
@@ -411,33 +412,15 @@ export function exportEditorDataJson(zones: WorldMapZone[], regions: PaintedRegi
 }
 
 export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorDataPayload {
-  const raw = window.localStorage.getItem(DEV_ZONE_STORAGE_KEY);
-  if (!raw) {
-    return {
-      zones: initialZones,
-      regions: [],
-      questMarkers: [],
-    };
-  }
-
-  const result = validateEditorDataJson(raw);
-  if (!result.valid) {
-    return {
-      zones: initialZones,
-      regions: [],
-      questMarkers: [],
-    };
-  }
-
-  return {
-    zones: result.zones,
-    regions: result.regions,
-    questMarkers: result.questMarkers,
+  return editorDataDraft ?? {
+    zones: initialZones,
+    regions: [],
+    questMarkers: [],
   };
 }
 
 export function saveEditorDataToStorage(zones: WorldMapZone[], regions: PaintedRegion[], questMarkers: QuestMarkerDefinition[] = []): void {
-  window.localStorage.setItem(DEV_ZONE_STORAGE_KEY, exportEditorDataJson(zones, regions, questMarkers));
+  editorDataDraft = { zones, regions, questMarkers };
 }
 
 export function loadZonesFromStorage(initialZones: WorldMapZone[]): WorldMapZone[] {
@@ -449,7 +432,7 @@ export function saveZonesToStorage(zones: WorldMapZone[]): void {
 }
 
 export function clearZoneStorage(): void {
-  window.localStorage.removeItem(DEV_ZONE_STORAGE_KEY);
+  editorDataDraft = null;
 }
 
 export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): Promise<EditorDataPayload> {

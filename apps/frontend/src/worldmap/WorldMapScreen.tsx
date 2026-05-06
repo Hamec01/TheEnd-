@@ -2215,8 +2215,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }, [onStatus, selectedNpcForInteraction]);
 
+  const activeDialogue = dialogueRunner.state.dialogueId;
+  const activeDialogueNode = dialogueRunner.state.nodeId;
+  const setDialogueLogs = useCallback((updater: (prev: string[]) => string[]) => {
+    void updater;
+  }, []);
+
   const handleSelectDialogueChoice = useCallback(
     (choiceId: string) => {
+      try {
       const dialogueNpcId =
         dialogueRunner.state.isOpen ? (dialogueRunner.state.context.npcId ?? null) : null;
       const result = dialogueRunner.selectChoice(choiceId);
@@ -2415,7 +2422,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       ));
       const primaryModalIntent = modalIntents[0];
       if (primaryModalIntent?.type === 'OPEN_SHOP') {
-        onOpenMerchant(primaryModalIntent.merchantId);
+        onOpenMerchant(primaryModalIntent.merchantId ?? '');
       } else if (primaryModalIntent?.type === 'START_COMBAT') {
         void onStartCombat();
       } else if (primaryModalIntent?.type === 'OPEN_TRAINING') {

@@ -15,17 +15,21 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import type { Prisma } from '@prisma/client';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
+import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   AdminItem,
   AdminMerchant,
   City,
   CityLocation,
+  ContentBackupEnvelope,
   ContentCollectionMap,
   ContentCollectionName,
   ContentDatabase,
+  ContentImportMode,
+  ContentImportResult,
   DialogueDefinition,
   ItemRarity,
   Material,
@@ -62,8 +66,7 @@ const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
 const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 const CONTENT_STORE_KEY = 'main-content-db';
-
-type ContentStorageMode = 'database' | 'file';
+const CONTENT_BACKUP_SCHEMA_VERSION = 2;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -76,6 +79,38 @@ function isTruthyEnv(value: string | undefined): boolean {
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function countContent(db: ContentDatabase): Record<string, number> {
+  return {
+    items: db.items.length,
+    skills: db.skills.length,
+    merchants: db.merchants.length,
+    cities: db.cities.length,
+    materials: db.materials.length,
+    lootTables: db.lootTables.length,
+    images: db.images.length,
+    dialogues: db.dialogues.length,
+    npcs: db.npcs.length,
+    quests: db.quests.length,
+    questInteractions: db.questInteractions.length,
+    questItems: db.questItems.length,
+    questMarkers: db.questMarkers.length,
+    battleMaps: db.battleMaps.length,
+    maps: db.battleMaps.length,
+    zones: db.worldMap.zones.length,
+    markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
+    regions: db.worldMap.regions.length,
+  };
+}
+
+function resolveGitCommit(): string | undefined {
+  return String(
+    process.env.GIT_COMMIT
+      ?? process.env.VERCEL_GIT_COMMIT_SHA
+      ?? process.env.RENDER_GIT_COMMIT
+      ?? '',
+  ).trim() || undefined;
 }
 
 function normalizePositiveMultiplier(value: number | undefined, fallback = 1): number {
@@ -1051,7 +1086,30 @@ function hasMojibakeQuestionMarks(value: string | undefined): boolean {
   return /\?{3,}/.test(value);
 }
 
-function resolveContentDbFilePath(): string {
+function resolveContentDataDir(): string {
+  const configured = String(process.env.CONTENT_DATA_DIR ?? '').trim();
+  if (!configured) {
+    return join(process.cwd(), 'data');
+  }
+
+  return isAbsolute(configured) ? configured : join(process.cwd(), configured);
+}
+
+function resolveContentDataFilePath(): string {
+  const configuredLegacyPath = String(process.env.CONTENT_DB_PATH ?? '').trim();
+  if (configuredLegacyPath) {
+    return isAbsolute(configuredLegacyPath) ? configuredLegacyPath : join(process.cwd(), configuredLegacyPath);
+  }
+
+  const configuredFile = String(process.env.CONTENT_DATA_FILE ?? 'theend_content.local.json').trim() || 'theend_content.local.json';
+  return join(resolveContentDataDir(), configuredFile);
+}
+
+function resolveContentExampleFilePath(): string {
+  return join(resolveContentDataDir(), 'theend_content.example.json');
+}
+
+function resolveLegacyContentTemplatePath(): string {
   const configured = String(process.env.CONTENT_DB_PATH ?? '').trim();
   if (!configured) {
     return join(process.cwd(), 'data', 'content-db.json');
@@ -1064,19 +1122,53 @@ function resolveContentDbFilePath(): string {
   return join(process.cwd(), configured);
 }
 
+function resolveStorageMode(): ContentStorageMode {
+  return getContentStorageMode();
+}
+
+function toSafeBackupStamp(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
+function contentFromMaybeEnvelope(raw: unknown): Partial<ContentDatabase> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'content' in raw) {
+    const content = (raw as { content?: unknown }).content;
+    if (content && typeof content === 'object' && !Array.isArray(content)) {
+      return content as Partial<ContentDatabase>;
+    }
+  }
+
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Partial<ContentDatabase> : {};
+}
+
+function extractExtraContent(raw: unknown): Record<string, unknown> {
+  const content = contentFromMaybeEnvelope(raw);
+  const known = new Set<string>(['version', 'worldMap', ...CONTENT_COLLECTIONS]);
+  const extras: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(content as Record<string, unknown>)) {
+    if (!known.has(key)) {
+      extras[key] = value === undefined ? null : clone(value);
+    }
+  }
+
+  return extras;
+}
+
 @Injectable()
 export class ContentService implements OnModuleInit {
   private readonly logger = new Logger(ContentService.name);
-  private readonly templateFile = resolveContentDbFilePath();
-  private readonly dataDir = dirname(this.templateFile);
-  private readonly legacyTemplateFile = join(this.dataDir, 'content-template.json');
-  private readonly runtimeFile = join(this.dataDir, 'content-runtime.json');
+  private readonly runtimeFile = resolveContentDataFilePath();
+  private readonly dataDir = dirname(this.runtimeFile);
+  private readonly templateFile = resolveContentExampleFilePath();
+  private readonly legacyTemplateFile = resolveLegacyContentTemplatePath();
   private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
-  private readonly storageMode: ContentStorageMode = String(process.env.CONTENT_STORAGE ?? '').trim().toLowerCase() === 'file'
-    ? 'file'
-    : 'database';
+  private readonly storageMode: ContentStorageMode = resolveStorageMode();
   private dbCache: ContentDatabase | null = null;
   private initPromise: Promise<void> | null = null;
+  private extraContent: Record<string, unknown> = {};
+  private writeQueue: Promise<ContentDatabase> = Promise.resolve(createEmptyDatabase());
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -1097,6 +1189,10 @@ export class ContentService implements OnModuleInit {
 
   getStorageMode(): ContentStorageMode {
     return this.storageMode;
+  }
+
+  getContentFileName(): string | undefined {
+    return this.storageMode === 'file' ? this.runtimeFile.split(/[\\/]/).pop() : undefined;
   }
 
   assertContentImportAllowed(): void {
@@ -1145,7 +1241,7 @@ export class ContentService implements OnModuleInit {
         ? (store.value as Partial<ContentDatabase>)
         : {};
       this.dbCache = this.normalizeDatabase(raw);
-      this.logger.log('Content storage initialized from database.');
+    this.logger.log('Content storage initialized from postgres.');
       return;
     }
 
@@ -1166,8 +1262,9 @@ export class ContentService implements OnModuleInit {
     }
 
     try {
-      const raw = JSON.parse(readFileSync(this.runtimeFile, 'utf8')) as Partial<ContentDatabase>;
-      return this.normalizeDatabase(raw);
+      const raw = JSON.parse(readFileSync(this.runtimeFile, 'utf8')) as unknown;
+      this.extraContent = extractExtraContent(raw);
+      return this.normalizeDatabase(contentFromMaybeEnvelope(raw));
     } catch {
       const fallback = this.loadTemplateDatabase() ?? createEmptyDatabase();
       this.persistToFile(fallback);
@@ -1237,32 +1334,20 @@ export class ContentService implements OnModuleInit {
     }
 
     const itemIds = new Set(db.items.map((item) => item.id));
-    const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
 
     for (const item of db.items) {
-      if (item.imagePath && !imageIds.has(item.imagePath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(item.imagePath)) {
-        errors.push(`Item '${item.id}' references missing image '${item.imagePath}'.`);
-      }
-
       if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
         errors.push(`Item '${item.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const skill of db.skills) {
-      if (skill.iconUrl && !skill.iconUrl.startsWith('/') && !skill.iconUrl.startsWith('http') && !imageIds.has(skill.iconUrl)) {
-        errors.push(`Skill '${skill.id}' references missing image '${skill.iconUrl}'.`);
-      }
       for (const validationError of validateSkillDefinition(skill)) {
         errors.push(`Skill '${skill.id}': ${validationError}`);
       }
     }
 
     for (const merchant of db.merchants) {
-      if (merchant.portraitPath && !imageIds.has(merchant.portraitPath) && !BUILTIN_PLACEHOLDER_IMAGE_IDS.has(merchant.portraitPath)) {
-        errors.push(`Merchant '${merchant.id}' references missing portrait image '${merchant.portraitPath}'.`);
-      }
-
       if (hasMojibakeQuestionMarks(merchant.name) || hasMojibakeQuestionMarks(merchant.city) || hasMojibakeQuestionMarks(merchant.location) || hasMojibakeQuestionMarks(merchant.description)) {
         errors.push(`Merchant '${merchant.id}' contains suspicious mojibake text ('???').`);
       }
@@ -1316,12 +1401,12 @@ export class ContentService implements OnModuleInit {
       mkdirSync(this.backupDir, { recursive: true });
     }
 
-    const timestamp = nowIso().replace(/[:.]/g, '-');
-    const backupFile = join(this.backupDir, `content-db-${timestamp}.json`);
+    const timestamp = toSafeBackupStamp();
+    const backupFile = join(this.backupDir, `theend_content_${timestamp}.json`);
     copyFileSync(this.runtimeFile, backupFile);
 
     const backups = readdirSync(this.backupDir)
-      .filter((file) => file.startsWith('content-db-') && file.endsWith('.json'))
+      .filter((file) => file.startsWith('theend_content_') && file.endsWith('.json'))
       .sort();
 
     const toDelete = backups.slice(0, Math.max(0, backups.length - CONTENT_DB_MAX_BACKUPS));
@@ -1368,14 +1453,15 @@ export class ContentService implements OnModuleInit {
   }
 
   private loadTemplateDatabase(): ContentDatabase | null {
-    for (const filePath of [this.templateFile, this.legacyTemplateFile]) {
+    for (const filePath of [this.templateFile, this.legacyTemplateFile, join(this.dataDir, 'content-template.json')]) {
       if (!existsSync(filePath)) {
         continue;
       }
 
       try {
-        const raw = JSON.parse(readFileSync(filePath, 'utf8')) as Partial<ContentDatabase>;
-        return this.normalizeDatabase(raw);
+        const raw = JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
+        this.extraContent = extractExtraContent(raw);
+        return this.normalizeDatabase(contentFromMaybeEnvelope(raw));
       } catch {
         continue;
       }
@@ -1386,6 +1472,106 @@ export class ContentService implements OnModuleInit {
 
   private ensureLoaded(): ContentDatabase {
     return this.ensureCache();
+  }
+
+  private createBackupEnvelope(db: ContentDatabase): ContentBackupEnvelope {
+    const exportedAt = nowIso();
+    return {
+      schemaVersion: CONTENT_BACKUP_SCHEMA_VERSION,
+      game: 'TheEnd',
+      exportedAt,
+      exportedBy: 'admin',
+      appEnv: process.env.NODE_ENV || process.env.APP_ENV || undefined,
+      gitCommit: resolveGitCommit(),
+      contentCounts: countContent(db),
+      content: clone({ ...this.extraContent, ...db }) as ContentDatabase,
+    };
+  }
+
+  private unwrapImportPayload(payload: unknown): Partial<ContentDatabase> {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new BadRequestException('Import payload must be a JSON object.');
+    }
+
+    const maybeEnvelope = payload as { content?: unknown; backup?: unknown };
+    const rawContent = maybeEnvelope.backup && typeof maybeEnvelope.backup === 'object'
+      ? (maybeEnvelope.backup as { content?: unknown }).content ?? maybeEnvelope.backup
+      : maybeEnvelope.content ?? payload;
+
+    if (!rawContent || typeof rawContent !== 'object' || Array.isArray(rawContent)) {
+      throw new BadRequestException('Import backup content must be a JSON object.');
+    }
+
+    this.extraContent = extractExtraContent(rawContent);
+    return rawContent as Partial<ContentDatabase>;
+  }
+
+  private mergeDatabasesById(existing: ContentDatabase, incoming: ContentDatabase): ContentDatabase {
+    return {
+      version: CONTENT_DB_VERSION,
+      items: mergeById(existing.items, incoming.items),
+      skills: mergeById(existing.skills, incoming.skills),
+      merchants: mergeById(existing.merchants, incoming.merchants),
+      cities: mergeById(existing.cities, incoming.cities),
+      materials: mergeById(existing.materials, incoming.materials),
+      lootTables: mergeById(existing.lootTables, incoming.lootTables),
+      images: mergeById(existing.images, incoming.images),
+      dialogues: mergeById(existing.dialogues, incoming.dialogues),
+      npcs: mergeById(existing.npcs, incoming.npcs),
+      quests: mergeById(existing.quests, incoming.quests),
+      questInteractions: mergeById(existing.questInteractions, incoming.questInteractions),
+      questItems: mergeById(existing.questItems, incoming.questItems),
+      questMarkers: mergeById(existing.questMarkers, incoming.questMarkers),
+      battleMaps: mergeById(existing.battleMaps, incoming.battleMaps),
+      worldMap: {
+        zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
+        regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
+        questMarkers: mergeById(existing.worldMap.questMarkers ?? [], incoming.worldMap.questMarkers ?? []),
+        updatedAt: nowIso(),
+      },
+    };
+  }
+
+  private collectImportWarnings(db: ContentDatabase): string[] {
+    const warnings: string[] = [];
+    const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
+    const pushMissingImage = (label: string, imageId: string | undefined) => {
+      if (!imageId || imageId.startsWith('/') || imageId.startsWith('http') || imageIds.has(imageId) || BUILTIN_PLACEHOLDER_IMAGE_IDS.has(imageId)) {
+        return;
+      }
+      warnings.push(`${label} references missing image '${imageId}'.`);
+    };
+
+    for (const item of db.items) {
+      pushMissingImage(`Item '${item.id}'`, item.imagePath);
+    }
+    for (const skill of db.skills) {
+      pushMissingImage(`Skill '${skill.id}'`, skill.iconUrl);
+    }
+    for (const merchant of db.merchants) {
+      pushMissingImage(`Merchant '${merchant.id}'`, merchant.portraitPath);
+    }
+    for (const city of db.cities) {
+      pushMissingImage(`City '${city.id}' background`, city.backgroundImageId);
+      pushMissingImage(`City '${city.id}' thumbnail`, city.thumbnailImageId);
+      for (const location of city.locations) {
+        pushMissingImage(`City location '${city.id}/${location.id}'`, location.imageId);
+      }
+    }
+    for (const interaction of db.questInteractions) {
+      pushMissingImage(`Quest interaction '${interaction.id}'`, interaction.imageId);
+      for (const choice of interaction.choices ?? []) {
+        pushMissingImage(`Quest interaction choice '${interaction.id}/${choice.id}'`, choice.imageId);
+      }
+    }
+
+    if (db.images.length > 0) {
+      warnings.push(`This backup includes ${db.images.length} embedded image record(s). Large JSON files may take a moment to import/export.`);
+    } else {
+      warnings.push('This backup contains image references only. Make sure the assets folder/zip is also copied.');
+    }
+
+    return warnings;
   }
 
   private persistToFile(db: ContentDatabase): ContentDatabase {
@@ -1401,7 +1587,9 @@ export class ContentService implements OnModuleInit {
 
     this.createBackupSnapshot();
     this.dbCache = next;
-    writeFileSync(this.runtimeFile, JSON.stringify(this.dbCache, null, 2), 'utf8');
+    const tmpFile = `${this.runtimeFile}.tmp`;
+    writeFileSync(tmpFile, JSON.stringify(this.createBackupEnvelope(this.dbCache), null, 2), 'utf8');
+    renameSync(tmpFile, this.runtimeFile);
     return clone(this.dbCache);
   }
 
@@ -1413,7 +1601,10 @@ export class ContentService implements OnModuleInit {
     }
 
     if (this.storageMode === 'file') {
-      return this.persistToFile(next);
+      this.writeQueue = this.writeQueue
+        .catch(() => this.ensureLoaded())
+        .then(() => this.persistToFile(next));
+      return this.writeQueue;
     }
 
     await this.getContentStoreDelegate().upsert({
@@ -1430,7 +1621,7 @@ export class ContentService implements OnModuleInit {
   }
 
   private async ensureDatabaseStorageSchema(): Promise<void> {
-    if (this.storageMode !== 'database') {
+    if (this.storageMode !== 'postgres') {
       return;
     }
 
@@ -1447,22 +1638,42 @@ export class ContentService implements OnModuleInit {
     return clone(this.ensureLoaded());
   }
 
-  exportFullContent(): ContentDatabase {
-    return this.getSnapshot();
+  exportFullContent(): ContentBackupEnvelope {
+    return this.createBackupEnvelope(this.ensureLoaded());
   }
 
-  async importFullContent(payload: Partial<ContentDatabase>): Promise<ContentDatabase> {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new BadRequestException('Import payload must be a JSON object.');
-    }
-
-    const normalized = this.normalizeDatabase(payload);
-    const errors = this.validateDatabaseIntegrity(normalized);
+  async importFullContent(payload: unknown, mode: ContentImportMode = 'replace'): Promise<ContentImportResult> {
+    const previousExtraContent = this.extraContent;
+    const content = this.unwrapImportPayload(payload);
+    const normalized = this.normalizeDatabase(content);
+    const next = mode === 'merge'
+      ? this.mergeDatabasesById(this.ensureLoaded(), normalized)
+      : normalized;
+    const errors = this.validateDatabaseIntegrity(next);
     if (errors.length > 0) {
+      this.extraContent = previousExtraContent;
       throw new BadRequestException(`Content import validation failed:\n- ${errors.join('\n- ')}`);
     }
 
-    return this.persist(normalized);
+    if (mode === 'dryRun') {
+      this.extraContent = previousExtraContent;
+      return {
+        mode,
+        dryRun: true,
+        snapshot: clone(next),
+        warnings: this.collectImportWarnings(next),
+        errors: [],
+      };
+    }
+
+    const saved = await this.persist(next);
+    return {
+      mode,
+      dryRun: false,
+      snapshot: saved,
+      warnings: this.collectImportWarnings(saved),
+      errors: [],
+    };
   }
 
   async reloadFromDisk(): Promise<ContentDatabase> {
@@ -1478,6 +1689,27 @@ export class ContentService implements OnModuleInit {
       ok: errors.length === 0,
       errors,
     };
+  }
+
+  getStorageHealth(): { ok: true; contentStorage: 'readable-writable' } | { ok: false; error: string } {
+    if (this.storageMode !== 'file') {
+      return { ok: true, contentStorage: 'readable-writable' };
+    }
+
+    try {
+      if (!existsSync(this.dataDir)) {
+        mkdirSync(this.dataDir, { recursive: true });
+      }
+      if (existsSync(this.runtimeFile)) {
+        JSON.parse(readFileSync(this.runtimeFile, 'utf8')) as unknown;
+      }
+      const probe = `${this.runtimeFile}.healthcheck.tmp`;
+      writeFileSync(probe, JSON.stringify({ ok: true, checkedAt: nowIso() }), 'utf8');
+      unlinkSync(probe);
+      return { ok: true, contentStorage: 'readable-writable' };
+    } catch {
+      return { ok: false, error: 'Content file storage unavailable' };
+    }
   }
 
   listCollection<K extends ContentCollectionName>(name: K | string): ContentCollectionMap[K][] {

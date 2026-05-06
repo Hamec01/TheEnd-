@@ -701,7 +701,7 @@ const stats_1 = require("./stats");
         });
         (0, vitest_1.expect)((0, arena_battle_1.getBattlefieldDistance)(left, right)).toBe(5);
     });
-    (0, vitest_1.it)('regenerates stamina and mana at round start instead of full refill', () => {
+    (0, vitest_1.it)('exposes stamina and mana regen formulas without auto-regenerating at round start', () => {
         (0, vitest_1.expect)((0, arena_battle_1.getStaminaRegen)({ constitution: 9 })).toBe(12);
         (0, vitest_1.expect)((0, arena_battle_1.getManaRegen)({ willpower: 11 })).toBe(8);
         const player = (0, arena_battle_1.createArenaCombatEntity)({
@@ -759,8 +759,8 @@ const stats_1 = require("./stats");
             ],
             random: () => 0.5,
         });
-        (0, vitest_1.expect)(next.entities.find((x) => x.id === 'p1').currentStamina).toBe(14);
-        (0, vitest_1.expect)(next.entities.find((x) => x.id === 'p1').currentMp).toBe(11);
+        (0, vitest_1.expect)(next.entities.find((x) => x.id === 'p1').currentStamina).toBe(2);
+        (0, vitest_1.expect)(next.entities.find((x) => x.id === 'p1').currentMp).toBe(3);
     });
     (0, vitest_1.it)('allows attack after one-cell movement', () => {
         const player = (0, arena_battle_1.createArenaCombatEntity)({

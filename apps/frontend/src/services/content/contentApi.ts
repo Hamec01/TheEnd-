@@ -19,8 +19,9 @@ import type {
 import { notifyContentSync } from './contentSync';
 import { ensureLegacyContentMigrated } from './legacyContentMigration';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
 const ALLOW_CONTENT_IMPORT = String(import.meta.env.VITE_ALLOW_CONTENT_IMPORT ?? '').trim().toLowerCase() === 'true';
+const API_TIMEOUT_MS = 10_000;
 
 export type ContentCollectionName =
   | 'items'
@@ -63,6 +64,27 @@ export interface ContentSnapshot {
   worldMap: WorldMapContent;
 }
 
+export type ContentImportMode = 'replace' | 'merge' | 'dryRun';
+
+export interface ContentBackupEnvelope {
+  schemaVersion: number;
+  game: 'TheEnd';
+  exportedAt: string;
+  exportedBy: 'admin';
+  appEnv?: string;
+  gitCommit?: string;
+  contentCounts: Record<string, number>;
+  content: ContentSnapshot;
+}
+
+export interface ContentImportResult {
+  mode: ContentImportMode;
+  dryRun: boolean;
+  snapshot: ContentSnapshot;
+  warnings: string[];
+  errors: string[];
+}
+
 let bootstrapPromise: Promise<void> | null = null;
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -84,16 +106,31 @@ async function readErrorMessage(res: Response): Promise<string> {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let res: Response;
+
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const isAbort = error instanceof DOMException && error.name === 'AbortError';
+    throw new Error(isAbort
+      ? 'Backend or content file storage is unavailable. Check /api/health.'
+      : 'Backend or content file storage is unavailable. Check /api/health.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const message = await readErrorMessage(res);
+    throw new Error(message || 'Backend or content file storage is unavailable. Check /api/health.');
   }
 
   if (res.status === 204) {
@@ -144,19 +181,24 @@ export async function getContentSnapshot(): Promise<ContentSnapshot> {
   return getContentSnapshotRaw();
 }
 
-export async function exportFullContent(): Promise<ContentSnapshot> {
+export async function exportFullContent(): Promise<ContentBackupEnvelope> {
   await ensureContentBackendReady();
-  return requestJson<ContentSnapshot>('/content/export');
+  return requestJson<ContentBackupEnvelope>('/content/export');
 }
 
-export async function importFullContent(payload: Partial<ContentSnapshot>): Promise<ContentSnapshot> {
+export async function importFullContent(
+  payload: Partial<ContentSnapshot> | ContentBackupEnvelope,
+  mode: ContentImportMode = 'replace',
+): Promise<ContentImportResult> {
   await ensureContentBackendReady();
-  const snapshot = await requestJson<ContentSnapshot>('/content/import', {
+  const result = await requestJson<ContentImportResult>('/content/import', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ mode, backup: payload }),
   });
-  notifyContentSync('all');
-  return snapshot;
+  if (!result.dryRun) {
+    notifyContentSync('all');
+  }
+  return result;
 }
 
 export async function seedDefaultContent(): Promise<{ seeded: boolean; message: string }> {

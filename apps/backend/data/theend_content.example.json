@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "game": "TheEnd",
+  "exportedAt": "1970-01-01T00:00:00.000Z",
+  "exportedBy": "admin",
+  "appEnv": "local",
+  "contentCounts": {
+    "items": 0,
+    "skills": 0,
+    "merchants": 0,
+    "cities": 0,
+    "materials": 0,
+    "lootTables": 0,
+    "images": 0,
+    "dialogues": 0,
+    "npcs": 0,
+    "quests": 0,
+    "questInteractions": 0,
+    "questItems": 0,
+    "questMarkers": 0,
+    "battleMaps": 0,
+    "maps": 0,
+    "zones": 0,
+    "markers": 0,
+    "regions": 0
+  },
+  "content": {
+    "version": 1,
+    "items": [],
+    "skills": [],
+    "merchants": [],
+    "cities": [],
+    "materials": [],
+    "lootTables": [],
+    "images": [],
+    "dialogues": [],
+    "npcs": [],
+    "quests": [],
+    "questInteractions": [],
+    "questItems": [],
+    "questMarkers": [],
+    "battleMaps": [],
+    "worldMap": {
+      "zones": [],
+      "regions": [],
+      "questMarkers": [],
+      "updatedAt": "1970-01-01T00:00:00.000Z"
+    }
+  }
+}

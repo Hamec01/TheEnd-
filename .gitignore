@@ -4,6 +4,15 @@ coverage/
 .env
 .env.*
 apps/backend/prisma/dev.db
+apps/backend/data/*.local.json
+apps/backend/data/*runtime*.local.json
+apps/backend/data/*.tmp
+apps/backend/data/*.healthcheck.tmp
+apps/backend/data/backups/
+apps/backend/uploads/
+!apps/backend/data/theend_content.example.json
+!apps/backend/data/README.md
+!apps/backend/data/seeds/
 *.log
 *.tsbuildinfo
 Resurse/Word_map.png
