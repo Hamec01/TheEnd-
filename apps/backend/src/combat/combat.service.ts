@@ -29,6 +29,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-runtime.service';
 import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto } from './dto.start-combat.dto';
 import type { AdminItem } from '../content/content.types';
+import { RuntimeCharacterStore } from '../characters/runtime-character-store';
+import { isFileStorageMode } from '../config/storage-mode';
 
 interface CharacterRecord {
   id: string;
@@ -89,6 +91,7 @@ export class CombatService {
     private readonly contentService: ContentService,
     private readonly arenaService: ArenaService,
     private readonly skillRuntime: SkillRuntimeService,
+    private readonly runtimeStore: RuntimeCharacterStore,
   ) {}
 
   private readonly sessions = new Map<string, CombatSession>();
@@ -928,13 +931,31 @@ export class CombatService {
     return Math.abs(leftX - rightX) + Math.abs(leftY - rightY);
   }
 
-  async startCombat(
-    characterId: string,
-    enemyCount = 1,
-    customEnemies: CustomCombatNpcDto[] = [],
-    battleMap?: RuntimeBattleMapDto,
-    blockedTiles: Array<{ x: number; y: number }> = [],
-  ) {
+  private async loadCharacterForCombat(characterId: string): Promise<CharacterRecord> {
+    if (isFileStorageMode()) {
+      const character = await this.runtimeStore.getCharacterById(characterId);
+      if (!character) {
+        throw new NotFoundException('Character not found.');
+      }
+
+      return {
+        id: character.id,
+        name: String(character.name ?? ''),
+        race: String(character.race ?? 'HUMAN'),
+        hpBase: Number(character.hpBase ?? 0),
+        mpBase: Number(character.mpBase ?? 0),
+        staminaBase: Number(character.staminaBase ?? 0),
+        strength: Number(character.strength ?? 0),
+        endurance: Number(character.endurance ?? 0),
+        dexterity: Number(character.dexterity ?? 0),
+        intelligence: Number(character.intelligence ?? 0),
+        luck: Number(character.luck ?? 0),
+        speed: Number(character.speed ?? 0),
+        willpower: Number(character.willpower ?? 0),
+        equipment: (character.equipment ?? null) as Partial<Equipment> | null,
+      };
+    }
+
     const character = await this.prisma.character.findUnique({
       where: { id: characterId },
       include: { equipment: true },
@@ -943,6 +964,18 @@ export class CombatService {
     if (!character) {
       throw new NotFoundException('Character not found.');
     }
+
+    return character as unknown as CharacterRecord;
+  }
+
+  async startCombat(
+    characterId: string,
+    enemyCount = 1,
+    customEnemies: CustomCombatNpcDto[] = [],
+    battleMap?: RuntimeBattleMapDto,
+    blockedTiles: Array<{ x: number; y: number }> = [],
+  ) {
+    const character = await this.loadCharacterForCombat(characterId);
 
     const player = this.toCombatEntity(character, TeamSide.Left, 1);
     const resourceState = await this.arenaService.getCharacterResources(characterId);

@@ -811,18 +811,22 @@ export class ArenaService implements OnModuleInit {
   }
 
   async getCharacterResources(characterId: string): Promise<CharacterResourceState> {
-    this.assertDatabaseEnabled();
-    const character = await this.prisma.character.findUnique({
-      where: { id: characterId },
-      include: { equipment: true },
-    });
+    const character = isFileStorageMode()
+      ? await this.runtimeStore.getCharacterById(characterId)
+      : await this.prisma.character.findUnique({
+        where: { id: characterId },
+        include: { equipment: true },
+      });
 
     if (!character) {
       throw new NotFoundException('Character not found.');
     }
 
     const baseStats = this.toBaseStats(character);
-    const activeStats = this.contentService.getStatsWithEquipment(baseStats, this.fromEquipmentRecord(character.equipment));
+    const equipment = isFileStorageMode()
+      ? this.contentService.normalizeEquipment((character as { equipment?: Partial<Equipment> | null }).equipment ?? null)
+      : this.fromEquipmentRecord((character as { equipment?: Record<string, unknown> | null }).equipment ?? null);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const stored = await this.readCharacterResourceMap(characterId);
     const resourceState = this.buildResourceState(activeStats, stored);
 
@@ -840,7 +844,6 @@ export class ArenaService implements OnModuleInit {
     characterId: string,
     updates: Partial<Pick<CharacterResourceState, 'currentHp' | 'currentMp' | 'currentStamina' | 'hpRegenPerTurn'>>,
   ): Promise<CharacterResourceState> {
-    this.assertDatabaseEnabled();
     const current = await this.getCharacterResources(characterId);
     const next: CharacterResourceState = {
       ...current,
