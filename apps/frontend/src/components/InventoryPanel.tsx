@@ -760,6 +760,37 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }
 
+  async function handleDoubleClickInventoryItem(itemId: string): Promise<void> {
+    const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
+    if (!item) {
+      return;
+    }
+
+    // Item is not equipped - equip it to preferred slot
+    if (shieldBlockedByTwoHandedWeapon && item.itemType === 'shield') {
+      onStatus('Левая рука занята двуручным оружием. Сначала снимите его.');
+      return;
+    }
+
+    const preferredCoreSlot = resolvePreferredEquipmentSlot(item, equipment);
+    if (!preferredCoreSlot) {
+      onStatus('Этот предмет нельзя экипировать.');
+      return;
+    }
+
+    const targetSlotId = LAYOUT_SLOT_BY_CORE_SLOT[preferredCoreSlot];
+    if (!targetSlotId || !canEquipItemInSlot(item, targetSlotId)) {
+      onStatus('Этот предмет нельзя экипировать.');
+      return;
+    }
+
+    try {
+      await onEquipItem(itemId, preferredCoreSlot);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
   const focusedColumnClass = FOCUS_SECTION_COLUMN[focusSection];
 
   const hasPendingAllocation = Object.keys(pendingStatAllocation).length > 0;
@@ -1192,6 +1223,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 if (selectedItem && isQuickSlot) { void assignItemToActionSlot(slotId, selectedItem.id); return; }
                 if (selectedItem) { void equipToSlot(slotId, selectedItem); }
               }}
+              onSlotDoubleClick={(slotId) => {
+                const isQuickSlot = (QUICK_SLOT_IDS as string[]).includes(slotId);
+                if (!isQuickSlot && paperDollSlotItems[slotId]) {
+                  void unequipFromSlot(slotId);
+                }
+              }}
               onSlotDrop={(slotId, itemId) => {
                 try {
                   const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
@@ -1271,6 +1308,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   const equippedItem = equippedByLayoutSlot[slotId] ?? null;
                   if (equippedItem) { setSelectedItemId(equippedItem.id); setItemDetailOpen(true); }
                   else if (selectedItem) { void equipToSlot(slotId, selectedItem); }
+                }
+              }}
+              onSlotDoubleClick={(slotId) => {
+                const isQuickSlot = (QUICK_SLOT_IDS as string[]).includes(slotId);
+                if (!isQuickSlot && equippedByLayoutSlot[slotId]) {
+                  void unequipFromSlot(slotId);
                 }
               }}
               onSlotDrop={(slotId, itemId) => {
@@ -1460,6 +1503,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
             onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
             onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
+            onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData('text/theend-item-id', entry.item.id);

@@ -14,6 +14,7 @@ interface PaperDollProps {
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
   canDropItemInSlot?: (slotId: EquipmentSlotId, itemId: string) => boolean;
   onSlotClick: (slotId: EquipmentSlotId) => void;
+  onSlotDoubleClick?: (slotId: EquipmentSlotId) => void;
   onSlotDrop: (slotId: EquipmentSlotId, itemId: string) => void;
   onSkillDrop?: (slotId: EquipmentSlotId, skillId: string) => void;
   onSlotContextMenu?: (slotId: EquipmentSlotId) => void;
@@ -56,6 +57,7 @@ export function PaperDoll({
   resolveItemImage,
   canDropItemInSlot,
   onSlotClick,
+    onSlotDoubleClick,
   onSlotDrop,
   onSkillDrop,
   onSlotContextMenu,
@@ -158,6 +160,9 @@ export function PaperDoll({
                     });
                   }
                   onSlotClick(slot.id);
+                }}
+                onDoubleClick={() => {
+                  onSlotDoubleClick?.(slot.id);
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();

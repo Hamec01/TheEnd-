@@ -65,6 +65,7 @@ const ITEM_EFFECT_TYPES: ItemEffect['type'][] = [
 const EFFECT_TRIGGERS: NonNullable<ItemEffect['trigger']>[] = ['always', 'on_use', 'on_hit', 'on_crit', 'on_turn_start', 'on_turn_end'];
 const AUGMENT_TYPES: ItemAugmentType[] = ['rune', 'magic_stone', 'enchantment', 'other'];
 const SOCKET_SOURCES: Array<'base' | 'blacksmith_added' | 'scripted'> = ['base', 'blacksmith_added', 'scripted'];
+const SLOT_FAILURE_MODES: Array<'none' | 'material_lost' | 'item_damaged' | 'slot_locked'> = ['none', 'material_lost', 'item_damaged', 'slot_locked'];
 
 type ExtendedAdminItemCollections = {
   itemSets: Array<{ id: string; name: string; isEnabled: boolean }>;
@@ -334,6 +335,11 @@ export function ItemsPage() {
     setAugmentSlotsText(toPrettyJson(normalized, '[]'));
   }
 
+  function setSlotUpgradeRules(next: AdminItem['slotUpgradeRules']) {
+    patch({ slotUpgradeRules: next });
+    setSlotUpgradeRulesText(toPrettyJson(next, '{}'));
+  }
+
   function addEffect(kind: 'equipment' | 'use') {
     const nextEffect: ItemEffect = { type: 'stat_bonus', trigger: 'always' };
     if (kind === 'equipment') {
@@ -392,6 +398,50 @@ export function ItemsPage() {
     setAugmentSlots(next);
   }
 
+  function ensureSlotUpgradeRules() {
+    if (draft.slotUpgradeRules) {
+      return;
+    }
+    setSlotUpgradeRules({
+      materialCosts: [],
+      failureModes: [],
+    });
+  }
+
+  function patchSlotUpgradeRules(nextPatch: Partial<NonNullable<AdminItem['slotUpgradeRules']>>) {
+    const current = draft.slotUpgradeRules ?? {};
+    setSlotUpgradeRules({ ...current, ...nextPatch });
+  }
+
+  function addSlotMaterialCost() {
+    const current = draft.slotUpgradeRules ?? {};
+    const nextCosts = [...(current.materialCosts ?? []), { itemId: '', quantity: 1 }];
+    setSlotUpgradeRules({ ...current, materialCosts: nextCosts });
+  }
+
+  function patchSlotMaterialCost(index: number, patchData: { itemId?: string; quantity?: number }) {
+    const current = draft.slotUpgradeRules ?? {};
+    const nextCosts = (current.materialCosts ?? []).map((entry, idx) => (idx === index ? { ...entry, ...patchData } : entry));
+    setSlotUpgradeRules({ ...current, materialCosts: nextCosts });
+  }
+
+  function removeSlotMaterialCost(index: number) {
+    const current = draft.slotUpgradeRules ?? {};
+    const nextCosts = (current.materialCosts ?? []).filter((_, idx) => idx !== index);
+    setSlotUpgradeRules({ ...current, materialCosts: nextCosts });
+  }
+
+  function toggleFailureMode(mode: 'none' | 'material_lost' | 'item_damaged' | 'slot_locked', enabled: boolean) {
+    const current = draft.slotUpgradeRules ?? {};
+    const modes = new Set(current.failureModes ?? []);
+    if (enabled) {
+      modes.add(mode);
+    } else {
+      modes.delete(mode);
+    }
+    setSlotUpgradeRules({ ...current, failureModes: Array.from(modes) });
+  }
+
   useEffect(() => {
     if (draft.type === 'material') {
       patch({ slot: 'none' });
@@ -399,10 +449,6 @@ export function ItemsPage() {
     }
     if (draft.type === 'potion' && (!draft.slot || draft.slot === 'none')) {
       patch({ slot: 'quick' });
-      return;
-    }
-    if (draft.type === 'weapon' && draft.slot !== 'rightHand') {
-      patch({ slot: 'rightHand' });
     }
   }, [draft.type, draft.slot]);
 
@@ -1143,8 +1189,103 @@ export function ItemsPage() {
                 onChange={(event) => patch({ maxAugmentSlots: parseNonNegativeInt(event.target.value) })}
               />
             </label>
+            <label className="zone-editor-checkbox">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.slotUpgradeRules)}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    ensureSlotUpgradeRules();
+                    return;
+                  }
+                  setSlotUpgradeRules(undefined);
+                }}
+              />
+              <AdminFieldLabel label="Есть slotUpgradeRules" hint="Включает/отключает правила апгрейда слотов у кузнеца." />
+            </label>
+            {draft.slotUpgradeRules ? (
+              <>
+                <label>
+                  <AdminFieldLabel label="minBlacksmithTier" hint="Минимальный уровень кузнеца для апгрейда." />
+                  <input
+                    type="number"
+                    min={0}
+                    value={draft.slotUpgradeRules.minBlacksmithTier ?? ''}
+                    onChange={(event) => patchSlotUpgradeRules({ minBlacksmithTier: parseNonNegativeInt(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <AdminFieldLabel label="goldCost" hint="Стоимость апгрейда в золоте." />
+                  <input
+                    type="number"
+                    min={0}
+                    value={draft.slotUpgradeRules.goldCost ?? ''}
+                    onChange={(event) => patchSlotUpgradeRules({ goldCost: parseNonNegativeInt(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <AdminFieldLabel label="successChancePercent" hint="Шанс успеха апгрейда (0-100)." />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={draft.slotUpgradeRules.successChancePercent ?? ''}
+                    onChange={(event) => {
+                      const parsed = parseNumber(event.target.value);
+                      patchSlotUpgradeRules({
+                        successChancePercent: typeof parsed === 'number' ? Math.max(0, Math.min(100, parsed)) : undefined,
+                      });
+                    }}
+                  />
+                </label>
+
+                <div className="card">
+                  <h5>materialCosts</h5>
+                  <div className="admin-actions-row">
+                    <button type="button" onClick={addSlotMaterialCost}>Добавить материал</button>
+                  </div>
+                  {(draft.slotUpgradeRules.materialCosts ?? []).map((entry, index) => (
+                    <div key={`slot-cost-${index}`} className="admin-form-grid card">
+                      <label>
+                        <AdminFieldLabel label="itemId" hint="ID материала из items." />
+                        <input
+                          value={entry.itemId}
+                          onChange={(event) => patchSlotMaterialCost(index, { itemId: event.target.value })}
+                        />
+                      </label>
+                      <label>
+                        <AdminFieldLabel label="quantity" hint="Требуемое количество." />
+                        <input
+                          type="number"
+                          min={1}
+                          value={entry.quantity}
+                          onChange={(event) => patchSlotMaterialCost(index, { quantity: parsePositiveInt(event.target.value) ?? 1 })}
+                        />
+                      </label>
+                      <button type="button" onClick={() => removeSlotMaterialCost(index)}>Удалить материал</button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="card">
+                  <h5>failureModes</h5>
+                  <div className="admin-form-grid">
+                    {SLOT_FAILURE_MODES.map((mode) => (
+                      <label key={mode} className="zone-editor-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draft.slotUpgradeRules?.failureModes?.includes(mode))}
+                          onChange={(event) => toggleFailureMode(mode, event.target.checked)}
+                        />
+                        <AdminFieldLabel label={mode} hint="Вариант поведения при неуспешном апгрейде." />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
-          <p className="muted">slotUpgradeRules: JSON-объект SlotUpgradeRules. Поле optional.</p>
+          <p className="muted">Raw JSON (необязательно, для тонкой ручной правки):</p>
           <textarea
             rows={5}
             value={slotUpgradeRulesText}
