@@ -7,6 +7,7 @@ import type {
   BattleMapNpcRole,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { AdminImageField } from '../admin/AdminImageField';
 import { HelpTooltip } from './editor/HelpTooltip';
 import {
   createDefaultBattleMap,
@@ -18,6 +19,7 @@ import {
   validateBattleMap,
 } from '../services/battleMaps/battleMapStorage';
 import { ensureNpcsLoaded, getAllNpcs } from '../services/npcRepository';
+import { imageService } from '../services/content/imageService';
 import type { NpcDefinition } from '../types/npc';
 
 const CELL_TOOL_OPTIONS: Array<{ value: BattleMapCellType | 'erase'; label: string; help: string }> = [
@@ -104,6 +106,10 @@ function duplicateMapDefinition(map: BattleMapDefinition): BattleMapDefinition {
   });
 }
 
+function isDirectImageSource(value: string): boolean {
+  return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
+}
+
 export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatusMessage }: BattleMapEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const lastPaintedCellRef = useRef<string | null>(null);
@@ -128,6 +134,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [interactionMode, setInteractionMode] = useState<'paint' | 'pan'>('paint');
   const [panDrag, setPanDrag] = useState<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [resolvedMapImageUrl, setResolvedMapImageUrl] = useState<string>('/map/battle-map_arena.png');
 
   useEffect(() => {
     let disposed = false;
@@ -182,7 +189,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   }, [currentMapId, maps]);
 
   useEffect(() => {
-    const imageUrl = draft.imageUrl || '/map/battle-map_arena.png';
+    const imageUrl = resolvedMapImageUrl || '/map/battle-map_arena.png';
     const image = new Image();
     image.onload = () => {
       setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
@@ -191,6 +198,36 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       setImageSize(null);
     };
     image.src = imageUrl;
+  }, [resolvedMapImageUrl]);
+
+  useEffect(() => {
+    const rawValue = draft.imageUrl?.trim();
+    if (!rawValue) {
+      setResolvedMapImageUrl('/map/battle-map_arena.png');
+      return;
+    }
+
+    if (isDirectImageSource(rawValue)) {
+      setResolvedMapImageUrl(rawValue);
+      return;
+    }
+
+    let disposed = false;
+    void imageService.get(rawValue)
+      .then((entry) => {
+        if (!disposed) {
+          setResolvedMapImageUrl(entry?.dataUrl ?? '/map/battle-map_arena.png');
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setResolvedMapImageUrl('/map/battle-map_arena.png');
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
   }, [draft.imageUrl]);
 
   const validationIssues = useMemo(() => validateBattleMap(draft), [draft]);
@@ -719,6 +756,15 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <label>Background image URL</label>
           <input value={draft.imageUrl ?? ''} onChange={(event) => updateIdentityField('imageUrl', event.target.value)} />
         </div>
+        <AdminImageField
+          value={draft.imageUrl}
+          onChange={(nextValue) => updateIdentityField('imageUrl', nextValue)}
+          onStatus={(text) => onStatusMessage?.(text)}
+          presetId="battle-map-background"
+          suggestedName={`${draft.id || 'battlemap'}-background`}
+          label="Загрузка фона карты"
+          hint="Загружает картинку в content-хранилище и подставляет её ID в карту, чтобы фон сохранялся и работал на другом устройстве."
+        />
         <div className="battle-map-editor-dimensions">
           <div className="row">
             <label>Width <HelpTooltip text="Full tactical map width. Combat viewport can show only part of it." /></label>
@@ -804,7 +850,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           >
             <div
               className="battle-map-editor-image-layer"
-              style={{ backgroundImage: `linear-gradient(180deg, rgba(9, 8, 7, 0.28), rgba(8, 6, 5, 0.4)), url('${draft.imageUrl || '/map/battle-map_arena.png'}')` }}
+              style={{ backgroundImage: `linear-gradient(180deg, rgba(9, 8, 7, 0.28), rgba(8, 6, 5, 0.4)), url('${resolvedMapImageUrl || '/map/battle-map_arena.png'}')` }}
             />
             {draft.showEditorGrid ? (
               <div

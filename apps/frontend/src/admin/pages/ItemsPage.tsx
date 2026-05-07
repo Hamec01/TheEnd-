@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
-import type { AdminItem, DamageCategory, ElementType, HandsRequired, ItemRarity, ItemSlot, ItemType, MagicSchool, PhysicalType, StatKey, StoredImage } from '../../services/content/models';
+import type {
+  AdminItem,
+  DamageCategory,
+  ElementType,
+  HandsRequired,
+  ItemAugmentType,
+  ItemEffect,
+  ItemRarity,
+  ItemSlot,
+  ItemType,
+  MagicSchool,
+  PhysicalType,
+  StatKey,
+  StoredImage,
+} from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { itemsService, validateItem } from '../../services/content/itemsService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
+import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -30,6 +45,31 @@ const DAMAGE_CATEGORIES: DamageCategory[] = ['physical', 'elemental', 'magic', '
 const PHYSICAL_TYPES: PhysicalType[] = ['slash', 'pierce', 'blunt', 'cleave', 'unarmed'];
 const ELEMENT_TYPES: ElementType[] = ['fire', 'water', 'earth', 'air', 'light', 'dark'];
 const MAGIC_SCHOOLS: MagicSchool[] = ['blood', 'death', 'life', 'mind', 'illusion', 'curse', 'arcane'];
+const ITEM_EFFECT_TYPES: ItemEffect['type'][] = [
+  'stat_bonus',
+  'incoming_damage_modifier',
+  'outgoing_damage_modifier',
+  'armor_penetration',
+  'crit_chance_modifier',
+  'crit_damage_modifier',
+  'crit_chance_taken_modifier',
+  'lifesteal',
+  'apply_status',
+  'status_resistance',
+  'status_immunity',
+  'block_chance_modifier',
+  'dodge_chance_modifier',
+  'hit_chance_modifier',
+  'extra_attack_chance',
+];
+const EFFECT_TRIGGERS: NonNullable<ItemEffect['trigger']>[] = ['always', 'on_use', 'on_hit', 'on_crit', 'on_turn_start', 'on_turn_end'];
+const AUGMENT_TYPES: ItemAugmentType[] = ['rune', 'magic_stone', 'enchantment', 'other'];
+const SOCKET_SOURCES: Array<'base' | 'blacksmith_added' | 'scripted'> = ['base', 'blacksmith_added', 'scripted'];
+
+type ExtendedAdminItemCollections = {
+  itemSets: Array<{ id: string; name: string; isEnabled: boolean }>;
+  runeComplexes: Array<{ id: string; name: string; isEnabled: boolean }>;
+};
 
 function emptyItem(): AdminItem {
   const now = new Date().toISOString();
@@ -72,12 +112,53 @@ function parsePositiveInt(value: string): number | undefined {
   return Number.isFinite(intValue) && intValue > 0 ? intValue : undefined;
 }
 
+function parseNonNegativeInt(value: string): number | undefined {
+  if (value.trim() === '') {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  const intValue = Math.floor(parsed);
+  return intValue >= 0 ? intValue : undefined;
+}
+
+function toPrettyJson(value: unknown, emptyFallback: string): string {
+  if (value === undefined || value === null) {
+    return emptyFallback;
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function parseCsvTags(raw: string): string[] | undefined {
+  const parsed = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry, index, arr) => entry.length > 0 && arr.indexOf(entry) === index);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseCommaList(raw: string): string[] | undefined {
+  const parsed = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry, index, arr) => entry.length > 0 && arr.indexOf(entry) === index);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function formatCommaList(value?: string[]): string {
+  return Array.isArray(value) ? value.join(', ') : '';
+}
+
 function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
 
 export function ItemsPage() {
   const [items, setItems] = useState<AdminItem[]>([]);
+  const [itemSets, setItemSets] = useState<ExtendedAdminItemCollections['itemSets']>([]);
+  const [runeComplexes, setRuneComplexes] = useState<ExtendedAdminItemCollections['runeComplexes']>([]);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | ItemType>('all');
   const [rarityFilter, setRarityFilter] = useState<'all' | ItemRarity>('all');
@@ -87,17 +168,43 @@ export function ItemsPage() {
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
   const [rangePanelOpen, setRangePanelOpen] = useState(false);
+  const [itemPreview, setItemPreview] = useState<ItemPreviewResponse | null>(null);
+
+  const [equipmentEffectsText, setEquipmentEffectsText] = useState('[]');
+  const [useEffectsText, setUseEffectsText] = useState('[]');
+  const [augmentText, setAugmentText] = useState('{}');
+  const [augmentSlotsText, setAugmentSlotsText] = useState('[]');
+  const [slotUpgradeRulesText, setSlotUpgradeRulesText] = useState('{}');
+  const [tagsText, setTagsText] = useState('');
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
 
+  function syncAdvancedEditors(item: AdminItem) {
+    setEquipmentEffectsText(toPrettyJson(item.equipmentEffects, '[]'));
+    setUseEffectsText(toPrettyJson(item.useEffects, '[]'));
+    setAugmentText(toPrettyJson(item.augment, '{}'));
+    setAugmentSlotsText(toPrettyJson(item.augmentSlots, '[]'));
+    setSlotUpgradeRulesText(toPrettyJson(item.slotUpgradeRules, '{}'));
+    setTagsText((item.tags ?? []).join(', '));
+  }
+
   async function refresh() {
-    const [all, images] = await Promise.all([itemsService.getAll(), loadRuntimeImages()]);
+    const [all, images, fetchedItemSets, fetchedRuneComplexes] = await Promise.all([
+      itemsService.getAll(),
+      loadRuntimeImages(),
+      getContentCollection<ExtendedAdminItemCollections['itemSets'][number]>('itemSets').catch(() => []),
+      getContentCollection<ExtendedAdminItemCollections['runeComplexes'][number]>('runeComplexes').catch(() => []),
+    ]);
     setItems(all);
     setRuntimeImages(images);
+    setItemSets(fetchedItemSets);
+    setRuneComplexes(fetchedRuneComplexes);
     if (selectedId && !all.some((item) => item.id === selectedId)) {
       setSelectedId(null);
-      setDraft(emptyItem());
+      const next = emptyItem();
+      setDraft(next);
+      syncAdvancedEditors(next);
     }
   }
 
@@ -148,7 +255,40 @@ export function ItemsPage() {
   function select(item: AdminItem) {
     setSelectedId(item.id);
     setDraft(item);
+    syncAdvancedEditors(item);
     setRangePanelOpen(Boolean(item.attackRange || item.pierceTargets || item.splashRadius));
+  }
+
+  function patchJsonField<K extends keyof AdminItem>(
+    key: K,
+    raw: string,
+    options: { emptyAs: 'undefined' | 'array' | 'object'; expect: 'array' | 'object'; label: string },
+  ) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      if (options.emptyAs === 'array') {
+        patch({ [key]: [] } as Partial<AdminItem>);
+        return;
+      }
+      if (options.emptyAs === 'object') {
+        patch({ [key]: {} } as Partial<AdminItem>);
+        return;
+      }
+      patch({ [key]: undefined } as Partial<AdminItem>);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      const valid = options.expect === 'array' ? Array.isArray(parsed) : parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+      if (!valid) {
+        setStatus(`${options.label}: ожидается ${options.expect === 'array' ? 'JSON-массив' : 'JSON-объект'}.`);
+        return;
+      }
+      patch({ [key]: parsed } as Partial<AdminItem>);
+    } catch {
+      setStatus(`${options.label}: некорректный JSON.`);
+    }
   }
 
   function patch(next: Partial<AdminItem>) {
@@ -171,6 +311,87 @@ export function ItemsPage() {
     });
   }
 
+  function setEquipmentEffects(next: ItemEffect[] | undefined) {
+    const normalized = next && next.length > 0 ? next : undefined;
+    patch({ equipmentEffects: normalized });
+    setEquipmentEffectsText(toPrettyJson(normalized, '[]'));
+  }
+
+  function setUseEffects(next: ItemEffect[] | undefined) {
+    const normalized = next && next.length > 0 ? next : undefined;
+    patch({ useEffects: normalized });
+    setUseEffectsText(toPrettyJson(normalized, '[]'));
+  }
+
+  function setAugment(next: AdminItem['augment']) {
+    patch({ augment: next });
+    setAugmentText(toPrettyJson(next, '{}'));
+  }
+
+  function setAugmentSlots(next: AdminItem['augmentSlots']) {
+    const normalized = next && next.length > 0 ? next : undefined;
+    patch({ augmentSlots: normalized });
+    setAugmentSlotsText(toPrettyJson(normalized, '[]'));
+  }
+
+  function addEffect(kind: 'equipment' | 'use') {
+    const nextEffect: ItemEffect = { type: 'stat_bonus', trigger: 'always' };
+    if (kind === 'equipment') {
+      setEquipmentEffects([...(draft.equipmentEffects ?? []), nextEffect]);
+      return;
+    }
+    setUseEffects([...(draft.useEffects ?? []), nextEffect]);
+  }
+
+  function updateEffect(kind: 'equipment' | 'use', index: number, effectPatch: Partial<ItemEffect>) {
+    const source = kind === 'equipment' ? (draft.equipmentEffects ?? []) : (draft.useEffects ?? []);
+    const next = source.map((entry, idx) => (idx === index ? { ...entry, ...effectPatch } : entry));
+    if (kind === 'equipment') {
+      setEquipmentEffects(next);
+      return;
+    }
+    setUseEffects(next);
+  }
+
+  function removeEffect(kind: 'equipment' | 'use', index: number) {
+    const source = kind === 'equipment' ? (draft.equipmentEffects ?? []) : (draft.useEffects ?? []);
+    const next = source.filter((_, idx) => idx !== index);
+    if (kind === 'equipment') {
+      setEquipmentEffects(next);
+      return;
+    }
+    setUseEffects(next);
+  }
+
+  function ensureAugment() {
+    if (draft.augment) {
+      return;
+    }
+    setAugment({ type: 'other', activationContexts: [], effects: [] });
+  }
+
+  function addAugmentSlot() {
+    const next = [
+      ...(draft.augmentSlots ?? []),
+      {
+        id: `slot_${(draft.augmentSlots?.length ?? 0) + 1}`,
+        source: 'base' as const,
+        isLocked: false,
+      },
+    ];
+    setAugmentSlots(next);
+  }
+
+  function updateAugmentSlot(index: number, patchData: Partial<NonNullable<AdminItem['augmentSlots']>[number]>) {
+    const next = (draft.augmentSlots ?? []).map((entry, idx) => (idx === index ? { ...entry, ...patchData } : entry));
+    setAugmentSlots(next);
+  }
+
+  function removeAugmentSlot(index: number) {
+    const next = (draft.augmentSlots ?? []).filter((_, idx) => idx !== index);
+    setAugmentSlots(next);
+  }
+
   useEffect(() => {
     if (draft.type === 'material') {
       patch({ slot: 'none' });
@@ -190,6 +411,31 @@ export function ItemsPage() {
       patch({ handsRequired: 1 });
     }
   }, [draft.handsRequired, draft.type]);
+
+  useEffect(() => {
+    const lookupId = selectedId || draft.id.trim();
+    if (!lookupId) {
+      setItemPreview(null);
+      return;
+    }
+
+    let disposed = false;
+    void getItemPreview(lookupId)
+      .then((payload) => {
+        if (!disposed) {
+          setItemPreview(payload);
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setItemPreview(null);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [selectedId, draft.id]);
 
   useEffect(() => {
     const normalized = draft.imagePath?.trim();
@@ -271,6 +517,7 @@ export function ItemsPage() {
 
     setSelectedId(saved.id);
     setDraft(saved);
+    syncAdvancedEditors(saved);
     await refresh();
 
     const warning = getIdQualityWarning(saved.id);
@@ -327,7 +574,9 @@ export function ItemsPage() {
     }
     await itemsService.delete(selectedId);
     setSelectedId(null);
-    setDraft(emptyItem());
+    const next = emptyItem();
+    setDraft(next);
+    syncAdvancedEditors(next);
     await refresh();
     setStatus(`Предмет удалён: ${selectedId}`);
   }
@@ -611,6 +860,339 @@ export function ItemsPage() {
           ))}
         </div>
 
+        <section className="card">
+          <h4>Пассивные эффекты экипировки (equipmentEffects)</h4>
+          <div className="admin-actions-row">
+            <button type="button" onClick={() => addEffect('equipment')}>Добавить эффект</button>
+          </div>
+          {(draft.equipmentEffects ?? []).map((effect, index) => (
+            <div key={`equipment-effect-${index}`} className="admin-form-grid card">
+              <label>
+                <AdminFieldLabel label="type" hint="Тип эффекта." />
+                <select value={effect.type} onChange={(event) => updateEffect('equipment', index, { type: event.target.value as ItemEffect['type'] })}>
+                  {ITEM_EFFECT_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="stat" hint="Целевая характеристика (если нужна для типа эффекта)." />
+                <select value={effect.stat ?? ''} onChange={(event) => updateEffect('equipment', index, { stat: (event.target.value || undefined) as StatKey | undefined })}>
+                  <option value="">Не задана</option>
+                  {STAT_KEYS.map((entry) => <option key={entry} value={entry}>{translateStatKey(entry)}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="value" hint="Абсолютное значение эффекта." />
+                <input type="number" value={effect.value ?? ''} onChange={(event) => updateEffect('equipment', index, { value: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="percent" hint="Процентное значение эффекта." />
+                <input type="number" value={effect.percent ?? ''} onChange={(event) => updateEffect('equipment', index, { percent: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="flat" hint="Плоская добавка (flat)." />
+                <input type="number" value={effect.flat ?? ''} onChange={(event) => updateEffect('equipment', index, { flat: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="trigger" hint="Триггер активации эффекта." />
+                <select value={effect.trigger ?? ''} onChange={(event) => updateEffect('equipment', index, { trigger: (event.target.value || undefined) as ItemEffect['trigger'] })}>
+                  <option value="">Не задан</option>
+                  {EFFECT_TRIGGERS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="activationContexts" hint="Через запятую: weapon, melee, combat и т.д." />
+                <input value={formatCommaList(effect.activationContexts)} onChange={(event) => updateEffect('equipment', index, { activationContexts: parseCommaList(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="condition" hint="Опциональное условие активации." />
+                <input value={effect.condition ?? ''} onChange={(event) => updateEffect('equipment', index, { condition: event.target.value || undefined })} />
+              </label>
+              <button type="button" onClick={() => removeEffect('equipment', index)}>Удалить эффект</button>
+            </div>
+          ))}
+          <p className="muted">Raw JSON (для точной ручной правки):</p>
+          <textarea
+            rows={6}
+            value={equipmentEffectsText}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setEquipmentEffectsText(raw);
+              patchJsonField('equipmentEffects', raw, {
+                emptyAs: 'undefined',
+                expect: 'array',
+                label: 'equipmentEffects',
+              });
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h4>Эффекты использования (useEffects)</h4>
+          <div className="admin-actions-row">
+            <button type="button" onClick={() => addEffect('use')}>Добавить эффект</button>
+          </div>
+          {(draft.useEffects ?? []).map((effect, index) => (
+            <div key={`use-effect-${index}`} className="admin-form-grid card">
+              <label>
+                <AdminFieldLabel label="type" hint="Тип эффекта." />
+                <select value={effect.type} onChange={(event) => updateEffect('use', index, { type: event.target.value as ItemEffect['type'] })}>
+                  {ITEM_EFFECT_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="stat" hint="Целевая характеристика (если нужна для типа эффекта)." />
+                <select value={effect.stat ?? ''} onChange={(event) => updateEffect('use', index, { stat: (event.target.value || undefined) as StatKey | undefined })}>
+                  <option value="">Не задана</option>
+                  {STAT_KEYS.map((entry) => <option key={entry} value={entry}>{translateStatKey(entry)}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="value" hint="Абсолютное значение эффекта." />
+                <input type="number" value={effect.value ?? ''} onChange={(event) => updateEffect('use', index, { value: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="percent" hint="Процентное значение эффекта." />
+                <input type="number" value={effect.percent ?? ''} onChange={(event) => updateEffect('use', index, { percent: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="flat" hint="Плоская добавка (flat)." />
+                <input type="number" value={effect.flat ?? ''} onChange={(event) => updateEffect('use', index, { flat: parseNumber(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="trigger" hint="Триггер активации эффекта." />
+                <select value={effect.trigger ?? ''} onChange={(event) => updateEffect('use', index, { trigger: (event.target.value || undefined) as ItemEffect['trigger'] })}>
+                  <option value="">Не задан</option>
+                  {EFFECT_TRIGGERS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="activationContexts" hint="Через запятую: potion, consumable, combat и т.д." />
+                <input value={formatCommaList(effect.activationContexts)} onChange={(event) => updateEffect('use', index, { activationContexts: parseCommaList(event.target.value) })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="condition" hint="Опциональное условие активации." />
+                <input value={effect.condition ?? ''} onChange={(event) => updateEffect('use', index, { condition: event.target.value || undefined })} />
+              </label>
+              <button type="button" onClick={() => removeEffect('use', index)}>Удалить эффект</button>
+            </div>
+          ))}
+          <p className="muted">Raw JSON (для точной ручной правки). Legacy useEffect остаётся без изменений:</p>
+          <textarea
+            rows={6}
+            value={useEffectsText}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setUseEffectsText(raw);
+              patchJsonField('useEffects', raw, {
+                emptyAs: 'undefined',
+                expect: 'array',
+                label: 'useEffects',
+              });
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h4>Усиление предмета (augment)</h4>
+          <div className="admin-form-grid">
+            <label className="zone-editor-checkbox">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.augment)}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    ensureAugment();
+                    return;
+                  }
+                  setAugment(undefined);
+                }}
+              />
+              <AdminFieldLabel label="Есть augment" hint="Включает/отключает объект усиления предмета." />
+            </label>
+            {draft.augment ? (
+              <>
+                <label>
+                  <AdminFieldLabel label="augment.type" hint="Тип усиления." />
+                  <select
+                    value={draft.augment.type}
+                    onChange={(event) => setAugment({ ...draft.augment!, type: event.target.value as ItemAugmentType })}
+                  >
+                    {AUGMENT_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <AdminFieldLabel label="augment.activationContexts" hint="Контексты активации через запятую." />
+                  <input
+                    value={formatCommaList(draft.augment.activationContexts)}
+                    onChange={(event) => setAugment({ ...draft.augment!, activationContexts: parseCommaList(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <AdminFieldLabel label="augment.tags" hint="Теги аугмента через запятую." />
+                  <input
+                    value={formatCommaList(draft.augment.tags)}
+                    onChange={(event) => setAugment({ ...draft.augment!, tags: parseCommaList(event.target.value) })}
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
+          <p className="muted">JSON-объект ItemAugment. Поле optional.</p>
+          <textarea
+            rows={6}
+            value={augmentText}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setAugmentText(raw);
+              patchJsonField('augment', raw, {
+                emptyAs: 'undefined',
+                expect: 'object',
+                label: 'augment',
+              });
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h4>Слоты усилений (augmentSlots)</h4>
+          <div className="admin-actions-row">
+            <button type="button" onClick={addAugmentSlot}>Добавить слот</button>
+          </div>
+          {(draft.augmentSlots ?? []).map((slot, index) => (
+            <div key={`${slot.id}-${index}`} className="admin-form-grid card">
+              <label>
+                <AdminFieldLabel label="id" hint="Уникальный ID слота внутри предмета." />
+                <input value={slot.id} onChange={(event) => updateAugmentSlot(index, { id: event.target.value })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="source" hint="Источник появления слота." />
+                <select
+                  value={slot.source ?? ''}
+                  onChange={(event) => updateAugmentSlot(index, { source: (event.target.value || undefined) as 'base' | 'blacksmith_added' | 'scripted' | undefined })}
+                >
+                  <option value="">Не задан</option>
+                  {SOCKET_SOURCES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                </select>
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={Boolean(slot.isLocked)}
+                  onChange={(event) => updateAugmentSlot(index, { isLocked: event.target.checked })}
+                />
+                <AdminFieldLabel label="isLocked" hint="Заблокирован ли слот." />
+              </label>
+              <label>
+                <AdminFieldLabel label="allowedAugmentTypes" hint="Типы аугментов через запятую: rune, magic_stone..." />
+                <input
+                  value={formatCommaList(slot.allowedAugmentTypes)}
+                  onChange={(event) => updateAugmentSlot(index, { allowedAugmentTypes: parseCommaList(event.target.value) as ItemAugmentType[] | undefined })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="activationContexts" hint="Контексты активации сокета через запятую." />
+                <input
+                  value={formatCommaList(slot.activationContexts)}
+                  onChange={(event) => updateAugmentSlot(index, { activationContexts: parseCommaList(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="socketedAugmentItemId" hint="ID вставленного аугмента (опционально)." />
+                <input
+                  value={slot.socketedAugmentItemId ?? ''}
+                  onChange={(event) => updateAugmentSlot(index, { socketedAugmentItemId: event.target.value || undefined })}
+                />
+              </label>
+              <button type="button" onClick={() => removeAugmentSlot(index)}>Удалить слот</button>
+            </div>
+          ))}
+          <p className="muted">Raw JSON (для точной ручной правки):</p>
+          <p className="muted">JSON-массив ItemSocket. Поле optional.</p>
+          <textarea
+            rows={6}
+            value={augmentSlotsText}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setAugmentSlotsText(raw);
+              patchJsonField('augmentSlots', raw, {
+                emptyAs: 'undefined',
+                expect: 'array',
+                label: 'augmentSlots',
+              });
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h4>Настройки кузнеца</h4>
+          <div className="admin-form-grid">
+            <label className="zone-editor-checkbox">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.canAddAugmentSlots)}
+                onChange={(event) => patch({ canAddAugmentSlots: event.target.checked })}
+              />
+              <AdminFieldLabel label="canAddAugmentSlots" hint="Можно ли добавлять слоты усиления через кузнеца." />
+            </label>
+            <label>
+              <AdminFieldLabel label="maxAugmentSlots" hint="Максимум слотов усилений для этого предмета." />
+              <input
+                type="number"
+                min={0}
+                value={draft.maxAugmentSlots ?? ''}
+                onChange={(event) => patch({ maxAugmentSlots: parseNonNegativeInt(event.target.value) })}
+              />
+            </label>
+          </div>
+          <p className="muted">slotUpgradeRules: JSON-объект SlotUpgradeRules. Поле optional.</p>
+          <textarea
+            rows={5}
+            value={slotUpgradeRulesText}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setSlotUpgradeRulesText(raw);
+              patchJsonField('slotUpgradeRules', raw, {
+                emptyAs: 'undefined',
+                expect: 'object',
+                label: 'slotUpgradeRules',
+              });
+            }}
+          />
+        </section>
+
+        <section className="card">
+          <h4>Сет и теги</h4>
+          <div className="admin-form-grid">
+            <label>
+              <AdminFieldLabel label="setId" hint="ID сета предметов. Значения загружаются из content API itemSets." />
+              <select
+                value={draft.setId ?? ''}
+                onChange={(event) => patch({ setId: event.target.value || undefined })}
+              >
+                <option value="">Не задан</option>
+                {itemSets.map((set) => (
+                  <option key={set.id} value={set.id}>
+                    {set.name} ({set.id}){set.isEnabled ? '' : ' [disabled]'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="tags" hint="Теги через запятую. Поле optional." />
+              <input
+                value={tagsText}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setTagsText(raw);
+                  patch({ tags: parseCsvTags(raw) });
+                }}
+              />
+            </label>
+          </div>
+          <p className="muted">Rune complexes из content API загружены: {runeComplexes.length}.</p>
+          <p className="muted">Legacy-поля effects/combatEffects/useEffect сохранены для обратной совместимости и не удаляются.</p>
+        </section>
+
         <label>
           <AdminFieldLabel label="Игровое описание" hint="Краткое описание эффекта предмета для игрока: что делает, какие бонусы даёт, зачем нужен." />
           <textarea rows={3} value={draft.gameplayDescription} onChange={(event) => patch({ gameplayDescription: event.target.value })} />
@@ -648,6 +1230,25 @@ export function ItemsPage() {
           <p>Цена: {draft.price}</p>
           <p>{draft.gameplayDescription || 'Игровое описание пока не заполнено.'}</p>
           <p className="muted">{draft.loreDescription || 'Лоровое описание пока не заполнено.'}</p>
+          {itemPreview ? (
+            <>
+              <h4>Server preview</h4>
+              <p className="muted">humanReadableEffects: {itemPreview.humanReadableEffects.length}</p>
+              {itemPreview.humanReadableEffects.length > 0 ? (
+                <ul>
+                  {itemPreview.humanReadableEffects.map((effect, index) => <li key={`${effect}-${index}`}>{effect}</li>)}
+                </ul>
+              ) : (
+                <p className="muted">Нет активных эффектов для превью.</p>
+              )}
+              <p className="muted">Сокетов: {itemPreview.socketsPreview.length}, неактивных аугментов: {itemPreview.inactiveAugments.length}</p>
+              {itemPreview.setPreview ? (
+                <p className="muted">Сет: {itemPreview.setPreview.setName} ({itemPreview.setPreview.setId}), частей: {itemPreview.setPreview.totalPieces}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="muted">Server preview станет доступен после сохранения предмета с валидным ID.</p>
+          )}
         </section>
 
         <p className="muted">{status}</p>
@@ -676,7 +1277,17 @@ export function ItemsPage() {
             <option value="all">Любая редкость</option>
             {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
           </select>
-          <button onClick={() => { setSelectedId(null); setDraft(emptyItem()); setRangePanelOpen(false); }}>Новый предмет</button>
+          <button
+            onClick={() => {
+              setSelectedId(null);
+              const next = emptyItem();
+              setDraft(next);
+              syncAdvancedEditors(next);
+              setRangePanelOpen(false);
+            }}
+          >
+            Новый предмет
+          </button>
         </div>
 
         {selectedItem ? (

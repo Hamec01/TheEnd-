@@ -73,7 +73,7 @@ import {
   getRuntimeMerchants,
   loadRuntimeAdminContent,
 } from './services/content/runtimeContentService';
-import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource } from './services/content/runtimeImageService';
+import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource, resolveStoredImageSource } from './services/content/runtimeImageService';
 import { getDomainItemWithFallback } from './services/content/seedService';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps, loadBattleMapsFromStore } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
@@ -1052,6 +1052,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const activeCombatBattleMap = useMemo(
     () => resolveBattleMapForCombat(combatState?.battleMapId ?? selectedBattleMap.id),
     [combatState?.battleMapId, selectedBattleMap.id],
+  );
+  const activeCombatMapImageUrl = useMemo(
+    () => resolveStoredImageSource(activeCombatBattleMap.imageUrl, runtimeImages) ?? activeCombatBattleMap.imageUrl,
+    [activeCombatBattleMap.imageUrl, runtimeImages],
   );
 
   const refreshRuntimeContent = useCallback(async (options?: { force?: boolean }) => {
@@ -2869,7 +2873,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 state={combatState}
                 inventory={inventory}
                 actionSlots={actionSlots}
-                mapImageUrl={activeCombatBattleMap.imageUrl}
+                mapImageUrl={activeCombatMapImageUrl}
                 mapCalibration={{
                   cellSizePx: activeCombatBattleMap.cellSizePx,
                   gridOffsetX: activeCombatBattleMap.gridOffsetX,

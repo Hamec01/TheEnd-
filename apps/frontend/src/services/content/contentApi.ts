@@ -12,8 +12,10 @@ import type {
   AdminQuestItem,
   AdminQuestMarker,
   AdminSkill,
+  ItemSet,
   LootTable,
   Material,
+  RuneComplex,
   StoredImage,
 } from './models';
 import { notifyContentSync } from './contentSync';
@@ -37,7 +39,52 @@ export type ContentCollectionName =
   | 'questInteractions'
   | 'questItems'
   | 'questMarkers'
-  | 'battleMaps';
+  | 'battleMaps'
+  | 'itemSets'
+  | 'runeComplexes';
+
+export interface ItemPreviewQueryBody {
+  activationContexts?: string[];
+  instanceSocketState?: Array<{
+    socketId: string;
+    socketedAugmentItemId?: string;
+    isLocked?: boolean;
+    source?: 'base' | 'blacksmith_added' | 'scripted';
+  }>;
+}
+
+export interface ItemPreviewResponse {
+  itemId: string;
+  itemName: string;
+  humanReadableEffects: string[];
+  socketsPreview: Array<{
+    socketId: string;
+    status: 'empty' | 'occupied_active' | 'occupied_inactive' | 'locked';
+    socketedAugmentItemId?: string;
+    socketedAugmentName?: string;
+    inactiveReason?: string;
+    allowedAugmentTypes?: string[];
+    source?: 'base' | 'blacksmith_added' | 'scripted';
+    augmentEffects?: string[];
+  }>;
+  inactiveAugments: Array<{
+    socketId: string;
+    augmentItemId: string;
+    augmentItemName?: string;
+    inactiveReason: string;
+    effects: string[];
+  }>;
+  setPreview?: {
+    setId: string;
+    setName: string;
+    totalPieces: number;
+    bonuses: Array<{
+      requiredPieces: number;
+      description?: string;
+      effects: string[];
+    }>;
+  };
+}
 
 export interface WorldMapContent {
   zones: WorldMapZone[];
@@ -61,6 +108,8 @@ export interface ContentSnapshot {
   questItems: AdminQuestItem[];
   questMarkers: AdminQuestMarker[];
   battleMaps: BattleMapDefinition[];
+  itemSets: ItemSet[];
+  runeComplexes: RuneComplex[];
   worldMap: WorldMapContent;
 }
 
@@ -215,6 +264,14 @@ export async function seedDefaultContent(): Promise<{ seeded: boolean; message: 
 export async function getContentCollection<T>(collection: ContentCollectionName): Promise<T[]> {
   await ensureContentBackendReady();
   return requestJson<T[]>(`/content/${collection}`);
+}
+
+export async function getItemPreview(id: string, body?: ItemPreviewQueryBody): Promise<ItemPreviewResponse> {
+  await ensureContentBackendReady();
+  return requestJson<ItemPreviewResponse>(`/content/preview/item/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
 }
 
 export async function getContentEntry<T>(collection: ContentCollectionName, id: string): Promise<T | null> {
