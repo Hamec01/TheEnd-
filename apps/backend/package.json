@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "npm run build --workspace @theend/rpg-domain && tsc -p tsconfig.build.json",
+    "test:unit": "vitest run src",
     "start": "node dist/apps/backend/src/main.js",
     "seed:admin-content": "npm run content:seed",
     "content:seed": "node -e \"process.env.CONTENT_SEED_CONFIRM='YES'; require('./scripts/seed-admin-content.js')\"",
@@ -36,6 +37,7 @@
     "prisma": "^5.16.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.9"
   }
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
   type Equipment,
@@ -7,11 +7,36 @@ import {
 } from '@theend/rpg-domain';
 import { randomUUID } from 'crypto';
 import { ContentService } from '../content/content.service';
+import {
+  normalizeCharacterEquipmentState,
+  normalizeCharacterItemInstanceState,
+  type CharacterEquipmentState,
+  type CharacterItemInstanceState,
+  type CharacterItemSocketState,
+  type CharacterItemInstanceRecord,
+} from '../characters/character-item-instance.types';
 import { isDatabaseEnabled, isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
+import type { AdminItem } from '../content/content.types';
 
 type InventoryItemRow = { id: string; itemId: string; quantity: number };
+type CharacterEquipmentRecordRow = {
+  weapon?: string | null;
+  helmet?: string | null;
+  necklace?: string | null;
+  armor?: string | null;
+  outerwear?: string | null;
+  belt?: string | null;
+  gloves?: string | null;
+  shield?: string | null;
+  ring1?: string | null;
+  ring2?: string | null;
+  ring3?: string | null;
+  legs?: string | null;
+  boots?: string | null;
+  equipmentState?: unknown;
+} | null | undefined;
 
 const ACTION_SLOT_IDS = ['quick1', 'quick2', 'quick3', 'quick4', 'quick5', 'quick6', 'quick7', 'quick8', 'quick9', 'quick10'] as const;
 
@@ -52,6 +77,19 @@ export interface CharacterResourceState {
   currentStamina: number;
   maxStamina: number;
   hpRegenPerTurn: number;
+}
+
+export interface SocketAugmentResult {
+  itemInstance: CharacterItemInstanceRecord;
+  socket: CharacterItemSocketState;
+  status: 'active' | 'inactive';
+  reason?: string;
+}
+
+export interface UnsocketAugmentResult {
+  itemInstance: CharacterItemInstanceRecord;
+  socket: CharacterItemSocketState;
+  returnedAugmentItemId: string;
 }
 
 type StoredHotbarMap = Record<string, CharacterHotbarSlot[] | undefined>;
@@ -322,13 +360,211 @@ export class ArenaService implements OnModuleInit {
     }).characterSkill ?? null;
   }
 
+  private getCharacterItemInstanceModel(): {
+    findMany(args: {
+      where: { characterId: string };
+      orderBy?: { createdAt: 'asc' | 'desc' };
+      select?: {
+        id: true;
+        characterId: true;
+        itemId: true;
+        state: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    }): Promise<Array<{
+      id: string;
+      characterId: string;
+      itemId: string;
+      state: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    }>>;
+    update(args: {
+      where: { id: string };
+      data: { state: Record<string, unknown> | null };
+      select?: {
+        id: true;
+        characterId: true;
+        itemId: true;
+        state: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    }): Promise<{
+      id: string;
+      characterId: string;
+      itemId: string;
+      state: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+  } | null {
+    return (this.prisma as unknown as {
+      characterItemInstance?: {
+        findMany(args: {
+          where: { characterId: string };
+          orderBy?: { createdAt: 'asc' | 'desc' };
+          select?: {
+            id: true;
+            characterId: true;
+            itemId: true;
+            state: true;
+            createdAt: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          characterId: string;
+          itemId: string;
+          state: unknown;
+          createdAt: Date;
+          updatedAt: Date;
+        }>>;
+        update(args: {
+          where: { id: string };
+          data: { state: Record<string, unknown> | null };
+          select?: {
+            id: true;
+            characterId: true;
+            itemId: true;
+            state: true;
+            createdAt: true;
+            updatedAt: true;
+          };
+        }): Promise<{
+          id: string;
+          characterId: string;
+          itemId: string;
+          state: unknown;
+          createdAt: Date;
+          updatedAt: Date;
+        }>;
+      };
+    }).characterItemInstance ?? null;
+  }
+
+  private getActiveAdminItemById(itemId: string): AdminItem {
+    const raw = this.contentService.getCollectionEntry('items', itemId) as AdminItem | null;
+    if (!raw || raw.isEnabled === false) {
+      throw new NotFoundException(`Item not found: ${itemId}`);
+    }
+    return raw;
+  }
+
+  private resolveEffectiveInstanceSockets(item: AdminItem, state: CharacterItemInstanceState | null): CharacterItemSocketState[] {
+    const byId = new Map<string, CharacterItemSocketState>();
+
+    for (const slot of item.augmentSlots ?? []) {
+      if (!slot || typeof slot.id !== 'string' || slot.id.trim().length === 0) {
+        continue;
+      }
+      byId.set(slot.id, {
+        socketId: slot.id,
+        socketedAugmentItemId: slot.socketedAugmentItemId ?? null,
+        isLocked: slot.isLocked ?? false,
+        source: slot.source ?? 'base',
+      });
+    }
+
+    for (const slot of state?.augmentSlots ?? []) {
+      const existing = byId.get(slot.socketId);
+      if (existing) {
+        byId.set(slot.socketId, {
+          socketId: slot.socketId,
+          socketedAugmentItemId: slot.socketedAugmentItemId ?? existing.socketedAugmentItemId ?? null,
+          isLocked: typeof slot.isLocked === 'boolean' ? slot.isLocked : existing.isLocked,
+          source: slot.source ?? existing.source,
+        });
+      } else {
+        byId.set(slot.socketId, {
+          socketId: slot.socketId,
+          socketedAugmentItemId: slot.socketedAugmentItemId ?? null,
+          isLocked: slot.isLocked ?? false,
+          source: slot.source,
+        });
+      }
+    }
+
+    return [...byId.values()];
+  }
+
+  private buildSocketActivationStatus(item: AdminItem, socket: CharacterItemSocketState, augmentItem: AdminItem): {
+    status: 'active' | 'inactive';
+    reason?: string;
+  } {
+    const augment = augmentItem.augment;
+    if (!augment) {
+      return {
+        status: 'inactive',
+        reason: 'Augment payload is missing on inserted item.',
+      };
+    }
+
+    const required = new Set<string>();
+    for (const value of augment.activationContexts ?? []) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        required.add(value.trim().toLowerCase());
+      }
+    }
+
+    const baseSocket = (item.augmentSlots ?? []).find((entry) => entry.id === socket.socketId);
+    for (const value of baseSocket?.activationContexts ?? []) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        required.add(value.trim().toLowerCase());
+      }
+    }
+
+    if (required.size === 0) {
+      return { status: 'active' };
+    }
+
+    const available = new Set<string>();
+    const pushAvailable = (value: string | undefined | null): void => {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        available.add(value.trim().toLowerCase());
+      }
+    };
+
+    pushAvailable(`item:${item.id}`);
+    pushAvailable(`itemtype:${item.type}`);
+    pushAvailable(item.subtype ? `itemsubtype:${item.subtype}` : null);
+    pushAvailable(item.damageCategory ? `damagecategory:${item.damageCategory}` : null);
+    pushAvailable(item.physicalType ? `physicaltype:${item.physicalType}` : null);
+    pushAvailable(item.elementType ? `elementtype:${item.elementType}` : null);
+    pushAvailable(item.magicSchool ? `magicschool:${item.magicSchool}` : null);
+    pushAvailable(`socket:${socket.socketId}`);
+    for (const tag of item.tags ?? []) {
+      pushAvailable(`tag:${tag}`);
+    }
+
+    const hasMatch = [...required].some((entry) => available.has(entry));
+    if (hasMatch) {
+      return { status: 'active' };
+    }
+
+    return {
+      status: 'inactive',
+      reason: `Activation context mismatch for socket ${socket.socketId}.`,
+    };
+  }
+
+  private toPersistedItemInstanceState(state: CharacterItemInstanceState | null): Record<string, unknown> | null {
+    if (!state) {
+      return null;
+    }
+    return state as unknown as Record<string, unknown>;
+  }
+
   private async warnAboutActionBarEntries(characterId: string, slots: CharacterActionSlot[]): Promise<void> {
-    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+    const inventoryRows: Array<{ id: string; itemId: string; quantity: number }> = await this.prisma.characterInventoryItem.findMany({
       where: { characterId },
       select: { id: true, itemId: true, quantity: true },
     });
-    const inventoryItemIds = new Set(inventoryRows.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId));
-    const inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+    const inventoryItemIds = new Set(inventoryRows.filter((entry: { quantity: number }) => entry.quantity > 0).map((entry: { itemId: string }) => entry.itemId));
+    const inventoryInstanceIds = new Set(inventoryRows.map((entry: { id: string }) => entry.id));
+    const itemInstances = await this.getCharacterItemInstances(characterId);
+    const itemInstanceIds = new Set(itemInstances.map((entry) => entry.id));
     const skillModel = this.getCharacterSkillModel();
 
     for (const slot of slots) {
@@ -364,7 +600,7 @@ export class ArenaService implements OnModuleInit {
           }
         }
 
-        if (slot.itemInstanceId && !inventoryInstanceIds.has(slot.itemInstanceId)) {
+        if (slot.itemInstanceId && !inventoryInstanceIds.has(slot.itemInstanceId) && !itemInstanceIds.has(slot.itemInstanceId)) {
           console.warn('[actionBar] warning', { characterId, slotId: slot.slotId, entryKind: 'item', itemId, itemInstanceId: slot.itemInstanceId, result: 'item-instance-missing-preserved' });
           continue;
         }
@@ -382,6 +618,9 @@ export class ArenaService implements OnModuleInit {
     for (const column of columns) {
       await this.prisma.$executeRawUnsafe(`ALTER TABLE "CharacterEquipment" ADD COLUMN IF NOT EXISTS "${column}" TEXT`);
     }
+
+    // Keep startup compatible with databases that have not applied the latest migration yet.
+    await this.prisma.$executeRawUnsafe('ALTER TABLE "CharacterEquipment" ADD COLUMN IF NOT EXISTS "equipmentState" JSONB');
   }
 
   private toEquipmentRecord(equipment: Equipment) {
@@ -402,22 +641,45 @@ export class ArenaService implements OnModuleInit {
     };
   }
 
-  private fromEquipmentRecord(record: {
-    weapon?: string | null;
-    helmet?: string | null;
-    necklace?: string | null;
-    armor?: string | null;
-    outerwear?: string | null;
-    belt?: string | null;
-    gloves?: string | null;
-    shield?: string | null;
-    ring1?: string | null;
-    ring2?: string | null;
-    ring3?: string | null;
-    legs?: string | null;
-    boots?: string | null;
-  } | null | undefined): Equipment {
+  private getEquipmentStateFromRecord(record: CharacterEquipmentRecordRow): CharacterEquipmentState | null {
+    return normalizeCharacterEquipmentState(record?.equipmentState ?? null);
+  }
+
+  private buildEquipmentStateForPersist(
+    equipment: Equipment,
+    previousState: CharacterEquipmentState | null,
+    slotInstanceOverrides?: Partial<Record<keyof Equipment, string | null>>,
+  ): CharacterEquipmentState {
+    const slots: CharacterEquipmentState['slots'] = {};
+
+    for (const slot of Object.keys(equipment) as Array<keyof Equipment>) {
+      const itemId = equipment[slot];
+      if (!itemId) {
+        continue;
+      }
+
+      const prevSlot = previousState?.slots?.[slot];
+      const override = slotInstanceOverrides?.[slot];
+      const nextInstanceId = typeof override === 'string'
+        ? override
+        : override === null
+          ? null
+          : prevSlot?.itemInstanceId ?? null;
+
+      slots[slot] = {
+        itemId,
+        itemInstanceId: nextInstanceId,
+      };
+    }
+
     return {
+      version: 1,
+      slots,
+    };
+  }
+
+  private fromEquipmentRecord(record: CharacterEquipmentRecordRow): Equipment {
+    const legacyEquipment: Equipment = {
       weapon: record?.weapon ?? null,
       helmet: record?.helmet ?? null,
       necklace: record?.necklace ?? null,
@@ -432,6 +694,27 @@ export class ArenaService implements OnModuleInit {
       legs: record?.legs ?? null,
       boots: record?.boots ?? null,
     };
+
+    const state = this.getEquipmentStateFromRecord(record);
+    if (!state) {
+      return legacyEquipment;
+    }
+
+    const next: Equipment = { ...legacyEquipment };
+    for (const slot of Object.keys(next) as Array<keyof Equipment>) {
+      const stateSlot = state.slots[slot];
+      if (!stateSlot) {
+        continue;
+      }
+
+      if (typeof stateSlot.itemId === 'string' && stateSlot.itemId.trim().length > 0) {
+        next[slot] = stateSlot.itemId.trim();
+      } else if (stateSlot.itemId === null) {
+        next[slot] = null;
+      }
+    }
+
+    return next;
   }
 
   private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
@@ -456,7 +739,7 @@ export class ArenaService implements OnModuleInit {
       await this.runtimeStore.writeArenaData(key, value);
       return;
     }
-    const jsonValue = value as Prisma.InputJsonValue;
+    const jsonValue = value as unknown as Record<string, unknown>;
     await this.prisma.contentStore.upsert({
       where: { key },
       create: { key, value: jsonValue },
@@ -583,6 +866,7 @@ export class ArenaService implements OnModuleInit {
       || rawItem.isUsable === true
       || rawItem.usableInCombat === true
       || rawItem.isCombatUsable === true
+      || (Array.isArray(rawItem.useEffects) && rawItem.useEffects.length > 0)
       || Object.prototype.hasOwnProperty.call(rawItem, 'useEffect')
       || (Array.isArray(rawItem.effects) && rawItem.effects.length > 0)
       || (Array.isArray(rawItem.combatEffects) && rawItem.combatEffects.length > 0);
@@ -675,11 +959,11 @@ export class ArenaService implements OnModuleInit {
       return this.readCharacterHotbar(characterId);
     }
 
-    const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+    const inventoryRows: Array<{ itemId: string; quantity: number }> = await this.prisma.characterInventoryItem.findMany({
       where: { characterId },
       select: { itemId: true, quantity: true },
     });
-    const inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+    const inventoryByItemId = new Map<string, number>(inventoryRows.map((entry: { itemId: string; quantity: number }) => [entry.itemId, entry.quantity]));
 
     const current = await this.readCharacterHotbar(characterId);
     const reconciled = this.normalizeHotbarSlots(current).map((slot) => {
@@ -764,11 +1048,11 @@ export class ArenaService implements OnModuleInit {
     } else {
       this.assertDatabaseEnabled();
       await this.ensureCharacterExists(characterId);
-      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      const inventoryRows: Array<{ itemId: string; quantity: number }> = await this.prisma.characterInventoryItem.findMany({
         where: { characterId },
         select: { itemId: true, quantity: true },
       });
-      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+      inventoryByItemId = new Map<string, number>(inventoryRows.map((entry: { itemId: string; quantity: number }) => [entry.itemId, entry.quantity]));
     }
 
     const current = await this.getOrCreateHotbar(characterId);
@@ -815,11 +1099,11 @@ export class ArenaService implements OnModuleInit {
     } else {
       this.assertDatabaseEnabled();
       await this.ensureCharacterExists(characterId);
-      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      const inventoryRows: Array<{ itemId: string; quantity: number }> = await this.prisma.characterInventoryItem.findMany({
         where: { characterId },
         select: { itemId: true, quantity: true },
       });
-      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
+      inventoryByItemId = new Map<string, number>(inventoryRows.map((entry: { itemId: string; quantity: number }) => [entry.itemId, entry.quantity]));
     }
 
     const current = await this.getOrCreateActionSlots(characterId);
@@ -879,13 +1163,16 @@ export class ArenaService implements OnModuleInit {
     } else {
       this.assertDatabaseEnabled();
       await this.ensureCharacterExists(characterId);
-      const inventoryRows = await this.prisma.characterInventoryItem.findMany({
+      const inventoryRows: Array<{ id: string; itemId: string; quantity: number }> = await this.prisma.characterInventoryItem.findMany({
         where: { characterId },
         select: { id: true, itemId: true, quantity: true },
       });
-      inventoryByItemId = new Map(inventoryRows.map((entry) => [entry.itemId, entry.quantity] as const));
-      inventoryInstanceIds = new Set(inventoryRows.map((entry) => entry.id));
+      inventoryByItemId = new Map<string, number>(inventoryRows.map((entry: { itemId: string; quantity: number }) => [entry.itemId, entry.quantity]));
+      inventoryInstanceIds = new Set(inventoryRows.map((entry: { id: string }) => entry.id));
     }
+
+    const itemInstances = await this.getCharacterItemInstances(characterId);
+    const itemInstanceIds = new Set(itemInstances.map((entry) => entry.id));
 
     const skillModel = isFileStorageMode() ? null : this.getCharacterSkillModel();
     const normalizedUpdates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }> = [];
@@ -952,7 +1239,7 @@ export class ArenaService implements OnModuleInit {
       const itemInstanceId = typeof update.itemInstanceId === 'string' && update.itemInstanceId.trim().length > 0
         ? update.itemInstanceId.trim()
         : null;
-      if (itemInstanceId && !inventoryInstanceIds.has(itemInstanceId)) {
+      if (itemInstanceId && !inventoryInstanceIds.has(itemInstanceId) && !itemInstanceIds.has(itemInstanceId)) {
         console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'missing-item-instance' });
         throw new BadRequestException(`Item instance is not available in inventory: ${itemInstanceId}`);
       }
@@ -1416,19 +1703,54 @@ export class ArenaService implements OnModuleInit {
       }
     }
 
+    const equipmentRow = await this.prisma.characterEquipment.findUnique({
+      where: { characterId },
+      select: {
+        weapon: true,
+        helmet: true,
+        necklace: true,
+        armor: true,
+        outerwear: true,
+        belt: true,
+        gloves: true,
+        shield: true,
+        ring1: true,
+        ring2: true,
+        ring3: true,
+        legs: true,
+        boots: true,
+        equipmentState: true,
+      },
+    });
+    const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
+
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await this.decrementInventoryItem(tx, characterId, itemId);
 
       for (const [returnedItemId, quantity] of returnedItems) {
+        const wasInstanceEquipped = (Object.keys(state.equipment) as Array<keyof Equipment>).some((slot) => {
+          const prevItem = state.equipment[slot];
+          const replaced = prevItem === returnedItemId && prevItem !== nextEquipment[slot];
+          return replaced && Boolean(equipmentState?.slots[slot]?.itemInstanceId);
+        });
+        if (wasInstanceEquipped) {
+          continue;
+        }
         await this.incrementInventoryItem(tx, characterId, returnedItemId, quantity);
       }
 
+      const nextEquipmentState = this.buildEquipmentStateForPersist(nextEquipment, equipmentState);
+
       await tx.characterEquipment.upsert({
         where: { characterId },
-        update: this.toEquipmentRecord(nextEquipment),
+        update: {
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
         create: {
           characterId,
           ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
         },
       });
     });
@@ -1452,17 +1774,46 @@ export class ArenaService implements OnModuleInit {
       [slot]: null,
     };
 
+    const equipmentRow = await this.prisma.characterEquipment.findUnique({
+      where: { characterId },
+      select: {
+        weapon: true,
+        helmet: true,
+        necklace: true,
+        armor: true,
+        outerwear: true,
+        belt: true,
+        gloves: true,
+        shield: true,
+        ring1: true,
+        ring2: true,
+        ring3: true,
+        legs: true,
+        boots: true,
+        equipmentState: true,
+      },
+    });
+    const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
+    const unequippedInstanceId = equipmentState?.slots[slot]?.itemInstanceId ?? null;
+    const nextEquipmentState = this.buildEquipmentStateForPersist(nextEquipment, equipmentState, { [slot]: null });
+
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.characterEquipment.upsert({
         where: { characterId },
-        update: this.toEquipmentRecord(nextEquipment),
+        update: {
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
         create: {
           characterId,
           ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
         },
       });
 
-      await this.incrementInventoryItem(tx, characterId, currentItem);
+      if (!unequippedInstanceId) {
+        await this.incrementInventoryItem(tx, characterId, currentItem);
+      }
     });
 
     return this.getCharacterArenaState(characterId);
@@ -1555,5 +1906,374 @@ export class ArenaService implements OnModuleInit {
     await this.updateRuntimeInventoryItemQuantity(characterId, currentItem, 1);
 
     return this.getCharacterArenaState(characterId);
+  }
+
+  async getCharacterItemInstances(characterId: string): Promise<CharacterItemInstanceRecord[]> {
+    if (isFileStorageMode()) {
+      await this.requireRuntimeCharacter(characterId);
+      return [];
+    }
+
+    this.assertDatabaseEnabled();
+    await this.ensureCharacterExists(characterId);
+    const model = this.getCharacterItemInstanceModel();
+    if (!model) {
+      return [];
+    }
+
+    const rows = await model.findMany({
+      where: { characterId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        characterId: true,
+        itemId: true,
+        state: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      characterId: row.characterId,
+      itemId: row.itemId,
+      state: normalizeCharacterItemInstanceState(row.state),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  async getItemInstance(characterId: string, itemInstanceId: string): Promise<CharacterItemInstanceRecord> {
+    const normalizedId = String(itemInstanceId ?? '').trim();
+    if (!normalizedId) {
+      throw new BadRequestException('itemInstanceId is required.');
+    }
+
+    const instances = await this.getCharacterItemInstances(characterId);
+    const match = instances.find((entry) => entry.id === normalizedId);
+    if (!match) {
+      throw new NotFoundException('Item instance not found.');
+    }
+
+    return match;
+  }
+
+  async equipItemInstance(characterId: string, itemInstanceId: string, preferredSlot?: keyof Equipment) {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    const instance = await this.getItemInstance(characterId, itemInstanceId);
+    const state = await this.getCharacterArenaState(characterId);
+
+    const check = this.contentService.canEquipItem(state.character.baseStats, instance.itemId, state.equipment, preferredSlot);
+    if (!check.ok) {
+      throw new BadRequestException(check.reason ?? 'Cannot equip this item instance.');
+    }
+
+    const nextEquipment = this.contentService.equipItem(state.equipment, instance.itemId, preferredSlot);
+    const targetSlot = (Object.keys(nextEquipment) as Array<keyof Equipment>).find((slot) => {
+      const becameThisItem = nextEquipment[slot] === instance.itemId && state.equipment[slot] !== instance.itemId;
+      return becameThisItem;
+    })
+      ?? (Object.keys(nextEquipment) as Array<keyof Equipment>).find((slot) => nextEquipment[slot] === instance.itemId)
+      ?? null;
+
+    if (!targetSlot) {
+      throw new BadRequestException('Failed to resolve equipment slot for item instance.');
+    }
+
+    const equipmentRow = await this.prisma.characterEquipment.findUnique({
+      where: { characterId },
+      select: {
+        weapon: true,
+        helmet: true,
+        necklace: true,
+        armor: true,
+        outerwear: true,
+        belt: true,
+        gloves: true,
+        shield: true,
+        ring1: true,
+        ring2: true,
+        ring3: true,
+        legs: true,
+        boots: true,
+        equipmentState: true,
+      },
+    });
+    const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
+
+    const returnedItems = new Map<string, number>();
+    for (const slot of Object.keys(state.equipment) as Array<keyof Equipment>) {
+      const previousItemId = state.equipment[slot];
+      if (previousItemId && previousItemId !== nextEquipment[slot]) {
+        returnedItems.set(previousItemId, (returnedItems.get(previousItemId) ?? 0) + 1);
+      }
+    }
+
+    const slotOverrides: Partial<Record<keyof Equipment, string | null>> = {
+      [targetSlot]: instance.id,
+    };
+    for (const slot of Object.keys(state.equipment) as Array<keyof Equipment>) {
+      if (state.equipment[slot] !== nextEquipment[slot]) {
+        const changedToSameTarget = slot === targetSlot;
+        if (!changedToSameTarget) {
+          slotOverrides[slot] = null;
+        }
+      }
+    }
+    const nextEquipmentState = this.buildEquipmentStateForPersist(nextEquipment, equipmentState, slotOverrides);
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const existing = await tx.characterInventoryItem.findUnique({
+        where: { characterId_itemId: { characterId, itemId: instance.itemId } },
+      });
+      if (existing && existing.quantity > 0) {
+        await this.decrementInventoryItem(tx, characterId, instance.itemId);
+      }
+
+      for (const [returnedItemId, quantity] of returnedItems) {
+        const wasInstanceEquipped = (Object.keys(state.equipment) as Array<keyof Equipment>).some((slot) => {
+          const prevItem = state.equipment[slot];
+          const replaced = prevItem === returnedItemId && prevItem !== nextEquipment[slot];
+          return replaced && Boolean(equipmentState?.slots[slot]?.itemInstanceId);
+        });
+        if (wasInstanceEquipped) {
+          continue;
+        }
+        await this.incrementInventoryItem(tx, characterId, returnedItemId, quantity);
+      }
+
+      await tx.characterEquipment.upsert({
+        where: { characterId },
+        update: {
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
+        create: {
+          characterId,
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
+      });
+    });
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  async unequipItemInstance(characterId: string, itemInstanceId: string) {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    await this.getItemInstance(characterId, itemInstanceId);
+    const state = await this.getCharacterArenaState(characterId);
+    const equipmentRow = await this.prisma.characterEquipment.findUnique({
+      where: { characterId },
+      select: {
+        weapon: true,
+        helmet: true,
+        necklace: true,
+        armor: true,
+        outerwear: true,
+        belt: true,
+        gloves: true,
+        shield: true,
+        ring1: true,
+        ring2: true,
+        ring3: true,
+        legs: true,
+        boots: true,
+        equipmentState: true,
+      },
+    });
+    const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
+
+    const slot = (Object.keys(state.equipment) as Array<keyof Equipment>).find(
+      (entry) => equipmentState?.slots[entry]?.itemInstanceId === itemInstanceId,
+    );
+
+    if (!slot) {
+      throw new BadRequestException('Item instance is not currently equipped.');
+    }
+
+    const currentItem = state.equipment[slot];
+    if (!currentItem) {
+      throw new BadRequestException('Slot is already empty.');
+    }
+
+    const nextEquipment: Equipment = {
+      ...state.equipment,
+      [slot]: null,
+    };
+    const nextEquipmentState = this.buildEquipmentStateForPersist(nextEquipment, equipmentState, { [slot]: null });
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.characterEquipment.upsert({
+        where: { characterId },
+        update: {
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
+        create: {
+          characterId,
+          ...this.toEquipmentRecord(nextEquipment),
+          equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
+        },
+      });
+    });
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  async socketAugment(
+    characterId: string,
+    itemInstanceId: string,
+    socketId: string,
+    augmentItemId: string,
+  ): Promise<SocketAugmentResult> {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    const normalizedSocketId = String(socketId ?? '').trim();
+    const normalizedAugmentItemId = String(augmentItemId ?? '').trim();
+    if (!normalizedSocketId) {
+      throw new BadRequestException('socketId is required.');
+    }
+    if (!normalizedAugmentItemId) {
+      throw new BadRequestException('augmentItemId is required.');
+    }
+
+    const instance = await this.getItemInstance(characterId, itemInstanceId);
+    const targetItem = this.getActiveAdminItemById(instance.itemId);
+    const augmentItem = this.getActiveAdminItemById(normalizedAugmentItemId);
+
+    if (!augmentItem.augment) {
+      throw new BadRequestException('Selected augment item has no augment payload.');
+    }
+
+    const sockets = this.resolveEffectiveInstanceSockets(targetItem, instance.state);
+    const targetSocket = sockets.find((entry) => entry.socketId === normalizedSocketId);
+    if (!targetSocket) {
+      throw new BadRequestException(`Socket not found: ${normalizedSocketId}`);
+    }
+    if (targetSocket.isLocked) {
+      throw new BadRequestException(`Socket is locked: ${normalizedSocketId}`);
+    }
+    if (targetSocket.socketedAugmentItemId) {
+      throw new BadRequestException(`Socket is already occupied: ${normalizedSocketId}`);
+    }
+
+    const nextSlots = sockets.map((entry) => (
+      entry.socketId === normalizedSocketId
+        ? { ...entry, socketedAugmentItemId: normalizedAugmentItemId }
+        : entry
+    ));
+
+    const nextState: CharacterItemInstanceState = {
+      ...(instance.state ?? { version: 1 }),
+      version: 1,
+      augmentSlots: nextSlots,
+    };
+
+    const model = this.getCharacterItemInstanceModel();
+    if (!model) {
+      throw new ServiceUnavailableException('CharacterItemInstance model is not available.');
+    }
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await this.decrementInventoryItem(tx, characterId, normalizedAugmentItemId);
+      await tx.characterItemInstance.update({
+        where: { id: instance.id },
+        data: {
+          state: this.toPersistedItemInstanceState(nextState),
+        },
+      });
+    });
+
+    const updated = await this.getItemInstance(characterId, instance.id);
+    const updatedSocket = this.resolveEffectiveInstanceSockets(targetItem, updated.state).find((entry) => entry.socketId === normalizedSocketId);
+    if (!updatedSocket) {
+      throw new InternalServerErrorException('Socket update failed.');
+    }
+
+    const activation = this.buildSocketActivationStatus(targetItem, updatedSocket, augmentItem);
+    return {
+      itemInstance: updated,
+      socket: updatedSocket,
+      status: activation.status,
+      reason: activation.reason,
+    };
+  }
+
+  async unsocketAugment(
+    characterId: string,
+    itemInstanceId: string,
+    socketId: string,
+  ): Promise<UnsocketAugmentResult> {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    const normalizedSocketId = String(socketId ?? '').trim();
+    if (!normalizedSocketId) {
+      throw new BadRequestException('socketId is required.');
+    }
+
+    const instance = await this.getItemInstance(characterId, itemInstanceId);
+    const targetItem = this.getActiveAdminItemById(instance.itemId);
+    const sockets = this.resolveEffectiveInstanceSockets(targetItem, instance.state);
+    const targetSocket = sockets.find((entry) => entry.socketId === normalizedSocketId);
+    if (!targetSocket) {
+      throw new BadRequestException(`Socket not found: ${normalizedSocketId}`);
+    }
+    if (targetSocket.isLocked) {
+      throw new BadRequestException(`Socket is locked: ${normalizedSocketId}`);
+    }
+    if (!targetSocket.socketedAugmentItemId) {
+      throw new BadRequestException(`Socket is empty: ${normalizedSocketId}`);
+    }
+
+    const returnedAugmentItemId = targetSocket.socketedAugmentItemId;
+    const nextSlots = sockets.map((entry) => (
+      entry.socketId === normalizedSocketId
+        ? { ...entry, socketedAugmentItemId: null }
+        : entry
+    ));
+
+    const nextState: CharacterItemInstanceState = {
+      ...(instance.state ?? { version: 1 }),
+      version: 1,
+      augmentSlots: nextSlots,
+    };
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.characterItemInstance.update({
+        where: { id: instance.id },
+        data: {
+          state: this.toPersistedItemInstanceState(nextState),
+        },
+      });
+      await this.incrementInventoryItem(tx, characterId, returnedAugmentItemId);
+    });
+
+    const updated = await this.getItemInstance(characterId, instance.id);
+    const updatedSocket = this.resolveEffectiveInstanceSockets(targetItem, updated.state).find((entry) => entry.socketId === normalizedSocketId);
+    if (!updatedSocket) {
+      throw new InternalServerErrorException('Socket update failed.');
+    }
+
+    return {
+      itemInstance: updated,
+      socket: updatedSocket,
+      returnedAugmentItemId,
+    };
   }
 }

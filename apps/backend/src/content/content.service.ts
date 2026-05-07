@@ -726,7 +726,7 @@ function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
   };
 }
 
-function normalizeItemInput(input: AdminItem): AdminItem {
+export function normalizeItemInput(input: AdminItem): AdminItem {
   const damageMin = typeof input.damageMin === 'number' && Number.isFinite(input.damageMin)
     ? Math.max(0, Math.round(input.damageMin))
     : undefined;
@@ -1605,6 +1605,18 @@ export class ContentService implements OnModuleInit {
       for (const pieceItemId of pieceIds) {
         if (!itemIds.has(pieceItemId)) {
           errors.push(`Item set '${set.id}' references missing item '${pieceItemId}' in pieceItemIds.`);
+        }
+      }
+
+      for (const bonus of Array.isArray(set.bonuses) ? set.bonuses : []) {
+        const requiredPieces = toFiniteNumber((bonus as { requiredPieces?: unknown }).requiredPieces);
+        if (!Number.isFinite(requiredPieces) || requiredPieces <= 0) {
+          errors.push(`Item set '${set.id}' has bonus with invalid requiredPieces: must be > 0.`);
+          continue;
+        }
+
+        if (requiredPieces > pieceIds.length) {
+          errors.push(`Item set '${set.id}' has bonus requiredPieces (${requiredPieces}) greater than pieceItemIds length (${pieceIds.length}).`);
         }
       }
     }

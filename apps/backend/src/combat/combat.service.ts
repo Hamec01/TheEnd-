@@ -276,6 +276,13 @@ export class CombatService {
   private normalizeItemEffects(item: { itemType: string; itemSubType?: string } | null, rawValue: unknown): NormalizedItemEffect[] {
     const raw = this.toRecord(rawValue);
     const sources: unknown[] = [];
+
+    // New item-effects contract for active use effects.
+    if (Array.isArray(raw?.useEffects)) {
+      sources.push(...raw.useEffects);
+    }
+
+    // Legacy fields are kept unchanged for backward compatibility.
     const singleEffect = raw ? this.toRecord(raw.useEffect) : null;
     if (singleEffect) {
       sources.push(singleEffect);

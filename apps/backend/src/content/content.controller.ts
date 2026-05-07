@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from '@nestjs/common';
 import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
+import { buildItemPreview, buildItemSetPreview, buildRuneComplexPreview } from './admin-preview.builder';
+import type { ItemPreviewQueryBody, ItemPreviewResponse, ItemSetPreviewResponse, RuneComplexPreviewResponse } from './admin-preview.types';
 
 @Controller(['content', 'api/content'])
 export class ContentController {
@@ -68,6 +70,69 @@ export class ContentController {
   async saveWorldMap(@Body() payload: WorldMapContent): Promise<WorldMapContent> {
     await this.contentService.ensureInitialized();
     return this.contentService.saveWorldMap(payload);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin preview endpoints (must be declared before generic :collection routes)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * POST /content/preview/item/:id
+   *
+   * Возвращает полный превью предмета: человекочитаемые эффекты, состояние сокетов,
+   * неактивные аугменты и информацию о сете.
+   *
+   * Опционально в body можно передать:
+   * - activationContexts: string[]   — контексты для проверки активации аугментов
+   * - instanceSocketState: {...}[]   — состояние сокетов персонажного инстанса
+   */
+  @Post('preview/item/:id')
+  async previewItem(
+    @Param('id') id: string,
+    @Body() body?: ItemPreviewQueryBody,
+  ): Promise<ItemPreviewResponse> {
+    await this.contentService.ensureInitialized();
+    const db = this.contentService.getSnapshot();
+    const item = db.items.find((i) => i.id === id);
+    if (!item) {
+      throw new NotFoundException(`Item '${id}' not found`);
+    }
+    return buildItemPreview(item, db.items, db.itemSets ?? [], {
+      activationContexts: body?.activationContexts,
+      instanceSocketState: body?.instanceSocketState,
+    });
+  }
+
+  /**
+   * GET /content/preview/item-set/:id
+   *
+   * Возвращает превью сета: список предметов с именами и бонусы с человекочитаемыми эффектами.
+   */
+  @Get('preview/item-set/:id')
+  async previewItemSet(@Param('id') id: string): Promise<ItemSetPreviewResponse> {
+    await this.contentService.ensureInitialized();
+    const db = this.contentService.getSnapshot();
+    const set = (db.itemSets ?? []).find((s) => s.id === id);
+    if (!set) {
+      throw new NotFoundException(`ItemSet '${id}' not found`);
+    }
+    return buildItemSetPreview(set, db.items);
+  }
+
+  /**
+   * GET /content/preview/rune-complex/:id
+   *
+   * Возвращает превью рунного комплекса: список рун с именами и эффектами.
+   */
+  @Get('preview/rune-complex/:id')
+  async previewRuneComplex(@Param('id') id: string): Promise<RuneComplexPreviewResponse> {
+    await this.contentService.ensureInitialized();
+    const db = this.contentService.getSnapshot();
+    const complex = (db.runeComplexes ?? []).find((c) => c.id === id);
+    if (!complex) {
+      throw new NotFoundException(`RuneComplex '${id}' not found`);
+    }
+    return buildRuneComplexPreview(complex, db.items);
   }
 
   @Get(':collection')
