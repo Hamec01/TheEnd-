@@ -33,6 +33,101 @@ export type ElementType = 'fire' | 'water' | 'earth' | 'air' | 'light' | 'dark';
 
 export type MagicSchool = 'blood' | 'death' | 'life' | 'mind' | 'illusion' | 'curse' | 'arcane';
 
+export type ItemEffectType =
+  | 'stat_bonus'
+  | 'incoming_damage_modifier'
+  | 'outgoing_damage_modifier'
+  | 'armor_penetration'
+  | 'crit_chance_modifier'
+  | 'crit_damage_modifier'
+  | 'crit_chance_taken_modifier'
+  | 'lifesteal'
+  | 'apply_status'
+  | 'status_resistance'
+  | 'status_immunity'
+  | 'block_chance_modifier'
+  | 'dodge_chance_modifier'
+  | 'hit_chance_modifier'
+  | 'extra_attack_chance';
+
+export interface ItemEffect {
+  type: ItemEffectType;
+  stat?: StatKey;
+  value?: number;
+  percent?: number;
+  flat?: number;
+  damageCategory?: DamageCategory;
+  physicalType?: PhysicalType;
+  elementType?: ElementType;
+  magicSchool?: MagicSchool;
+  statusId?: string;
+  chancePercent?: number;
+  durationTurns?: number;
+  trigger?: 'on_hit' | 'on_crit' | 'on_use' | 'on_turn_start' | 'on_turn_end' | 'always';
+  activationContexts?: string[];
+  condition?: string;
+}
+
+export type ItemAugmentType = 'rune' | 'magic_stone' | 'enchantment' | 'other';
+
+export interface ItemAugment {
+  type: ItemAugmentType;
+  activationContexts?: string[];
+  effects?: ItemEffect[];
+  tags?: string[];
+}
+
+export type ItemSocketSource = 'base' | 'blacksmith_added' | 'scripted';
+
+export interface ItemSocket {
+  id: string;
+  source?: ItemSocketSource;
+  isLocked?: boolean;
+  allowedAugmentTypes?: ItemAugmentType[];
+  activationContexts?: string[];
+  socketedAugmentItemId?: string;
+}
+
+export interface SlotUpgradeCostItem {
+  itemId: string;
+  quantity: number;
+}
+
+export interface SlotUpgradeRules {
+  minBlacksmithTier?: number;
+  goldCost?: number;
+  materialCosts?: SlotUpgradeCostItem[];
+  successChancePercent?: number;
+  failureModes?: Array<'none' | 'material_lost' | 'item_damaged' | 'slot_locked'>;
+}
+
+export interface ItemSetBonus {
+  requiredPieces: number;
+  effects: ItemEffect[];
+  description?: string;
+}
+
+export interface ItemSet {
+  id: string;
+  name: string;
+  pieceItemIds: string[];
+  bonuses: ItemSetBonus[];
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RuneComplex {
+  id: string;
+  name: string;
+  runeItemIds: string[];
+  gameplayDescription?: string;
+  loreDescription?: string;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminItem {
   id: string;
   name: string;
@@ -74,6 +169,21 @@ export interface AdminItem {
   splashOuterMultiplier?: number;
   requiredStats?: Partial<Record<StatKey, number>>;
   bonuses?: Partial<Record<StatKey, number>>;
+  // Legacy effect fields are kept as-is for backwards compatibility.
+  useEffect?: unknown;
+  effects?: unknown[];
+  combatEffects?: unknown[];
+  equipmentEffects?: ItemEffect[];
+  useEffects?: ItemEffect[];
+  augment?: ItemAugment;
+  augmentSlots?: ItemSocket[];
+  canAddAugmentSlots?: boolean;
+  maxAugmentSlots?: number;
+  slotUpgradeRules?: SlotUpgradeRules;
+  canHaveRuneComplex?: boolean;
+  defaultRuneComplexId?: string;
+  setId?: string;
+  tags?: string[];
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
@@ -610,6 +720,8 @@ export interface ContentDatabase {
   questItems: QuestItemDefinition[];
   questMarkers: QuestMarkerDefinition[];
   battleMaps: BattleMapDefinition[];
+  itemSets?: ItemSet[];
+  runeComplexes?: RuneComplex[];
   worldMap: WorldMapContent;
 }
 
@@ -658,7 +770,9 @@ export type ContentCollectionName =
   | 'questInteractions'
   | 'questItems'
   | 'questMarkers'
-  | 'battleMaps';
+  | 'battleMaps'
+  | 'itemSets'
+  | 'runeComplexes';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -675,4 +789,6 @@ export interface ContentCollectionMap {
   questItems: QuestItemDefinition;
   questMarkers: QuestMarkerDefinition;
   battleMaps: BattleMapDefinition;
+  itemSets: ItemSet;
+  runeComplexes: RuneComplex;
 }

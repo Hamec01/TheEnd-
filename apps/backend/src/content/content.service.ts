@@ -31,11 +31,14 @@ import type {
   ContentImportMode,
   ContentImportResult,
   DialogueDefinition,
+  ItemEffect,
+  ItemSet,
   ItemRarity,
   Material,
   MerchantItem,
   NpcDefinition,
   QuestDefinition,
+  RuneComplex,
   QuestInteractionDefinition,
   QuestInteractionRequirement,
   QuestItemDefinition,
@@ -60,6 +63,8 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'questItems',
   'questMarkers',
   'battleMaps',
+  'itemSets',
+  'runeComplexes',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -97,6 +102,8 @@ function countContent(db: ContentDatabase): Record<string, number> {
     questItems: db.questItems.length,
     questMarkers: db.questMarkers.length,
     battleMaps: db.battleMaps.length,
+    itemSets: (db.itemSets ?? []).length,
+    runeComplexes: (db.runeComplexes ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -440,6 +447,8 @@ function createEmptyDatabase(): ContentDatabase {
     questItems: [],
     questMarkers: [],
     battleMaps: [],
+    itemSets: [],
+    runeComplexes: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -467,6 +476,8 @@ function createSeedDatabase(): ContentDatabase {
     questItems: [],
     questMarkers: [],
     battleMaps: [],
+    itemSets: [],
+    runeComplexes: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -519,6 +530,202 @@ function ensureCollectionName(name: string): ContentCollectionName {
   throw new NotFoundException(`Unknown content collection: ${name}`);
 }
 
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => String(entry ?? '').trim()).filter(Boolean);
+}
+
+function normalizeOptionalStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return normalizeStringList(value);
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function toInteger(value: unknown): number | undefined {
+  const num = toFiniteNumber(value);
+  return typeof num === 'number' ? Math.round(num) : undefined;
+}
+
+function normalizeItemEffectInput(input: unknown): ItemEffect | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return null;
+  }
+
+  const raw = input as Record<string, unknown>;
+  const type = String(raw.type ?? '').trim() as ItemEffect['type'];
+  if (!type) {
+    return null;
+  }
+
+  const triggerRaw = String(raw.trigger ?? '').trim();
+  const trigger = triggerRaw === 'on_hit'
+    || triggerRaw === 'on_crit'
+    || triggerRaw === 'on_use'
+    || triggerRaw === 'on_turn_start'
+    || triggerRaw === 'on_turn_end'
+    || triggerRaw === 'always'
+    ? triggerRaw
+    : undefined;
+
+  return {
+    type,
+    stat: typeof raw.stat === 'string' && raw.stat.trim() ? raw.stat.trim() as ItemEffect['stat'] : undefined,
+    value: toFiniteNumber(raw.value),
+    percent: toFiniteNumber(raw.percent),
+    flat: toFiniteNumber(raw.flat),
+    damageCategory: typeof raw.damageCategory === 'string' && raw.damageCategory.trim() ? raw.damageCategory.trim() as ItemEffect['damageCategory'] : undefined,
+    physicalType: typeof raw.physicalType === 'string' && raw.physicalType.trim() ? raw.physicalType.trim() as ItemEffect['physicalType'] : undefined,
+    elementType: typeof raw.elementType === 'string' && raw.elementType.trim() ? raw.elementType.trim() as ItemEffect['elementType'] : undefined,
+    magicSchool: typeof raw.magicSchool === 'string' && raw.magicSchool.trim() ? raw.magicSchool.trim() as ItemEffect['magicSchool'] : undefined,
+    statusId: typeof raw.statusId === 'string' && raw.statusId.trim() ? raw.statusId.trim() : undefined,
+    chancePercent: toFiniteNumber(raw.chancePercent),
+    durationTurns: toInteger(raw.durationTurns),
+    trigger,
+    activationContexts: normalizeOptionalStringList(raw.activationContexts),
+    condition: typeof raw.condition === 'string' && raw.condition.trim() ? raw.condition.trim() : undefined,
+  };
+}
+
+function normalizeOptionalItemEffects(value: unknown): ItemEffect[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .map((entry) => normalizeItemEffectInput(entry))
+    .filter((entry): entry is ItemEffect => Boolean(entry));
+}
+
+function normalizeItemAugmentInput(value: unknown): AdminItem['augment'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const type = String(raw.type ?? '').trim();
+  if (!type) {
+    return undefined;
+  }
+
+  return {
+    type: type as NonNullable<AdminItem['augment']>['type'],
+    activationContexts: normalizeOptionalStringList(raw.activationContexts),
+    effects: normalizeOptionalItemEffects(raw.effects),
+    tags: normalizeOptionalStringList(raw.tags),
+  };
+}
+
+function normalizeItemSocketInput(value: unknown, fallbackIndex: number): NonNullable<AdminItem['augmentSlots']>[number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const id = String(raw.id ?? '').trim() || `socket_${fallbackIndex + 1}`;
+  const sourceRaw = String(raw.source ?? '').trim();
+  const source = sourceRaw === 'blacksmith_added' || sourceRaw === 'scripted' || sourceRaw === 'base'
+    ? sourceRaw
+    : 'base';
+
+  return {
+    id,
+    source,
+    isLocked: raw.isLocked === true,
+    allowedAugmentTypes: Array.isArray(raw.allowedAugmentTypes)
+      ? normalizeStringList(raw.allowedAugmentTypes) as NonNullable<AdminItem['augmentSlots']>[number]['allowedAugmentTypes']
+      : undefined,
+    activationContexts: normalizeOptionalStringList(raw.activationContexts),
+    socketedAugmentItemId: typeof raw.socketedAugmentItemId === 'string' && raw.socketedAugmentItemId.trim()
+      ? raw.socketedAugmentItemId.trim()
+      : undefined,
+  };
+}
+
+function normalizeItemSocketsInput(value: unknown): AdminItem['augmentSlots'] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value
+    .map((entry, index) => normalizeItemSocketInput(entry, index))
+    .filter((entry): entry is NonNullable<AdminItem['augmentSlots']>[number] => Boolean(entry));
+}
+
+function normalizeSlotUpgradeRulesInput(value: unknown): AdminItem['slotUpgradeRules'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const materialCosts = Array.isArray(raw.materialCosts)
+    ? raw.materialCosts
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          return null;
+        }
+        const rec = entry as Record<string, unknown>;
+        const itemId = String(rec.itemId ?? '').trim();
+        const quantity = Math.max(1, Math.round(toFiniteNumber(rec.quantity) ?? 1));
+        return itemId ? { itemId, quantity } : null;
+      })
+      .filter((entry): entry is NonNullable<NonNullable<AdminItem['slotUpgradeRules']>['materialCosts']>[number] => Boolean(entry))
+    : undefined;
+
+  const failureModes = Array.isArray(raw.failureModes)
+    ? (normalizeStringList(raw.failureModes)
+      .filter((mode): mode is 'none' | 'material_lost' | 'item_damaged' | 'slot_locked' =>
+        mode === 'none' || mode === 'material_lost' || mode === 'item_damaged' || mode === 'slot_locked'))
+    : undefined;
+
+  return {
+    minBlacksmithTier: Math.max(1, toInteger(raw.minBlacksmithTier) ?? 1),
+    goldCost: Math.max(0, Math.round(toFiniteNumber(raw.goldCost) ?? 0)),
+    materialCosts,
+    successChancePercent: Math.max(0, Math.min(100, toFiniteNumber(raw.successChancePercent) ?? 100)),
+    failureModes,
+  };
+}
+
+function normalizeItemSetInput(input: ItemSet): ItemSet {
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    pieceItemIds: normalizeStringList(input.pieceItemIds),
+    bonuses: Array.isArray(input.bonuses)
+      ? input.bonuses
+        .map((bonus) => ({
+          requiredPieces: Math.max(1, Math.round(toFiniteNumber(bonus?.requiredPieces) ?? 1)),
+          effects: normalizeOptionalItemEffects(bonus?.effects) ?? [],
+          description: typeof bonus?.description === 'string' && bonus.description.trim() ? bonus.description.trim() : undefined,
+        }))
+      : [],
+    isEnabled: input.isEnabled !== false,
+    createdAt: input.createdAt || nowIso(),
+    updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
+function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    runeItemIds: normalizeStringList(input.runeItemIds),
+    gameplayDescription: typeof input.gameplayDescription === 'string' && input.gameplayDescription.trim() ? input.gameplayDescription.trim() : undefined,
+    loreDescription: typeof input.loreDescription === 'string' && input.loreDescription.trim() ? input.loreDescription.trim() : undefined,
+    isEnabled: input.isEnabled !== false,
+    createdAt: input.createdAt || nowIso(),
+    updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
 function normalizeItemInput(input: AdminItem): AdminItem {
   const damageMin = typeof input.damageMin === 'number' && Number.isFinite(input.damageMin)
     ? Math.max(0, Math.round(input.damageMin))
@@ -551,6 +758,15 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     ? Math.max(0, Math.min(splashCenterMultiplier ?? 1, rawOuterMultiplier))
     : undefined;
 
+  const equipmentEffects = normalizeOptionalItemEffects(input.equipmentEffects);
+  const useEffects = normalizeOptionalItemEffects(input.useEffects);
+  const augment = normalizeItemAugmentInput(input.augment);
+  const augmentSlots = normalizeItemSocketsInput(input.augmentSlots);
+  const slotUpgradeRules = normalizeSlotUpgradeRulesInput(input.slotUpgradeRules);
+  const maxAugmentSlots = typeof input.maxAugmentSlots === 'number' && Number.isFinite(input.maxAugmentSlots)
+    ? Math.max(0, Math.round(input.maxAugmentSlots))
+    : undefined;
+
   return {
     ...input,
     id: input.id.trim(),
@@ -564,6 +780,20 @@ function normalizeItemInput(input: AdminItem): AdminItem {
     maxStack: input.stackable ? Math.max(2, input.maxStack ?? 2) : 1,
     requiredStats: input.requiredStats ?? {},
     bonuses: input.bonuses ?? {},
+    useEffect: input.useEffect,
+    effects: Array.isArray(input.effects) ? clone(input.effects) : input.effects,
+    combatEffects: Array.isArray(input.combatEffects) ? clone(input.combatEffects) : input.combatEffects,
+    equipmentEffects,
+    useEffects,
+    augment,
+    augmentSlots,
+    canAddAugmentSlots: input.canAddAugmentSlots === true,
+    maxAugmentSlots,
+    slotUpgradeRules,
+    canHaveRuneComplex: input.canHaveRuneComplex === true,
+    defaultRuneComplexId: input.defaultRuneComplexId?.trim() || undefined,
+    setId: input.setId?.trim() || undefined,
+    tags: normalizeOptionalStringList(input.tags),
     damageMin: input.type === 'weapon' ? (damageMin ?? damageMax) : damageMin,
     damageMax: input.type === 'weapon' ? (damageMax ?? damageMin) : damageMax,
     attackRange,
@@ -1333,7 +1563,18 @@ export class ContentService implements OnModuleInit {
       errors.push(`Duplicate quest marker ids: ${duplicateQuestMarkers.join(', ')}`);
     }
 
+    const duplicateItemSets = findDuplicateIds(db.itemSets ?? []);
+    if (duplicateItemSets.length > 0) {
+      errors.push(`Duplicate item set ids: ${duplicateItemSets.join(', ')}`);
+    }
+
+    const duplicateRuneComplexes = findDuplicateIds(db.runeComplexes ?? []);
+    if (duplicateRuneComplexes.length > 0) {
+      errors.push(`Duplicate rune complex ids: ${duplicateRuneComplexes.join(', ')}`);
+    }
+
     const itemIds = new Set(db.items.map((item) => item.id));
+    const itemById = new Map(db.items.map((item) => [item.id, item] as const));
 
     for (const item of db.items) {
       if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
@@ -1355,6 +1596,41 @@ export class ContentService implements OnModuleInit {
       for (const entry of merchant.items) {
         if (!itemIds.has(entry.itemId)) {
           errors.push(`Merchant '${merchant.id}' references missing item '${entry.itemId}'.`);
+        }
+      }
+    }
+
+    for (const set of db.itemSets ?? []) {
+      const pieceIds = Array.isArray(set.pieceItemIds) ? set.pieceItemIds : [];
+      for (const pieceItemId of pieceIds) {
+        if (!itemIds.has(pieceItemId)) {
+          errors.push(`Item set '${set.id}' references missing item '${pieceItemId}' in pieceItemIds.`);
+        }
+      }
+    }
+
+    for (const complex of db.runeComplexes ?? []) {
+      const runeItemIds = Array.isArray(complex.runeItemIds) ? complex.runeItemIds : [];
+      for (const runeItemId of runeItemIds) {
+        if (!itemIds.has(runeItemId)) {
+          errors.push(`Rune complex '${complex.id}' references missing rune item '${runeItemId}'.`);
+        }
+      }
+    }
+
+    for (const item of db.items) {
+      for (const socket of item.augmentSlots ?? []) {
+        const augmentItemId = String(socket.socketedAugmentItemId ?? '').trim();
+        if (!augmentItemId) {
+          continue;
+        }
+        const augmentItem = itemById.get(augmentItemId);
+        if (!augmentItem) {
+          errors.push(`Item '${item.id}' socket '${socket.id}' references missing augment item '${augmentItemId}'.`);
+          continue;
+        }
+        if (!augmentItem.augment) {
+          errors.push(`Item '${item.id}' socket '${socket.id}' references item '${augmentItemId}' without augment block.`);
         }
       }
     }
@@ -1434,6 +1710,8 @@ export class ContentService implements OnModuleInit {
       questItems: Array.isArray(raw.questItems) ? raw.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition)).filter((q) => Boolean(q.id)) : [],
       questMarkers: Array.isArray(raw.questMarkers) ? raw.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id)) : [],
       battleMaps: Array.isArray(raw.battleMaps) ? clone(raw.battleMaps as BattleMapDefinition[]).filter((map) => Boolean(map.id)) : [],
+      itemSets: Array.isArray(raw.itemSets) ? raw.itemSets.map((entry) => normalizeItemSetInput(entry as ItemSet)).filter((set) => Boolean(set.id)) : [],
+      runeComplexes: Array.isArray(raw.runeComplexes) ? raw.runeComplexes.map((entry) => normalizeRuneComplexInput(entry as RuneComplex)).filter((entry) => Boolean(entry.id)) : [],
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones) : [],
@@ -1523,6 +1801,8 @@ export class ContentService implements OnModuleInit {
       questItems: mergeById(existing.questItems, incoming.questItems),
       questMarkers: mergeById(existing.questMarkers, incoming.questMarkers),
       battleMaps: mergeById(existing.battleMaps, incoming.battleMaps),
+      itemSets: mergeById(existing.itemSets ?? [], incoming.itemSets ?? []),
+      runeComplexes: mergeById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
       worldMap: {
         zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -1562,6 +1842,40 @@ export class ContentService implements OnModuleInit {
       pushMissingImage(`Quest interaction '${interaction.id}'`, interaction.imageId);
       for (const choice of interaction.choices ?? []) {
         pushMissingImage(`Quest interaction choice '${interaction.id}/${choice.id}'`, choice.imageId);
+      }
+    }
+
+    const itemIds = new Set(db.items.map((item) => item.id));
+    const itemById = new Map(db.items.map((item) => [item.id, item] as const));
+
+    for (const set of db.itemSets ?? []) {
+      for (const pieceItemId of set.pieceItemIds ?? []) {
+        if (!itemIds.has(pieceItemId)) {
+          warnings.push(`Item set '${set.id}' references missing item '${pieceItemId}'.`);
+        }
+      }
+    }
+
+    for (const complex of db.runeComplexes ?? []) {
+      for (const runeItemId of complex.runeItemIds ?? []) {
+        if (!itemIds.has(runeItemId)) {
+          warnings.push(`Rune complex '${complex.id}' references missing rune item '${runeItemId}'.`);
+        }
+      }
+    }
+
+    for (const item of db.items) {
+      for (const socket of item.augmentSlots ?? []) {
+        const augmentItemId = String(socket.socketedAugmentItemId ?? '').trim();
+        if (!augmentItemId) {
+          continue;
+        }
+        const augmentItem = itemById.get(augmentItemId);
+        if (!augmentItem) {
+          warnings.push(`Item '${item.id}' socket '${socket.id}' references missing augment item '${augmentItemId}'.`);
+        } else if (!augmentItem.augment) {
+          warnings.push(`Item '${item.id}' socket '${socket.id}' references '${augmentItemId}' without augment block.`);
+        }
       }
     }
 
@@ -1756,6 +2070,10 @@ export class ContentService implements OnModuleInit {
       nextEntry = normalizeQuestItemInput(payload as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       nextEntry = normalizeQuestMarkerInput(payload as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'itemSets') {
+      nextEntry = normalizeItemSetInput(payload as unknown as ItemSet) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'runeComplexes') {
+      nextEntry = normalizeRuneComplexInput(payload as unknown as RuneComplex) as unknown as ContentCollectionMap[K];
     } else {
       nextEntry = clone(payload);
     }
@@ -1796,6 +2114,10 @@ export class ContentService implements OnModuleInit {
       merged = normalizeQuestItemInput(mergedBase as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       merged = normalizeQuestMarkerInput(mergedBase as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'itemSets') {
+      merged = normalizeItemSetInput(mergedBase as unknown as ItemSet) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'runeComplexes') {
+      merged = normalizeRuneComplexInput(mergedBase as unknown as RuneComplex) as unknown as ContentCollectionMap[K];
     } else {
       merged = mergedBase;
     }
@@ -1874,6 +2196,14 @@ export class ContentService implements OnModuleInit {
     }
     if (Array.isArray(payload.battleMaps) && payload.battleMaps.length > 0) {
       db.battleMaps = mergeById(db.battleMaps, clone(payload.battleMaps as BattleMapDefinition[]));
+    }
+    if (Array.isArray(payload.itemSets) && payload.itemSets.length > 0) {
+      const normalized = payload.itemSets.map((entry) => normalizeItemSetInput(entry as ItemSet));
+      db.itemSets = mergeById(db.itemSets ?? [], normalized);
+    }
+    if (Array.isArray(payload.runeComplexes) && payload.runeComplexes.length > 0) {
+      const normalized = payload.runeComplexes.map((entry) => normalizeRuneComplexInput(entry as RuneComplex));
+      db.runeComplexes = mergeById(db.runeComplexes ?? [], normalized);
     }
     if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length || payload.worldMap.questMarkers?.length)) {
       db.worldMap = {
