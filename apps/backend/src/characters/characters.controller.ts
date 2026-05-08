@@ -33,6 +33,11 @@ export class CharactersController {
     return this.charactersService.allocateStats(id, dto);
   }
 
+  @Patch(':id/respec-stats')
+  respecStats(@Param('id') id: string) {
+    return this.charactersService.respecStats(id);
+  }
+
   @Put(':id')
   update(
     @Param('id') id: string,

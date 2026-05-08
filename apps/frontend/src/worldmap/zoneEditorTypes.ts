@@ -63,6 +63,14 @@ export interface WorldMapZone {
   y?: number;
   radius?: number;
   points?: [number, number][];
+  color?: string;
+  fillOpacity?: number;
+  strokeColor?: string;
+  strokeOpacity?: number;
+  strokeWidth?: number;
+  showLabel?: boolean;
+  locked?: boolean;
+  hiddenInEditor?: boolean;
   region?: string;
   faction?: string;
   description: string;
@@ -102,6 +110,14 @@ export interface ZoneEditorDraft {
   y: number | null;
   radius: number | null;
   points: [number, number][];
+  color: string;
+  fillOpacity: number;
+  strokeColor: string;
+  strokeOpacity: number;
+  strokeWidth: number;
+  showLabel: boolean;
+  locked: boolean;
+  hiddenInEditor: boolean;
   region: string;
   faction: string;
   description: string;
@@ -142,6 +158,8 @@ export interface ZoneEditorSettings {
   zoom: number;
   panX: number;
   panY: number;
+  zoneTypeVisibility?: Partial<Record<ZoneType, boolean>>;
+  showOnlySelectedZone?: boolean;
 }
 
 export interface ZoneEditorSnapshot {
@@ -175,6 +193,14 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     y: null,
     radius: shape === 'circle' ? 0.03 : null,
     points: [],
+    color: '',
+    fillOpacity: 0.25,
+    strokeColor: '',
+    strokeOpacity: 0.85,
+    strokeWidth: 2,
+    showLabel: true,
+    locked: false,
+    hiddenInEditor: false,
     region: '',
     faction: '',
     description: '',
@@ -217,6 +243,14 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     y: zone.y ?? null,
     radius: zone.radius ?? null,
     points: zone.points ? [...zone.points] : [],
+    color: zone.color ?? '',
+    fillOpacity: zone.fillOpacity ?? 0.25,
+    strokeColor: zone.strokeColor ?? '',
+    strokeOpacity: zone.strokeOpacity ?? 0.85,
+    strokeWidth: zone.strokeWidth ?? 2,
+    showLabel: zone.showLabel ?? true,
+    locked: zone.locked ?? false,
+    hiddenInEditor: zone.hiddenInEditor ?? false,
     region: zone.region ?? '',
     faction: zone.faction ?? '',
     description: zone.description,
@@ -256,6 +290,14 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     name: draft.name.trim(),
     type: draft.type,
     shape: draft.shape,
+    color: draft.color.trim() || undefined,
+    fillOpacity: draft.fillOpacity,
+    strokeColor: draft.strokeColor.trim() || undefined,
+    strokeOpacity: draft.strokeOpacity,
+    strokeWidth: draft.strokeWidth,
+    showLabel: draft.showLabel,
+    locked: draft.locked || undefined,
+    hiddenInEditor: draft.hiddenInEditor || undefined,
     region: draft.region.trim() || undefined,
     faction: draft.faction.trim() || undefined,
     description: draft.description.trim(),
@@ -314,5 +356,7 @@ export function createDefaultEditorSettings(): ZoneEditorSettings {
     zoom: 1,
     panX: 0,
     panY: 0,
+    zoneTypeVisibility: undefined,
+    showOnlySelectedZone: false,
   };
 }

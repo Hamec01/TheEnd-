@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AdminSkillDefinition,
   EMPTY_EQUIPMENT,
@@ -40,6 +40,7 @@ import {
   loginAccount,
   MAX_COMBAT_ENEMIES,
   registerAccount,
+  respecStats as respecCharacterStats,
   startCombat,
   startCustomCombat,
   updateCharacterActionBar,
@@ -2213,22 +2214,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       return;
     }
 
-    const baseline = { ...getCharacterCreationRaceConfig(character.race).stats };
-    const level = character.level ?? 1;
-    const totalFreePoints = 5 + Math.max(0, level - 1) * 5;
-
     setPendingStatAllocation({});
-    setCharacter((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        baseStats: baseline,
-        activeStats: baseline,
-        freePoints: totalFreePoints,
-      };
-    });
-
-    setStatus('Ð¥Ð°Ñ€Ð°ÐºÑ‚ÐµÑ€Ð¸ÑÑ‚Ð¸ÐºÐ¸ ÑÐ±Ñ€Ð¾ÑˆÐµÐ½Ñ‹. ÐžÑ‡ÐºÐ¸ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰ÐµÐ½Ñ‹.');
+    try {
+      await respecCharacterStats(character.id);
+      const updatedHub = await getArenaHubState(character.id);
+      applyHubState(updatedHub);
+      setStatus('Характеристики сброшены. Очки возвращены.');
+    } catch (error) {
+      setStatus(`Ошибка сброса: ${(error as Error).message}`);
+    }
   }, [character]);
 
   if (phase === 'setup') {

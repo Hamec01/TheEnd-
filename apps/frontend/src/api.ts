@@ -557,6 +557,15 @@ export async function allocateStats(
   return res.json();
 }
 
+export async function respecStats(characterId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/respec-stats`, {
+    method: 'PATCH',
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+}
+
 export async function useCombatItem(payload: {
   combatId: string;
   actorId: string;

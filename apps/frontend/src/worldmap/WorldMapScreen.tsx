@@ -2565,11 +2565,70 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleConfirmDraft() {
-    if (selectedZoneId) {
-      handleUpdateSelectedZone();
+    finishPolygonDraft();
+  }
+
+  function finishPolygonDraft() {
+    if (!editorDraft) {
+      onStatus('Editor: no draft to save.');
       return;
     }
-    handleSaveNewZone();
+
+    const generatedId = `zone_${Date.now()}`;
+    const normalizedDraft: ZoneEditorDraft = {
+      ...editorDraft,
+      id: editorDraft.id.trim() || generatedId,
+      name: editorDraft.name.trim() || (editorDraft.id.trim() || generatedId),
+      description: editorDraft.description.trim() || (editorDraft.name.trim() || editorDraft.id.trim() || 'Zone'),
+    };
+
+    if (normalizedDraft.shape === 'circle') {
+      if (
+        normalizedDraft.x === null
+        || normalizedDraft.y === null
+        || normalizedDraft.radius === null
+        || normalizedDraft.radius <= 0
+      ) {
+        onStatus('Editor: circle requires x, y and radius.');
+        return;
+      }
+    } else if (normalizedDraft.points.length < 3) {
+      onStatus('Editor: polygon/rect requires at least 3 points.');
+      return;
+    }
+
+    if (selectedZoneId) {
+      if (!validateDraft(normalizedDraft)) {
+        return;
+      }
+
+      const existing = zones.find((zone) => zone.id === selectedZoneId) ?? null;
+      captureCheckpoint();
+      const nextZone = createZoneFromDraft(normalizedDraft, existing?.createdAt);
+      setZones((prev) => [
+        ...prev.filter(
+          (zone) => zone.id !== selectedZoneId && zone.id !== nextZone.id,
+        ),
+        nextZone,
+      ]);
+      setSelectedZoneId(nextZone.id);
+      setEditorDraft(createDraftFromZone(nextZone));
+      setEditorSettings((prev) => ({ ...prev, selectedTool: 'select' }));
+      onStatus(`Editor: updated zone ${nextZone.name}.`);
+      return;
+    }
+
+    const duplicate = zones.find((zone) => zone.id === normalizedDraft.id);
+    if (duplicate && !window.confirm(`Zone id ${normalizedDraft.id} already exists. Replace it?`)) {
+      return;
+    }
+
+    captureCheckpoint();
+    const nextZone = createZoneFromDraft(normalizedDraft, duplicate?.createdAt);
+    upsertZone(nextZone);
+    setEditorDraft(createDraftFromZone(nextZone));
+    setEditorSettings((prev) => ({ ...prev, selectedTool: 'select' }));
+    onStatus(`Editor: saved zone ${nextZone.name}.`);
   }
 
   function handleDuplicateSelected(zoneOverride?: WorldMapZone) {
@@ -2862,6 +2921,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (!editorDraft || editorDraft.selectedPointIndex === null) {
       return;
     }
+    if (selectedZone?.locked) {
+      onStatus('Editor: zone is locked.');
+      return;
+    }
+    if (editorDraft.points.length <= 3) {
+      onStatus('Editor: polygon must have at least 3 points.');
+      return;
+    }
     const nextPoints = editorDraft.points.filter(
       (_, index) => index !== editorDraft.selectedPointIndex,
     );
@@ -2869,6 +2936,36 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       ...editorDraft,
       points: nextPoints,
       selectedPointIndex: null,
+      updatedAt: Date.now(),
+    });
+  }
+
+  function handleInsertPointAfterSelected() {
+    if (!editorDraft || editorDraft.selectedPointIndex === null) {
+      return;
+    }
+    if (selectedZone?.locked) {
+      onStatus('Editor: zone is locked.');
+      return;
+    }
+
+    const points = editorDraft.points;
+    if (points.length < 2) {
+      return;
+    }
+
+    const index = Math.max(0, Math.min(points.length - 1, editorDraft.selectedPointIndex));
+    const a = points[index];
+    const b = points[(index + 1) % points.length];
+    const midpoint: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+
+    const nextPoints = points.slice();
+    nextPoints.splice(index + 1, 0, midpoint);
+
+    setEditorDraft({
+      ...editorDraft,
+      points: nextPoints,
+      selectedPointIndex: index + 1,
       updatedAt: Date.now(),
     });
   }
@@ -4620,6 +4717,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onValidateJson={handleValidateJson}
           onJsonChange={setEditorJson}
           onDeleteSelectedPoint={handleDeleteSelectedPoint}
+          onInsertPointAfterSelected={handleInsertPointAfterSelected}
+          onFinishDraft={handleConfirmDraft}
           onReversePoints={handleReversePoints}
           questMarkers={questMarkers}
           selectedQuestMarkerId={selectedQuestMarkerId}

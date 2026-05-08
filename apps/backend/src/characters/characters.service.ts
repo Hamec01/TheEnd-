@@ -228,6 +228,66 @@ export class CharactersService {
     });
   }
 
+  async respecStats(id: string) {
+    const character = await this.getById(id);
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const raceDef = getRaceDefinition(character.race as Race);
+    const base = raceDef.baseStats;
+
+    const spentFromStats = (() => {
+      const hpPoints = Math.max(0, Math.floor((character.hpBase - base.hp) / 10));
+      const mpPoints = Math.max(0, Math.floor((character.mpBase - base.mp) / 10));
+      const staminaPoints = Math.max(0, Math.floor((character.staminaBase - base.stamina) / 10));
+      const strengthPoints = Math.max(0, character.strength - base.strength);
+      const constitutionPoints = Math.max(0, character.endurance - base.constitution);
+      const dexterityPoints = Math.max(0, character.dexterity - base.dexterity);
+      const intelligencePoints = Math.max(0, character.intelligence - base.intelligence);
+      const luckPoints = Math.max(0, character.luck - base.luck);
+      const perceptionPoints = Math.max(0, character.speed - base.perception);
+      const willpowerPoints = Math.max(0, character.willpower - base.willpower);
+      return hpPoints
+        + mpPoints
+        + staminaPoints
+        + strengthPoints
+        + constitutionPoints
+        + dexterityPoints
+        + intelligencePoints
+        + luckPoints
+        + perceptionPoints
+        + willpowerPoints;
+    })();
+
+    const updateData = {
+      hpBase: base.hp,
+      mpBase: base.mp,
+      staminaBase: base.stamina,
+      strength: base.strength,
+      endurance: base.constitution,
+      dexterity: base.dexterity,
+      intelligence: base.intelligence,
+      luck: base.luck,
+      speed: base.perception,
+      willpower: base.willpower,
+      freePoints: Math.max(0, character.freePoints + spentFromStats),
+    };
+
+    if (this.isFileMode()) {
+      const updated = await this.runtimeStore.updateCharacter(id, updateData);
+      if (!updated) {
+        throw new NotFoundException('Character not found.');
+      }
+      return updated;
+    }
+
+    return this.prisma.character.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
   async updateCharacter(id: string, payload: Record<string, unknown>) {
     if (this.isFileMode()) {
       const updated = await this.runtimeStore.updateCharacter(id, payload);

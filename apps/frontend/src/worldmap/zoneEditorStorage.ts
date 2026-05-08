@@ -84,6 +84,14 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function isValidPoint(value: unknown): value is [number, number] {
   return Array.isArray(value)
     && value.length === 2
@@ -268,6 +276,14 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,
     layerPriority: isFiniteNumber(zone.layerPriority) ? zone.layerPriority : undefined,
+    color: typeof zone.color === 'string' && zone.color.trim() ? zone.color.trim() : undefined,
+    fillOpacity: isFiniteNumber(zone.fillOpacity) ? clamp01(zone.fillOpacity) : undefined,
+    strokeColor: typeof zone.strokeColor === 'string' && zone.strokeColor.trim() ? zone.strokeColor.trim() : undefined,
+    strokeOpacity: isFiniteNumber(zone.strokeOpacity) ? clamp01(zone.strokeOpacity) : undefined,
+    strokeWidth: isFiniteNumber(zone.strokeWidth) ? clampNumber(zone.strokeWidth, 0, 12) : undefined,
+    showLabel: typeof zone.showLabel === 'boolean' ? zone.showLabel : undefined,
+    locked: zone.locked === true ? true : undefined,
+    hiddenInEditor: zone.hiddenInEditor === true ? true : undefined,
     randomQuestPoolIds: Array.isArray(zone.randomQuestPoolIds)
       ? zone.randomQuestPoolIds.filter((entry): entry is string => typeof entry === 'string')
       : undefined,

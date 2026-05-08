@@ -81,6 +81,8 @@ interface ZoneEditorPanelProps {
   onValidateJson: () => void;
   onJsonChange: (value: string) => void;
   onDeleteSelectedPoint: () => void;
+  onInsertPointAfterSelected?: () => void;
+  onFinishDraft?: () => void;
   onReversePoints: () => void;
   questMarkers: QuestMarkerDefinition[];
   selectedQuestMarkerId: string | null;
@@ -136,6 +138,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     onValidateJson,
     onJsonChange,
     onDeleteSelectedPoint,
+    onInsertPointAfterSelected,
+    onFinishDraft,
     onReversePoints,
     questMarkers,
     selectedQuestMarkerId,
@@ -254,6 +258,47 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         <div className="zone-editor-color-row">
           <span>Region color preview</span>
           <div className="zone-editor-color-preview" style={{ background: REGION_TYPE_COLORS[regionType] }} />
+        </div>
+      </div>
+
+      <div className="zone-editor-section">
+        <h3>Zone Layers</h3>
+        <div className="zone-editor-actions compact">
+          <button onClick={() => onSettingsChange({ zoneTypeVisibility: undefined })}>Show all zones</button>
+          <button
+            onClick={() => onSettingsChange({
+              zoneTypeVisibility: Object.fromEntries(ZONE_TYPE_OPTIONS.map((type) => [type, false])) as Partial<Record<ZoneType, boolean>>,
+            })}
+          >
+            Hide all zones
+          </button>
+        </div>
+        <label className="zone-editor-checkbox">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.showOnlySelectedZone)}
+            onChange={(event) => onSettingsChange({ showOnlySelectedZone: event.target.checked })}
+          />
+          <span>Show only selected zone</span>
+        </label>
+        <div className="zone-editor-grid zone-editor-grid--layers">
+          {ZONE_TYPE_OPTIONS.map((type) => {
+            const checked = settings.zoneTypeVisibility?.[type] !== false;
+            return (
+              <label key={type} className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => {
+                    const next = { ...(settings.zoneTypeVisibility ?? {}) } as Partial<Record<ZoneType, boolean>>;
+                    next[type] = event.target.checked;
+                    onSettingsChange({ zoneTypeVisibility: next });
+                  }}
+                />
+                <span>{type}</span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -429,8 +474,106 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </label>
         <div className="zone-editor-color-row">
           <span>Color preview</span>
-          <div className="zone-editor-color-preview" style={{ background: ZONE_COLORS[draft?.type ?? 'city'] }} />
+          <div className="zone-editor-color-preview" style={{ background: (draft?.color || ZONE_COLORS[draft?.type ?? 'city']) }} />
         </div>
+      </div>
+
+      <div className="zone-editor-section">
+        <h3>Visual</h3>
+        <label>
+          <span>Fill Color</span>
+          <div className="wm-inline-buttons">
+            <input
+              disabled={!draft}
+              type="color"
+              value={(draft?.color || ZONE_COLORS[draft?.type ?? 'city'])}
+              onChange={(event) => updateDraft({ color: event.target.value })}
+            />
+            <button disabled={!draft} onClick={() => updateDraft({ color: '' })}>Default</button>
+          </div>
+        </label>
+        <label>
+          <span>Fill Opacity</span>
+          <div className="zone-editor-radius-row">
+            <input
+              disabled={!draft}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={draft?.fillOpacity ?? 0.25}
+              onChange={(event) => updateDraft({ fillOpacity: Number(event.target.value) })}
+            />
+            <input
+              disabled={!draft}
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={draft?.fillOpacity ?? 0.25}
+              onChange={(event) => updateDraft({ fillOpacity: Number(event.target.value) })}
+            />
+          </div>
+        </label>
+        <label>
+          <span>Stroke Color</span>
+          <div className="wm-inline-buttons">
+            <input
+              disabled={!draft}
+              type="color"
+              value={(draft?.strokeColor || draft?.color || ZONE_COLORS[draft?.type ?? 'city'])}
+              onChange={(event) => updateDraft({ strokeColor: event.target.value })}
+            />
+            <button disabled={!draft} onClick={() => updateDraft({ strokeColor: '' })}>Default</button>
+          </div>
+        </label>
+        <label>
+          <span>Stroke Opacity</span>
+          <div className="zone-editor-radius-row">
+            <input
+              disabled={!draft}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={draft?.strokeOpacity ?? 0.85}
+              onChange={(event) => updateDraft({ strokeOpacity: Number(event.target.value) })}
+            />
+            <input
+              disabled={!draft}
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={draft?.strokeOpacity ?? 0.85}
+              onChange={(event) => updateDraft({ strokeOpacity: Number(event.target.value) })}
+            />
+          </div>
+        </label>
+        <label>
+          <span>Stroke Width</span>
+          <input
+            disabled={!draft}
+            type="number"
+            min={0}
+            max={12}
+            step={1}
+            value={draft?.strokeWidth ?? 2}
+            onChange={(event) => updateDraft({ strokeWidth: Number(event.target.value) || 0 })}
+          />
+        </label>
+        <label className="zone-editor-checkbox">
+          <input disabled={!draft} type="checkbox" checked={draft?.showLabel ?? true} onChange={(event) => updateDraft({ showLabel: event.target.checked })} />
+          <span>Show Label</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input disabled={!draft} type="checkbox" checked={draft?.locked ?? false} onChange={(event) => updateDraft({ locked: event.target.checked })} />
+          <span>Locked</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input disabled={!draft} type="checkbox" checked={draft?.hiddenInEditor ?? false} onChange={(event) => updateDraft({ hiddenInEditor: event.target.checked })} />
+          <span>Hidden in editor</span>
+        </label>
       </div>
 
       <div className="zone-editor-section">
@@ -580,7 +723,25 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
               <span>Selected point: {draft?.selectedPointIndex ?? '-'}</span>
             </div>
             <div className="zone-editor-actions compact">
+              <button
+                disabled={!draft || draft.points.length < 3}
+                onClick={() => (onFinishDraft ? onFinishDraft() : onSaveNewZone())}
+              >
+                Finish Polygon
+              </button>
+              <button
+                disabled={!draft || draft.points.length === 0}
+                onClick={() => {
+                  if (!draft) return;
+                  const nextPoints = draft.points.slice(0, -1);
+                  onDraftChange({ ...draft, points: nextPoints, selectedPointIndex: nextPoints.length - 1, updatedAt: Date.now() });
+                }}
+              >
+                Undo Last Point
+              </button>
+              <button disabled={!draft} onClick={onClearDraft}>Cancel Draft</button>
               <button disabled={!draft || draft.points.length === 0 || draft.selectedPointIndex === null} onClick={onDeleteSelectedPoint}>Delete Selected Point</button>
+              <button disabled={!onInsertPointAfterSelected || !draft || draft.selectedPointIndex === null} onClick={onInsertPointAfterSelected}>Insert Point After Selected</button>
               <button disabled={!draft || draft.points.length < 3} onClick={onReversePoints}>Reverse Point Order</button>
             </div>
           </>

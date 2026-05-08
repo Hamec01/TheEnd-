@@ -102,7 +102,32 @@ export function hitTestZones(zones: WorldMapZone[], point: [number, number]): Wo
     return null;
   }
 
+  const defaultPriorityForType = (type: WorldMapZone['type']): number => {
+    switch (type) {
+      case 'kingdom_area':
+        return 100;
+      case 'faction_area':
+        return 120;
+      case 'danger_area':
+        return 200;
+      case 'resource_area':
+        return 220;
+      case 'city_area':
+        return 300;
+      case 'quest_area':
+        return 400;
+      case 'hidden_area':
+        return 500;
+      default:
+        return 100;
+    }
+  };
+
   hits.sort((a, b) => {
+    const priorityDelta = (b.layerPriority ?? defaultPriorityForType(b.type)) - (a.layerPriority ?? defaultPriorityForType(a.type));
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
     const areaDelta = zoneArea(a) - zoneArea(b);
     if (Math.abs(areaDelta) > 1e-6) {
       return areaDelta;
@@ -178,6 +203,47 @@ export function movePolygonPoint(zone: WorldMapZone, pointIndex: number, toPoint
     points: (zone.points ?? []).map((point, index) => (
       index === pointIndex ? [clamp(toPoint[0], 0, 1), clamp(toPoint[1], 0, 1)] as [number, number] : point
     )),
+    updatedAt: Date.now(),
+  };
+}
+
+export function deletePolygonPoint(zone: WorldMapZone, pointIndex: number): WorldMapZone {
+  if (zone.shape === 'circle') {
+    return zone;
+  }
+
+  const points = zone.points ?? [];
+  if (pointIndex < 0 || pointIndex >= points.length) {
+    return zone;
+  }
+
+  return {
+    ...zone,
+    points: points.filter((_, index) => index !== pointIndex),
+    updatedAt: Date.now(),
+  };
+}
+
+export function insertPolygonPointAfter(zone: WorldMapZone, pointIndex: number): WorldMapZone {
+  if (zone.shape === 'circle') {
+    return zone;
+  }
+
+  const points = zone.points ?? [];
+  if (points.length < 2) {
+    return zone;
+  }
+
+  const safeIndex = Math.max(0, Math.min(points.length - 1, pointIndex));
+  const a = points[safeIndex];
+  const b = points[(safeIndex + 1) % points.length];
+  const midpoint: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+
+  const next = points.slice();
+  next.splice(safeIndex + 1, 0, midpoint);
+  return {
+    ...zone,
+    points: next,
     updatedAt: Date.now(),
   };
 }

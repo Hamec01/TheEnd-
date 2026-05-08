@@ -686,6 +686,46 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.repeat) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== 'e' && event.key !== 'E') return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable) {
+          return;
+        }
+      }
+
+      if (!selectedItem) return;
+      if (!selectedInventoryEntry) {
+        onStatus('Этот предмет уже экипирован.');
+        return;
+      }
+
+      if (shieldBlockedByTwoHandedWeapon) {
+        onStatus('Левая рука занята двуручным оружием. Сначала снимите его.');
+        return;
+      }
+
+      const preferredCoreSlot = resolvePreferredEquipmentSlot(selectedItem, equipment);
+      if (!preferredCoreSlot) {
+        onStatus('Этот предмет нельзя экипировать.');
+        return;
+      }
+
+      event.preventDefault();
+      void onEquipItem(selectedItem.id, preferredCoreSlot);
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [equipment, onEquipItem, onStatus, selectedInventoryEntry, selectedItem, shieldBlockedByTwoHandedWeapon]);
+
   async function equipToSlot(slotId: EquipmentSlotId, item: ItemDefinition): Promise<void> {
     const coreSlot = CORE_SLOT_BY_LAYOUT[slotId];
     if (!coreSlot) {
@@ -755,37 +795,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     try {
       await onUnequipSlot(coreSlot);
-    } catch {
-      // parent already reports error status
-    }
-  }
-
-  async function handleDoubleClickInventoryItem(itemId: string): Promise<void> {
-    const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-    if (!item) {
-      return;
-    }
-
-    // Item is not equipped - equip it to preferred slot
-    if (shieldBlockedByTwoHandedWeapon && item.itemType === 'shield') {
-      onStatus('Левая рука занята двуручным оружием. Сначала снимите его.');
-      return;
-    }
-
-    const preferredCoreSlot = resolvePreferredEquipmentSlot(item, equipment);
-    if (!preferredCoreSlot) {
-      onStatus('Этот предмет нельзя экипировать.');
-      return;
-    }
-
-    const targetSlotId = LAYOUT_SLOT_BY_CORE_SLOT[preferredCoreSlot];
-    if (!targetSlotId || !canEquipItemInSlot(item, targetSlotId)) {
-      onStatus('Этот предмет нельзя экипировать.');
-      return;
-    }
-
-    try {
-      await onEquipItem(itemId, preferredCoreSlot);
     } catch {
       // parent already reports error status
     }
@@ -1503,7 +1512,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
             onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
             onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
-            onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData('text/theend-item-id', entry.item.id);

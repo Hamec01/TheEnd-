@@ -31,6 +31,29 @@ const PLAY_PLAYER: MapPlayer = {
   speed: 0.00025,
 };
 
+function isZoneVisibleInEditor(zone: WorldMapZone, selectedZoneId: string | null, settings: ZoneEditorSettings): boolean {
+  if (!settings.showZones) return false;
+  if (zone.hiddenInEditor) return false;
+  if (settings.showOnlySelectedZone) return zone.id === selectedZoneId;
+  const perType = settings.zoneTypeVisibility?.[zone.type];
+  return perType !== false;
+}
+
+function getZoneRenderStyle(zone: WorldMapZone, selected: boolean): { fillStyle: string; strokeStyle: string; lineWidth: number } {
+  const baseColor = zone.color || ZONE_COLORS[zone.type] || '#78dce8';
+  const strokeColor = zone.strokeColor || baseColor;
+  const fillOpacity = zone.fillOpacity ?? EDITOR_FILL_ALPHA;
+  const strokeOpacity = zone.strokeOpacity ?? EDITOR_STROKE_ALPHA;
+  const baseWidth = zone.strokeWidth ?? 2;
+  return {
+    fillStyle: withAlpha(baseColor, fillOpacity),
+    strokeStyle: zone.type === 'dungeon'
+      ? withAlpha(ZONE_DUNGEON_OUTLINE, strokeOpacity)
+      : withAlpha(strokeColor, strokeOpacity),
+    lineWidth: selected ? Math.max(baseWidth, 3) : baseWidth,
+  };
+}
+
 interface TooltipState {
   x: number;
   y: number;
@@ -262,7 +285,10 @@ function drawZoneShape(ctx: CanvasRenderingContext2D, zone: WorldMapZone, viewpo
   ctx.closePath();
 }
 
-function drawZoneHandles(ctx: CanvasRenderingContext2D, zone: WorldMapZone, viewport: EditorViewport) {
+function drawZoneHandles(ctx: CanvasRenderingContext2D, zone: WorldMapZone, viewport: EditorViewport, selectedPointIndex: number | null = null) {
+  if (zone.locked) {
+    return;
+  }
   ctx.save();
   ctx.fillStyle = '#fff4d4';
   if (zone.shape === 'circle') {
@@ -274,10 +300,16 @@ function drawZoneHandles(ctx: CanvasRenderingContext2D, zone: WorldMapZone, view
       ctx.fill();
     }
   } else {
-    (zone.points ?? []).forEach(([x, y]) => {
+    (zone.points ?? []).forEach(([x, y], index) => {
       const [screenX, screenY] = mapNormalizedToScreen(x, y, viewport);
       ctx.beginPath();
-      ctx.arc(screenX, screenY, 5, 0, Math.PI * 2);
+      const radius = selectedPointIndex === index ? 7 : 5;
+      ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+      if (selectedPointIndex === index) {
+        ctx.fillStyle = '#ffffff';
+      } else {
+        ctx.fillStyle = '#fff4d4';
+      }
       ctx.fill();
     });
   }
@@ -356,7 +388,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     zoom: 1,
     panX: 0,
     panY: 0,
+    zoneTypeVisibility: undefined,
+    showOnlySelectedZone: false,
   };
+
+  const visibleEditorZones = useMemo(
+    () => zones.filter((zone) => isZoneVisibleInEditor(zone, selectedZoneId, editorSettings)),
+    [editorSettings, selectedZoneId, zones],
+  );
 
   const effectiveRegionPaintSettings: RegionPaintSettings = regionPaintSettings ?? {
     toolMode: 'circle',
@@ -638,10 +677,27 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedZoneId) {
-        event.preventDefault();
-        onDeleteZone?.(selectedZoneId);
-        return;
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (draft && draft.selectedPointIndex !== null && draft.shape !== 'circle') {
+          event.preventDefault();
+          if (selectedZone?.locked) {
+            onStatusMessage?.('Zone is locked.');
+            return;
+          }
+          if (draft.points.length <= 3) {
+            onStatusMessage?.('Polygon must have at least 3 points.');
+            return;
+          }
+          const nextPoints = draft.points.filter((_, index) => index !== draft.selectedPointIndex);
+          onDraftChange?.({ ...draft, points: nextPoints, selectedPointIndex: null, updatedAt: Date.now() });
+          return;
+        }
+
+        if (selectedZoneId) {
+          event.preventDefault();
+          onDeleteZone?.(selectedZoneId);
+          return;
+        }
       }
 
       if (event.key === 'Escape') {
@@ -781,7 +837,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setContextMenu(null);
     const [canvasX, canvasY] = getCanvasPoint(event);
     const mapPoint = getNormalizedPoint(event);
-    const hitZone = hitTestZones(zones, mapPoint);
+    const hitZone = hitTestZones(visibleEditorZones, mapPoint);
     const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || selectedTool === 'pan'));
 
     if (wantsPan) {
@@ -802,6 +858,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     if (selectedTool === 'select') {
       const handleHit = selectedZone ? hitTestHandle(selectedZone, mapPoint, editorViewport) : null;
       if (selectedZone && handleHit) {
+        if (selectedZone.locked) {
+          onStatusMessage?.('Zone is locked.');
+          return;
+        }
         onCheckpoint?.();
         if (handleHit.type === 'center') {
           setDragState({ kind: 'move-zone', zoneId: selectedZone.id, startPoint: mapPoint, originZone: selectedZone });
@@ -816,6 +876,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       if (hitZone) {
         if (selectedZoneId === hitZone.id) {
+          if (hitZone.locked) {
+            onStatusMessage?.('Zone is locked.');
+            return;
+          }
           onCheckpoint?.();
           setDragState({ kind: 'move-zone', zoneId: hitZone.id, startPoint: mapPoint, originZone: hitZone });
         } else {
@@ -885,6 +949,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     const handleHit = selectedZone ? hitTestHandle(selectedZone, mapPoint, editorViewport) : null;
     if (selectedZone && handleHit) {
+      if (selectedZone.locked) {
+        onStatusMessage?.('Zone is locked.');
+        return;
+      }
       onCheckpoint?.();
       if (handleHit.type === 'center') {
         setDragState({ kind: 'move-zone', zoneId: selectedZone.id, startPoint: mapPoint, originZone: selectedZone });
@@ -899,6 +967,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     if (hitZone) {
       if (selectedZoneId === hitZone.id) {
+        if (hitZone.locked) {
+          onStatusMessage?.('Zone is locked.');
+          return;
+        }
         onCheckpoint?.();
         setDragState({ kind: 'move-zone', zoneId: hitZone.id, startPoint: mapPoint, originZone: hitZone });
       } else {
@@ -959,7 +1031,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
-    const hovered = hitTestZones(zones, point);
+    const hovered = hitTestZones(visibleEditorZones, point);
     setHoverZone(hovered);
     onHoverZone?.(hovered as Zone | null);
     if (hovered) {
@@ -1059,12 +1131,17 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     });
   }
 
-  function handleDoubleClick() {
+  function handleDoubleClick(event: ReactMouseEvent<HTMLCanvasElement>) {
     if (mode !== 'editor') {
       return;
     }
+    if (markerPickMode) {
+      return;
+    }
     if (selectedTool === 'polygon' && draft?.shape === 'polygon' && draft.points.length >= 3) {
-      onStatusMessage?.('Polygon draft finished. Press Enter or Save New Zone.');
+      event.preventDefault();
+      event.stopPropagation();
+      onConfirmDraft?.();
     }
   }
 
@@ -1084,7 +1161,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     event.preventDefault();
     const mapPoint = getNormalizedPoint(event);
-    const zone = hitTestZones(zones, mapPoint);
+    const zone = hitTestZones(visibleEditorZones, mapPoint);
 
     if (selectedTool === 'polygon' && draft?.shape === 'polygon' && draft.points.length > 0 && !zone) {
       onCheckpoint?.();
@@ -1314,12 +1391,58 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (editorSettings.showZones) {
-      for (const zone of zones) {
+      const zoneArea = (zone: WorldMapZone): number => {
+        if (zone.shape === 'circle') {
+          return Math.PI * Math.pow(zone.radius ?? 0, 2);
+        }
+        const pts = zone.points ?? [];
+        let area = 0;
+        for (let i = 0; i < pts.length; i += 1) {
+          const next = pts[(i + 1) % pts.length];
+          area += pts[i][0] * next[1] - next[0] * pts[i][1];
+        }
+        return Math.abs(area / 2);
+      };
+
+      const defaultPriorityForType = (type: WorldMapZone['type']): number => {
+        switch (type) {
+          case 'kingdom_area':
+            return 100;
+          case 'faction_area':
+            return 120;
+          case 'danger_area':
+            return 200;
+          case 'resource_area':
+            return 220;
+          case 'city_area':
+            return 300;
+          case 'quest_area':
+            return 400;
+          case 'hidden_area':
+            return 500;
+          default:
+            return 100;
+        }
+      };
+
+      const zonesToDraw = visibleEditorZones
+        .filter((zone) => zone.id !== selectedZoneId)
+        .slice()
+        .sort((a, b) => {
+          const priorityDelta = (a.layerPriority ?? defaultPriorityForType(a.type)) - (b.layerPriority ?? defaultPriorityForType(b.type));
+          if (priorityDelta !== 0) return priorityDelta;
+          const areaDelta = zoneArea(b) - zoneArea(a);
+          if (Math.abs(areaDelta) > 1e-6) return areaDelta;
+          return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
+        });
+
+      for (const zone of zonesToDraw) {
         drawZoneShape(ctx, zone, editorViewport);
-        ctx.fillStyle = withAlpha(ZONE_COLORS[zone.type], EDITOR_FILL_ALPHA);
+        const style = getZoneRenderStyle(zone, false);
+        ctx.fillStyle = style.fillStyle;
         ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = zone.type === 'dungeon' ? withAlpha(ZONE_DUNGEON_OUTLINE, EDITOR_STROKE_ALPHA) : withAlpha(ZONE_COLORS[zone.type], EDITOR_STROKE_ALPHA);
+        ctx.lineWidth = style.lineWidth;
+        ctx.strokeStyle = style.strokeStyle;
         ctx.stroke();
       }
     }
@@ -1331,24 +1454,34 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       ctx.stroke();
     }
 
-    if (selectedZone) {
+    if (selectedZone && isZoneVisibleInEditor(selectedZone, selectedZoneId, editorSettings)) {
       drawZoneShape(ctx, selectedZone, editorViewport);
-      ctx.lineWidth = 3;
+      const style = getZoneRenderStyle(selectedZone, true);
+      ctx.lineWidth = style.lineWidth;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
-      drawZoneHandles(ctx, selectedZone, editorViewport);
+      const selectedPointIndex = draft?.id === selectedZone.id ? draft.selectedPointIndex : null;
+      drawZoneHandles(ctx, selectedZone, editorViewport, selectedPointIndex);
     }
 
     if (draft) {
       const geometryValid = draft.shape === 'circle'
         ? draft.x !== null && draft.y !== null && (draft.radius ?? 0) > 0
         : draft.points.length >= 3;
-      const color = geometryValid ? ZONE_COLORS[draft.type] : INVALID_DRAFT_COLOR;
+      const color = geometryValid ? (draft.color || ZONE_COLORS[draft.type]) : INVALID_DRAFT_COLOR;
       const draftZone: WorldMapZone = {
         id: draft.id || '__draft__',
         name: draft.name || 'Draft',
         type: draft.type,
         shape: draft.shape,
+        color: draft.color || undefined,
+        fillOpacity: draft.fillOpacity,
+        strokeColor: draft.strokeColor || undefined,
+        strokeOpacity: draft.strokeOpacity,
+        strokeWidth: draft.strokeWidth,
+        showLabel: draft.showLabel,
+        locked: draft.locked || undefined,
+        hiddenInEditor: draft.hiddenInEditor || undefined,
         x: draft.x ?? undefined,
         y: draft.y ?? undefined,
         radius: draft.radius ?? undefined,
@@ -1371,7 +1504,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       ctx.strokeStyle = color;
       ctx.stroke();
       ctx.setLineDash([]);
-      drawZoneHandles(ctx, draftZone, editorViewport);
+      drawZoneHandles(ctx, draftZone, editorViewport, draft.selectedPointIndex);
 
       if (draft.shape === 'polygon' && draft.points.length > 0 && cursorPoint) {
         const last = draft.points[draft.points.length - 1];
@@ -1389,7 +1522,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     if (editorSettings.showLabels) {
       ctx.fillStyle = '#fff4d4';
       ctx.font = '600 11px Georgia';
-      zones.forEach((zone) => {
+      visibleEditorZones.forEach((zone) => {
+        if (zone.showLabel === false) {
+          return;
+        }
         const [centerX, centerY] = getZoneCenter(zone);
         const [screenX, screenY] = mapNormalizedToScreen(centerX, centerY, editorViewport);
         ctx.fillText(zone.name, screenX + 10, screenY - 10);
@@ -1432,6 +1568,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     regions,
     selectedZone,
     worldImage,
+    visibleEditorZones,
     zones,
   ]);
 
