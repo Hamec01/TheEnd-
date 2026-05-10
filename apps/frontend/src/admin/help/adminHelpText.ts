@@ -549,6 +549,72 @@ export const ADMIN_HELP = {
       text: 'Этот экран запускает world map в редакторском режиме без боевого и инвентарного геймплея.',
       example: 'Используйте для разметки зон и проверки триггеров на карте.',
     },
+    editor: {
+      title: 'Блок Editor',
+      text: 'Быстрые настройки отображения и инструментов рисования зон поверх карты мира.',
+      example: 'Обычно стартуют с Select Tool + Show zones + Show labels.',
+    },
+    currentTool: {
+      title: 'Current Tool',
+      text: 'Текущий инструмент редактирования: выбор, рисование формы, панорама или измерение.',
+      example: 'Select Tool для правок существующей зоны, Circle Tool для новой круглой зоны.',
+    },
+    shape: {
+      title: 'Shape',
+      text: 'Тип геометрии черновика зоны. Circle хранит центр+радиус, polygon/rect работают через точки.',
+      example: 'circle для города, polygon для сложной границы горного региона.',
+    },
+    showZones: {
+      title: 'Show zones',
+      text: 'Показывает заливки и контуры зон на карте.',
+      example: 'Включено при проверке перекрытий и активных зон.',
+    },
+    showLabels: {
+      title: 'Show labels',
+      text: 'Показывает названия зон поверх карты.',
+      example: 'Удобно при проверке cityId/regionId и расположения поселений.',
+    },
+    showGrid: {
+      title: 'Show grid',
+      text: 'Включает сетку для более точной разметки регионов и маркеров.',
+      example: 'Используйте при ручной стыковке соседних зон без щелей.',
+    },
+    snap: {
+      title: 'Snap',
+      text: 'Привязка точек к сетке при редактировании.',
+      example: 'Включено для ровных границ, выключено для природных контуров.',
+    },
+    regionPainter: {
+      title: 'Region Painter',
+      text: 'Инструменты покраски регионов карты: blocked/water/road/danger и другие типы.',
+      example: 'Pencil + blocked для скал, circle + water для озера.',
+    },
+    regionType: {
+      title: 'Region Type',
+      text: 'Тип региона, который будет рисоваться текущей кистью.',
+      example: 'blocked для непроходимых мест, road для дорог, trigger для событийных зон.',
+    },
+    brushSize: {
+      title: 'Brush Size',
+      text: 'Размер кисти region painter.',
+      example: '1 для точных правок, 3-5 для крупных областей.',
+    },
+    questMarkers: {
+      title: 'Quest Markers',
+      text: 'Маркеры квестов на мировой карте: старт, шаг, финиш и специальные точки.',
+      example: 'quest_start у входа в город, quest_objective в зоне поиска.',
+    },
+    markerType: {
+      title: 'Marker Type',
+      text: 'Роль маркера в логике квеста и отображении на карте.',
+      example: 'quest_start, quest_objective, quest_finish, inspect_object.',
+    },
+    requirementsJson: {
+      title: 'Requirements JSON',
+      text: 'Условия видимости/активации маркера в формате JSON.',
+      example: '[{"type":"quest_active","questId":"quest_bandits_01"}]',
+      warning: 'Невалидный JSON или неверные ID приведут к тому, что маркер не появится в игре.',
+    },
   },
 } as const satisfies Record<string, AdminHelpSection>;
 

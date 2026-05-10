@@ -3,6 +3,7 @@ import { REGION_TYPE_COLORS } from './regionPaintSystem';
 import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
+import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 
 const ZONE_TYPE_OPTIONS: ZoneType[] = [
   'city',
@@ -179,9 +180,9 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   return (
     <aside className="wm-editor-sidebar card">
       <div className="zone-editor-section">
-        <h3>Editor</h3>
+        <h3>Editor <AdminHelpTooltip section="zoneEditor" field="editor" /></h3>
         <label>
-          <span>Current Tool</span>
+          <span>Current Tool <AdminHelpTooltip section="zoneEditor" field="currentTool" /></span>
           <select value={selectedTool} onChange={(event) => onToolChange(event.target.value as ZoneEditorTool)}>
             {TOOL_OPTIONS.map((tool) => (
               <option key={tool.value} value={tool.value}>{tool.label}</option>
@@ -189,7 +190,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           </select>
         </label>
         <label>
-          <span>Shape</span>
+          <span>Shape <AdminHelpTooltip section="zoneEditor" field="shape" /></span>
           <select
             value={draft?.shape ?? 'circle'}
             disabled={!draft}
@@ -205,22 +206,22 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </div>
         <label className="zone-editor-checkbox">
           <input type="checkbox" checked={settings.showZones} onChange={(event) => onSettingsChange({ showZones: event.target.checked })} />
-          <span>Show zones</span>
+          <span>Show zones <AdminHelpTooltip section="zoneEditor" field="showZones" /></span>
         </label>
         <label className="zone-editor-checkbox">
           <input type="checkbox" checked={settings.showLabels} onChange={(event) => onSettingsChange({ showLabels: event.target.checked })} />
-          <span>Show labels</span>
+          <span>Show labels <AdminHelpTooltip section="zoneEditor" field="showLabels" /></span>
         </label>
         <label className="zone-editor-checkbox">
           <input type="checkbox" checked={settings.showGrid} onChange={(event) => onSettingsChange({ showGrid: event.target.checked })} />
-          <span>Show grid</span>
+          <span>Show grid <AdminHelpTooltip section="zoneEditor" field="showGrid" /></span>
         </label>
         <label className="zone-editor-checkbox">
           <input type="checkbox" checked={settings.snapEnabled} onChange={(event) => onSettingsChange({ snapEnabled: event.target.checked })} />
-          <span>Snap</span>
+          <span>Snap <AdminHelpTooltip section="zoneEditor" field="snap" /></span>
         </label>
 
-        <h4>Region Painter</h4>
+        <h4>Region Painter <AdminHelpTooltip section="zoneEditor" field="regionPainter" /></h4>
         <div className="wm-inline-buttons">
           {REGION_TOOL_OPTIONS.map((option) => (
             <button
@@ -234,7 +235,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </div>
 
         <label>
-          <span>Region Type</span>
+          <span>Region Type <AdminHelpTooltip section="zoneEditor" field="regionType" /></span>
           <select value={regionType} onChange={(event) => onRegionTypeChange(event.target.value as RegionType)}>
             {REGION_TYPE_OPTIONS.map((option) => (
               <option key={option} value={option}>{option}</option>
@@ -243,7 +244,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </label>
 
         <label>
-          <span>Brush Size</span>
+          <span>Brush Size <AdminHelpTooltip section="zoneEditor" field="brushSize" /></span>
           <select value={String(regionBrushSize)} onChange={(event) => onRegionBrushSizeChange(Number(event.target.value) as RegionBrushSize)}>
             {BRUSH_SIZE_OPTIONS.map((option) => (
               <option key={option} value={String(option)}>{option}</option>
@@ -258,7 +259,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       </div>
 
       <div className="zone-editor-section">
-        <h3>Quest Markers</h3>
+        <h3>Quest Markers <AdminHelpTooltip section="zoneEditor" field="questMarkers" /></h3>
         <label>
           <span>Marker</span>
           <select
@@ -307,7 +308,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           />
         </label>
         <label>
-          <span>Marker Type</span>
+          <span>Marker Type <AdminHelpTooltip section="zoneEditor" field="markerType" /></span>
           <select
             value={baseMarkerDraft.type}
             onChange={(event) => onQuestMarkerDraftChange({ ...baseMarkerDraft, type: event.target.value as QuestMarkerDefinition['type'] })}
@@ -355,7 +356,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>hideAfterStepCompleted</span>
         </label>
         <label>
-          <span>Requirements JSON</span>
+          <span>Requirements JSON <AdminHelpTooltip section="zoneEditor" field="requirementsJson" /></span>
           <textarea
             rows={4}
             placeholder='[{"type":"quest_active","questId":"..."}]'
