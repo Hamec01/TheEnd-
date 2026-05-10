@@ -2059,7 +2059,7 @@ h3 {
 
 .admin-shell {
   min-height: 100vh;
-  width: min(1400px, 96vw);
+  width: min(1680px, 98vw);
   margin: 0 auto;
   padding: 12px 0;
   display: grid;
@@ -2143,6 +2143,7 @@ h3 {
 
 .admin-content.is-editor-route {
   padding: 0;
+  overflow: hidden;
 }
 
 .admin-editor-page {
@@ -6505,6 +6506,7 @@ body:has(.page.page--scroll) {
 }
 
 .admin-shell:has(.admin-content.is-editor-route) {
+  width: min(1920px, 99vw);
   height: 100vh;
   min-height: 0;
   overflow: hidden;

@@ -1106,32 +1106,21 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
-    // In editor mode the canvas owns the wheel interaction so parent panels do not scroll together.
-    event.preventDefault();
-    event.stopPropagation();
-
     const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
-    if (isZoomIntent) {
-      const [canvasX, canvasY] = getCanvasPoint(event);
-      const factor = event.deltaY < 0 ? 1.12 : 0.9;
-      zoomAt(canvasX, canvasY, editorSettings.zoom * factor);
+    if (!isZoomIntent) {
       return;
     }
 
-    const speed = event.shiftKey ? 1.3 : 1;
-    const nextPanX = editorSettings.panX - event.deltaX * speed;
-    const nextPanY = editorSettings.panY - event.deltaY * speed;
-    const nextPan = getClampedPan(
-      editorSettings.zoom,
-      nextPanX,
-      nextPanY,
-      canvasSize.width,
-      canvasSize.height,
-      editorViewport.imageWidth,
-      editorViewport.imageHeight,
-    );
+    const nativeEvent = event.nativeEvent as WheelEvent;
+    if (nativeEvent.cancelable) {
+      // Some browsers dispatch wheel as passive in nested containers; guard preventDefault to avoid warnings.
+      event.preventDefault();
+      event.stopPropagation();
+    }
 
-    onSettingsChange?.({ panX: nextPan.panX, panY: nextPan.panY });
+    const [canvasX, canvasY] = getCanvasPoint(event);
+    const factor = event.deltaY < 0 ? 1.12 : 0.9;
+    zoomAt(canvasX, canvasY, editorSettings.zoom * factor);
   }
 
   useEffect(() => {
