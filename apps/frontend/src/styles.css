@@ -5996,6 +5996,7 @@ h3 {
   padding: 0;
   overflow: hidden;
   height: calc(100vh - 150px);
+  overscroll-behavior: contain;
 }
 
 .wm-editor-shell.is-admin-editor .wm-editor-map-area {
@@ -6010,6 +6011,7 @@ h3 {
   max-height: calc(100vh - 150px);
   overflow: auto;
   padding: 12px;
+  overscroll-behavior: contain;
 }
 
 .wm-editor-shell.is-admin-editor .wm-editor-sidebar {
@@ -6019,6 +6021,7 @@ h3 {
   width: 360px;
   max-width: 360px;
   min-width: 320px;
+  overscroll-behavior: contain;
 }
 
 .zone-editor-section {
@@ -6100,6 +6103,9 @@ h3 {
 
 .zone-json-area textarea {
   min-height: 260px;
+  max-height: 42vh;
+  overflow: auto;
+  overscroll-behavior: contain;
   resize: vertical;
   font-family: Consolas, 'Courier New', monospace;
 }
