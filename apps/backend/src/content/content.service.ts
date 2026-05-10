@@ -73,6 +73,10 @@ const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 const CONTENT_STORE_KEY = 'main-content-db';
 const CONTENT_BACKUP_SCHEMA_VERSION = 2;
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type InputJsonValue = JsonValue;
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -1442,13 +1446,13 @@ export class ContentService implements OnModuleInit {
   }
 
   private getContentStoreDelegate(): {
-    findUnique(args: { where: { key: string } }): Promise<{ value: Prisma.JsonValue } | null>;
-    upsert(args: { where: { key: string }; update: { value: Prisma.InputJsonValue }; create: { key: string; value: Prisma.InputJsonValue } }): Promise<unknown>;
+    findUnique(args: { where: { key: string } }): Promise<{ value: JsonValue } | null>;
+    upsert(args: { where: { key: string }; update: { value: InputJsonValue }; create: { key: string; value: InputJsonValue } }): Promise<unknown>;
   } {
     return (this.prisma as unknown as {
       contentStore: {
-        findUnique(args: { where: { key: string } }): Promise<{ value: Prisma.JsonValue } | null>;
-        upsert(args: { where: { key: string }; update: { value: Prisma.InputJsonValue }; create: { key: string; value: Prisma.InputJsonValue } }): Promise<unknown>;
+        findUnique(args: { where: { key: string } }): Promise<{ value: JsonValue } | null>;
+        upsert(args: { where: { key: string }; update: { value: InputJsonValue }; create: { key: string; value: InputJsonValue } }): Promise<unknown>;
       };
     }).contentStore;
   }
@@ -1609,7 +1613,7 @@ export class ContentService implements OnModuleInit {
       }
 
       for (const bonus of Array.isArray(set.bonuses) ? set.bonuses : []) {
-        const requiredPieces = toFiniteNumber((bonus as { requiredPieces?: unknown }).requiredPieces);
+        const requiredPieces = (bonus as { requiredPieces?: number }).requiredPieces ?? pieceIds.length;
         if (!Number.isFinite(requiredPieces) || requiredPieces <= 0) {
           errors.push(`Item set '${set.id}' has bonus with invalid requiredPieces: must be > 0.`);
           continue;

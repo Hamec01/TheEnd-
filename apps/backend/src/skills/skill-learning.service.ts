@@ -24,6 +24,10 @@ const GENERIC_TRAINING_SOURCE_TYPES = new Set<CharacterSkillSourceType>(['teache
 const CHARACTER_SKILLS_STORE_KEY = 'character-skills-v1';
 const CHARACTER_LOADOUTS_STORE_KEY = 'character-skill-loadouts-v1';
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type InputJsonValue = JsonValue;
+
 type StoredCharacterSkill = {
   id: string;
   characterId: string;
@@ -592,7 +596,7 @@ export class SkillLearningService {
       return;
     }
 
-    const jsonValue = value as Prisma.InputJsonValue;
+    const jsonValue = value as InputJsonValue;
     await this.prisma.contentStore.upsert({
       where: { key },
       create: { key, value: jsonValue },
@@ -615,7 +619,7 @@ export class SkillLearningService {
     }
 
     try {
-      const rows = await this.prisma.characterInventoryItem.findMany({
+      const rows: Array<{ itemId: string }> = await this.prisma.characterInventoryItem.findMany({
         where: { characterId },
         select: { itemId: true },
       });

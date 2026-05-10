@@ -1,11 +1,14 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import type { Response } from 'express';
 import { isDatabaseEnabled } from '../config/storage-mode';
 
-@Catch(Prisma.PrismaClientInitializationError)
+@Catch()
 export class DatabaseUnavailableFilter implements ExceptionFilter {
-  catch(exception: Prisma.PrismaClientInitializationError, host: ArgumentsHost): void {
+  catch(exception: unknown, host: ArgumentsHost): void {
+    if (!this.isPrismaDatabaseUnavailableError(exception)) {
+      throw exception;
+    }
+
     const response = host.switchToHttp().getResponse<Response>();
     const message = exception.message || '';
     const isMissingDatabaseUrl = message.includes('DATABASE_URL');
@@ -24,5 +27,17 @@ export class DatabaseUnavailableFilter implements ExceptionFilter {
       database: 'disabled',
       error: 'Database is disabled in local file content storage mode.',
     });
+  }
+
+  private isPrismaDatabaseUnavailableError(error: unknown): error is Error {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const message = error.message.toLowerCase();
+    return error.name === 'PrismaClientInitializationError'
+      || message.includes('database')
+      || message.includes('quota')
+      || message.includes('connect');
   }
 }

@@ -7,14 +7,15 @@ export interface FormatItemEffectOptions {
 }
 
 const DEFAULT_STAT_NAMES: Record<StatKey, string> = {
+  hp: 'здоровью',
+  mp: 'мане',
+  stamina: 'выносливости',
   strength: 'силе',
-  agility: 'ловкости',
+  dexterity: 'ловкости',
   constitution: 'телосложению',
   intelligence: 'интеллекту',
   willpower: 'силе воли',
-  spirit: 'духу',
   perception: 'восприятию',
-  charisma: 'харизме',
   luck: 'удаче',
 };
 

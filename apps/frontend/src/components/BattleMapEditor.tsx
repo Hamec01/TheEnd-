@@ -671,165 +671,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       </div>
 
       <div className="battle-map-editor-main">
-
-      <section className="battle-map-editor-section battle-map-editor-left-panel">
-        <div className="battle-map-editor-section-head">
-          <h4>Tools</h4>
-        </div>
-        <div className="row">
-          <label>Map</label>
-          <select value={currentMapId} onChange={(event) => {
-            const nextId = event.target.value;
-            setCurrentMapId(nextId);
-            onSelectedMapIdChange?.(nextId);
-          }}>
-            {maps.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}
-          </select>
-        </div>
-        <div className="battle-map-editor-actions">
-          <button type="button" onClick={handleNew}>New</button>
-          <button type="button" onClick={handleDuplicate}>Duplicate</button>
-          <button type="button" onClick={handleDelete}>Delete</button>
-        </div>
-        <div className="battle-map-editor-section-head">
-          <h4>Layers</h4>
-        </div>
-        <div className="battle-map-editor-layer-tabs">
-          {(['cells', 'spawns', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
-            <button key={entry} type="button" className={layer === entry ? 'is-active' : ''} onClick={() => setLayer(entry)}>
-              {entry}
-            </button>
-          ))}
-        </div>
-        {layer === 'cells' ? (
-          <div className="battle-map-editor-toolbar">
-            {CELL_TOOL_OPTIONS.map((option) => (
-              <button key={option.value} type="button" className={cellTool === option.value ? 'is-active' : ''} onClick={() => setCellTool(option.value)}>
-                {option.label} <HelpTooltip text={option.help} />
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {layer === 'spawns' ? (
-          <div className="battle-map-editor-toolbar">
-            {SPAWN_ZONE_OPTIONS.map((option) => (
-              <button key={option.value} type="button" className={spawnTool === option.value ? 'is-active' : ''} onClick={() => setSpawnTool(option.value)}>
-                {option.label} <HelpTooltip text={option.help} />
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {layer === 'npcs' ? (
-          <div className="row">
-            <label>NPC</label>
-            <select value={selectedNpcSourceId} onChange={(event) => setSelectedNpcSourceId(event.target.value)}>
-              <option value="random">Random Arena Enemy</option>
-              {adminNpcs.map((npc) => (
-                <option key={npc.id} value={npc.id}>{npc.name}</option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="battle-map-editor-section battle-map-editor-side-section">
-        <div className="battle-map-editor-section-head">
-          <h4>Map Identity</h4>
-        </div>
-        <div className="row">
-          <label>ID <HelpTooltip text="Unique map key used by arenas, quests, dungeons and NPC encounters. Do not rename after linking unless you also update all references." /></label>
-          <input value={draft.id} onChange={(event) => updateIdentityField('id', event.target.value)} />
-        </div>
-        <div className="row">
-          <label>Name</label>
-          <input value={draft.name} onChange={(event) => updateIdentityField('name', event.target.value)} />
-        </div>
-        <div className="row">
-          <label>Description</label>
-          <textarea value={draft.description ?? ''} onChange={(event) => updateIdentityField('description', event.target.value)} rows={3} />
-        </div>
-        <div className="row">
-          <label>Tags</label>
-          <input value={(draft.tags ?? []).join(', ')} onChange={(event) => updateIdentityField('tags', event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="arena, dungeon, quest" />
-        </div>
-        <div className="row">
-          <label>Background image URL</label>
-          <input value={draft.imageUrl ?? ''} onChange={(event) => updateIdentityField('imageUrl', event.target.value)} />
-        </div>
-        <AdminImageField
-          value={draft.imageUrl}
-          onChange={(nextValue) => updateIdentityField('imageUrl', nextValue)}
-          onStatus={(text) => onStatusMessage?.(text)}
-          presetId="battle-map-background"
-          suggestedName={`${draft.id || 'battlemap'}-background`}
-          label="Загрузка фона карты"
-          hint="Загружает картинку в content-хранилище и подставляет её ID в карту, чтобы фон сохранялся и работал на другом устройстве."
-        />
-        <div className="battle-map-editor-dimensions">
-          <div className="row">
-            <label>Width <HelpTooltip text="Full tactical map width. Combat viewport can show only part of it." /></label>
-            <input type="number" min={12} value={draft.width} onChange={(event) => handleLogicalColumnsChange(Number(event.target.value) || 12)} />
-          </div>
-          <div className="row">
-            <label>Height <HelpTooltip text="Full tactical map height. Combat viewport can show only part of it." /></label>
-            <input type="number" min={12} value={draft.height} onChange={(event) => handleLogicalRowsChange(Number(event.target.value) || 12)} />
-          </div>
-          <div className="row">
-            <label>Viewport width <HelpTooltip text="The visible combat window. The map can be larger, but the player currently sees this many cells during battle." /></label>
-            <input type="number" min={6} max={draft.width} value={draft.viewportWidth} onChange={(event) => updateIdentityField('viewportWidth', Number(event.target.value) || 12)} />
-          </div>
-          <div className="row">
-            <label>Viewport height <HelpTooltip text="The visible combat window. The map can be larger, but the player currently sees this many cells during battle." /></label>
-            <input type="number" min={6} max={draft.height} value={draft.viewportHeight} onChange={(event) => updateIdentityField('viewportHeight', Number(event.target.value) || 12)} />
-          </div>
-        </div>
-        <div className="battle-map-editor-dimensions">
-          <div className="row">
-            <label>Cell size px</label>
-            <input type="number" min={32} max={160} value={draft.cellSizePx ?? 64} onChange={(event) => updateIdentityField('cellSizePx', Number(event.target.value) || 64)} />
-          </div>
-          <div className="row">
-            <label>Grid offset X</label>
-            <input type="number" value={draft.gridOffsetX ?? 0} onChange={(event) => updateIdentityField('gridOffsetX', Number(event.target.value) || 0)} />
-          </div>
-          <div className="row">
-            <label>Grid offset Y</label>
-            <input type="number" value={draft.gridOffsetY ?? 0} onChange={(event) => updateIdentityField('gridOffsetY', Number(event.target.value) || 0)} />
-          </div>
-          <div className="row">
-            <label>Logical columns</label>
-            <input type="number" min={6} value={draft.logicalColumns ?? draft.width} onChange={(event) => handleLogicalColumnsChange(Number(event.target.value))} />
-          </div>
-          <div className="row">
-            <label>Logical rows</label>
-            <input type="number" min={6} value={draft.logicalRows ?? draft.height} onChange={(event) => handleLogicalRowsChange(Number(event.target.value))} />
-          </div>
-          <label className="zone-editor-checkbox">
-            <input type="checkbox" checked={Boolean(draft.showEditorGrid)} onChange={(event) => updateIdentityField('showEditorGrid', event.target.checked)} />
-            <span>Show editor grid</span>
-          </label>
-          <div className="row">
-            <label>Grid opacity</label>
-            <input type="number" step={0.01} min={0.03} max={0.9} value={draft.gridOpacity ?? 0.12} onChange={(event) => updateIdentityField('gridOpacity', Number(event.target.value) || 0.12)} />
-          </div>
-        </div>
-        <div className="battle-map-editor-dimensions">
-          <div className="row">
-            <label>Linked location <HelpTooltip text="Optional reference to a city building, arena or local scene that should use this map." /></label>
-            <input value={draft.linkedLocationId ?? ''} onChange={(event) => updateIdentityField('linkedLocationId', event.target.value)} />
-          </div>
-          <div className="row">
-            <label>Linked quest <HelpTooltip text="Optional quest hook for future scripted combat and tactical encounters." /></label>
-            <input value={draft.linkedQuestId ?? ''} onChange={(event) => updateIdentityField('linkedQuestId', event.target.value)} />
-          </div>
-          <div className="row">
-            <label>Linked zone <HelpTooltip text="Optional world zone reference for later encounter binding." /></label>
-            <input value={draft.linkedZoneId ?? ''} onChange={(event) => updateIdentityField('linkedZoneId', event.target.value)} />
-          </div>
-        </div>
-      </section>
-
-      <section className="battle-map-editor-section battle-map-editor-canvas-section">
+        <section className="battle-map-editor-section battle-map-editor-canvas-section">
         <div
           ref={viewportRef}
           className="battle-map-editor-canvas-viewport"
@@ -951,14 +793,173 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
             })}
           </div>
         </div>
-      </section>
+        </section>
 
-      <section className="battle-map-editor-section battle-map-editor-side-section">
-        <div className="battle-map-editor-section-head">
-          <h4>Placed Data</h4>
-        </div>
-        <div className="battle-map-editor-side-grid">
-          <section className="battle-map-editor-list-card">
+        <div className="battle-map-editor-bottom-panels">
+          <section className="battle-map-editor-section battle-map-editor-left-panel">
+            <div className="battle-map-editor-section-head">
+              <h4>Tools</h4>
+            </div>
+            <div className="row">
+              <label>Map</label>
+              <select value={currentMapId} onChange={(event) => {
+                const nextId = event.target.value;
+                setCurrentMapId(nextId);
+                onSelectedMapIdChange?.(nextId);
+              }}>
+                {maps.map((map) => <option key={map.id} value={map.id}>{map.name}</option>)}
+              </select>
+            </div>
+            <div className="battle-map-editor-actions">
+              <button type="button" onClick={handleNew}>New</button>
+              <button type="button" onClick={handleDuplicate}>Duplicate</button>
+              <button type="button" onClick={handleDelete}>Delete</button>
+            </div>
+            <div className="battle-map-editor-section-head">
+              <h4>Layers</h4>
+            </div>
+            <div className="battle-map-editor-layer-tabs">
+              {(['cells', 'spawns', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
+                <button key={entry} type="button" className={layer === entry ? 'is-active' : ''} onClick={() => setLayer(entry)}>
+                  {entry}
+                </button>
+              ))}
+            </div>
+            {layer === 'cells' ? (
+              <div className="battle-map-editor-toolbar">
+                {CELL_TOOL_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" className={cellTool === option.value ? 'is-active' : ''} onClick={() => setCellTool(option.value)}>
+                    {option.label} <HelpTooltip text={option.help} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {layer === 'spawns' ? (
+              <div className="battle-map-editor-toolbar">
+                {SPAWN_ZONE_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" className={spawnTool === option.value ? 'is-active' : ''} onClick={() => setSpawnTool(option.value)}>
+                    {option.label} <HelpTooltip text={option.help} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {layer === 'npcs' ? (
+              <div className="row">
+                <label>NPC</label>
+                <select value={selectedNpcSourceId} onChange={(event) => setSelectedNpcSourceId(event.target.value)}>
+                  <option value="random">Random Arena Enemy</option>
+                  {adminNpcs.map((npc) => (
+                    <option key={npc.id} value={npc.id}>{npc.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+          </section>
+
+          <div className="battle-map-editor-inspector-stack">
+            <section className="battle-map-editor-section battle-map-editor-identity-panel battle-map-editor-side-section">
+              <div className="battle-map-editor-section-head">
+                <h4>Map Identity</h4>
+              </div>
+              <div className="row">
+                <label>ID <HelpTooltip text="Unique map key used by arenas, quests, dungeons and NPC encounters. Do not rename after linking unless you also update all references." /></label>
+                <input value={draft.id} onChange={(event) => updateIdentityField('id', event.target.value)} />
+              </div>
+              <div className="row">
+                <label>Name</label>
+                <input value={draft.name} onChange={(event) => updateIdentityField('name', event.target.value)} />
+              </div>
+              <div className="row">
+                <label>Description</label>
+                <textarea value={draft.description ?? ''} onChange={(event) => updateIdentityField('description', event.target.value)} rows={3} />
+              </div>
+              <div className="row">
+                <label>Tags</label>
+                <input value={(draft.tags ?? []).join(', ')} onChange={(event) => updateIdentityField('tags', event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="arena, dungeon, quest" />
+              </div>
+              <div className="row">
+                <label>Background image URL</label>
+                <input value={draft.imageUrl ?? ''} onChange={(event) => updateIdentityField('imageUrl', event.target.value)} />
+              </div>
+              <AdminImageField
+                value={draft.imageUrl}
+                onChange={(nextValue) => updateIdentityField('imageUrl', nextValue)}
+                onStatus={(text) => onStatusMessage?.(text)}
+                presetId="battle-map-background"
+                suggestedName={`${draft.id || 'battlemap'}-background`}
+                label="Загрузка фона карты"
+                hint="Загружает картинку в content-хранилище и подставляет её ID в карту, чтобы фон сохранялся и работал на другом устройстве."
+              />
+              <div className="battle-map-editor-dimensions">
+                <div className="row">
+                  <label>Width <HelpTooltip text="Full tactical map width. Combat viewport can show only part of it." /></label>
+                  <input type="number" min={12} value={draft.width} onChange={(event) => handleLogicalColumnsChange(Number(event.target.value) || 12)} />
+                </div>
+                <div className="row">
+                  <label>Height <HelpTooltip text="Full tactical map height. Combat viewport can show only part of it." /></label>
+                  <input type="number" min={12} value={draft.height} onChange={(event) => handleLogicalRowsChange(Number(event.target.value) || 12)} />
+                </div>
+                <div className="row">
+                  <label>Viewport width <HelpTooltip text="The visible combat window. The map can be larger, but the player currently sees this many cells during battle." /></label>
+                  <input type="number" min={6} max={draft.width} value={draft.viewportWidth} onChange={(event) => updateIdentityField('viewportWidth', Number(event.target.value) || 12)} />
+                </div>
+                <div className="row">
+                  <label>Viewport height <HelpTooltip text="The visible combat window. The map can be larger, but the player currently sees this many cells during battle." /></label>
+                  <input type="number" min={6} max={draft.height} value={draft.viewportHeight} onChange={(event) => updateIdentityField('viewportHeight', Number(event.target.value) || 12)} />
+                </div>
+              </div>
+              <div className="battle-map-editor-dimensions">
+                <div className="row">
+                  <label>Cell size px</label>
+                  <input type="number" min={32} max={160} value={draft.cellSizePx ?? 64} onChange={(event) => updateIdentityField('cellSizePx', Number(event.target.value) || 64)} />
+                </div>
+                <div className="row">
+                  <label>Grid offset X</label>
+                  <input type="number" value={draft.gridOffsetX ?? 0} onChange={(event) => updateIdentityField('gridOffsetX', Number(event.target.value) || 0)} />
+                </div>
+                <div className="row">
+                  <label>Grid offset Y</label>
+                  <input type="number" value={draft.gridOffsetY ?? 0} onChange={(event) => updateIdentityField('gridOffsetY', Number(event.target.value) || 0)} />
+                </div>
+                <div className="row">
+                  <label>Logical columns</label>
+                  <input type="number" min={6} value={draft.logicalColumns ?? draft.width} onChange={(event) => handleLogicalColumnsChange(Number(event.target.value))} />
+                </div>
+                <div className="row">
+                  <label>Logical rows</label>
+                  <input type="number" min={6} value={draft.logicalRows ?? draft.height} onChange={(event) => handleLogicalRowsChange(Number(event.target.value))} />
+                </div>
+                <label className="zone-editor-checkbox">
+                  <input type="checkbox" checked={Boolean(draft.showEditorGrid)} onChange={(event) => updateIdentityField('showEditorGrid', event.target.checked)} />
+                  <span>Show editor grid</span>
+                </label>
+                <div className="row">
+                  <label>Grid opacity</label>
+                  <input type="number" step={0.01} min={0.03} max={0.9} value={draft.gridOpacity ?? 0.12} onChange={(event) => updateIdentityField('gridOpacity', Number(event.target.value) || 0.12)} />
+                </div>
+              </div>
+              <div className="battle-map-editor-dimensions">
+                <div className="row">
+                  <label>Linked location <HelpTooltip text="Optional reference to a city building, arena or local scene that should use this map." /></label>
+                  <input value={draft.linkedLocationId ?? ''} onChange={(event) => updateIdentityField('linkedLocationId', event.target.value)} />
+                </div>
+                <div className="row">
+                  <label>Linked quest <HelpTooltip text="Optional quest hook for future scripted combat and tactical encounters." /></label>
+                  <input value={draft.linkedQuestId ?? ''} onChange={(event) => updateIdentityField('linkedQuestId', event.target.value)} />
+                </div>
+                <div className="row">
+                  <label>Linked zone <HelpTooltip text="Optional world zone reference for later encounter binding." /></label>
+                  <input value={draft.linkedZoneId ?? ''} onChange={(event) => updateIdentityField('linkedZoneId', event.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            <section className="battle-map-editor-section battle-map-editor-placed-panel battle-map-editor-side-section">
+              <div className="battle-map-editor-section-head">
+                <h4>Placed Data</h4>
+              </div>
+              <div className="battle-map-editor-side-grid">
+                <section className="battle-map-editor-list-card">
             <h5>Objects <HelpTooltip text="Placed interactive or decorative objects: chests, doors, levers, loot, resources, quest items." /></h5>
             {draft.objects.map((object) => (
               <button key={object.id} type="button" className={selectedObjectId === object.id ? 'is-active' : ''} onClick={() => setSelectedObjectId(object.id)}>
@@ -992,7 +993,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
             ) : null}
           </section>
 
-          <section className="battle-map-editor-list-card">
+                <section className="battle-map-editor-list-card">
             <h5>Traps <HelpTooltip text="Danger cells and trap definitions used by combat runtime." /></h5>
             {draft.traps.map((trap) => (
               <button key={trap.id} type="button" className={selectedTrapId === trap.id ? 'is-active' : ''} onClick={() => setSelectedTrapId(trap.id)}>
@@ -1018,7 +1019,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
             ) : null}
           </section>
 
-          <section className="battle-map-editor-list-card">
+                <section className="battle-map-editor-list-card">
             <h5>NPCs <HelpTooltip text="Placed non-combat or combat NPCs for future scenes, dialogues, quests, merchants and ambushes." /></h5>
             {draft.npcs.map((npc) => (
               <button key={npc.id} type="button" className={selectedNpcId === npc.id ? 'is-active' : ''} onClick={() => setSelectedNpcId(npc.id)}>
@@ -1049,7 +1050,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
             ) : null}
           </section>
 
-          <section className="battle-map-editor-list-card">
+                <section className="battle-map-editor-list-card">
             <h5>Triggers <HelpTooltip text="Invisible zones that can start quests, dialogues, ambushes, transitions or scripted scenes." /></h5>
             {draft.triggers.map((trigger) => (
               <button key={trigger.id} type="button" className={selectedTriggerId === trigger.id ? 'is-active' : ''} onClick={() => setSelectedTriggerId(trigger.id)}>
@@ -1076,20 +1077,22 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
               </div>
             ) : null}
           </section>
-        </div>
-      </section>
+              </div>
+            </section>
 
-      <section className="battle-map-editor-section battle-map-editor-side-section">
-        <div className="battle-map-editor-section-head">
-          <h4>Validation</h4>
+            <section className="battle-map-editor-section battle-map-editor-validation-panel battle-map-editor-side-section">
+              <div className="battle-map-editor-section-head">
+                <h4>Validation</h4>
+              </div>
+              <div className="battle-map-editor-validation-list">
+                {validationIssues.map((issue, index) => (
+                  <div key={`${issue}-${index}`} className={issue.startsWith('Warning:') ? 'is-warning' : 'is-error'}>{issue}</div>
+                ))}
+              </div>
+              <div className="muted">Blocking object cells tracked: {blockingObjectCells.size}</div>
+            </section>
+          </div>
         </div>
-        <div className="battle-map-editor-validation-list">
-          {validationIssues.map((issue, index) => (
-            <div key={`${issue}-${index}`} className={issue.startsWith('Warning:') ? 'is-warning' : 'is-error'}>{issue}</div>
-          ))}
-        </div>
-        <div className="muted">Blocking object cells tracked: {blockingObjectCells.size}</div>
-      </section>
 
       </div>
 

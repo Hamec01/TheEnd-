@@ -29,7 +29,7 @@ export class PvpService {
       },
     });
 
-    return players.map((player) => ({
+    return players.map((player: { id: string; name: string; race: string; level: number }) => ({
       characterId: player.id,
       name: player.name,
       race: player.race,

@@ -50,7 +50,7 @@ describe('getEquippedItemEffects', () => {
     });
 
     const result = getEquippedItemEffects({
-      equipment: { head: 'helm-1' },
+      equipment: { helmet: 'helm-1' },
       items: [helm],
     });
 
@@ -64,7 +64,7 @@ describe('getEquippedItemEffects', () => {
     const helm = makeItem('helm-dis', { slot: 'head', isEnabled: false, equipmentEffects: [ARMOR_EFFECT] });
 
     const result = getEquippedItemEffects({
-      equipment: { head: 'helm-dis' },
+      equipment: { helmet: 'helm-dis' },
       items: [helm],
     });
 
@@ -78,7 +78,7 @@ describe('getEquippedItemEffects', () => {
     });
 
     const result = getEquippedItemEffects({
-      equipment: { rightHand: 'sword-1' },
+      equipment: { weapon: 'sword-1' },
       items: [sword],
     });
 
@@ -102,7 +102,7 @@ describe('getEquippedItemEffects', () => {
     });
 
     const result = getEquippedItemEffects({
-      equipment: { rightHand: 'sword-1' },
+      equipment: { weapon: 'sword-1' },
       items: [sword, rune],
       activationContexts: ['weapon', 'melee'],
     });
@@ -129,7 +129,7 @@ describe('getEquippedItemEffects', () => {
     });
 
     const result = getEquippedItemEffects({
-      equipment: { rightHand: 'sword-2' },
+      equipment: { weapon: 'sword-2' },
       items: [sword, runeArmor],
       activationContexts: ['weapon'],
     });
@@ -166,7 +166,7 @@ describe('getActiveItemSetBonuses', () => {
 
   it('activates 2-piece bonus only when exactly 2 set pieces are equipped', () => {
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1', chest: 'piece-2' },
+      equipment: { helmet: 'piece-1', armor: 'piece-2' },
       items: allItems,
       itemSets: [set],
     });
@@ -178,7 +178,7 @@ describe('getActiveItemSetBonuses', () => {
 
   it('activates both bonuses when all 3 pieces are equipped', () => {
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1', chest: 'piece-2', legs: 'piece-3' },
+      equipment: { helmet: 'piece-1', armor: 'piece-2', legs: 'piece-3' },
       items: allItems,
       itemSets: [set],
     });
@@ -188,7 +188,7 @@ describe('getActiveItemSetBonuses', () => {
 
   it('activates NO bonuses with only 1 equipped piece', () => {
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1' },
+      equipment: { helmet: 'piece-1' },
       items: allItems,
       itemSets: [set],
     });
@@ -199,7 +199,7 @@ describe('getActiveItemSetBonuses', () => {
   it('does NOT count inventory items — only equipment slot matters', () => {
     // Only head slot equipped, chest is intentionally left empty
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1', chest: undefined },
+      equipment: { helmet: 'piece-1', armor: undefined },
       items: allItems,
       itemSets: [set],
     });
@@ -211,7 +211,7 @@ describe('getActiveItemSetBonuses', () => {
     const disabledSet: ItemSet = { ...set, isEnabled: false };
 
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1', chest: 'piece-2', legs: 'piece-3' },
+      equipment: { helmet: 'piece-1', armor: 'piece-2', legs: 'piece-3' },
       items: allItems,
       itemSets: [disabledSet],
     });
@@ -223,7 +223,7 @@ describe('getActiveItemSetBonuses', () => {
     const disabledItems = allItems.map((item, i) => (i === 0 ? { ...item, isEnabled: false } : item));
 
     const result = getActiveItemSetBonuses({
-      equipment: { head: 'piece-1', chest: 'piece-2', legs: 'piece-3' },
+      equipment: { helmet: 'piece-1', armor: 'piece-2', legs: 'piece-3' },
       items: disabledItems,
       itemSets: [set],
     });
@@ -235,7 +235,7 @@ describe('getActiveItemSetBonuses', () => {
 
   it('full resolver includes set bonus sources', () => {
     const result = resolveCharacterEquipmentModifiers({
-      equipment: { head: 'piece-1', chest: 'piece-2' },
+      equipment: { helmet: 'piece-1', armor: 'piece-2' },
       items: allItems,
       itemSets: [set],
     });

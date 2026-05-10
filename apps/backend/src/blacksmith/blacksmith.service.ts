@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { isFileStorageMode } from '../config/storage-mode';
 import type { AdminItem, ItemSocket, SlotUpgradeRules } from '../content/content.types';
 import { ContentService } from '../content/content.service';
@@ -74,7 +75,7 @@ export class BlacksmithService {
           ? { ...entry, isLocked: false }
           : entry
       ));
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         goldSpent = await this.trySpendGold(tx, context.characterId, context.rules.goldCost);
         materialSpent = await this.trySpendMaterials(tx, context.characterId, context.rules.materialCosts, true);
         await tx.characterItemInstance.update({
@@ -83,7 +84,7 @@ export class BlacksmithService {
         });
       });
     } else {
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         materialSpent = await this.trySpendMaterials(
           tx,
           context.characterId,
@@ -161,7 +162,7 @@ export class BlacksmithService {
         source: 'blacksmith_added',
       });
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         goldSpent = await this.trySpendGold(tx, context.characterId, context.rules.goldCost);
         materialSpent = await this.trySpendMaterials(tx, context.characterId, context.rules.materialCosts, true);
         await tx.characterItemInstance.update({
@@ -170,7 +171,7 @@ export class BlacksmithService {
         });
       });
     } else {
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         materialSpent = await this.trySpendMaterials(
           tx,
           context.characterId,
