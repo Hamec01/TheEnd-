@@ -4,6 +4,7 @@ import { itemsService } from '../../services/content/itemsService';
 import { materialsService, validateMaterial } from '../../services/content/materialsService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -170,10 +171,12 @@ export function MaterialsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор материала. На него могут ссылаться крафт, лут и связанные предметы." />
+            <AdminHelpTooltip section="materials" field="id" />
             <input value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value }))} />
           </label>
           <label>
             <AdminFieldLabel label="Название" hint="Отображаемое имя материала для игрока." />
+            <AdminHelpTooltip section="materials" field="name" />
             <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
           </label>
           <label>
@@ -222,6 +225,7 @@ export function MaterialsPage() {
 
         <label>
           <AdminFieldLabel label="Игровое описание" hint="Практическое описание для игрока: где используется материал и зачем он нужен." />
+          <AdminHelpTooltip section="materials" field="description" />
           <textarea rows={4} value={draft.gameplayDescription ?? ''} onChange={(event) => setDraft((current) => ({ ...current, gameplayDescription: event.target.value }))} />
         </label>
 

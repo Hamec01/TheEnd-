@@ -4133,6 +4133,85 @@ h3 {
   pointer-events: none;
 }
 
+.admin-help-tooltip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.admin-help-tooltip-icon {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  margin-left: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 167, 106, 0.68);
+  background: rgba(48, 34, 20, 0.95);
+  color: #ead6af;
+  font-size: 0.68rem;
+  line-height: 1;
+  cursor: help;
+}
+
+.admin-help-tooltip-icon:hover,
+.admin-help-tooltip-icon:focus-visible {
+  border-color: rgba(245, 201, 127, 0.9);
+  box-shadow: 0 0 0 1px rgba(245, 201, 127, 0.35);
+  outline: none;
+}
+
+.admin-help-tooltip-popover {
+  position: fixed;
+  z-index: 2400;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(178, 137, 79, 0.86);
+  background: rgba(16, 12, 9, 0.98);
+  color: #e7d3ad;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.46);
+  pointer-events: none;
+}
+
+.admin-help-tooltip-title {
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f0ddb8;
+}
+
+.admin-help-tooltip-text {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #e8d8b8;
+}
+
+.admin-help-tooltip-example {
+  margin: 8px 0 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(134, 109, 75, 0.64);
+  background: rgba(27, 20, 15, 0.86);
+  color: #f3e5cc;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+}
+
+.admin-help-tooltip-warning {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(209, 159, 86, 0.62);
+  background: rgba(61, 38, 15, 0.64);
+  color: #ffdca6;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .battle-map-editor {
   display: grid;
   gap: 10px;

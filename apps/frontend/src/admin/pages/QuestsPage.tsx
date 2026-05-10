@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { subscribeToContentSync } from '../../services/content/contentSync';
@@ -605,10 +606,12 @@ export function QuestsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Стабильный id для квестовых связок." />
+            <AdminHelpTooltip section="quests" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
           <label>
             <AdminFieldLabel label="Название" hint="Название квеста, видимое игроку." />
+            <AdminHelpTooltip section="quests" field="title" />
             <input value={draft.title} onChange={(event) => patch({ title: event.target.value })} />
           </label>
           <label>
@@ -711,6 +714,7 @@ export function QuestsPage() {
         </label>
         <label>
           <AdminFieldLabel label="Описание для игрока" hint="Текст, который увидит игрок в журнале." />
+          <AdminHelpTooltip section="quests" field="description" />
           <textarea rows={3} value={draft.playerDescription} onChange={(event) => patch({ playerDescription: event.target.value })} />
         </label>
 

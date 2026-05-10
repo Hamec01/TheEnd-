@@ -1,5 +1,6 @@
 import { EMPTY_EQUIPMENT, Race, type InventoryState } from '@theend/rpg-domain';
 import { useMemo, useState } from 'react';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { WorldMapScreen } from '../../worldmap/WorldMapScreen';
 
 const EMPTY_INVENTORY: InventoryState = {
@@ -54,6 +55,7 @@ export function ZoneEditorPage() {
 
   return (
     <div className="admin-editor-page">
+      <div className="muted">Справка редактора зоны <AdminHelpTooltip section="zoneEditor" field="mode" /></div>
       <WorldMapScreen
         character={ADMIN_EDITOR_CHARACTER}
         inventory={EMPTY_INVENTORY}

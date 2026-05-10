@@ -3,6 +3,7 @@ import type { City, CityLocation, CityLocationShape, CityLocationShapeType, City
 import { cityService } from '../../services/cityRepository';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 
 const STATUS_OPTIONS: CityStatus[] = ['active', 'ruined', 'occupied', 'hidden', 'locked'];
 const LOCATION_TYPES: CityLocationType[] = [
@@ -519,11 +520,11 @@ export function CitiesPage() {
               <div className="city-detail-scroll">
                 {tab === 'main' && (
                   <div className="city-form-grid">
-                    <label>ID<input value={draft.id} onChange={(e) => patchCity({ id: e.target.value })} /></label>
-                    <label>Name<input value={draft.name} onChange={(e) => patchCity({ name: e.target.value })} /></label>
-                    <label>Kingdom<input value={draft.kingdomId} onChange={(e) => patchCity({ kingdomId: e.target.value })} /></label>
-                    <label>Region<input value={draft.regionId ?? ''} onChange={(e) => patchCity({ regionId: e.target.value })} /></label>
-                    <label>World Zone ID<input value={draft.worldZoneId ?? ''} onChange={(e) => patchCity({ worldZoneId: e.target.value })} /></label>
+                    <label>ID <AdminHelpTooltip section="cities" field="id" /><input value={draft.id} onChange={(e) => patchCity({ id: e.target.value })} /></label>
+                    <label>Name <AdminHelpTooltip section="cities" field="name" /><input value={draft.name} onChange={(e) => patchCity({ name: e.target.value })} /></label>
+                    <label>Kingdom <AdminHelpTooltip section="cities" field="kingdomId" /><input value={draft.kingdomId} onChange={(e) => patchCity({ kingdomId: e.target.value })} /></label>
+                    <label>Region <AdminHelpTooltip section="cities" field="regionId" /><input value={draft.regionId ?? ''} onChange={(e) => patchCity({ regionId: e.target.value })} /></label>
+                    <label>World Zone ID <AdminHelpTooltip section="cities" field="worldZoneId" /><input value={draft.worldZoneId ?? ''} onChange={(e) => patchCity({ worldZoneId: e.target.value })} /></label>
                     <label>Status
                       <select value={draft.status} onChange={(e) => patchCity({ status: e.target.value as CityStatus })}>
                         {STATUS_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -537,7 +538,7 @@ export function CitiesPage() {
 
                 {tab === 'lore' && (
                   <div className="city-form-grid">
-                    <label>Short Description<textarea value={draft.shortDescription} onChange={(e) => patchCity({ shortDescription: e.target.value })} /></label>
+                    <label>Short Description <AdminHelpTooltip section="cities" field="description" /><textarea value={draft.shortDescription} onChange={(e) => patchCity({ shortDescription: e.target.value })} /></label>
                     <label>Full Description<textarea value={draft.fullDescription} onChange={(e) => patchCity({ fullDescription: e.target.value })} /></label>
                     <label>History<textarea value={draft.history ?? ''} onChange={(e) => patchCity({ history: e.target.value })} /></label>
                     <label>Lore Notes<textarea value={draft.loreNotes ?? ''} onChange={(e) => patchCity({ loreNotes: e.target.value })} /></label>
@@ -612,14 +613,14 @@ export function CitiesPage() {
                     {selectedLocation && (
                       <>
                         <button type="button" onClick={deleteLocation}>DELETE LOCATION</button>
-                        <label>Location ID<input value={selectedLocation.id} onChange={(e) => patchSelectedLocation({ id: e.target.value })} /></label>
-                        <label>Name<input value={selectedLocation.name} onChange={(e) => patchSelectedLocation({ name: e.target.value })} /></label>
-                        <label>Type
+                        <label>Location ID <AdminHelpTooltip section="cities" field="locationId" /><input value={selectedLocation.id} onChange={(e) => patchSelectedLocation({ id: e.target.value })} /></label>
+                        <label>Name <AdminHelpTooltip section="cities" field="locationName" /><input value={selectedLocation.name} onChange={(e) => patchSelectedLocation({ name: e.target.value })} /></label>
+                        <label>Type <AdminHelpTooltip section="cities" field="locationType" />
                           <select value={selectedLocation.type} onChange={(e) => patchSelectedLocation({ type: e.target.value as CityLocationType })}>
                             {LOCATION_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
                           </select>
                         </label>
-                        <label>Description<textarea value={selectedLocation.description ?? ''} onChange={(e) => patchSelectedLocation({ description: e.target.value })} /></label>
+                        <label>Description <AdminHelpTooltip section="cities" field="description" /><textarea value={selectedLocation.description ?? ''} onChange={(e) => patchSelectedLocation({ description: e.target.value })} /></label>
                         <label>Shape Type
                           <select value={selectedLocation.shapeType} onChange={(e) => patchSelectedLocation({ shapeType: e.target.value as CityLocationShapeType })}>
                             <option value="rectangle">rectangle</option>
@@ -631,7 +632,7 @@ export function CitiesPage() {
                         <label>Quest IDs<input value={joinCsv(selectedLocation.questIds)} onChange={(e) => patchSelectedLocation({ questIds: splitCsv(e.target.value) })} /></label>
                         <label>Shop IDs<input value={joinCsv(selectedLocation.shopIds)} onChange={(e) => patchSelectedLocation({ shopIds: splitCsv(e.target.value) })} /></label>
                         <label>
-                          Auto Triggers (JSON)
+                          Auto Triggers (JSON) <AdminHelpTooltip section="cities" field="autoTriggers" />
                           <textarea
                             value={autoTriggersText}
                             onChange={(e) => {
@@ -660,7 +661,7 @@ export function CitiesPage() {
                             {autoTriggersError}
                           </p>
                         ) : null}
-                        <label>Linked Battle Map ID<input value={selectedLocation.linkedBattleMapId ?? ''} onChange={(e) => patchSelectedLocation({ linkedBattleMapId: e.target.value })} placeholder="battlemap_arklein_arena" /></label>
+                        <label>Linked Battle Map ID <AdminHelpTooltip section="cities" field="linkedBattleMapId" /><input value={selectedLocation.linkedBattleMapId ?? ''} onChange={(e) => patchSelectedLocation({ linkedBattleMapId: e.target.value })} placeholder="battlemap_arklein_arena" /></label>
                         <label><input type="checkbox" checked={selectedLocation.isVisible} onChange={(e) => patchSelectedLocation({ isVisible: e.target.checked })} /> Visible</label>
                         <label><input type="checkbox" checked={selectedLocation.isUnlocked} onChange={(e) => patchSelectedLocation({ isUnlocked: e.target.checked })} /> Unlocked</label>
                         <label>Unlock Condition<input value={selectedLocation.unlockCondition ?? ''} onChange={(e) => patchSelectedLocation({ unlockCondition: e.target.value })} /></label>
@@ -676,8 +677,8 @@ export function CitiesPage() {
                       Upload Background
                       <input type="file" accept="image/*" onChange={uploadBackground} />
                     </label>
-                    <label>Background Image ID<input value={draft.backgroundImageId ?? ''} onChange={(e) => patchCity({ backgroundImageId: e.target.value })} /></label>
-                    <label>Manual Background URL<input value={draft.backgroundImageUrl ?? ''} onChange={(e) => patchCity({ backgroundImageUrl: e.target.value, backgroundImageId: e.target.value.trim() ? '' : draft.backgroundImageId })} placeholder="/cities/arklein.png or https://..." /></label>
+                    <label>Background Image ID <AdminHelpTooltip section="cities" field="backgroundImageId" /><input value={draft.backgroundImageId ?? ''} onChange={(e) => patchCity({ backgroundImageId: e.target.value })} /></label>
+                    <label>Manual Background URL <AdminHelpTooltip section="cities" field="manualBackgroundUrl" /><input value={draft.backgroundImageUrl ?? ''} onChange={(e) => patchCity({ backgroundImageUrl: e.target.value, backgroundImageId: e.target.value.trim() ? '' : draft.backgroundImageId })} placeholder="/cities/arklein.png or https://..." /></label>
                     <label>Thumbnail Image ID / URL<input value={draft.thumbnailImageId ?? ''} onChange={(e) => patchCity({ thumbnailImageId: e.target.value })} /></label>
                     {resolvedBackgroundUrl ? <img className="city-background-preview" src={resolvedBackgroundUrl} alt={`${draft.name} background preview`} /> : null}
                     <p className="muted">Uploads are saved through Admin Images. Manual URL remains available as fallback.</p>

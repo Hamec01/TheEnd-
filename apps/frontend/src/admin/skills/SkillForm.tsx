@@ -2,6 +2,7 @@ import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisi
 import { useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import type { AdminSaveViewModel } from '../adminSaveTools';
 import { SkillAcquisitionEditor } from './SkillAcquisitionEditor';
@@ -69,18 +70,22 @@ export function SkillForm(props: SkillFormProps) {
       <div className="admin-form-grid">
         <label>
           <AdminFieldLabel label="ID" hint="Технический идентификатор навыка. Лучше задавать стабильно и не менять после публикации." />
+          <AdminHelpTooltip section="skills" field="id" />
           <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
         </label>
         <label>
           <AdminFieldLabel label="Название" hint="Имя навыка, которое увидит игрок." />
+          <AdminHelpTooltip section="skills" field="name" />
           <input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
         </label>
         <label>
           <AdminFieldLabel label="Slug" hint="Человеко-понятный идентификатор для ссылок, экспортов и совместимости." />
+          <AdminHelpTooltip section="skills" field="slug" />
           <input value={draft.slug} onChange={(event) => patch({ slug: event.target.value })} />
         </label>
         <label>
           <AdminFieldLabel label="Тип" hint="Главный тип навыка: physical, magic, forbidden, shamanism, rune, mixed или passive." />
+          <AdminHelpTooltip section="skills" field="type" />
           <select value={draft.type} onChange={(event) => patch({ type: event.target.value as AdminSkillDefinition['type'] })}>
             {SKILL_TYPES.map((type) => <option key={type} value={type}>{formatEnumLabel(type)}</option>)}
           </select>
@@ -91,6 +96,7 @@ export function SkillForm(props: SkillFormProps) {
         </label>
         <label>
           <AdminFieldLabel label="Макс. уровень" hint="От 1 до 5. При смене автоматически синхронизируются записи levels." />
+          <AdminHelpTooltip section="skills" field="maxLevel" />
           <select
             value={draft.maxLevel}
             onChange={(event) => {
@@ -155,6 +161,7 @@ export function SkillForm(props: SkillFormProps) {
             </label>
             <label>
               <AdminFieldLabel label="Gameplay Description" hint="Игровое описание с упором на эффект, стоимость и боевую роль навыка." />
+              <AdminHelpTooltip section="skills" field="description" />
               <textarea rows={4} value={draft.gameplayDescription} onChange={(event) => patch({ gameplayDescription: event.target.value })} />
             </label>
             <label>
@@ -168,6 +175,7 @@ export function SkillForm(props: SkillFormProps) {
 
             <label>
               <AdminFieldLabel label="Получение" hint="Как навык должен выдаваться: обычное обучение, квест, диалог, предмет, скрытый или только админ." />
+              <AdminHelpTooltip section="skills" field="acquisitionMode" />
               <select
                 value={draft.acquisitionMode ?? 'admin'}
                 onChange={(event) => patch({ acquisitionMode: event.target.value as AdminSkillDefinition['acquisitionMode'] })}
@@ -199,14 +207,17 @@ export function SkillForm(props: SkillFormProps) {
             </label>
             <label>
               <AdminFieldLabel label="Required completed quest" hint="ID квеста, который должен быть завершён, чтобы навык можно было обучить." />
+              <AdminHelpTooltip section="skills" field="requiredCompletedQuestId" />
               <input value={draft.requiredCompletedQuestId ?? ''} onChange={(event) => patch({ requiredCompletedQuestId: event.target.value || undefined })} />
             </label>
             <label>
               <AdminFieldLabel label="Required quest item" hint="ID квестового предмета, который должен быть у игрока." />
+              <AdminHelpTooltip section="skills" field="requiredQuestItemId" />
               <input value={draft.requiredQuestItemId ?? ''} onChange={(event) => patch({ requiredQuestItemId: event.target.value || undefined })} />
             </label>
             <label>
               <AdminFieldLabel label="Required NPC / trainer" hint="ID NPC, у которого можно изучить навык в обычном обучении." />
+              <AdminHelpTooltip section="skills" field="requiredNpcId" />
               <input value={draft.requiredNpcId ?? ''} onChange={(event) => patch({ requiredNpcId: event.target.value || undefined })} />
             </label>
             <label>
@@ -280,12 +291,14 @@ export function SkillForm(props: SkillFormProps) {
             <div className="admin-form-grid">
               <label>
                 <AdminFieldLabel label="Target Type" hint="Тип цели: single enemy, area, cone, global и т.д." />
+                <AdminHelpTooltip section="skills" field="targetType" />
                 <select value={draft.target.targetType} onChange={(event) => patch({ target: { ...draft.target, targetType: event.target.value as SkillTargetType } })}>
                   {SKILL_TARGET_TYPES.map((type) => <option key={type} value={type}>{formatEnumLabel(type)}</option>)}
                 </select>
               </label>
               <label>
                 <AdminFieldLabel label="Range" hint="Дальность применения в условных клетках или боевых шагах." />
+                <AdminHelpTooltip section="skills" field="range" />
                 <input type="number" value={draft.target.range} onChange={(event) => patch({ target: { ...draft.target, range: Number(event.target.value) || 0 } })} />
               </label>
               <label>
@@ -296,6 +309,7 @@ export function SkillForm(props: SkillFormProps) {
               </label>
               <label>
                 <AdminFieldLabel label="Cooldown" hint="Кулдаун навыка в ходах." />
+                <AdminHelpTooltip section="skills" field="cooldown" />
                 <input type="number" min={0} value={draft.cooldown.cooldownTurns} onChange={(event) => patch({ cooldown: { ...draft.cooldown, cooldownTurns: Number(event.target.value) || 0 } })} />
               </label>
               <label className="zone-editor-checkbox">

@@ -20,6 +20,7 @@ import { loadRuntimeImages, resolveStoredImageSource } from '../../services/cont
 import { itemsService, validateItem } from '../../services/content/itemsService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
 import {
   AdminFieldLabel,
@@ -633,10 +634,12 @@ export function ItemsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор. Используется в коде, магазинах, луте и сохранениях. После публикации лучше не менять." />
+            <AdminHelpTooltip section="items" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
           <label>
             <AdminFieldLabel label="Название" hint="Имя предмета, которое увидит игрок." />
+            <AdminHelpTooltip section="items" field="name" />
             <input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
           </label>
           <label>
@@ -1336,6 +1339,7 @@ export function ItemsPage() {
 
         <label>
           <AdminFieldLabel label="Игровое описание" hint="Краткое описание эффекта предмета для игрока: что делает, какие бонусы даёт, зачем нужен." />
+          <AdminHelpTooltip section="items" field="description" />
           <textarea rows={3} value={draft.gameplayDescription} onChange={(event) => patch({ gameplayDescription: event.target.value })} />
         </label>
         <label>

@@ -3,6 +3,7 @@ import type { AdminItem, LootTable } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { lootTablesService, validateLootTable } from '../../services/content/lootTablesService';
 import { uid } from '../../services/content/storage';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -148,10 +149,12 @@ export function LootTablesPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор таблицы добычи. На него могут ссылаться монстры, сундуки, регионы и события." />
+            <AdminHelpTooltip section="lootTables" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
           <label>
             <AdminFieldLabel label="Название" hint="Человеко-читаемое имя таблицы. Удобно для навигации внутри админки." />
+            <AdminHelpTooltip section="lootTables" field="name" />
             <input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
           </label>
           <label>
@@ -164,6 +167,7 @@ export function LootTablesPage() {
           </label>
           <label>
             <AdminFieldLabel label="ID источника" hint="ID конкретного монстра, сундука, региона или другого объекта, которому принадлежит эта таблица." />
+            <AdminHelpTooltip section="lootTables" field="description" />
             <input value={draft.sourceId ?? ''} onChange={(event) => patch({ sourceId: event.target.value })} />
           </label>
         </div>

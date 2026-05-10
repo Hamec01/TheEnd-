@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 
 export function ImagesPage() {
@@ -69,6 +70,7 @@ export function ImagesPage() {
         <div className="admin-list-tools">
           <label className="card">
             <AdminFieldLabel label="Загрузить изображение" hint="Загружает картинку в локальное хранилище админки, чтобы потом использовать её в предметах, материалах и других сущностях." />
+            <AdminHelpTooltip section="images" field="upload" />
             <input type="file" accept="image/*" onChange={upload} />
           </label>
         </div>
@@ -96,7 +98,7 @@ export function ImagesPage() {
           <>
             <img className="admin-image-preview" src={selected.dataUrl} alt={selected.name} />
             <p>{selected.name}</p>
-            <p className="muted" title="Технический идентификатор изображения. Его можно использовать в полях изображения у предметов и материалов.">ID изображения: {selected.id}</p>
+            <p className="muted" title="Технический идентификатор изображения. Его можно использовать в полях изображения у предметов и материалов.">ID изображения: {selected.id} <AdminHelpTooltip section="images" field="id" /></p>
             <p className="muted">Размер: {selected.width}x{selected.height}</p>
           </>
         ) : (
@@ -106,6 +108,7 @@ export function ImagesPage() {
         <div className="admin-actions-row">
           <label>
             <AdminFieldLabel label="Размер квадратной копии" hint="Создаёт новую квадратную копию выбранной картинки с указанной шириной и высотой." />
+            <AdminHelpTooltip section="images" field="resize" />
             <input type="number" min={32} max={1024} value={resizeTo} onChange={(event) => setResizeTo(Number(event.target.value) || 256)} />
           </label>
           <button disabled={!selectedId} onClick={() => { void resizeSelected(); }}>Изменить размер и сохранить копию</button>

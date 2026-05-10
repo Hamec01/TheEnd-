@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import type { AdminItem, AdminMerchant, MerchantType } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { merchantsService, validateMerchant } from '../../services/content/merchantsService';
@@ -236,11 +237,13 @@ export function MerchantsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор торговца. На него ссылаются городские точки и игровые сервисы." />
+            <AdminHelpTooltip section="merchants" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
 
           <label>
             <AdminFieldLabel label="Название" hint="Имя торговца, которое увидит игрок." />
+            <AdminHelpTooltip section="merchants" field="name" />
             <input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
           </label>
 
@@ -302,6 +305,7 @@ export function MerchantsPage() {
 
         <label>
           <AdminFieldLabel label="Описание" hint="Короткое описание торговца: чем известен, что продаёт, какой у него стиль." />
+          <AdminHelpTooltip section="merchants" field="description" />
           <textarea rows={3} value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value })} />
         </label>
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel } from '../adminUi';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
@@ -297,8 +298,8 @@ export function DialoguesPage() {
 
       <section className="admin-form-panel">
         <div className="admin-form-grid">
-          <label><AdminFieldLabel label="ID" hint="Уникальный id диалога." /><input value={draft.id} onChange={(event) => patch({ id: event.target.value })} /></label>
-          <label><AdminFieldLabel label="Title" hint="Название диалога." /><input value={draft.title} onChange={(event) => patch({ title: event.target.value })} /></label>
+          <label><AdminFieldLabel label="ID" hint="Уникальный id диалога." /><AdminHelpTooltip section="dialogues" field="id" /><input value={draft.id} onChange={(event) => patch({ id: event.target.value })} /></label>
+          <label><AdminFieldLabel label="Title" hint="Название диалога." /><AdminHelpTooltip section="dialogues" field="title" /><input value={draft.title} onChange={(event) => patch({ title: event.target.value })} /></label>
           <label><AdminFieldLabel label="NPC" hint="Привязка диалога к NPC." /><select value={draft.npcId ?? ''} onChange={(event) => patch({ npcId: event.target.value || undefined })}><option value="">Не задано</option>{npcIds.map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label>
           <label><AdminFieldLabel label="Status" hint="Статус публикации диалога." /><select value={draft.status} onChange={(event) => patch({ status: event.target.value as DialogueDefinition['status'] })}><option value="draft">Draft</option><option value="active">Active</option><option value="disabled">Disabled</option></select></label>
           <label><AdminFieldLabel label="Start Node ID" hint="Стартовая нода диалога." /><input value={draft.startNodeId} onChange={(event) => patch({ startNodeId: event.target.value })} /></label>
@@ -306,11 +307,18 @@ export function DialoguesPage() {
 
         <label>
           <AdminFieldLabel label="Описание" hint="Техническое описание для редактора." />
+          <AdminHelpTooltip section="dialogues" field="description" />
           <textarea rows={3} value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || undefined })} />
         </label>
 
         <section className="card admin-item-preview">
-          <h4>Nodes / Choices editor</h4>
+          <h4>
+            Nodes / Choices editor
+            {' '}
+            <AdminHelpTooltip section="dialogues" field="choiceConditions" />
+            {' '}
+            <AdminHelpTooltip section="dialogues" field="choiceEffects" />
+          </h4>
           <div className="admin-actions-row">
             <button type="button" onClick={addNode}>Добавить ноду</button>
           </div>

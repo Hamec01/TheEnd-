@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel } from '../adminUi';
 import { subscribeToContentSync } from '../../services/content/contentSync';
@@ -486,8 +487,8 @@ export function NpcsPage() {
 
         {activeTab === 'basic' ? (
           <div className="admin-form-grid">
-            <label><AdminFieldLabel label="ID" hint="Уникальный ID NPC." /><input value={draft.id} onChange={(event) => patch({ id: event.target.value })} /></label>
-            <label><AdminFieldLabel label="Имя" hint="Отображаемое имя NPC." /><input value={draft.name} onChange={(event) => patch({ name: event.target.value })} /></label>
+            <label><AdminFieldLabel label="ID" hint="Уникальный ID NPC." /><AdminHelpTooltip section="characters" field="id" /><input value={draft.id} onChange={(event) => patch({ id: event.target.value })} /></label>
+            <label><AdminFieldLabel label="Имя" hint="Отображаемое имя NPC." /><AdminHelpTooltip section="characters" field="name" /><input value={draft.name} onChange={(event) => patch({ name: event.target.value })} /></label>
             <label><AdminFieldLabel label="Титул" hint="Дополнительный титул NPC." /><input value={draft.title ?? ''} onChange={(event) => patch({ title: event.target.value || undefined })} /></label>
             <label><AdminFieldLabel label="Статус" hint="Draft/active/disabled/archived." /><select value={draft.status} onChange={(event) => patch({ status: event.target.value as NpcStatus })}>{NPC_STATUSES.map((entry) => <option key={entry} value={entry}>{formatLabel(entry)}</option>)}</select></label>
             <label><AdminFieldLabel label="Тип NPC" hint="Роль персонажа в мире." /><select value={draft.kind} onChange={(event) => patch({ kind: event.target.value as NpcKind })}>{NPC_KINDS.map((entry) => <option key={entry} value={entry}>{formatLabel(entry)}</option>)}</select></label>
@@ -748,6 +749,7 @@ export function NpcsPage() {
 
         <label>
           <AdminFieldLabel label="Описание" hint="Краткое описание NPC для игрока." />
+          <AdminHelpTooltip section="characters" field="description" />
           <textarea rows={3} value={draft.description} onChange={(event) => patch({ description: event.target.value })} />
         </label>
 

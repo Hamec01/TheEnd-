@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { getContentCollection, getContentEntry } from '../../services/content/contentApi';
 import { imageService } from '../../services/content/imageService';
@@ -199,10 +200,12 @@ export function QuestItemsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Стабильный id квестового предмета." />
+            <AdminHelpTooltip section="questItems" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
           <label>
             <AdminFieldLabel label="Название" hint="Имя предмета в интерфейсе." />
+            <AdminHelpTooltip section="questItems" field="name" />
             <input value={draft.name} onChange={(event) => patch({ name: event.target.value })} />
           </label>
           <label>
@@ -224,6 +227,7 @@ export function QuestItemsPage() {
 
         <label>
           <AdminFieldLabel label="Описание" hint="Описание квестового предмета." />
+          <AdminHelpTooltip section="questItems" field="description" />
           <textarea rows={4} value={draft.description} onChange={(event) => patch({ description: event.target.value })} />
         </label>
 

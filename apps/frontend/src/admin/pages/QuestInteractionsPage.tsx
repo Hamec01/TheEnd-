@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
+import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
@@ -365,10 +366,12 @@ export function QuestInteractionsPage() {
         <div className="admin-form-grid">
           <label>
             <AdminFieldLabel label="ID" hint="Уникальный id interaction." />
+            <AdminHelpTooltip section="questInteractions" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
           <label>
             <AdminFieldLabel label="Title" hint="Название popup для игрока." />
+            <AdminHelpTooltip section="questInteractions" field="title" />
             <input value={draft.title} onChange={(event) => patch({ title: event.target.value })} />
           </label>
           <label>
@@ -376,6 +379,7 @@ export function QuestInteractionsPage() {
             <input value={draft.zoneId ?? ''} onChange={(event) => patch({ zoneId: event.target.value || undefined })} />
           </label>
           <label>
+            <AdminHelpTooltip section="questInteractions" field="description" />
             <AdminFieldLabel label="Marker ID" hint="Маркер для trigger-а." />
             <input value={draft.markerId ?? ''} onChange={(event) => patch({ markerId: event.target.value || undefined })} />
           </label>
