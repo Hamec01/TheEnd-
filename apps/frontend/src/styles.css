@@ -6493,15 +6493,15 @@ body:has(.page.page--scroll) {
 }
 
 .admin-shell {
-  height: 100vh;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.admin-shell:has(.admin-content.is-editor-route) {
   height: auto;
   min-height: 100vh;
   overflow: visible;
+}
+
+.admin-shell:has(.admin-content.is-editor-route) {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .wm-shell-admin-editor,
