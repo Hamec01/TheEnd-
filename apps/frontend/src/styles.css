@@ -2134,15 +2134,15 @@ h3 {
 
 .admin-content {
   min-height: 0;
-  overflow: visible;
-}
-
-.admin-content.is-editor-route {
-  padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100vh - 90px);
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.admin-content.is-editor-route {
+  padding: 0;
 }
 
 .admin-editor-page {
