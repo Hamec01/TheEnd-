@@ -9311,13 +9311,13 @@ body:has(.page.page--scroll) {
   overflow: hidden;
 }
 
-/* Battle map editor is an admin form/editor page, not a fullscreen game view. Do not lock this route with overflow:hidden; long inspector panels must remain scrollable. */
-.admin-content.is-editor-route {
+/* Battle map editor is an admin form/editor page, not a fullscreen game view. */
+.admin-content.is-editor-route:has(.battle-map-editor-page) {
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-.admin-content.is-editor-route .admin-editor-page {
+.admin-content.is-editor-route:has(.battle-map-editor-page) .admin-editor-page {
   height: auto;
   min-height: 0;
 }
