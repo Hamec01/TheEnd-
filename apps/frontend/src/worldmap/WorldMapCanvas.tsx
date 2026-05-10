@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type WheelEvent as ReactWheelEvent,
 } from 'react';
 import '../styles.css';
 import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
@@ -947,6 +946,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setCursorPoint(point);
     onMouseCoordinatesChange?.({ x: point[0], y: point[1] });
 
+    if (mode === 'editor' && editorViewport && !dragState && (event.buttons & 4) === 4) {
+      setDragState({ kind: 'pan', startX: canvasX, startY: canvasY, originPanX: editorSettings.panX, originPanY: editorSettings.panY });
+      return;
+    }
+
     if (mode === 'play') {
       const hovered = detectHoverZone(zones as Zone[], point[0], point[1]) as WorldMapZone | null;
       setHoverZone(hovered);
@@ -1097,31 +1101,35 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setContextMenu({ x, y, zone, mapPoint });
   }
 
-  function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
-    if (mode !== 'editor') {
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
       return;
     }
 
-    if (!editorViewport) {
-      return;
-    }
+    const handleNativeWheel = (event: WheelEvent) => {
+      if (mode !== 'editor' || !editorViewport) {
+        return;
+      }
 
-    const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
-    if (!isZoomIntent) {
-      return;
-    }
+      const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
+      if (!isZoomIntent) {
+        return;
+      }
 
-    const nativeEvent = event.nativeEvent as WheelEvent;
-    if (nativeEvent.cancelable) {
-      // Some browsers dispatch wheel as passive in nested containers; guard preventDefault to avoid warnings.
       event.preventDefault();
       event.stopPropagation();
-    }
 
-    const [canvasX, canvasY] = getCanvasPoint(event);
-    const factor = event.deltaY < 0 ? 1.12 : 0.9;
-    zoomAt(canvasX, canvasY, editorSettings.zoom * factor);
-  }
+      const rect = canvas.getBoundingClientRect();
+      const canvasX = event.clientX - rect.left;
+      const canvasY = event.clientY - rect.top;
+      const factor = event.deltaY < 0 ? 1.12 : 0.9;
+      zoomAt(canvasX, canvasY, editorSettings.zoom * factor);
+    };
+
+    canvas.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleNativeWheel);
+  }, [editorSettings.zoom, editorViewport, mode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1462,7 +1470,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           onDoubleClick={handleDoubleClick}
           onMouseLeave={handleMouseLeave}
           onContextMenu={handleContextMenu}
-          onWheel={handleWheel}
           style={{
             width: '100%',
             height: '100%',

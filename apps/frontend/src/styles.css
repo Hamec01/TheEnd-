@@ -6017,8 +6017,10 @@ h3 {
 
 .wm-editor-shell.is-admin-editor .wm-editor-sidebar {
   min-height: 0;
+  height: 100%;
   max-height: none;
   overflow-y: auto;
+  overflow-x: hidden;
   width: 360px;
   max-width: 360px;
   min-width: 320px;
@@ -6527,7 +6529,8 @@ body:has(.page.page--scroll) {
 .wm-editor-shell.is-admin-editor .wm-editor-sidebar {
   width: 360px;
   max-width: 360px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 
