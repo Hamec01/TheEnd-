@@ -6415,6 +6415,12 @@ body:has(.page.page--scroll) {
   overflow: hidden;
 }
 
+.admin-shell:has(.admin-content.is-editor-route) {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
 .wm-shell-admin-editor,
 .wm-editor-shell.is-admin-editor {
   height: 100%;
@@ -9205,11 +9211,41 @@ body:has(.page.page--scroll) {
   overflow: auto;
 }
 
-.battle-map-editor,
 .battle-maps-page {
   height: calc(100vh - 110px);
   min-height: 0;
   overflow: hidden;
+}
+
+/* Battle map editor is an admin form/editor page, not a fullscreen game view. Do not lock this route with overflow:hidden; long inspector panels must remain scrollable. */
+.admin-content.is-editor-route {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.admin-content.is-editor-route .admin-editor-page {
+  height: auto;
+  min-height: 0;
+}
+
+.battle-map-editor,
+.battle-map-editor-page,
+.battle-map-editor-main,
+.battle-map-editor-bottom-panels,
+.battle-map-editor-left-panel,
+.battle-map-editor-inspector-stack,
+.battle-map-editor-identity-panel,
+.battle-map-editor-placed-panel,
+.battle-map-editor-validation-panel {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.battle-map-editor-statusbar {
+  position: static;
+  margin-top: 12px;
 }
 
 .battle-map-editor-layout,
