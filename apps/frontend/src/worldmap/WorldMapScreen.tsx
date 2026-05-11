@@ -32,6 +32,12 @@ import {
   saveEditorSettings,
   validateEditorDataJson,
 } from "./zoneEditorStorage";
+import {
+  applyWorldMapRepairAction,
+  validateWorldMapContent,
+  type WorldMapRepairActionId,
+  type WorldMapValidationIssue,
+} from "./worldMapValidation";
 import { replaceAllZones } from "../services/worldRepository";
 import {
   createDefaultEditorSettings,
@@ -70,7 +76,12 @@ import type {
 } from "./types";
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
 import { getZoneCenter, moveZone } from "./zoneGeometry";
+import { getPassiveZonesAtPoint } from "./zoneSystem";
 import type { AdminMerchant } from "../services/content/models";
+import {
+  getContentSnapshot,
+  type ContentSnapshot,
+} from "../services/content/contentApi";
 import { cityService } from "../services/cityRepository";
 import { imageService } from "../services/content/imageService";
 import type { City, CityLocation } from "../types/city";
@@ -560,6 +571,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [playerState, setPlayerState] = useState<PlayerWorldState>("idle");
+  const [lastRuntimeClickPoint, setLastRuntimeClickPoint] = useState<
+    { x: number; y: number } | null
+  >(null);
   const [playerPosition, setPlayerPosition] = useState(() =>
     loadPlayerPosition(character.id),
   );
@@ -602,6 +616,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<QuestMarkerDefinition | null>(null);
 
   const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
+  const [validationCities, setValidationCities] = useState<City[]>([]);
+  const [validationSnapshot, setValidationSnapshot] =
+    useState<ContentSnapshot | null>(null);
   const [selectedNpcIdForPlacement, setSelectedNpcIdForPlacement] =
     useState("");
   const [selectedNpcForInteractionId, setSelectedNpcForInteractionId] =
@@ -696,6 +713,66 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<ZoneEditorHistoryState>(createEmptyHistory());
 
   const selectedLocationName = currentZone?.name ?? "\u041f\u0443\u0441\u0442\u043e\u0448\u0438";
+  const passiveProbePoint = useMemo(() => {
+    if (Number.isFinite(playerPosition.x) && Number.isFinite(playerPosition.y)) {
+      return { x: playerPosition.x, y: playerPosition.y };
+    }
+    return lastRuntimeClickPoint;
+  }, [lastRuntimeClickPoint, playerPosition.x, playerPosition.y]);
+  const passiveZonesAtCurrentPoint = useMemo(() => {
+    if (!passiveProbePoint) {
+      return [] as WorldMapZone[];
+    }
+    return getPassiveZonesAtPoint(zones as Zone[], passiveProbePoint.x, passiveProbePoint.y) as WorldMapZone[];
+  }, [passiveProbePoint, zones]);
+  const currentPassiveContexts = useMemo(() => {
+    const currentKingdomArea = passiveZonesAtCurrentPoint.find((zone) => zone.type === "kingdom_area") ?? null;
+    const currentFactionAreas = passiveZonesAtCurrentPoint.filter((zone) => zone.type === "faction_area");
+    const currentCityArea = passiveZonesAtCurrentPoint.find((zone) => zone.type === "city_area") ?? null;
+    const currentDangerAreas = passiveZonesAtCurrentPoint.filter((zone) => zone.type === "danger_area");
+    const currentResourceAreas = passiveZonesAtCurrentPoint.filter((zone) => zone.type === "resource_area");
+    const currentRandomEventAreas = passiveZonesAtCurrentPoint.filter((zone) => zone.type === "random_event_area");
+
+    return {
+      currentKingdomArea,
+      currentFactionAreas,
+      currentCityArea,
+      currentDangerAreas,
+      currentResourceAreas,
+      currentRandomEventAreas,
+    };
+  }, [passiveZonesAtCurrentPoint]);
+  const passiveAreaStatusLines = useMemo(() => {
+    const lines: string[] = [];
+
+    if (currentPassiveContexts.currentKingdomArea) {
+      lines.push(`Территория королевства: ${currentPassiveContexts.currentKingdomArea.name}`);
+    }
+    if (currentPassiveContexts.currentCityArea) {
+      lines.push(`Территория города: ${currentPassiveContexts.currentCityArea.name}`);
+    }
+    if (currentPassiveContexts.currentFactionAreas.length > 0) {
+      lines.push(`Территории фракций: ${currentPassiveContexts.currentFactionAreas.map((zone) => zone.name).join(", ")}`);
+    }
+    if (currentPassiveContexts.currentDangerAreas.length > 0) {
+      lines.push(`Опасные области: ${currentPassiveContexts.currentDangerAreas.map((zone) => zone.name).join(", ")}`);
+    }
+    if (currentPassiveContexts.currentResourceAreas.length > 0) {
+      lines.push(`Ресурсные области: ${currentPassiveContexts.currentResourceAreas.map((zone) => zone.name).join(", ")}`);
+    }
+    if (currentPassiveContexts.currentRandomEventAreas.length > 0) {
+      lines.push(`Области случайных событий: ${currentPassiveContexts.currentRandomEventAreas.map((zone) => zone.name).join(", ")}`);
+    }
+
+    lines.push(`currentKingdomArea: ${currentPassiveContexts.currentKingdomArea?.name ?? "-"}`);
+    lines.push(`currentFactionAreas: ${currentPassiveContexts.currentFactionAreas.map((zone) => zone.name).join(", ") || "-"}`);
+    lines.push(`currentCityArea: ${currentPassiveContexts.currentCityArea?.name ?? "-"}`);
+    lines.push(`currentDangerAreas: ${currentPassiveContexts.currentDangerAreas.map((zone) => zone.name).join(", ") || "-"}`);
+    lines.push(`currentResourceAreas: ${currentPassiveContexts.currentResourceAreas.map((zone) => zone.name).join(", ") || "-"}`);
+    lines.push(`currentRandomEventAreas: ${currentPassiveContexts.currentRandomEventAreas.map((zone) => zone.name).join(", ") || "-"}`);
+
+    return lines;
+  }, [currentPassiveContexts]);
   const nearbyNpcs = useMemo(
     () =>
       getNearbyMappedNpcs(
@@ -856,6 +933,31 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => zones.find((zone) => zone.id === selectedZoneId) ?? null,
     [selectedZoneId, zones],
   );
+  const worldMapValidationIssues = useMemo(
+    () =>
+      validateWorldMapContent({
+        zones: zones as unknown[],
+        questMarkers: questMarkers as unknown[],
+        npcs: npcs as unknown[],
+        quests: questDefinitions as unknown[],
+        cities: validationCities as unknown[],
+        lootTables: validationSnapshot?.lootTables as unknown[] | undefined,
+        battleMaps: validationSnapshot?.battleMaps as unknown[] | undefined,
+        items: validationSnapshot?.items as unknown[] | undefined,
+        professionIds: validationSnapshot?.skills?.map((skill) => skill.id),
+      }),
+    [
+      npcs,
+      questDefinitions,
+      questMarkers,
+      validationCities,
+      validationSnapshot?.battleMaps,
+      validationSnapshot?.items,
+      validationSnapshot?.lootTables,
+      validationSnapshot?.skills,
+      zones,
+    ],
+  );
   const regionPaintSettings = useMemo(
     () => ({
       toolMode: regionToolMode,
@@ -1014,6 +1116,39 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       cancelled = true;
     };
   }, [activeCity?.backgroundImageId, activeCity?.backgroundImageUrl]);
+
+  useEffect(() => {
+    if (worldMapMode !== "editor") {
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.allSettled([cityService.getCities(), getContentSnapshot()]).then(
+      (results) => {
+        if (cancelled) {
+          return;
+        }
+
+        const [citiesResult, snapshotResult] = results;
+        if (citiesResult.status === "fulfilled") {
+          setValidationCities(citiesResult.value);
+        } else {
+          setValidationCities([]);
+        }
+
+        if (snapshotResult.status === "fulfilled") {
+          setValidationSnapshot(snapshotResult.value);
+        } else {
+          setValidationSnapshot(null);
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [worldMapMode]);
 
   useEffect(() => {
     void Promise.all([ensureQuestsLoaded(), ensureNpcsLoaded(), ensureDialoguesLoaded()])
@@ -1754,13 +1889,125 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     ],
   );
 
+  const handleRuntimeZoneInteract = useCallback(
+    (zone: WorldMapZone, point: { x: number; y: number }) => {
+      if (worldMapMode !== "play") {
+        return;
+      }
+
+      setLastRuntimeClickPoint(point);
+
+      const interactionMode = zone.interactionMode ?? getDefaultInteractionMode(zone.type);
+      const clickable =
+        typeof zone.playerClickable === "boolean"
+          ? zone.playerClickable
+          : getDefaultPlayerClickable(zone.type);
+
+      if (!clickable || interactionMode === "none") {
+        return;
+      }
+
+      if (interactionMode === "random_event" || interactionMode === "danger") {
+        return;
+      }
+
+      if (zone.type === "resource_area") {
+        return;
+      }
+
+      if (interactionMode === "enter") {
+        onStatus(`Вход в локацию: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "inspect") {
+        onStatus(`Осмотр точки: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "quest") {
+        onStatus(`Квестовая область: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "resource") {
+        if (!clickable) {
+          return;
+        }
+        onStatus(`Источник ресурсов: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "battle") {
+        onStatus(`Опасная зона: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "transition") {
+        onStatus(`Переход: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "fast_travel") {
+        onStatus(`Быстрое перемещение: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "rest") {
+        onStatus(`Место отдыха: ${zone.name}`);
+        return;
+      }
+
+      if (interactionMode === "locked") {
+        onStatus(`Локация закрыта: ${zone.name}`);
+      }
+    },
+    [onStatus, worldMapMode],
+  );
+
   const handleInspectCurrentZone = useCallback(() => {
     if (worldMapMode === "editor") {
       return;
     }
+    const inspectPoint =
+      Number.isFinite(playerPosition.x) && Number.isFinite(playerPosition.y)
+        ? { x: playerPosition.x, y: playerPosition.y }
+        : lastRuntimeClickPoint;
+
+    let hasPassiveResourceAreas = false;
+    if (inspectPoint) {
+      const passiveResourceAreas = getPassiveZonesAtPoint(
+        zones as Zone[],
+        inspectPoint.x,
+        inspectPoint.y,
+      )
+        .filter((zone) => zone.type === "resource_area")
+        .map((zone) => zone as WorldMapZone);
+
+      if (passiveResourceAreas.length > 0) {
+        hasPassiveResourceAreas = true;
+        const details = passiveResourceAreas
+          .map((zone) => {
+            const profession = zone.professionId?.trim() || "-";
+            const table = zone.resourceTableId?.trim() || "-";
+            return `${zone.name} (Профессия: ${profession}, Resource Table: ${table})`;
+          })
+          .join("; ");
+        onStatus(`Найдены ресурсы: ${details}`);
+      } else {
+        onStatus("Поблизости не найдено мест добычи.");
+      }
+    }
+
     if (!currentZone) {
-      onStatus("Сначала войдите в зону.");
+      if (!inspectPoint) {
+        onStatus("Сначала войдите в зону.");
+      }
       return;
+    }
+
+    if (!hasPassiveResourceAreas && !inspectPoint) {
+      onStatus("Поблизости не найдено мест добычи.");
     }
 
     const player: QuestRuntimePlayer = {
@@ -1818,8 +2065,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     character.race,
     currentZone,
     inventory.items,
+    lastRuntimeClickPoint,
     onStatus,
+    playerPosition.x,
+    playerPosition.y,
     questInteractions,
+    zones,
     worldMapMode,
   ]);
 
@@ -3018,6 +3269,98 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setSelectedZoneId(zone?.id ?? null);
     setEditorDraft(zone ? createDraftFromZone(zone) : null);
   }
+
+  const handleSelectValidationIssue = useCallback(
+    (issue: WorldMapValidationIssue) => {
+      if (!issue.zoneId) {
+        onStatus(issue.message);
+        return;
+      }
+
+      const zone = zones.find((entry) => entry.id === issue.zoneId) ?? null;
+      if (!zone) {
+        onStatus(`Объект ${issue.zoneId} не найден.`);
+        return;
+      }
+
+      const targetLayer =
+        issue.editorLayer ?? zone.editorLayer ?? getDefaultEditorLayer(zone.type);
+      if (targetLayer !== activeEditorLayer) {
+        setActiveEditorLayer(targetLayer);
+      }
+
+      setSelectedZoneId(zone.id);
+      setEditorDraft(createDraftFromZone(zone));
+      canvasRef.current?.focusZone(zone.id);
+      onStatus(`Выбран объект: ${zone.name} (${zone.id}).`);
+    },
+    [activeEditorLayer, onStatus, zones],
+  );
+
+  const applyRepairToZoneById = useCallback(
+    (zoneId: string, action: WorldMapRepairActionId) => {
+      const current = zones.find((entry) => entry.id === zoneId) ?? null;
+      if (!current) {
+        onStatus(`Невозможно применить исправление: объект ${zoneId} не найден.`);
+        return;
+      }
+
+      captureCheckpoint();
+      const repaired = applyWorldMapRepairAction(current, action);
+      setZones((prev) => prev.map((zone) => (zone.id === zoneId ? repaired : zone)));
+      if (selectedZoneId === zoneId || editorDraft?.id === zoneId) {
+        setEditorDraft(createDraftFromZone(repaired));
+        setSelectedZoneId(zoneId);
+      }
+      onStatus(`Исправление применено к ${repaired.name} (${repaired.id}).`);
+    },
+    [captureCheckpoint, editorDraft?.id, onStatus, selectedZoneId, zones],
+  );
+
+  const handleRepairValidationIssue = useCallback(
+    (issue: WorldMapValidationIssue) => {
+      if (!issue.repairAction) {
+        onStatus("Для этой проблемы авто-исправление недоступно.");
+        return;
+      }
+
+      if (issue.repairAction === "remove_null_entry") {
+        captureCheckpoint();
+        setZones((prev) =>
+          prev.filter(
+            (entry) =>
+              Boolean(entry)
+              && typeof entry.id === "string"
+              && entry.id.trim().length > 0,
+          ),
+        );
+        onStatus("Удалены пустые/повреждённые записи карты.");
+        return;
+      }
+
+      const zoneId = issue.zoneId ?? selectedZoneId ?? editorDraft?.id ?? null;
+      if (!zoneId) {
+        onStatus("Невозможно определить объект для исправления.");
+        return;
+      }
+
+      applyRepairToZoneById(zoneId, issue.repairAction);
+    },
+    [applyRepairToZoneById, captureCheckpoint, editorDraft?.id, onStatus, selectedZoneId],
+  );
+
+  const handleRepairSelectedZoneContract = useCallback(
+    (action: WorldMapRepairActionId) => {
+      const zoneId = selectedZoneId ?? editorDraft?.id ?? null;
+      if (!zoneId) {
+        onStatus("Сначала выберите объект карты для исправления.");
+        return;
+      }
+
+      applyRepairToZoneById(zoneId, action);
+    },
+    [applyRepairToZoneById, editorDraft?.id, onStatus, selectedZoneId],
+  );
 
   function handleDeleteSelectedPoint() {
     if (!editorDraft || editorDraft.selectedPointIndex === null) {
@@ -4303,6 +4646,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               `\u041a\u043e\u043e\u0440\u0434: ${playerPosition.x.toFixed(3)}, ${playerPosition.y.toFixed(3)}`,
               `\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435: ${playerState}`,
               `\u041f\u043e\u0434 \u043a\u0443\u0440\u0441\u043e\u0440\u043e\u043c: ${hoverZone?.name ?? "-"}`,
+              ...passiveAreaStatusLines,
               "\u041e\u043d\u043b\u0430\u0439\u043d: 124",
               "22:41",
             ]}
@@ -4321,6 +4665,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               onOpenLocation={handleOpenLocation}
               onEnterZone={handleZoneEnterMemoized}
               onHoverZone={handleHoverZone}
+              onRuntimeZoneInteract={handleRuntimeZoneInteract}
               onPlayerPosition={handlePlayerPosition}
               onPlayerState={handlePlayerState}
             />
@@ -4583,14 +4928,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                         <span>{selectedNode.access}</span>
                       </p>
                       <p className="muted">{selectedNode.description}</p>
-                      {worldMapMode === "play" && locationView === "map" ? (
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
-                          <button onClick={handleInspectCurrentZone}>{"\u041e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c\u0441\u044f"}</button>
-                        </div>
-                      ) : null}
                     </>
                   ) : (
                     <p className="muted">{"\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0447\u043a\u0443 \u043d\u0430 \u043a\u0430\u0440\u0442\u0435."}</p>
+                  )}
+                  {worldMapMode === "play" && locationView === "map" ? (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
+                      <button onClick={handleInspectCurrentZone}>{"\u041e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c\u0441\u044f"}</button>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className="wm-context-block">
+                  <h3>Текущие области</h3>
+                  {passiveAreaStatusLines.length > 0 ? (
+                    passiveAreaStatusLines.map((line) => (
+                      <p key={`passive-zone-${line}`} className="muted">
+                        {line}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="muted">Пассивные области не обнаружены.</p>
                   )}
                 </section>
 
@@ -4800,6 +5158,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           selectedNpcIdForPlacement={selectedNpcIdForPlacement}
           onSelectNpcForPlacement={setSelectedNpcIdForPlacement}
           onPlaceNpcAtCursor={handlePlaceNpcAtCursor}
+          validationIssues={worldMapValidationIssues}
+          onSelectValidationIssue={handleSelectValidationIssue}
+          onRepairValidationIssue={handleRepairValidationIssue}
+          onRepairSelectedZoneContract={handleRepairSelectedZoneContract}
         />
       </div>
 

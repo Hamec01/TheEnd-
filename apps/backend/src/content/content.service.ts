@@ -1277,6 +1277,9 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
   const merged = new Map<string, T>();
 
   for (const entry of existing) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
     if (!entry.id) {
       continue;
     }
@@ -1284,6 +1287,9 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
   }
 
   for (const entry of incoming) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
     const id = String(entry.id ?? '').trim();
     if (!id) {
       continue;
@@ -1315,6 +1321,28 @@ function findDuplicateIds<T extends { id: string }>(entries: T[]): string[] {
   }
 
   return [...duplicates];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasValidId(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return String(value.id ?? '').trim().length > 0;
+}
+
+function sanitizeObjectArray<T>(value: unknown): T[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry) => isRecord(entry)) as T[];
+}
+
+function sanitizeIdObjectArray<T extends { id: string }>(value: unknown): T[] {
+  return sanitizeObjectArray<T>(value).filter((entry) => hasValidId(entry));
 }
 
 function hasMojibakeQuestionMarks(value: string | undefined): boolean {
@@ -1668,6 +1696,10 @@ export class ContentService implements OnModuleInit {
     }
 
     for (const item of db.items) {
+      if (!item || typeof item !== 'object') {
+        errors.push(`items contains invalid entry`);
+        continue;
+      }
       for (const socket of item.augmentSlots ?? []) {
         const augmentItemId = String(socket.socketedAugmentItemId ?? '').trim();
         if (!augmentItemId) {
@@ -1768,31 +1800,31 @@ export class ContentService implements OnModuleInit {
   private normalizeDatabase(raw: Partial<ContentDatabase>): ContentDatabase {
     return {
       version: CONTENT_DB_VERSION,
-      items: Array.isArray(raw.items) ? raw.items.map((item) => normalizeItemInput(item as AdminItem)) : [],
-      skills: Array.isArray(raw.skills) ? raw.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition)) : [],
-      merchants: Array.isArray(raw.merchants) ? raw.merchants.map((merchant) => normalizeMerchantInput(merchant as AdminMerchant)) : [],
-      cities: Array.isArray(raw.cities) ? raw.cities.map((city) => normalizeCityInput(city as City)).filter((city) => Boolean(city.id)) : [],
-      materials: Array.isArray(raw.materials) ? clone(raw.materials as Material[]) : [],
-      lootTables: Array.isArray(raw.lootTables) ? clone(raw.lootTables) : [],
-      images: Array.isArray(raw.images) ? clone(raw.images as StoredImage[]) : [],
-      dialogues: Array.isArray(raw.dialogues) ? raw.dialogues.map((entry) => normalizeDialogueInput(entry as DialogueDefinition)).filter((d) => Boolean(d.id)) : [],
-      npcs: Array.isArray(raw.npcs) ? raw.npcs.map((entry) => normalizeNpcInput(entry as NpcDefinition)).filter((n) => Boolean(n.id)) : [],
-      quests: Array.isArray(raw.quests) ? raw.quests.map((entry) => normalizeQuestInput(entry as QuestDefinition)).filter((q) => Boolean(q.id)) : [],
-      questInteractions: Array.isArray(raw.questInteractions)
-        ? raw.questInteractions.map((entry) => normalizeQuestInteractionInput(entry as QuestInteractionDefinition)).filter((q) => Boolean(q.id))
-        : [],
-      questItems: Array.isArray(raw.questItems) ? raw.questItems.map((entry) => normalizeQuestItemInput(entry as QuestItemDefinition)).filter((q) => Boolean(q.id)) : [],
-      questMarkers: Array.isArray(raw.questMarkers) ? raw.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id)) : [],
-      battleMaps: Array.isArray(raw.battleMaps) ? clone(raw.battleMaps as BattleMapDefinition[]).filter((map) => Boolean(map.id)) : [],
-      itemSets: Array.isArray(raw.itemSets) ? raw.itemSets.map((entry) => normalizeItemSetInput(entry as ItemSet)).filter((set) => Boolean(set.id)) : [],
-      runeComplexes: Array.isArray(raw.runeComplexes) ? raw.runeComplexes.map((entry) => normalizeRuneComplexInput(entry as RuneComplex)).filter((entry) => Boolean(entry.id)) : [],
+      items: sanitizeIdObjectArray<AdminItem>(raw.items).map((item) => normalizeItemInput(item)),
+      skills: sanitizeIdObjectArray<AdminSkillDefinition>(raw.skills).map((skill) => normalizeSkillInput(skill)),
+      merchants: sanitizeIdObjectArray<AdminMerchant>(raw.merchants).map((merchant) => normalizeMerchantInput(merchant)),
+      cities: sanitizeIdObjectArray<City>(raw.cities).map((city) => normalizeCityInput(city)).filter((city) => Boolean(city.id)),
+      materials: clone(sanitizeIdObjectArray<Material>(raw.materials)),
+      lootTables: clone(sanitizeIdObjectArray<LootTable>(raw.lootTables)),
+      images: clone(sanitizeIdObjectArray<StoredImage>(raw.images)),
+      dialogues: sanitizeIdObjectArray<DialogueDefinition>(raw.dialogues).map((entry) => normalizeDialogueInput(entry)).filter((d) => Boolean(d.id)),
+      npcs: sanitizeIdObjectArray<NpcDefinition>(raw.npcs).map((entry) => normalizeNpcInput(entry)).filter((n) => Boolean(n.id)),
+      quests: sanitizeIdObjectArray<QuestDefinition>(raw.quests).map((entry) => normalizeQuestInput(entry)).filter((q) => Boolean(q.id)),
+      questInteractions: sanitizeIdObjectArray<QuestInteractionDefinition>(raw.questInteractions)
+        .map((entry) => normalizeQuestInteractionInput(entry))
+        .filter((q) => Boolean(q.id)),
+      questItems: sanitizeIdObjectArray<QuestItemDefinition>(raw.questItems).map((entry) => normalizeQuestItemInput(entry)).filter((q) => Boolean(q.id)),
+      questMarkers: sanitizeIdObjectArray<QuestMarkerDefinition>(raw.questMarkers).map((entry) => normalizeQuestMarkerInput(entry)).filter((m) => Boolean(m.id)),
+      battleMaps: clone(sanitizeIdObjectArray<BattleMapDefinition>(raw.battleMaps)).filter((map) => Boolean(map.id)),
+      itemSets: sanitizeIdObjectArray<ItemSet>(raw.itemSets).map((entry) => normalizeItemSetInput(entry)).filter((set) => Boolean(set.id)),
+      runeComplexes: sanitizeIdObjectArray<RuneComplex>(raw.runeComplexes).map((entry) => normalizeRuneComplexInput(entry)).filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
-            zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones).filter((z) => Boolean(z)) : [],
-            regions: Array.isArray(raw.worldMap.regions) ? clone(raw.worldMap.regions).filter((r) => Boolean(r)) : [],
-            questMarkers: Array.isArray(raw.worldMap.questMarkers)
-              ? raw.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
-              : [],
+            zones: clone(sanitizeIdObjectArray(raw.worldMap.zones)),
+            regions: clone(sanitizeIdObjectArray(raw.worldMap.regions)),
+            questMarkers: sanitizeIdObjectArray<QuestMarkerDefinition>(raw.worldMap.questMarkers)
+              .map((entry) => normalizeQuestMarkerInput(entry))
+              .filter((m) => Boolean(m.id)),
             updatedAt: raw.worldMap.updatedAt || nowIso(),
           }
         : {
@@ -2329,12 +2361,16 @@ export class ContentService implements OnModuleInit {
 
   async saveWorldMap(payload: WorldMapContent): Promise<WorldMapContent> {
     const db = this.ensureLoaded();
+    const safeZones = sanitizeIdObjectArray(payload?.zones);
+    const safeRegions = sanitizeIdObjectArray(payload?.regions);
+    const safeQuestMarkers = sanitizeIdObjectArray<QuestMarkerDefinition>(payload?.questMarkers)
+      .map((entry) => normalizeQuestMarkerInput(entry))
+      .filter((m) => Boolean(m.id));
+
     db.worldMap = {
-      zones: clone(Array.isArray(payload.zones) ? payload.zones : []),
-      regions: clone(Array.isArray(payload.regions) ? payload.regions : []),
-      questMarkers: Array.isArray(payload.questMarkers)
-        ? payload.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
-        : [],
+      zones: clone(safeZones),
+      regions: clone(safeRegions),
+      questMarkers: safeQuestMarkers,
       updatedAt: nowIso(),
     };
     await this.persist(db);

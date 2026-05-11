@@ -13,6 +13,11 @@ import {
   type LayerVisibilityState,
   type MapEditorLayer,
 } from './zoneTaxonomy';
+import type {
+  WorldMapRepairActionId,
+  WorldMapValidationIssue,
+  WorldMapValidationSeverity,
+} from './worldMapValidation';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
@@ -83,6 +88,10 @@ interface ZoneEditorPanelProps {
   selectedNpcIdForPlacement?: string;
   onSelectNpcForPlacement?: (id: string) => void;
   onPlaceNpcAtCursor?: () => void;
+  validationIssues: WorldMapValidationIssue[];
+  onSelectValidationIssue: (issue: WorldMapValidationIssue) => void;
+  onRepairValidationIssue: (issue: WorldMapValidationIssue) => void;
+  onRepairSelectedZoneContract: (action: WorldMapRepairActionId) => void;
 }
 
 function parseNumber(value: string): number | null {
@@ -161,6 +170,10 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     selectedNpcIdForPlacement = '',
     onSelectNpcForPlacement,
     onPlaceNpcAtCursor,
+    validationIssues,
+    onSelectValidationIssue,
+    onRepairValidationIssue,
+    onRepairSelectedZoneContract,
   } = props;
 
   const hasDraft = Boolean(draft);
@@ -216,12 +229,84 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         warnings.push('Город должен иметь interactionMode=enter и playerClickable=true.');
       }
 
+      if (selected.type === 'city' && selected.blocksClick !== true) {
+        warnings.push('Город должен иметь blocksClick=true.');
+      }
+
       if (selected.type === 'city_area' && selectedClickable === true) {
         warnings.push('city_area — это территория города, она не должна быть кликабельной. Для входа нужен отдельный объект type=city.');
       }
 
+      if (selected.type === 'city_area' && selectedLayer !== 'areas') {
+        warnings.push('city_area должна быть в слое Территории (areas).');
+      }
+
+      if (selected.type === 'city_area' && selectedInteraction !== 'none') {
+        warnings.push('city_area должна иметь interactionMode=none.');
+      }
+
+      if (selected.type === 'city_area' && selected.passiveEffects !== true) {
+        warnings.push('city_area должна иметь passiveEffects=true.');
+      }
+
+      if (selected.type === 'resource_area' && selectedLayer !== 'resources') {
+        warnings.push('resource_area должна быть в слое Ресурсы (resources).');
+      }
+
+      if (selected.type === 'resource_area' && selectedInteraction !== 'resource') {
+        warnings.push('resource_area должна иметь interactionMode=resource.');
+      }
+
+      if (selected.type === 'resource_area' && selectedClickable === true) {
+        warnings.push('resource_area не должна быть кликабельной напрямую (playerClickable=false).');
+      }
+
+      if (selected.type === 'resource_area' && selected.passiveEffects !== true) {
+        warnings.push('resource_area должна иметь passiveEffects=true.');
+      }
+
+      if ((selected.type === 'kingdom_area' || selected.type === 'faction_area') && selectedClickable === true) {
+        warnings.push(`${selected.type} должна иметь playerClickable=false.`);
+      }
+
+      if ((selected.type === 'kingdom_area' || selected.type === 'faction_area') && selected.blocksClick === true) {
+        warnings.push(`${selected.type} должна иметь blocksClick=false.`);
+      }
+
+      if ((selected.type === 'kingdom_area' || selected.type === 'faction_area') && selected.passiveEffects !== true) {
+        warnings.push(`${selected.type} должна иметь passiveEffects=true.`);
+      }
+
+      if (selected.type === 'random_event_area' && selectedInteraction !== 'random_event') {
+        warnings.push('random_event_area должна иметь interactionMode=random_event.');
+      }
+
+      if (selected.type === 'random_event_area' && selectedClickable === true) {
+        warnings.push('random_event_area должна иметь playerClickable=false.');
+      }
+
+      if (selected.type === 'random_event_area' && selected.passiveEffects !== true) {
+        warnings.push('random_event_area должна иметь passiveEffects=true.');
+      }
+
+      if (selected.type === 'danger_area' && selectedInteraction !== 'danger') {
+        warnings.push('danger_area должна иметь interactionMode=danger.');
+      }
+
+      if (selected.type === 'danger_area' && selectedClickable === true) {
+        warnings.push('danger_area должна иметь playerClickable=false.');
+      }
+
+      if (selected.type === 'danger_area' && selected.passiveEffects !== true) {
+        warnings.push('danger_area должна иметь passiveEffects=true.');
+      }
+
       if (selected.type === 'city' && !selectedCityId) {
         warnings.push('Локация города без cityId. Укажи cityId, чтобы связать её с городом.');
+      }
+
+      if (selected.type === 'city' && selectedCityId.toLowerCase().startsWith('city_')) {
+        warnings.push('cityId должен быть каноническим (например arklein), а не city_arklein.');
       }
     }
 
@@ -251,6 +336,31 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     || warning.includes('cityId')
     || warning.includes('city-объектов')
   ));
+  const selectedZoneEffectiveId = draft?.id ?? selectedZoneId ?? null;
+  const selectedZoneValidationIssues = selectedZoneEffectiveId
+    ? validationIssues.filter((issue) => issue.zoneId === selectedZoneEffectiveId)
+    : [];
+  const selectedZonePriorityIssues = selectedZoneValidationIssues.filter((issue) => issue.severity === 'error' || issue.severity === 'warning');
+
+  const severityCounts = {
+    error: validationIssues.filter((issue) => issue.severity === 'error').length,
+    warning: validationIssues.filter((issue) => issue.severity === 'warning').length,
+    info: validationIssues.filter((issue) => issue.severity === 'info').length,
+  };
+
+  const layerCounts = {
+    areas: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'areas').length,
+    locations: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'locations').length,
+    quests: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'quests').length,
+    resources: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'resources').length,
+    zones: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'zones').length,
+  };
+
+  const issuesBySeverity: Record<WorldMapValidationSeverity, WorldMapValidationIssue[]> = {
+    error: validationIssues.filter((issue) => issue.severity === 'error'),
+    warning: validationIssues.filter((issue) => issue.severity === 'warning'),
+    info: validationIssues.filter((issue) => issue.severity === 'info'),
+  };
 
   const baseMarkerDraft: QuestMarkerDefinition = questMarkerDraft ?? {
     id: '',
@@ -815,13 +925,102 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
             ))}
           </div>
         ) : null}
+        {selectedZonePriorityIssues.length > 0 ? (
+          <div className="zone-validation-errors">
+            {selectedZonePriorityIssues.map((issue) => (
+              <p key={`selected-zone-issue-${issue.id}`}>{issue.message}</p>
+            ))}
+          </div>
+        ) : null}
         {(showRepairAsCity || showRepairAsCityArea) ? (
           <div className="zone-editor-actions compact">
             {showRepairAsCity ? <button type="button" onClick={handleRepairAsCity}>Исправить как город</button> : null}
             {showRepairAsCityArea ? <button type="button" onClick={handleRepairAsCityArea}>Исправить как территорию города</button> : null}
           </div>
         ) : null}
+        {selectedZoneEffectiveId ? (
+          <div className="zone-editor-actions compact">
+            <button className="zone-editor-repair-button" type="button" onClick={() => onRepairSelectedZoneContract('assign_default_layer_contract')}>
+              Исправить контракт слоя/типа
+            </button>
+            <button className="zone-editor-repair-button" type="button" onClick={() => onRepairSelectedZoneContract('assign_default_color')}>
+              Назначить цвет по умолчанию
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      <details className="zone-editor-section zone-editor-collapsible zone-editor-validation-panel" open>
+        <summary>Проверка карты</summary>
+        <div className="zone-editor-validation-summary">
+          <div className="zone-editor-validation-count is-error">Ошибки: {severityCounts.error}</div>
+          <div className="zone-editor-validation-count is-warning">Предупреждения: {severityCounts.warning}</div>
+          <div className="zone-editor-validation-count is-info">Информация: {severityCounts.info}</div>
+          <div className="zone-editor-validation-count">Всего зон: {zones.length}</div>
+          <div className="zone-editor-validation-count">Территории: {layerCounts.areas}</div>
+          <div className="zone-editor-validation-count">Локации: {layerCounts.locations}</div>
+          <div className="zone-editor-validation-count">Квесты: {layerCounts.quests}</div>
+          <div className="zone-editor-validation-count">Ресурсы: {layerCounts.resources}</div>
+          <div className="zone-editor-validation-count">Зоны: {layerCounts.zones}</div>
+        </div>
+
+        <div className="zone-editor-validation-group">
+          <h4>Ошибки ({issuesBySeverity.error.length})</h4>
+          {issuesBySeverity.error.length === 0 ? <p className="muted">Ошибок не найдено.</p> : null}
+          {issuesBySeverity.error.map((issue) => (
+            <article key={issue.id} className="zone-editor-validation-issue is-error">
+              <p>{issue.message}</p>
+              <p className="muted">
+                {issue.zoneName || issue.zoneId ? `${issue.zoneName ?? issue.zoneId} (${issue.zoneId ?? '-'})` : 'Глобальная проверка'}
+                {issue.editorLayer ? ` • слой: ${issue.editorLayer}` : ''}
+                {issue.field ? ` • поле: ${issue.field}` : ''}
+              </p>
+              <div className="zone-editor-validation-actions">
+                {issue.zoneId ? <button type="button" onClick={() => onSelectValidationIssue(issue)}>Выбрать</button> : null}
+                {issue.repairAction ? <button className="zone-editor-repair-button" type="button" onClick={() => onRepairValidationIssue(issue)}>Исправить</button> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="zone-editor-validation-group">
+          <h4>Предупреждения ({issuesBySeverity.warning.length})</h4>
+          {issuesBySeverity.warning.length === 0 ? <p className="muted">Предупреждений не найдено.</p> : null}
+          {issuesBySeverity.warning.map((issue) => (
+            <article key={issue.id} className="zone-editor-validation-issue is-warning">
+              <p>{issue.message}</p>
+              <p className="muted">
+                {issue.zoneName || issue.zoneId ? `${issue.zoneName ?? issue.zoneId} (${issue.zoneId ?? '-'})` : 'Глобальная проверка'}
+                {issue.editorLayer ? ` • слой: ${issue.editorLayer}` : ''}
+                {issue.field ? ` • поле: ${issue.field}` : ''}
+              </p>
+              <div className="zone-editor-validation-actions">
+                {issue.zoneId ? <button type="button" onClick={() => onSelectValidationIssue(issue)}>Выбрать</button> : null}
+                {issue.repairAction ? <button className="zone-editor-repair-button" type="button" onClick={() => onRepairValidationIssue(issue)}>Исправить</button> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="zone-editor-validation-group">
+          <h4>Информация ({issuesBySeverity.info.length})</h4>
+          {issuesBySeverity.info.length === 0 ? <p className="muted">Информационных сообщений нет.</p> : null}
+          {issuesBySeverity.info.map((issue) => (
+            <article key={issue.id} className="zone-editor-validation-issue is-info">
+              <p>{issue.message}</p>
+              <p className="muted">
+                {issue.zoneName || issue.zoneId ? `${issue.zoneName ?? issue.zoneId} (${issue.zoneId ?? '-'})` : 'Глобальная проверка'}
+                {issue.editorLayer ? ` • слой: ${issue.editorLayer}` : ''}
+                {issue.field ? ` • поле: ${issue.field}` : ''}
+              </p>
+              <div className="zone-editor-validation-actions">
+                {issue.zoneId ? <button type="button" onClick={() => onSelectValidationIssue(issue)}>Выбрать</button> : null}
+                {issue.repairAction ? <button className="zone-editor-repair-button" type="button" onClick={() => onRepairValidationIssue(issue)}>Исправить</button> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      </details>
 
       <div className="zone-editor-section">
         <h3>Shape</h3>

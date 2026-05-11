@@ -2,6 +2,7 @@ import { getWorldMapContent } from './content/contentApi';
 import { validateEditorDataJson } from '../worldmap/zoneEditorStorage';
 import { WORLD_MAP_ZONES } from '../worldmap/worldMapNodes';
 import type { ZoneType, WorldMapZone } from '../worldmap/zoneEditorTypes';
+import { normalizeWorldMapZone } from '../worldmap/zoneTaxonomy';
 
 let zonesCache: WorldMapZone[] | null = null;
 
@@ -36,13 +37,14 @@ function normalizeZones(zones: WorldMapZone[]): WorldMapZone[] {
       continue;
     }
 
-    const id = zone.id.trim();
+    const rawId = zone.id.trim();
+    const id = zone.type === 'city' && rawId === 'arklein' ? 'city_arklein' : rawId;
     if (seen.has(id)) {
       continue;
     }
 
     seen.add(id);
-    result.push(cloneZone({ ...zone, id }));
+    result.push(cloneZone(normalizeWorldMapZone({ ...zone, id })));
   }
 
   return sortZones(result);

@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title TheEnd Local Dev Launcher
 
-set "PROJECT_DIR=C:\Users\ham\Documents\TheEnd"
+set "PROJECT_DIR=C:\Users\Ham_h\Documents\GitHub\TheEnd-backup"
 set "BACKEND_DIR=%PROJECT_DIR%\apps\backend"
 set "FRONTEND_DIR=%PROJECT_DIR%\apps\frontend"
 

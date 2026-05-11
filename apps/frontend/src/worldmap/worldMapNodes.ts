@@ -18,7 +18,7 @@ export { ZONE_COLORS };
 
 export const WORLD_MAP_ZONES: WorldMapZone[] = [
   circleZone({
-    id: 'arklein',
+    id: 'city_arklein',
     name: 'Арклейн',
     type: 'city',
     editorLayer: 'locations',

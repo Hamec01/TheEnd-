@@ -6257,6 +6257,89 @@ h3 {
   margin: 0;
 }
 
+.zone-editor-validation-panel {
+  gap: 10px;
+}
+
+.zone-editor-validation-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.zone-editor-validation-count {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(129, 106, 70, 0.56);
+  background: rgba(35, 29, 21, 0.72);
+  font-size: 0.8rem;
+}
+
+.zone-editor-validation-count.is-error {
+  border-color: rgba(197, 84, 78, 0.68);
+  color: #ff9f98;
+}
+
+.zone-editor-validation-count.is-warning {
+  border-color: rgba(190, 151, 76, 0.72);
+  color: #eecb84;
+}
+
+.zone-editor-validation-count.is-info {
+  border-color: rgba(104, 136, 177, 0.7);
+  color: #bcd4ef;
+}
+
+.zone-editor-validation-group {
+  display: grid;
+  gap: 6px;
+}
+
+.zone-editor-validation-group h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #d9bf8f;
+}
+
+.zone-editor-validation-issue {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(122, 101, 68, 0.6);
+  background: rgba(31, 25, 18, 0.8);
+}
+
+.zone-editor-validation-issue p {
+  margin: 0;
+}
+
+.zone-editor-validation-issue.is-error {
+  border-color: rgba(197, 84, 78, 0.74);
+  background: rgba(56, 24, 22, 0.6);
+}
+
+.zone-editor-validation-issue.is-warning {
+  border-color: rgba(191, 151, 75, 0.74);
+  background: rgba(55, 42, 20, 0.5);
+}
+
+.zone-editor-validation-issue.is-info {
+  border-color: rgba(104, 136, 177, 0.72);
+  background: rgba(27, 35, 50, 0.48);
+}
+
+.zone-editor-validation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.zone-editor-repair-button {
+  border-color: rgba(212, 177, 110, 0.8);
+  background: linear-gradient(180deg, rgba(89, 66, 37, 0.96), rgba(42, 31, 21, 0.98));
+}
+
 .wm-editor-statusbar {
   display: flex;
   gap: 16px;

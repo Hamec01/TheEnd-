@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -9,7 +10,7 @@ import {
 } from 'react';
 import '../styles.css';
 import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
-import { detectCurrentZone, detectHoverZone, getDistanceToZoneCenter, isInsideZone } from './zoneSystem';
+import { detectCurrentZone, detectHoverZone, isInsideZone, pickRuntimeClickTarget } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
 import { EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, withAlpha } from './zoneColors';
@@ -165,6 +166,7 @@ interface WorldMapCanvasProps {
   onPickMarkerPoint?: (point: [number, number]) => void;
   onPlayerPosition?: (x: number, y: number) => void;
   onPlayerState?: (state: 'moving' | 'idle' | 'in_zone' | 'in_city') => void;
+  onRuntimeZoneInteract?: (zone: WorldMapZone, point: { x: number; y: number }) => void;
   playQuestMarkers?: QuestMarkerDefinition[];
   playNpcMarkers?: Array<{
     id: string;
@@ -179,8 +181,44 @@ interface WorldMapCanvasProps {
   layerVisibility?: LayerVisibilityState;
 }
 
-function isFormElement(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === 'input'
+    || tag === 'textarea'
+    || tag === 'select'
+    || target.isContentEditable
+    || target.closest('[contenteditable="true"]') !== null
+  );
+}
+
+function hasPassiveEffects(zone: WorldMapZone): boolean {
+  if (typeof zone.passiveEffects === 'boolean') {
+    return zone.passiveEffects;
+  }
+
+  if (Array.isArray(zone.passiveEffects)) {
+    return zone.passiveEffects.length > 0;
+  }
+
+  const defaults = getDefaultPassiveEffects(zone.type);
+  if (typeof defaults === 'boolean') {
+    return defaults;
+  }
+
+  return defaults.length > 0;
+}
+
+function shouldShowPlayModeHoverTooltip(zone: WorldMapZone): boolean {
+  const playerClickable = typeof zone.playerClickable === 'boolean'
+    ? zone.playerClickable
+    : getDefaultPlayerClickable(zone.type);
+
+  return playerClickable && !hasPassiveEffects(zone);
 }
 
 function cloneDraftWithGeometry(draft: ZoneEditorDraft | null, zone: WorldMapZone): ZoneEditorDraft {
@@ -207,30 +245,6 @@ function polygonFromRect(start: [number, number], end: [number, number]): [numbe
     [Math.max(start[0], end[0]), Math.max(start[1], end[1])],
     [Math.min(start[0], end[0]), Math.max(start[1], end[1])],
   ];
-}
-
-function detectStrictZone(zones: Zone[], x: number, y: number): WorldMapZone | null {
-  let nearest: WorldMapZone | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  for (const zone of zones) {
-    const clickable = typeof zone.playerClickable === 'boolean' ? zone.playerClickable : getDefaultPlayerClickable(zone.type as WorldMapZone['type']);
-    if (!clickable) {
-      continue;
-    }
-
-    if (!isInsideZone(zone, x, y, 0)) {
-      continue;
-    }
-
-    const distance = getDistanceToZoneCenter(zone, x, y);
-    if (distance < nearestDistance) {
-      nearest = zone as WorldMapZone;
-      nearestDistance = distance;
-    }
-  }
-
-  return nearest;
 }
 
 function getClampedPan(zoom: number, panX: number, panY: number, canvasWidth: number, canvasHeight: number, imageWidth: number, imageHeight: number): { panX: number; panY: number } {
@@ -339,6 +353,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onPickMarkerPoint,
     onPlayerPosition,
     onPlayerState,
+    onRuntimeZoneInteract,
     playQuestMarkers = [],
     playNpcMarkers = [],
     activeEditorLayer = 'zones',
@@ -369,7 +384,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorPoint, setCursorPoint] = useState<[number, number] | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [spacePressed, setSpacePressed] = useState(false);
   const [didInitialFit, setDidInitialFit] = useState(false);
 
   const selectedZone = useMemo(() => zones.find((zone) => zone.id === selectedZoneId) ?? null, [selectedZoneId, zones]);
@@ -432,6 +446,24 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       imageHeight: worldImage.naturalHeight,
     };
   }, [canvasSize.height, canvasSize.width, editorSettings.panX, editorSettings.panY, editorSettings.zoom, worldImage]);
+
+  const cancelCurrentDrawingState = useCallback(() => {
+    setDragState(null);
+    setContextMenu(null);
+
+    if (draft) {
+      const isSelectedZoneDraft = Boolean(selectedZoneId && draft.id === selectedZoneId);
+      if (isSelectedZoneDraft) {
+        if (draft.selectedPointIndex !== null) {
+          onDraftChange?.({ ...draft, selectedPointIndex: null });
+        }
+      } else {
+        onDraftChange?.(null);
+      }
+    }
+
+    onToolChange?.('select');
+  }, [draft, onDraftChange, onToolChange, selectedZoneId]);
 
   function focusZoneInView(zoneId: string | null) {
     if (!zoneId || !editorViewport) {
@@ -648,15 +680,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     const handleKeyDown = async (event: KeyboardEvent) => {
-      if (isFormElement(event.target) && !(event.ctrlKey || event.metaKey)) {
-        if (!['Escape', 'Delete', 'Backspace'].includes(event.key)) {
-          return;
-        }
-      }
-
-      if (event.key === ' ') {
-        event.preventDefault();
-        setSpacePressed(true);
+      const isTyping = isTextEditingTarget(event.target);
+      if (isTyping && !(event.ctrlKey || event.metaKey)) {
         return;
       }
 
@@ -688,7 +713,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedZoneId) {
+      if (event.key === 'Delete' && !isTyping && selectedZoneId && document.activeElement === canvasRef.current) {
         event.preventDefault();
         onDeleteZone?.(selectedZoneId);
         return;
@@ -696,11 +721,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (draft) {
-          onDraftChange?.(null);
-        } else {
-          onSelectZone?.(null);
-        }
+        cancelCurrentDrawingState();
         return;
       }
 
@@ -746,19 +767,29 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       }
     };
 
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === ' ') {
-        setSpacePressed(false);
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [canvasSize.height, canvasSize.width, cursorPoint, draft, focusZoneInView, mode, onConfirmDraft, onCopyJson, onDeleteZone, onDraftChange, onPasteZoneAt, onRedo, onSaveShortcut, onSelectZone, onSettingsChange, onToolChange, onUndo, selectedZone, selectedZoneId, worldImage]);
+  }, [
+    cancelCurrentDrawingState,
+    canvasSize.height,
+    canvasSize.width,
+    cursorPoint,
+    focusZoneInView,
+    mode,
+    onConfirmDraft,
+    onCopyJson,
+    onDeleteZone,
+    onPasteZoneAt,
+    onRedo,
+    onSaveShortcut,
+    onSettingsChange,
+    onUndo,
+    selectedZone,
+    selectedZoneId,
+    worldImage,
+  ]);
 
   function updateZones(nextZones: WorldMapZone[], nextSelectedZoneId: string | null = selectedZoneId) {
     onZonesChange?.(nextZones);
@@ -829,10 +860,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     setContextMenu(null);
+    canvasRef.current?.focus();
     const [canvasX, canvasY] = getCanvasPoint(event);
     const mapPoint = getNormalizedPoint(event);
     const hitZone = hitTestZones(selectableEditorZones, mapPoint);
-    const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || selectedTool === 'pan'));
+    const wantsPan = event.button === 1 || (event.button === 0 && selectedTool === 'pan');
 
     if (wantsPan) {
       event.preventDefault();
@@ -874,10 +906,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
-      const startCell = mapPointToRegionCell(mapPoint);
-      onRegionCheckpoint?.();
-      paintRegionAlongLine(startCell, startCell);
-      setDragState({ kind: 'region-paint', lastCell: startCell });
+      if (draft && draft.selectedPointIndex !== null) {
+        onDraftChange?.({ ...draft, selectedPointIndex: null });
+      }
+      onSelectZone?.(null);
       return;
     }
 
@@ -971,12 +1003,18 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
+    canvasRef.current?.focus();
+
     if (event.button !== 0) {
       return;
     }
 
     const [x, y] = getNormalizedPoint(event);
-    const clickedZone = detectStrictZone(zones as Zone[], x, y);
+    const clickedZone = pickRuntimeClickTarget(zones as Zone[], x, y) as WorldMapZone | null;
+    if (clickedZone) {
+      onRuntimeZoneInteract?.(clickedZone, { x, y });
+    }
+
     if (clickedZone?.type === 'city') {
       const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
       pendingCityEntryRef.current = clickedZone.id;
@@ -1010,7 +1048,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       const hovered = detectHoverZone(zones as Zone[], point[0], point[1]) as WorldMapZone | null;
       setHoverZone(hovered);
       onHoverZone?.(hovered as Zone | null);
-      if (!hovered) {
+      if (!hovered || !shouldShowPlayModeHoverTooltip(hovered)) {
         setTooltip(null);
         return;
       }
@@ -1137,23 +1175,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   }
 
   async function handleContextMenu(event: ReactMouseEvent<HTMLCanvasElement>) {
-    if (mode !== 'editor' || !editorViewport) {
-      return;
-    }
-
     event.preventDefault();
-    const mapPoint = getNormalizedPoint(event);
-    const zone = hitTestZones(zones, mapPoint);
-
-    if (selectedTool === 'polygon' && draft?.shape === 'polygon' && draft.points.length > 0 && !zone) {
-      onCheckpoint?.();
-      onDraftChange?.({ ...draft, points: draft.points.slice(0, -1), selectedPointIndex: null });
-      onStatusMessage?.('Polygon: removed last point.');
+    event.stopPropagation();
+    if (mode !== 'editor') {
       return;
     }
 
-    const [x, y] = getCanvasPoint(event);
-    setContextMenu({ x, y, zone, mapPoint });
+    cancelCurrentDrawingState();
+    onStatusMessage?.('Editor: drawing canceled.');
   }
 
   useEffect(() => {
@@ -1533,6 +1562,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         <div className="wm-map-title">Сольеймар: Мир</div>
         <canvas
           ref={canvasRef}
+          tabIndex={0}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1544,12 +1574,20 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
             height: '100%',
             display: 'block',
             cursor: mode === 'editor'
-              ? (spacePressed || selectedTool === 'pan' ? 'grab' : selectedTool === 'measure' ? 'crosshair' : 'default')
+              ? (
+                dragState?.kind === 'pan'
+                  ? 'grabbing'
+                  : selectedTool === 'pan'
+                    ? 'grab'
+                    : (selectedTool === 'circle' || selectedTool === 'polygon' || selectedTool === 'rectangle' || selectedTool === 'measure')
+                      ? 'crosshair'
+                      : 'default'
+              )
               : 'pointer',
           }}
         />
 
-        {tooltip ? (
+        {tooltip && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone)) ? (
           <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
             <strong>{tooltip.zone.name}</strong>
             <p>{tooltip.zone.description}</p>
