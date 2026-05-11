@@ -5974,6 +5974,99 @@ h3 {
   flex-wrap: wrap;
 }
 
+.zone-editor-layer-tabs {
+  align-items: stretch;
+  gap: 6px;
+}
+
+.zone-editor-layer-tab {
+  min-height: 34px;
+  padding: 6px 10px;
+  letter-spacing: 0.02em;
+}
+
+.zone-editor-layer-tab.is-active {
+  border-color: var(--panel-border-strong);
+  background: linear-gradient(180deg, rgba(110, 84, 50, 0.96), rgba(46, 35, 23, 0.98));
+}
+
+.zone-editor-layer-hint {
+  font-size: 0.82rem;
+  color: #cfbd9a;
+  line-height: 1.4;
+}
+
+.zone-editor-layer-visibility-section {
+  margin: 12px 0 16px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid rgba(169, 139, 87, 0.3);
+}
+
+.zone-editor-layer-visibility-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.zone-editor-layer-visibility-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.layer-visibility-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  min-height: 28px;
+  background: rgba(57, 47, 35, 0.7);
+  border: 1px solid rgba(153, 124, 75, 0.6);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  font-size: 0.8rem;
+}
+
+.layer-visibility-button:hover:not(:disabled) {
+  background: rgba(74, 60, 42, 0.8);
+  border-color: rgba(212, 177, 110, 0.7);
+}
+
+.layer-visibility-button:disabled {
+  cursor: not-allowed;
+  background: rgba(93, 73, 46, 0.8);
+  border-color: rgba(212, 177, 110, 0.5);
+  opacity: 1;
+}
+
+.layer-visibility-button.is-active {
+  border-color: var(--panel-border-strong);
+  background: linear-gradient(180deg, rgba(110, 84, 50, 0.9), rgba(46, 35, 23, 0.9));
+}
+
+.layer-visibility-label {
+  font-weight: 600;
+  color: #d2aa66;
+  flex: 1;
+  text-align: left;
+}
+
+.layer-visibility-mode {
+  font-size: 0.75rem;
+  color: #b7a991;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-left: 8px;
+}
+
+.layer-visibility-button.is-active .layer-visibility-mode {
+  color: #efe5d1;
+}
+
 .wm-editor-toolbar .is-active {
   border-color: var(--panel-border-strong);
   background: linear-gradient(180deg, rgba(93, 73, 46, 0.96), rgba(38, 30, 20, 0.98));
@@ -6075,10 +6168,51 @@ h3 {
   gap: 10px;
 }
 
+.zone-editor-color-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.zone-editor-color-label {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+}
+
+.zone-editor-color-input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid rgba(166, 132, 82, 0.6);
+  border-radius: 6px;
+  background: rgba(29, 23, 17, 0.92);
+}
+
+.zone-editor-color-hex-input {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid rgba(166, 132, 82, 0.6);
+  border-radius: 6px;
+  background: rgba(20, 16, 12, 0.92);
+  color: #f3e4c6;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
 .zone-editor-color-preview {
-  width: 44px;
-  height: 18px;
-  border: 1px solid rgba(255, 244, 212, 0.5);
+  width: 34px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(166, 132, 82, 0.6);
+}
+
+.zone-editor-color-reset {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.zone-editor-color-warning {
+  color: #ffb197;
+  font-size: 0.78rem;
 }
 
 .zone-editor-radius-row {
@@ -6175,9 +6309,8 @@ h3 {
   }
 }
 
-@media (max-width: 880px) {
-  .wm-topbar {
-    grid-template-columns: 1fr;
+@media (max-width: 900px) {
+  .wm-right-stack {
     grid-template-rows: auto;
   }
 

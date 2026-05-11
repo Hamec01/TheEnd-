@@ -12,7 +12,19 @@ import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementS
 import { detectCurrentZone, detectHoverZone, getDistanceToZoneCenter, isInsideZone } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
-import { ZONE_COLORS, EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, ZONE_DUNGEON_OUTLINE, withAlpha } from './zoneColors';
+import { EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, withAlpha } from './zoneColors';
+import {
+  getDefaultBlocksClick,
+  getDefaultInteractionMode,
+  getDefaultPassiveEffects,
+  getDefaultPlayerClickable,
+  getDefaultTypeForLayer,
+  getDefaultZoneColor,
+  getEffectiveLayerVisibility,
+  getResolvedZoneColor,
+  type LayerVisibilityState,
+  type MapEditorLayer,
+} from './zoneTaxonomy';
 import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScreen, movePolygonPoint, moveZone, resizeCircle, screenToMapNormalized, type EditorViewport, type ZoneHandleHit } from './zoneGeometry';
 import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
@@ -163,6 +175,8 @@ interface WorldMapCanvasProps {
     isHostile?: boolean;
     hasQuest?: boolean;
   }>;
+  activeEditorLayer?: MapEditorLayer;
+  layerVisibility?: LayerVisibilityState;
 }
 
 function isFormElement(target: EventTarget | null): boolean {
@@ -200,6 +214,11 @@ function detectStrictZone(zones: Zone[], x: number, y: number): WorldMapZone | n
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const zone of zones) {
+    const clickable = typeof zone.playerClickable === 'boolean' ? zone.playerClickable : getDefaultPlayerClickable(zone.type as WorldMapZone['type']);
+    if (!clickable) {
+      continue;
+    }
+
     if (!isInsideZone(zone, x, y, 0)) {
       continue;
     }
@@ -322,6 +341,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onPlayerState,
     playQuestMarkers = [],
     playNpcMarkers = [],
+    activeEditorLayer = 'zones',
+    layerVisibility = {
+      areas: 'visible',
+      locations: 'visible',
+      quests: 'visible',
+      resources: 'visible',
+      zones: 'visible',
+    },
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -364,6 +391,30 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   };
 
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
+  const createLayerDraftBase = (tool: ZoneEditorTool): ZoneEditorDraft => {
+    const type = getDefaultTypeForLayer(activeEditorLayer);
+    const layerDefault = createEmptyZoneDraft(tool);
+    return {
+      ...layerDefault,
+      editorLayer: activeEditorLayer,
+      type,
+      interactionMode: getDefaultInteractionMode(type),
+      playerClickable: getDefaultPlayerClickable(type),
+      blocksClick: getDefaultBlocksClick(type),
+      passiveEffects: getDefaultPassiveEffects(type),
+      color: getDefaultZoneColor(type, activeEditorLayer),
+    };
+  };
+  const visibleEditorZones = useMemo(() => {
+    return zones.filter((zone) => {
+      const zoneLayer = zone.editorLayer ?? 'zones';
+      const visibility = getEffectiveLayerVisibility(zoneLayer, activeEditorLayer, layerVisibility);
+      return visibility !== 'hidden';
+    });
+  }, [activeEditorLayer, layerVisibility, zones]);
+  const selectableEditorZones = useMemo(() => {
+    return visibleEditorZones.filter((zone) => (zone.editorLayer ?? 'zones') === activeEditorLayer);
+  }, [activeEditorLayer, visibleEditorZones]);
 
   const editorViewport = useMemo<EditorViewport | null>(() => {
     if (!worldImage) {
@@ -780,7 +831,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setContextMenu(null);
     const [canvasX, canvasY] = getCanvasPoint(event);
     const mapPoint = getNormalizedPoint(event);
-    const hitZone = hitTestZones(zones, mapPoint);
+    const hitZone = hitTestZones(selectableEditorZones, mapPoint);
     const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || selectedTool === 'pan'));
 
     if (wantsPan) {
@@ -847,7 +898,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       }
 
       onSelectZone?.(null);
-      const baseDraft = draft ? { ...draft, shape: 'circle', points: [], radius: draft.radius ?? 0.0025 } : createEmptyZoneDraft('circle');
+      const baseDraft = draft
+        ? { ...draft, shape: 'circle', points: [], radius: draft.radius ?? 0.0025, editorLayer: activeEditorLayer }
+        : createLayerDraftBase('circle');
       const nextDraft = {
         ...baseDraft,
         shape: 'circle' as const,
@@ -863,7 +916,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     if (selectedTool === 'rectangle') {
       onSelectZone?.(null);
-      const baseDraft = draft ? { ...draft, shape: 'rect', x: null, y: null, radius: null } : createEmptyZoneDraft('rectangle');
+      const baseDraft = draft
+        ? { ...draft, shape: 'rect', x: null, y: null, radius: null, editorLayer: activeEditorLayer }
+        : createLayerDraftBase('rectangle');
       onDraftChange?.({ ...baseDraft, shape: 'rect', points: polygonFromRect(mapPoint, mapPoint) });
       setDragState({ kind: 'rect-draft', start: mapPoint });
       return;
@@ -871,7 +926,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     if (selectedTool === 'polygon') {
       onCheckpoint?.();
-      const currentDraft = draft?.shape === 'polygon' ? draft : createEmptyZoneDraft('polygon');
+      const currentDraft = draft?.shape === 'polygon' ? { ...draft, editorLayer: activeEditorLayer } : createLayerDraftBase('polygon');
       onSelectZone?.(null);
       onDraftChange?.({
         ...currentDraft,
@@ -963,7 +1018,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
-    const hovered = hitTestZones(zones, point);
+    const hovered = hitTestZones(visibleEditorZones, point);
     setHoverZone(hovered);
     onHoverZone?.(hovered as Zone | null);
     if (hovered) {
@@ -1016,7 +1071,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     if (dragState.kind === 'circle-draft') {
       const radius = Math.max(0.0025, Math.hypot(point[0] - dragState.center[0], point[1] - dragState.center[1]));
-      const baseDraft = draft ?? createEmptyZoneDraft('circle');
+      const baseDraft = draft ?? createLayerDraftBase('circle');
       onDraftChange?.({ ...baseDraft, shape: 'circle', x: dragState.center[0], y: dragState.center[1], radius });
       return;
     }
@@ -1038,7 +1093,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (dragState.kind === 'rect-draft') {
-      const baseDraft = draft ?? createEmptyZoneDraft('rectangle');
+      const baseDraft = draft ?? createLayerDraftBase('rectangle');
       onDraftChange?.({ ...baseDraft, shape: 'rect', points: polygonFromRect(dragState.start, point) });
       return;
     }
@@ -1213,7 +1268,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           const radius = (zone.radius ?? 0.03) * canvas.width / camera.width;
           ctx.beginPath();
           ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = withAlpha(ZONE_COLORS[zone.type], 0.16);
+          ctx.fillStyle = withAlpha(getResolvedZoneColor(zone), 0.16);
           ctx.fill();
           ctx.lineWidth = isHovered ? 2 : 1;
           ctx.strokeStyle = isHovered ? '#f2d28f' : '#efe5d1';
@@ -1333,24 +1388,34 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (editorSettings.showZones) {
-      for (const zone of zones) {
+      for (const zone of visibleEditorZones) {
+        const zoneLayer = zone.editorLayer ?? 'zones';
+        const visibility = getEffectiveLayerVisibility(zoneLayer, activeEditorLayer, layerVisibility);
+        const isActiveLayer = zoneLayer === activeEditorLayer;
+        const fillOpacityMultiplier = visibility === 'dimmed' ? 0.28 : isActiveLayer ? 1 : 0.58;
+        const strokeOpacityMultiplier = visibility === 'dimmed' ? 0.35 : isActiveLayer ? 1 : 0.68;
+        const resolvedColor = getResolvedZoneColor(zone);
         drawZoneShape(ctx, zone, editorViewport);
-        ctx.fillStyle = withAlpha(ZONE_COLORS[zone.type], EDITOR_FILL_ALPHA);
+        ctx.fillStyle = withAlpha(resolvedColor, EDITOR_FILL_ALPHA * fillOpacityMultiplier);
         ctx.fill();
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = zone.type === 'dungeon' ? withAlpha(ZONE_DUNGEON_OUTLINE, EDITOR_STROKE_ALPHA) : withAlpha(ZONE_COLORS[zone.type], EDITOR_STROKE_ALPHA);
+        ctx.strokeStyle = withAlpha(resolvedColor, EDITOR_STROKE_ALPHA * strokeOpacityMultiplier);
+        if (visibility === 'dimmed') {
+          ctx.setLineDash([4, 4]);
+        }
         ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
 
-    if (hoverZone) {
+    if (hoverZone && (hoverZone.editorLayer ?? 'zones') === activeEditorLayer) {
       drawZoneShape(ctx, hoverZone, editorViewport);
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#f2d28f';
       ctx.stroke();
     }
 
-    if (selectedZone) {
+    if (selectedZone && (selectedZone.editorLayer ?? 'zones') === activeEditorLayer) {
       drawZoneShape(ctx, selectedZone, editorViewport);
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#ffffff';
@@ -1362,7 +1427,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       const geometryValid = draft.shape === 'circle'
         ? draft.x !== null && draft.y !== null && (draft.radius ?? 0) > 0
         : draft.points.length >= 3;
-      const color = geometryValid ? ZONE_COLORS[draft.type] : INVALID_DRAFT_COLOR;
+      const color = geometryValid ? getResolvedZoneColor(draft) : INVALID_DRAFT_COLOR;
       const draftZone: WorldMapZone = {
         id: draft.id || '__draft__',
         name: draft.name || 'Draft',
@@ -1452,6 +1517,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     selectedZone,
     worldImage,
     zones,
+    activeEditorLayer,
+    layerVisibility,
+    visibleEditorZones,
+    selectableEditorZones,
   ]);
 
   function distanceLabel(a: [number, number], b: [number, number]): string {

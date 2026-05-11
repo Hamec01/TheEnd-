@@ -83,6 +83,13 @@ export interface WorldMapZone {
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;
+  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+  interactionMode?: 'none' | 'inspect' | 'enter' | 'quest' | 'resource' | 'battle' | 'random_event' | 'danger' | 'transition' | 'fast_travel' | 'rest' | 'locked';
+  playerClickable?: boolean;
+  blocksClick?: boolean;
+  passiveEffects?: boolean | string[];
+  color?: string;
+  parentAreaId?: string;
   layerPriority?: number;
   randomQuestPoolIds?: string[];
   chancePercent?: number;
@@ -122,6 +129,13 @@ export interface ZoneEditorDraft {
   professionId: string;
   respawnSeconds: number | null;
   cooldownSeconds: number | null;
+  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+  interactionMode?: 'none' | 'inspect' | 'enter' | 'quest' | 'resource' | 'battle' | 'random_event' | 'danger' | 'transition' | 'fast_travel' | 'rest' | 'locked';
+  playerClickable?: boolean;
+  blocksClick?: boolean;
+  passiveEffects?: boolean | string[];
+  color?: string;
+  parentAreaId?: string;
   layerPriority: number;
   randomQuestPoolIds: string;
   chancePercent: number | null;
@@ -195,6 +209,13 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     professionId: '',
     respawnSeconds: null,
     cooldownSeconds: null,
+    editorLayer: 'locations',
+    interactionMode: 'enter',
+    playerClickable: true,
+    blocksClick: true,
+    passiveEffects: false,
+    color: undefined,
+    parentAreaId: '',
     layerPriority: 0,
     randomQuestPoolIds: '',
     chancePercent: null,
@@ -237,6 +258,17 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     professionId: zone.professionId ?? '',
     respawnSeconds: zone.respawnSeconds ?? null,
     cooldownSeconds: zone.cooldownSeconds ?? null,
+    editorLayer: zone.editorLayer,
+    interactionMode: zone.interactionMode,
+    playerClickable: zone.playerClickable,
+    blocksClick: zone.blocksClick,
+    passiveEffects: Array.isArray(zone.passiveEffects)
+      ? [...zone.passiveEffects]
+      : typeof zone.passiveEffects === 'boolean'
+        ? zone.passiveEffects
+        : false,
+    color: zone.color,
+    parentAreaId: zone.parentAreaId ?? '',
     layerPriority: zone.layerPriority ?? 0,
     randomQuestPoolIds: (zone.randomQuestPoolIds ?? []).join(', '),
     chancePercent: zone.chancePercent ?? null,
@@ -276,6 +308,18 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     professionId: draft.professionId.trim() || undefined,
     respawnSeconds: draft.respawnSeconds ?? undefined,
     cooldownSeconds: draft.cooldownSeconds ?? undefined,
+    editorLayer: draft.editorLayer,
+    interactionMode: draft.interactionMode,
+    playerClickable: typeof draft.playerClickable === 'boolean' ? draft.playerClickable : undefined,
+    blocksClick: typeof draft.blocksClick === 'boolean' ? draft.blocksClick : undefined,
+    passiveEffects:
+      typeof draft.passiveEffects === 'boolean'
+        ? draft.passiveEffects
+        : Array.isArray(draft.passiveEffects)
+          ? draft.passiveEffects
+          : undefined,
+    color: draft.color?.trim() || undefined,
+    parentAreaId: draft.parentAreaId?.trim() || undefined,
     layerPriority: draft.layerPriority || undefined,
     randomQuestPoolIds: draft.randomQuestPoolIds
       .split(',')

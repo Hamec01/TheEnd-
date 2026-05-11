@@ -1,37 +1,21 @@
-import { ZONE_COLORS } from './zoneColors';
+import { useEffect, useState } from 'react';
 import { REGION_TYPE_COLORS } from './regionPaintSystem';
 import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
+import {
+  MAP_EDITOR_LAYER_OPTIONS,
+  getDefaultEditorLayer,
+  getDefaultZoneColor,
+  getZoneTypesForLayer,
+  getResolvedZoneColor,
+  isDefaultZoneColor,
+  isValidHexColor,
+  normalizeHexColor,
+  type LayerVisibilityState,
+  type MapEditorLayer,
+} from './zoneTaxonomy';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
-
-const ZONE_TYPE_OPTIONS: ZoneType[] = [
-  'city',
-  'settlement',
-  'quest',
-  'quest_area',
-  'random_event_area',
-  'danger_area',
-  'faction_area',
-  'kingdom_area',
-  'city_area',
-  'resource_area',
-  'hidden_area',
-  'story',
-  'landmark',
-  'danger',
-  'grind',
-  'resource',
-  'profession',
-  'dungeon',
-  'transition',
-  'safe',
-  'event',
-  'faction',
-  'locked',
-  'fast_travel',
-  'rest',
-];
 
 const TOOL_OPTIONS: Array<{ value: ZoneEditorTool; label: string }> = [
   { value: 'select', label: 'Select Tool' },
@@ -53,6 +37,10 @@ const REGION_TYPE_OPTIONS: RegionType[] = ['blocked', 'water', 'road', 'danger',
 const BRUSH_SIZE_OPTIONS: RegionBrushSize[] = [1, 2, 3, 5];
 
 interface ZoneEditorPanelProps {
+  activeEditorLayer: MapEditorLayer;
+  layerVisibility: LayerVisibilityState;
+  onSetActiveEditorLayer: (layer: MapEditorLayer) => void;
+  onCycleLayerVisibility: (layer: MapEditorLayer) => void;
   draft: ZoneEditorDraft | null;
   zones: WorldMapZone[];
   selectedZoneId: string | null;
@@ -106,8 +94,31 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function deriveCityIdFromDraft(draft: ZoneEditorDraft): string {
+  const existing = draft.cityId?.trim();
+  if (existing) {
+    return existing.toLowerCase();
+  }
+
+  const probe = `${draft.name} ${draft.id}`.toLowerCase();
+  if (probe.includes('арклейн') || probe.includes('arklein')) {
+    return 'arklein';
+  }
+
+  const fromId = draft.id
+    .toLowerCase()
+    .replace(/^(loc_|city_|area_|zone_)/, '')
+    .replace(/_city$|_area$/, '')
+    .trim();
+  return fromId || 'arklein';
+}
+
 export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   const {
+    activeEditorLayer,
+    layerVisibility,
+    onSetActiveEditorLayer,
+    onCycleLayerVisibility,
     draft,
     zones,
     selectedZoneId,
@@ -154,6 +165,93 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
 
   const hasDraft = Boolean(draft);
   const hasSelectedZone = Boolean(selectedZoneId);
+  const [hexInputValue, setHexInputValue] = useState('');
+  const [hexWarning, setHexWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!draft) {
+      setHexInputValue('');
+      setHexWarning(null);
+      return;
+    }
+
+    setHexInputValue(getResolvedZoneColor(draft));
+    setHexWarning(null);
+  }, [draft]);
+
+  const resolvedDraftColor = draft ? getResolvedZoneColor(draft) : getDefaultZoneColor('city');
+  const colorInputValue = normalizeHexColor(resolvedDraftColor) ?? '#d6b35f';
+  const draftLayer = draft?.editorLayer ?? activeEditorLayer;
+  const typeOptionsBase = getZoneTypesForLayer(draftLayer);
+  const typeOptions = draft?.type && !typeOptionsBase.includes(draft.type)
+    ? [...typeOptionsBase, draft.type]
+    : typeOptionsBase;
+  const looksLikeArklein = Boolean(draft && /арклейн|arklein/i.test(`${draft.name} ${draft.id}`));
+  const draftLayerForChecks = draft ? (draft.editorLayer ?? getDefaultEditorLayer(draft.type)) : null;
+  const showRepairAsCity = Boolean(draft && (
+    looksLikeArklein
+    || (draft.type === 'city_area' && draft.playerClickable === true)
+    || (draft.type === 'city' && draftLayerForChecks !== 'locations')
+    || (Boolean(draft.cityId?.trim()) && draftLayerForChecks !== 'locations' && draft.type !== 'city_area')
+  ));
+  const showRepairAsCityArea = Boolean(draft && (
+    draft.type === 'city_area'
+    || (Boolean(draft.cityId?.trim()) && draft.type !== 'city' && draftLayerForChecks !== 'areas')
+  ));
+
+  const zoneContractWarnings: string[] = (() => {
+    const warnings: string[] = [];
+    const selected = draft ?? zones.find((zone) => zone.id === selectedZoneId) ?? null;
+    if (selected) {
+      const selectedLayer = selected.editorLayer ?? getDefaultEditorLayer(selected.type);
+      const selectedInteraction = selected.interactionMode;
+      const selectedClickable = selected.playerClickable;
+      const selectedCityId = selected.cityId?.trim() ?? '';
+
+      if (selected.type === 'city' && selectedLayer !== 'locations') {
+        warnings.push('Город должен быть в слое Локации и иметь type=city.');
+      }
+
+      if (selected.type === 'city' && (selectedInteraction !== 'enter' || selectedClickable !== true)) {
+        warnings.push('Город должен иметь interactionMode=enter и playerClickable=true.');
+      }
+
+      if (selected.type === 'city_area' && selectedClickable === true) {
+        warnings.push('city_area — это территория города, она не должна быть кликабельной. Для входа нужен отдельный объект type=city.');
+      }
+
+      if (selected.type === 'city' && !selectedCityId) {
+        warnings.push('Локация города без cityId. Укажи cityId, чтобы связать её с городом.');
+      }
+    }
+
+    const cityMarkersByCityId = new Map<string, number>();
+    for (const zone of zones) {
+      if (zone.type !== 'city') {
+        continue;
+      }
+      const cityId = zone.cityId?.trim();
+      if (!cityId) {
+        continue;
+      }
+      cityMarkersByCityId.set(cityId, (cityMarkersByCityId.get(cityId) ?? 0) + 1);
+    }
+    for (const [, count] of cityMarkersByCityId) {
+      if (count > 1) {
+        warnings.push('Найдено несколько city-объектов с одинаковым cityId.');
+        break;
+      }
+    }
+
+    return warnings;
+  })();
+  const cityContractWarnings = zoneContractWarnings.filter((warning) => (
+    warning.includes('Город')
+    || warning.includes('city_area')
+    || warning.includes('cityId')
+    || warning.includes('city-объектов')
+  ));
+
   const baseMarkerDraft: QuestMarkerDefinition = questMarkerDraft ?? {
     id: '',
     title: '',
@@ -177,10 +275,139 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     });
   }
 
+  function applyHexColorValue(nextValue: string) {
+    if (!draft) {
+      return;
+    }
+
+    setHexInputValue(nextValue);
+    const normalized = normalizeHexColor(nextValue);
+    if (!normalized) {
+      setHexWarning('Неверный HEX. Используйте #RGB или #RRGGBB.');
+      return;
+    }
+
+    setHexWarning(null);
+    updateDraft({ color: normalized });
+  }
+
+  function handleTypeChange(nextType: ZoneType) {
+    if (!draft) {
+      return;
+    }
+
+    const prevLayer = draft.editorLayer ?? getDefaultEditorLayer(draft.type);
+    const nextLayer = draft.editorLayer ?? getDefaultEditorLayer(nextType);
+    const prevDefault = getDefaultZoneColor(draft.type, prevLayer);
+    const nextDefault = getDefaultZoneColor(nextType, nextLayer);
+    const currentResolved = getResolvedZoneColor(draft);
+    const shouldUseNextDefault = !draft.color || isDefaultZoneColor(currentResolved, draft.type, prevLayer) || currentResolved === prevDefault;
+
+    updateDraft({
+      type: nextType,
+      color: shouldUseNextDefault ? nextDefault : currentResolved,
+    });
+  }
+
+  function handleResetColor() {
+    if (!draft) {
+      return;
+    }
+
+    const layer = draft.editorLayer ?? getDefaultEditorLayer(draft.type);
+    const defaultColor = getDefaultZoneColor(draft.type, layer);
+    setHexWarning(null);
+    setHexInputValue(defaultColor);
+    updateDraft({ color: defaultColor });
+  }
+
+  function handleRepairAsCity() {
+    if (!draft) {
+      return;
+    }
+
+    const cityId = deriveCityIdFromDraft(draft);
+    updateDraft({
+      editorLayer: 'locations',
+      type: 'city',
+      interactionMode: 'enter',
+      playerClickable: true,
+      blocksClick: true,
+      passiveEffects: false,
+      cityId,
+      color: draft.color ?? getDefaultZoneColor('city', 'locations'),
+      name: looksLikeArklein ? 'Арклейн' : draft.name,
+    });
+  }
+
+  function handleRepairAsCityArea() {
+    if (!draft) {
+      return;
+    }
+
+    const cityId = deriveCityIdFromDraft(draft);
+    updateDraft({
+      editorLayer: 'areas',
+      type: 'city_area',
+      interactionMode: 'none',
+      playerClickable: false,
+      blocksClick: false,
+      passiveEffects: true,
+      cityId,
+      color: draft.color ?? getDefaultZoneColor('city_area', 'areas'),
+    });
+  }
+
   return (
     <aside className="wm-editor-sidebar card">
       <div className="zone-editor-section">
         <h3>Editor <AdminHelpTooltip section="zoneEditor" field="editor" /></h3>
+        <div className="wm-inline-buttons zone-editor-layer-tabs">
+          {MAP_EDITOR_LAYER_OPTIONS.map((layer) => (
+            <button
+              key={layer.value}
+              type="button"
+              className={`zone-editor-layer-tab ${activeEditorLayer === layer.value ? 'is-active' : ''}`}
+              onClick={() => onSetActiveEditorLayer(layer.value)}
+            >
+              {layer.label}
+            </button>
+          ))}
+        </div>
+        <div className="zone-editor-layer-hint">
+          {MAP_EDITOR_LAYER_OPTIONS.find((layer) => layer.value === activeEditorLayer)?.description}
+        </div>
+
+        <div className="zone-editor-layer-visibility-section">
+          <h4>Показ слоёв</h4>
+          <div className="zone-editor-layer-visibility-controls">
+            {MAP_EDITOR_LAYER_OPTIONS.map((layer) => {
+              const isActive = layer.value === activeEditorLayer;
+              const currentMode = layerVisibility[layer.value];
+              const modeLabel = isActive
+                ? 'Редактируется'
+                : currentMode === 'hidden'
+                  ? 'Скрыт'
+                  : currentMode === 'dimmed'
+                    ? 'Фон'
+                    : 'Видим';
+
+              return (
+                <button
+                  key={layer.value}
+                  type="button"
+                  className={`layer-visibility-button ${isActive ? 'is-active' : ''}`}
+                  onClick={() => onCycleLayerVisibility(layer.value)}
+                  disabled={isActive}
+                >
+                  <span className="layer-visibility-label">{layer.label}</span>
+                  <span className="layer-visibility-mode">{modeLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <label>
           <span>Current Tool <AdminHelpTooltip section="zoneEditor" field="currentTool" /></span>
           <select value={selectedTool} onChange={(event) => onToolChange(event.target.value as ZoneEditorTool)}>
@@ -414,8 +641,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </label>
         <label>
           <span>Type</span>
-          <select disabled={!draft} value={draft?.type ?? 'city'} onChange={(event) => updateDraft({ type: event.target.value as ZoneType })}>
-            {ZONE_TYPE_OPTIONS.map((option) => (
+          <select disabled={!draft} value={draft?.type ?? 'city'} onChange={(event) => handleTypeChange(event.target.value as ZoneType)}>
+            {typeOptions.map((option) => (
               <option key={option} value={option}>{option}</option>
             ))}
           </select>
@@ -429,8 +656,49 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <input disabled={!draft} value={draft?.faction ?? ''} onChange={(event) => updateDraft({ faction: event.target.value })} />
         </label>
         <div className="zone-editor-color-row">
-          <span>Color preview</span>
-          <div className="zone-editor-color-preview" style={{ background: ZONE_COLORS[draft?.type ?? 'city'] }} />
+          <span>Цвет</span>
+        </div>
+        <div className="zone-editor-color-controls">
+          <div className="zone-editor-color-row">
+            <label className="zone-editor-color-label">
+              <span>Цвет</span>
+              <input
+                className="zone-editor-color-input"
+                type="color"
+                disabled={!draft}
+                value={colorInputValue}
+                onChange={(event) => applyHexColorValue(event.target.value)}
+              />
+            </label>
+            <label className="zone-editor-color-label">
+              <span>HEX</span>
+              <input
+                className="zone-editor-color-hex-input"
+                disabled={!draft}
+                placeholder="#RRGGBB"
+                value={hexInputValue}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setHexInputValue(value);
+                  if (value.trim() === '') {
+                    setHexWarning('Неверный HEX. Используйте #RGB или #RRGGBB.');
+                    return;
+                  }
+                  if (!isValidHexColor(value)) {
+                    setHexWarning('Неверный HEX. Используйте #RGB или #RRGGBB.');
+                    return;
+                  }
+                  applyHexColorValue(value);
+                }}
+              />
+            </label>
+          </div>
+          <div className="zone-editor-color-row">
+            <span>Превью</span>
+            <div className="zone-editor-color-preview" style={{ background: resolvedDraftColor }} />
+          </div>
+          {hexWarning ? <div className="zone-editor-color-warning">{hexWarning}</div> : null}
+          <button className="zone-editor-color-reset" type="button" disabled={!draft} onClick={handleResetColor}>Сбросить цвет</button>
         </div>
       </div>
 
@@ -540,6 +808,19 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>City ID</span>
           <input disabled={!draft} value={draft?.cityId ?? ''} onChange={(event) => updateDraft({ cityId: event.target.value })} />
         </label>
+        {cityContractWarnings.length > 0 ? (
+          <div className="zone-validation-errors">
+            {cityContractWarnings.map((warning) => (
+              <p key={`city-contract-${warning}`}>{warning}</p>
+            ))}
+          </div>
+        ) : null}
+        {(showRepairAsCity || showRepairAsCityArea) ? (
+          <div className="zone-editor-actions compact">
+            {showRepairAsCity ? <button type="button" onClick={handleRepairAsCity}>Исправить как город</button> : null}
+            {showRepairAsCityArea ? <button type="button" onClick={handleRepairAsCityArea}>Исправить как территорию города</button> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="zone-editor-section">
@@ -621,13 +902,16 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       <details className="zone-editor-section zone-editor-collapsible">
         <summary>Debug</summary>
         <div className="wm-meta-row">
-          <span>Validation messages: {validationErrors.length}</span>
+          <span>Validation messages: {validationErrors.length + zoneContractWarnings.length}</span>
           <span>Saved zones: {zones.length}</span>
         </div>
-        {validationErrors.length > 0 ? (
+        {validationErrors.length + zoneContractWarnings.length > 0 ? (
           <div className="zone-validation-errors">
             {validationErrors.map((error) => (
               <p key={error}>{error}</p>
+            ))}
+            {zoneContractWarnings.map((warning) => (
+              <p key={warning}>{warning}</p>
             ))}
           </div>
         ) : (

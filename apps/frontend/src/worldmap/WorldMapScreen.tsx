@@ -47,6 +47,19 @@ import {
   type ZoneEditorSettings,
   type ZoneEditorTool,
 } from "./zoneEditorTypes";
+import {
+  getDefaultBlocksClick,
+  getDefaultEditorLayer,
+  getDefaultInteractionMode,
+  getDefaultLayerVisibilityState,
+  getDefaultPassiveEffects,
+  getDefaultPlayerClickable,
+  getDefaultTypeForLayer,
+  getDefaultZoneColor,
+  type LayerVisibilityMode,
+  type LayerVisibilityState,
+  type MapEditorLayer,
+} from "./zoneTaxonomy";
 import type {
   ChatMessage,
   ChatType,
@@ -136,8 +149,56 @@ const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const UI_LEFT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.leftPanelCollapsed";
 const UI_RIGHT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.rightPanelCollapsed";
 const UI_CHAT_MINIMIZED_KEY = "theend.worldMap.ui.chatMinimized";
+const UI_EDITOR_ACTIVE_LAYER_KEY = "theend.worldMap.editor.activeLayer";
+const UI_EDITOR_LAYER_VISIBILITY_KEY = "theend.worldMap.editor.layerVisibility";
 const POPUP_HIDE_DELAY_MS = 3000;
 const POPUP_FADE_DURATION_MS = 450;
+
+function normalizeLayerVisibilityState(raw: unknown): LayerVisibilityState {
+  const fallback = getDefaultLayerVisibilityState();
+  if (!raw || typeof raw !== "object") {
+    return fallback;
+  }
+
+  const source = raw as Partial<Record<MapEditorLayer, LayerVisibilityMode>>;
+  return {
+    areas: source.areas === "hidden" || source.areas === "dimmed" || source.areas === "visible" ? source.areas : fallback.areas,
+    locations: source.locations === "hidden" || source.locations === "dimmed" || source.locations === "visible" ? source.locations : fallback.locations,
+    quests: source.quests === "hidden" || source.quests === "dimmed" || source.quests === "visible" ? source.quests : fallback.quests,
+    resources: source.resources === "hidden" || source.resources === "dimmed" || source.resources === "visible" ? source.resources : fallback.resources,
+    zones: source.zones === "hidden" || source.zones === "dimmed" || source.zones === "visible" ? source.zones : fallback.zones,
+  };
+}
+
+function loadEditorActiveLayer(): MapEditorLayer {
+  if (typeof window === "undefined") {
+    return "zones";
+  }
+
+  const raw = window.localStorage.getItem(UI_EDITOR_ACTIVE_LAYER_KEY);
+  if (raw === "areas" || raw === "locations" || raw === "quests" || raw === "resources" || raw === "zones") {
+    return raw;
+  }
+
+  return "zones";
+}
+
+function loadEditorLayerVisibility(): LayerVisibilityState {
+  if (typeof window === "undefined") {
+    return getDefaultLayerVisibilityState();
+  }
+
+  const raw = window.localStorage.getItem(UI_EDITOR_LAYER_VISIBILITY_KEY);
+  if (!raw) {
+    return getDefaultLayerVisibilityState();
+  }
+
+  try {
+    return normalizeLayerVisibilityState(JSON.parse(raw));
+  } catch {
+    return getDefaultLayerVisibilityState();
+  }
+}
 function isCitySceneId(value: string | null | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase();
   return normalized === "arklein" || normalized.startsWith("city_");
@@ -352,23 +413,42 @@ function offsetZone(zone: WorldMapZone, dx: number, dy: number): WorldMapZone {
 function buildDraftForTool(
   tool: ZoneEditorTool,
   currentDraft: ZoneEditorDraft | null,
+  activeEditorLayer: MapEditorLayer,
 ): ZoneEditorDraft {
   const nextDraft = currentDraft ?? createEmptyZoneDraft(tool);
+  const nextType = getDefaultTypeForLayer(activeEditorLayer);
+  const nextColor = getDefaultZoneColor(nextType, activeEditorLayer);
+  const nextInteractionMode = getDefaultInteractionMode(nextType);
+  const nextPlayerClickable = getDefaultPlayerClickable(nextType);
+  const nextBlocksClick = getDefaultBlocksClick(nextType);
+  const nextPassiveEffects = getDefaultPassiveEffects(nextType);
+
+  const baseDraft: ZoneEditorDraft = {
+    ...nextDraft,
+    editorLayer: activeEditorLayer,
+    type: nextType,
+    color: nextColor,
+    interactionMode: nextInteractionMode,
+    playerClickable: nextPlayerClickable,
+    blocksClick: nextBlocksClick,
+    passiveEffects: nextPassiveEffects,
+  };
+
   if (tool === "polygon") {
-    return { ...nextDraft, shape: "polygon", x: null, y: null, radius: null };
+    return { ...baseDraft, shape: "polygon", x: null, y: null, radius: null };
   }
   if (tool === "rectangle") {
-    return { ...nextDraft, shape: "rect", x: null, y: null, radius: null };
+    return { ...baseDraft, shape: "rect", x: null, y: null, radius: null };
   }
   if (tool === "circle") {
     return {
-      ...nextDraft,
+      ...baseDraft,
       shape: "circle",
       points: [],
-      radius: nextDraft.radius ?? 0.03,
+      radius: baseDraft.radius ?? 0.03,
     };
   }
-  return nextDraft;
+  return baseDraft;
 }
 
 function normalizeClipboardText(text: string): string {
@@ -598,6 +678,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const [editorDraft, setEditorDraft] = useState<ZoneEditorDraft | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [activeEditorLayer, setActiveEditorLayer] = useState<MapEditorLayer>(() => loadEditorActiveLayer());
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibilityState>(() => loadEditorLayerVisibility());
   const [editorJson, setEditorJson] = useState("");
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [autosaveStatus, setAutosaveStatus] = useState("ready");
@@ -1054,6 +1136,50 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     saveEditorSettings(editorSettings);
     setAutosaveStatus("autosaved");
   }, [editorSettings]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(UI_EDITOR_ACTIVE_LAYER_KEY, activeEditorLayer);
+  }, [activeEditorLayer]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      UI_EDITOR_LAYER_VISIBILITY_KEY,
+      JSON.stringify(layerVisibility),
+    );
+  }, [layerVisibility]);
+
+  useEffect(() => {
+    if (worldMapMode !== "editor") {
+      return;
+    }
+
+    const selectedZone = selectedZoneId
+      ? zones.find((zone) => zone.id === selectedZoneId) ?? null
+      : null;
+    if (
+      selectedZone &&
+      (selectedZone.editorLayer ?? getDefaultEditorLayer(selectedZone.type)) !== activeEditorLayer
+    ) {
+      setSelectedZoneId(null);
+      setEditorDraft(null);
+      return;
+    }
+
+    if (
+      editorDraft &&
+      (editorDraft.editorLayer ?? getDefaultEditorLayer(editorDraft.type)) !== activeEditorLayer
+    ) {
+      setEditorDraft(null);
+    }
+  }, [activeEditorLayer, editorDraft, selectedZoneId, worldMapMode, zones]);
 
   function captureCheckpoint() {
     setHistory((current) =>
@@ -2655,6 +2781,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setRegions([]);
     setQuestMarkers([]);
     setEditorSettings(createDefaultEditorSettings());
+    setActiveEditorLayer("zones");
+    setLayerVisibility(getDefaultLayerVisibilityState());
     setSelectedZoneId(null);
     setEditorDraft(null);
     setValidationErrors([]);
@@ -2832,11 +2960,35 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }
 
+  function handleSetActiveEditorLayer(layer: MapEditorLayer) {
+    setActiveEditorLayer(layer);
+  }
+
+  function handleCycleLayerVisibility(layer: MapEditorLayer) {
+    if (layer === activeEditorLayer) {
+      return;
+    }
+
+    setLayerVisibility((prev) => {
+      const current = prev[layer];
+      const next: LayerVisibilityMode = current === "hidden"
+        ? "dimmed"
+        : current === "dimmed"
+          ? "visible"
+          : "hidden";
+
+      return {
+        ...prev,
+        [layer]: next,
+      };
+    });
+  }
+
   function handleToolChange(tool: ZoneEditorTool) {
     setEditorSettings((prev) => ({ ...prev, selectedTool: tool }));
     if (tool === "circle" || tool === "polygon" || tool === "rectangle") {
       setSelectedZoneId(null);
-      setEditorDraft((current) => buildDraftForTool(tool, current));
+      setEditorDraft((current) => buildDraftForTool(tool, current, activeEditorLayer));
     }
   }
 
@@ -2854,6 +3006,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleSelectZone(zone: WorldMapZone | null) {
+    if (zone) {
+      const zoneLayer = zone.editorLayer ?? getDefaultEditorLayer(zone.type);
+      if (zoneLayer !== activeEditorLayer) {
+        setSelectedZoneId(null);
+        setEditorDraft(null);
+        return;
+      }
+    }
+
     setSelectedZoneId(zone?.id ?? null);
     setEditorDraft(zone ? createDraftFromZone(zone) : null);
   }
@@ -4558,6 +4719,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             mode="editor"
             zones={zones}
             regions={regions}
+            activeEditorLayer={activeEditorLayer}
+            layerVisibility={layerVisibility}
             selectedZoneId={selectedZoneId}
             selectedTool={editorSettings.selectedTool}
             settings={editorSettings}
@@ -4589,6 +4752,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
 
         <ZoneEditorPanel
+          activeEditorLayer={activeEditorLayer}
+          layerVisibility={layerVisibility}
+          onSetActiveEditorLayer={handleSetActiveEditorLayer}
+          onCycleLayerVisibility={handleCycleLayerVisibility}
           draft={editorDraft}
           zones={zones}
           selectedZoneId={selectedZoneId}

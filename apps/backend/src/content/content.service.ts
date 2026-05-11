@@ -1299,6 +1299,10 @@ function findDuplicateIds<T extends { id: string }>(entries: T[]): string[] {
   const duplicates = new Set<string>();
 
   for (const entry of entries) {
+    // Skip null or undefined entries
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
     const id = String(entry.id ?? '').trim();
     if (!id) {
       continue;
@@ -1521,6 +1525,11 @@ export class ContentService implements OnModuleInit {
 
     const skillSlugs = new Set<string>();
     for (const skill of db.skills) {
+      // Skip null or invalid entries
+      if (!skill || typeof skill !== 'object') {
+        errors.push(`Skill entry is null or invalid`);
+        continue;
+      }
       if (skillSlugs.has(skill.slug)) {
         errors.push(`Duplicate skill slug: ${skill.slug}`);
       }
@@ -1581,18 +1590,32 @@ export class ContentService implements OnModuleInit {
     const itemById = new Map(db.items.map((item) => [item.id, item] as const));
 
     for (const item of db.items) {
+      // Skip null or invalid entries
+      if (!item || typeof item !== 'object') {
+        errors.push(`Item entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
         errors.push(`Item '${item.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const skill of db.skills) {
+      // Skip null or invalid entries
+      if (!skill || typeof skill !== 'object') {
+        continue;
+      }
       for (const validationError of validateSkillDefinition(skill)) {
         errors.push(`Skill '${skill.id}': ${validationError}`);
       }
     }
 
     for (const merchant of db.merchants) {
+      // Skip null or invalid entries
+      if (!merchant || typeof merchant !== 'object') {
+        errors.push(`Merchant entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(merchant.name) || hasMojibakeQuestionMarks(merchant.city) || hasMojibakeQuestionMarks(merchant.location) || hasMojibakeQuestionMarks(merchant.description)) {
         errors.push(`Merchant '${merchant.id}' contains suspicious mojibake text ('???').`);
       }
@@ -1605,6 +1628,11 @@ export class ContentService implements OnModuleInit {
     }
 
     for (const set of db.itemSets ?? []) {
+      // Skip null or invalid entries
+      if (!set || typeof set !== 'object') {
+        errors.push(`Item set entry is null or invalid`);
+        continue;
+      }
       const pieceIds = Array.isArray(set.pieceItemIds) ? set.pieceItemIds : [];
       for (const pieceItemId of pieceIds) {
         if (!itemIds.has(pieceItemId)) {
@@ -1626,6 +1654,11 @@ export class ContentService implements OnModuleInit {
     }
 
     for (const complex of db.runeComplexes ?? []) {
+      // Skip null or invalid entries
+      if (!complex || typeof complex !== 'object') {
+        errors.push(`Rune complex entry is null or invalid`);
+        continue;
+      }
       const runeItemIds = Array.isArray(complex.runeItemIds) ? complex.runeItemIds : [];
       for (const runeItemId of runeItemIds) {
         if (!itemIds.has(runeItemId)) {
@@ -1652,30 +1685,55 @@ export class ContentService implements OnModuleInit {
     }
 
     for (const zone of db.worldMap.zones ?? []) {
+      // Skip null or invalid entries
+      if (!zone || typeof zone !== 'object') {
+        errors.push(`World zone entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(zone.name) || hasMojibakeQuestionMarks(zone.description)) {
         errors.push(`World zone '${zone.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const region of db.worldMap.regions ?? []) {
+      // Skip null or invalid entries
+      if (!region || typeof region !== 'object') {
+        errors.push(`World region entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(region.name) || hasMojibakeQuestionMarks(region.description)) {
         errors.push(`World region '${region.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const dialogue of db.dialogues ?? []) {
+      // Skip null or invalid entries
+      if (!dialogue || typeof dialogue !== 'object') {
+        errors.push(`Dialogue entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(dialogue.title) || hasMojibakeQuestionMarks(dialogue.description)) {
         errors.push(`Dialogue '${dialogue.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const npc of db.npcs ?? []) {
+      // Skip null or invalid entries
+      if (!npc || typeof npc !== 'object') {
+        errors.push(`NPC entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(npc.name) || hasMojibakeQuestionMarks(npc.title) || hasMojibakeQuestionMarks(npc.description)) {
         errors.push(`NPC '${npc.id}' contains suspicious mojibake text ('???').`);
       }
     }
 
     for (const quest of db.quests ?? []) {
+      // Skip null or invalid entries
+      if (!quest || typeof quest !== 'object') {
+        errors.push(`Quest entry is null or invalid`);
+        continue;
+      }
       if (hasMojibakeQuestionMarks(quest.title) || hasMojibakeQuestionMarks(quest.adminDescription) || hasMojibakeQuestionMarks(quest.playerDescription)) {
         errors.push(`Quest '${quest.id}' contains suspicious mojibake text ('???').`);
       }
@@ -1730,8 +1788,8 @@ export class ContentService implements OnModuleInit {
       runeComplexes: Array.isArray(raw.runeComplexes) ? raw.runeComplexes.map((entry) => normalizeRuneComplexInput(entry as RuneComplex)).filter((entry) => Boolean(entry.id)) : [],
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
-            zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones) : [],
-            regions: Array.isArray(raw.worldMap.regions) ? clone(raw.worldMap.regions) : [],
+            zones: Array.isArray(raw.worldMap.zones) ? clone(raw.worldMap.zones).filter((z) => Boolean(z)) : [],
+            regions: Array.isArray(raw.worldMap.regions) ? clone(raw.worldMap.regions).filter((r) => Boolean(r)) : [],
             questMarkers: Array.isArray(raw.worldMap.questMarkers)
               ? raw.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
               : [],

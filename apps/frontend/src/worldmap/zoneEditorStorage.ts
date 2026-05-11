@@ -2,6 +2,7 @@ import { getWorldMapContent, saveWorldMapContent } from '../services/content/con
 import type { QuestMarkerDefinition, QuestMarkerType } from '../types/quest';
 import type { PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
+import { normalizeWorldMapZone } from './zoneTaxonomy';
 
 export const DEV_ZONE_STORAGE_KEY = 'theend.worldMap.zones.dev';
 export const EDITOR_SETTINGS_STORAGE_KEY = 'theend.worldMap.editor.settings';
@@ -267,6 +268,43 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     professionId: zone.professionId ? String(zone.professionId) : undefined,
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,
+    editorLayer:
+      zone.editorLayer === 'areas'
+      || zone.editorLayer === 'locations'
+      || zone.editorLayer === 'quests'
+      || zone.editorLayer === 'resources'
+      || zone.editorLayer === 'zones'
+        ? zone.editorLayer
+        : undefined,
+    interactionMode:
+      zone.interactionMode === 'none'
+      || zone.interactionMode === 'inspect'
+      || zone.interactionMode === 'enter'
+      || zone.interactionMode === 'quest'
+      || zone.interactionMode === 'resource'
+      || zone.interactionMode === 'battle'
+      || zone.interactionMode === 'random_event'
+      || zone.interactionMode === 'danger'
+      || zone.interactionMode === 'transition'
+      || zone.interactionMode === 'fast_travel'
+      || zone.interactionMode === 'rest'
+      || zone.interactionMode === 'locked'
+        ? zone.interactionMode
+        : undefined,
+    playerClickable: typeof zone.playerClickable === 'boolean' ? zone.playerClickable : undefined,
+    blocksClick: typeof zone.blocksClick === 'boolean' ? zone.blocksClick : undefined,
+    passiveEffects:
+      typeof zone.passiveEffects === 'boolean'
+        ? zone.passiveEffects
+        : Array.isArray(zone.passiveEffects)
+          ? zone.passiveEffects.filter((entry): entry is string => typeof entry === 'string')
+          : undefined,
+    color:
+      typeof zone.color === 'string' ? zone.color
+        : typeof zone.previewColor === 'string' ? zone.previewColor
+          : typeof zone.colorPreview === 'string' ? zone.colorPreview
+            : typeof zone.fillColor === 'string' ? zone.fillColor
+              : undefined,
     layerPriority: isFiniteNumber(zone.layerPriority) ? zone.layerPriority : undefined,
     randomQuestPoolIds: Array.isArray(zone.randomQuestPoolIds)
       ? zone.randomQuestPoolIds.filter((entry): entry is string => typeof entry === 'string')
@@ -412,8 +450,9 @@ export function exportEditorDataJson(zones: WorldMapZone[], regions: PaintedRegi
 }
 
 export function loadEditorDataFromStorage(initialZones: WorldMapZone[]): EditorDataPayload {
+  const normalizedInitial = initialZones.map((zone) => normalizeWorldMapZone(zone));
   return editorDataDraft ?? {
-    zones: initialZones,
+    zones: normalizedInitial,
     regions: [],
     questMarkers: [],
   };
@@ -442,14 +481,14 @@ export async function loadEditorDataFromBackend(initialZones: WorldMapZone[]): P
     : [];
   if ((!remote.zones || remote.zones.length === 0) && (!remote.regions || remote.regions.length === 0) && remoteQuestMarkers.length === 0) {
     return {
-      zones: initialZones,
+      zones: initialZones.map((zone) => normalizeWorldMapZone(zone)),
       regions: [],
       questMarkers: [],
     };
   }
 
   return {
-    zones: remote.zones.length > 0 ? remote.zones : initialZones,
+    zones: (remote.zones.length > 0 ? remote.zones : initialZones).map((zone) => normalizeWorldMapZone(zone)),
     regions: remote.regions ?? [],
     questMarkers: remoteQuestMarkers,
   };

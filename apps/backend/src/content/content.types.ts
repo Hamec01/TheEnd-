@@ -511,6 +511,14 @@ export type ZoneType =
   | 'city'
   | 'settlement'
   | 'quest'
+  | 'quest_area'
+  | 'random_event_area'
+  | 'danger_area'
+  | 'faction_area'
+  | 'kingdom_area'
+  | 'city_area'
+  | 'resource_area'
+  | 'hidden_area'
   | 'story'
   | 'landmark'
   | 'danger'
@@ -525,6 +533,22 @@ export type ZoneType =
   | 'locked'
   | 'fast_travel'
   | 'rest';
+
+export type MapEditorLayer = 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+
+export type ZoneInteractionMode =
+  | 'none'
+  | 'inspect'
+  | 'enter'
+  | 'quest'
+  | 'resource'
+  | 'battle'
+  | 'random_event'
+  | 'danger'
+  | 'transition'
+  | 'fast_travel'
+  | 'rest'
+  | 'locked';
 
 export type RegionType = 'walkable' | 'blocked' | 'water' | 'road' | 'danger' | 'trigger';
 
@@ -570,6 +594,13 @@ export interface WorldMapZone {
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;
+  editorLayer?: MapEditorLayer;
+  interactionMode?: ZoneInteractionMode;
+  playerClickable?: boolean;
+  blocksClick?: boolean;
+  passiveEffects?: boolean;
+  color?: string;
+  parentAreaId?: string;
   createdAt: number;
   updatedAt: number;
 }
