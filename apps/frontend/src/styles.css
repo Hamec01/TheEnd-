@@ -6517,6 +6517,7 @@ body:has(.page.page--scroll) {
 .wm-shell-admin-editor,
 .wm-editor-shell.is-admin-editor {
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -6531,6 +6532,8 @@ body:has(.page.page--scroll) {
   max-width: 360px;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding-bottom: 14px;
 }
 
 
@@ -9032,6 +9035,10 @@ body:has(.page.page--scroll) {
 .admin-editor-page {
   min-height: 0;
   height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .admin-page,
