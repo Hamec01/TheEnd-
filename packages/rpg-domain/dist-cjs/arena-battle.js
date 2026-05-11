@@ -15,6 +15,7 @@ exports.createArenaCombatEntity = createArenaCombatEntity;
 exports.createInitialBattleState = createInitialBattleState;
 exports.createNpcAction = createNpcAction;
 exports.resolveRound = resolveRound;
+const combat_costs_1 = require("./combat-costs");
 var TargetZone;
 (function (TargetZone) {
     TargetZone["Head"] = "HEAD";
@@ -71,15 +72,6 @@ var BattlefieldTileType;
 })(BattlefieldTileType || (exports.BattlefieldTileType = BattlefieldTileType = {}));
 exports.BATTLEFIELD_GRID_SIZE = 12;
 const DEFENSIVE_ZONES = [TargetZone.Chest, TargetZone.Abdomen];
-const ACTION_STAMINA_COSTS = {
-    attack: 10,
-    defend: 8,
-    move: 6,
-    extraMove: 16,
-    dash: 14,
-    disengage: 10,
-    opportunity: 6,
-};
 function getBattleMapWidth(source) {
     return source?.battleMapWidth ?? exports.BATTLEFIELD_GRID_SIZE;
 }
@@ -399,11 +391,15 @@ function createInitialBattleState(params) {
         viewportWidth: Math.max(1, Math.min(params.viewportWidth ?? exports.BATTLEFIELD_GRID_SIZE, battleMapWidth)),
         viewportHeight: Math.max(1, Math.min(params.viewportHeight ?? exports.BATTLEFIELD_GRID_SIZE, battleMapHeight)),
         roundNumber: 0,
+        phase: 'planning',
         distance: params.distance ?? DistanceBand.Melee,
         entities: params.entities,
         battlefieldTiles: params.battlefieldTiles ?? createDefaultBattlefieldTiles(battleMapWidth, battleMapHeight),
         battlefieldTraps: params.battlefieldTraps ?? [],
         logs: [],
+        submittedPlans: {},
+        recentCombatEvents: [],
+        recentAnimationEvents: [],
         isFinished: false,
     };
     syncBattlefieldPositions(state.entities, state.distance, battleMapWidth, battleMapHeight);
@@ -520,25 +516,28 @@ function getMovementStaminaCost(movementType) {
         return 0;
     }
     if (movementType === MovementType.Step) {
-        return ACTION_STAMINA_COSTS.move;
+        return combat_costs_1.COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0;
     }
     if (movementType === MovementType.Extra) {
-        return ACTION_STAMINA_COSTS.extraMove;
+        return combat_costs_1.COMBAT_ACTION_COSTS.move_2_cells.stamina ?? 0;
     }
     if (movementType === MovementType.Dash) {
-        return ACTION_STAMINA_COSTS.dash;
+        return combat_costs_1.COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0;
     }
     if (movementType === MovementType.Disengage) {
-        return ACTION_STAMINA_COSTS.disengage;
+        return combat_costs_1.COMBAT_ACTION_COSTS.disengage.stamina ?? 0;
     }
     return 0;
 }
-function getActionStaminaCost(actionType) {
+function getActionStaminaCost(actionType, defenseZones = []) {
     if (actionType === ActionType.Attack) {
-        return ACTION_STAMINA_COSTS.attack;
+        return combat_costs_1.COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0;
     }
     if (actionType === ActionType.Defend) {
-        return ACTION_STAMINA_COSTS.defend;
+        const guardMode = getGuardMode(defenseZones);
+        return guardMode === 'NORMAL'
+            ? (combat_costs_1.COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0)
+            : (combat_costs_1.COMBAT_ACTION_COSTS.guard.stamina ?? 0);
     }
     return 0;
 }
@@ -671,7 +670,7 @@ function resolveOpportunityAttacks(params) {
     const { state, mover, moverAction, enemies, logs, random } = params;
     const guardMode = getGuardMode(moverAction.defenseZones);
     for (const enemy of enemies) {
-        if (!enemy.isAlive || !spendStamina(enemy, ACTION_STAMINA_COSTS.opportunity)) {
+        if (!enemy.isAlive || !spendStamina(enemy, combat_costs_1.COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0)) {
             continue;
         }
         const hitChance = clampHitChance(55 + enemy.perception * 2 - mover.dexterity);
@@ -1164,7 +1163,7 @@ function resolveRound(params) {
             continue;
         }
         if (actorAction.actionType === ActionType.Defend) {
-            if (!spendStamina(actor, getActionStaminaCost(ActionType.Defend))) {
+            if (!spendStamina(actor, getActionStaminaCost(ActionType.Defend, actorAction.defenseZones))) {
                 logs.push({
                     round: state.roundNumber,
                     actorId,

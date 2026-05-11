@@ -11,6 +11,11 @@ import type {
   DistanceBand,
   TargetZone,
   TeamSide,
+  CombatCommand,
+  CombatPlanErrorCode,
+  CombatPlanWarning,
+  CombatPlanWarningCode,
+  CombatTurnPlan,
 } from '@theend/rpg-domain';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
@@ -104,6 +109,35 @@ export interface CharacterResourceState {
 export interface CombatActionResult {
   state: ArenaBattleState;
   hubState?: ArenaHubState;
+}
+
+export interface CombatPlanResult {
+  state: ArenaBattleState;
+  plan?: CombatTurnPlan;
+}
+
+export interface ValidateCombatPlanResponse {
+  ok: boolean;
+  errors: CombatPlanErrorCode[];
+  warnings?: CombatPlanWarningCode[];
+  warningDetails?: CombatPlanWarning[];
+  normalizedCommands?: CombatCommand[];
+  total?: {
+    commands: number;
+    ap: number;
+    stamina: number;
+    mp: number;
+    hp: number;
+  };
+}
+
+export interface SubmitCombatPlanResponse {
+  ok: boolean;
+  plan?: CombatTurnPlan;
+  battleState?: ArenaBattleState;
+  errors?: CombatPlanErrorCode[];
+  warnings?: CombatPlanWarningCode[];
+  warningDetails?: CombatPlanWarning[];
 }
 
 export interface NearbyPvpPlayer {
@@ -519,10 +553,10 @@ export async function sendCombatAction(payload: {
   combatId: string;
   actorId: string;
   targetId: string;
-  attackZone: TargetZone;
-  defenseZones: TargetZone[];
-  attackPointsSpent: number;
-  defensePointsSpent: number;
+  attackZone?: TargetZone;
+  defenseZones?: TargetZone[];
+  attackPointsSpent?: number;
+  defensePointsSpent?: number;
   actionType: ActionType;
   movementType?: MovementType;
   preferredDistance?: DistanceBand;
@@ -530,11 +564,110 @@ export async function sendCombatAction(payload: {
   destinationY?: number;
   skillId?: string;
   skillLevel?: number;
+  guardMode?: 'guard' | 'strong_guard';
 }): Promise<CombatActionResult> {
   const res = await fetch(`${API_BASE}/combat/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function addCombatCommand(payload: {
+  combatId: string;
+  actorId: string;
+  command: CombatCommand;
+}): Promise<CombatPlanResult> {
+  const res = await fetch(`${API_BASE}/combat/plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function clearCombatPlan(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
+  const res = await fetch(`${API_BASE}/combat/clear-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function undoCombatCommand(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
+  const res = await fetch(`${API_BASE}/combat/undo-command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function setCombatReady(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
+  const res = await fetch(`${API_BASE}/combat/ready`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function cancelCombatReady(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
+  const res = await fetch(`${API_BASE}/combat/cancel-ready`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function validateCombatPlan(payload: {
+  battleId: string;
+  actorId: string;
+  roundNumber: number;
+  commands: CombatCommand[];
+}): Promise<ValidateCombatPlanResponse> {
+  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/validate-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function submitCombatPlan(payload: {
+  battleId: string;
+  actorId: string;
+  roundNumber: number;
+  commands: CombatCommand[];
+}): Promise<SubmitCombatPlanResponse> {
+  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/submit-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));

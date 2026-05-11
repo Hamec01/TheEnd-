@@ -2,6 +2,8 @@ export * from './stats';
 export * from './races';
 export * from './combat';
 export * from './combat-core';
+export * from './combat-plan';
+export * from './combat-costs';
 export * from './damage';
 export * from './skills';
 export * from './arena-battle';

@@ -1,5 +1,6 @@
 import {
   BattlefieldTileType,
+  COMBAT_ACTION_COSTS,
   DistanceBand,
   MovementType,
   TeamSide,
@@ -742,7 +743,7 @@ export function BattleField({
     <div className="battle-field tactical-field">
       <div className="tactical-header">
         <h3>Tactical Battlefield</h3>
-        <div className="tactical-distance-indicator">Distance: {distance} | RMB: action menu | Space: confirm | Esc: cancel</div>
+        <div className="tactical-distance-indicator">Distance: {distance} | LMB: select target | DBL LMB: quick attack | RMB: action menu | Space: confirm | Esc: cancel</div>
       </div>
 
       <div
@@ -920,10 +921,14 @@ export function BattleField({
               return (
                 <>
                   <button type="button" onClick={() => handleContextMenuAction('move')}>
-                    {isDash ? '💨 Рывок сюда (14 STA)' : '👣 Шаг сюда (6 STA)'}
+                    {isDash
+                      ? `💨 Рывок сюда (${COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0} STA)`
+                      : `👣 Шаг сюда (${COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0} STA)`}
                   </button>
                   {canDisengage && (
-                    <button type="button" onClick={() => handleContextMenuAction('disengage')}>🛡 Отход (10 STA)</button>
+                    <button type="button" onClick={() => handleContextMenuAction('disengage')}>
+                      {`🛡 Отход (${COMBAT_ACTION_COSTS.disengage.stamina ?? 0} STA)`}
+                    </button>
                   )}
                   <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
                 </>

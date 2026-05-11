@@ -1,4 +1,12 @@
 import type { Race } from './races';
+import { COMBAT_ACTION_COSTS } from './combat-costs';
+import type {
+  CombatAnimationEvent,
+  CombatBattlePhase,
+  CombatEvent,
+  CombatRoundResolveSnapshot,
+  CombatTurnPlan,
+} from './combat-plan';
 
 export enum TargetZone {
   Head = 'HEAD',
@@ -44,6 +52,8 @@ export enum DistanceBand {
   Near = 'NEAR',
   Far = 'FAR',
 }
+
+export type ArenaBattlePhase = 'PLANNING' | 'RESOLVING';
 
 export enum BattlefieldTileType {
   Empty = 'empty',
@@ -157,6 +167,14 @@ export interface ArenaBattleState {
   battleMapHeight: number;
   viewportWidth: number;
   viewportHeight: number;
+  roundPhase?: ArenaBattlePhase;
+  phase?: CombatBattlePhase;
+  readyActorIds?: string[];
+  pendingActorIds?: string[];
+  submittedPlans?: Record<string, CombatTurnPlan>;
+  resolveSnapshot?: CombatRoundResolveSnapshot;
+  recentCombatEvents?: CombatEvent[];
+  recentAnimationEvents?: CombatAnimationEvent[];
   /**
    * Turn timer deadline (epoch ms). Client renders countdown; server may auto-resolve when expired.
    */
@@ -180,15 +198,6 @@ export interface BattlefieldTilePlacement {
 }
 
 const DEFENSIVE_ZONES: TargetZone[] = [TargetZone.Chest, TargetZone.Abdomen];
-const ACTION_STAMINA_COSTS = {
-  attack: 10,
-  defend: 8,
-  move: 6,
-  extraMove: 16,
-  dash: 14,
-  disengage: 10,
-  opportunity: 6,
-} as const;
 
 type GuardMode = 'RECKLESS' | 'AGGRESSIVE' | 'NORMAL';
 type CombatStyle = 'MELEE' | 'RANGED' | 'MAGIC';
@@ -618,11 +627,15 @@ export function createInitialBattleState(params: {
     viewportWidth: Math.max(1, Math.min(params.viewportWidth ?? BATTLEFIELD_GRID_SIZE, battleMapWidth)),
     viewportHeight: Math.max(1, Math.min(params.viewportHeight ?? BATTLEFIELD_GRID_SIZE, battleMapHeight)),
     roundNumber: 0,
+    phase: 'planning',
     distance: params.distance ?? DistanceBand.Melee,
     entities: params.entities,
     battlefieldTiles: params.battlefieldTiles ?? createDefaultBattlefieldTiles(battleMapWidth, battleMapHeight),
     battlefieldTraps: params.battlefieldTraps ?? [],
     logs: [],
+    submittedPlans: {},
+    recentCombatEvents: [],
+    recentAnimationEvents: [],
     isFinished: false,
   };
 
@@ -769,31 +782,34 @@ function getMovementStaminaCost(movementType?: MovementType): number {
   }
 
   if (movementType === MovementType.Step) {
-    return ACTION_STAMINA_COSTS.move;
+    return COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0;
   }
 
   if (movementType === MovementType.Extra) {
-    return ACTION_STAMINA_COSTS.extraMove;
+    return COMBAT_ACTION_COSTS.move_2_cells.stamina ?? 0;
   }
 
   if (movementType === MovementType.Dash) {
-    return ACTION_STAMINA_COSTS.dash;
+    return COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0;
   }
 
   if (movementType === MovementType.Disengage) {
-    return ACTION_STAMINA_COSTS.disengage;
+    return COMBAT_ACTION_COSTS.disengage.stamina ?? 0;
   }
 
   return 0;
 }
 
-function getActionStaminaCost(actionType: ActionType): number {
+function getActionStaminaCost(actionType: ActionType, defenseZones: TargetZone[] = []): number {
   if (actionType === ActionType.Attack) {
-    return ACTION_STAMINA_COSTS.attack;
+    return COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0;
   }
 
   if (actionType === ActionType.Defend) {
-    return ACTION_STAMINA_COSTS.defend;
+    const guardMode = getGuardMode(defenseZones);
+    return guardMode === 'NORMAL'
+      ? (COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0)
+      : (COMBAT_ACTION_COSTS.guard.stamina ?? 0);
   }
 
   return 0;
@@ -974,7 +990,7 @@ function resolveOpportunityAttacks(params: {
   const guardMode = getGuardMode(moverAction.defenseZones);
 
   for (const enemy of enemies) {
-    if (!enemy.isAlive || !spendStamina(enemy, ACTION_STAMINA_COSTS.opportunity)) {
+    if (!enemy.isAlive || !spendStamina(enemy, COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0)) {
       continue;
     }
 
@@ -1536,7 +1552,7 @@ export function resolveRound(params: {
     }
 
     if (actorAction.actionType === ActionType.Defend) {
-      if (!spendStamina(actor, getActionStaminaCost(ActionType.Defend))) {
+      if (!spendStamina(actor, getActionStaminaCost(ActionType.Defend, actorAction.defenseZones))) {
         logs.push({
           round: state.roundNumber,
           actorId,

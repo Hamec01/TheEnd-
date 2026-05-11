@@ -19,6 +19,8 @@ __exportStar(require("./stats"), exports);
 __exportStar(require("./races"), exports);
 __exportStar(require("./combat"), exports);
 __exportStar(require("./combat-core"), exports);
+__exportStar(require("./combat-plan"), exports);
+__exportStar(require("./combat-costs"), exports);
 __exportStar(require("./damage"), exports);
 __exportStar(require("./skills"), exports);
 __exportStar(require("./arena-battle"), exports);

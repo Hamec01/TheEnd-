@@ -14,20 +14,24 @@ export class CombatActionDto {
   @Length(1, 100)
   targetId!: string;
 
+  @IsOptional()
   @IsEnum(TargetZone)
-  attackZone!: TargetZone;
+  attackZone?: TargetZone;
 
+  @IsOptional()
   @IsArray()
   @IsEnum(TargetZone, { each: true })
-  defenseZones!: TargetZone[];
+  defenseZones?: TargetZone[];
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  attackPointsSpent!: number;
+  attackPointsSpent?: number;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  defensePointsSpent!: number;
+  defensePointsSpent?: number;
 
   @IsEnum(ActionType)
   actionType!: ActionType;
@@ -59,4 +63,9 @@ export class CombatActionDto {
   @IsInt()
   @Min(1)
   skillLevel?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 20)
+  guardMode?: 'guard' | 'strong_guard';
 }
