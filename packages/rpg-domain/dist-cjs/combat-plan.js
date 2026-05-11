@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.COMBAT_COMMAND_PRIORITY = exports.HARD_MAX_AP_PER_ROUND = exports.DEFAULT_MAX_AP_PER_ROUND = exports.HARD_MAX_COMMANDS_PER_ROUND = exports.DEFAULT_MAX_COMMANDS_PER_ROUND = void 0;
+exports.getRelationToCaster = getRelationToCaster;
+exports.collectAreaEffectTargets = collectAreaEffectTargets;
 exports.getAllowedTargetKindsForCommand = getAllowedTargetKindsForCommand;
 exports.getCombatCommandBaseCost = getCombatCommandBaseCost;
 exports.normalizeCombatCommand = normalizeCombatCommand;
@@ -66,6 +68,106 @@ function getEntityCell(entity) {
 }
 function getCellDistance(left, right) {
     return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
+}
+function getRelationToCaster(params) {
+    const caster = params.battleState.entities.find((entity) => entity.id === params.casterId);
+    const target = params.battleState.entities.find((entity) => entity.id === params.targetId);
+    if (!caster || !target) {
+        return 'neutral';
+    }
+    if (caster.id === target.id) {
+        return 'self';
+    }
+    const casterTeam = caster.team;
+    const targetTeam = target.team;
+    if (!casterTeam || !targetTeam) {
+        return 'neutral';
+    }
+    return casterTeam === targetTeam ? 'ally' : 'enemy';
+}
+function collectAreaEffectTargets(params) {
+    const radius = Math.max(0, Math.floor(params.radius ?? 0));
+    const shape = params.shape ?? 'circle';
+    const isInsideArea = (cell) => {
+        const dx = Math.abs(cell.x - params.originCell.x);
+        const dy = Math.abs(cell.y - params.originCell.y);
+        if (shape === 'square') {
+            return Math.max(dx, dy) <= radius;
+        }
+        // P0 uses grid-Manhattan radius for area preview/targeting.
+        return dx + dy <= radius;
+    };
+    return params.battleState.entities
+        .filter((entity) => entity.isAlive)
+        .map((entity) => ({ entity, cell: getEntityCell(entity) }))
+        .filter((entry) => isInsideArea(entry.cell))
+        .map((entry) => ({
+        entityId: entry.entity.id,
+        relationToCaster: getRelationToCaster({
+            battleState: params.battleState,
+            casterId: params.casterId,
+            targetId: entry.entity.id,
+        }),
+        cell: entry.cell,
+    }));
+}
+function buildFriendlyFireWarnings(params) {
+    if (params.command.target.kind !== 'cell' || !isPotentiallyHarmfulAreaCommand(params.command)) {
+        return [];
+    }
+    const radius = getCellCommandRadius(params.command);
+    const targets = collectAreaEffectTargets({
+        battleState: params.battleState,
+        originCell: { x: params.command.target.x, y: params.command.target.y },
+        radius,
+        shape: 'circle',
+        casterId: params.casterId,
+    });
+    const allyIds = targets.filter((target) => target.relationToCaster === 'ally').map((target) => target.entityId);
+    const selfIds = targets.filter((target) => target.relationToCaster === 'self').map((target) => target.entityId);
+    const neutralIds = targets.filter((target) => target.relationToCaster === 'neutral').map((target) => target.entityId);
+    const warnings = [];
+    if (targets.length > 0) {
+        warnings.push({
+            code: 'AREA_TARGETS_MAY_CHANGE',
+            commandId: params.command.id,
+            entityIds: targets.map((target) => target.entityId),
+            message: 'Текущая зона действия является preview. Реальные цели будут пересчитаны при выполнении.',
+        });
+    }
+    if (allyIds.length > 0 || selfIds.length > 0 || neutralIds.length > 0) {
+        warnings.push({
+            code: 'FRIENDLY_FIRE',
+            commandId: params.command.id,
+            entityIds: [...allyIds, ...selfIds, ...neutralIds],
+            message: 'Действие заденет не только врагов.',
+        });
+    }
+    if (allyIds.length > 0) {
+        warnings.push({
+            code: 'ALLY_IN_AREA',
+            commandId: params.command.id,
+            entityIds: allyIds,
+            message: 'Действие заденет союзника.',
+        });
+    }
+    if (selfIds.length > 0) {
+        warnings.push({
+            code: 'SELF_IN_AREA',
+            commandId: params.command.id,
+            entityIds: selfIds,
+            message: 'Вы тоже попадете в область действия.',
+        });
+    }
+    if (neutralIds.length > 0) {
+        warnings.push({
+            code: 'NEUTRAL_IN_AREA',
+            commandId: params.command.id,
+            entityIds: neutralIds,
+            message: 'Действие заденет нейтральную цель.',
+        });
+    }
+    return warnings;
 }
 function isTileSightBlockedForRevalidation(state, x, y) {
     const tile = state.battlefieldTiles.find((entry) => entry.x === x && entry.y === y);
@@ -292,6 +394,7 @@ function collectWarnings(actor, total, errors) {
 }
 function validateCombatCommand(params) {
     const errors = [];
+    const warningDetails = [];
     if (!getAllowedTargetKindsForCommand(params.command.type).includes(params.command.target.kind)) {
         errors.push('INVALID_TARGET');
     }
@@ -299,13 +402,16 @@ function validateCombatCommand(params) {
         errors.push('ACTOR_DEAD');
     }
     const actorFlags = params.actor;
-    if (actorFlags.isStunned) {
+    if (actorFlags.isStunned || actorFlags.isIncapacitated) {
         errors.push('ACTOR_STUNNED');
     }
     if ((params.command.type === 'move' || params.command.type === 'dash' || params.command.type === 'disengage') && actorFlags.isRooted) {
         errors.push('INVALID_TARGET');
     }
     if ((params.command.type === 'basic_attack' || params.command.type === 'heavy_attack') && actorFlags.isDisarmed) {
+        errors.push('ITEM_NOT_USABLE');
+    }
+    if (params.command.type === 'weapon_swap' && actorFlags.isDisarmed) {
         errors.push('ITEM_NOT_USABLE');
     }
     if (params.command.target.kind === 'entity') {
@@ -338,14 +444,14 @@ function validateCombatCommand(params) {
         warnings.push('ACTION_MAY_FAIL_IF_TARGET_MOVES');
     }
     if (isPotentiallyHarmfulAreaCommand(params.command) && params.command.target.kind === 'cell') {
-        const radius = getCellCommandRadius(params.command);
-        const actorTeam = params.actor.team;
-        const center = params.command.target;
-        const canHitFriendly = params.battleState.entities.some((entity) => entity.isAlive
-            && entity.team === actorTeam
-            && getCellDistance({ x: center.x, y: center.y }, getEntityCell(entity)) <= radius);
-        if (canHitFriendly) {
-            warnings.push('FRIENDLY_FIRE');
+        const areaWarnings = buildFriendlyFireWarnings({
+            battleState: params.battleState,
+            casterId: params.actor.id,
+            command: params.command,
+        });
+        for (const warning of areaWarnings) {
+            warnings.push(warning.code);
+            warningDetails.push(warning);
         }
     }
     if (params.command.type === 'start_retreat') {
@@ -355,6 +461,7 @@ function validateCombatCommand(params) {
         ok: errors.length === 0,
         errors: [...new Set(errors)],
         ...(warnings.length > 0 ? { warnings: [...new Set(warnings)] } : {}),
+        ...(warningDetails.length > 0 ? { warningDetails } : {}),
     };
 }
 function getCombatRoundLimits(_actor) {
@@ -375,6 +482,7 @@ function getCombatPlanCostTotal(commands) {
 function validateCombatTurnPlan(params) {
     const errors = [];
     const commandWarnings = [];
+    const warningDetails = [];
     const limits = params.limits ?? getCombatRoundLimits(params.actor);
     const commands = params.plan.commands ?? [];
     const total = getCombatPlanCostTotal(commands);
@@ -408,11 +516,20 @@ function validateCombatTurnPlan(params) {
     if (total.hp >= params.actor.currentHp) {
         errors.push('NOT_ENOUGH_HP');
     }
+    // Duplicate guard/strong_guard in same plan: allow guard+strong_guard but not guard+guard or strong_guard+strong_guard
+    const guardCount = commands.filter((cmd) => cmd.type === 'guard').length;
+    const strongGuardCount = commands.filter((cmd) => cmd.type === 'strong_guard').length;
+    if (guardCount >= 2 || strongGuardCount >= 2) {
+        errors.push('GUARD_ALREADY_PLANNED');
+    }
     for (const command of commands) {
         const validation = validateCombatCommand({ command, actor: params.actor, battleState: params.battleState });
         errors.push(...validation.errors);
         if (validation.warnings) {
             commandWarnings.push(...validation.warnings);
+        }
+        if (validation.warningDetails) {
+            warningDetails.push(...validation.warningDetails);
         }
     }
     const warnings = [...new Set([...commandWarnings, ...collectWarnings(params.actor, total, errors)])];
@@ -420,6 +537,7 @@ function validateCombatTurnPlan(params) {
         ok: errors.length === 0,
         errors: [...new Set(errors)],
         ...(warnings.length > 0 ? { warnings } : {}),
+        ...(warningDetails.length > 0 ? { warningDetails } : {}),
         total,
     };
 }
@@ -471,6 +589,12 @@ function revalidateCombatCommandBeforeExecute(params) {
     if (actorFlags.isStunned) {
         return { ok: false, reason: 'actor_stunned', message: 'Действие сорвано: исполнитель оглушен.' };
     }
+    if (actorFlags.isKnockedDown) {
+        return { ok: false, reason: 'actor_knocked_down', message: 'Действие сорвано: исполнитель сбит с ног.' };
+    }
+    if (actorFlags.isIncapacitated) {
+        return { ok: false, reason: 'actor_incapacitated', message: 'Действие сорвано: исполнитель не может действовать.' };
+    }
     if ((params.command.type === 'move' || params.command.type === 'dash' || params.command.type === 'disengage' || params.command.type === 'start_retreat') && actorFlags.isRooted) {
         return { ok: false, reason: 'actor_rooted', message: 'Действие сорвано: исполнитель обездвижен.' };
     }
@@ -482,6 +606,8 @@ function revalidateCombatCommandBeforeExecute(params) {
     }
     const staminaCost = params.command.costs.stamina ?? 0;
     const mpCost = params.command.costs.mp ?? 0;
+    // HP cost includes normalized blood costs (blood_to_hp conversion is performed on client-side by normalizeSkillResourceCosts)
+    // This ensures blood/hp sacrifice mechanics are consistent across frontend preview and backend validation
     const hpCost = params.command.costs.hp ?? 0;
     if (staminaCost > actor.currentStamina) {
         return { ok: false, reason: 'not_enough_stamina', message: 'Недостаточно выносливости для выполнения команды.' };

@@ -16,7 +16,6 @@ import {
   TeamSide,
   canAppendCombatCommand,
   calculateCommandInitiative,
-  COMBAT_COMMAND_PRIORITY,
   createArenaCombatEntity,
   createCombatCommandFromType,
   createInitialBattleState,
@@ -24,15 +23,27 @@ import {
   collectAreaEffectTargets,
   getBattlefieldDistance,
   getRelationToCaster,
+  buildCombatLogMessage,
+  normalizeArenaBattleState,
   normalizeCombatCommand,
   revalidateCombatCommandBeforeExecute,
   getRequiredExpForNextLevel,
   resolveRound,
   validateCombatTurnPlan,
+  applyGuardMitigation,
+  calculateGuardEndRoundRegen,
+  createGuardState,
+  markGuardBroken,
+  COMBAT_ACTION_COSTS,
   type ArenaBattleState,
   type ArenaCombatAction,
+  type ArenaCombatEntity,
+  type CombatActorLifeState,
+  type CombatLootContainer,
+  type CombatGuardState,
   type CombatCommand,
   type CombatEvent,
+  type LootItem,
   type CombatAnimationEvent,
   type CombatCommandRevalidationResult,
   type CombatRevalidationFailReason,
@@ -59,6 +70,11 @@ import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto }
 import type { AdminItem } from '../content/content.types';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 import { isFileStorageMode } from '../config/storage-mode';
+import {
+  buildAiCombatTurnPlan,
+  getAiRoundLimits,
+  type AiCombatPersonality,
+} from './ai-combat-planner';
 
 interface CharacterRecord {
   id: string;
@@ -115,6 +131,12 @@ export interface CombatActionResult {
 }
 
 const DEFAULT_TURN_SECONDS = 60;
+const DEFAULT_ROUND_DURATION_SECONDS = DEFAULT_TURN_SECONDS;
+const PVP_LOOT_CONFIG = {
+  maxDroppedItems: 2,
+  itemDropChance: 0.15,
+  pvpGoldDropEnabled: false,
+} as const;
 
 @Injectable()
 export class CombatService {
@@ -605,7 +627,7 @@ export class CombatService {
   }
 
   private syncTurnPlanState(session: CombatSession): void {
-    const aliveEntities = session.state.entities.filter((entity) => entity.isAlive);
+    const aliveEntities = session.state.entities.filter((entity) => this.canActorPlan(session.state, entity));
     session.state.readyActorIds = aliveEntities.filter((entity) => session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
     session.state.pendingActorIds = aliveEntities.filter((entity) => !session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
     session.state.roundPhase = session.state.isFinished ? undefined : 'PLANNING';
@@ -619,8 +641,88 @@ export class CombatService {
     }
   }
 
+  private async resolveRoundByTimeoutIfNeeded(session: CombatSession): Promise<void> {
+    const state = session.state;
+    if (!this.shouldResolveRoundByTimeout(state)) {
+      return;
+    }
+
+    const actors = this.getLivingControllableActors(state);
+    for (const actor of actors) {
+      const plan = session.turnPlans.get(actor.id);
+      if (plan && plan.commands.length > 0) {
+        plan.ready = true;
+        plan.submittedAt = new Date().toISOString();
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex: -1,
+          orderIndex: -1,
+          type: 'plan_auto_submitted',
+          actorId: actor.id,
+          message: `${actor.name} не успевает подтвердить план, сервер отправляет черновик автоматически.`,
+          data: { reason: 'timeout_draft' },
+        });
+        continue;
+      }
+
+      const fallback = this.buildTimeoutFallbackPlan(state, actor);
+      session.turnPlans.set(actor.id, fallback);
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex: -1,
+        orderIndex: -1,
+        type: 'plan_auto_submitted',
+        actorId: actor.id,
+        message: `${actor.name} не успевает среагировать и выполняет безопасное действие автоматически.`,
+        data: { reason: 'timeout_fallback', fallbackType: fallback.commands[0]?.type ?? 'wait' },
+      });
+    }
+
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber: state.roundNumber,
+      stepIndex: -1,
+      orderIndex: -1,
+      type: 'round_timeout',
+      message: 'Время на планирование вышло. Сервер завершает сбор планов автоматически.',
+      data: {
+        deadlineAt: state.turnDeadlineAt,
+        resolvedAt: Date.now(),
+      },
+    });
+
+    this.syncTurnPlanState(session);
+    await this.tryResolveWhenAllReady(session);
+  }
+
   private mapPlanErrorsToMessage(errors: CombatPlanErrorCode[]): string {
     return [...new Set(errors)].join(', ');
+  }
+
+  private collectWeaponSwapPlanErrors(command: CombatCommand, actor: ArenaBattleState['entities'][number]): CombatPlanErrorCode[] {
+    if (command.type !== 'weapon_swap') {
+      return [];
+    }
+
+    const weaponId = command.payload?.weaponItemId ?? command.payload?.weaponInstanceId;
+    if (!weaponId) {
+      return ['WEAPON_ID_REQUIRED'];
+    }
+
+    const adminItem = this.contentService.listCollection('items').find((item) => item.id === weaponId) ?? null;
+    if (!adminItem) {
+      return ['WEAPON_NOT_FOUND'];
+    }
+    if (adminItem.type !== 'weapon') {
+      return ['ITEM_IS_NOT_WEAPON'];
+    }
+    if (actor.activeWeaponItemId === weaponId) {
+      return ['WEAPON_ALREADY_EQUIPPED'];
+    }
+
+    return [];
   }
 
   private normalizeAndValidateCommand(params: {
@@ -642,6 +744,18 @@ export class CombatService {
       battleState: params.session.state,
       limits: this.getCombatRoundLimitsForActor(params.actor),
     });
+
+    const weaponSwapErrors = this.collectWeaponSwapPlanErrors(trusted, params.actor);
+    if (weaponSwapErrors.length > 0) {
+      return {
+        command: trusted,
+        validation: {
+          ...validation,
+          ok: false,
+          errors: [...new Set([...(validation.errors ?? []), ...weaponSwapErrors])],
+        },
+      };
+    }
 
     return { command: trusted, validation };
   }
@@ -709,6 +823,9 @@ export class CombatService {
     if (!actor) {
       throw new NotFoundException('Actor not found.');
     }
+    if (!this.canActorPlan(session.state, actor)) {
+      throw new BadRequestException('ACTOR_DEFEATED');
+    }
 
     const plan = this.getOrCreateTurnPlan(session, actorId);
     const { command: trusted, validation } = this.normalizeAndValidateCommand({
@@ -752,11 +869,15 @@ export class CombatService {
     if (!actor) {
       throw new NotFoundException('Actor not found.');
     }
+    if (!this.canActorPlan(session.state, actor)) {
+      throw new BadRequestException('ACTOR_DEFEATED');
+    }
 
     const plan = this.getOrCreateTurnPlan(session, actorId);
 
     if (ready && plan.commands.length === 0) {
-      const fallbackType = actor.currentStamina >= 1 ? 'guard' : 'wait';
+      const guardStaminaCost = COMBAT_ACTION_COSTS.guard.stamina ?? 0;
+      const fallbackType = actor.currentStamina >= guardStaminaCost ? 'guard' : 'wait';
       const fallbackTarget = fallbackType === 'wait' ? { kind: 'self' as const } : { kind: 'self' as const };
       const fallbackCommand = createCombatCommandFromType({
         type: fallbackType,
@@ -812,6 +933,9 @@ export class CombatService {
     switch (error.toLowerCase()) {
       case 'actor_dead':
         return 'ACTOR_DEAD';
+      case 'actor_knocked_down':
+      case 'actor_incapacitated':
+        return 'COMMAND_REVALIDATION_FAILED';
       case 'target_dead':
       case 'target_missing':
         return 'TARGET_DEAD';
@@ -848,18 +972,420 @@ export class CombatService {
     return Math.abs(left.x - right.x) + Math.abs(left.y - right.y);
   }
 
-  private applyCellAreaDamage(params: {
+  private isPveBattle(state: ArenaBattleState): boolean {
+    return state.battleType !== 'pvp' && state.battleType !== 'arena';
+  }
+
+  private isActorEscaped(state: ArenaBattleState, actorId: string): boolean {
+    return Boolean(state.escapeStates?.[actorId]?.active === false && state.escapeStates?.[actorId]?.completedRound);
+  }
+
+  private isActorDefeated(actor: ArenaCombatEntity): boolean {
+    return actor.lifeState === 'defeated' || actor.lifeState === 'dead' || actor.lifeState === 'escaped' || !actor.isAlive;
+  }
+
+  private canActorPlan(state: ArenaBattleState, actor: ArenaCombatEntity): boolean {
+    if (this.isActorDefeated(actor)) {
+      return false;
+    }
+    if (this.isActorEscaped(state, actor.id)) {
+      return false;
+    }
+    return true;
+  }
+
+  private hasLivingAllies(params: { battleState: ArenaBattleState; actorId: string }): boolean {
+    const actor = params.battleState.entities.find((entry) => entry.id === params.actorId);
+    if (!actor) {
+      return false;
+    }
+
+    return params.battleState.entities.some((entry) => (
+      entry.id !== actor.id
+      && entry.team === actor.team
+      && entry.isAlive
+      && !this.isActorDefeated(entry)
+      && !this.isActorEscaped(params.battleState, entry.id)
+    ));
+  }
+
+  private getLivingControllableActors(state: ArenaBattleState): ArenaCombatEntity[] {
+    return state.entities.filter((entity) => (
+      entity.team === TeamSide.Left
+      && this.canActorPlan(state, entity)
+    ));
+  }
+
+  private getTurnDeadlineMs(state: ArenaBattleState): number | null {
+    if (typeof state.turnDeadlineAt !== 'string') {
+      return null;
+    }
+    const parsed = Date.parse(state.turnDeadlineAt);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private shouldResolveRoundByTimeout(state: ArenaBattleState, now = Date.now()): boolean {
+    const deadlineMs = this.getTurnDeadlineMs(state);
+    return state.phase === 'planning' && deadlineMs != null && now >= deadlineMs;
+  }
+
+  private buildTimeoutFallbackPlan(state: ArenaBattleState, actor: ArenaCombatEntity): CombatTurnPlan {
+    const guardStaminaCost = COMBAT_ACTION_COSTS.guard.stamina ?? 15;
+    const canGuard = actor.currentStamina >= guardStaminaCost && !this.hasGuardBreakingControlFlag(actor);
+    const fallback = createCombatCommandFromType({
+      type: canGuard ? 'guard' : 'wait',
+      target: { kind: 'self' },
+    });
+    const normalized = normalizeCombatCommand({ rawCommand: fallback, actor, battleState: state });
+    return {
+      battleId: state.combatId,
+      roundNumber: state.roundNumber,
+      actorId: actor.id,
+      commands: [normalized],
+      ready: true,
+      submittedAt: new Date().toISOString(),
+    };
+  }
+
+  private collectPvpLootCandidates(actorId: string): Promise<LootItem[]> {
+    return (async () => {
+      const arenaState = await this.arenaService.getHubState(actorId);
+      const equippedIds = new Set<string>(Object.values(arenaState.equipment ?? {}).filter((id): id is string => typeof id === 'string' && id.length > 0));
+      const candidates: LootItem[] = [];
+
+      for (const row of arenaState.inventory?.items ?? []) {
+        if (!row?.itemId || row.quantity <= 0) {
+          continue;
+        }
+        if (equippedIds.has(row.itemId)) {
+          continue;
+        }
+
+        const item = this.contentService.getCollectionEntry('items', row.itemId) as AdminItem | null;
+        if (!item) {
+          continue;
+        }
+
+        const type = String(item.type ?? '').toLowerCase();
+        const subtype = String(item.subtype ?? '').toLowerCase();
+        if (type === 'quest' || subtype === 'quest') {
+          continue;
+        }
+        if (item.isQuestItem || item.isBound || item.isStarterItem || item.isDroppable === false) {
+          continue;
+        }
+
+        candidates.push({
+          itemId: row.itemId,
+          quantity: Math.max(1, Math.floor(row.quantity)),
+          name: item.name,
+          rarity: item.rarity,
+          generatedFrom: 'pvp_backpack',
+        });
+      }
+
+      return candidates;
+    })();
+  }
+
+  private rollPvpLoot(candidates: LootItem[]): LootItem[] {
+    const dropped: LootItem[] = [];
+    for (const candidate of candidates) {
+      if (dropped.length >= PVP_LOOT_CONFIG.maxDroppedItems) {
+        break;
+      }
+      if (Math.random() > PVP_LOOT_CONFIG.itemDropChance) {
+        continue;
+      }
+      dropped.push({
+        ...candidate,
+        quantity: 1,
+      });
+    }
+    return dropped;
+  }
+
+  private async claimLootContainerForActor(params: {
+    state: ArenaBattleState;
+    actor: ArenaCombatEntity;
+    command: CombatCommand;
+    stepIndex: number;
+    orderIndex: number;
+    ignoreRange?: boolean;
+  }): Promise<void> {
+    const { state, actor, command, stepIndex, orderIndex } = params;
+    const containerId = command.payload?.lootContainerId;
+    const containers = state.lootContainers ?? [];
+    const container = containers.find((entry) => entry.id === containerId);
+    if (!container) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'command_failed',
+        actorId: actor.id,
+        commandId: command.id,
+        message: 'Контейнер добычи не найден.',
+        data: { error: 'LOOT_CONTAINER_NOT_FOUND' },
+      });
+      return;
+    }
+    if (container.claimed) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'command_failed',
+        actorId: actor.id,
+        commandId: command.id,
+        message: 'Добыча уже собрана.',
+        data: { error: 'LOOT_ALREADY_CLAIMED' },
+      });
+      return;
+    }
+
+    const distance = this.getCellDistance(this.getEntityCell(actor), { x: container.x, y: container.y });
+    if (!params.ignoreRange && distance > 1) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'command_failed',
+        actorId: actor.id,
+        commandId: command.id,
+        message: 'Слишком далеко от добычи.',
+        data: { error: 'LOOT_NOT_IN_RANGE' },
+      });
+      return;
+    }
+
+    for (const item of container.items) {
+      const qty = Math.max(1, Math.floor(item.quantity ?? 1));
+      if (isFileStorageMode()) {
+        await this.updateRuntimeInventoryItemQuantity(actor.id, item.itemId, qty);
+      } else {
+        const existing = await this.prisma.characterInventoryItem.findUnique({
+          where: { characterId_itemId: { characterId: actor.id, itemId: item.itemId } },
+        });
+        if (existing) {
+          await this.prisma.characterInventoryItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + qty } });
+        } else {
+          await this.prisma.characterInventoryItem.create({ data: { characterId: actor.id, itemId: item.itemId, quantity: qty } });
+        }
+      }
+    }
+
+    if ((container.gold ?? 0) > 0) {
+      if (isFileStorageMode()) {
+        const character = await this.runtimeStore.getCharacterById(actor.id);
+        const currentGold = Number((character as { gold?: unknown } | null | undefined)?.gold ?? 0) || 0;
+        await this.runtimeStore.updateCharacter(actor.id, { gold: currentGold + (container.gold ?? 0) });
+      } else {
+        await this.prisma.character.update({ where: { id: actor.id }, data: { gold: { increment: container.gold ?? 0 } } });
+      }
+    }
+
+    container.claimed = true;
+    container.claimedByActorId = actor.id;
+    container.claimedAt = new Date().toISOString();
+
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber: state.roundNumber,
+      stepIndex,
+      orderIndex,
+      type: 'loot_taken',
+      actorId: actor.id,
+      commandId: command.id,
+      message: `${actor.name} подбирает добычу с земли.`,
+      data: {
+        lootContainerId: container.id,
+        items: container.items,
+        gold: container.gold ?? 0,
+      },
+    });
+  }
+
+  private async claimAllAvailableLootForActor(state: ArenaBattleState, actorId: string): Promise<void> {
+    const actor = state.entities.find((entry) => entry.id === actorId);
+    if (!actor) {
+      return;
+    }
+
+    const containers = (state.lootContainers ?? []).filter((entry) => !entry.claimed);
+    for (const container of containers) {
+      const syntheticCommand = createCombatCommandFromType({
+        type: 'loot',
+        target: { kind: 'self' },
+        payload: { lootContainerId: container.id },
+      });
+      await this.claimLootContainerForActor({
+        state,
+        actor,
+        command: syntheticCommand,
+        stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+        orderIndex: 0,
+        ignoreRange: true,
+      });
+    }
+  }
+
+  private async processActorDeath(params: {
+    session: CombatSession;
+    actor: ArenaCombatEntity;
+    sourceActorId?: string;
+    roundNumber: number;
+    stepIndex: number;
+    orderIndex: number;
+    commandId?: string;
+  }): Promise<void> {
+    const { session, actor, sourceActorId, roundNumber, stepIndex, orderIndex, commandId } = params;
+    const state = session.state;
+    if (actor.currentHp > 0) {
+      return;
+    }
+
+    actor.currentHp = 0;
+    actor.isAlive = false;
+
+    const isPlayer = actor.team === TeamSide.Left;
+    const pve = this.isPveBattle(state);
+    actor.lifeState = isPlayer && !pve ? 'defeated' : 'dead';
+
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber,
+      stepIndex,
+      orderIndex,
+      type: 'death',
+      actorId: sourceActorId,
+      targetId: actor.id,
+      commandId,
+      message: isPlayer && !pve
+        ? `${actor.name} падает, но бой вокруг него продолжается.`
+        : `${actor.name} падает без сил.`,
+      data: {
+        mode: pve ? 'pve' : 'pvp',
+        lifeState: actor.lifeState,
+        canAct: false,
+      },
+    });
+
+    if (isPlayer && pve && !this.hasLivingAllies({ battleState: state, actorId: actor.id })) {
+      state.isFinished = true;
+      state.phase = 'finished';
+      state.roundPhase = undefined;
+      state.winner = TeamSide.Right;
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'battle_finished',
+        message: 'Бой завершён поражением.',
+        data: { result: 'defeat' },
+      });
+      return;
+    }
+
+    if (!isPlayer) {
+      const dropId = this.rollCombatDrop(state);
+      const items: LootItem[] = [];
+      if (dropId) {
+        const item = this.contentService.resolveItemById(dropId);
+        items.push({ itemId: dropId, quantity: 1, name: item.name, rarity: item.rarity, generatedFrom: 'pve_drop' });
+      }
+
+      if (items.length > 0) {
+        const container: CombatLootContainer = {
+          id: `loot_${randomUUID()}`,
+          battleId: state.combatId,
+          x: actor.battlefieldX ?? 0,
+          y: actor.battlefieldY ?? 0,
+          sourceEntityId: actor.id,
+          sourceName: actor.name,
+          items,
+          gold: 0,
+          createdRound: roundNumber,
+          claimed: false,
+        };
+        state.lootContainers = [...(state.lootContainers ?? []), container];
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber,
+          stepIndex,
+          orderIndex,
+          type: 'loot_created',
+          actorId: actor.id,
+          targetId: actor.id,
+          message: `После смерти ${actor.name} на земле остаются трофеи.`,
+          data: {
+            lootContainerId: container.id,
+            sourceEntityId: actor.id,
+            x: container.x,
+            y: container.y,
+            itemCount: container.items.length,
+            gold: container.gold ?? 0,
+          },
+        });
+      }
+    } else if (!pve) {
+      const candidates = await this.collectPvpLootCandidates(actor.id);
+      const dropped = this.rollPvpLoot(candidates);
+      if (dropped.length > 0) {
+        const container: CombatLootContainer = {
+          id: `loot_${randomUUID()}`,
+          battleId: state.combatId,
+          x: actor.battlefieldX ?? 0,
+          y: actor.battlefieldY ?? 0,
+          sourceEntityId: actor.id,
+          sourceName: actor.name,
+          items: dropped,
+          gold: PVP_LOOT_CONFIG.pvpGoldDropEnabled ? 0 : 0,
+          createdRound: roundNumber,
+          claimed: false,
+        };
+        state.lootContainers = [...(state.lootContainers ?? []), container];
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber,
+          stepIndex,
+          orderIndex,
+          type: 'loot_created',
+          actorId: actor.id,
+          targetId: actor.id,
+          message: `После падения ${actor.name} на земле остаётся мешочек с вещами.`,
+          data: {
+            sourceEntityId: actor.id,
+            mode: 'pvp',
+            itemCount: dropped.length,
+            lootContainerId: container.id,
+          },
+        });
+      }
+    }
+
+    this.refreshBattleResult(state);
+  }
+
+  private async applyCellAreaDamage(params: {
+    session: CombatSession;
     state: ArenaBattleState;
     actor: ArenaBattleState['entities'][number];
     command: CombatCommand;
+    guardStates: Map<string, CombatGuardState>;
     center: { x: number; y: number };
     radius: number;
     minDamage: number;
     maxDamage: number;
+    damageKind: 'physical' | 'magical';
     stepIndex: number;
     orderIndex: number;
     sourceText: string;
-  }): void {
+  }): Promise<void> {
     const radius = Math.max(0, Math.floor(params.radius));
     const minDamage = Math.max(1, Math.floor(params.minDamage));
     const maxDamage = Math.max(minDamage, Math.floor(params.maxDamage));
@@ -886,7 +1412,31 @@ export class CombatService {
       const isFriendlyFire = relationToCaster === 'self' || relationToCaster === 'ally' || relationToCaster === 'neutral';
 
       const damage = minDamage + Math.floor(Math.random() * (maxDamage - minDamage + 1));
-      target.currentHp = Math.max(0, target.currentHp - damage);
+      const guardState = params.guardStates.get(target.id);
+      const mitigation = applyGuardMitigation({
+        guardState,
+        defender: target,
+        incomingDamage: damage,
+        damageKind: params.damageKind,
+        attackCommandType: params.command.type,
+        isProjectile: false,
+      });
+
+      if (mitigation.guardBroken) {
+        this.breakGuardForActor({
+          state: params.state,
+          guardStates: params.guardStates,
+          defender: target,
+          stepIndex: params.stepIndex,
+          orderIndex: params.orderIndex,
+          commandId: params.command.id,
+          brokenBy: 'heavy_attack',
+          attackerId: params.actor.id,
+        });
+      }
+
+      const finalDamage = mitigation.finalDamage;
+      target.currentHp = Math.max(0, target.currentHp - finalDamage);
       target.isAlive = target.currentHp > 0;
 
       this.addCombatEvent(
@@ -900,13 +1450,17 @@ export class CombatService {
           actorId: params.actor.id,
           targetId: target.id,
           commandId: params.command.id,
-          message: `${target.name} получает ${damage} урона от эффекта ${params.sourceText}.${isFriendlyFire ? ' Friendly fire!' : ''}`,
+          message: `${target.name} получает ${finalDamage} урона от эффекта ${params.sourceText}.${isFriendlyFire ? ' Friendly fire!' : ''}`,
           data: {
-            amount: damage,
+            amount: finalDamage,
             friendlyFire: isFriendlyFire,
             relationToCaster,
             radius,
             center: params.center,
+            guardMitigation: {
+              blocked: mitigation.blocked,
+              partiallyBlocked: mitigation.partiallyBlocked,
+            },
           },
         },
         {
@@ -916,21 +1470,19 @@ export class CombatService {
           type: 'damage_number',
           actorId: params.actor.id,
           targetId: target.id,
-          value: damage,
+          value: finalDamage,
         },
       );
 
       if (!target.isAlive) {
-        this.addCombatEvent(params.state, {
-          id: randomUUID(),
+        await this.processActorDeath({
+          session: params.session,
+          actor: target,
+          sourceActorId: params.actor.id,
           roundNumber: params.state.roundNumber,
           stepIndex: params.stepIndex,
           orderIndex: params.orderIndex,
-          type: 'death',
-          actorId: params.actor.id,
-          targetId: target.id,
           commandId: params.command.id,
-          message: `${target.name} погибает от эффекта ${params.sourceText}.`,
         });
       }
     }
@@ -943,27 +1495,14 @@ export class CombatService {
     }
 
     if (actor.team === TeamSide.Right) {
-      const npcTargetId = session.playerId;
-      const npcPlan: CombatTurnPlan = {
-        battleId: session.state.combatId,
-        roundNumber: session.state.roundNumber,
-        actorId: actor.id,
-        commands: [
-          createCombatCommandFromType({
-            type: 'basic_attack',
-            target: { kind: 'entity', entityId: npcTargetId },
-            payload: { targetZone: TargetZone.Chest },
-          }),
-        ],
-        ready: true,
-        submittedAt: new Date().toISOString(),
-      };
+      const npcPlan = this.buildNpcAiPlan(session, actor);
       session.turnPlans.set(actor.id, npcPlan);
       return npcPlan;
     }
 
+    const guardStaminaCost = COMBAT_ACTION_COSTS.guard.stamina ?? 0;
     const fallback = createCombatCommandFromType({
-      type: actor.currentStamina >= (COMBAT_COMMAND_PRIORITY.guard > 0 ? 1 : 1) ? 'guard' : 'wait',
+      type: actor.currentStamina >= guardStaminaCost ? 'guard' : 'wait',
       target: { kind: 'self' },
     });
     const trusted = normalizeCombatCommand({ rawCommand: fallback, actor, battleState: session.state });
@@ -980,7 +1519,7 @@ export class CombatService {
   }
 
   private createResolveSnapshot(session: CombatSession): CombatRoundResolveSnapshot {
-    const aliveEntities = session.state.entities.filter((entity) => entity.isAlive);
+    const aliveEntities = session.state.entities.filter((entity) => this.canActorPlan(session.state, entity));
     const actorPlans: Record<string, CombatTurnPlan> = {};
 
     for (const actor of aliveEntities) {
@@ -1009,7 +1548,7 @@ export class CombatService {
 
     for (const [actorId, plan] of Object.entries(params.plans)) {
       const actor = params.battleState.entities.find((entity) => entity.id === actorId);
-      if (!actor || !actor.isAlive) {
+      if (!actor || !this.canActorPlan(params.battleState, actor)) {
         continue;
       }
       const command = plan.commands[params.stepIndex];
@@ -1046,7 +1585,8 @@ export class CombatService {
     };
 
     if ((params.reason === 'target_out_of_range' || params.reason === 'target_too_close') && params.command.target.kind === 'entity') {
-      const target = params.state.entities.find((entity) => entity.id === params.command.target.entityId);
+      const entityTarget = params.command.target;
+      const target = params.state.entities.find((entity) => entity.id === entityTarget.entityId);
       if (target) {
         const currentDistance = getBattlefieldDistance(params.actor, target);
         const dynamicActor = params.actor as { minAttackRange?: number; minimumAttackRange?: number };
@@ -1060,20 +1600,118 @@ export class CombatService {
     return data;
   }
 
-  private executeResolveCommand(params: {
+  private hasGuardBreakingControlFlag(entity: ArenaBattleState['entities'][number]): boolean {
+    const flags = entity as {
+      isStunned?: boolean;
+      isKnockedDown?: boolean;
+      isIncapacitated?: boolean;
+      isFeared?: boolean;
+      isSleeping?: boolean;
+      hasEscaped?: boolean;
+      isEscaped?: boolean;
+      hasFled?: boolean;
+    };
+
+    return Boolean(
+      flags.isStunned
+      || flags.isKnockedDown
+      || flags.isIncapacitated
+      || flags.isFeared
+      || flags.isSleeping
+      || flags.hasEscaped
+      || flags.isEscaped
+      || flags.hasFled,
+    );
+  }
+
+  private applyGuardStateForActor(params: {
+    guardStates: Map<string, CombatGuardState>;
+    actor: ArenaBattleState['entities'][number];
+    guardType: 'guard' | 'strong_guard';
+    roundNumber: number;
+    stepIndex: number;
+  }): CombatGuardState {
+    const current = params.guardStates.get(params.actor.id);
+    const next = createGuardState({
+      type: params.guardType,
+      roundNumber: params.roundNumber,
+      stepIndex: params.stepIndex,
+      actor: params.actor,
+      previous: current,
+    });
+    params.guardStates.set(params.actor.id, next);
+    return next;
+  }
+
+  private breakGuardForActor(params: {
+    state: ArenaBattleState;
+    guardStates: Map<string, CombatGuardState>;
+    defender: ArenaBattleState['entities'][number];
+    stepIndex: number;
+    orderIndex: number;
+    commandId?: string;
+    brokenBy: 'heavy_attack' | 'control';
+    attackerId?: string;
+  }): void {
+    const current = params.guardStates.get(params.defender.id);
+    if (!current || current.broken) {
+      return;
+    }
+
+    const broken = markGuardBroken(current);
+    if (!broken) {
+      return;
+    }
+
+    params.guardStates.set(params.defender.id, broken);
+    this.addCombatEvent(params.state, {
+      id: randomUUID(),
+      roundNumber: params.state.roundNumber,
+      stepIndex: params.stepIndex,
+      orderIndex: params.orderIndex,
+      type: 'guard_broken',
+      actorId: params.defender.id,
+      targetId: params.defender.id,
+      commandId: params.commandId,
+      message: params.brokenBy === 'heavy_attack'
+        ? (current.type === 'guard'
+            ? `Удар пробивает защитную стойку ${params.defender.name}.`
+            : `Тяжёлый удар пробивает защитную стойку ${params.defender.name}.`)
+        : `Защитная стойка ${params.defender.name} ломается под давлением контроля.`,
+      data: {
+        guardType: current.type,
+        brokenBy: params.brokenBy,
+        ...(params.attackerId ? { attackerId: params.attackerId } : {}),
+      },
+    });
+  }
+
+  private async executeResolveCommand(params: {
     session: CombatSession;
     actor: ArenaBattleState['entities'][number];
     command: CombatCommand;
     stepIndex: number;
     orderIndex: number;
-    guardStates: Map<string, 'guard' | 'strong_guard'>;
-  }): void {
+    guardStates: Map<string, CombatGuardState>;
+  }): Promise<void> {
     const { session, actor, command, stepIndex, orderIndex, guardStates } = params;
     const state = session.state;
 
     actor.currentStamina = Math.max(0, actor.currentStamina - (command.costs.stamina ?? 0));
     actor.currentMp = Math.max(0, actor.currentMp - (command.costs.mp ?? 0));
     actor.currentHp = Math.max(0, actor.currentHp - (command.costs.hp ?? 0));
+
+    if (actor.currentHp <= 0) {
+      await this.processActorDeath({
+        session,
+        actor,
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        commandId: command.id,
+      });
+      return;
+    }
 
     this.addCombatEvent(state, {
       id: randomUUID(),
@@ -1120,7 +1758,16 @@ export class CombatService {
         break;
       }
       case 'guard': {
-        guardStates.set(actor.id, 'guard');
+        const guardState = this.applyGuardStateForActor({
+          guardStates,
+          actor,
+          guardType: 'guard',
+          roundNumber: state.roundNumber,
+          stepIndex,
+        });
+        const guardAppliedMessage = actor.hasShield
+          ? `${actor.name} поднимает щит и занимает защитную стойку.`
+          : `${actor.name} сжимает оружие крепче и готовится принять удар.`;
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -1129,12 +1776,24 @@ export class CombatService {
           type: 'guard_applied',
           actorId: actor.id,
           commandId: command.id,
-          message: `${actor.name} поднимает щит и уходит в защитную стойку.`,
+          message: guardAppliedMessage,
+          data: {
+            guardType: 'guard',
+            blockChanceBonus: guardState.blockChanceBonus,
+            physicalResistanceBonus: guardState.physicalResistanceBonus,
+            magicResistanceBonus: guardState.magicResistanceBonus,
+          },
         });
         break;
       }
       case 'strong_guard': {
-        guardStates.set(actor.id, 'strong_guard');
+        const guardState = this.applyGuardStateForActor({
+          guardStates,
+          actor,
+          guardType: 'strong_guard',
+          roundNumber: state.roundNumber,
+          stepIndex,
+        });
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -1143,17 +1802,91 @@ export class CombatService {
           type: 'guard_applied',
           actorId: actor.id,
           commandId: command.id,
-          message: `${actor.name} ставит ноги шире и встаёт в усиленную защиту.`,
+          message: `${actor.name} ставит ноги шире, поднимает щит и уходит в усиленную защитную стойку.`,
+          data: {
+            guardType: 'strong_guard',
+            blockChanceBonus: guardState.blockChanceBonus,
+            physicalResistanceBonus: guardState.physicalResistanceBonus,
+            magicResistanceBonus: guardState.magicResistanceBonus,
+          },
         });
         break;
       }
       case 'weapon_swap': {
-        const nextWeaponId = command.payload?.weaponItemId;
-        const adminItem = nextWeaponId ? this.contentService.listCollection('items').find((item) => item.id === nextWeaponId) : null;
-        if (adminItem) {
-          actor.attackRange = adminItem.attackRange;
-          actor.combatStyleHint = adminItem.damageCategory === 'magic' ? 'MAGIC' : (adminItem.attackRange && adminItem.attackRange > 1 ? 'RANGED' : 'MELEE');
+        const nextWeaponId = command.payload?.weaponItemId ?? command.payload?.weaponInstanceId;
+        if (!nextWeaponId) {
+          // No weapon id — skip silently, cost already deducted by cost-deduction phase
+          break;
         }
+
+        const adminItem = this.contentService.listCollection('items').find((item) => item.id === nextWeaponId) ?? null;
+
+        // Validate: item must be a weapon
+        if (!adminItem || adminItem.type !== 'weapon') {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'weapon_swap',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} потянулся за оружием, но в суматохе боя не сумел достать его вовремя.`,
+          });
+          break;
+        }
+
+        // Validate: not already equipped
+        if (actor.activeWeaponItemId === nextWeaponId) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'weapon_swap',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} тянется за оружием — но оно уже в руке.`,
+          });
+          break;
+        }
+
+        const prevWeaponId = actor.activeWeaponItemId;
+        const prevAdminWeapon = prevWeaponId ? (this.contentService.listCollection('items').find((item) => item.id === prevWeaponId) ?? null) : null;
+        const isTwoHanded = adminItem.handsRequired === 2;
+        const hadOffHand = Boolean(actor.offHandItemId);
+
+        // Update entity weapon state
+        actor.activeWeaponItemId = nextWeaponId;
+        actor.attackRange = adminItem.attackRange;
+        actor.combatStyleHint = adminItem.damageCategory === 'magic'
+          ? 'MAGIC'
+          : (typeof adminItem.attackRange === 'number' && adminItem.attackRange > 1 ? 'RANGED' : 'MELEE');
+        actor.pierceTargets = adminItem.pierceTargets;
+        actor.splashRadius = adminItem.splashRadius;
+        actor.splashCenterMultiplier = adminItem.splashCenterMultiplier;
+        actor.splashOuterMultiplier = adminItem.splashOuterMultiplier;
+
+        // Two-handed weapon removes off-hand (shield)
+        if (isTwoHanded) {
+          actor.offHandItemId = null;
+          actor.hasShield = false;
+        }
+
+        // Build contextual event message
+        const prevIsRanged = prevAdminWeapon ? (typeof prevAdminWeapon.attackRange === 'number' && prevAdminWeapon.attackRange > 1) : false;
+        const nextIsRanged = typeof adminItem.attackRange === 'number' && adminItem.attackRange > 1;
+        let swapMessage: string;
+        if (isTwoHanded && hadOffHand) {
+          swapMessage = `${actor.name} убирает щит за спину и берёт ${adminItem.name} обеими руками.`;
+        } else if (!prevIsRanged && nextIsRanged) {
+          swapMessage = `${actor.name} убирает ${prevAdminWeapon?.name ?? 'оружие'} и достаёт ${adminItem.name}.`;
+        } else if (prevIsRanged && !nextIsRanged) {
+          swapMessage = `${actor.name} опускает ${prevAdminWeapon?.name ?? 'оружие'} и выхватывает ${adminItem.name}.`;
+        } else {
+          swapMessage = `${actor.name} убирает ${prevAdminWeapon?.name ?? 'оружие'} и берёт ${adminItem.name}.`;
+        }
+
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -1162,7 +1895,13 @@ export class CombatService {
           type: 'weapon_swap',
           actorId: actor.id,
           commandId: command.id,
-          message: `${actor.name} меняет оружие.`,
+          message: swapMessage,
+          data: {
+            previousWeaponId: prevWeaponId ?? null,
+            newWeaponId: nextWeaponId,
+            twoHandedEquipped: isTwoHanded,
+            shieldCleared: isTwoHanded && hadOffHand,
+          },
         });
         break;
       }
@@ -1175,9 +1914,30 @@ export class CombatService {
             break;
           }
           const base = Math.max(1, Math.round(actor.strength * (command.type === 'heavy_attack' ? 1.25 : 0.9)));
-          const guardMode = guardStates.get(target.id);
-          const reduced = guardMode === 'strong_guard' ? Math.floor(base * 0.55) : guardMode === 'guard' ? Math.floor(base * 0.75) : base;
-          const damage = Math.max(1, reduced);
+          const guardState = guardStates.get(target.id);
+          const mitigation = applyGuardMitigation({
+            guardState,
+            defender: target,
+            incomingDamage: base,
+            damageKind: 'physical',
+            attackCommandType: command.type,
+            isProjectile: (actor.attackRange ?? 1) > 1,
+          });
+
+          if (mitigation.guardBroken) {
+            this.breakGuardForActor({
+              state,
+              guardStates,
+              defender: target,
+              stepIndex,
+              orderIndex,
+              commandId: command.id,
+              brokenBy: 'heavy_attack',
+              attackerId: actor.id,
+            });
+          }
+
+          const damage = Math.max(1, mitigation.finalDamage);
           target.currentHp = Math.max(0, target.currentHp - damage);
           target.isAlive = target.currentHp > 0;
 
@@ -1193,7 +1953,12 @@ export class CombatService {
               targetId: target.id,
               commandId: command.id,
               message: `${actor.name} наносит ${damage} урона цели ${target.name}.`,
-              data: { amount: damage },
+              data: {
+                amount: damage,
+                blocked: mitigation.blocked,
+                partiallyBlocked: mitigation.partiallyBlocked,
+                guardBroken: mitigation.guardBroken,
+              },
             },
             {
               id: randomUUID(),
@@ -1207,16 +1972,34 @@ export class CombatService {
           );
 
           if (!target.isAlive) {
+            await this.processActorDeath({
+              session,
+              actor: target,
+              sourceActorId: actor.id,
+              roundNumber: state.roundNumber,
+              stepIndex,
+              orderIndex,
+              commandId: command.id,
+            });
+          }
+
+          if (mitigation.blocked || mitigation.partiallyBlocked) {
             this.addCombatEvent(state, {
               id: randomUUID(),
               roundNumber: state.roundNumber,
               stepIndex,
               orderIndex,
-              type: 'death',
-              actorId: actor.id,
+              type: 'status_applied',
+              actorId: target.id,
               targetId: target.id,
               commandId: command.id,
-              message: `${target.name} падает без сил.`,
+              message: mitigation.blocked
+                ? `Удар глухо ложится в защиту ${target.name}, теряя большую часть силы.`
+                : `${target.name} частично принимает удар на защиту.`,
+              data: {
+                kind: mitigation.blocked ? 'block' : 'partial_block',
+                guardType: guardState?.type,
+              },
             });
           }
         }
@@ -1242,14 +2025,17 @@ export class CombatService {
           });
 
           // Friendly fire is always enabled for area/cell effects.
-          this.applyCellAreaDamage({
+          await this.applyCellAreaDamage({
+            session,
             state,
             actor,
             command,
+            guardStates,
             center,
             radius,
             minDamage,
             maxDamage,
+            damageKind: 'magical',
             stepIndex,
             orderIndex,
             sourceText: command.payload?.skillId ?? 'skill',
@@ -1303,14 +2089,17 @@ export class CombatService {
             data: { radius },
           });
 
-          this.applyCellAreaDamage({
+          await this.applyCellAreaDamage({
+            session,
             state,
             actor,
             command,
+            guardStates,
             center,
             radius,
             minDamage,
             maxDamage,
+            damageKind: 'physical',
             stepIndex,
             orderIndex,
             sourceText: 'bomb',
@@ -1330,6 +2119,16 @@ export class CombatService {
           actorId: actor.id,
           commandId: command.id,
           message: `${actor.name} использует предмет.`,
+        });
+        break;
+      }
+      case 'loot': {
+        await this.claimLootContainerForActor({
+          state,
+          actor,
+          command,
+          stepIndex,
+          orderIndex,
         });
         break;
       }
@@ -1361,7 +2160,7 @@ export class CombatService {
     state.recentCombatEvents = [];
     state.recentAnimationEvents = [];
 
-    const guardStates = new Map<string, 'guard' | 'strong_guard'>();
+    const guardStates = new Map<string, CombatGuardState>();
     const interruptedActorIds = new Set<string>();
 
     for (let stepIndex = 0; stepIndex < HARD_MAX_COMMANDS_PER_ROUND; stepIndex += 1) {
@@ -1375,7 +2174,7 @@ export class CombatService {
         }
         const actor = state.entities.find((entity) => entity.id === actorId);
         const hasRemainingCommands = plan.commands.slice(stepIndex).length > 0;
-        if (!actor || !actor.isAlive) {
+        if (!actor || !this.canActorPlan(state, actor)) {
           if (hasRemainingCommands) {
             const firstRemaining = plan.commands[stepIndex] ?? plan.commands.find((command) => Boolean(command));
             this.addCombatEvent(state, {
@@ -1437,13 +2236,26 @@ export class CombatService {
 
       for (let orderIndex = 0; orderIndex < commands.length; orderIndex += 1) {
         const item = commands[orderIndex]!;
-        if (!item.actor.isAlive || state.isFinished) {
+        if (!this.canActorPlan(state, item.actor) || state.isFinished) {
           continue;
+        }
+
+        if (this.hasGuardBreakingControlFlag(item.actor)) {
+          this.breakGuardForActor({
+            state,
+            guardStates,
+            defender: item.actor,
+            stepIndex,
+            orderIndex,
+            brokenBy: 'control',
+          });
         }
 
         const validation = this.revalidateCommandForResolve({ state, actor: item.actor, command: item.command });
         if (!validation.ok) {
           const reason = validation.reason ?? 'unknown';
+          const strongGuardStaminaFail = item.command.type === 'strong_guard' && reason === 'not_enough_stamina';
+          const guardStaminaFail = item.command.type === 'guard' && reason === 'not_enough_stamina';
           this.addCombatEvent(state, {
             id: randomUUID(),
             roundNumber: state.roundNumber,
@@ -1453,7 +2265,11 @@ export class CombatService {
             actorId: item.actor.id,
             targetId: item.command.target.kind === 'entity' ? item.command.target.entityId : undefined,
             commandId: item.command.id,
-            message: validation.message ?? `${item.actor.name} не смог выполнить ${item.command.type}.`,
+            message: strongGuardStaminaFail
+              ? `${item.actor.name} хотел поднять щит выше, но руки уже дрожали от усталости.`
+              : (guardStaminaFail
+                ? `${item.actor.name} хотел поднять щит, но сил уже не хватило.`
+                : (validation.message ?? `${item.actor.name} не смог выполнить ${item.command.type}.`)),
             data: this.buildRevalidationFailureData({
               state,
               actor: item.actor,
@@ -1464,7 +2280,7 @@ export class CombatService {
           continue;
         }
 
-        this.executeResolveCommand({
+        await this.executeResolveCommand({
           session,
           actor: item.actor,
           command: item.command,
@@ -1477,14 +2293,43 @@ export class CombatService {
       }
     }
 
-    // Strong guard grants a small recovery at end of round if actor stayed stable.
+    // Strong guard grants end-round recovery only if stance survived and actor is able to recover.
     for (const entity of state.entities) {
-      if (!entity.isAlive || guardStates.get(entity.id) !== 'strong_guard') {
+      const guardState = guardStates.get(entity.id);
+      if (!entity.isAlive || !guardState || guardState.type !== 'strong_guard') {
         continue;
       }
-      const hp = Math.max(0, Math.floor(entity.maxHp * 0.02));
-      const mp = Math.max(0, Math.floor(entity.maxMp * 0.03));
-      const stamina = Math.max(0, Math.floor(entity.maxStamina * 0.05));
+
+      if (this.hasGuardBreakingControlFlag(entity)) {
+        this.breakGuardForActor({
+          state,
+          guardStates,
+          defender: entity,
+          stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+          orderIndex: 0,
+          brokenBy: 'control',
+        });
+        continue;
+      }
+
+      if (guardState.broken) {
+        continue;
+      }
+
+      const regen = calculateGuardEndRoundRegen({
+        guardState,
+        maxHp: entity.maxHp,
+        maxMp: entity.maxMp,
+        maxStamina: entity.maxStamina,
+      });
+
+      const hp = Math.max(0, Math.min(entity.maxHp - entity.currentHp, regen.hp));
+      const mp = Math.max(0, Math.min(entity.maxMp - entity.currentMp, regen.mp));
+      const stamina = Math.max(0, Math.min(entity.maxStamina - entity.currentStamina, regen.stamina));
+
+      if (hp <= 0 && mp <= 0 && stamina <= 0) {
+        continue;
+      }
 
       entity.currentHp = Math.min(entity.maxHp, entity.currentHp + hp);
       entity.currentMp = Math.min(entity.maxMp, entity.currentMp + mp);
@@ -1495,9 +2340,14 @@ export class CombatService {
         roundNumber: state.roundNumber,
         stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
         orderIndex: 0,
-        type: 'round_end',
+        type: 'guard_regen',
         actorId: entity.id,
-        message: `${entity.name} восстанавливает силы за счет усиленной защиты.`,
+        message: `${entity.name} удерживает стойку и восстанавливает дыхание.`,
+        data: {
+          hpRestored: hp,
+          mpRestored: mp,
+          staminaRestored: stamina,
+        },
       });
     }
 
@@ -1509,6 +2359,9 @@ export class CombatService {
       this.primeRoundPlanning(session);
       this.syncTurnPlanState(session);
     } else {
+      if (state.winner === TeamSide.Left) {
+        await this.claimAllAvailableLootForActor(state, session.playerId);
+      }
       state.roundPhase = undefined;
       state.phase = 'finished';
       state.readyActorIds = [];
@@ -1544,25 +2397,12 @@ export class CombatService {
       return;
     }
 
-    const aliveEntities = state.entities.filter((entity) => entity.isAlive);
+    const aliveEntities = state.entities.filter((entity) => this.canActorPlan(state, entity));
     for (const entity of aliveEntities) {
       if (entity.team === TeamSide.Right) {
         session.plannedActions.set(entity.id, createNpcAction(state, entity.id));
 
-        const npcPlan: CombatTurnPlan = {
-          battleId: state.combatId,
-          roundNumber: state.roundNumber,
-          actorId: entity.id,
-          commands: [
-            createCombatCommandFromType({
-              type: 'basic_attack',
-              target: { kind: 'entity', entityId: session.playerId },
-              payload: { targetZone: TargetZone.Chest },
-            }),
-          ],
-          ready: true,
-          submittedAt: new Date().toISOString(),
-        };
+        const npcPlan = this.buildNpcAiPlan(session, entity);
         session.turnPlans.set(entity.id, npcPlan);
       } else {
         session.turnPlans.set(entity.id, {
@@ -1582,7 +2422,58 @@ export class CombatService {
       .map((entity) => entity.id)
       .filter((entityId) => !session.plannedActions.has(entityId));
     this.syncSubmittedPlansState(session);
-    state.turnDeadlineAt = Date.now() + DEFAULT_TURN_SECONDS * 1000;
+    state.turnStartedAt = new Date().toISOString();
+    state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
+    state.turnDeadlineAt = new Date(Date.now() + state.roundDurationSeconds * 1000).toISOString();
+  }
+
+  private buildNpcAiPlan(session: CombatSession, actor: ArenaBattleState['entities'][number]): CombatTurnPlan {
+    const personality = this.resolveAiPersonality(actor);
+    const aiLimits = getAiRoundLimits({ actor, personality });
+    const result = buildAiCombatTurnPlan({
+      battleState: session.state,
+      actorId: actor.id,
+      personality,
+      preferredTargetId: session.playerId,
+      roundLimits: aiLimits,
+      skillCooldowns: session.skillCooldowns,
+    });
+
+    return {
+      ...result.plan,
+      ready: true,
+      submittedAt: result.plan.submittedAt ?? new Date().toISOString(),
+    };
+  }
+
+  private resolveAiPersonality(actor: ArenaBattleState['entities'][number]): AiCombatPersonality {
+    const dynamic = actor as { aiPersonality?: unknown; isBoss?: unknown; powerTier?: unknown; combatStyleHint?: unknown };
+    if (dynamic.isBoss === true || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'boss') {
+      return 'boss';
+    }
+
+    const explicit = String(dynamic.aiPersonality ?? '').trim().toLowerCase();
+    if (
+      explicit === 'normal'
+      || explicit === 'cautious'
+      || explicit === 'aggressive'
+      || explicit === 'reckless'
+      || explicit === 'stupid'
+      || explicit === 'traitor'
+      || explicit === 'boss'
+    ) {
+      return explicit;
+    }
+
+    const style = String(dynamic.combatStyleHint ?? '').toUpperCase();
+    if (style === 'RANGED') {
+      return 'aggressive';
+    }
+    if (style === 'MAGIC') {
+      return 'cautious';
+    }
+
+    return 'normal';
   }
 
   private calculateCombatGoldReward(state: ArenaBattleState, damageContribution: number): number {
@@ -1788,7 +2679,7 @@ export class CombatService {
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const weaponProfile = this.resolveWeaponCombatProfile(equipment);
 
-    return this.toCombatEntityFromStats({
+    const entity = this.toCombatEntityFromStats({
       id: character.id,
       name: character.name,
       race: character.race as Race,
@@ -1802,6 +2693,12 @@ export class CombatService {
       splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
       splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
     });
+
+    entity.activeWeaponItemId = equipment.weapon ?? null;
+    entity.offHandItemId = equipment.shield ?? null;
+    entity.hasShield = Boolean(equipment.shield);
+
+    return entity;
   }
 
   private resolveWeaponCombatProfile(equipment: Equipment): WeaponCombatProfile {
@@ -2259,7 +3156,10 @@ export class CombatService {
       battlefieldTiles,
       battlefieldTraps: this.buildBattlefieldTraps(battleMap),
     });
-    state.turnDeadlineAt = Date.now() + DEFAULT_TURN_SECONDS * 1000;
+    state.turnStartedAt = new Date().toISOString();
+    state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
+    state.turnDeadlineAt = new Date(Date.now() + state.roundDurationSeconds * 1000).toISOString();
+    state.lootContainers = [];
 
     const session: CombatSession = {
       state,
@@ -2283,12 +3183,82 @@ export class CombatService {
     };
   }
 
-  getCombatState(combatId: string): ArenaBattleState {
+  async getCombatState(combatId: string): Promise<ArenaBattleState> {
     const session = this.sessions.get(combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
     }
-    return session.state;
+    await this.resolveRoundByTimeoutIfNeeded(session);
+    return normalizeArenaBattleState(session.state);
+  }
+
+  async submitCombatPlanV2(
+    combatId: string,
+    payload: { actorId: string; roundNumber: number; commands: CombatCommand[]; ready?: boolean },
+  ): Promise<
+    | { ok: true; acceptedPlan: CombatTurnPlan; battleState: ArenaBattleState; warnings?: CombatPlanWarning[] }
+    | { ok: false; errorCode: string; message: string; details?: unknown }
+  > {
+    const session = this.sessions.get(combatId);
+    if (!session) {
+      return { ok: false, errorCode: 'BATTLE_NOT_FOUND', message: 'Battle not found.' };
+    }
+
+    await this.resolveRoundByTimeoutIfNeeded(session);
+    if (session.state.roundPhase === 'RESOLVING' || session.state.phase === 'resolving') {
+      return { ok: false, errorCode: 'ROUND_ALREADY_RESOLVING', message: 'Round is already resolving.' };
+    }
+    if (session.state.phase === 'finished' || session.state.isFinished) {
+      return { ok: false, errorCode: 'BATTLE_NOT_PLANNING', message: 'Battle is not in planning phase.' };
+    }
+    if (payload.roundNumber !== session.state.roundNumber) {
+      return { ok: false, errorCode: 'ROUND_MISMATCH', message: 'Round number mismatch.' };
+    }
+    if (payload.actorId !== session.playerId) {
+      return { ok: false, errorCode: 'ACTOR_NOT_CONTROLLED_BY_USER', message: 'Actor is not controlled by this user.' };
+    }
+
+    const result = this.validateCombatPlan(combatId, {
+      actorId: payload.actorId,
+      roundNumber: payload.roundNumber,
+      commands: payload.commands,
+    });
+    if (!result.ok || !result.normalizedCommands) {
+      const firstError = result.errors?.[0] ?? 'UNKNOWN';
+      return {
+        ok: false,
+        errorCode: firstError,
+        message: String(firstError),
+        details: { errors: result.errors, warnings: result.warnings, warningDetails: result.warningDetails },
+      };
+    }
+
+    const plan = this.getOrCreateTurnPlan(session, payload.actorId);
+    plan.battleId = combatId;
+    plan.roundNumber = payload.roundNumber;
+    plan.actorId = payload.actorId;
+    plan.commands = result.normalizedCommands;
+    plan.submittedAt = new Date().toISOString();
+    plan.ready = Boolean(payload.ready);
+
+    if (plan.ready) {
+      this.setTurnPlanReady(session, payload.actorId, true);
+    } else {
+      this.setTurnPlanReady(session, payload.actorId, false);
+    }
+
+    this.syncTurnPlanState(session);
+
+    if (plan.ready) {
+      await this.tryResolveWhenAllReady(session);
+    }
+
+    return {
+      ok: true,
+      acceptedPlan: plan,
+      battleState: normalizeArenaBattleState(session.state),
+      ...(result.warningDetails ? { warnings: result.warningDetails } : {}),
+    };
   }
 
   async useCombatItem(payload: { combatId: string; actorId: string; itemId: string; targetId?: string }) {
@@ -2442,6 +3412,9 @@ export class CombatService {
     if (!actor) {
       return { ok: false, errors: ['ACTOR_NOT_FOUND'] };
     }
+    if (!this.canActorPlan(session.state, actor)) {
+      return { ok: false, errors: ['ACTOR_DEFEATED'] };
+    }
 
     const normalizedCommands: CombatCommand[] = [];
     for (const rawCommand of payload.commands ?? []) {
@@ -2476,21 +3449,22 @@ export class CombatService {
     };
   }
 
-  submitCombatPlan(
+  async submitCombatPlan(
     combatId: string,
     payload: { actorId: string; roundNumber: number; commands: CombatCommand[] },
-  ): {
+  ): Promise<{
     ok: boolean;
     plan?: CombatTurnPlan;
     battleState?: ArenaBattleState;
     errors?: CombatPlanErrorCode[];
     warnings?: CombatPlanWarningCode[];
     warningDetails?: CombatPlanWarning[];
-  } {
+  }> {
     const session = this.sessions.get(combatId);
     if (!session) {
       return { ok: false, errors: ['BATTLE_NOT_FOUND'] };
     }
+    await this.resolveRoundByTimeoutIfNeeded(session);
     this.ensurePlanningState(session);
 
     const result = this.validateCombatPlan(combatId, payload);
@@ -2521,11 +3495,12 @@ export class CombatService {
     };
   }
 
-  clearCombatCommands(combatId: string, actorId: string, roundNumber?: number): CombatTurnPlan {
+  async clearCombatCommands(combatId: string, actorId: string, roundNumber?: number): Promise<CombatTurnPlan> {
     const session = this.sessions.get(combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
     }
+    await this.resolveRoundByTimeoutIfNeeded(session);
     this.ensurePlanningState(session);
     if (typeof roundNumber === 'number' && roundNumber !== session.state.roundNumber) {
       throw new BadRequestException('ROUND_MISMATCH');
@@ -2533,11 +3508,12 @@ export class CombatService {
     return this.clearTurnPlan(session, actorId);
   }
 
-  undoCombatCommand(combatId: string, actorId: string, roundNumber?: number): CombatTurnPlan {
+  async undoCombatCommand(combatId: string, actorId: string, roundNumber?: number): Promise<CombatTurnPlan> {
     const session = this.sessions.get(combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
     }
+    await this.resolveRoundByTimeoutIfNeeded(session);
     this.ensurePlanningState(session);
     if (typeof roundNumber === 'number' && roundNumber !== session.state.roundNumber) {
       throw new BadRequestException('ROUND_MISMATCH');
@@ -2550,6 +3526,8 @@ export class CombatService {
     if (!session) {
       throw new NotFoundException('Combat not found.');
     }
+    await this.resolveRoundByTimeoutIfNeeded(session);
+    this.ensurePlanningState(session);
     if (typeof roundNumber === 'number' && roundNumber !== session.state.roundNumber) {
       throw new BadRequestException('ROUND_MISMATCH');
     }
@@ -2558,11 +3536,12 @@ export class CombatService {
     return plan;
   }
 
-  cancelCombatReady(combatId: string, actorId: string, roundNumber?: number): CombatTurnPlan {
+  async cancelCombatReady(combatId: string, actorId: string, roundNumber?: number): Promise<CombatTurnPlan> {
     const session = this.sessions.get(combatId);
     if (!session) {
       throw new NotFoundException('Combat not found.');
     }
+    await this.resolveRoundByTimeoutIfNeeded(session);
     this.ensurePlanningState(session);
     if (typeof roundNumber === 'number' && roundNumber !== session.state.roundNumber) {
       throw new BadRequestException('ROUND_MISMATCH');
@@ -2609,9 +3588,8 @@ export class CombatService {
     }
 
     const now = Date.now();
-    const isTimedOut = typeof state.turnDeadlineAt === 'number'
-      && Number.isFinite(state.turnDeadlineAt)
-      && now > state.turnDeadlineAt;
+    const deadlineMs = this.getTurnDeadlineMs(state);
+    const isTimedOut = deadlineMs != null && now > deadlineMs;
     const effectiveAction = isTimedOut
       ? (() => {
         const fallbackTarget = state.entities.find((item) => item.team !== TeamSide.Left && item.isAlive)?.id ?? playerAction.targetId;
@@ -2715,7 +3693,11 @@ export class CombatService {
 
     const crushingActiveNow = hasCrushing;
     const rageActiveNow = hasRage;
-    const normalizedPoints = this.normalizePlayerActionPoints(effectiveAction, playerEntity.currentStamina);
+    const normalizedPoints = this.normalizePlayerActionPoints({
+      actionType: effectiveAction.actionType,
+      attackPointsSpent: effectiveAction.attackPointsSpent ?? 0,
+      defensePointsSpent: effectiveAction.defensePointsSpent ?? 0,
+    }, playerEntity.currentStamina);
 
     const defenseZones = effectiveAction.actionType === ActionType.Defend
       ? (normalizedGuardMode === 'strong_guard' ? [TargetZone.Chest, TargetZone.Abdomen] : [TargetZone.Chest])

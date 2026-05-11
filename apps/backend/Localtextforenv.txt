@@ -1,0 +1,37 @@
+# =========================
+# TheEnd — LOCAL FILE MODE
+# Без Neon / без Prisma / без DATABASE_URL
+# =========================
+
+NODE_ENV=development
+APP_ENV=development
+
+# Главное: принудительно включаем локальный файловый режим
+CONTENT_STORAGE_MODE=file
+CONTENT_STORAGE=file
+
+# ВАЖНО:
+# DATABASE_URL не нужен.
+# Не добавляй DATABASE_URL вообще, иначе backend может снова попытаться идти в Postgres/Neon.
+
+# Backend
+PORT=3000
+
+# Frontend / Vite
+FRONTEND_URL=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173
+
+# Auth / JWT для локальной разработки
+JWT_SECRET=theend_local_dev_secret_change_later
+JWT_EXPIRES_IN=7d
+
+# Admin local
+ADMIN_EMAIL=admin@local.dev
+ADMIN_PASSWORD=admin123
+
+# Local content / uploads
+UPLOADS_DIR=uploads
+CONTENT_BACKUPS_DIR=content-backups
+
+# Debug
+LOG_LEVEL=debug

@@ -4,6 +4,7 @@ export * from './combat';
 export * from './combat-core';
 export * from './combat-plan';
 export * from './combat-costs';
+export * from './combat-guard';
 export * from './damage';
 export * from './skills';
 export * from './arena-battle';
@@ -17,6 +18,9 @@ export * from './shop';
 export * from './battle-map';
 export * from './progression';
 export { TargetZone } from './arena-battle';
+export * from './escape-helpers';
+export * from './escape-pipeline';
+export * from './combat-log';
 export {
 	AcquisitionType,
 	CastType,
@@ -67,6 +71,8 @@ export {
 	getSkillCostSummary,
 	getSkillLevelData,
 	getSkillPowerAtLevel,
+	normalizeBloodCostToHp,
+	normalizeSkillResourceCosts,
 	validateSkillDefinition,
 } from './skills/index';
 export type { DerivedStatLine, DerivedStatsResult } from './derived-stats';

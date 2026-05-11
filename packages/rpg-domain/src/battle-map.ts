@@ -41,6 +41,25 @@ export type BattleMapNpcRole =
   | 'questGiver'
   | 'civilian';
 
+export type BattleMapZoneType =
+  | 'blocked'
+  | 'walkable'
+  | 'spawn_player'
+  | 'spawn_enemy'
+  | 'spawn'
+  | 'cover'
+  | 'hazard'
+  | 'exit_zone';
+
+export interface ExitZone {
+  id: string;
+  cells: Array<{ x: number; y: number }>;
+  team?: 'player' | 'enemy' | 'any';
+  enabledForArena: false;
+  label?: string;
+  description?: string;
+}
+
 export interface BattleMapCell {
   x: number;
   y: number;
@@ -143,6 +162,7 @@ export interface BattleMapDefinition {
   traps: BattleMapTrap[];
   npcs: BattleMapPlacedNpc[];
   triggers: BattleMapTrigger[];
+  exitZones?: ExitZone[];
   tags?: string[];
   linkedLocationId?: string;
   linkedQuestId?: string;

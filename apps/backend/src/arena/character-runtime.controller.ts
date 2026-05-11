@@ -29,6 +29,7 @@ export class CharacterRuntimeController {
         kind: slot.kind ?? null,
         refId: slot.refId ?? null,
         itemInstanceId: slot.itemInstanceId ?? null,
+        weaponInstanceId: slot.weaponInstanceId ?? null,
       })),
     );
   }
@@ -44,6 +45,8 @@ export class CharacterRuntimeController {
         skillId: slot.skillId ?? null,
         itemId: slot.itemId ?? null,
         itemInstanceId: slot.itemInstanceId ?? null,
+        weaponItemId: slot.weaponItemId ?? null,
+        weaponInstanceId: slot.weaponInstanceId ?? null,
       })),
     );
   }

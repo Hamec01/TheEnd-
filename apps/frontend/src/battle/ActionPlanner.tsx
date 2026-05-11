@@ -68,15 +68,18 @@ const MOVEMENT_COSTS: Record<MovementType, number> = {
   [MovementType.Disengage]: COMBAT_ACTION_COSTS.disengage.stamina ?? 0,
 };
 
-const ACTION_COSTS: Record<ActionType, number> = {
+const ACTION_COSTS: Record<Exclude<ActionType, ActionType.Defend>, number> = {
   [ActionType.Attack]: COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0,
-  [ActionType.Defend]: COMBAT_ACTION_COSTS.guard.stamina ?? 0,
   [ActionType.Move]: 0,
   [ActionType.Wait]: COMBAT_ACTION_COSTS.wait.stamina ?? 0,
 };
 
-function getEstimatedTotalCost(actionType: ActionType, movementType: MovementType | null): number {
-  return ACTION_COSTS[actionType] + (movementType ? MOVEMENT_COSTS[movementType] : 0);
+function getEstimatedTotalCost(actionType: ActionType, movementType: MovementType | null, guardMode: GuardMode): number {
+  const defendCost = guardMode === 'strong_guard'
+    ? (COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0)
+    : (COMBAT_ACTION_COSTS.guard.stamina ?? 0);
+  const actionCost = actionType === ActionType.Defend ? defendCost : ACTION_COSTS[actionType as Exclude<ActionType, ActionType.Defend>];
+  return actionCost + (movementType ? MOVEMENT_COSTS[movementType] : 0);
 }
 
 export function ActionPlanner(props: ActionPlannerProps) {
@@ -88,7 +91,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
     [props.inventoryItems, selectedInventoryItem],
   );
 
-  const estimatedCost = getEstimatedTotalCost(props.actionType, props.movementType);
+  const estimatedCost = getEstimatedTotalCost(props.actionType, props.movementType, props.guardMode);
   const selectedSkill = useMemo(
     () => props.availableSkills.find((skill) => skill.skillId === props.selectedSkillId) ?? null,
     [props.availableSkills, props.selectedSkillId],
@@ -144,8 +147,9 @@ export function ActionPlanner(props: ActionPlannerProps) {
             props.onGuardModeChange('guard');
             props.onActionTypeChange(ActionType.Defend);
           }}
+          title="Обычная защитная стойка. 1 AP / 15 STA"
         >
-          Guard
+          Защита
         </button>
         <button
           type="button"
@@ -154,8 +158,9 @@ export function ActionPlanner(props: ActionPlannerProps) {
             props.onGuardModeChange('strong_guard');
             props.onActionTypeChange(ActionType.Defend);
           }}
+          title="Встать в усиленную защитную стойку до конца раунда. Повышает шанс блока, снижает физический урон, немного защищает от магии и даёт end-round regen, если стойка не сбита. 1 AP / 20 STA"
         >
-          Strong Guard
+          Усиленная защита
         </button>
         <button type="button" className={props.actionType === ActionType.Move ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Move)}>
           Движение
@@ -197,7 +202,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
 
       <div className="planner-status-rows">
         <div className="planner-status-row"><span>Дистанция:</span><strong>{DISTANCE_LABELS[props.currentDistance]}</strong></div>
-        <div className="planner-status-row"><span>Guard:</span><strong>{props.actionType === ActionType.Defend ? (props.guardMode === 'strong_guard' ? 'Strong Guard' : 'Guard') : 'None'}</strong></div>
+        <div className="planner-status-row"><span>Стойка:</span><strong>{props.actionType === ActionType.Defend ? (props.guardMode === 'strong_guard' ? 'Усиленная защита (1 AP / 20 STA)' : 'Защита (1 AP / 15 STA)') : 'Нет'}</strong></div>
         <div className="planner-status-row"><span>STA Load:</span><strong>{totalStaminaLoad}</strong></div>
         <div className="planner-status-row"><span>STA:</span><strong>{props.currentStamina} / {props.maxStamina}</strong></div>
         <div className="planner-status-row"><span>MP:</span><strong>{props.currentMp} / {props.maxMp}</strong></div>
@@ -208,7 +213,9 @@ export function ActionPlanner(props: ActionPlannerProps) {
         <strong>{selectedSkill?.label ?? 'Basic Attack'}</strong>
         <p>Target: {selectedEnemy?.name ?? 'None'}</p>
         <p>Mana cost: {manaCost}</p>
-        <p>Stamina cost: {skillStaminaCost + ACTION_COSTS[props.actionType]}</p>
+        <p>Stamina cost: {skillStaminaCost + (props.actionType === ActionType.Defend
+          ? (props.guardMode === 'strong_guard' ? (COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0) : (COMBAT_ACTION_COSTS.guard.stamina ?? 0))
+          : ACTION_COSTS[props.actionType as Exclude<ActionType, ActionType.Defend>])}</p>
         <p>Move cost: {props.movementType ? MOVEMENT_COSTS[props.movementType] : 0}</p>
         {selectedSkill ? <p>Skill level: {selectedSkill.level}</p> : null}
       </div>

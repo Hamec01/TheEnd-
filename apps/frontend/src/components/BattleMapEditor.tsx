@@ -5,6 +5,7 @@ import type {
   BattleMapSpawnZoneType,
   BattleMapTriggerType,
   BattleMapNpcRole,
+  ExitZone,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { AdminImageField } from '../admin/AdminImageField';
@@ -46,8 +47,9 @@ const TRIGGER_TYPES: BattleMapTriggerType[] = ['quest', 'dialogue', 'ambush', 't
 const MIN_BOARD_ZOOM = 0.4;
 const MAX_BOARD_ZOOM = 4;
 
-type EditorLayer = 'cells' | 'spawns' | 'objects' | 'traps' | 'npcs' | 'triggers';
+type EditorLayer = 'cells' | 'spawns' | 'exitZones' | 'objects' | 'traps' | 'npcs' | 'triggers';
 type CellTool = BattleMapCellType | 'erase';
+type ExitZoneTeam = 'player' | 'enemy' | 'any';
 
 interface BattleMapEditorProps {
   selectedMapId?: string | null;
@@ -87,6 +89,31 @@ function ensureSpawnZone(map: BattleMapDefinition, type: BattleMapSpawnZoneType)
   return next;
 }
 
+function nextExitZoneId(existing: ExitZone[] | undefined): string {
+  const zones = Array.isArray(existing) ? existing : [];
+  let index = zones.length + 1;
+  while (zones.some((zone) => zone.id === `exit_zone_${String(index).padStart(3, '0')}`)) {
+    index += 1;
+  }
+  return `exit_zone_${String(index).padStart(3, '0')}`;
+}
+
+function ensureExitZone(map: BattleMapDefinition, zoneId?: string | null): ExitZone {
+  const zones = Array.isArray(map.exitZones) ? map.exitZones : [];
+  const found = zoneId ? zones.find((zone) => zone.id === zoneId) : undefined;
+  if (found) {
+    return found;
+  }
+  const created: ExitZone = {
+    id: nextExitZoneId(zones),
+    cells: [],
+    team: 'player',
+    enabledForArena: false,
+  };
+  map.exitZones = [...zones, created];
+  return created;
+}
+
 function replaceCellType(map: BattleMapDefinition, x: number, y: number, type: BattleMapCellType): BattleMapDefinition {
   const otherCells = map.cells.filter((cell) => !(cell.x === x && cell.y === y));
   return {
@@ -124,6 +151,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [selectedTrapId, setSelectedTrapId] = useState<string | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [selectedTriggerId, setSelectedTriggerId] = useState<string | null>(null);
+  const [selectedExitZoneId, setSelectedExitZoneId] = useState<string | null>(null);
   const [selectedNpcSourceId, setSelectedNpcSourceId] = useState('random');
   const [adminNpcs, setAdminNpcs] = useState<NpcDefinition[]>([]);
   const [undoStack, setUndoStack] = useState<BattleMapDefinition[]>([]);
@@ -249,6 +277,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const selectedTrap = draft.traps.find((trap) => trap.id === selectedTrapId) ?? null;
   const selectedNpc = draft.npcs.find((npc) => npc.id === selectedNpcId) ?? null;
   const selectedTrigger = draft.triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null;
+  const selectedExitZone = (draft.exitZones ?? []).find((zone) => zone.id === selectedExitZoneId) ?? null;
 
   const commitDraft = (updater: (current: BattleMapDefinition) => BattleMapDefinition, trackHistory = false) => {
     setDraft((current) => {
@@ -338,6 +367,25 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           nextZones.push(zone);
         }
         return { ...next, spawnZones: nextZones, updatedAt: Date.now() };
+      }, true);
+      return;
+    }
+
+    if (layer === 'exitZones') {
+      commitDraft((current) => {
+        const next = normalizeBattleMap(current);
+        const zone = ensureExitZone(next, selectedExitZoneId);
+        const key = getCellKey(x, y);
+        const zones = (next.exitZones ?? []).map((entry) => {
+          if (entry.id !== zone.id) {
+            return entry;
+          }
+          const cells = entry.cells.some((cell) => getCellKey(cell.x, cell.y) === key)
+            ? entry.cells.filter((cell) => getCellKey(cell.x, cell.y) !== key)
+            : [...entry.cells, { x, y }];
+          return { ...entry, cells };
+        });
+        return { ...next, exitZones: zones, updatedAt: Date.now() };
       }, true);
       return;
     }
@@ -717,16 +765,18 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 const hasTrap = draft.traps.some((trap) => trap.x === x && trap.y === y);
                 const hasNpc = draft.npcs.some((npc) => npc.x === x && npc.y === y);
                 const hasTrigger = draft.triggers.some((trigger) => trigger.cells.some((cell) => cell.x === x && cell.y === y));
+                const hasExitZone = (draft.exitZones ?? []).some((zone) => zone.cells.some((cell) => cell.x === x && cell.y === y));
                 return (
                   <div
                     key={`battle-map-cell-${x}-${y}`}
-                    className={`battle-map-editor-tile is-${cellType} ${spawnTypes.map((type) => `has-spawn-${type}`).join(' ')} ${hasObject ? 'has-object' : ''} ${hasTrap ? 'has-trap' : ''} ${hasNpc ? 'has-npc' : ''} ${hasTrigger ? 'has-trigger' : ''}`}
+                    className={`battle-map-editor-tile is-${cellType} ${spawnTypes.map((type) => `has-spawn-${type}`).join(' ')} ${hasObject ? 'has-object' : ''} ${hasTrap ? 'has-trap' : ''} ${hasNpc ? 'has-npc' : ''} ${hasTrigger ? 'has-trigger' : ''} ${hasExitZone ? 'has-exit-zone' : ''}`}
                     title={`${x}:${y} ${cellType}`}
                     style={{
                       left: `${gridOffsetX + x * cellSizePx}px`,
                       top: `${gridOffsetY + y * cellSizePx}px`,
                       width: `${cellSizePx}px`,
                       height: `${cellSizePx}px`,
+                      ...(hasExitZone ? { outline: '2px solid rgba(0, 200, 255, 0.7)', outlineOffset: '-2px', boxShadow: 'inset 0 0 0 9999px rgba(0, 200, 255, 0.08)' } : {}),
                     }}
                   >
                     <span className="battle-map-editor-tile-markers">
@@ -736,6 +786,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                       {hasTrap ? 'T' : ''}
                       {hasNpc ? 'N' : ''}
                       {hasTrigger ? 'G' : ''}
+                      {hasExitZone ? 'X' : ''}
                     </span>
                   </div>
                 );
@@ -819,7 +870,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
               <h4>Layers</h4>
             </div>
             <div className="battle-map-editor-layer-tabs">
-              {(['cells', 'spawns', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
+              {(['cells', 'spawns', 'exitZones', 'objects', 'traps', 'npcs', 'triggers'] as EditorLayer[]).map((entry) => (
                 <button key={entry} type="button" className={layer === entry ? 'is-active' : ''} onClick={() => setLayer(entry)}>
                   {entry}
                 </button>
@@ -841,6 +892,70 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                     {option.label} <AdminHelpTooltip section="battleMaps" field={option.helpField} />
                   </button>
                 ))}
+              </div>
+            ) : null}
+            {layer === 'exitZones' ? (
+              <div className="battle-map-editor-toolbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = nextExitZoneId(draft.exitZones);
+                    commitDraft((current) => {
+                      const next = normalizeBattleMap(current);
+                      const zones = next.exitZones ?? [];
+                      return {
+                        ...next,
+                        exitZones: [...zones, { id: newId, cells: [], team: 'player', enabledForArena: false }],
+                        updatedAt: Date.now(),
+                      };
+                    }, true);
+                    setSelectedExitZoneId(newId);
+                    onStatusMessage?.('Зона выхода добавлена. Кликните по клеткам, чтобы отметить exit_zone.');
+                  }}
+                >
+                  + Зона выхода
+                </button>
+                <div className="row">
+                  <label>Зона</label>
+                  <select value={selectedExitZoneId ?? ''} onChange={(event) => setSelectedExitZoneId(event.target.value || null)}>
+                    <option value="">(нет)</option>
+                    {(draft.exitZones ?? []).map((zone) => (
+                      <option key={zone.id} value={zone.id}>{zone.id}</option>
+                    ))}
+                  </select>
+                </div>
+                {selectedExitZone ? (
+                  <>
+                    <div className="row">
+                      <label>Team</label>
+                      <select
+                        value={(selectedExitZone.team ?? 'player') as ExitZoneTeam}
+                        onChange={(event) => {
+                          const team = (event.target.value === 'enemy' || event.target.value === 'any') ? event.target.value : 'player';
+                          commitDraft((current) => {
+                            const next = normalizeBattleMap(current);
+                            const zones = (next.exitZones ?? []).map((zone) => zone.id === selectedExitZone.id ? { ...zone, team, enabledForArena: false } : zone);
+                            return { ...next, exitZones: zones, updatedAt: Date.now() };
+                          }, true);
+                        }}
+                      >
+                        <option value="player">player</option>
+                        <option value="enemy">enemy</option>
+                        <option value="any">any</option>
+                      </select>
+                    </div>
+                    <div className="row">
+                      <label>Info</label>
+                      <span title="Зона выхода из боя. Работает только вне арены.">enabledForArena=false</span>
+                    </div>
+                    <div className="row">
+                      <label>Клетки</label>
+                      <span>{selectedExitZone.cells.length}</span>
+                    </div>
+                  </>
+                ) : (
+                  <p title="Зона выхода из боя. Работает только вне арены.">Выберите зону и рисуйте клетки exit_zone.</p>
+                )}
               </div>
             ) : null}
             {layer === 'npcs' ? (

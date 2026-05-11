@@ -34,9 +34,11 @@ import type {
   ItemEffect,
   ItemSet,
   ItemRarity,
+  LootTable,
   Material,
   MerchantItem,
   NpcDefinition,
+  PaintedRegion,
   QuestDefinition,
   RuneComplex,
   QuestInteractionDefinition,
@@ -45,6 +47,7 @@ import type {
   QuestMarkerDefinition,
   StoredImage,
   WorldMapContent,
+  WorldMapZone,
 } from './content.types';
 
 const CONTENT_DB_VERSION = 1 as const;
@@ -1820,8 +1823,8 @@ export class ContentService implements OnModuleInit {
       runeComplexes: sanitizeIdObjectArray<RuneComplex>(raw.runeComplexes).map((entry) => normalizeRuneComplexInput(entry)).filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
-            zones: clone(sanitizeIdObjectArray(raw.worldMap.zones)),
-            regions: clone(sanitizeIdObjectArray(raw.worldMap.regions)),
+            zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
+            regions: clone(sanitizeIdObjectArray<PaintedRegion>(raw.worldMap.regions)),
             questMarkers: sanitizeIdObjectArray<QuestMarkerDefinition>(raw.worldMap.questMarkers)
               .map((entry) => normalizeQuestMarkerInput(entry))
               .filter((m) => Boolean(m.id)),
@@ -2361,8 +2364,8 @@ export class ContentService implements OnModuleInit {
 
   async saveWorldMap(payload: WorldMapContent): Promise<WorldMapContent> {
     const db = this.ensureLoaded();
-    const safeZones = sanitizeIdObjectArray(payload?.zones);
-    const safeRegions = sanitizeIdObjectArray(payload?.regions);
+    const safeZones = sanitizeIdObjectArray<WorldMapZone>(payload?.zones);
+    const safeRegions = sanitizeIdObjectArray<PaintedRegion>(payload?.regions);
     const safeQuestMarkers = sanitizeIdObjectArray<QuestMarkerDefinition>(payload?.questMarkers)
       .map((entry) => normalizeQuestMarkerInput(entry))
       .filter((m) => Boolean(m.id));

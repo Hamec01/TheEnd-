@@ -37,7 +37,7 @@ interface InventoryPanelProps {
   onRespecStats?: () => Promise<void> | void;
   onLearnSkill?: (skillId: string) => Promise<void>;
   onSaveSkillLoadout?: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
-  onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>) => Promise<void>;
+  onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
@@ -413,7 +413,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     for (const slotId of QUICK_SLOT_IDS) {
       const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
       const actionSlot = actionSlotsBySlot.get(slotIndex);
-      const itemId = actionSlot?.kind === 'item' ? actionSlot.refId : null;
+      const itemId = actionSlot?.kind === 'item' || actionSlot?.kind === 'weapon' ? actionSlot.refId : null;
       full[slotId] = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
     }
 
@@ -431,6 +431,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       if (slot.kind === 'item') {
         const quantity = inventoryByItemId.get(slot.refId)?.quantity ?? 0;
         content[slotId] = quantity > 0 ? `x${quantity}` : '0';
+        continue;
+      }
+      if (slot.kind === 'weapon') {
+        content[slotId] = equipment.weapon === slot.refId ? 'ACTIVE' : 'WEAPON';
         continue;
       }
 
@@ -469,19 +473,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
-    if (itemId) {
-      const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-      if (!isUsableHotbarItem(item)) {
-        onStatus('В быстрые слоты можно ставить только используемые предметы.');
-        return;
-      }
+    const item = itemId ? (resolveItemById ? resolveItemById(itemId) : getItemById(itemId)) : null;
+    if (itemId && !isUsableHotbarItem(item) && item?.itemType !== 'weapon') {
+      onStatus('В быстрые слоты можно ставить используемые предметы и оружие.');
+      return;
     }
+    const entryKind = item?.itemType === 'weapon' ? 'weapon' : (itemId ? 'item' : 'empty');
 
     const actionBarSlotId = slotId as CharacterActionBarSlot['slotId'];
-    console.info(itemId ? '[actionBar] assignItem' : '[actionBar] clear', {
+    console.info(itemId ? '[actionBar] assign' : '[actionBar] clear', {
       characterId: character.id,
       slotId: actionBarSlotId,
-      entryKind: itemId ? 'item' : 'empty',
+      entryKind,
       itemId,
       result: 'requested',
     });
@@ -489,12 +492,14 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       await onSaveActionSlots([{
         slotId: actionBarSlotId,
         order: slotIndex,
-        entryKind: itemId ? 'item' : 'empty',
-        itemId: itemId ?? undefined,
-        itemInstanceId: null,
+        entryKind,
+        itemId: entryKind === 'item' ? (itemId ?? undefined) : undefined,
+        itemInstanceId: entryKind === 'item' ? null : undefined,
+        weaponItemId: entryKind === 'weapon' ? (itemId ?? undefined) : undefined,
+        weaponInstanceId: entryKind === 'weapon' ? null : undefined,
       }]);
     } catch (error) {
-      console.warn('[actionBar] reject', { characterId: character.id, slotId: actionBarSlotId, entryKind: itemId ? 'item' : 'empty', itemId, result: 'save-failed', message: (error as Error).message });
+      console.warn('[actionBar] reject', { characterId: character.id, slotId: actionBarSlotId, entryKind, itemId, result: 'save-failed', message: (error as Error).message });
       onStatus(`Не удалось сохранить action-bar: ${(error as Error).message}`);
     }
   }

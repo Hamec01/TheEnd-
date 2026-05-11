@@ -78,7 +78,7 @@ export class BlacksmithService {
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         goldSpent = await this.trySpendGold(tx, context.characterId, context.rules.goldCost);
         materialSpent = await this.trySpendMaterials(tx, context.characterId, context.rules.materialCosts, true);
-        await tx.characterItemInstance.update({
+        await (tx as any).characterItemInstance.update({
           where: { id: context.instance.id },
           data: { state: this.toPersistedState(this.withSockets(context.instance.state, nextSockets)) },
         });
@@ -104,7 +104,7 @@ export class BlacksmithService {
         nextSockets = failedState.sockets;
 
         if (failedState.changed) {
-          await tx.characterItemInstance.update({
+          await (tx as any).characterItemInstance.update({
             where: { id: context.instance.id },
             data: { state: this.toPersistedState(failedState.state) },
           });
@@ -165,7 +165,7 @@ export class BlacksmithService {
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         goldSpent = await this.trySpendGold(tx, context.characterId, context.rules.goldCost);
         materialSpent = await this.trySpendMaterials(tx, context.characterId, context.rules.materialCosts, true);
-        await tx.characterItemInstance.update({
+        await (tx as any).characterItemInstance.update({
           where: { id: context.instance.id },
           data: { state: this.toPersistedState(this.withSockets(context.instance.state, nextSockets)) },
         });
@@ -190,7 +190,7 @@ export class BlacksmithService {
         nextSockets = failedState.sockets;
 
         if (failedState.changed) {
-          await tx.characterItemInstance.update({
+          await (tx as any).characterItemInstance.update({
             where: { id: context.instance.id },
             data: { state: this.toPersistedState(failedState.state) },
           });
@@ -272,7 +272,7 @@ export class BlacksmithService {
   }
 
   private async readItemInstance(characterId: string, itemInstanceId: string): Promise<CharacterItemInstanceRecord> {
-    const row = await this.prisma.characterItemInstance.findFirst({
+    const row = await (this.prisma as any).characterItemInstance.findFirst({
       where: { id: itemInstanceId, characterId },
       select: {
         id: true,

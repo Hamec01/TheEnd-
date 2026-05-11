@@ -42,8 +42,8 @@ const ACTION_SLOT_IDS = ['quick1', 'quick2', 'quick3', 'quick4', 'quick5', 'quic
 
 export type CharacterActionSlotId = (typeof ACTION_SLOT_IDS)[number];
 
-export type CharacterActionSlotKind = 'skill' | 'item' | null;
-export type CharacterActionBarEntryKind = 'skill' | 'item' | 'empty';
+export type CharacterActionSlotKind = 'skill' | 'item' | 'weapon' | null;
+export type CharacterActionBarEntryKind = 'skill' | 'item' | 'weapon' | 'empty';
 
 export interface CharacterActionSlot {
   slotId: CharacterActionSlotId;
@@ -51,6 +51,7 @@ export interface CharacterActionSlot {
   kind: CharacterActionSlotKind;
   refId: string | null;
   itemInstanceId?: string | null;
+  weaponInstanceId?: string | null;
 }
 
 export interface CharacterActionBarSlot {
@@ -60,6 +61,8 @@ export interface CharacterActionBarSlot {
   skillId?: string;
   itemId?: string;
   itemInstanceId?: string | null;
+  weaponItemId?: string;
+  weaponInstanceId?: string | null;
   isLocked: false;
 }
 
@@ -100,6 +103,7 @@ type StoredResourceMap = Record<string, {
   currentStamina?: number;
   hpRegenPerTurn?: number;
 } | undefined>;
+type InputJsonValue = Prisma.InputJsonValue;
 
 const CHARACTER_ACTION_SLOTS_STORE_KEY = 'character-action-slots-v1';
 const CHARACTER_HOTBAR_STORE_KEY = 'character-item-hotbars-v1';
@@ -338,6 +342,17 @@ export class ArenaService implements OnModuleInit {
         entryKind: 'item',
         itemId: slot.refId,
         itemInstanceId: slot.itemInstanceId ?? null,
+        isLocked: false,
+      };
+    }
+
+    if (slot.kind === 'weapon' && slot.refId) {
+      return {
+        slotId: slot.slotId,
+        order: slot.slotIndex,
+        entryKind: 'weapon',
+        weaponItemId: slot.refId,
+        weaponInstanceId: slot.weaponInstanceId ?? slot.itemInstanceId ?? null,
         isLocked: false,
       };
     }
@@ -739,7 +754,7 @@ export class ArenaService implements OnModuleInit {
       await this.runtimeStore.writeArenaData(key, value);
       return;
     }
-    const jsonValue = value as unknown as Record<string, unknown>;
+    const jsonValue = value as unknown as InputJsonValue;
     await this.prisma.contentStore.upsert({
       where: { key },
       create: { key, value: jsonValue },
@@ -831,8 +846,14 @@ export class ArenaService implements OnModuleInit {
         continue;
       }
 
-      const kind = raw.kind === 'skill' || raw.kind === 'item' ? raw.kind : null;
+      const rawKind = raw.kind === 'skill' || raw.kind === 'item' || raw.kind === 'weapon' ? raw.kind : null;
       const refId = typeof raw.refId === 'string' && raw.refId.trim().length > 0 ? raw.refId.trim() : null;
+      const maybeWeapon = rawKind === 'item' && refId
+        ? ((this.contentService.getCollectionEntry('items', refId) as Record<string, unknown> | null)?.type === 'weapon')
+        : false;
+      const kind = rawKind === 'weapon' || maybeWeapon
+        ? 'weapon'
+        : rawKind;
       base[slotIndex] = {
         slotId: this.toActionSlotId(slotIndex),
         slotIndex,
@@ -840,6 +861,9 @@ export class ArenaService implements OnModuleInit {
         refId: kind && refId ? refId : null,
         itemInstanceId: typeof raw.itemInstanceId === 'string' && raw.itemInstanceId.trim().length > 0
           ? raw.itemInstanceId.trim()
+          : null,
+        weaponInstanceId: typeof raw.weaponInstanceId === 'string' && raw.weaponInstanceId.trim().length > 0
+          ? raw.weaponInstanceId.trim()
           : null,
       };
     }
@@ -1088,7 +1112,7 @@ export class ArenaService implements OnModuleInit {
 
   async updateActionSlots(
     characterId: string,
-    updates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }>,
+    updates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }>,
   ): Promise<CharacterActionSlot[]> {
     let inventoryByItemId: Map<string, number>;
 
@@ -1122,26 +1146,44 @@ export class ArenaService implements OnModuleInit {
         slot.kind = null;
         slot.refId = null;
         slot.itemInstanceId = null;
+        slot.weaponInstanceId = null;
         continue;
       }
 
-      if (update.kind === 'item') {
+      if (update.kind === 'item' || update.kind === 'weapon') {
         const quantity = inventoryByItemId.get(update.refId) ?? 0;
         if (quantity <= 0) {
           throw new BadRequestException(`Item is not available in inventory: ${update.refId}`);
         }
-        if (!this.isItemUsableInHotbar(update.refId)) {
+
+        const rawItem = this.contentService.getCollectionEntry('items', update.refId) as Record<string, unknown> | null;
+        const isWeapon = rawItem?.type === 'weapon';
+
+        if (update.kind === 'weapon') {
+          if (!isWeapon) {
+            throw new BadRequestException(`Item is not a weapon: ${update.refId}`);
+          }
+          slot.kind = 'weapon';
+          slot.refId = update.refId;
+          slot.itemInstanceId = update.weaponInstanceId ?? update.itemInstanceId ?? null;
+          slot.weaponInstanceId = update.weaponInstanceId ?? update.itemInstanceId ?? null;
+          continue;
+        }
+
+        if (!this.isItemUsableInHotbar(update.refId) && !isWeapon) {
           throw new BadRequestException('Only usable items can be assigned to action slots.');
         }
-        slot.kind = 'item';
+        slot.kind = isWeapon ? 'weapon' : 'item';
         slot.refId = update.refId;
         slot.itemInstanceId = update.itemInstanceId ?? null;
+        slot.weaponInstanceId = isWeapon ? (update.weaponInstanceId ?? update.itemInstanceId ?? null) : null;
         continue;
       }
 
       slot.kind = 'skill';
       slot.refId = update.refId;
       slot.itemInstanceId = null;
+      slot.weaponInstanceId = null;
     }
 
     await this.writeCharacterActionSlots(characterId, next);
@@ -1150,7 +1192,16 @@ export class ArenaService implements OnModuleInit {
 
   async updateActionBar(
     characterId: string,
-    updates: Array<{ slotId?: string | null; order?: number; entryKind?: CharacterActionBarEntryKind; skillId?: string | null; itemId?: string | null; itemInstanceId?: string | null }>,
+    updates: Array<{
+      slotId?: string | null;
+      order?: number;
+      entryKind?: CharacterActionBarEntryKind;
+      skillId?: string | null;
+      itemId?: string | null;
+      itemInstanceId?: string | null;
+      weaponItemId?: string | null;
+      weaponInstanceId?: string | null;
+    }>,
   ): Promise<CharacterActionBarSlot[]> {
     let inventoryByItemId: Map<string, number>;
     let inventoryInstanceIds: Set<string>;
@@ -1175,7 +1226,7 @@ export class ArenaService implements OnModuleInit {
     const itemInstanceIds = new Set(itemInstances.map((entry) => entry.id));
 
     const skillModel = isFileStorageMode() ? null : this.getCharacterSkillModel();
-    const normalizedUpdates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null }> = [];
+    const normalizedUpdates: Array<{ slotIndex?: number; slotId?: string | null; kind: CharacterActionSlotKind; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }> = [];
 
     for (const update of updates) {
       const slotIndex = this.resolveActionBarSlotIndex(update.slotId, update.order);
@@ -1189,7 +1240,7 @@ export class ArenaService implements OnModuleInit {
 
       if (entryKind === 'empty') {
         console.info('[actionBar] clear', { characterId, slotId, entryKind, result: 'cleared' });
-        normalizedUpdates.push({ slotId, slotIndex, kind: null, refId: null, itemInstanceId: null });
+        normalizedUpdates.push({ slotId, slotIndex, kind: null, refId: null, itemInstanceId: null, weaponInstanceId: null });
         continue;
       }
 
@@ -1216,14 +1267,16 @@ export class ArenaService implements OnModuleInit {
         }
 
         console.info('[actionBar] assignSkill', { characterId, slotId, entryKind, skillId, result: 'saved' });
-        normalizedUpdates.push({ slotId, slotIndex, kind: 'skill', refId: skillId, itemInstanceId: null });
+        normalizedUpdates.push({ slotId, slotIndex, kind: 'skill', refId: skillId, itemInstanceId: null, weaponInstanceId: null });
         continue;
       }
 
-      const itemId = typeof update.itemId === 'string' ? update.itemId.trim() : '';
+      const itemId = typeof (entryKind === 'weapon' ? update.weaponItemId : update.itemId) === 'string'
+        ? String(entryKind === 'weapon' ? update.weaponItemId : update.itemId).trim()
+        : '';
       if (itemId.length === 0) {
         console.warn('[actionBar] reject', { characterId, slotId, entryKind, result: 'missing-item-id' });
-        throw new BadRequestException(`Item entry for ${slotId} is missing itemId.`);
+        throw new BadRequestException(`Item entry for ${slotId} is missing ${entryKind === 'weapon' ? 'weaponItemId' : 'itemId'}.`);
       }
 
       try {
@@ -1236,8 +1289,9 @@ export class ArenaService implements OnModuleInit {
         }
       }
 
-      const itemInstanceId = typeof update.itemInstanceId === 'string' && update.itemInstanceId.trim().length > 0
-        ? update.itemInstanceId.trim()
+      const itemInstanceIdRaw = entryKind === 'weapon' ? update.weaponInstanceId : update.itemInstanceId;
+      const itemInstanceId = typeof itemInstanceIdRaw === 'string' && itemInstanceIdRaw.trim().length > 0
+        ? itemInstanceIdRaw.trim()
         : null;
       if (itemInstanceId && !inventoryInstanceIds.has(itemInstanceId) && !itemInstanceIds.has(itemInstanceId)) {
         console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'missing-item-instance' });
@@ -1250,8 +1304,27 @@ export class ArenaService implements OnModuleInit {
         throw new BadRequestException(`Item is not available in inventory: ${itemId}`);
       }
 
-      console.info('[actionBar] assignItem', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'saved' });
-      normalizedUpdates.push({ slotId, slotIndex, kind: 'item', refId: itemId, itemInstanceId });
+      const rawItem = this.contentService.getCollectionEntry('items', itemId) as Record<string, unknown> | null;
+      const isWeaponEntry = entryKind === 'weapon' || rawItem?.type === 'weapon';
+      const weaponItemId = isWeaponEntry
+        ? (typeof update.weaponItemId === 'string' && update.weaponItemId.trim().length > 0 ? update.weaponItemId.trim() : itemId)
+        : null;
+      const weaponInstanceId = isWeaponEntry
+        ? (typeof update.weaponInstanceId === 'string' && update.weaponInstanceId.trim().length > 0 ? update.weaponInstanceId.trim() : itemInstanceId)
+        : null;
+
+      if (isWeaponEntry && rawItem?.type !== 'weapon') {
+        console.warn('[actionBar] reject', { characterId, slotId, entryKind, itemId, result: 'item-is-not-weapon' });
+        throw new BadRequestException(`Item cannot be assigned as weapon in ${slotId}: ${itemId}`);
+      }
+
+      if (isWeaponEntry) {
+        console.info('[actionBar] assignWeapon', { characterId, slotId, entryKind: 'weapon', weaponItemId, weaponInstanceId, result: 'saved' });
+        normalizedUpdates.push({ slotId, slotIndex, kind: 'weapon', refId: weaponItemId, itemInstanceId: weaponInstanceId, weaponInstanceId });
+      } else {
+        console.info('[actionBar] assignItem', { characterId, slotId, entryKind, itemId, itemInstanceId, result: 'saved' });
+        normalizedUpdates.push({ slotId, slotIndex, kind: 'item', refId: itemId, itemInstanceId });
+      }
     }
 
     await this.updateActionSlots(characterId, normalizedUpdates);
@@ -1719,7 +1792,8 @@ export class ArenaService implements OnModuleInit {
         ring3: true,
         legs: true,
         boots: true,
-        equipmentState: true,
+        // Keep runtime compatibility with legacy JSON state if column exists.
+        // Typed Prisma client may not expose this field in all environments.
       },
     });
     const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
@@ -1746,12 +1820,12 @@ export class ArenaService implements OnModuleInit {
         update: {
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
-        },
+        } as any,
         create: {
           characterId,
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
-        },
+        } as any,
       });
     });
 
@@ -1790,7 +1864,8 @@ export class ArenaService implements OnModuleInit {
         ring3: true,
         legs: true,
         boots: true,
-        equipmentState: true,
+        // Keep runtime compatibility with legacy JSON state if column exists.
+        // Typed Prisma client may not expose this field in all environments.
       },
     });
     const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
@@ -1803,12 +1878,12 @@ export class ArenaService implements OnModuleInit {
         update: {
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
-        },
+        } as any,
         create: {
           characterId,
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
-        },
+        } as any,
       });
 
       if (!unequippedInstanceId) {
@@ -1932,7 +2007,7 @@ export class ArenaService implements OnModuleInit {
         createdAt: true,
         updatedAt: true,
       },
-    });
+    } as any);
 
     return rows.map((row) => ({
       id: row.id,
@@ -2003,7 +2078,7 @@ export class ArenaService implements OnModuleInit {
         boots: true,
         equipmentState: true,
       },
-    });
+    } as any);
     const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
 
     const returnedItems = new Map<string, number>();
@@ -2058,7 +2133,7 @@ export class ArenaService implements OnModuleInit {
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
         },
-      });
+      } as any);
     });
 
     return this.getCharacterArenaState(characterId);
@@ -2090,7 +2165,7 @@ export class ArenaService implements OnModuleInit {
         boots: true,
         equipmentState: true,
       },
-    });
+    } as any);
     const equipmentState = this.getEquipmentStateFromRecord(equipmentRow);
 
     const slot = (Object.keys(state.equipment) as Array<keyof Equipment>).find(
@@ -2124,7 +2199,7 @@ export class ArenaService implements OnModuleInit {
           ...this.toEquipmentRecord(nextEquipment),
           equipmentState: nextEquipmentState as unknown as Record<string, unknown>,
         },
-      });
+      } as any);
     });
 
     return this.getCharacterArenaState(characterId);
@@ -2189,7 +2264,7 @@ export class ArenaService implements OnModuleInit {
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await this.decrementInventoryItem(tx, characterId, normalizedAugmentItemId);
-      await tx.characterItemInstance.update({
+      await (tx as any).characterItemInstance.update({
         where: { id: instance.id },
         data: {
           state: this.toPersistedItemInstanceState(nextState),
@@ -2255,7 +2330,7 @@ export class ArenaService implements OnModuleInit {
     };
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.characterItemInstance.update({
+      await (tx as any).characterItemInstance.update({
         where: { id: instance.id },
         data: {
           state: this.toPersistedItemInstanceState(nextState),

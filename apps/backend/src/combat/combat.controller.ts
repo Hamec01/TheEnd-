@@ -5,6 +5,18 @@ import { StartCombatDto } from './dto.start-combat.dto';
 import { UseCombatItemDto } from './dto.use-combat-item.dto';
 import { CombatService, type CombatActionResult } from './combat.service';
 
+type CombatApiErrorResponse = {
+  ok: false;
+  errorCode: string;
+  message: string;
+  details?: unknown;
+};
+
+type GetCombatStateResponse = {
+  ok: true;
+  battleState: ArenaBattleState;
+};
+
 type StartCombatResponse = {
   combatId: string;
   playerId: string;
@@ -15,7 +27,7 @@ type UseCombatItemResponse = {
   state: ArenaBattleState;
   inventory: Array<{ itemId: string; quantity: number }>;
   gold: number;
-  actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>;
+  actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | 'weapon' | null; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }>;
 };
 
 type CombatPlanResponse = {
@@ -48,15 +60,14 @@ type SubmitCombatPlanRequest = {
   actorId: string;
   roundNumber: number;
   commands: CombatCommand[];
+  ready?: boolean;
 };
 
 type SubmitCombatPlanResponse = {
-  ok: boolean;
-  plan?: CombatTurnPlan;
-  battleState?: ArenaBattleState;
-  errors?: CombatPlanErrorCode[];
-  warnings?: CombatPlanWarningCode[];
-  warningDetails?: CombatPlanWarning[];
+  ok: true;
+  acceptedPlan: CombatTurnPlan;
+  battleState: ArenaBattleState;
+  warnings?: CombatPlanWarning[];
 };
 
 @Controller(['combat', 'api/combat'])
@@ -92,33 +103,33 @@ export class CombatController {
   async plan(@Body() dto: { combatId: string; actorId: string; command: CombatCommand }): Promise<CombatPlanResponse> {
     const result = this.combatService.addCombatCommand(dto.combatId, dto.actorId, dto.command);
     return {
-      state: this.combatService.getCombatState(dto.combatId),
+      state: await this.combatService.getCombatState(dto.combatId),
       plan: result.plan,
     };
   }
 
   @Post('clear-plan')
   async clearPlan(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = this.combatService.clearCombatCommands(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: this.combatService.getCombatState(dto.combatId), plan };
+    const plan = await this.combatService.clearCombatCommands(dto.combatId, dto.actorId, dto.roundNumber);
+    return { state: await this.combatService.getCombatState(dto.combatId), plan };
   }
 
   @Post('undo-command')
   async undoCommand(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = this.combatService.undoCombatCommand(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: this.combatService.getCombatState(dto.combatId), plan };
+    const plan = await this.combatService.undoCombatCommand(dto.combatId, dto.actorId, dto.roundNumber);
+    return { state: await this.combatService.getCombatState(dto.combatId), plan };
   }
 
   @Post('ready')
   async ready(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
     const plan = await this.combatService.setCombatReady(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: this.combatService.getCombatState(dto.combatId), plan };
+    return { state: await this.combatService.getCombatState(dto.combatId), plan };
   }
 
   @Post('cancel-ready')
   async cancelReady(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = this.combatService.cancelCombatReady(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: this.combatService.getCombatState(dto.combatId), plan };
+    const plan = await this.combatService.cancelCombatReady(dto.combatId, dto.actorId, dto.roundNumber);
+    return { state: await this.combatService.getCombatState(dto.combatId), plan };
   }
 
   @Post(':battleId/validate-plan')
@@ -133,8 +144,8 @@ export class CombatController {
   async submitPlan(
     @Param('battleId') battleId: string,
     @Body() dto: SubmitCombatPlanRequest,
-  ): Promise<SubmitCombatPlanResponse> {
-    return this.combatService.submitCombatPlan(battleId, dto);
+  ): Promise<SubmitCombatPlanResponse | CombatApiErrorResponse> {
+    return this.combatService.submitCombatPlanV2(battleId, dto);
   }
 
   @Post('use-item')
@@ -143,7 +154,17 @@ export class CombatController {
   }
 
   @Get(':combatId')
-  state(@Param('combatId') combatId: string): ArenaBattleState {
+  async state(@Param('combatId') combatId: string): Promise<ArenaBattleState> {
     return this.combatService.getCombatState(combatId);
+  }
+
+  @Get(':battleId/state')
+  async stateV2(@Param('battleId') battleId: string): Promise<GetCombatStateResponse | CombatApiErrorResponse> {
+    try {
+      const battleState = await this.combatService.getCombatState(battleId);
+      return { ok: true, battleState };
+    } catch (error) {
+      return { ok: false, errorCode: 'BATTLE_NOT_FOUND', message: (error as Error).message };
+    }
   }
 }

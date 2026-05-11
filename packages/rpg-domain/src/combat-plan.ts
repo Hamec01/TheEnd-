@@ -18,6 +18,20 @@ export type CombatQuickSlotId =
   | 'quick9'
   | 'quick10';
 
+export type ActionBarEntryKind = 'skill' | 'item' | 'weapon' | 'empty';
+
+export interface ActionBarEntry {
+  slotId: CombatQuickSlotId;
+  kind: ActionBarEntryKind;
+  skillId?: string;
+  itemId?: string;
+  itemInstanceId?: string | null;
+  weaponItemId?: string;
+  weaponInstanceId?: string | null;
+  label?: string;
+  iconUrl?: string;
+}
+
 export type CombatCommandType =
   | 'move'
   | 'dash'
@@ -146,14 +160,19 @@ export type CombatEventType =
   | 'status_removed'
   | 'guard_applied'
   | 'guard_broken'
+  | 'guard_regen'
   | 'skill_cast'
   | 'item_used'
   | 'trap_placed'
   | 'trap_triggered'
   | 'loot_created'
   | 'loot_taken'
+  | 'plan_auto_submitted'
+  | 'round_timeout'
+  | 'battle_finished'
   | 'escape_started'
   | 'escape_progress'
+  | 'escape_delayed'
   | 'escape_cancelled'
   | 'escape_success'
   | 'death'
@@ -210,6 +229,8 @@ export interface CombatCommandRevalidationResult {
 export type CombatRevalidationFailReason =
   | 'actor_dead'
   | 'actor_stunned'
+  | 'actor_knocked_down'
+  | 'actor_incapacitated'
   | 'actor_rooted'
   | 'actor_silenced'
   | 'actor_disarmed'
@@ -257,6 +278,7 @@ export type CombatPlanErrorCode =
   | 'ROUND_MISMATCH'
   | 'ACTOR_NOT_FOUND'
   | 'ACTOR_DEAD'
+  | 'ACTOR_DEFEATED'
   | 'ACTOR_STUNNED'
   | 'UNKNOWN_COMMAND'
   | 'INVALID_TARGET'
@@ -275,11 +297,34 @@ export type CombatPlanErrorCode =
   | 'ITEM_ID_REQUIRED'
   | 'ITEM_NOT_FOUND'
   | 'ITEM_NOT_USABLE'
+  | 'ITEM_NOT_OWNED'           // new: item_use - actor does not own item
+  | 'ITEM_NOT_ENOUGH_QUANTITY' // new: item_use - not enough quantity/charges
+  | 'ITEM_ON_COOLDOWN'         // new: item_use - item is on cooldown
+  | 'ITEM_USE_NOT_ALLOWED'     // new: item_use - not allowed in this context
+  | 'ITEM_USE_FAILED'          // new: item_use - generic failure
   | 'WEAPON_ID_REQUIRED'
   | 'WEAPON_NOT_FOUND'
+  | 'ITEM_IS_NOT_WEAPON'
+  | 'WEAPON_ALREADY_EQUIPPED'
+  | 'WEAPON_NOT_OWNED'
   | 'CELL_BLOCKED'
   | 'CELL_OCCUPIED'
-  | 'UNKNOWN_ERROR';
+  | 'LOOT_CONTAINER_NOT_FOUND'
+  | 'LOOT_ALREADY_CLAIMED'
+  | 'LOOT_NOT_IN_RANGE'
+  | 'INVENTORY_FULL'
+  | 'GUARD_ALREADY_PLANNED'
+  | 'UNKNOWN_ERROR'
+  // Escape/retreat errors
+  | 'ESCAPE_NOT_ALLOWED_IN_ARENA'
+  | 'ESCAPE_NOT_ALLOWED_FOR_BATTLE'
+  | 'ACTOR_NOT_ON_EXIT_ZONE'
+  | 'EXIT_ZONE_NOT_FOUND'
+  | 'EXIT_ZONE_TEAM_NOT_ALLOWED'
+  | 'ESCAPE_ALREADY_ACTIVE'
+  | 'ACTOR_CANNOT_ESCAPE'
+  | 'ACTOR_STUNNED'
+  | 'ACTOR_ROOTED';
 
 export type CombatPlanWarningCode =
   | 'FRIENDLY_FIRE'
@@ -291,7 +336,14 @@ export type CombatPlanWarningCode =
   | 'LOW_STAMINA_AFTER_ACTION'
   | 'LOW_HP_AFTER_HP_COST'
   | 'ESCAPE_CAN_BE_INTERRUPTED'
-  | 'ACTION_MAY_FAIL_IF_TARGET_MOVES';
+  | 'ACTION_MAY_FAIL_IF_TARGET_MOVES'
+  // Escape/retreat warnings
+  | 'ESCAPE_REQUIRES_3_ROUNDS'
+  | 'LEAVING_EXIT_ZONE_WILL_CANCEL_ESCAPE'
+  // item_use warnings
+  | 'ITEM_USE_WASTED'           // e.g. using a buff when already active
+  | 'ITEM_USE_OVERHEAL'         // e.g. using HP potion at full HP
+  | 'ITEM_USE_NO_EFFECT';
 
 const COMMAND_ALLOWED_TARGETS: Record<CombatCommandType, ReadonlyArray<CombatTarget['kind']>> = {
   move: ['cell'],
@@ -739,14 +791,17 @@ export function validateCombatCommand(params: {
     errors.push('ACTOR_DEAD');
   }
 
-  const actorFlags = params.actor as { isStunned?: boolean; isRooted?: boolean; isDisarmed?: boolean };
-  if (actorFlags.isStunned) {
+  const actorFlags = params.actor as { isStunned?: boolean; isIncapacitated?: boolean; isRooted?: boolean; isDisarmed?: boolean };
+  if (actorFlags.isStunned || actorFlags.isIncapacitated) {
     errors.push('ACTOR_STUNNED');
   }
   if ((params.command.type === 'move' || params.command.type === 'dash' || params.command.type === 'disengage') && actorFlags.isRooted) {
     errors.push('INVALID_TARGET');
   }
   if ((params.command.type === 'basic_attack' || params.command.type === 'heavy_attack') && actorFlags.isDisarmed) {
+    errors.push('ITEM_NOT_USABLE');
+  }
+  if (params.command.type === 'weapon_swap' && actorFlags.isDisarmed) {
     errors.push('ITEM_NOT_USABLE');
   }
 
@@ -872,6 +927,13 @@ export function validateCombatTurnPlan(params: {
     errors.push('NOT_ENOUGH_HP');
   }
 
+  // Duplicate guard/strong_guard in same plan: allow guard+strong_guard but not guard+guard or strong_guard+strong_guard
+  const guardCount = commands.filter((cmd) => cmd.type === 'guard').length;
+  const strongGuardCount = commands.filter((cmd) => cmd.type === 'strong_guard').length;
+  if (guardCount >= 2 || strongGuardCount >= 2) {
+    errors.push('GUARD_ALREADY_PLANNED');
+  }
+
   for (const command of commands) {
     const validation = validateCombatCommand({ command, actor: params.actor, battleState: params.battleState });
     errors.push(...validation.errors);
@@ -960,12 +1022,20 @@ export function revalidateCombatCommandBeforeExecute(params: {
 
   const actorFlags = actor as {
     isStunned?: boolean;
+    isKnockedDown?: boolean;
+    isIncapacitated?: boolean;
     isRooted?: boolean;
     isSilenced?: boolean;
     isDisarmed?: boolean;
   };
   if (actorFlags.isStunned) {
     return { ok: false, reason: 'actor_stunned', message: 'Действие сорвано: исполнитель оглушен.' };
+  }
+  if (actorFlags.isKnockedDown) {
+    return { ok: false, reason: 'actor_knocked_down', message: 'Действие сорвано: исполнитель сбит с ног.' };
+  }
+  if (actorFlags.isIncapacitated) {
+    return { ok: false, reason: 'actor_incapacitated', message: 'Действие сорвано: исполнитель не может действовать.' };
   }
   if ((params.command.type === 'move' || params.command.type === 'dash' || params.command.type === 'disengage' || params.command.type === 'start_retreat') && actorFlags.isRooted) {
     return { ok: false, reason: 'actor_rooted', message: 'Действие сорвано: исполнитель обездвижен.' };
@@ -979,6 +1049,8 @@ export function revalidateCombatCommandBeforeExecute(params: {
 
   const staminaCost = params.command.costs.stamina ?? 0;
   const mpCost = params.command.costs.mp ?? 0;
+  // HP cost includes normalized blood costs (blood_to_hp conversion is performed on client-side by normalizeSkillResourceCosts)
+  // This ensures blood/hp sacrifice mechanics are consistent across frontend preview and backend validation
   const hpCost = params.command.costs.hp ?? 0;
   if (staminaCost > actor.currentStamina) {
     return { ok: false, reason: 'not_enough_stamina', message: 'Недостаточно выносливости для выполнения команды.' };

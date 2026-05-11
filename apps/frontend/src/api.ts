@@ -75,18 +75,21 @@ export interface ArenaHubState {
 export interface CharacterActionSlot {
   slotId: 'quick1' | 'quick2' | 'quick3' | 'quick4' | 'quick5' | 'quick6' | 'quick7' | 'quick8' | 'quick9' | 'quick10';
   slotIndex: number;
-  kind: 'skill' | 'item' | null;
+  kind: 'skill' | 'item' | 'weapon' | null;
   refId: string | null;
   itemInstanceId?: string | null;
+  weaponInstanceId?: string | null;
 }
 
 export interface CharacterActionBarSlot {
   slotId: CharacterActionSlot['slotId'];
   order: number;
-  entryKind: 'skill' | 'item' | 'empty';
+  entryKind: 'skill' | 'item' | 'weapon' | 'empty';
   skillId?: string;
   itemId?: string;
   itemInstanceId?: string | null;
+  weaponItemId?: string;
+  weaponInstanceId?: string | null;
   isLocked?: false;
 }
 
@@ -131,14 +134,19 @@ export interface ValidateCombatPlanResponse {
   };
 }
 
-export interface SubmitCombatPlanResponse {
-  ok: boolean;
-  plan?: CombatTurnPlan;
-  battleState?: ArenaBattleState;
-  errors?: CombatPlanErrorCode[];
-  warnings?: CombatPlanWarningCode[];
-  warningDetails?: CombatPlanWarning[];
-}
+export type SubmitCombatPlanResponse =
+  | {
+    ok: true;
+    acceptedPlan: CombatTurnPlan;
+    battleState: ArenaBattleState;
+    warnings?: CombatPlanWarning[];
+  }
+  | {
+    ok: false;
+    errorCode: string;
+    message: string;
+    details?: unknown;
+  };
 
 export interface NearbyPvpPlayer {
   characterId: string;
@@ -370,7 +378,7 @@ export async function getCharacterActionBar(characterId: string): Promise<Charac
 
 export async function updateCharacterActionSlots(
   characterId: string,
-  slots: Array<{ slotIndex?: number; slotId?: CharacterActionSlot['slotId']; kind: 'skill' | 'item' | null; refId: string | null; itemInstanceId?: string | null }>,
+  slots: Array<{ slotIndex?: number; slotId?: CharacterActionSlot['slotId']; kind: 'skill' | 'item' | 'weapon' | null; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }>,
 ): Promise<CharacterActionSlot[]> {
   const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-slots`, {
     method: 'PATCH',
@@ -385,7 +393,7 @@ export async function updateCharacterActionSlots(
 
 export async function updateCharacterActionBar(
   characterId: string,
-  slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>,
+  slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>,
 ): Promise<CharacterActionBarSlot[]> {
   const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/action-bar`, {
     method: 'PATCH',
@@ -663,11 +671,12 @@ export async function submitCombatPlan(payload: {
   actorId: string;
   roundNumber: number;
   commands: CombatCommand[];
+  ready?: boolean;
 }): Promise<SubmitCombatPlanResponse> {
   const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/submit-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands }),
+    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands, ready: payload.ready }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));

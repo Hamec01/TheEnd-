@@ -1,5 +1,6 @@
 import type { Race } from './races';
 import { COMBAT_ACTION_COSTS } from './combat-costs';
+import type { ExitZone } from './battle-map';
 import type {
   CombatAnimationEvent,
   CombatBattlePhase,
@@ -86,6 +87,7 @@ export interface ArenaCombatEntity {
   willpower: number;
   initiative: number;
   isAlive: boolean;
+  lifeState?: CombatActorLifeState;
   position: number;
   battlefieldX?: number;
   battlefieldY?: number;
@@ -104,6 +106,12 @@ export interface ArenaCombatEntity {
   splashCenterMultiplier?: number;
   /** Damage multiplier for adjacent cells inside the splash radius (>= 0). */
   splashOuterMultiplier?: number;
+  /** Whether the entity has a shield equipped (affects guard block chance). */
+  hasShield?: boolean;
+  /** Currently equipped weapon item id (admin item id, updated by weapon_swap). */
+  activeWeaponItemId?: string | null;
+  /** Currently equipped off-hand item id (admin item id, e.g. shield). Cleared when two-handed weapon equipped. */
+  offHandItemId?: string | null;
 }
 
 export interface ArenaCombatAction {
@@ -160,6 +168,58 @@ export interface BattlefieldTrapState {
   isActive?: boolean;
 }
 
+// --- Escape/exit zone additions ---
+export type CombatBattleType =
+  | 'arena'
+  | 'pve'
+  | 'pvp'
+  | 'quest'
+  | 'event'
+  | 'farm'
+  | 'ambush'
+  | 'wild'
+  | 'random_encounter';
+
+export type CombatActorLifeState = 'alive' | 'downed' | 'defeated' | 'dead' | 'escaped';
+
+export interface LootItem {
+  itemId: string;
+  itemInstanceId?: string;
+  quantity?: number;
+  name?: string;
+  rarity?: string;
+  generatedFrom?: string;
+}
+
+export interface CombatLootContainer {
+  id: string;
+  battleId: string;
+  x: number;
+  y: number;
+  sourceEntityId: string;
+  sourceName: string;
+  items: LootItem[];
+  gold?: number;
+  createdRound: number;
+  claimed?: boolean;
+  claimedByActorId?: string;
+  claimedAt?: string;
+}
+
+// ExitZone lives in `battle-map.ts` and is referenced by combat runtime state.
+
+export interface EscapeState {
+  actorId: string;
+  active: boolean;
+  startedRound: number;
+  requiredRounds: number;
+  remainingRounds: number;
+  exitZoneId: string;
+  interrupted?: boolean;
+  interruptedReason?: 'left_zone' | 'stunned' | 'knocked_down' | 'dead' | 'battle_finished';
+  completedRound?: number;
+}
+
 export interface ArenaBattleState {
   combatId: string;
   battleMapId?: string;
@@ -176,9 +236,11 @@ export interface ArenaBattleState {
   recentCombatEvents?: CombatEvent[];
   recentAnimationEvents?: CombatAnimationEvent[];
   /**
-   * Turn timer deadline (epoch ms). Client renders countdown; server may auto-resolve when expired.
+   * Turn timer deadline (ISO string). Client renders countdown; server may auto-resolve when expired.
    */
-  turnDeadlineAt?: number;
+  turnStartedAt?: string;
+  turnDeadlineAt?: string;
+  roundDurationSeconds?: number;
   roundNumber: number;
   distance: DistanceBand;
   entities: ArenaCombatEntity[];
@@ -188,6 +250,23 @@ export interface ArenaBattleState {
   lastRound?: ArenaCombatRound;
   isFinished: boolean;
   winner?: TeamSide;
+  // --- Escape/exit zone additions ---
+  battleType?: CombatBattleType;
+  exitZones?: ExitZone[];
+  escapeStates?: Record<string, EscapeState>;
+  lootContainers?: CombatLootContainer[];
+}
+
+export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleState {
+  return {
+    ...state,
+    phase: state.phase ?? (state.isFinished ? 'finished' : 'planning'),
+    roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber > 0 ? state.roundNumber : 1,
+    submittedPlans: state.submittedPlans ?? {},
+    readyActorIds: state.readyActorIds ?? [],
+    escapeStates: state.escapeStates ?? {},
+    lootContainers: state.lootContainers ?? [],
+  };
 }
 
 export interface BattlefieldTilePlacement {

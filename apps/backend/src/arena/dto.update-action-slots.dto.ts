@@ -14,8 +14,8 @@ class ActionSlotDto {
   slotId?: string;
 
   @IsOptional()
-  @IsIn(['skill', 'item'])
-  kind?: 'skill' | 'item' | null;
+  @IsIn(['skill', 'item', 'weapon', null])
+  kind?: 'skill' | 'item' | 'weapon' | null;
 
   @IsOptional()
   @IsString()
@@ -26,6 +26,11 @@ class ActionSlotDto {
   @IsString()
   @Length(1, 120)
   itemInstanceId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  weaponInstanceId?: string | null;
 }
 
 export class UpdateActionSlotsDto {

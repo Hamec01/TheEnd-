@@ -184,6 +184,11 @@ export interface AdminItem {
   defaultRuneComplexId?: string;
   setId?: string;
   tags?: string[];
+  isDroppable?: boolean;
+  isQuestItem?: boolean;
+  isBound?: boolean;
+  isStarterItem?: boolean;
+  dropOnPvpDeath?: boolean;
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;

@@ -26,7 +26,7 @@ const CHARACTER_LOADOUTS_STORE_KEY = 'character-skill-loadouts-v1';
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type InputJsonValue = JsonValue;
+type InputJsonValue = Prisma.InputJsonValue;
 
 type StoredCharacterSkill = {
   id: string;

@@ -12,8 +12,8 @@ class ActionBarSlotDto {
   @Max(9)
   order?: number;
 
-  @IsIn(['skill', 'item', 'empty'])
-  entryKind!: 'skill' | 'item' | 'empty';
+  @IsIn(['skill', 'item', 'weapon', 'empty'])
+  entryKind!: 'skill' | 'item' | 'weapon' | 'empty';
 
   @IsOptional()
   @IsString()
@@ -29,6 +29,16 @@ class ActionBarSlotDto {
   @IsString()
   @Length(1, 120)
   itemInstanceId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  weaponItemId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  weaponInstanceId?: string | null;
 }
 
 export class UpdateActionBarDto {

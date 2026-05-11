@@ -281,6 +281,7 @@ function createEmptyActionSlots(): CharacterActionSlot[] {
     kind: null,
     refId: null,
     itemInstanceId: null,
+    weaponInstanceId: null,
   }));
 }
 
@@ -292,6 +293,7 @@ function actionBarSlotToActionSlot(slot: CharacterActionBarSlot): CharacterActio
       kind: 'skill',
       refId: slot.skillId ?? null,
       itemInstanceId: null,
+      weaponInstanceId: null,
     };
   }
 
@@ -302,6 +304,18 @@ function actionBarSlotToActionSlot(slot: CharacterActionBarSlot): CharacterActio
       kind: 'item',
       refId: slot.itemId ?? null,
       itemInstanceId: slot.itemInstanceId ?? null,
+      weaponInstanceId: null,
+    };
+  }
+
+  if (slot.entryKind === 'weapon') {
+    return {
+      slotId: slot.slotId,
+      slotIndex: slot.order,
+      kind: 'weapon',
+      refId: slot.weaponItemId ?? slot.itemId ?? null,
+      itemInstanceId: slot.weaponInstanceId ?? slot.itemInstanceId ?? null,
+      weaponInstanceId: slot.weaponInstanceId ?? slot.itemInstanceId ?? null,
     };
   }
 
@@ -311,6 +325,7 @@ function actionBarSlotToActionSlot(slot: CharacterActionBarSlot): CharacterActio
     kind: null,
     refId: null,
     itemInstanceId: null,
+    weaponInstanceId: null,
   };
 }
 
@@ -2019,7 +2034,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus('Быстрые слоты сохранены.');
   }, [character]);
 
-  const handleSaveCharacterActionSlots = useCallback(async (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null }>) => {
+  const handleSaveCharacterActionSlots = useCallback(async (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => {
     if (!character) {
       return;
     }

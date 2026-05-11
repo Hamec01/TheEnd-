@@ -7,6 +7,7 @@ import type {
   BattleMapSpawnZone,
   BattleMapTrap,
   BattleMapTrigger,
+  ExitZone,
 } from '@theend/rpg-domain';
 import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from '../content/contentApi';
 
@@ -213,6 +214,28 @@ function normalizeTriggers(triggers: unknown, width: number, height: number): Ba
     });
 }
 
+function normalizeExitZones(exitZones: unknown, width: number, height: number): ExitZone[] {
+  if (!Array.isArray(exitZones)) {
+    return [];
+  }
+  return exitZones
+    .filter((zone) => zone && typeof zone === 'object')
+    .map((zone, index) => {
+      const candidate = zone as Partial<ExitZone>;
+      const id = typeof candidate.id === 'string' && candidate.id.trim().length > 0 ? candidate.id.trim() : `exit_zone_${String(index + 1).padStart(3, '0')}`;
+      const team = candidate.team === 'enemy' || candidate.team === 'any' ? candidate.team : 'player';
+      return {
+        id,
+        cells: uniqueCells(Array.isArray(candidate.cells) ? candidate.cells : [], width, height),
+        team,
+        enabledForArena: false,
+        label: typeof candidate.label === 'string' ? candidate.label : undefined,
+        description: typeof candidate.description === 'string' ? candidate.description : undefined,
+      };
+    })
+    .filter((zone) => zone.cells.length > 0);
+}
+
 function getCellKey(x: number, y: number): string {
   return `${x}:${y}`;
 }
@@ -307,6 +330,7 @@ export function normalizeBattleMap(map: Partial<BattleMapDefinition>): BattleMap
     traps: normalizeTraps(map.traps, width, height),
     npcs: normalizeNpcs(map.npcs, width, height),
     triggers: normalizeTriggers(map.triggers, width, height),
+    exitZones: normalizeExitZones((map as Partial<BattleMapDefinition>).exitZones, width, height),
     tags: Array.isArray(map.tags) ? map.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0) : fallback.tags,
     linkedLocationId: typeof map.linkedLocationId === 'string' ? map.linkedLocationId : fallback.linkedLocationId,
     linkedQuestId: typeof map.linkedQuestId === 'string' ? map.linkedQuestId : undefined,
