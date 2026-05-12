@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { AdminItem, LootTable } from '../../services/content/models';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
-import { lootTablesService, validateLootTable } from '../../services/content/lootTablesService';
+import { extractRawLootTablesFromImportJson, importLootTablesFromJsonEntries, lootTablesService, validateLootTable } from '../../services/content/lootTablesService';
 import { uid } from '../../services/content/storage';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import {
@@ -32,6 +33,8 @@ export function LootTablesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<LootTable>(emptyLootTable());
   const [status, setStatus] = useState('Готово');
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     const [allTables, allItems] = await Promise.all([lootTablesService.getAll(), itemsService.getAll()]);
@@ -46,6 +49,42 @@ export function LootTablesPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_lootTables',
+      collectionKey: 'lootTables',
+      entries: tables,
+    });
+    setStatus(`Экспорт: lootTables (${tables.length})`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawLootTablesFromImportJson(payload);
+      const result = await importLootTablesFromJsonEntries(entries);
+      await refresh();
+      const parts = [
+        result.created.length ? `создано: ${result.created.length}` : null,
+        result.updated.length ? `обновлено: ${result.updated.length}` : null,
+        result.errors.length ? `ошибок: ${result.errors.length}` : null,
+      ].filter(Boolean);
+      setStatus(`Импорт таблиц добычи: ${parts.join(', ') || 'нет изменений'}`);
+    } catch (error) {
+      setStatus(`Импорт: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   const expectedDrops = useMemo(() => {
     return draft.entries.map((entry) => {
@@ -133,6 +172,9 @@ export function LootTablesPage() {
     <div className="admin-two-col">
       <section className="admin-list-panel">
         <div className="admin-list-tools">
+          <button onClick={exportJson}>Экспорт JSON</button>
+          <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
           <button onClick={() => { setSelectedId(null); setDraft(emptyLootTable()); }}>Новая таблица добычи</button>
         </div>
         <div className="admin-scroll-list">

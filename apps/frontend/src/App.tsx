@@ -47,7 +47,7 @@ import {
   updateSkillLoadout,
   sellArenaItem,
   unequipArenaItem,
-  useCombatItem as consumeCombatItem,
+  useArenaItem,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -2140,28 +2140,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
-  async function handleUseConsumable(itemId: string, targetId?: string): Promise<void> {
-    if (!combatId || !playerCombatId || !combatState || combatState.isFinished) {
-      setStatus('Consumables can be used only during an active battle.');
-      return;
-    }
-
+  async function handleUseConsumable(itemId: string): Promise<void> {
     try {
-      const result = await consumeCombatItem({
-        combatId,
-        actorId: playerCombatId,
-        itemId,
-        targetId,
-      });
-      setCombatState(result.state);
-      setInventory((prev) => ({
-        ...prev,
-        gold: result.gold,
-        items: result.inventory,
-      }));
-      if (result.actionSlots) {
-        setActionSlots(result.actionSlots);
+      if (!character) {
+        setStatus('Character is not selected.');
+        return;
       }
+
+      const updatedHub = await useArenaItem(character.id, itemId);
+      applyHubState(updatedHub);
       setStatus(`${resolveItem(itemId).name} used.`);
     } catch (error) {
       setStatus(`Consumable error: ${(error as Error).message}`);
@@ -2899,11 +2886,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 onSkillChange={setSelectedCombatSkillId}
                 onStateChange={setCombatState}
                 onStatus={setStatus}
-                onUseItem={handleUseConsumable}
                 onBattleFinished={handleBattleFinished}
                 onClose={() => setBattleWindowOpen(false)}
                 playerAvatarUrl={playerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+                resolveItemImage={resolveItemImage}
                 resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
                 playerEquipment={equipment}
               />

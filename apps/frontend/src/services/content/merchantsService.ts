@@ -1,5 +1,6 @@
 import type { AdminMerchant } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
 
 export function validateMerchant(merchant: AdminMerchant): string[] {
@@ -17,6 +18,37 @@ export function validateMerchant(merchant: AdminMerchant): string[] {
     errors.push('priceMultiplier must be > 0');
   }
   return errors;
+}
+
+export function extractRawMerchantsFromImportJson(payload: unknown): unknown[] {
+  return extractRawCollectionFromImportJson(payload, 'merchants');
+}
+
+export async function importMerchantsFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+  const defaults = (): AdminMerchant => ({
+    id: '',
+    name: '',
+    city: '',
+    location: '',
+    type: 'general',
+    description: '',
+    portraitPath: '',
+    priceMultiplier: 1,
+    isEnabled: true,
+    items: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  });
+
+  return importCollectionFromJsonEntries<AdminMerchant>({
+    entries,
+    defaults,
+    normalize: (value) => ({ ...defaults(), ...value, id: value.id.trim() || uid('merchant'), updatedAt: nowIso() }),
+    validate: validateMerchant,
+    getAll: () => merchantsService.getAll(),
+    create: (value) => merchantsService.create(value),
+    update: (id, value) => merchantsService.update(id, value),
+  });
 }
 
 export const merchantsService = {

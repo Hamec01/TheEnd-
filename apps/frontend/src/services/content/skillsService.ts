@@ -10,6 +10,7 @@ import {
   type AdminSkillDefinition,
 } from '@theend/rpg-domain';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
 
 export function emptySkill(): AdminSkillDefinition {
@@ -150,6 +151,26 @@ export function normalizeSkill(skill: AdminSkillDefinition): AdminSkillDefinitio
 
 export function validateSkill(skill: AdminSkillDefinition): string[] {
   return validateSkillDefinition(skill);
+}
+
+/**
+ * Extracts an array of raw skill records from export/manual json.
+ * Supports: array, { skills }, full backup { content: { skills } }.
+ */
+export function extractRawSkillsFromImportJson(payload: unknown): unknown[] {
+  return extractRawCollectionFromImportJson(payload, 'skills');
+}
+
+export async function importSkillsFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+  return importCollectionFromJsonEntries<AdminSkillDefinition>({
+    entries,
+    defaults: emptySkill,
+    normalize: normalizeSkill,
+    validate: validateSkill,
+    getAll: () => skillsService.getAll(),
+    create: (value) => skillsService.create(value),
+    update: (id, value) => skillsService.update(id, value),
+  });
 }
 
 export const skillsService = {

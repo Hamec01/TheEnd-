@@ -1,5 +1,6 @@
 import type { Material } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
 
 export function validateMaterial(material: Material): string[] {
@@ -14,6 +15,37 @@ export function validateMaterial(material: Material): string[] {
     errors.push('region is required');
   }
   return errors;
+}
+
+export function extractRawMaterialsFromImportJson(payload: unknown): unknown[] {
+  return extractRawCollectionFromImportJson(payload, 'materials');
+}
+
+export async function importMaterialsFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+  const defaults = (): Material => ({
+    id: '',
+    name: '',
+    category: 'other',
+    region: '',
+    rarity: 'common',
+    properties: [],
+    gameplayDescription: '',
+    loreDescription: '',
+    imagePath: '',
+    isEnabled: true,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  });
+
+  return importCollectionFromJsonEntries<Material>({
+    entries,
+    defaults,
+    normalize: (value) => ({ ...defaults(), ...value, id: value.id.trim() || uid('material'), updatedAt: nowIso() }),
+    validate: validateMaterial,
+    getAll: () => materialsService.getAll(),
+    create: (value) => materialsService.create(value),
+    update: (id, value) => materialsService.update(id, value),
+  });
 }
 
 export const materialsService = {

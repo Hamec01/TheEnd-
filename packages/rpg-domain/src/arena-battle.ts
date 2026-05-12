@@ -258,6 +258,11 @@ export interface ArenaBattleState {
   resolveSnapshot?: CombatRoundResolveSnapshot;
   recentCombatEvents?: CombatEvent[];
   recentAnimationEvents?: CombatAnimationEvent[];
+  activeActorId?: string;
+  turnQueue?: string[];
+  turnIndex?: number;
+  currentTurnAp?: number;
+  turnDurationSeconds?: number;
   /**
    * Turn timer deadline (ISO string). Client renders countdown; server may auto-resolve when expired.
    */
@@ -283,10 +288,13 @@ export interface ArenaBattleState {
 export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleState {
   return {
     ...state,
-    phase: state.phase ?? (state.isFinished ? 'finished' : 'planning'),
+    phase: state.phase ?? (state.isFinished ? 'finished' : 'acting'),
     roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber >= 0 ? state.roundNumber : 0,
     submittedPlans: state.submittedPlans ?? {},
     readyActorIds: state.readyActorIds ?? [],
+    turnQueue: state.turnQueue ?? [],
+    turnIndex: typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex) ? Math.max(0, Math.floor(state.turnIndex)) : 0,
+    currentTurnAp: typeof state.currentTurnAp === 'number' && Number.isFinite(state.currentTurnAp) ? Math.max(0, Math.floor(state.currentTurnAp)) : 0,
     escapeStates: state.escapeStates ?? {},
     lootContainers: state.lootContainers ?? [],
   };

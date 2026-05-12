@@ -24,6 +24,7 @@ __exportStar(require("./combat-costs"), exports);
 __exportStar(require("./combat-guard"), exports);
 __exportStar(require("./damage"), exports);
 __exportStar(require("./skills"), exports);
+__exportStar(require("./skills/item.formulas"), exports);
 __exportStar(require("./arena-battle"), exports);
 __exportStar(require("./arena-combat-equipment"), exports);
 __exportStar(require("./combat-status-ids"), exports);

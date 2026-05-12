@@ -1,5 +1,6 @@
 import type { LootTable } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
 
 export function validateLootTable(table: LootTable): string[] {
@@ -16,6 +17,32 @@ export function validateLootTable(table: LootTable): string[] {
     }
   }
   return errors;
+}
+
+export function extractRawLootTablesFromImportJson(payload: unknown): unknown[] {
+  return extractRawCollectionFromImportJson(payload, 'lootTables');
+}
+
+export async function importLootTablesFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+  const defaults = (): LootTable => ({
+    id: '',
+    name: '',
+    sourceType: 'monster',
+    sourceId: '',
+    entries: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  });
+
+  return importCollectionFromJsonEntries<LootTable>({
+    entries,
+    defaults,
+    normalize: (value) => ({ ...defaults(), ...value, id: value.id.trim() || uid('loot'), updatedAt: nowIso() }),
+    validate: validateLootTable,
+    getAll: () => lootTablesService.getAll(),
+    create: (value) => lootTablesService.create(value),
+    update: (id, value) => lootTablesService.update(id, value),
+  });
 }
 
 export const lootTablesService = {

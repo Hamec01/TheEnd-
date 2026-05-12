@@ -138,7 +138,7 @@ export interface AreaEffectTarget {
   cell: { x: number; y: number };
 }
 
-export type CombatBattlePhase = 'planning' | 'resolving' | 'finished';
+export type CombatBattlePhase = 'planning' | 'resolving' | 'acting' | 'animating' | 'finished';
 
 export interface CombatRoundResolveSnapshot {
   battleId: string;
@@ -148,6 +148,7 @@ export interface CombatRoundResolveSnapshot {
 }
 
 export type CombatEventType =
+  | 'resource_regen'
   | 'command_started'
   | 'command_failed'
   | 'movement'
@@ -176,6 +177,9 @@ export type CombatEventType =
   | 'plan_auto_submitted'
   | 'round_timeout'
   | 'battle_finished'
+  | 'turn_started'
+  | 'turn_ended'
+  | 'turn_changed'
   | 'escape_started'
   | 'escape_progress'
   | 'escape_delayed'

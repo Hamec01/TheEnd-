@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import type { AdminItem, AdminMerchant, MerchantType } from '../../services/content/models';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
-import { merchantsService, validateMerchant } from '../../services/content/merchantsService';
+import { extractRawMerchantsFromImportJson, importMerchantsFromJsonEntries, merchantsService, validateMerchant } from '../../services/content/merchantsService';
 import { cityService } from '../../services/cityRepository';
 import { uid } from '../../services/content/storage';
 import {
@@ -44,6 +45,8 @@ export function MerchantsPage() {
   const [draft, setDraft] = useState<AdminMerchant>(emptyMerchant());
   const [itemSearch, setItemSearch] = useState('');
   const [status, setStatus] = useState('Готово');
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh(nextSelectedId: string | null = selectedId) {
     const [allMerchants, allItems] = await Promise.all([merchantsService.getAll(), itemsService.getAll()]);
@@ -69,6 +72,42 @@ export function MerchantsPage() {
     void refresh();
     void cityService.getCities().then(setCities).catch(() => setCities([]));
   }, []);
+
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_merchants',
+      collectionKey: 'merchants',
+      entries: merchants,
+    });
+    setStatus(`Экспорт: merchants (${merchants.length})`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawMerchantsFromImportJson(payload);
+      const result = await importMerchantsFromJsonEntries(entries);
+      await refresh();
+      const parts = [
+        result.created.length ? `создано: ${result.created.length}` : null,
+        result.updated.length ? `обновлено: ${result.updated.length}` : null,
+        result.errors.length ? `ошибок: ${result.errors.length}` : null,
+      ].filter(Boolean);
+      setStatus(`Импорт торговцев: ${parts.join(', ') || 'нет изменений'}`);
+    } catch (error) {
+      setStatus(`Импорт: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   const selectedCity = useMemo(() => {
     if (!draft.cityId) return null;
@@ -381,10 +420,13 @@ export function MerchantsPage() {
           </div>
         </div>
 
-        <div className="admin-list-tools admin-catalog-toolbar">
-          <input placeholder="Поиск по id, имени или городу" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
-        </div>
+      <div className="admin-list-tools admin-catalog-toolbar">
+        <input placeholder="Поиск по id, имени или городу" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <button onClick={exportJson}>Экспорт JSON</button>
+        <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+        <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+        <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
+      </div>
 
         <div className="admin-items-selected-row">
           <strong>Сейчас редактируется:</strong>

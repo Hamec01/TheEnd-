@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   EMPTY_EQUIPMENT,
   CastType,
@@ -75,6 +75,13 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_MAX_BACKUPS = 40;
+const CONTENT_AUTOSAVE_DIR = 'autosaves';
+const CONTENT_AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000;
+const CONTENT_AUTOSAVE_SOURCES = [
+  'content-db.json',
+  'theend_content.local.json',
+  'theend_runtime.local.json',
+] as const;
 const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 const CONTENT_STORE_KEY = 'main-content-db';
 const CONTENT_BACKUP_SCHEMA_VERSION = 2;
@@ -1486,23 +1493,33 @@ function extractExtraContent(raw: unknown): Record<string, unknown> {
 }
 
 @Injectable()
-export class ContentService implements OnModuleInit {
+export class ContentService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ContentService.name);
   private readonly runtimeFile = resolveContentDataFilePath();
   private readonly dataDir = dirname(this.runtimeFile);
   private readonly templateFile = resolveContentExampleFilePath();
   private readonly legacyTemplateFile = resolveLegacyContentTemplatePath();
   private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
+  private readonly autosaveDir = join(this.dataDir, CONTENT_AUTOSAVE_DIR);
   private readonly storageMode: ContentStorageMode = resolveStorageMode();
   private dbCache: ContentDatabase | null = null;
   private initPromise: Promise<void> | null = null;
   private extraContent: Record<string, unknown> = {};
   private writeQueue: Promise<ContentDatabase> = Promise.resolve(createEmptyDatabase());
+  private autosaveTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
     await this.ensureInitialized();
+    this.startAutosaveLoop();
+  }
+
+  onModuleDestroy(): void {
+    if (this.autosaveTimer) {
+      clearInterval(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
   }
 
   async ensureInitialized(): Promise<void> {
@@ -1869,6 +1886,42 @@ export class ContentService implements OnModuleInit {
     const toDelete = backups.slice(0, Math.max(0, backups.length - CONTENT_DB_MAX_BACKUPS));
     for (const file of toDelete) {
       unlinkSync(join(this.backupDir, file));
+    }
+  }
+
+  private startAutosaveLoop(): void {
+    if (this.storageMode !== 'file') {
+      return;
+    }
+
+    // Run one snapshot on startup and continue every 2 minutes.
+    this.createAutosaveSnapshot();
+
+    if (this.autosaveTimer) {
+      clearInterval(this.autosaveTimer);
+    }
+    this.autosaveTimer = setInterval(() => {
+      this.createAutosaveSnapshot();
+    }, CONTENT_AUTOSAVE_INTERVAL_MS);
+  }
+
+  private createAutosaveSnapshot(): void {
+    try {
+      if (!existsSync(this.autosaveDir)) {
+        mkdirSync(this.autosaveDir, { recursive: true });
+      }
+
+      for (const sourceName of CONTENT_AUTOSAVE_SOURCES) {
+        const sourcePath = join(this.dataDir, sourceName);
+        if (!existsSync(sourcePath)) {
+          continue;
+        }
+        const targetPath = join(this.autosaveDir, sourceName);
+        copyFileSync(sourcePath, targetPath);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown autosave error';
+      this.logger.warn(`Autosave snapshot failed: ${message}`);
     }
   }
 
@@ -2489,6 +2542,15 @@ export class ContentService implements OnModuleInit {
     }
 
     throw new NotFoundException(`Unknown item id: ${itemId}`);
+  }
+
+  /**
+   * Returns the raw AdminItem payload when present in content DB.
+   * Used by combat runtime to read useEffects/effects/combatEffects.
+   */
+  resolveAdminItemById(itemId: string): AdminItem | null {
+    const adminItem = this.ensureLoaded().items.find((item) => item.id === itemId && item.isEnabled);
+    return adminItem ? clone(adminItem) : null;
   }
 
   getStatsWithEquipment(baseStats: StatBlock, equipment: Equipment): StatBlock {

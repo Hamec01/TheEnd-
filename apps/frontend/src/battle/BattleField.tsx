@@ -13,6 +13,7 @@ import {
   type BattlefieldTile,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CombatContextAction, ClickedCombatTarget, SelectedCombatSource } from './combatContextActions';
 
 interface BattleFieldProps {
   entities: ArenaCombatEntity[];
@@ -21,6 +22,10 @@ interface BattleFieldProps {
   battleMapHeight: number;
   viewportWidth: number;
   viewportHeight: number;
+  visualPositions?: Record<string, { x: number; y: number }>;
+  selectedSource?: SelectedCombatSource;
+  buildContextActions?: (target: ClickedCombatTarget) => CombatContextAction[];
+  onExecuteContextCommand?: (command: import('@theend/rpg-domain').CombatCommand) => void;
   mapImageUrl?: string;
   mapCalibration?: {
     cellSizePx?: number;
@@ -41,6 +46,8 @@ interface BattleFieldProps {
   onQuickHeavyAttack?: (targetId: string) => void;
   onQuickSkill?: (skillId: string, targetId?: string) => void;
   onQuickItem?: (itemId: string, targetId?: string) => void;
+  selectedHotbarItemId?: string | null;
+  onQuickUseSelectedItemAt?: (target: { kind: 'entity'; entityId: string } | { kind: 'cell'; x: number; y: number }) => void;
   onQuickMove?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
   onQuickWait?: () => void;
   onQuickGuard?: () => void;
@@ -198,6 +205,10 @@ export function BattleField({
   battleMapHeight,
   viewportWidth,
   viewportHeight,
+  visualPositions,
+  selectedSource = { kind: 'none' },
+  buildContextActions,
+  onExecuteContextCommand,
   mapImageUrl,
   mapCalibration,
   distance,
@@ -214,6 +225,8 @@ export function BattleField({
   onQuickHeavyAttack,
   onQuickSkill,
   onQuickItem,
+  selectedHotbarItemId = null,
+  onQuickUseSelectedItemAt,
   onQuickMove,
   onQuickWait,
   onQuickGuard,
@@ -268,11 +281,22 @@ export function BattleField({
   const [tokenImpactUntilMs, setTokenImpactUntilMs] = useState<Record<string, number>>({});
   const [animationNowMs, setAnimationNowMs] = useState<number>(Date.now());
 
+  const entitiesForRender = useMemo(() => {
+    if (!visualPositions || Object.keys(visualPositions).length === 0) {
+      return entities;
+    }
+    return entities.map((entity) => {
+      const pos = visualPositions[entity.id];
+      if (!pos) return entity;
+      return { ...entity, battlefieldX: pos.x, battlefieldY: pos.y };
+    });
+  }, [entities, visualPositions]);
+
   const placements = useMemo(
-    () => getBattlefieldTilePlacements(entities, distance, battleMapWidth, battleMapHeight),
-    [battleMapHeight, battleMapWidth, distance, entities],
+    () => getBattlefieldTilePlacements(entitiesForRender, distance, battleMapWidth, battleMapHeight),
+    [battleMapHeight, battleMapWidth, distance, entitiesForRender],
   );
-  const entityById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity])), [entities]);
+  const entityById = useMemo(() => new Map(entitiesForRender.map((entity) => [entity.id, entity])), [entitiesForRender]);
   const placementByTile = useMemo(() => new Map(placements.map((placement) => [`${placement.x}:${placement.y}`, placement])), [placements]);
   const tileTypeByKey = useMemo(() => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile.type])), [battlefieldTiles]);
 
@@ -534,6 +558,7 @@ export function BattleField({
 
     return result;
   }, [adjacentMeleeEnemies, movementType, placementByTile, playerPlacement, tileTypeByKey]);
+
 
   const attackablePositions = useMemo(() => {
     if (!player || !selectedEnemy || selectedTargetId === playerId) {
@@ -829,6 +854,27 @@ export function BattleField({
 
     closeContextMenu();
   };
+
+  const clickedTargetForMenu = useMemo((): ClickedCombatTarget | null => {
+    if (!contextMenu.show) return null;
+    if (contextMenu.type === 'self') {
+      return { kind: 'self', actorId: playerId };
+    }
+    if (contextMenu.type === 'enemy' && contextMenu.targetId) {
+      return { kind: 'entity', entityId: contextMenu.targetId };
+    }
+    if (contextMenu.type === 'cell' && contextMenu.tileX !== undefined && contextMenu.tileY !== undefined) {
+      return { kind: 'cell', x: contextMenu.tileX, y: contextMenu.tileY };
+    }
+    return null;
+  }, [contextMenu.show, contextMenu.targetId, contextMenu.tileX, contextMenu.tileY, contextMenu.type, playerId]);
+
+  const contextActions = useMemo(() => {
+    if (!buildContextActions || selectedSource.kind === 'none' || !clickedTargetForMenu) {
+      return [] as CombatContextAction[];
+    }
+    return buildContextActions(clickedTargetForMenu);
+  }, [buildContextActions, clickedTargetForMenu, selectedSource.kind]);
 
   useEffect(() => {
     const node = boardRef.current;
@@ -1128,6 +1174,29 @@ export function BattleField({
 
         {contextMenu.show && (
           <div ref={menuRef} className="tactical-context-menu" style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}>
+            {contextActions.length > 0 && (
+              <div className="tactical-context-group">
+                <span className="tactical-context-group-title">Действия</span>
+                {contextActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    disabled={action.disabled}
+                    title={action.disabled && action.disabledReason ? action.disabledReason : undefined}
+                    onClick={() => {
+                      if (action.disabled) return;
+                      if (action.command) {
+                        onExecuteContextCommand?.(action.command);
+                      }
+                      closeContextMenu();
+                    }}
+                  >
+                    {action.label}{action.disabled && action.disabledReason ? ` — ${action.disabledReason}` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {contextMenu.type === 'enemy' && (
               <>
                 {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Базовая атака</button> : null}
