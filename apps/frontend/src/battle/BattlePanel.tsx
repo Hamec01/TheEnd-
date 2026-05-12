@@ -1,7 +1,6 @@
 ﻿// BattlePanel.tsx — P0 Sequential Turn-Based Combat UI
 // Replaces simultaneous planning model with active-actor turn flow.
 import {
-  ActionType,
   COMBAT_ACTION_COSTS,
   DistanceBand,
   MovementType,
@@ -9,12 +8,14 @@ import {
   TeamSide,
   createCombatCommandFromType,
   getBattlefieldDistance,
-  getSkillCostSummary,
   isActorStandingOnExitZone,
   type AdminSkillDefinition,
   type ArenaBattleState,
   type ArenaCombatEntity,
+  type CombatAnimationEvent,
   type CombatCommand,
+  type CombatEvent,
+  type CombatLogEntry,
   type Equipment,
   type InventoryState,
   type ItemDefinition,
@@ -27,11 +28,11 @@ import {
   type CharacterActionSlot,
 } from '../api';
 import type { AdminItem } from '../services/content/models';
-import { ActionPlanner } from './ActionPlanner';
 import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
 import { FighterCard } from './FighterCard';
 import { InspectPanel } from './InspectPanel';
+import { buildCombatContextActions, buildSelectedSourceHint } from './combatContextActions';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -52,11 +53,11 @@ interface BattlePanelProps {
   onSkillChange: (skillId: string | null) => void;
   onStateChange: (next: ArenaBattleState) => void;
   onStatus: (text: string) => void;
-  onUseItem?: (itemId: string, targetId?: string) => Promise<void> | void;
   onBattleFinished?: (next: ArenaBattleState, hubState?: ArenaHubState) => Promise<void> | void;
   onClose?: () => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
+  resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   playerEquipment?: Equipment;
 }
@@ -203,6 +204,25 @@ function formatRevalidationReason(reason: string): string {
   return map[reason] ?? reason;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function readCell(value: unknown): { x: number; y: number } | null {
+  const raw = toRecord(value);
+  const x = raw && typeof raw.x === 'number' && Number.isFinite(raw.x) ? Math.floor(raw.x) : null;
+  const y = raw && typeof raw.y === 'number' && Number.isFinite(raw.y) ? Math.floor(raw.y) : null;
+  if (x === null || y === null) return null;
+  return { x, y };
+}
+
+function readDamageAmount(event: CombatEvent): number {
+  const data = event.data ?? {};
+  return toFiniteAmount((data as Record<string, unknown>).finalDamage)
+    || toFiniteAmount((data as Record<string, unknown>).amount)
+    || toFiniteAmount((data as Record<string, unknown>).damage);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 export function BattlePanel({
@@ -218,11 +238,11 @@ export function BattlePanel({
   onSkillChange,
   onStateChange,
   onStatus,
-  onUseItem,
   onBattleFinished,
   onClose,
   playerAvatarUrl,
   resolveItemById,
+  resolveItemImage,
   resolveAdminItemById,
   playerEquipment,
 }: BattlePanelProps) {
@@ -237,25 +257,11 @@ export function BattlePanel({
   );
 
   // ── Sequential turn model ───────────────────────────────────────────────
-  const stateWithTurn = state as ArenaBattleState & {
-    roundPhase?: string;
-    activeActorId?: string;
-    currentTurnAp?: Record<string, number>;
-    pendingActorIds?: string[];
-  };
-  const roundPhase = stateWithTurn.roundPhase;
-  const isPlayerPending = Boolean((state.pendingActorIds ?? stateWithTurn.pendingActorIds ?? []).includes(playerId));
-  const isLegacyPlanningMode =
-    !state.isFinished &&
-    (isPlayerPending
-      || (!stateWithTurn.activeActorId && (state.phase === 'planning' || roundPhase === 'PLANNING')));
-  const isPlayerTurn = !state.isFinished && (isPlayerPending || stateWithTurn.activeActorId === playerId || isLegacyPlanningMode);
-  const currentTurnAp = isLegacyPlanningMode
-    ? Math.max(0, 3 - ((state.submittedPlans?.[playerId]?.commands ?? []).reduce((sum, cmd) => sum + Math.max(0, Number(cmd.apCost ?? 0)), 0)))
-    : (stateWithTurn.currentTurnAp?.[playerId] ?? 0);
+  const isPlayerTurn = !state.isFinished && state.activeActorId === playerId;
+  const currentTurnAp = state.currentTurnAp ?? 0;
   const activeActor = useMemo(
-    () => (stateWithTurn.activeActorId ? state.entities.find((e) => e.id === stateWithTurn.activeActorId) ?? null : null),
-    [stateWithTurn.activeActorId, state.entities],
+    () => (state.activeActorId ? state.entities.find((e) => e.id === state.activeActorId) ?? null : null),
+    [state.activeActorId, state.entities],
   );
 
   // ── Timer ───────────────────────────────────────────────────────────────
@@ -278,20 +284,27 @@ export function BattlePanel({
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [selectedMoveTile, setSelectedMoveTile] = useState<{ x: number; y: number } | null>(null);
   const [inspectEntityId, setInspectEntityId] = useState<string | null>(null);
-  const [actionType, setActionType] = useState<ActionType>(ActionType.Attack);
   const [guardMode, setGuardMode] = useState<'guard' | 'strong_guard'>('guard');
+  const [playback, setPlayback] = useState<{
+    isPlaying: boolean;
+    statusText: string | null;
+    activeActorId: string | null;
+    animationEvents: CombatAnimationEvent[];
+    recentLogs: CombatLogEntry[];
+    lastLog: CombatLogEntry | null;
+    visualPositions: Record<string, { x: number; y: number }>;
+  }>({
+    isPlaying: false,
+    statusText: null,
+    activeActorId: null,
+    animationEvents: [],
+    recentLogs: [],
+    lastLog: null,
+    visualPositions: {},
+  });
   const isSubmittingRef = useRef(false);
   const lastFailureEventIdRef = useRef<string | null>(null);
-
-  const legacyPlan = useMemo(
-    () => (state.submittedPlans?.[playerId] ?? null),
-    [playerId, state.submittedPlans],
-  );
-  const legacyApSpent = useMemo(
-    () => (legacyPlan?.commands ?? []).reduce((sum, cmd) => sum + Math.max(0, Number(cmd.apCost ?? 0)), 0),
-    [legacyPlan],
-  );
-  const legacyApLeft = Math.max(0, 3 - legacyApSpent);
+  const pendingFinalStateRef = useRef<ArenaBattleState | null>(null);
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const playerStyle = useMemo(() => (player ? classifyCombatStyle(player) : 'MELEE'), [player]);
@@ -299,6 +312,13 @@ export function BattlePanel({
     () => availableSkills.find((s) => s.skillId === selectedSkillId) ?? null,
     [availableSkills, selectedSkillId],
   );
+
+  const selectedContextSource = useMemo(() => {
+    if (selectedSource.kind === 'skill') return selectedSource;
+    if (selectedSource.kind === 'item') return selectedSource;
+    if (selectedSource.kind === 'weapon') return selectedSource;
+    return { kind: 'none' as const };
+  }, [selectedSource]);
   const selectedEnemy = useMemo(
     () => enemies.find((e) => e.id === selectedTargetId) ?? enemies[0] ?? null,
     [enemies, selectedTargetId],
@@ -338,8 +358,11 @@ export function BattlePanel({
     [state, playerId],
   );
 
-  const lastLog = state.logs.at(-1) ?? null;
-  const recentLogs = useMemo(() => state.logs.slice(-8), [state.logs]);
+  const lastLog = playback.isPlaying ? playback.lastLog : state.logs.at(-1) ?? null;
+  const recentLogs = useMemo(
+    () => (playback.isPlaying ? playback.recentLogs : state.logs.slice(-8)),
+    [playback.isPlaying, playback.recentLogs, state.logs],
+  );
 
   const feedback = useMemo(() => {
     if (!lastLog) {
@@ -378,7 +401,8 @@ export function BattlePanel({
       .filter((slot) => slot.kind === 'item' && Boolean(slot.refId))
       .map((slot) => {
         const itemId = slot.refId!;
-        const quantity = inventory.items.find((e) => e.itemId === itemId)?.quantity ?? 0;
+        const inventoryQuantity = inventory.items.find((e) => e.itemId === itemId)?.quantity ?? 0;
+        const quantity = Math.max(1, inventoryQuantity);
         const adminItem = resolveAdminItemById ? resolveAdminItemById(itemId) : null;
         const costs = normalizeAdminItemCosts(adminItem);
         const effects = normalizeAdminItemEffects(adminItem);
@@ -418,30 +442,26 @@ export function BattlePanel({
   }, [actionSlots, enemies, inventory.items, player?.currentMp, player?.currentStamina, resolveAdminItemById, selectedTargetId]);
 
   // Skill resource warning
-  const skillResourceWarning = useMemo(() => {
-    if (!selectedSkill || !player) return null;
-    const summary = getSkillCostSummary(selectedSkill.definition, selectedSkill.level);
-    const mp = summary.reduce((s, e) => String(e.type).toLowerCase().includes('mp') ? s + e.amount : s, 0);
-    const sta = summary.reduce((s, e) => String(e.type).toLowerCase().includes('stamina') ? s + e.amount : s, 0);
-    const hp = summary.reduce((s, e) => String(e.type).toLowerCase().includes('hp') ? s + e.amount : s, 0);
-    if (mp > player.currentMp) return 'Недостаточно маны для навыка.';
-    if (sta > player.currentStamina) return 'Недостаточно выносливости для навыка.';
-    if (hp >= player.currentHp) return 'Недостаточно HP для навыка.';
-    return null;
-  }, [player, selectedSkill]);
-
-  const actionHint = useMemo(() => {
-    if (!isPlayerTurn) return null;
-    if (selectedSource.kind === 'basic_attack' && !targetInRange) {
-      return 'Цель вне досягаемости. Подойди ближе.';
+  const selectedSlotLabel = useMemo(() => {
+    if (selectedSource.kind === 'none' || !('slotId' in selectedSource) || !selectedSource.slotId) {
+      return null;
     }
-    return null;
-  }, [isPlayerTurn, selectedSource.kind, targetInRange]);
+
+    const slot = actionSlots.find((entry) => entry.slotId === selectedSource.slotId);
+    if (!slot || !slot.refId) {
+      return selectedSource.slotId;
+    }
+
+    const resolvedItem = resolveItemById ? resolveItemById(slot.refId) : null;
+    const adminItem = resolveAdminItemById ? resolveAdminItemById(slot.refId) : null;
+    return resolvedItem?.name ?? adminItem?.name ?? slot.refId;
+  }, [actionSlots, resolveAdminItemById, resolveItemById, selectedSource]);
 
   // ── Core action executor ────────────────────────────────────────────────
 
   const executeAction = useCallback(async (command: CombatCommand): Promise<boolean> => {
     if (!player || isSubmittingRef.current) return false;
+    if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return false; }
     if (!isPlayerTurn) { onStatus('Сейчас не ваш ход.'); return false; }
     if (state.isFinished) return false;
 
@@ -473,14 +493,245 @@ export function BattlePanel({
         return false;
       }
 
-      onStateChange(result.battleState);
+      // Hold final state until playback ends to avoid teleporting tokens before movement animations.
+      pendingFinalStateRef.current = result.battleState;
       setSelectedMoveTile(null);
       setMovementType(null);
       setSelectedSource({ kind: 'none' });
 
-      if (result.battleState.isFinished) {
-        onStatus(`Бой завершён. Победитель: ${result.battleState.winner ?? 'ничья'}.`);
-        await onBattleFinished?.(result.battleState);
+      const events: CombatEvent[] = Array.isArray((result as { events?: unknown }).events)
+        ? ((result as { events: CombatEvent[] }).events)
+        : [];
+
+      if (events.length > 0) {
+        setPlayback({
+          isPlaying: true,
+          statusText: 'Выполняется действие...',
+          activeActorId: null,
+          animationEvents: [],
+          recentLogs: [],
+          lastLog: null,
+          visualPositions: {},
+        });
+
+        const finalState = result.battleState;
+        const entityById = new Map(finalState.entities.map((e) => [e.id, e]));
+        const movedActorIds = new Set<string>();
+        const setTurnStatus = (actorId: string | null) => {
+          const entity = actorId ? entityById.get(actorId) : undefined;
+          const isEnemy = entity?.team === TeamSide.Right;
+          setPlayback((prev) => ({
+            ...prev,
+            statusText: isEnemy ? 'Ход врага...' : actorId === playerId ? 'Ваш ход' : 'Выполняется действие...',
+            activeActorId: actorId,
+          }));
+        };
+
+        for (const event of events) {
+          if (!event || typeof event !== 'object') continue;
+
+          if (event.type === 'turn_started' || event.type === 'turn_changed') {
+            setTurnStatus(event.actorId ?? null);
+            const actorId = event.actorId ?? null;
+            const actorFinal = actorId ? entityById.get(actorId) : undefined;
+            const delay = actorFinal?.team === TeamSide.Right ? 600 : actorId === playerId ? 400 : 400;
+            await sleep(delay);
+            continue;
+          }
+
+          if (event.type === 'turn_ended') {
+            await sleep(300);
+            continue;
+          }
+
+          if (event.type === 'command_started') {
+            setPlayback((prev) => ({ ...prev, statusText: prev.statusText ?? 'Выполняется действие...' }));
+            await sleep(250);
+            continue;
+          }
+
+          if (event.type === 'command_failed') {
+            if (event.message) onStatus(event.message);
+            setPlayback((prev) => ({ ...prev, statusText: 'Ошибка действия' }));
+            await sleep(500);
+            continue;
+          }
+
+          if (event.type === 'movement') {
+            const data = (event.data ?? {}) as Record<string, unknown>;
+            const from = readCell(data.from);
+            const to = readCell(data.to);
+            if (event.actorId && from && to) {
+              const moveActorId = event.actorId;
+              movedActorIds.add(moveActorId);
+              const cells = Math.max(1, Math.abs(to.x - from.x) + Math.abs(to.y - from.y));
+              const duration = Math.max(450, Math.min(1200, 400 * cells));
+
+              // Render at `from` first to avoid any one-frame snap to destination.
+              setPlayback((prev) => ({
+                ...prev,
+                visualPositions: { ...prev.visualPositions, [moveActorId]: { x: from.x, y: from.y } },
+              }));
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+              // Then move to `to` (keeping override) and add a move_token animation hint for smooth interpolation.
+              setPlayback((prev) => ({
+                ...prev,
+                visualPositions: { ...prev.visualPositions, [moveActorId]: { x: to.x, y: to.y } },
+                animationEvents: [
+                  ...prev.animationEvents,
+                  {
+                    id: `pb_move_${event.id}`,
+                    roundNumber: event.roundNumber,
+                    stepIndex: event.stepIndex,
+                    type: 'move_token',
+                    actorId: moveActorId,
+                    from,
+                    to,
+                    movementType: typeof data.movementType === 'string'
+                      ? String(data.movementType) as 'walk' | 'dash' | 'disengage'
+                      : undefined,
+                  },
+                ],
+              }));
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              await sleep(duration);
+            } else {
+              await sleep(150);
+            }
+            continue;
+          }
+
+          if (event.type === 'attack') {
+            const bump: CombatAnimationEvent = {
+              id: `pb_bump_${event.id}`,
+              roundNumber: event.roundNumber,
+              stepIndex: event.stepIndex,
+              type: 'attack_bump',
+              actorId: event.actorId,
+              targetId: event.targetId,
+            };
+            setPlayback((prev) => ({ ...prev, animationEvents: [...prev.animationEvents, bump] }));
+            await sleep(220);
+            continue;
+          }
+
+          if (event.type === 'damage') {
+            const amount = readDamageAmount(event);
+            if (event.actorId) {
+              const log: CombatLogEntry = {
+                round: event.roundNumber,
+                actorId: event.actorId,
+                targetId: event.targetId,
+                type: 'HIT',
+                amount: amount > 0 ? amount : undefined,
+                text: event.message || (amount > 0 ? `-${amount}` : 'HIT'),
+              };
+              setPlayback((prev) => ({
+                ...prev,
+                lastLog: log,
+                recentLogs: [...prev.recentLogs.slice(-7), log],
+              }));
+            }
+            await sleep(700);
+            continue;
+          }
+
+          if (event.type === 'resource_regen') {
+            if (event.message) {
+              const log: CombatLogEntry = {
+                round: event.roundNumber,
+                actorId: event.actorId ?? playerId,
+                type: 'INFO',
+                text: event.message,
+              };
+              setPlayback((prev) => ({
+                ...prev,
+                lastLog: log,
+                recentLogs: [...prev.recentLogs.slice(-7), log],
+              }));
+            }
+            await sleep(350);
+            continue;
+          }
+
+          // Unknown / unhandled event — keep it safe and readable.
+          if (event.message) {
+            onStatus(event.message);
+          }
+          await sleep(150);
+        }
+
+        // Safety net: if any actor position changed in finalState without a movement event, warn and animate reconciliation.
+        const baselineById = new Map(state.entities.map((e) => [e.id, e]));
+        const missingMoves: Array<{ actorId: string; from: { x: number; y: number }; to: { x: number; y: number } }> = [];
+        for (const entity of finalState.entities) {
+          const before = baselineById.get(entity.id);
+          if (!before) continue;
+          const from = { x: before.battlefieldX ?? 0, y: before.battlefieldY ?? 0 };
+          const to = { x: entity.battlefieldX ?? 0, y: entity.battlefieldY ?? 0 };
+          if (from.x === to.x && from.y === to.y) continue;
+          if (movedActorIds.has(entity.id)) continue;
+          missingMoves.push({ actorId: entity.id, from, to });
+        }
+
+        if (missingMoves.length > 0) {
+          if (import.meta.env.DEV) {
+            for (const entry of missingMoves) {
+              // eslint-disable-next-line no-console
+              console.warn('Actor position changed without movement event', entry.actorId, entry.from, entry.to);
+            }
+          }
+          for (const entry of missingMoves) {
+            setPlayback((prev) => ({
+              ...prev,
+              visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.from.x, y: entry.from.y } },
+            }));
+            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+            setPlayback((prev) => ({
+              ...prev,
+              visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.to.x, y: entry.to.y } },
+              animationEvents: [
+                ...prev.animationEvents,
+                {
+                  id: `pb_reconcile_${entry.actorId}_${Date.now()}`,
+                  roundNumber: finalState.roundNumber,
+                  stepIndex: -1,
+                  type: 'move_token',
+                  actorId: entry.actorId,
+                  from: entry.from,
+                  to: entry.to,
+                  movementType: 'walk',
+                },
+              ],
+            }));
+            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+            await sleep(450);
+          }
+        }
+
+        // Keep playback locked until final authoritative state is applied below.
+      }
+
+      // Apply final authoritative state after playback finishes.
+      if (pendingFinalStateRef.current) {
+        const final = pendingFinalStateRef.current;
+        pendingFinalStateRef.current = null;
+        onStateChange(final);
+        setPlayback({
+          isPlaying: false,
+          statusText: null,
+          activeActorId: null,
+          animationEvents: [],
+          recentLogs: [],
+          lastLog: null,
+          visualPositions: {},
+        });
+
+        if (final.isFinished) {
+          onStatus(`Бой завершён. Победитель: ${final.winner ?? 'ничья'}.`);
+          await onBattleFinished?.(final);
+        }
       }
       return true;
     } catch (err) {
@@ -496,6 +747,8 @@ export function BattlePanel({
     onStateChange,
     onStatus,
     player,
+    playback.isPlaying,
+    playerId,
     state.isFinished,
     state.roundNumber,
   ]);
@@ -519,6 +772,20 @@ export function BattlePanel({
     }));
   }, [executeAction]);
 
+  const executeItemUseCommand = useCallback(async (params: {
+    itemId: string;
+    sourceSlotId?: CharacterActionSlot['slotId'];
+    itemInstanceId?: string;
+    target: CombatCommand['target'];
+  }) => {
+    await executeAction(createCombatCommandFromType({
+      type: 'item_use',
+      target: params.target,
+      sourceSlotId: params.sourceSlotId,
+      payload: { itemId: params.itemId, itemInstanceId: params.itemInstanceId },
+    }));
+  }, [executeAction]);
+
   // Attack / skill / item / weapon on entity
   const executeOnEntity = useCallback(async (entityId: string, forceBasicAttack = false) => {
     if (!player) return;
@@ -538,19 +805,19 @@ export function BattlePanel({
       const targetEntity = state.entities.find((e) => e.id === entityId);
       const adminItem = resolveAdminItemById ? resolveAdminItemById(selectedSource.itemId) : null;
       if (targetEntity && isCellTargetItem(adminItem)) {
-        await executeAction(createCombatCommandFromType({
-          type: 'item_use',
+        await executeItemUseCommand({
+          itemId: selectedSource.itemId,
+          sourceSlotId: selectedSource.slotId,
+          itemInstanceId: selectedSource.itemInstanceId,
           target: { kind: 'cell', x: targetEntity.battlefieldX ?? 0, y: targetEntity.battlefieldY ?? 0 },
-          sourceSlotId: selectedSource.slotId,
-          payload: { itemId: selectedSource.itemId, itemInstanceId: selectedSource.itemInstanceId },
-        }));
+        });
       } else {
-        await executeAction(createCombatCommandFromType({
-          type: 'item_use',
-          target: { kind: 'entity', entityId },
+        await executeItemUseCommand({
+          itemId: selectedSource.itemId,
           sourceSlotId: selectedSource.slotId,
-          payload: { itemId: selectedSource.itemId, itemInstanceId: selectedSource.itemInstanceId },
-        }));
+          itemInstanceId: selectedSource.itemInstanceId,
+          target: { kind: 'entity', entityId },
+        });
       }
       return;
     }
@@ -575,7 +842,46 @@ export function BattlePanel({
       target: { kind: 'entity', entityId },
       payload: { targetZone: TargetZone.Chest },
     }));
-  }, [executeAction, onSkillChange, player, resolveAdminItemById, selectedSource, state.entities]);
+  }, [executeAction, executeItemUseCommand, onSkillChange, player, resolveAdminItemById, selectedSource, state.entities]);
+
+  const quickUseSelectedSlotItemAt = useCallback((target: { kind: 'entity'; entityId: string } | { kind: 'cell'; x: number; y: number }) => {
+    if (!isPlayerTurn || state.isFinished) {
+      return;
+    }
+    if (selectedSource.kind !== 'item') {
+      onStatus('Сначала выберите предмет в быстром слоте.');
+      return;
+    }
+
+    if (target.kind === 'cell') {
+      void executeItemUseCommand({
+        itemId: selectedSource.itemId,
+        sourceSlotId: selectedSource.slotId,
+        itemInstanceId: selectedSource.itemInstanceId,
+        target: { kind: 'cell', x: target.x, y: target.y },
+      });
+      return;
+    }
+
+    const targetEntity = state.entities.find((entity) => entity.id === target.entityId);
+    const adminItem = resolveAdminItemById ? resolveAdminItemById(selectedSource.itemId) : null;
+    if (targetEntity && isCellTargetItem(adminItem)) {
+      void executeItemUseCommand({
+        itemId: selectedSource.itemId,
+        sourceSlotId: selectedSource.slotId,
+        itemInstanceId: selectedSource.itemInstanceId,
+        target: { kind: 'cell', x: targetEntity.battlefieldX ?? 0, y: targetEntity.battlefieldY ?? 0 },
+      });
+      return;
+    }
+
+    void executeItemUseCommand({
+      itemId: selectedSource.itemId,
+      sourceSlotId: selectedSource.slotId,
+      itemInstanceId: selectedSource.itemInstanceId,
+      target: { kind: 'entity', entityId: target.entityId },
+    });
+  }, [executeItemUseCommand, isPlayerTurn, onStatus, resolveAdminItemById, selectedSource, state.entities, state.isFinished]);
 
   // Guard
   const executeGuard = useCallback(async (type: 'guard' | 'strong_guard') => {
@@ -723,13 +1029,13 @@ export function BattlePanel({
   if (!player) return <p>Player entity not found.</p>;
 
   // ── Turn status bar text ────────────────────────────────────────────────
-  const turnStatusText = state.isFinished
+  const turnStatusText = playback.isPlaying && playback.statusText
+    ? playback.statusText
+    : state.isFinished
     ? `Бой завершён — ${state.winner ?? 'ничья'}`
-    : isLegacyPlanningMode
-      ? `Ваш ход — AP: ${legacyApLeft} / 3`
     : isPlayerTurn
       ? `Ваш ход — AP: ${currentTurnAp} / 3`
-      : `Ход: ${activeActor?.name ?? '...'}`;
+      : `Ход: ${activeActor?.name ?? '...'}` ;
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -784,21 +1090,14 @@ export function BattlePanel({
             {/* AP indicator */}
             {isPlayerTurn && (
               <div className="battle-ap-bar" aria-label="Action Points">
-                {(() => {
-                  const visibleAp = isLegacyPlanningMode ? legacyApLeft : currentTurnAp;
-                  return (
-                    <>
                 {[1, 2, 3].map((pip) => (
                   <span
                     key={pip}
-                    className={`battle-ap-pip${pip <= visibleAp ? ' battle-ap-pip--filled' : ''}`}
+                    className={`battle-ap-pip${pip <= currentTurnAp ? ' battle-ap-pip--filled' : ''}`}
                     title={`AP ${pip}`}
                   />
                 ))}
-                <span className="battle-ap-label">AP {visibleAp} / 3</span>
-                    </>
-                  );
-                })()}
+                <span className="battle-ap-label">AP {currentTurnAp} / 3</span>
               </div>
             )}
 
@@ -808,21 +1107,36 @@ export function BattlePanel({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, marginTop: 8 }}>
                 {actionSlots.map((slot) => {
                   const isSelected = selectedSource.kind !== 'none' && 'slotId' in selectedSource && selectedSource.slotId === slot.slotId;
+                  const resolvedItem = slot.refId && resolveItemById ? resolveItemById(slot.refId) : null;
                   const adminItem = (slot.kind === 'item' || slot.kind === 'weapon') && slot.refId && resolveAdminItemById
                     ? resolveAdminItemById(slot.refId)
                     : null;
                   const slotIsWeapon = slot.kind === 'weapon' || (slot.kind === 'item' && isWeaponAdminItem(adminItem));
                   const isEquipped = slotIsWeapon && slot.refId && player.activeWeaponItemId === slot.refId;
-                  const disabled = !isPlayerTurn || !slot.kind || !slot.refId;
+                  const disabled = playback.isPlaying || !isPlayerTurn || !slot.kind || !slot.refId;
+                  const slotImage = resolvedItem ? resolveItemImage?.(resolvedItem) : undefined;
+                  const slotTitle = resolvedItem?.name ?? adminItem?.name ?? slot.refId ?? 'Пусто';
+                  const slotFallbackText = slot.kind === 'skill'
+                    ? slot.refId?.slice(0, 2)?.toUpperCase() ?? '??'
+                    : slotIsWeapon
+                      ? '⚔'
+                      : String(toRecord(adminItem as unknown)?.icon ?? '•');
                   return (
                     <button
                       key={slot.slotId}
                       type="button"
                       className={`hotbar-slot${isSelected ? ' is-active' : ''}${isEquipped ? ' is-equipped' : ''}`}
                       disabled={disabled}
-                      title={slot.refId ?? 'Пусто'}
+                      title={slotTitle}
                       onClick={() => {
+                        if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; }
                         if (!slot.kind || !slot.refId) { onStatus('Слот пуст.'); return; }
+                        if (isSelected) {
+                          setSelectedSource({ kind: 'none' });
+                          onSkillChange(null);
+                          onStatus('Выбор слота снят.');
+                          return;
+                        }
                         if (slot.kind === 'skill') {
                           setSelectedSource({ kind: 'skill', slotId: slot.slotId, skillId: slot.refId });
                           onSkillChange(slot.refId);
@@ -838,77 +1152,59 @@ export function BattlePanel({
                           }
                         } else {
                           setSelectedSource({ kind: 'item', slotId: slot.slotId, itemId: slot.refId, itemInstanceId: slot.itemInstanceId ?? undefined });
-                          onStatus('Предмет выбран. Кликните цель.');
+                          onStatus('Предмет выбран. ПКМ по цели/клетке или кнопка "На себя".');
                         }
                       }}
+                      style={{
+                        display: 'grid',
+                        gridTemplateRows: '1fr auto',
+                        alignItems: 'center',
+                        justifyItems: 'center',
+                        gap: 4,
+                        minHeight: 68,
+                      }}
                     >
-                      <span className="hotbar-slot-id">{slot.slotId.replace('quick', '')}</span>
-                      <span className="hotbar-slot-label">{slot.refId ?? '—'}</span>
+                      <span
+                        aria-hidden="true"
+                        style={slotImage ? {
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          backgroundImage: `url("${slotImage}")`,
+                          backgroundSize: 'contain',
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'center',
+                        } : {
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          display: 'grid',
+                          placeItems: 'center',
+                          fontSize: 16,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {slotImage ? null : slotFallbackText}
+                      </span>
+                      <span style={{ fontSize: 11, lineHeight: 1.1, textAlign: 'center', wordBreak: 'break-word' }}>
+                        {slot.kind === 'skill' ? slotTitle : (slot.kind === 'item' || slot.kind === 'weapon' ? slotTitle : slot.slotId.replace('quick', ''))}
+                      </span>
                       {isEquipped && <span className="hotbar-slot-badge">●</span>}
                     </button>
                   );
                 })}
               </div>
+              {selectedSource.kind !== 'none' && selectedSlotLabel ? (
+                <div className="battle-selection-hint" role="status" aria-live="polite">
+                  <span>{buildSelectedSourceHint({ selectedSource: selectedContextSource, selectedLabel: selectedSlotLabel, resolveAdminItemById })}</span>
+                </div>
+              ) : null}
             </div>
 
-            {/* Action planner (target/skill/guard selectors) */}
-            <ActionPlanner
-              enemies={enemies}
-              selectedTargetId={selectedTargetId}
-              actionType={actionType}
-              guardMode={guardMode}
-              currentDistance={state.distance}
-              movementType={movementType}
-              selectedMoveTile={selectedMoveTile}
-              currentStamina={player.currentStamina}
-              maxStamina={player.maxStamina}
-              currentMp={player.currentMp}
-              maxMp={player.maxMp}
-              availableSkills={availableSkills}
-              inventoryItems={battleInventoryItems}
-              selectedSkillId={selectedSkillId}
-              actionWarning={skillResourceWarning ?? actionHint}
-              onActionTypeChange={setActionType}
-              onGuardModeChange={setGuardMode}
-              onSkillChange={(id) => {
-                onSkillChange(id);
-                if (id) setSelectedSource({ kind: 'skill', skillId: id });
-                else setSelectedSource({ kind: 'none' });
-              }}
-              onTargetChange={setSelectedTargetId}
-              onUseInventoryItem={(itemId) => {
-                if (onUseItem) void onUseItem(itemId, selectedTargetId);
-              }}
-              onSubmit={() => {
-                // ActionPlanner submit = execute the selected action on the selected target
-                if (!isPlayerTurn) return;
-                const targetId = selectedTargetId || enemies[0]?.id;
-                if (!targetId) { void endTurn(); return; }
-                if (actionType === ActionType.Defend) {
-                  void executeGuard(guardMode);
-                } else if (actionType === ActionType.Wait) {
-                  void endTurn();
-                } else if (actionType === ActionType.Attack) {
-                  if (selectedSkillId) {
-                    setSelectedSource({ kind: 'skill', skillId: selectedSkillId });
-                    void executeOnEntity(targetId, false);
-                  } else {
-                    void executeOnEntity(targetId, true);
-                  }
-                } else if (actionType === ActionType.Move) {
-                  if (selectedMoveTile && movementType) {
-                    void executeMoveToTile({ x: selectedMoveTile.x, y: selectedMoveTile.y, movementType });
-                  } else {
-                    onStatus('Выберите клетку для движения на карте.');
-                  }
-                }
-              }}
-              showSubmitButton={true}
-              disabled={!isPlayerTurn || state.isFinished || enemies.length === 0}
-            />
+
 
             {/* Escape button */}
-            {state.battleType !== 'arena' && playerOnExitZone && !playerEscapeState?.active && isPlayerTurn && (
+            {state.battleType !== 'arena' && playerOnExitZone && !playerEscapeState?.active && isPlayerTurn && !playback.isPlaying && (
               <button
                 type="button"
                 className="secondary-button"
@@ -935,72 +1231,147 @@ export function BattlePanel({
               <CombatLogPanel logs={state.logs} />
             </div>
 
-            <BattleField
-              entities={state.entities}
-              battlefieldTiles={state.battlefieldTiles}
-              battleMapWidth={state.battleMapWidth}
-              battleMapHeight={state.battleMapHeight}
-              viewportWidth={state.viewportWidth}
-              viewportHeight={state.viewportHeight}
-              mapImageUrl={mapImageUrl}
-              mapCalibration={mapCalibration}
-              distance={state.distance}
-              selectedTargetId={selectedTargetId}
-              playerId={playerId}
-              playerAvatarUrl={playerAvatarUrl}
-              movementType={movementType}
-              selectedMoveTile={selectedMoveTile}
-              lastLog={lastLog}
-              recentLogs={recentLogs}
-              animationEvents={state.recentAnimationEvents ?? []}
-              selectedSkillId={selectedSkillId}
-              playerVisualState={feedback.playerVisualState}
-              enemyVisualState={feedback.enemyVisualState}
-              floatingText={feedback.floatingText}
-              animationTick={state.logs.length}
-              onTargetSelect={(targetId) => {
-                setSelectedTargetId(targetId);
-                if (isPlayerTurn && selectedSource.kind !== 'none') {
-                  void executeOnEntity(targetId, false);
+            <div style={{ position: 'relative' }}>
+              {playback.isPlaying ? (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 1200,
+                    background: 'transparent',
+                  }}
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onStatus('Дождитесь окончания действия.'); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onStatus('Дождитесь окончания действия.'); }}
+                />
+              ) : null}
+
+              <BattleField
+                entities={state.entities}
+                battlefieldTiles={state.battlefieldTiles}
+                battleMapWidth={state.battleMapWidth}
+                battleMapHeight={state.battleMapHeight}
+                viewportWidth={state.viewportWidth}
+                viewportHeight={state.viewportHeight}
+                visualPositions={playback.isPlaying ? playback.visualPositions : undefined}
+                selectedSource={selectedContextSource}
+                buildContextActions={(clickedTarget) => {
+                  if (!player) return [];
+                  return buildCombatContextActions({
+                    selectedSource: selectedContextSource,
+                    clickedTarget,
+                    activeActor: player,
+                    battleState: state,
+                    selectedSkill: selectedContextSource.kind === 'skill' && selectedSkill
+                      ? { label: selectedSkill.label, definition: selectedSkill.definition }
+                      : null,
+                    resolveAdminItemById,
+                  });
+                }}
+                onExecuteContextCommand={(command) => { void executeAction(command); }}
+                mapImageUrl={mapImageUrl}
+                mapCalibration={mapCalibration}
+                distance={state.distance}
+                selectedTargetId={selectedTargetId}
+                playerId={playerId}
+                playerAvatarUrl={playerAvatarUrl}
+                movementType={movementType}
+                selectedMoveTile={selectedMoveTile}
+                lastLog={lastLog}
+                recentLogs={recentLogs}
+                animationEvents={playback.isPlaying ? playback.animationEvents : (state.recentAnimationEvents ?? [])}
+                selectedSkillId={selectedSkillId}
+                playerVisualState={feedback.playerVisualState}
+                enemyVisualState={feedback.enemyVisualState}
+                floatingText={feedback.floatingText}
+                animationTick={state.logs.length}
+                onTargetSelect={(targetId) => {
+                  if (playback.isPlaying) return;
+                  setSelectedTargetId(targetId);
+                }}
+                onQuickAttack={(targetId) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn) return;
+                  setSelectedTargetId(targetId);
+                  void executeOnEntity(targetId, true);
+                }}
+                onQuickHeavyAttack={(targetId) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn) return;
+                  setSelectedTargetId(targetId);
+                  void executeHeavyAttack(targetId);
+                }}
+                onQuickWait={() => { if (!playback.isPlaying && isPlayerTurn) void endTurn(); }}
+                onQuickGuard={() => { if (!playback.isPlaying && isPlayerTurn) void executeGuard('guard'); }}
+                onQuickStrongGuard={() => { if (!playback.isPlaying && isPlayerTurn) void executeGuard('strong_guard'); }}
+                onQuickItem={(itemId, targetId) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn || state.isFinished) {
+                    return;
+                  }
+                const sourceSlot = actionSlots.find((slot) => slot.kind === 'item' && slot.refId === itemId);
+                if (!sourceSlot) {
+                  onStatus('Предмет не найден в быстрых слотах.');
+                  return;
                 }
-              }}
-              onQuickAttack={(targetId) => {
-                if (!isPlayerTurn) return;
-                setSelectedTargetId(targetId);
-                void executeOnEntity(targetId, true);
-              }}
-              onQuickHeavyAttack={(targetId) => {
-                if (!isPlayerTurn) return;
-                setSelectedTargetId(targetId);
-                void executeHeavyAttack(targetId);
-              }}
-              onQuickWait={() => { if (isPlayerTurn) void endTurn(); }}
-              onQuickGuard={() => { if (isPlayerTurn) void executeGuard('guard'); }}
-              onQuickStrongGuard={() => { if (isPlayerTurn) void executeGuard('strong_guard'); }}
-              onClearSelectedSource={() => {
-                setSelectedSource({ kind: 'none' });
-                onSkillChange(null);
-              }}
-              onMoveTileSelect={(tile) => {
-                if (!isPlayerTurn) return;
-                setMovementType(tile.movementType);
-                setSelectedMoveTile({ x: tile.x, y: tile.y });
-                onStatus(`Перемещение к ${tile.x + 1}:${tile.y + 1}.`);
-                void executeMoveToTile(tile);
-              }}
-              onQuickMove={(tile) => {
-                if (!isPlayerTurn) return;
-                void executeMoveToTile(tile);
-              }}
-              onCancelSelection={() => setSelectedMoveTile(null)}
-              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
-              onStatusMessage={onStatus}
-            />
+
+                const entityTargetId = targetId ?? player.id;
+                const targetEntity = state.entities.find((entity) => entity.id === entityTargetId);
+                const adminItem = resolveAdminItemById ? resolveAdminItemById(itemId) : null;
+                if (targetEntity && isCellTargetItem(adminItem)) {
+                  void executeItemUseCommand({
+                    itemId,
+                    sourceSlotId: sourceSlot.slotId,
+                    itemInstanceId: sourceSlot.itemInstanceId ?? undefined,
+                    target: { kind: 'cell', x: targetEntity.battlefieldX ?? 0, y: targetEntity.battlefieldY ?? 0 },
+                  });
+                  return;
+                }
+
+                void executeItemUseCommand({
+                  itemId,
+                  sourceSlotId: sourceSlot.slotId,
+                  itemInstanceId: sourceSlot.itemInstanceId ?? undefined,
+                  target: { kind: 'entity', entityId: entityTargetId },
+                });
+                }}
+                selectedHotbarItemId={selectedSource.kind === 'item' ? selectedSource.itemId : null}
+                onQuickUseSelectedItemAt={quickUseSelectedSlotItemAt}
+                onClearSelectedSource={() => {
+                  if (playback.isPlaying) return;
+                  setSelectedSource({ kind: 'none' });
+                  onSkillChange(null);
+                }}
+                onMoveTileSelect={(tile) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn) return;
+                  if (selectedContextSource.kind !== 'none') { onStatus('Сначала отмените выбранный источник.'); return; }
+                  setMovementType(tile.movementType);
+                  setSelectedMoveTile({ x: tile.x, y: tile.y });
+                  onStatus(`Перемещение к ${tile.x + 1}:${tile.y + 1}.`);
+                  void executeMoveToTile(tile);
+                }}
+                onQuickMove={(tile) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn) return;
+                  if (selectedContextSource.kind !== 'none') { onStatus('Сначала отмените выбранный источник.'); return; }
+                  void executeMoveToTile(tile);
+                }}
+                onCancelSelection={() => setSelectedMoveTile(null)}
+                onInspectEntity={(entityId) => setInspectEntityId(entityId)}
+                onStatusMessage={onStatus}
+              />
+            </div>
 
             {/* Controls bar */}
             <div className="battle-center-controls card">
               {/* Enemy turn overlay */}
-              {!isPlayerTurn && !state.isFinished && (
+              {playback.isPlaying && !state.isFinished && (
+                <div className="battle-enemy-turn-notice battle-playback-notice" aria-live="polite">
+                  {playback.statusText ?? 'Выполняется действие...'}
+                </div>
+              )}
+              {!playback.isPlaying && !isPlayerTurn && !state.isFinished && (
                 <div className="battle-enemy-turn-notice" aria-live="polite">
                   {activeActor
                     ? `Ход: ${activeActor.name}...`
@@ -1014,8 +1385,9 @@ export function BattlePanel({
                   <button
                     type="button"
                     className={`secondary-button${selectedSource.kind === 'basic_attack' ? ' is-active' : ''}`}
-                    disabled={enemies.length === 0}
+                    disabled={playback.isPlaying || enemies.length === 0}
                     onClick={() => {
+                      if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; }
                       setSelectedSource({ kind: 'basic_attack' });
                       if (selectedEnemy) void executeOnEntity(selectedEnemy.id, true);
                     }}
@@ -1026,8 +1398,9 @@ export function BattlePanel({
                   <button
                     type="button"
                     className={`secondary-button${selectedSource.kind === 'heavy_attack' ? ' is-active' : ''}`}
-                    disabled={enemies.length === 0}
+                    disabled={playback.isPlaying || enemies.length === 0}
                     onClick={() => {
+                      if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; }
                       setSelectedSource({ kind: 'heavy_attack' });
                       if (selectedEnemy) void executeHeavyAttack(selectedEnemy.id);
                     }}
@@ -1038,7 +1411,8 @@ export function BattlePanel({
                   <button
                     type="button"
                     className={`secondary-button${selectedSource.kind === 'guard' ? ' is-active' : ''}`}
-                    onClick={() => void executeGuard('guard')}
+                    disabled={playback.isPlaying}
+                    onClick={() => { if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; } void executeGuard('guard'); }}
                     title={`1 AP / ${COMBAT_ACTION_COSTS.guard.stamina ?? 0} STA`}
                   >
                     🛡 Защита
@@ -1046,7 +1420,8 @@ export function BattlePanel({
                   <button
                     type="button"
                     className={`secondary-button${selectedSource.kind === 'strong_guard' ? ' is-active' : ''}`}
-                    onClick={() => void executeGuard('strong_guard')}
+                    disabled={playback.isPlaying}
+                    onClick={() => { if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; } void executeGuard('strong_guard'); }}
                     title={`1 AP / ${COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0} STA`}
                   >
                     🛡🛡 Усиленная защита
@@ -1058,7 +1433,7 @@ export function BattlePanel({
               <button
                 type="button"
                 className="confirm-turn-button battle-confirm-large"
-                disabled={!isPlayerTurn || state.isFinished}
+                disabled={playback.isPlaying || !isPlayerTurn || state.isFinished}
                 onClick={endTurn}
                 title="Завершить ход (Space)"
               >

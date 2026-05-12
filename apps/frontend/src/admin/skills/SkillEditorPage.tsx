@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { SkillType, AdminSkillDefinition } from '@theend/rpg-domain';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { imageService } from '../../services/content/imageService';
 import type { StoredImage } from '../../services/content/models';
-import { skillsService, emptySkill, normalizeSkill, validateSkill } from '../../services/content/skillsService';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { extractRawSkillsFromImportJson, importSkillsFromJsonEntries, skillsService, emptySkill, normalizeSkill, validateSkill } from '../../services/content/skillsService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { SkillForm } from './SkillForm';
 import { SkillListPage } from './SkillListPage';
@@ -25,6 +26,8 @@ export function SkillEditorPage() {
   const [status, setStatus] = useState('Ready');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Ready' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     try {
@@ -199,6 +202,42 @@ export function SkillEditorPage() {
     }
   }
 
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_skills',
+      collectionKey: 'skills',
+      entries: skills,
+    });
+    setStatus(`Export: skills (${skills.length})`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawSkillsFromImportJson(payload);
+      const result = await importSkillsFromJsonEntries(entries);
+      await refresh();
+      const parts = [
+        result.created.length ? `created: ${result.created.length}` : null,
+        result.updated.length ? `updated: ${result.updated.length}` : null,
+        result.errors.length ? `errors: ${result.errors.length}` : null,
+      ].filter(Boolean);
+      setStatus(`Import skills: ${parts.join(', ') || 'no changes'}`);
+    } catch (error) {
+      setStatus(`Import: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   return (
     <div className="admin-page-grid">
       <SkillForm
@@ -224,6 +263,7 @@ export function SkillEditorPage() {
         typeFilter={typeFilter}
         publishFilter={publishFilter}
         hiddenFilter={hiddenFilter}
+        isImporting={isImporting}
         onQueryChange={setQuery}
         onTypeFilterChange={setTypeFilter}
         onPublishFilterChange={setPublishFilter}
@@ -231,6 +271,11 @@ export function SkillEditorPage() {
         onCreateNew={createNew}
         onSelect={select}
         resolveIcon={resolveSkillIcon}
+        onExportJson={exportJson}
+        onImportJson={() => importFileRef.current?.click()}
+        importFileInput={(
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+        )}
       />
     </div>
   );

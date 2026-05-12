@@ -7,6 +7,7 @@ export * from './combat-costs';
 export * from './combat-guard';
 export * from './damage';
 export * from './skills';
+export * from './skills/item.formulas';
 export * from './arena-battle';
 export * from './arena-combat-equipment';
 export * from './combat-status-ids';

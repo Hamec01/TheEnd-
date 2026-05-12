@@ -77,13 +77,14 @@ import type {
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
 import { getZoneCenter, moveZone } from "./zoneGeometry";
 import { getPassiveZonesAtPoint } from "./zoneSystem";
-import type { AdminMerchant } from "../services/content/models";
+import type { AdminMerchant, StoredImage } from "../services/content/models";
 import {
   getContentSnapshot,
   type ContentSnapshot,
 } from "../services/content/contentApi";
 import { cityService } from "../services/cityRepository";
 import { imageService } from "../services/content/imageService";
+import { loadRuntimeImages, resolveStoredImageSource } from "../services/content/runtimeImageService";
 import type { City, CityLocation } from "../types/city";
 import { subscribeToContentSync } from "../services/content/contentSync";
 import {
@@ -617,6 +618,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<QuestMarkerDefinition | null>(null);
 
   const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
   const [validationCities, setValidationCities] = useState<City[]>([]);
   const [validationSnapshot, setValidationSnapshot] =
     useState<ContentSnapshot | null>(null);
@@ -909,6 +911,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       ]),
     );
   }, [npcQuestMarkerPlayer, npcs, playerQuestStates, questDefinitions]);
+  const resolveNpcPortrait = useCallback(
+    (npc: NpcDefinition | null | undefined) => {
+      if (!npc) {
+        return undefined;
+      }
+
+      return (
+        resolveStoredImageSource(npc.fullImageUrl, runtimeImages) ??
+        resolveStoredImageSource(npc.portraitUrl, runtimeImages) ??
+        resolveStoredImageSource(npc.iconUrl, runtimeImages)
+      );
+    },
+    [runtimeImages],
+  );
   const cityMerchantById = useMemo(
     () => new Map(cityMerchants.map((merchant) => [merchant.id, merchant])),
     [cityMerchants],
@@ -1117,6 +1133,26 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       cancelled = true;
     };
   }, [activeCity?.backgroundImageId, activeCity?.backgroundImageUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadRuntimeImages()
+      .then((images) => {
+        if (!cancelled) {
+          setRuntimeImages(images);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeImages([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (worldMapMode !== "editor") {
@@ -2541,7 +2577,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         setNpcQuestSceneModal({
           npcId,
           npcName: npc.name ?? npcId,
-          portrait: npc.fullImageUrl ?? npc.portraitUrl ?? npc.iconUrl,
+          portrait: resolveNpcPortrait(npc),
           stages,
           selectedQuestId,
         });
@@ -3598,7 +3634,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       );
     } else if (activeWorldModal.type === "npc") {
       const npc = npcs.find((entry) => entry.id === activeWorldModal.npcId) ?? null;
-      portrait = npc?.fullImageUrl ?? npc?.portraitUrl ?? npc?.iconUrl;
+      portrait = resolveNpcPortrait(npc);
       title = npc?.name ?? activeWorldModal.npcId;
       subtitle = npc?.title;
       description = npc?.description;
@@ -3793,7 +3829,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 }}
               >
                 {locationNpcs.map((npc) => {
-                  const npcPortrait = npc.fullImageUrl ?? npc.portraitUrl ?? npc.iconUrl;
+                  const npcPortrait = resolveNpcPortrait(npc);
                   const questMarker = npcQuestMarkerById.get(npc.id) ?? null;
                   return (
                     <button
@@ -4461,7 +4497,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       currentNode?.portraitUrl ??
       (currentNode?.speaker === "player"
         ? playerAvatarUrl
-        : contextNpc?.fullImageUrl ?? contextNpc?.portraitUrl ?? contextNpc?.iconUrl);
+        : resolveNpcPortrait(contextNpc));
 
     const description =
       currentNode?.text ||

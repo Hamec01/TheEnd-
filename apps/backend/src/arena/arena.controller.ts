@@ -3,6 +3,7 @@ import { BuyItemDto } from './dto.buy-item.dto';
 import { EquipItemDto } from './dto.equip-item.dto';
 import { SellItemDto } from './dto.sell-item.dto';
 import { UnequipItemDto } from './dto.unequip-item.dto';
+import { UseItemDto } from './dto.use-item.dto';
 import { ArenaService } from './arena.service';
 
 @Controller(['arena', 'api/arena'])
@@ -32,5 +33,10 @@ export class ArenaController {
   @Post('unequip')
   unequip(@Body() dto: UnequipItemDto) {
     return this.arenaService.unequipItem(dto.characterId, dto.slot);
+  }
+
+  @Post('use-item')
+  useItem(@Body() dto: UseItemDto) {
+    return this.arenaService.useItem(dto.characterId, dto.itemId);
   }
 }

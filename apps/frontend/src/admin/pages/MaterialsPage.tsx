@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { Material } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
-import { materialsService, validateMaterial } from '../../services/content/materialsService';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { extractRawMaterialsFromImportJson, importMaterialsFromJsonEntries, materialsService, validateMaterial } from '../../services/content/materialsService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
@@ -40,6 +41,8 @@ export function MaterialsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Material>(emptyMaterial());
   const [status, setStatus] = useState('Готово');
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     const all = await materialsService.getAll();
@@ -53,6 +56,42 @@ export function MaterialsPage() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_materials',
+      collectionKey: 'materials',
+      entries: materials,
+    });
+    setStatus(`Экспорт: materials (${materials.length})`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawMaterialsFromImportJson(payload);
+      const result = await importMaterialsFromJsonEntries(entries);
+      await refresh();
+      const parts = [
+        result.created.length ? `создано: ${result.created.length}` : null,
+        result.updated.length ? `обновлено: ${result.updated.length}` : null,
+        result.errors.length ? `ошибок: ${result.errors.length}` : null,
+      ].filter(Boolean);
+      setStatus(`Импорт материалов: ${parts.join(', ') || 'нет изменений'}`);
+    } catch (error) {
+      setStatus(`Импорт: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   const visibleMaterials = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -256,10 +295,13 @@ export function MaterialsPage() {
           </div>
         </div>
 
-        <div className="admin-list-tools admin-catalog-toolbar">
-          <input placeholder="Поиск по id, имени или региону" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={() => { setSelectedId(null); setDraft(emptyMaterial()); }}>Новый материал</button>
-        </div>
+      <div className="admin-list-tools admin-catalog-toolbar">
+        <input placeholder="Поиск по id, имени или региону" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <button onClick={exportJson}>Экспорт JSON</button>
+        <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+        <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+        <button onClick={() => { setSelectedId(null); setDraft(emptyMaterial()); }}>Новый материал</button>
+      </div>
 
         <div className="admin-items-selected-row">
           <strong>Сейчас редактируется:</strong>

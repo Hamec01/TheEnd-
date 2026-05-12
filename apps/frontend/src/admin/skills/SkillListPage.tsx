@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { SkillType, type AdminSkillDefinition } from '@theend/rpg-domain';
 import { formatEnumLabel, SKILL_TYPES } from './skillAdminUtils';
 
@@ -8,6 +9,7 @@ interface SkillListPageProps {
   typeFilter: 'all' | SkillType;
   publishFilter: 'all' | 'published' | 'draft';
   hiddenFilter: 'all' | 'hidden' | 'visible';
+  isImporting: boolean;
   onQueryChange: (value: string) => void;
   onTypeFilterChange: (value: 'all' | SkillType) => void;
   onPublishFilterChange: (value: 'all' | 'published' | 'draft') => void;
@@ -15,6 +17,9 @@ interface SkillListPageProps {
   onCreateNew: () => void;
   onSelect: (skill: AdminSkillDefinition) => void;
   resolveIcon: (skill: AdminSkillDefinition) => string | undefined;
+  onExportJson: () => void;
+  onImportJson: () => void;
+  importFileInput: ReactNode;
 }
 
 function getAccent(skill: AdminSkillDefinition): string {
@@ -38,6 +43,7 @@ export function SkillListPage(props: SkillListPageProps) {
     typeFilter,
     publishFilter,
     hiddenFilter,
+    isImporting,
     onQueryChange,
     onTypeFilterChange,
     onPublishFilterChange,
@@ -45,6 +51,9 @@ export function SkillListPage(props: SkillListPageProps) {
     onCreateNew,
     onSelect,
     resolveIcon,
+    onExportJson,
+    onImportJson,
+    importFileInput,
   } = props;
 
   return (
@@ -77,6 +86,9 @@ export function SkillListPage(props: SkillListPageProps) {
           <option value="visible">Только видимые</option>
           <option value="hidden">Только скрытые</option>
         </select>
+        <button onClick={onExportJson}>Экспорт JSON</button>
+        <button disabled={isImporting} onClick={onImportJson}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+        {importFileInput}
         <button onClick={onCreateNew}>Новый skill</button>
       </div>
 

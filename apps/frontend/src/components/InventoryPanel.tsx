@@ -353,9 +353,13 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     () => inventory.items
       .map((entry) => {
         const item = resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId);
-        return item ? { item, quantity: entry.quantity } : null;
+        if (!item) {
+          return null;
+        }
+        return { item, quantity: entry.quantity };
       })
-      .filter(Boolean) as Array<{ item: ItemDefinition; quantity: number }>,
+      .filter((entry): entry is { item: ItemDefinition; quantity: number } => Boolean(entry))
+      .filter((entry) => entry.quantity > 0),
     [inventory.items, resolveItemById],
   );
 
@@ -749,6 +753,20 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }
 
+  async function useSelectedItem(): Promise<void> {
+    if (!selectedItem || !onUseItem) {
+      onStatus('Использование предмета недоступно.');
+      return;
+    }
+
+    try {
+      await onUseItem(selectedItem.id);
+      setItemDetailOpen(false);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
   async function unequipFromSlot(slotId: EquipmentSlotId): Promise<void> {
     const coreSlot = slotId === 'leftHand' && weaponOccupiesBothHands && !equipment.shield
       ? 'weapon'
@@ -769,6 +787,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
     if (!item) {
       return;
+    }
+
+    if (isUsableHotbarItem(item) && onUseItem) {
+      try {
+        await onUseItem(itemId);
+        return;
+      } catch {
+        // parent already reports error status
+      }
     }
 
     // Item is not equipped - equip it to preferred slot
@@ -1135,6 +1162,23 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <p className="muted">
                 Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}
               </p>
+              <div className="character-item-actions">
+                {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
+                  <button type="button" onClick={() => void useSelectedItem()}>
+                    Использовать
+                  </button>
+                ) : null}
+                {selectedItem && !isUsableHotbarItem(selectedItem) && resolvePreferredEquipmentSlot(selectedItem, equipment) ? (
+                  <button type="button" onClick={() => void equipSelectedItem()}>
+                    Экипировать
+                  </button>
+                ) : null}
+                {selectedAlreadyEquipped ? (
+                  <button type="button" onClick={() => { if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); } }}>
+                    Снять
+                  </button>
+                ) : null}
+              </div>
             </section>
             <section className="character-item-compare">
               <div className="character-item-compare-items">
@@ -1440,6 +1484,23 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   </p>
                 );
               })}
+            </div>
+            <div className="character-item-actions">
+              {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
+                <button type="button" onClick={() => void useSelectedItem()}>
+                  Использовать
+                </button>
+              ) : null}
+              {showEquipAction && selectedItem && !isUsableHotbarItem(selectedItem) && resolvePreferredEquipmentSlot(selectedItem, equipment) ? (
+                <button type="button" onClick={() => void equipSelectedItem()}>
+                  Экипировать
+                </button>
+              ) : null}
+              {showUnequipAction && selectedAlreadyEquipped ? (
+                <button type="button" onClick={() => { if (selectedEquippedSlotId) { void unequipFromSlot(selectedEquippedSlotId); } }}>
+                  Снять
+                </button>
+              ) : null}
             </div>
           </>
         ) : (

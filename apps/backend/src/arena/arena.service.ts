@@ -97,6 +97,7 @@ export interface UnsocketAugmentResult {
 
 type StoredHotbarMap = Record<string, CharacterHotbarSlot[] | undefined>;
 type StoredActionSlotMap = Record<string, CharacterActionSlot[] | undefined>;
+type StoredActionSlotPhysicalMap = Record<string, string[] | undefined>;
 type StoredResourceMap = Record<string, {
   currentHp?: number;
   currentMp?: number;
@@ -104,8 +105,10 @@ type StoredResourceMap = Record<string, {
   hpRegenPerTurn?: number;
 } | undefined>;
 type InputJsonValue = Prisma.InputJsonValue;
+type ItemResourceRestore = { hp: number; mp: number; stamina: number };
 
 const CHARACTER_ACTION_SLOTS_STORE_KEY = 'character-action-slots-v1';
+const CHARACTER_ACTION_SLOT_PHYSICAL_STORE_KEY = 'character-action-slot-physical-v1';
 const CHARACTER_HOTBAR_STORE_KEY = 'character-item-hotbars-v1';
 const CHARACTER_RESOURCES_STORE_KEY = 'character-runtime-resources-v1';
 const CHARACTER_QUEST_STATES_STORE_KEY = 'character-quest-states-v1';
@@ -274,10 +277,15 @@ export class ArenaService implements OnModuleInit {
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const resources = await this.getCharacterResources(characterId);
     const actionSlots = await this.getOrCreateActionSlots(characterId);
+    const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
 
     const inventory: InventoryState = {
       gold: Number((character as { gold?: unknown }).gold ?? 0) || 0,
-      items: inventoryItems.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity })),
+      items: this.applyItemSlotReservationsToInventory(
+        inventoryItems.map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity })),
+        actionSlots,
+        physicalSlotIds,
+      ),
     };
 
     return {
@@ -302,6 +310,33 @@ export class ArenaService implements OnModuleInit {
       equipment,
       actionSlots,
     };
+  }
+
+  private applyItemSlotReservationsToInventory(
+    items: Array<{ itemId: string; quantity: number }>,
+    actionSlots: CharacterActionSlot[],
+    physicalSlotIds: Set<CharacterActionSlotId>,
+  ): Array<{ itemId: string; quantity: number }> {
+    const reservedCounts = new Map<string, number>();
+    for (const slot of actionSlots) {
+      if (slot.kind !== 'item' || !slot.refId) {
+        continue;
+      }
+      if (physicalSlotIds.has(slot.slotId)) {
+        continue;
+      }
+      reservedCounts.set(slot.refId, (reservedCounts.get(slot.refId) ?? 0) + 1);
+    }
+
+    return items
+      .map((entry) => {
+        const reserved = reservedCounts.get(entry.itemId) ?? 0;
+        return {
+          itemId: entry.itemId,
+          quantity: Math.max(0, entry.quantity - reserved),
+        };
+      })
+      .filter((entry) => entry.quantity > 0);
   }
 
   private toActionSlotId(slotIndex: number): CharacterActionSlotId {
@@ -906,6 +941,20 @@ export class ArenaService implements OnModuleInit {
     return this.normalizeActionSlots(map[characterId]);
   }
 
+  private async readCharacterPhysicalItemSlots(characterId: string): Promise<Set<CharacterActionSlotId>> {
+    const map = await this.readMap<StoredActionSlotPhysicalMap>(CHARACTER_ACTION_SLOT_PHYSICAL_STORE_KEY);
+    const value = map[characterId];
+    if (!Array.isArray(value)) {
+      return new Set<CharacterActionSlotId>();
+    }
+
+    return new Set<CharacterActionSlotId>(
+      value
+        .map((slotId) => this.toActionSlotId(this.toActionSlotIndex(slotId)))
+        .filter((slotId) => this.toActionSlotIndex(slotId) >= 0),
+    );
+  }
+
   private async writeCharacterHotbar(characterId: string, slots: CharacterHotbarSlot[]): Promise<void> {
     const map = await this.readMap<StoredHotbarMap>(CHARACTER_HOTBAR_STORE_KEY);
     map[characterId] = this.normalizeHotbarSlots(slots);
@@ -944,6 +993,42 @@ export class ArenaService implements OnModuleInit {
     const map = await this.readMap<StoredActionSlotMap>(CHARACTER_ACTION_SLOTS_STORE_KEY);
     map[characterId] = this.normalizeActionSlots(slots);
     await this.writeMap(CHARACTER_ACTION_SLOTS_STORE_KEY, map);
+  }
+
+  private async writeCharacterPhysicalItemSlots(characterId: string, slotIds: Set<CharacterActionSlotId>): Promise<void> {
+    const map = await this.readMap<StoredActionSlotPhysicalMap>(CHARACTER_ACTION_SLOT_PHYSICAL_STORE_KEY);
+    map[characterId] = [...slotIds].sort((left, right) => this.toActionSlotIndex(left) - this.toActionSlotIndex(right));
+    await this.writeMap(CHARACTER_ACTION_SLOT_PHYSICAL_STORE_KEY, map);
+  }
+
+  async getPhysicalItemActionSlotIds(characterId: string): Promise<string[]> {
+    const slotIds = await this.readCharacterPhysicalItemSlots(characterId);
+    return [...slotIds];
+  }
+
+  async consumePhysicalItemActionSlot(characterId: string, itemId: string): Promise<CharacterActionSlot[] | null> {
+    const slots = await this.getOrCreateActionSlots(characterId);
+    const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
+    const target = slots.find((slot) => slot.kind === 'item' && slot.refId === itemId && physicalSlotIds.has(slot.slotId));
+    if (!target) {
+      return null;
+    }
+
+    const next = slots.map((slot) => {
+      if (slot.slotId !== target.slotId) {
+        return slot;
+      }
+      return {
+        ...slot,
+        kind: null,
+        refId: null,
+        itemInstanceId: null,
+      };
+    });
+    physicalSlotIds.delete(target.slotId);
+    await this.writeCharacterActionSlots(characterId, next);
+    await this.writeCharacterPhysicalItemSlots(characterId, physicalSlotIds);
+    return next;
   }
 
   private async readCharacterResourceMap(characterId: string): Promise<StoredResourceMap[string]> {
@@ -1020,6 +1105,16 @@ export class ArenaService implements OnModuleInit {
     }
 
     const current = await this.readCharacterActionSlots(characterId);
+    const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
+    const validPhysicalSlotIds = new Set<CharacterActionSlotId>(
+      current
+        .filter((slot) => slot.kind === 'item' && slot.refId && physicalSlotIds.has(slot.slotId))
+        .map((slot) => slot.slotId),
+    );
+    if (validPhysicalSlotIds.size !== physicalSlotIds.size) {
+      await this.writeCharacterPhysicalItemSlots(characterId, validPhysicalSlotIds);
+    }
+
     const hasSavedEntries = current.some((slot) => slot.kind && slot.refId);
     if (hasSavedEntries) {
       return current;
@@ -1132,6 +1227,30 @@ export class ArenaService implements OnModuleInit {
 
     const current = await this.getOrCreateActionSlots(characterId);
     const next = this.normalizeActionSlots(current);
+    const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
+    const inventoryDeltas = new Map<string, number>();
+
+    const addInventoryDelta = (itemId: string, delta: number): void => {
+      const normalized = String(itemId ?? '').trim();
+      if (!normalized || !Number.isFinite(delta) || delta === 0) {
+        return;
+      }
+      const nextDelta = (inventoryDeltas.get(normalized) ?? 0) + delta;
+      if (nextDelta === 0) {
+        inventoryDeltas.delete(normalized);
+      } else {
+        inventoryDeltas.set(normalized, nextDelta);
+      }
+      inventoryByItemId.set(normalized, Math.max(0, (inventoryByItemId.get(normalized) ?? 0) + delta));
+    };
+
+    const releaseSlotIfPhysical = (slot: CharacterActionSlot): void => {
+      if (slot.kind !== 'item' || !slot.refId || !physicalSlotIds.has(slot.slotId)) {
+        return;
+      }
+      addInventoryDelta(slot.refId, 1);
+      physicalSlotIds.delete(slot.slotId);
+    };
 
     for (const update of updates) {
       const resolvedSlotIndex = typeof update.slotIndex === 'number'
@@ -1141,6 +1260,8 @@ export class ArenaService implements OnModuleInit {
       if (!slot) {
         throw new BadRequestException(`Action slot ${update.slotId ?? update.slotIndex ?? 'unknown'} not found.`);
       }
+
+      releaseSlotIfPhysical(slot);
 
       if (!update.kind || !update.refId) {
         slot.kind = null;
@@ -1173,6 +1294,18 @@ export class ArenaService implements OnModuleInit {
         if (!this.isItemUsableInHotbar(update.refId) && !isWeapon) {
           throw new BadRequestException('Only usable items can be assigned to action slots.');
         }
+
+        if (!isWeapon) {
+          const quantity = inventoryByItemId.get(update.refId) ?? 0;
+          if (quantity <= 0) {
+            throw new BadRequestException(`Недостаточно предметов для назначения в слоты: ${update.refId}`);
+          }
+          addInventoryDelta(update.refId, -1);
+          physicalSlotIds.add(slot.slotId);
+        } else {
+          physicalSlotIds.delete(slot.slotId);
+        }
+
         slot.kind = isWeapon ? 'weapon' : 'item';
         slot.refId = update.refId;
         slot.itemInstanceId = update.itemInstanceId ?? null;
@@ -1184,9 +1317,30 @@ export class ArenaService implements OnModuleInit {
       slot.refId = update.refId;
       slot.itemInstanceId = null;
       slot.weaponInstanceId = null;
+      physicalSlotIds.delete(slot.slotId);
+    }
+
+    if (inventoryDeltas.size > 0) {
+      if (isFileStorageMode()) {
+        for (const [itemId, delta] of inventoryDeltas) {
+          await this.updateRuntimeInventoryItemQuantity(characterId, itemId, delta);
+        }
+      } else {
+        this.assertDatabaseEnabled();
+        await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          for (const [itemId, delta] of inventoryDeltas) {
+            if (delta > 0) {
+              await this.incrementInventoryItem(tx, characterId, itemId, delta);
+            } else if (delta < 0) {
+              await this.decrementInventoryItem(tx, characterId, itemId, Math.abs(delta));
+            }
+          }
+        });
+      }
     }
 
     await this.writeCharacterActionSlots(characterId, next);
+    await this.writeCharacterPhysicalItemSlots(characterId, physicalSlotIds);
     return next;
   }
 
@@ -1351,7 +1505,30 @@ export class ArenaService implements OnModuleInit {
       : this.fromEquipmentRecord((character as { equipment?: Record<string, unknown> | null }).equipment ?? null);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const stored = await this.readCharacterResourceMap(characterId);
-    const resourceState = this.buildResourceState(activeStats, stored);
+    const runtimeOverride = isFileStorageMode() && character
+      ? {
+        currentHp: typeof (character as any).currentHp === 'number' ? (character as any).currentHp
+          : typeof (character as any).hp === 'number' ? (character as any).hp
+            : undefined,
+        currentMp: typeof (character as any).currentMp === 'number' ? (character as any).currentMp
+          : typeof (character as any).mp === 'number' ? (character as any).mp
+            : undefined,
+        currentStamina: typeof (character as any).currentStamina === 'number' ? (character as any).currentStamina
+          : typeof (character as any).stamina === 'number' ? (character as any).stamina
+            : undefined,
+      }
+      : null;
+
+    const effectiveStored = runtimeOverride
+      ? {
+        ...stored,
+        currentHp: typeof runtimeOverride.currentHp === 'number' ? runtimeOverride.currentHp : stored?.currentHp,
+        currentMp: typeof runtimeOverride.currentMp === 'number' ? runtimeOverride.currentMp : stored?.currentMp,
+        currentStamina: typeof runtimeOverride.currentStamina === 'number' ? runtimeOverride.currentStamina : stored?.currentStamina,
+      }
+      : stored;
+
+    const resourceState = this.buildResourceState(activeStats, effectiveStored);
 
     await this.writeCharacterResourceMap(characterId, {
       currentHp: resourceState.currentHp,
@@ -1593,6 +1770,108 @@ export class ArenaService implements OnModuleInit {
     });
   }
 
+  private isItemUsableOutsideCombat(itemId: string, itemType: string): boolean {
+    if (itemType === 'consumable') {
+      return true;
+    }
+
+    const adminItem = this.readAdminItemRecord(itemId);
+    if (!adminItem) {
+      return false;
+    }
+
+    return adminItem.isUsable === true
+      || adminItem.usableInCombat === true
+      || adminItem.isCombatUsable === true
+      || adminItem.slot === 'quick'
+      || adminItem.type === 'potion';
+  }
+
+  private resolveOutOfCombatItemRestore(itemId: string, itemSubType?: string): ItemResourceRestore {
+    const adminItem = this.readAdminItemRecord(itemId);
+    const effects = this.extractRawItemEffects(adminItem);
+    const restore: ItemResourceRestore = { hp: 0, mp: 0, stamina: 0 };
+
+    for (const effect of effects) {
+      const type = String(effect.type ?? '').trim().toLowerCase();
+      const amount = Number(effect.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        continue;
+      }
+
+      if (type === 'heal_hp' || type === 'heal' || type === 'restore_hp') {
+        restore.hp += Math.floor(amount);
+        continue;
+      }
+
+      if (type === 'restore_mana' || type === 'heal_mana' || type === 'mana_restore') {
+        restore.mp += Math.floor(amount);
+        continue;
+      }
+
+      if (type === 'restore_stamina' || type === 'heal_stamina' || type === 'stamina_restore') {
+        restore.stamina += Math.floor(amount);
+      }
+    }
+
+    if (restore.hp > 0 || restore.mp > 0 || restore.stamina > 0) {
+      return restore;
+    }
+
+    const normalizedSubType = String(itemSubType ?? '').trim().toLowerCase();
+    if (normalizedSubType === 'small_heal') {
+      return { hp: 40, mp: 0, stamina: 0 };
+    }
+    if (normalizedSubType === 'mana') {
+      return { hp: 0, mp: 30, stamina: 0 };
+    }
+    if (normalizedSubType === 'stamina') {
+      return { hp: 0, mp: 0, stamina: 25 };
+    }
+
+    throw new BadRequestException('У предмета нет эффекта использования.');
+  }
+
+  private readAdminItemRecord(itemId: string): Record<string, unknown> | null {
+    const raw = this.contentService.getCollectionEntry('items', itemId);
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    return raw as unknown as Record<string, unknown>;
+  }
+
+  private extractRawItemEffects(raw: Record<string, unknown> | null): Array<Record<string, unknown>> {
+    if (!raw) {
+      return [];
+    }
+
+    const effects: Array<Record<string, unknown>> = [];
+    const pushRecord = (value: unknown): void => {
+      if (value && typeof value === 'object') {
+        effects.push(value as Record<string, unknown>);
+      }
+    };
+
+    if (Array.isArray(raw.useEffects)) {
+      for (const entry of raw.useEffects) {
+        pushRecord(entry);
+      }
+    }
+    pushRecord(raw.useEffect);
+    if (Array.isArray(raw.effects)) {
+      for (const entry of raw.effects) {
+        pushRecord(entry);
+      }
+    }
+    if (Array.isArray(raw.combatEffects)) {
+      for (const entry of raw.combatEffects) {
+        pushRecord(entry);
+      }
+    }
+
+    return effects;
+  }
+
   private async getCharacterArenaState(characterId: string) {
     if (isFileStorageMode()) {
       return this.getCharacterArenaStateForFileMode(characterId);
@@ -1623,18 +1902,23 @@ export class ArenaService implements OnModuleInit {
     });
 
     const equipment = sanitized.equipment;
+    const actionSlots = await this.getOrCreateActionSlots(characterId);
+    const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
     const inventory: InventoryState = {
       gold: character.gold,
-      items: sanitized.inventoryItems.map((entry) => ({
-        itemId: entry.itemId,
-        quantity: entry.quantity,
-      })),
+      items: this.applyItemSlotReservationsToInventory(
+        sanitized.inventoryItems.map((entry) => ({
+          itemId: entry.itemId,
+          quantity: entry.quantity,
+        })),
+        actionSlots,
+        physicalSlotIds,
+      ),
     };
 
     const baseStats = this.toBaseStats(character);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const resources = await this.getCharacterResources(characterId);
-    const actionSlots = await this.getOrCreateActionSlots(characterId);
 
     return {
       character: {
@@ -1747,6 +2031,41 @@ export class ArenaService implements OnModuleInit {
         });
       }
     });
+
+    return this.getCharacterArenaState(characterId);
+  }
+
+  async useItem(characterId: string, itemId: string) {
+    const state = await this.getCharacterArenaState(characterId);
+    const inventoryEntry = state.inventory.items.find((entry) => entry.itemId === itemId);
+    if (!inventoryEntry || inventoryEntry.quantity <= 0) {
+      throw new BadRequestException('Item is not in inventory.');
+    }
+
+    const item = this.contentService.resolveItemById(itemId);
+    if (!this.isItemUsableOutsideCombat(itemId, item.itemType)) {
+      throw new BadRequestException('Этот предмет нельзя использовать вне боя.');
+    }
+
+    const restore = this.resolveOutOfCombatItemRestore(itemId, item.itemSubType);
+    const resources = await this.getCharacterResources(characterId);
+    const nextResources = {
+      currentHp: Math.min(resources.maxHp, resources.currentHp + restore.hp),
+      currentMp: Math.min(resources.maxMp, resources.currentMp + restore.mp),
+      currentStamina: Math.min(resources.maxStamina, resources.currentStamina + restore.stamina),
+    };
+
+    if (isFileStorageMode()) {
+      await this.updateRuntimeInventoryItemQuantity(characterId, itemId, -1);
+      await this.updateCharacterResources(characterId, nextResources);
+      return this.getCharacterArenaState(characterId);
+    }
+
+    this.assertDatabaseEnabled();
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await this.decrementInventoryItem(tx, characterId, itemId);
+    });
+    await this.updateCharacterResources(characterId, nextResources);
 
     return this.getCharacterArenaState(characterId);
   }

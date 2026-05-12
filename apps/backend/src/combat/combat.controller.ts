@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import type { ArenaBattleState, CombatCommand, CombatEvent } from '@theend/rpg-domain';
 import { ExecuteCombatActionDto } from './dto.execute-action.dto';
 import { StartCombatDto } from './dto.start-combat.dto';
-import { UseCombatItemDto } from './dto.use-combat-item.dto';
 import { CombatService } from './combat.service';
 
 type CombatApiErrorResponse = {
@@ -21,13 +20,6 @@ type StartCombatResponse = {
   combatId: string;
   playerId: string;
   state: ArenaBattleState;
-};
-
-type UseCombatItemResponse = {
-  state: ArenaBattleState;
-  inventory: Array<{ itemId: string; quantity: number }>;
-  gold: number;
-  actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | 'weapon' | null; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }>;
 };
 
 @Controller(['combat', 'api/combat'])
@@ -50,11 +42,6 @@ export class CombatController {
       roundNumber: dto.roundNumber,
       command: dto.command as unknown as CombatCommand,
     });
-  }
-
-  @Post('use-item')
-  async useItem(@Body() dto: UseCombatItemDto): Promise<UseCombatItemResponse> {
-    return this.combatService.useCombatItem(dto);
   }
 
   @Get(':combatId')

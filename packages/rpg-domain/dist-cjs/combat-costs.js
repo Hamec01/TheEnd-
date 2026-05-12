@@ -5,11 +5,11 @@ exports.resolveCombatCommandCost = resolveCombatCommandCost;
 exports.getMoveCostByDistance = getMoveCostByDistance;
 exports.getStaminaFatigueMultiplier = getStaminaFatigueMultiplier;
 exports.COMBAT_ACTION_COSTS = {
-    move_1_cell: { ap: 1, stamina: 5 },
-    move_2_cells: { ap: 1, stamina: 10 },
-    dash_3_cells: { ap: 1, stamina: 15 },
-    disengage: { ap: 1, stamina: 10 },
-    basic_attack: { ap: 1, stamina: 10 },
+    move_1_cell: { ap: 1, stamina: 10 },
+    move_2_cells: { ap: 1, stamina: 20 },
+    dash_3_cells: { ap: 2, stamina: 30 },
+    disengage: { ap: 1, stamina: 20 },
+    basic_attack: { ap: 1, stamina: 20 },
     heavy_attack: { ap: 1, stamina: 18 },
     guard: { ap: 1, stamina: 8 },
     strong_guard: { ap: 1, stamina: 10 },

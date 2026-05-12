@@ -9,7 +9,10 @@ export function CombatLogPanel({ logs }: CombatLogPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const visibleLogs = useMemo(() => logs.slice(-40), [logs]);
+  const visibleLogs = useMemo(
+    () => logs.filter((entry) => !String(entry.text ?? '').startsWith('[AI DEBUG]')).slice(-40),
+    [logs],
+  );
   const latestEntry = visibleLogs.at(-1) ?? null;
   const tickerEntries = useMemo(() => visibleLogs.slice(-2).reverse(), [visibleLogs]);
 

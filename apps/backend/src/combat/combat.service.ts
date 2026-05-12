@@ -117,14 +117,9 @@ interface CombatSession {
   enemyTempoBreaks: Array<{ targetId: string; remainingRounds: number }>;
   damageContribution: number;
   skillCooldowns: SkillCooldownEntry[];
+  guardStates: Map<string, CombatGuardState>;
   /** Снимок экипировки по id сущности (для прок-эффектов и сетов). */
   equipmentByActorId: Map<string, Equipment>;
-}
-
-interface NormalizedResourceCosts {
-  mana: number;
-  stamina: number;
-  hp: number;
 }
 
 interface NormalizedItemEffect {
@@ -141,6 +136,8 @@ export interface CombatActionResult {
 
 const DEFAULT_TURN_SECONDS = 60;
 const DEFAULT_ROUND_DURATION_SECONDS = DEFAULT_TURN_SECONDS;
+const ACTIVE_TURN_DURATION_SECONDS = 30;
+const MAX_AUTOMATED_TURN_LOOPS = 24;
 const PVP_LOOT_CONFIG = {
   maxDroppedItems: 2,
   itemDropChance: 0.15,
@@ -284,58 +281,6 @@ export class CombatService {
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
   }
 
-  private accumulateResourceCost(costs: NormalizedResourceCosts, resource: unknown, amount: unknown): void {
-    const key = String(resource ?? '').trim().toLowerCase();
-    const safeAmount = this.toFiniteAmount(amount);
-    if (safeAmount <= 0) {
-      return;
-    }
-    if (key === 'mana' || key === 'mp') {
-      costs.mana += safeAmount;
-      return;
-    }
-    if (key === 'stamina' || key === 'sta') {
-      costs.stamina += safeAmount;
-      return;
-    }
-    if (key === 'hp' || key === 'health') {
-      costs.hp += safeAmount;
-    }
-  }
-
-  private normalizeResourceCosts(rawValue: unknown): NormalizedResourceCosts {
-    const costs: NormalizedResourceCosts = { mana: 0, stamina: 0, hp: 0 };
-    const raw = this.toRecord(rawValue);
-    if (!raw) {
-      return costs;
-    }
-
-    this.accumulateResourceCost(costs, 'mana', raw.manaCost);
-    this.accumulateResourceCost(costs, 'stamina', raw.staminaCost);
-    this.accumulateResourceCost(costs, 'hp', raw.hpCost);
-
-    const directCosts = Array.isArray(raw.costs) ? raw.costs : [];
-    for (const entry of directCosts) {
-      const record = this.toRecord(entry);
-      if (!record) {
-        continue;
-      }
-      this.accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
-    }
-
-    const nestedCosts = this.toRecord(raw.costs);
-    const nestedResources = Array.isArray(nestedCosts?.resources) ? nestedCosts.resources : [];
-    for (const entry of nestedResources) {
-      const record = this.toRecord(entry);
-      if (!record) {
-        continue;
-      }
-      this.accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
-    }
-
-    return costs;
-  }
-
   private normalizeItemEffects(item: { itemType: string; itemSubType?: string } | null, rawValue: unknown): NormalizedItemEffect[] {
     const raw = this.toRecord(rawValue);
     const sources: unknown[] = [];
@@ -360,12 +305,39 @@ export class CombatService {
     const normalized = sources
       .map((entry) => this.toRecord(entry))
       .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-      .map((entry) => ({
-        type: String(entry.type ?? '').trim().toLowerCase(),
-        amount: this.toFiniteAmount(entry.amount),
-        statusId: typeof entry.statusId === 'string' ? entry.statusId : undefined,
-        target: typeof entry.target === 'string' ? entry.target : undefined,
-      }))
+      .flatMap((entry) => {
+        const type = String(entry.type ?? '').trim().toLowerCase();
+        const target = typeof entry.target === 'string' ? entry.target : undefined;
+
+        // Content skill-like effects: { type:'stat_bonus', stat:'hp', flat:50, trigger:'on_use' }
+        if (type === 'stat_bonus') {
+          const stat = String(entry.stat ?? '').trim().toLowerCase();
+          const flat = this.toFiniteAmount(entry.flat ?? entry.amount);
+          if (flat <= 0) return [];
+          if (stat === 'hp' || stat === 'health') return [{ type: 'heal_hp', amount: flat, target }];
+          if (stat === 'mp' || stat === 'mana') return [{ type: 'restore_mana', amount: flat, target }];
+          if (stat === 'stamina' || stat === 'sta') return [{ type: 'restore_stamina', amount: flat, target }];
+          return [];
+        }
+
+        // Alternative naming conventions.
+        if (type === 'restore_resource' || type === 'restoreResource' || type === 'restore') {
+          const resource = String(entry.resource ?? entry.stat ?? '').trim().toLowerCase();
+          const amount = this.toFiniteAmount(entry.amount ?? entry.flat);
+          if (amount <= 0) return [];
+          if (resource === 'hp' || resource === 'health') return [{ type: 'heal_hp', amount, target }];
+          if (resource === 'mp' || resource === 'mana') return [{ type: 'restore_mana', amount, target }];
+          if (resource === 'stamina' || resource === 'sta') return [{ type: 'restore_stamina', amount, target }];
+          return [];
+        }
+
+        return [{
+          type,
+          amount: this.toFiniteAmount(entry.amount),
+          statusId: typeof entry.statusId === 'string' ? entry.statusId : undefined,
+          target,
+        }];
+      })
       .filter((entry) => entry.type.length > 0);
 
     if (normalized.length > 0) {
@@ -385,33 +357,63 @@ export class CombatService {
     return [];
   }
 
-  private describeResourceCosts(costs: NormalizedResourceCosts): string | null {
-    const parts = [
-      costs.mana > 0 ? `${costs.mana} mana` : null,
-      costs.stamina > 0 ? `${costs.stamina} stamina` : null,
-      costs.hp > 0 ? `${costs.hp} HP` : null,
-    ].filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : null;
-  }
+  private async consumeCombatItemCharge(actorId: string, itemId: string): Promise<void> {
+    const normalizedItemId = String(itemId ?? '').trim();
+    if (!normalizedItemId) {
+      return;
+    }
 
-  private ensureSufficientResources(entity: { id?: string; currentMp: number; currentStamina: number; currentHp: number }, costs: NormalizedResourceCosts): void {
-    console.info('[resourceCost] check', { entityId: entity.id, costs });
-    if (costs.mana > entity.currentMp) {
-      throw new BadRequestException('Not enough mana');
-    }
-    if (costs.stamina > entity.currentStamina) {
-      throw new BadRequestException('Not enough stamina');
-    }
-    if (costs.hp >= entity.currentHp) {
-      throw new BadRequestException('Not enough HP');
-    }
-  }
+    const actionSlots = await this.arenaService.getOrCreateActionSlots(actorId);
+    const physicalSlotIds = new Set(await this.arenaService.getPhysicalItemActionSlotIds(actorId));
+    const hasPhysicalSlotCopy = actionSlots.some(
+      (slot) => slot.kind === 'item' && slot.refId === normalizedItemId && physicalSlotIds.has(slot.slotId),
+    );
 
-  private spendEntityResources(entity: { id?: string; currentMp: number; currentStamina: number; currentHp: number }, costs: NormalizedResourceCosts): void {
-    console.info('[resourceCost] spend', { entityId: entity.id, costs });
-    entity.currentMp = Math.max(0, entity.currentMp - costs.mana);
-    entity.currentStamina = Math.max(0, entity.currentStamina - costs.stamina);
-    entity.currentHp = Math.max(0, entity.currentHp - costs.hp);
+    if (hasPhysicalSlotCopy) {
+      await this.arenaService.consumePhysicalItemActionSlot(actorId, normalizedItemId);
+      return;
+    }
+
+    if (isFileStorageMode()) {
+      const inventoryEntry = (await this.readRuntimeInventoryItems(actorId)).find((entry) => entry.itemId === normalizedItemId) ?? null;
+      if (!inventoryEntry || inventoryEntry.quantity <= 0) {
+        return;
+      }
+
+      await this.updateRuntimeInventoryItemQuantity(actorId, normalizedItemId, -1);
+      if (inventoryEntry.quantity === 1) {
+        const clearedSlots = actionSlots
+          .filter((slot) => slot.kind === 'item' && slot.refId === normalizedItemId)
+          .map((slot) => ({ slotIndex: slot.slotIndex, kind: null, refId: null, itemInstanceId: null }));
+        if (clearedSlots.length > 0) {
+          await this.arenaService.updateActionSlots(actorId, clearedSlots);
+        }
+      }
+      return;
+    }
+
+    const inventoryEntry = await this.prisma.characterInventoryItem.findUnique({
+      where: { characterId_itemId: { characterId: actorId, itemId: normalizedItemId } },
+    });
+    if (!inventoryEntry || inventoryEntry.quantity <= 0) {
+      return;
+    }
+
+    if (inventoryEntry.quantity === 1) {
+      await this.prisma.characterInventoryItem.delete({ where: { id: inventoryEntry.id } });
+      const clearedSlots = actionSlots
+        .filter((slot) => slot.kind === 'item' && slot.refId === normalizedItemId)
+        .map((slot) => ({ slotIndex: slot.slotIndex, kind: null, refId: null, itemInstanceId: null }));
+      if (clearedSlots.length > 0) {
+        await this.arenaService.updateActionSlots(actorId, clearedSlots);
+      }
+      return;
+    }
+
+    await this.prisma.characterInventoryItem.update({
+      where: { id: inventoryEntry.id },
+      data: { quantity: inventoryEntry.quantity - 1 },
+    });
   }
 
   private resolveItemEffectTarget(
@@ -591,10 +593,29 @@ export class CombatService {
   }
 
   private getCombatRoundLimitsForActor(actor: { combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC' }): CombatRoundLimits {
-    void actor;
+    const dynamic = actor as {
+      isBoss?: boolean;
+      isElite?: boolean;
+      isTest?: boolean;
+      isDebug?: boolean;
+      powerTier?: string;
+      aiPersonality?: string;
+    };
+    const powerTier = String(dynamic.powerTier ?? '').trim().toLowerCase();
+    const personality = String(dynamic.aiPersonality ?? '').trim().toLowerCase();
+    const isHighTier = Boolean(
+      dynamic.isBoss
+      || dynamic.isElite
+      || dynamic.isTest
+      || dynamic.isDebug
+      || powerTier === 'boss'
+      || powerTier === 'elite'
+      || personality === 'boss',
+    );
+
     return {
-      maxCommands: DEFAULT_MAX_COMMANDS_PER_ROUND,
-      maxAP: DEFAULT_MAX_AP_PER_ROUND,
+      maxCommands: isHighTier ? HARD_MAX_COMMANDS_PER_ROUND : DEFAULT_MAX_COMMANDS_PER_ROUND,
+      maxAP: isHighTier ? HARD_MAX_AP_PER_ROUND : DEFAULT_MAX_AP_PER_ROUND,
     };
   }
 
@@ -645,6 +666,12 @@ export class CombatService {
 
   private async resolveRoundByTimeoutIfNeeded(session: CombatSession): Promise<void> {
     const state = session.state;
+    if (state.phase === 'acting' || state.phase === 'animating') {
+      await this.resolveActiveTurnTimeoutIfNeeded(session);
+      await this.executeAutomatedTurns(session);
+      return;
+    }
+
     if (!this.shouldResolveRoundByTimeout(state)) {
       return;
     }
@@ -697,6 +724,441 @@ export class CombatService {
 
     this.syncTurnPlanState(session);
     await this.tryResolveWhenAllReady(session);
+  }
+
+  private getLivingPlayerSideActors(state: ArenaBattleState): ArenaCombatEntity[] {
+    return state.entities.filter((entity) => entity.team === TeamSide.Left && this.canActorPlan(state, entity));
+  }
+
+  private buildSequentialTurnQueue(session: CombatSession): string[] {
+    const state = session.state;
+    const leftSide = this.getLivingPlayerSideActors(state)
+      .slice()
+      .sort((left, right) => left.position - right.position)
+      .map((entity) => entity.id);
+    const rightSide = this.getLivingAiActors(state)
+      .slice()
+      .sort((left, right) => left.position - right.position)
+      .map((entity) => entity.id);
+    return [...leftSide, ...rightSide];
+  }
+
+  private getActiveActor(state: ArenaBattleState): ArenaCombatEntity | null {
+    if (!state.activeActorId) {
+      return null;
+    }
+    return state.entities.find((entity) => entity.id === state.activeActorId) ?? null;
+  }
+
+  private isAutomatedActor(session: CombatSession, actor: ArenaCombatEntity): boolean {
+    return actor.id !== session.playerId;
+  }
+
+  private assignActiveTurnState(session: CombatSession, actor: ArenaCombatEntity | null): void {
+    const state = session.state;
+    if (!actor || !this.canActorPlan(state, actor)) {
+      state.activeActorId = undefined;
+      state.currentTurnAp = 0;
+      state.turnStartedAt = undefined;
+      state.turnDeadlineAt = undefined;
+      state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;
+      state.pendingActorIds = [];
+      state.readyActorIds = [];
+      return;
+    }
+
+    const limits = this.getCombatRoundLimitsForActor(actor);
+    state.activeActorId = actor.id;
+    state.currentTurnAp = limits.maxAP;
+    state.turnStartedAt = new Date().toISOString();
+    state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;
+    state.turnDeadlineAt = this.isAutomatedActor(session, actor)
+      ? undefined
+      : new Date(Date.now() + ACTIVE_TURN_DURATION_SECONDS * 1000).toISOString();
+    state.pendingActorIds = actor.id === session.playerId ? [actor.id] : [];
+    state.readyActorIds = [];
+
+    // Turn-start stamina regeneration (must happen before AI chooses actions).
+    if (actor.isAlive) {
+      const maxStamina = Math.max(0, Math.floor(actor.maxStamina ?? 0));
+      const before = Math.max(0, Math.floor(actor.currentStamina ?? maxStamina));
+      if (maxStamina > 0 && before < maxStamina) {
+        const regenAmount = Math.max(10, Math.floor(maxStamina * 0.10));
+        const after = Math.min(maxStamina, before + regenAmount);
+        const amount = Math.max(0, after - before);
+        if (amount > 0) {
+          actor.currentStamina = after;
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex: -1,
+            orderIndex: 0,
+            type: 'resource_regen',
+            actorId: actor.id,
+            message: `${actor.name} восстанавливает силы.`,
+            data: {
+              resource: 'stamina',
+              amount,
+              before,
+              after,
+              reason: 'turn_start',
+            },
+          });
+        }
+      }
+    }
+  }
+
+  private emitTurnTransitionEvents(params: {
+    session: CombatSession;
+    fromActorId?: string;
+    toActorId?: string;
+    reason: string;
+  }): void {
+    const { session, fromActorId, toActorId, reason } = params;
+    const state = session.state;
+    if (state.isFinished) {
+      return;
+    }
+
+    if (fromActorId) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex: -1,
+        orderIndex: 0,
+        type: 'turn_ended',
+        actorId: fromActorId,
+        message: `Ход ${fromActorId} завершён.`,
+        data: { fromActorId, toActorId, reason },
+      });
+    }
+
+    if (toActorId) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex: -1,
+        orderIndex: 0,
+        type: 'turn_started',
+        actorId: toActorId,
+        message: `Ход ${toActorId} начинается.`,
+        data: {
+          fromActorId,
+          toActorId,
+          reason,
+          currentTurnAp: state.currentTurnAp ?? 0,
+          turnDurationSeconds: state.turnDurationSeconds,
+          turnDeadlineAt: state.turnDeadlineAt,
+        },
+      });
+    }
+
+    if (fromActorId || toActorId) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex: -1,
+        orderIndex: 0,
+        type: 'turn_changed',
+        actorId: toActorId,
+        message: 'Переход хода.',
+        data: { fromActorId, toActorId, reason },
+      });
+    }
+  }
+
+  private primeSequentialTurnState(session: CombatSession): void {
+    const state = session.state;
+    const turnQueue = this.buildSequentialTurnQueue(session);
+    state.turnQueue = turnQueue;
+    state.turnIndex = 0;
+    state.roundPhase = undefined;
+    state.phase = state.isFinished ? 'finished' : 'acting';
+    this.syncSubmittedPlansState(session);
+
+    if (state.isFinished || turnQueue.length === 0) {
+      this.assignActiveTurnState(session, null);
+      return;
+    }
+
+    const firstActor = state.entities.find((entity) => entity.id === turnQueue[0]) ?? null;
+    this.assignActiveTurnState(session, firstActor);
+    this.emitTurnTransitionEvents({
+      session,
+      toActorId: firstActor?.id,
+      reason: 'combat_started',
+    });
+  }
+
+  private findNextActiveActorIndex(session: CombatSession, fromIndex: number): { index: number; wrapped: boolean } | null {
+    const state = session.state;
+    const queue = state.turnQueue ?? [];
+    if (queue.length === 0) {
+      return null;
+    }
+
+    for (let offset = 1; offset <= queue.length; offset += 1) {
+      const candidateIndex = (fromIndex + offset) % queue.length;
+      const candidateId = queue[candidateIndex];
+      const candidate = state.entities.find((entity) => entity.id === candidateId);
+      if (candidate && this.canActorPlan(state, candidate)) {
+        return {
+          index: candidateIndex,
+          wrapped: candidateIndex <= fromIndex,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private async advanceSequentialTurn(session: CombatSession, reason = 'advance'): Promise<void> {
+    const state = session.state;
+    const fromActorId = state.activeActorId;
+    this.refreshBattleResult(state);
+    if (state.isFinished) {
+      state.phase = 'finished';
+      state.roundPhase = undefined;
+      this.assignActiveTurnState(session, null);
+      return;
+    }
+
+    const queue = state.turnQueue ?? [];
+    if (queue.length === 0) {
+      state.turnQueue = this.buildSequentialTurnQueue(session);
+    }
+
+    const effectiveQueue = state.turnQueue ?? [];
+    if (effectiveQueue.length === 0) {
+      this.refreshBattleResult(state);
+      state.phase = state.isFinished ? 'finished' : 'acting';
+      this.assignActiveTurnState(session, null);
+      return;
+    }
+
+    const currentIndex = typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex)
+      ? Math.max(0, Math.floor(state.turnIndex))
+      : 0;
+    const next = this.findNextActiveActorIndex(session, currentIndex);
+    if (!next) {
+      this.refreshBattleResult(state);
+      if (state.isFinished) {
+        state.phase = 'finished';
+      }
+      this.assignActiveTurnState(session, null);
+      return;
+    }
+
+    if (next.wrapped) {
+      state.roundNumber += 1;
+    }
+
+    state.turnIndex = next.index;
+    state.phase = 'acting';
+    const actorId = effectiveQueue[next.index];
+    const actor = state.entities.find((entity) => entity.id === actorId) ?? null;
+    this.assignActiveTurnState(session, actor);
+    this.emitTurnTransitionEvents({
+      session,
+      fromActorId,
+      toActorId: actor?.id,
+      reason,
+    });
+  }
+
+  private async resolveActiveTurnTimeoutIfNeeded(session: CombatSession): Promise<void> {
+    const state = session.state;
+    if (state.phase !== 'acting') {
+      return;
+    }
+
+    const actor = this.getActiveActor(state);
+    if (!actor || actor.id !== session.playerId) {
+      return;
+    }
+
+    const deadlineMs = this.getTurnDeadlineMs(state);
+    if (deadlineMs == null || Date.now() < deadlineMs) {
+      return;
+    }
+
+    state.currentTurnAp = 0;
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber: state.roundNumber,
+      stepIndex: -1,
+      orderIndex: 0,
+      type: 'command_started',
+      actorId: actor.id,
+      message: `${actor.name} не успевает сделать ход и автоматически завершает его.`,
+      data: { reason: 'turn_timeout', endTurn: true, resourceCost: { ap: 0, stamina: 0, mp: 0, hp: 0 } },
+    });
+    await this.advanceSequentialTurn(session, 'timeout');
+  }
+
+  private async executeAutomatedTurns(session: CombatSession): Promise<void> {
+    for (let iteration = 0; iteration < MAX_AUTOMATED_TURN_LOOPS; iteration += 1) {
+      const state = session.state;
+      if (state.isFinished || state.phase !== 'acting') {
+        return;
+      }
+
+      const actor = this.getActiveActor(state);
+      if (!actor || !this.canActorPlan(state, actor)) {
+        await this.advanceSequentialTurn(session, 'invalid_active_actor');
+        continue;
+      }
+      if (!this.isAutomatedActor(session, actor)) {
+        return;
+      }
+
+      await this.executeAiTurn(session, actor);
+    }
+  }
+
+  private async executeAiTurn(session: CombatSession, aiActor: ArenaCombatEntity): Promise<void> {
+    const state = session.state;
+    if (state.activeActorId !== aiActor.id || state.phase !== 'acting' || state.isFinished) {
+      return;
+    }
+    if (!this.canActorPlan(state, aiActor)) {
+      await this.advanceSequentialTurn(session, 'ai_actor_cannot_act');
+      return;
+    }
+
+    const limits = this.getCombatRoundLimitsForActor(aiActor);
+    const aiPlan = this.buildNpcAiPlan(session, aiActor);
+    const commands = (aiPlan.commands ?? []).slice(0, limits.maxCommands);
+    state.recentCombatEvents = [];
+    state.recentAnimationEvents = [];
+
+    for (const rawCommand of commands) {
+      if (state.activeActorId !== aiActor.id || state.phase !== 'acting' || state.isFinished) {
+        break;
+      }
+
+      let command: CombatCommand;
+      try {
+        command = normalizeCombatCommand({ rawCommand, actor: aiActor, battleState: state });
+      } catch {
+        break;
+      }
+
+      if (command.apCost > (state.currentTurnAp ?? 0)) {
+        break;
+      }
+
+      const revalidation = this.revalidateCommandForResolve({ state, actor: aiActor, command });
+      if (!revalidation.ok) {
+        break;
+      }
+
+      await this.executeImmediateCombatCommand({
+        session,
+        actor: aiActor,
+        command,
+        stepIndex: 0,
+        orderIndex: 0,
+      });
+      state.currentTurnAp = Math.max(0, (state.currentTurnAp ?? 0) - command.apCost);
+
+      if (command.type === 'wait' || (state.currentTurnAp ?? 0) <= 0 || state.isFinished || !this.canActorPlan(state, aiActor)) {
+        break;
+      }
+    }
+
+    await this.advanceSequentialTurn(session, 'ai_end_turn');
+  }
+
+  private withCommandResourceCost(command: CombatCommand): { ap: number; stamina: number; mp: number; hp: number } {
+    return {
+      ap: Math.max(0, Math.floor(command.apCost ?? 0)),
+      stamina: Math.max(0, Math.floor(command.costs?.stamina ?? 0)),
+      mp: Math.max(0, Math.floor(command.costs?.mp ?? 0)),
+      hp: Math.max(0, Math.floor(command.costs?.hp ?? 0)),
+    };
+  }
+
+  private applyImmediateMovementRules(params: {
+    actor: ArenaCombatEntity;
+    command: CombatCommand;
+  }):
+    | { ok: true; command: CombatCommand; distance: number; movementType: 'walk' | 'dash' | 'disengage' }
+    | { ok: false; errorCode: string; reason: string; message: string; details: Record<string, unknown> } {
+    const { actor, command } = params;
+    if ((command.type !== 'move' && command.type !== 'dash' && command.type !== 'disengage') || command.target.kind !== 'cell') {
+      return { ok: true, command, distance: 0, movementType: command.type === 'dash' ? 'dash' : command.type === 'disengage' ? 'disengage' : 'walk' };
+    }
+
+    const from = this.getEntityCell(actor);
+    const to = { x: command.target.x, y: command.target.y };
+    const distance = this.getCellDistance(from, to);
+    const movementType = command.type === 'dash' ? 'dash' : command.type === 'disengage' ? 'disengage' : 'walk';
+
+    if (distance <= 0) {
+      return {
+        ok: false,
+        errorCode: 'INVALID_MOVE_DISTANCE',
+        reason: 'invalid_move_distance',
+        message: 'Недопустимая дистанция перемещения.',
+        details: { distance, maxDistance: movementType === 'dash' ? 3 : movementType === 'walk' ? 2 : 1, movementType },
+      };
+    }
+
+    if (movementType === 'walk' && distance > 2) {
+      return {
+        ok: false,
+        errorCode: 'MOVEMENT_TOO_FAR',
+        reason: 'movement_too_far',
+        message: 'Слишком большая дистанция для move.',
+        details: { distance, maxDistance: 2, movementType },
+      };
+    }
+
+    if (movementType === 'dash' && distance > 3) {
+      return {
+        ok: false,
+        errorCode: 'DASH_TOO_FAR',
+        reason: 'dash_too_far',
+        message: 'Слишком большая дистанция для dash.',
+        details: { distance, maxDistance: 3, movementType },
+      };
+    }
+
+    if (movementType === 'disengage' && distance > 1) {
+      return {
+        ok: false,
+        errorCode: 'DISENGAGE_TOO_FAR',
+        reason: 'disengage_too_far',
+        message: 'Слишком большая дистанция для disengage.',
+        details: { distance, maxDistance: 1, movementType },
+      };
+    }
+
+    const movementCost = movementType === 'dash'
+      ? { ap: 2, stamina: 30 }
+      : movementType === 'disengage'
+        ? { ap: 1, stamina: 20 }
+        : distance === 1
+          ? { ap: 1, stamina: 10 }
+          : { ap: 1, stamina: 20 };
+
+    return {
+      ok: true,
+      command: {
+        ...command,
+        apCost: movementCost.ap,
+        costs: {
+          ...command.costs,
+          stamina: movementCost.stamina,
+          mp: command.costs?.mp,
+          hp: command.costs?.hp,
+        },
+      },
+      distance,
+      movementType,
+    };
   }
 
   private mapPlanErrorsToMessage(errors: CombatPlanErrorCode[]): string {
@@ -1987,6 +2449,27 @@ export class CombatService {
     });
   }
 
+  private async executeImmediateCombatCommand(params: {
+    session: CombatSession;
+    actor: ArenaBattleState['entities'][number];
+    command: CombatCommand;
+    stepIndex?: number;
+    orderIndex?: number;
+  }): Promise<void> {
+    const { session, actor, command } = params;
+    const state = session.state;
+    state.phase = 'animating';
+    await this.executeResolveCommand({
+      session,
+      actor,
+      command,
+      stepIndex: params.stepIndex ?? 0,
+      orderIndex: params.orderIndex ?? 0,
+      guardStates: session.guardStates,
+    });
+    state.phase = state.isFinished ? 'finished' : 'acting';
+  }
+
   private async executeResolveCommand(params: {
     session: CombatSession;
     actor: ArenaBattleState['entities'][number];
@@ -2081,6 +2564,8 @@ export class CombatService {
         actor.battlefieldX = to.x;
         actor.battlefieldY = to.y;
         const movementType = command.type === 'dash' ? 'dash' : command.type === 'disengage' ? 'disengage' : 'walk';
+        const distance = this.getCellDistance(from, to);
+        const resourceCost = this.withCommandResourceCost(command);
         this.addCombatEvent(
           state,
           {
@@ -2092,7 +2577,7 @@ export class CombatService {
             actorId: actor.id,
             commandId: command.id,
             message: `${actor.name} moves closer to the enemy.`,
-            data: { from, to, movementType },
+            data: { from, to, movementType, distance, resourceCost },
           },
           {
             id: randomUUID(),
@@ -2118,6 +2603,40 @@ export class CombatService {
         const guardAppliedMessage = actor.hasShield
           ? `${actor.name} поднимает щит и занимает защитную стойку.`
           : `${actor.name} сжимает оружие крепче и готовится принять удар.`;
+        /* if (!anyRestore && effectLogs.length === 0) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: 'Ресурс уже полон.',
+            data: { reason: 'item_no_effect_applied', itemId },
+          });
+          break;
+        } */
+
+        /* if (anyRestore) {
+          const resource = restoredHp > 0 ? 'hp' : restoredMp > 0 ? 'mp' : 'stamina';
+          const before = resource === 'hp' ? beforeHp : resource === 'mp' ? beforeMp : beforeStamina;
+          const after = resource === 'hp' ? afterHp : resource === 'mp' ? afterMp : afterStamina;
+          const amount = Math.max(0, after - before);
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'heal',
+            actorId: actor.id,
+            targetId: command.target.kind === 'entity' ? command.target.entityId : actor.id,
+            commandId: command.id,
+            message: `${actor.name} выпивает ${String(itemData?.name ?? itemId ?? 'предмет')} и восстанавливает ${amount} ${resource.toUpperCase()}.`,
+            data: { resource, before, after, amount, itemId, itemInstanceId: command.payload?.itemInstanceId, source: 'item_use' },
+          });
+        } */
+
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -2352,8 +2871,10 @@ export class CombatService {
           }
           damage = Math.max(1, damage);
 
+          const hpBefore = target.currentHp;
           target.currentHp = Math.max(0, target.currentHp - damage);
           target.isAlive = target.currentHp > 0;
+          const hpAfter = target.currentHp;
 
           this.addCombatEvent(
             state,
@@ -2375,6 +2896,10 @@ export class CombatService {
                 partiallyBlocked: mitigation.partiallyBlocked,
                 guardBroken: mitigation.guardBroken,
                 crit: isCrit,
+                beforeHp: hpBefore,
+                afterHp: hpAfter,
+                finalDamage: damage,
+                resourceCost: this.withCommandResourceCost(command),
               },
             },
             {
@@ -2714,8 +3239,17 @@ export class CombatService {
             }
           })()
           : null;
-        const itemData = item as unknown as Record<string, unknown> | null;
-        const itemSubType = String(itemData?.itemSubType ?? '').toLowerCase();
+        const adminItem = typeof itemId === 'string'
+          ? (() => {
+            try {
+              return this.contentService.resolveAdminItemById(itemId);
+            } catch {
+              return null;
+            }
+          })()
+          : null;
+        const itemData = (adminItem ?? item) as unknown as Record<string, unknown> | null;
+        const itemSubType = String(itemData?.itemSubType ?? item?.itemSubType ?? '').toLowerCase();
 
         if (command.target.kind === 'cell' && (itemSubType.includes('bomb') || itemSubType.includes('grenade'))) {
           usedBomb = true;
@@ -2754,6 +3288,9 @@ export class CombatService {
         }
 
         if (usedBomb) {
+          if (typeof itemId === 'string' && actor.id === session.playerId) {
+            await this.consumeCombatItemCharge(actor.id, itemId);
+          }
           break;
         }
 
@@ -2888,6 +3425,9 @@ export class CombatService {
               }
             }
           }
+          if (typeof itemId === 'string' && actor.id === session.playerId) {
+            await this.consumeCombatItemCharge(actor.id, itemId);
+          }
           break;
         }
 
@@ -2930,7 +3470,57 @@ export class CombatService {
           }
         }
 
+        const beforeTarget = state.entities.find((e) => e.id === targetId) ?? null;
+        const beforeHp = beforeTarget ? beforeTarget.currentHp : actor.currentHp;
+        const beforeMp = beforeTarget ? beforeTarget.currentMp : actor.currentMp;
+        const beforeStamina = beforeTarget ? beforeTarget.currentStamina : actor.currentStamina;
+
         const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, state, state.roundNumber, targetId));
+
+        const afterTarget = state.entities.find((e) => e.id === targetId) ?? null;
+        const afterHp = afterTarget ? afterTarget.currentHp : actor.currentHp;
+        const afterMp = afterTarget ? afterTarget.currentMp : actor.currentMp;
+        const afterStamina = afterTarget ? afterTarget.currentStamina : actor.currentStamina;
+
+        const restoredHp = Math.max(0, afterHp - beforeHp);
+        const restoredMp = Math.max(0, afterMp - beforeMp);
+        const restoredStamina = Math.max(0, afterStamina - beforeStamina);
+        const anyRestore = restoredHp > 0 || restoredMp > 0 || restoredStamina > 0;
+        const anyEffect = anyRestore || effectLogs.length > 0;
+
+        if (!anyEffect) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: 'Ресурс уже полон.',
+            data: { reason: 'item_no_effect_applied', itemId },
+          });
+          break;
+        }
+
+        if (anyRestore) {
+          const resource = restoredHp > 0 ? 'hp' : restoredMp > 0 ? 'mp' : 'stamina';
+          const before = resource === 'hp' ? beforeHp : resource === 'mp' ? beforeMp : beforeStamina;
+          const after = resource === 'hp' ? afterHp : resource === 'mp' ? afterMp : afterStamina;
+          const amount = Math.max(0, after - before);
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'heal',
+            actorId: actor.id,
+            targetId,
+            commandId: command.id,
+            message: `${actor.name} выпивает ${String(itemData?.name ?? itemId ?? 'предмет')} и восстанавливает ${amount} ${resource.toUpperCase()}.`,
+            data: { resource, before, after, amount, itemId, itemInstanceId: command.payload?.itemInstanceId, source: 'item_use' },
+          });
+        }
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -2943,6 +3533,9 @@ export class CombatService {
           message: effectLogs[0]?.text ?? `${actor.name} использует предмет.`,
           data: { itemId, effects: effects.map((effect) => effect.type) },
         });
+        if (typeof itemId === 'string' && actor.id === session.playerId) {
+          await this.consumeCombatItemCharge(actor.id, itemId);
+        }
         break;
       }
       case 'loot': {
@@ -3473,15 +4066,11 @@ export class CombatService {
 
     const totalAp = commands.reduce((sum, command) => sum + Math.max(0, command.apCost), 0);
     const planned = commands.map((command) => command.type).join(' -> ');
-    const debugEntry = {
-      round: state.roundNumber,
-      actorId: actor.id,
-      targetId: target?.id,
-      type: 'INFO' as const,
-      text: `[AI DEBUG] ${actor.name}: target=${target?.name ?? 'none'} plan=${planned || 'none'} ap=${totalAp}/${limits.maxAP} reject=${rejectReason} notes=${debugNotes.join(',') || 'none'}`,
-    };
-    state.logs.push(debugEntry);
-    state.lastRound?.logs.push(debugEntry);
+    const debugText = `[AI DEBUG] ${actor.name}: target=${target?.name ?? 'none'} plan=${planned || 'none'} ap=${totalAp}/${limits.maxAP} reject=${rejectReason} notes=${debugNotes.join(',') || 'none'}`;
+    if (process.env.NODE_ENV !== 'production') {
+      // Keep debug visibility for developers without leaking to player-facing combat log.
+      console.debug(debugText);
+    }
 
     return {
       battleId: state.combatId,
@@ -4139,13 +4728,18 @@ export class CombatService {
 
     const player = this.toCombatEntity(character, TeamSide.Left, 1);
     const resourceState = await this.arenaService.getCharacterResources(characterId);
+
+    // Combat start resources:
+    // - HP comes from persisted character resource state (do not reset to full).
+    // - MP/stamina start full for the current P0 combat rules.
     player.currentHp = resourceState.currentHp;
-    player.currentMp = resourceState.currentMp;
-    player.currentStamina = resourceState.currentStamina;
+    player.currentMp = resourceState.maxMp;
+    player.currentStamina = resourceState.maxStamina;
     player.maxHp = resourceState.maxHp;
     player.maxMp = resourceState.maxMp;
     player.maxStamina = resourceState.maxStamina;
     (player as { hpRegenPerTurn?: number }).hpRegenPerTurn = resourceState.hpRegenPerTurn;
+
     const playerStats: StatBlock = {
       hp: player.maxHp,
       mp: player.maxMp,
@@ -4186,9 +4780,8 @@ export class CombatService {
       battlefieldTiles,
       battlefieldTraps: this.buildBattlefieldTraps(battleMap),
     });
-    state.turnStartedAt = new Date().toISOString();
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
-    state.turnDeadlineAt = new Date(Date.now() + state.roundDurationSeconds * 1000).toISOString();
+    state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;
     state.lootContainers = [];
 
     const equipmentByActorId = new Map<string, Equipment>();
@@ -4212,11 +4805,12 @@ export class CombatService {
       enemyTempoBreaks: [],
       damageContribution: 0,
       skillCooldowns: [],
+      guardStates: new Map<string, CombatGuardState>(),
       equipmentByActorId,
     };
 
-    this.primeRoundPlanning(session);
-    this.syncTurnPlanState(session);
+    this.primeSequentialTurnState(session);
+    await this.executeAutomatedTurns(session);
     this.sessions.set(combatId, session);
 
     return {
@@ -4253,8 +4847,8 @@ export class CombatService {
     if (session.state.isFinished || session.state.phase === 'finished') {
       return { ok: false, errorCode: 'BATTLE_FINISHED', message: 'Battle is already finished.' };
     }
-    if (session.state.roundPhase === 'RESOLVING' || session.state.phase === 'resolving') {
-      return { ok: false, errorCode: 'ROUND_ALREADY_RESOLVING', message: 'Round is already resolving.' };
+    if (session.state.phase !== 'acting') {
+      return { ok: false, errorCode: 'BATTLE_NOT_ACTING', message: 'Battle is not in active-turn phase.' };
     }
     if (payload.actorId !== session.playerId) {
       return { ok: false, errorCode: 'ACTOR_NOT_CONTROLLED_BY_USER', message: 'Actor is not controlled by this user.' };
@@ -4262,61 +4856,179 @@ export class CombatService {
     if (payload.roundNumber !== session.state.roundNumber) {
       return { ok: false, errorCode: 'ROUND_MISMATCH', message: 'Round number mismatch.' };
     }
+    if (session.state.activeActorId !== payload.actorId) {
+      return { ok: false, errorCode: 'ACTOR_NOT_ACTIVE', message: 'Actor is not active right now.' };
+    }
 
     const actor = session.state.entities.find((entity) => entity.id === payload.actorId);
     if (!actor || !this.canActorPlan(session.state, actor)) {
       return { ok: false, errorCode: 'ACTOR_DEAD', message: 'Actor cannot act right now.' };
     }
 
-    const plan = this.getOrCreateTurnPlan(session, payload.actorId);
-    if (plan.roundNumber !== session.state.roundNumber) {
-      plan.roundNumber = session.state.roundNumber;
-      plan.commands = [];
-      plan.ready = false;
-      plan.submittedAt = undefined;
-    }
-    if (plan.ready) {
-      return { ok: false, errorCode: 'TURN_ALREADY_ENDED', message: 'Turn already ended for this round.' };
+    let command: CombatCommand;
+    try {
+      command = normalizeCombatCommand({
+        rawCommand: payload.command,
+        actor,
+        battleState: session.state,
+      });
+    } catch {
+      return {
+        ok: false,
+        errorCode: 'UNKNOWN_COMMAND',
+        message: 'Unknown or invalid command.',
+      };
     }
 
-    const normalized = this.normalizeAndValidateCommand({
-      session,
-      actor,
-      rawCommand: payload.command,
-      currentCommands: plan.commands,
-    });
+    const movementPrepared = this.applyImmediateMovementRules({ actor, command });
+    if (!movementPrepared.ok) {
+      this.addCombatEvent(session.state, {
+        id: randomUUID(),
+        roundNumber: session.state.roundNumber,
+        stepIndex: 0,
+        orderIndex: 0,
+        type: 'command_failed',
+        actorId: actor.id,
+        commandId: command.id,
+        message: movementPrepared.message,
+        data: {
+          reason: movementPrepared.reason,
+          error: movementPrepared.errorCode,
+          ...movementPrepared.details,
+        },
+      });
+      return {
+        ok: false,
+        errorCode: movementPrepared.errorCode,
+        message: movementPrepared.message,
+        details: movementPrepared.details,
+      };
+    }
+    command = movementPrepared.command;
 
-    if (!normalized.validation.ok) {
-      const firstError = normalized.validation.errors[0] ?? 'UNKNOWN';
+    const weaponSwapErrors = this.collectWeaponSwapPlanErrors(command, actor);
+    if (weaponSwapErrors.length > 0) {
+      const firstError = weaponSwapErrors[0] ?? 'UNKNOWN';
       return {
         ok: false,
         errorCode: firstError,
         message: String(firstError),
-        details: {
-          errors: normalized.validation.errors,
-          warnings: normalized.validation.warnings,
-          warningDetails: normalized.validation.warningDetails,
-          total: normalized.validation.total,
-        },
       };
     }
 
-    plan.commands = [...plan.commands, normalized.command];
-    plan.submittedAt = new Date().toISOString();
+    if (command.apCost > (session.state.currentTurnAp ?? 0)) {
+      return {
+        ok: false,
+        errorCode: 'NOT_ENOUGH_AP',
+        message: 'Not enough AP for this command.',
+      };
+    }
 
-    const limits = this.getCombatRoundLimitsForActor(actor);
-    const totalAp = plan.commands.reduce((sum, command) => sum + Math.max(0, command.apCost), 0);
-    const shouldResolveNow =
-      normalized.command.type === 'wait'
-      || totalAp >= limits.maxAP
-      || plan.commands.length >= limits.maxCommands;
+    const revalidation = this.revalidateCommandForResolve({
+      state: session.state,
+      actor,
+      command,
+    });
+    if (!revalidation.ok) {
+      const reason = revalidation.reason ?? 'unknown';
+      const errorCode = this.resolveErrorToCode(reason);
+      this.addCombatEvent(session.state, {
+        id: randomUUID(),
+        roundNumber: session.state.roundNumber,
+        stepIndex: 0,
+        orderIndex: 0,
+        type: 'command_failed',
+        actorId: actor.id,
+        commandId: command.id,
+        message: revalidation.message ?? 'Действие сорвано до выполнения.',
+        data: this.buildRevalidationFailureData({
+          state: session.state,
+          actor,
+          command,
+          reason,
+        }),
+      });
+      return {
+        ok: false,
+        errorCode,
+        message: revalidation.message ?? 'Command failed validation before execution.',
+        details: this.buildRevalidationFailureData({
+          state: session.state,
+          actor,
+          command,
+          reason,
+        }),
+      };
+    }
 
-    if (shouldResolveNow) {
-      plan.ready = true;
-      this.syncTurnPlanState(session);
-      await this.tryResolveWhenAllReady(session);
-    } else {
-      this.syncTurnPlanState(session);
+    session.state.recentCombatEvents = [];
+    session.state.recentAnimationEvents = [];
+    await this.executeImmediateCombatCommand({
+      session,
+      actor,
+      command,
+      stepIndex: 0,
+      orderIndex: 0,
+    });
+
+    if (!session.state.isFinished) {
+      if (command.type === 'wait') {
+        session.state.currentTurnAp = 0;
+      } else {
+        session.state.currentTurnAp = Math.max(0, (session.state.currentTurnAp ?? 0) - command.apCost);
+      }
+    }
+
+    if (!session.state.isFinished && (command.type === 'wait' || (session.state.currentTurnAp ?? 0) <= 0 || !this.canActorPlan(session.state, actor))) {
+      await this.advanceSequentialTurn(session, command.type === 'wait' ? 'wait' : 'ap_exhausted');
+      await this.executeAutomatedTurns(session);
+    }
+
+    // Persist final HP back to character state when combat ends (so next combat starts with correct HP).
+    // Rewards are also applied on victory (idempotently).
+    if (session.state.isFinished) {
+      const playerEntity = session.state.entities.find((e) => e.id === session.playerId);
+      if (playerEntity) {
+        await this.arenaService.updateCharacterResources(session.playerId, { currentHp: playerEntity.currentHp });
+      }
+
+      const stateAny = session.state as unknown as { rewardsApplied?: boolean; victoryRewards?: unknown };
+      if (session.state.winner === TeamSide.Left && !stateAny.rewardsApplied) {
+        const rewards = await this.applyVictoryRewards(session.playerId, session.state, session.damageContribution);
+        stateAny.rewardsApplied = true;
+        stateAny.victoryRewards = {
+          expGained: rewards.progression.gainedExp,
+          goldGained: rewards.gainedGold,
+          levelsGained: rewards.progression.levelsGained,
+          lootName: rewards.itemName,
+        };
+
+        // Append INFO logs so the existing frontend victory summary can parse rewards from battle logs.
+        if (rewards.progression.gainedExp > 0) {
+          session.state.logs.push({
+            round: session.state.roundNumber,
+            actorId: session.playerId,
+            type: 'INFO' as const,
+            text: `Battle reward: +${rewards.progression.gainedExp} EXP`,
+          });
+        }
+        if (rewards.gainedGold > 0) {
+          session.state.logs.push({
+            round: session.state.roundNumber,
+            actorId: session.playerId,
+            type: 'INFO' as const,
+            text: `Battle reward: +${rewards.gainedGold} gold`,
+          });
+        }
+        if (rewards.itemName) {
+          session.state.logs.push({
+            round: session.state.roundNumber,
+            actorId: session.playerId,
+            type: 'INFO' as const,
+            text: `Battle reward: loot ${rewards.itemName}`,
+          });
+        }
+      }
     }
 
     return {
@@ -4403,120 +5115,6 @@ export class CombatService {
       acceptedPlan: plan,
       battleState: normalizeArenaBattleState(session.state),
       ...(result.warningDetails ? { warnings: result.warningDetails } : {}),
-    };
-  }
-
-  async useCombatItem(payload: { combatId: string; actorId: string; itemId: string; targetId?: string }) {
-    const session = this.sessions.get(payload.combatId);
-    if (!session) {
-      throw new NotFoundException('Combat not found.');
-    }
-
-    if (payload.actorId !== session.playerId) {
-      throw new BadRequestException('Only the player can use combat items.');
-    }
-
-    const item = this.contentService.resolveItemById(payload.itemId);
-    const rawItem = this.contentService.getCollectionEntry('items', payload.itemId) as Record<string, unknown> | null;
-    const costs = this.normalizeResourceCosts(rawItem);
-    const effects = this.normalizeItemEffects(item, rawItem);
-    const actionSlots = await this.arenaService.getOrCreateActionSlots(payload.actorId);
-    if (!actionSlots.some((slot) => slot.kind === 'item' && slot.refId === payload.itemId)) {
-      throw new BadRequestException('Item is not assigned to an action slot.');
-    }
-    if (effects.length === 0) {
-      throw new BadRequestException('Item has no usable combat effects configured.');
-    }
-
-    const actor = session.state.entities.find((entity) => entity.id === payload.actorId);
-    if (!actor || !actor.isAlive) {
-      throw new BadRequestException('Actor cannot use items now.');
-    }
-
-    const inventoryEntry = isFileStorageMode()
-      ? (await this.readRuntimeInventoryItems(payload.actorId)).find((entry) => entry.itemId === payload.itemId) ?? null
-      : await this.prisma.characterInventoryItem.findUnique({
-        where: { characterId_itemId: { characterId: payload.actorId, itemId: payload.itemId } },
-      });
-
-    if (!inventoryEntry || inventoryEntry.quantity <= 0) {
-      throw new BadRequestException('Item is not available in inventory.');
-    }
-
-    for (const effect of effects) {
-      this.resolveItemEffectTarget(effect, actor, session.state, payload.targetId);
-    }
-
-    this.ensureSufficientResources(actor, costs);
-    this.spendEntityResources(actor, costs);
-    console.info('[combatItems] use', {
-      itemId: payload.itemId,
-      actorId: payload.actorId,
-      targetId: payload.targetId,
-      costs,
-    });
-
-    const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, session.state, session.state.roundNumber, payload.targetId));
-
-    if (isFileStorageMode()) {
-      await this.updateRuntimeInventoryItemQuantity(payload.actorId, payload.itemId, -1);
-    } else if (inventoryEntry.quantity === 1) {
-      await this.prisma.characterInventoryItem.delete({ where: { id: inventoryEntry.id } });
-    } else {
-      await this.prisma.characterInventoryItem.update({
-        where: { id: inventoryEntry.id },
-        data: { quantity: inventoryEntry.quantity - 1 },
-      });
-    }
-
-    let nextActionSlots = actionSlots;
-    if (inventoryEntry.quantity === 1) {
-      const clearedSlots = actionSlots
-        .filter((slot) => slot.kind === 'item' && slot.refId === payload.itemId)
-        .map((slot) => ({ slotIndex: slot.slotIndex, kind: null, refId: null, itemInstanceId: null }));
-      if (clearedSlots.length > 0) {
-        nextActionSlots = await this.arenaService.updateActionSlots(payload.actorId, clearedSlots);
-      }
-    }
-
-    await this.arenaService.updateCharacterResources(payload.actorId, {
-      currentHp: actor.currentHp,
-      currentMp: actor.currentMp,
-      currentStamina: actor.currentStamina,
-    });
-
-    const latestInventory = isFileStorageMode()
-      ? (await this.readRuntimeInventoryItems(payload.actorId))
-        .map((row) => ({ itemId: row.itemId, quantity: row.quantity }))
-        .sort((a, b) => a.itemId.localeCompare(b.itemId))
-      : await this.prisma.characterInventoryItem.findMany({
-        where: { characterId: payload.actorId },
-        select: { itemId: true, quantity: true },
-        orderBy: { itemId: 'asc' },
-      });
-
-    const characterGold = isFileStorageMode()
-      ? Number(((await this.runtimeStore.getCharacterById(payload.actorId)) as { gold?: unknown } | null | undefined)?.gold ?? 0) || 0
-      : (await this.prisma.character.findUnique({
-        where: { id: payload.actorId },
-        select: { gold: true },
-      }))?.gold ?? 0;
-
-    const costText = this.describeResourceCosts(costs);
-    const infoLog = {
-      round: session.state.roundNumber,
-      actorId: actor.id,
-      type: 'INFO' as const,
-      text: `${actor.name} uses ${item.name}${costText ? ` (${costText})` : ''}`,
-    };
-    session.state.logs.push(infoLog, ...effectLogs);
-    session.state.lastRound?.logs.push(infoLog, ...effectLogs);
-
-    return {
-      state: session.state,
-      inventory: latestInventory,
-      gold: characterGold,
-      actionSlots: nextActionSlots,
     };
   }
 

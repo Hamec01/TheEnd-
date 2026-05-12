@@ -479,6 +479,18 @@ export async function sellArenaItem(characterId: string, itemId: string, quantit
   return res.json();
 }
 
+export async function useArenaItem(characterId: string, itemId: string): Promise<ArenaHubState> {
+  const res = await fetch(`${API_BASE}/arena/use-item`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemId }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 export async function equipArenaItem(
   characterId: string,
   itemId: string,
@@ -613,28 +625,6 @@ export async function allocateStats(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(allocation),
-  });
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
-}
-
-export async function useCombatItem(payload: {
-  combatId: string;
-  actorId: string;
-  itemId: string;
-  targetId?: string;
-}): Promise<{
-  state: ArenaBattleState;
-  inventory: InventoryState['items'];
-  gold: number;
-  actionSlots?: CharacterActionSlot[];
-}> {
-  const res = await fetch(`${API_BASE}/combat/use-item`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     throw new Error(await res.text());
