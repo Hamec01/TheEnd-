@@ -149,6 +149,7 @@ export interface CombatRoundResolveSnapshot {
 export type CombatEventType =
   | 'command_started'
   | 'command_failed'
+  | 'movement'
   | 'move'
   | 'dash'
   | 'disengage'
@@ -209,6 +210,7 @@ export interface CombatAnimationEvent {
   targetId?: string;
   from?: { x: number; y: number };
   to?: { x: number; y: number };
+  movementType?: 'walk' | 'dash' | 'disengage';
   value?: number;
 }
 
@@ -680,12 +682,15 @@ export function getCombatCommandBaseCost(command: CombatCommand): {
 } {
   const key = getBaseCostKey(command);
   const resolved = resolveCombatCommandCost({ baseCostKey: key });
+  const stamina = toSafeNonNegativeInt(resolved.stamina);
+  const mp = toSafeNonNegativeInt(resolved.mp);
+  const hp = toSafeNonNegativeInt(resolved.hp);
   return {
     apCost: toSafeNonNegativeInt(resolved.ap),
     costs: {
-      stamina: toSafeNonNegativeInt(resolved.stamina),
-      mp: toSafeNonNegativeInt(resolved.mp),
-      hp: toSafeNonNegativeInt(resolved.hp),
+      ...(stamina > 0 ? { stamina } : {}),
+      ...(mp > 0 ? { mp } : {}),
+      ...(hp > 0 ? { hp } : {}),
     },
   };
 }
@@ -861,10 +866,29 @@ export function validateCombatCommand(params: {
   };
 }
 
-export function getCombatRoundLimits(_actor: ArenaCombatEntity): CombatRoundLimits {
+export function getCombatRoundLimits(actor: ArenaCombatEntity): CombatRoundLimits {
+  const dynamic = actor as ArenaCombatEntity & {
+    isBoss?: boolean;
+    isElite?: boolean;
+    isTest?: boolean;
+    isDebug?: boolean;
+    powerTier?: string;
+    aiPersonality?: string;
+  };
+
+  const isHighTier = Boolean(
+    dynamic.isBoss
+      || dynamic.isElite
+      || dynamic.isTest
+      || dynamic.isDebug
+      || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'boss'
+      || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'elite'
+      || String(dynamic.aiPersonality ?? '').trim().toLowerCase() === 'boss',
+  );
+
   return {
-    maxCommands: DEFAULT_MAX_COMMANDS_PER_ROUND,
-    maxAP: DEFAULT_MAX_AP_PER_ROUND,
+    maxCommands: isHighTier ? HARD_MAX_COMMANDS_PER_ROUND : DEFAULT_MAX_COMMANDS_PER_ROUND,
+    maxAP: isHighTier ? HARD_MAX_AP_PER_ROUND : DEFAULT_MAX_AP_PER_ROUND,
   };
 }
 

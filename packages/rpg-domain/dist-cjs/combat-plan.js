@@ -311,12 +311,15 @@ function getAllowedTargetKindsForCommand(type) {
 function getCombatCommandBaseCost(command) {
     const key = getBaseCostKey(command);
     const resolved = (0, combat_costs_1.resolveCombatCommandCost)({ baseCostKey: key });
+    const stamina = toSafeNonNegativeInt(resolved.stamina);
+    const mp = toSafeNonNegativeInt(resolved.mp);
+    const hp = toSafeNonNegativeInt(resolved.hp);
     return {
         apCost: toSafeNonNegativeInt(resolved.ap),
         costs: {
-            stamina: toSafeNonNegativeInt(resolved.stamina),
-            mp: toSafeNonNegativeInt(resolved.mp),
-            hp: toSafeNonNegativeInt(resolved.hp),
+            ...(stamina > 0 ? { stamina } : {}),
+            ...(mp > 0 ? { mp } : {}),
+            ...(hp > 0 ? { hp } : {}),
         },
     };
 }
@@ -464,10 +467,18 @@ function validateCombatCommand(params) {
         ...(warningDetails.length > 0 ? { warningDetails } : {}),
     };
 }
-function getCombatRoundLimits(_actor) {
+function getCombatRoundLimits(actor) {
+    const dynamic = actor;
+    const isHighTier = Boolean(dynamic.isBoss
+        || dynamic.isElite
+        || dynamic.isTest
+        || dynamic.isDebug
+        || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'boss'
+        || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'elite'
+        || String(dynamic.aiPersonality ?? '').trim().toLowerCase() === 'boss');
     return {
-        maxCommands: exports.DEFAULT_MAX_COMMANDS_PER_ROUND,
-        maxAP: exports.DEFAULT_MAX_AP_PER_ROUND,
+        maxCommands: isHighTier ? exports.HARD_MAX_COMMANDS_PER_ROUND : exports.DEFAULT_MAX_COMMANDS_PER_ROUND,
+        maxAP: isHighTier ? exports.HARD_MAX_AP_PER_ROUND : exports.DEFAULT_MAX_AP_PER_ROUND,
     };
 }
 function getCombatPlanCostTotal(commands) {

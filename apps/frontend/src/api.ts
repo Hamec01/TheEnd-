@@ -684,6 +684,23 @@ export async function submitCombatPlan(payload: {
   return res.json();
 }
 
+export async function fetchCombatState(battleId: string): Promise<ArenaBattleState> {
+  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(battleId)}/state`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+
+  const payload = await res.json() as { ok?: boolean; battleState?: ArenaBattleState } | ArenaBattleState;
+  if (typeof payload === 'object' && payload && 'ok' in payload) {
+    if ((payload as { ok?: boolean }).ok && (payload as { battleState?: ArenaBattleState }).battleState) {
+      return (payload as { battleState: ArenaBattleState }).battleState;
+    }
+    throw new Error('Failed to fetch combat state.');
+  }
+
+  return payload as ArenaBattleState;
+}
+
 export async function allocateStats(
   characterId: string,
   allocation: Partial<Record<PrimaryStat, number>>,

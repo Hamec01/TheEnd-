@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BATTLEFIELD_GRID_SIZE = exports.BattlefieldTileType = exports.DistanceBand = exports.TeamSide = exports.CombatSkillType = exports.MovementType = exports.ActionType = exports.TargetZone = void 0;
+exports.normalizeArenaBattleState = normalizeArenaBattleState;
 exports.getDistanceBandForGap = getDistanceBandForGap;
 exports.getBattlefieldDistance = getBattlefieldDistance;
 exports.getDistanceBandBetweenEntities = getDistanceBandBetweenEntities;
@@ -71,6 +72,17 @@ var BattlefieldTileType;
     BattlefieldTileType["Summon"] = "summon";
 })(BattlefieldTileType || (exports.BattlefieldTileType = BattlefieldTileType = {}));
 exports.BATTLEFIELD_GRID_SIZE = 12;
+function normalizeArenaBattleState(state) {
+    return {
+        ...state,
+        phase: state.phase ?? (state.isFinished ? 'finished' : 'planning'),
+        roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber > 0 ? state.roundNumber : 1,
+        submittedPlans: state.submittedPlans ?? {},
+        readyActorIds: state.readyActorIds ?? [],
+        escapeStates: state.escapeStates ?? {},
+        lootContainers: state.lootContainers ?? [],
+    };
+}
 const DEFENSIVE_ZONES = [TargetZone.Chest, TargetZone.Abdomen];
 function getBattleMapWidth(source) {
     return source?.battleMapWidth ?? exports.BATTLEFIELD_GRID_SIZE;

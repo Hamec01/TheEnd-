@@ -37,7 +37,16 @@ const REGION_TOOL_OPTIONS: Array<{ value: RegionToolMode; label: string }> = [
   { value: 'eraser', label: 'Eraser' },
 ];
 
-const REGION_TYPE_OPTIONS: RegionType[] = ['blocked', 'water', 'road', 'danger', 'trigger', 'walkable'];
+const REGION_TYPE_OPTIONS: Array<{ value: RegionType; label: string }> = [
+  { value: 'blocked', label: 'Непроходимо (скалы/горы)' },
+  { value: 'water', label: 'Вода (непроходимо)' },
+  { value: 'swamp', label: 'Болото (медленнее)' },
+  { value: 'sand', label: 'Песок (медленнее)' },
+  { value: 'walkable', label: 'Обычная земля' },
+  { value: 'road', label: 'Дорога' },
+  { value: 'danger', label: 'Опасная зона' },
+  { value: 'trigger', label: 'Триггер' },
+];
 
 const BRUSH_SIZE_OPTIONS: RegionBrushSize[] = [1, 2, 3, 5];
 
@@ -354,7 +363,10 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     quests: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'quests').length,
     resources: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'resources').length,
     zones: zones.filter((zone) => (zone.editorLayer ?? getDefaultEditorLayer(zone.type)) === 'zones').length,
+    passability: REGION_TYPE_OPTIONS.length,
   };
+
+  const isPassabilityLayer = activeEditorLayer === 'passability';
 
   const issuesBySeverity: Record<WorldMapValidationSeverity, WorldMapValidationIssue[]> = {
     error: validationIssues.filter((issue) => issue.severity === 'error'),
@@ -518,29 +530,37 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           </div>
         </div>
 
-        <label>
-          <span>Current Tool <AdminHelpTooltip section="zoneEditor" field="currentTool" /></span>
-          <select value={selectedTool} onChange={(event) => onToolChange(event.target.value as ZoneEditorTool)}>
-            {TOOL_OPTIONS.map((tool) => (
-              <option key={tool.value} value={tool.value}>{tool.label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Shape <AdminHelpTooltip section="zoneEditor" field="shape" /></span>
-          <select
-            value={draft?.shape ?? 'circle'}
-            disabled={!draft}
-            onChange={(event) => updateDraft({ shape: event.target.value as ZoneEditorDraft['shape'] })}
-          >
-            <option value="circle">circle</option>
-            <option value="polygon">polygon</option>
-            <option value="rect">rect</option>
-          </select>
-        </label>
-        <div className="wm-meta-row">
-          <span>Selected zone: {selectedZoneId ?? '-'}</span>
-        </div>
+        {isPassabilityLayer ? (
+          <div className="wm-meta-row">
+            <span>Активен слой проходимости: рисование идёт кистью по поверхности карты.</span>
+          </div>
+        ) : (
+          <>
+            <label>
+              <span>Current Tool <AdminHelpTooltip section="zoneEditor" field="currentTool" /></span>
+              <select value={selectedTool} onChange={(event) => onToolChange(event.target.value as ZoneEditorTool)}>
+                {TOOL_OPTIONS.map((tool) => (
+                  <option key={tool.value} value={tool.value}>{tool.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Shape <AdminHelpTooltip section="zoneEditor" field="shape" /></span>
+              <select
+                value={draft?.shape ?? 'circle'}
+                disabled={!draft}
+                onChange={(event) => updateDraft({ shape: event.target.value as ZoneEditorDraft['shape'] })}
+              >
+                <option value="circle">circle</option>
+                <option value="polygon">polygon</option>
+                <option value="rect">rect</option>
+              </select>
+            </label>
+            <div className="wm-meta-row">
+              <span>Selected zone: {selectedZoneId ?? '-'}</span>
+            </div>
+          </>
+        )}
         <label className="zone-editor-checkbox">
           <input type="checkbox" checked={settings.showZones} onChange={(event) => onSettingsChange({ showZones: event.target.checked })} />
           <span>Show zones <AdminHelpTooltip section="zoneEditor" field="showZones" /></span>
@@ -558,7 +578,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>Snap <AdminHelpTooltip section="zoneEditor" field="snap" /></span>
         </label>
 
-        <h4>Region Painter <AdminHelpTooltip section="zoneEditor" field="regionPainter" /></h4>
+        <h4>{isPassabilityLayer ? 'Инструменты слоя проходимости' : 'Покраска проходимости (кисть)'} <AdminHelpTooltip section="zoneEditor" field="regionPainter" /></h4>
         <div className="wm-inline-buttons">
           {REGION_TOOL_OPTIONS.map((option) => (
             <button
@@ -572,10 +592,10 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
         </div>
 
         <label>
-          <span>Region Type <AdminHelpTooltip section="zoneEditor" field="regionType" /></span>
+          <span>Категория поверхности <AdminHelpTooltip section="zoneEditor" field="regionType" /></span>
           <select value={regionType} onChange={(event) => onRegionTypeChange(event.target.value as RegionType)}>
             {REGION_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
+              <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>
@@ -962,6 +982,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <div className="zone-editor-validation-count">Квесты: {layerCounts.quests}</div>
           <div className="zone-editor-validation-count">Ресурсы: {layerCounts.resources}</div>
           <div className="zone-editor-validation-count">Зоны: {layerCounts.zones}</div>
+          <div className="zone-editor-validation-count">Типы проходимости: {layerCounts.passability}</div>
         </div>
 
         <div className="zone-editor-validation-group">

@@ -15,6 +15,7 @@ export interface MovementTickResult {
 }
 
 export type MovementValidator = (x: number, y: number) => boolean;
+export type MovementSpeedMultiplierResolver = (x: number, y: number) => number;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -28,7 +29,12 @@ export function setPlayerTarget(player: MapPlayer, x: number, y: number): MapPla
   };
 }
 
-export function tickPlayerMovement(player: MapPlayer, epsilon = 0.0012, canMoveTo?: MovementValidator): MovementTickResult {
+export function tickPlayerMovement(
+  player: MapPlayer,
+  epsilon = 0.0012,
+  canMoveTo?: MovementValidator,
+  getSpeedMultiplier?: MovementSpeedMultiplierResolver,
+): MovementTickResult {
   if (player.targetX === null || player.targetY === null) {
     return {
       player,
@@ -55,7 +61,9 @@ export function tickPlayerMovement(player: MapPlayer, epsilon = 0.0012, canMoveT
     };
   }
 
-  const step = Math.min(player.speed, distance);
+  const multiplierRaw = getSpeedMultiplier ? getSpeedMultiplier(player.x, player.y) : 1;
+  const speedMultiplier = Number.isFinite(multiplierRaw) ? Math.max(0.15, Math.min(2, multiplierRaw)) : 1;
+  const step = Math.min(player.speed * speedMultiplier, distance);
   const nextX = clamp01(player.x + (dx / distance) * step);
   const nextY = clamp01(player.y + (dy / distance) * step);
 

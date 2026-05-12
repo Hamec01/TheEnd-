@@ -931,10 +931,12 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                       <select
                         value={(selectedExitZone.team ?? 'player') as ExitZoneTeam}
                         onChange={(event) => {
-                          const team = (event.target.value === 'enemy' || event.target.value === 'any') ? event.target.value : 'player';
+                          const team: ExitZoneTeam = event.target.value === 'enemy' || event.target.value === 'any'
+                            ? event.target.value
+                            : 'player';
                           commitDraft((current) => {
                             const next = normalizeBattleMap(current);
-                            const zones = (next.exitZones ?? []).map((zone) => zone.id === selectedExitZone.id ? { ...zone, team, enabledForArena: false } : zone);
+                            const zones = (next.exitZones ?? []).map((zone) => zone.id === selectedExitZone.id ? { ...zone, team, enabledForArena: false as const } : zone);
                             return { ...next, exitZones: zones, updatedAt: Date.now() };
                           }, true);
                         }}

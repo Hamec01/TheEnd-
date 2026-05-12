@@ -5,7 +5,7 @@ import type { WorldMapZone, ZoneType, ZoneEditorDraft } from './zoneEditorTypes'
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type MapEditorLayer = 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+export type MapEditorLayer = 'areas' | 'locations' | 'quests' | 'resources' | 'zones' | 'passability';
 export type ZoneInteractionMode = 'none' | 'inspect' | 'enter' | 'quest' | 'resource' | 'battle' | 'random_event' | 'danger' | 'transition' | 'fast_travel' | 'rest' | 'locked';
 export type LayerVisibilityMode = 'hidden' | 'dimmed' | 'visible';
 
@@ -15,6 +15,7 @@ export interface LayerVisibilityState {
   quests: LayerVisibilityMode;
   resources: LayerVisibilityMode;
   zones: LayerVisibilityMode;
+  passability: LayerVisibilityMode;
 }
 
 // ============================================================================
@@ -51,6 +52,11 @@ export const MAP_EDITOR_LAYER_OPTIONS: Array<{
     label: 'Зоны',
     description: 'Опасность, отдых, быстрые переходы, random events, safe/danger/grind.',
   },
+  {
+    value: 'passability',
+    label: 'Проходимость',
+    description: 'Покраска поверхности: непроходимо, вода, болото, песок и обычная земля.',
+  },
 ];
 
 export const ZONE_TYPES_BY_LAYER: Record<MapEditorLayer, ZoneType[]> = {
@@ -59,6 +65,7 @@ export const ZONE_TYPES_BY_LAYER: Record<MapEditorLayer, ZoneType[]> = {
   quests: ['quest', 'quest_area', 'story', 'event'],
   resources: ['resource', 'resource_area', 'profession'],
   zones: ['danger', 'grind', 'random_event_area', 'transition', 'fast_travel', 'rest', 'locked', 'safe'],
+  passability: [],
 };
 
 // ============================================================================
@@ -102,6 +109,7 @@ const LAYER_TYPE_COLORS: Record<MapEditorLayer, Partial<Record<ZoneType, string>
     safe: '#6fd68a',
     locked: '#7d7d7d',
   },
+  passability: {},
 };
 
 const LAYER_FALLBACK_COLORS: Record<MapEditorLayer, string> = {
@@ -110,6 +118,7 @@ const LAYER_FALLBACK_COLORS: Record<MapEditorLayer, string> = {
   quests: '#f2cf5b',
   resources: '#66b36b',
   zones: '#d65f45',
+  passability: '#8cc284',
 };
 
 // ============================================================================
@@ -136,6 +145,7 @@ export function getDefaultTypeForLayer(layer: MapEditorLayer): ZoneType {
     quests: 'quest_area',
     resources: 'resource_area',
     zones: 'danger',
+    passability: 'danger',
   };
   return defaults[layer];
 }
@@ -147,6 +157,7 @@ export function getDefaultLayerVisibilityState(): LayerVisibilityState {
     quests: 'visible',
     resources: 'visible',
     zones: 'visible',
+    passability: 'visible',
   };
 }
 

@@ -178,6 +178,7 @@ function normalizeLayerVisibilityState(raw: unknown): LayerVisibilityState {
     quests: source.quests === "hidden" || source.quests === "dimmed" || source.quests === "visible" ? source.quests : fallback.quests,
     resources: source.resources === "hidden" || source.resources === "dimmed" || source.resources === "visible" ? source.resources : fallback.resources,
     zones: source.zones === "hidden" || source.zones === "dimmed" || source.zones === "visible" ? source.zones : fallback.zones,
+    passability: source.passability === "hidden" || source.passability === "dimmed" || source.passability === "visible" ? source.passability : fallback.passability,
   };
 }
 
@@ -187,7 +188,7 @@ function loadEditorActiveLayer(): MapEditorLayer {
   }
 
   const raw = window.localStorage.getItem(UI_EDITOR_ACTIVE_LAYER_KEY);
-  if (raw === "areas" || raw === "locations" || raw === "quests" || raw === "resources" || raw === "zones") {
+  if (raw === "areas" || raw === "locations" || raw === "quests" || raw === "resources" || raw === "zones" || raw === "passability") {
     return raw;
   }
 
@@ -684,7 +685,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const [regions, setRegions] = useState<PaintedRegion[]>([]);
   const [regionToolMode, setRegionToolMode] =
-    useState<RegionToolMode>("circle");
+    useState<RegionToolMode>("pencil");
   const [regionType, setRegionType] = useState<RegionType>("blocked");
   const [regionBrushSize, setRegionBrushSize] = useState<RegionBrushSize>(1);
   const [editorSettings, setEditorSettings] = useState<ZoneEditorSettings>(
@@ -3212,6 +3213,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleSetActiveEditorLayer(layer: MapEditorLayer) {
+    if (layer === "passability") {
+      setSelectedZoneId(null);
+      setEditorDraft(null);
+    }
     setActiveEditorLayer(layer);
   }
 

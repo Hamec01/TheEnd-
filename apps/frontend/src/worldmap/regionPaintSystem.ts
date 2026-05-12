@@ -6,6 +6,8 @@ export const REGION_TYPE_COLORS: Record<RegionType, string> = {
   walkable: 'rgba(140, 194, 132, 0.35)',
   blocked: 'rgba(204, 68, 68, 0.35)',
   water: 'rgba(74, 124, 219, 0.35)',
+  swamp: 'rgba(98, 128, 72, 0.35)',
+  sand: 'rgba(206, 170, 94, 0.35)',
   road: 'rgba(184, 147, 89, 0.35)',
   danger: 'rgba(192, 112, 42, 0.35)',
   trigger: 'rgba(84, 178, 117, 0.35)',
@@ -106,6 +108,10 @@ function regionNameForType(type: RegionType): string {
       return 'Blocked Regions';
     case 'water':
       return 'Water Regions';
+    case 'swamp':
+      return 'Swamp Regions';
+    case 'sand':
+      return 'Sand Regions';
     case 'road':
       return 'Road Regions';
     case 'danger':
@@ -175,6 +181,16 @@ export function getPaintedRegionCellMap(regions: PaintedRegion[]): Map<string, {
 
 export function isBlockedRegionType(regionType: RegionType): boolean {
   return regionType === 'blocked' || regionType === 'water';
+}
+
+export function getRegionMoveSpeedMultiplier(regionType: RegionType): number {
+  if (regionType === 'swamp') {
+    return 0.55;
+  }
+  if (regionType === 'sand') {
+    return 0.72;
+  }
+  return 1;
 }
 
 export function canMoveToMapPoint(regions: PaintedRegion[], point: [number, number]): boolean {

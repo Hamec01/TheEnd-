@@ -7,6 +7,7 @@ import {
   getBattlefieldTilePlacements,
   type AdminSkillDefinition,
   type ArenaCombatEntity,
+  type CombatAnimationEvent,
   type CombatLogEntry,
   type BattlefieldTile,
 } from '@theend/rpg-domain';
@@ -36,10 +37,14 @@ interface BattleFieldProps {
   onMoveTileSelect?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
   onTargetSelect?: (targetId: string) => void;
   onQuickAttack?: (targetId: string) => void;
+  onQuickHeavyAttack?: (targetId: string) => void;
   onQuickSkill?: (skillId: string, targetId?: string) => void;
   onQuickItem?: (itemId: string, targetId?: string) => void;
   onQuickMove?: (tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => void;
   onQuickWait?: () => void;
+  onQuickGuard?: () => void;
+  onQuickStrongGuard?: () => void;
+  onClearSelectedSource?: () => void;
   onResetDefense?: () => void;
   onInspectEntity?: (entityId: string) => void;
   onCancelSelection?: () => void;
@@ -54,6 +59,7 @@ interface BattleFieldProps {
   animationTick?: number;
   lastLog?: CombatLogEntry | null;
   recentLogs?: CombatLogEntry[];
+  animationEvents?: CombatAnimationEvent[];
 }
 
 interface ContextMenu {
@@ -74,6 +80,14 @@ interface FloatingDamage {
   offsetX: number;
   offsetY: number;
   kind: 'damage' | 'block' | 'miss';
+}
+
+interface TokenMoveAnimation {
+  actorId: string;
+  dxCells: number;
+  dyCells: number;
+  startAt: number;
+  durationMs: number;
 }
 
 interface TileState {
@@ -195,10 +209,14 @@ export function BattleField({
   onMoveTileSelect,
   onTargetSelect,
   onQuickAttack,
+  onQuickHeavyAttack,
   onQuickSkill,
   onQuickItem,
   onQuickMove,
   onQuickWait,
+  onQuickGuard,
+  onQuickStrongGuard,
+  onClearSelectedSource,
   onResetDefense,
   onInspectEntity,
   onCancelSelection,
@@ -207,6 +225,7 @@ export function BattleField({
   selfTargetSkills = [],
   inventoryItems = [],
   selectedSkillId = null,
+  animationEvents = [],
 }: BattleFieldProps) {
     function getRacePortrait(entity: ArenaCombatEntity): string {
       if (entity.avatarUrl) {
@@ -229,6 +248,7 @@ export function BattleField({
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const processedLogKeysRef = useRef<Set<string>>(new Set());
+  const processedAnimationKeysRef = useRef<Set<string>>(new Set());
   const [boardSize, setBoardSize] = useState({ width: 0, height: 0 });
     const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
     const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
@@ -239,6 +259,9 @@ export function BattleField({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, type: 'cell', show: false });
   const [floatingDamages, setFloatingDamages] = useState<FloatingDamage[]>([]);
+  const [tokenMoveAnimations, setTokenMoveAnimations] = useState<Record<string, TokenMoveAnimation>>({});
+  const [tokenImpactUntilMs, setTokenImpactUntilMs] = useState<Record<string, number>>({});
+  const [animationNowMs, setAnimationNowMs] = useState<number>(Date.now());
 
   const placements = useMemo(
     () => getBattlefieldTilePlacements(entities, distance, battleMapWidth, battleMapHeight),
@@ -328,6 +351,110 @@ export function BattleField({
     }, 1400);
     return () => window.clearTimeout(timer);
   }, [floatingDamages.length]);
+
+  useEffect(() => {
+    if (animationEvents.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const processed = processedAnimationKeysRef.current;
+    const next: Record<string, TokenMoveAnimation> = {};
+    const impactNext: Record<string, number> = {};
+
+    for (const event of animationEvents) {
+      if (event.type === 'attack_bump') {
+        if (event.actorId) {
+          impactNext[event.actorId] = now + 170;
+        }
+        if (event.targetId) {
+          impactNext[event.targetId] = now + 230;
+        }
+      }
+
+      if (event.type !== 'move_token' || !event.actorId || !event.from || !event.to) {
+        continue;
+      }
+      const key = `${event.roundNumber}:${event.stepIndex}:${event.actorId}:${event.from.x}:${event.from.y}:${event.to.x}:${event.to.y}`;
+      if (processed.has(key)) {
+        continue;
+      }
+      processed.add(key);
+
+      const movementType = event.movementType ?? 'walk';
+      const cells = Math.max(1, Math.abs(event.to.x - event.from.x) + Math.abs(event.to.y - event.from.y));
+      const perCell = movementType === 'dash' ? 180 : 300;
+      next[event.actorId] = {
+        actorId: event.actorId,
+        dxCells: event.from.x - event.to.x,
+        dyCells: event.from.y - event.to.y,
+        startAt: now,
+        durationMs: perCell * cells,
+      };
+    }
+
+    if (Object.keys(next).length > 0) {
+      setTokenMoveAnimations((prev) => ({ ...prev, ...next }));
+    }
+    if (Object.keys(impactNext).length > 0) {
+      setTokenImpactUntilMs((prev) => ({ ...prev, ...impactNext }));
+    }
+
+    if (processed.size > 140) {
+      processedAnimationKeysRef.current = new Set([...processed].slice(-80));
+    }
+  }, [animationEvents]);
+
+  useEffect(() => {
+    const keys = Object.keys(tokenImpactUntilMs);
+    if (keys.length === 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      setTokenImpactUntilMs((prev) => {
+        const next: Record<string, number> = {};
+        for (const [entityId, expiresAt] of Object.entries(prev)) {
+          if (expiresAt > now) {
+            next[entityId] = expiresAt;
+          }
+        }
+        return next;
+      });
+    }, 260);
+
+    return () => window.clearTimeout(timer);
+  }, [tokenImpactUntilMs]);
+
+  useEffect(() => {
+    const keys = Object.keys(tokenMoveAnimations);
+    if (keys.length === 0) {
+      return;
+    }
+
+    let rafId = 0;
+    const tick = () => {
+      const now = Date.now();
+      setAnimationNowMs(now);
+      setTokenMoveAnimations((prev) => {
+        let changed = false;
+        const next: Record<string, TokenMoveAnimation> = {};
+        for (const [actorId, anim] of Object.entries(prev)) {
+          if (now - anim.startAt < anim.durationMs) {
+            next[actorId] = anim;
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [tokenMoveAnimations]);
   const viewport = useMemo(() => {
     const width = Math.min(viewportCellCount, battleMapWidth);
     const height = Math.min(viewportCellCount, battleMapHeight);
@@ -598,10 +725,17 @@ export function BattleField({
     }
   };
 
-  const handleContextMenuAction = (action: 'move' | 'attack' | 'move-closer' | 'disengage' | 'wait' | 'reset-defense') => {
+  const handleContextMenuAction = (action: 'move' | 'dash' | 'attack' | 'heavy_attack' | 'move-closer' | 'disengage' | 'wait' | 'guard' | 'strong_guard' | 'reset-defense' | 'clear-source') => {
     if (action === 'attack' && contextMenu.targetId) {
       onTargetSelect?.(contextMenu.targetId);
       onQuickAttack?.(contextMenu.targetId);
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'heavy_attack' && contextMenu.targetId) {
+      onTargetSelect?.(contextMenu.targetId);
+      onQuickHeavyAttack?.(contextMenu.targetId);
       closeContextMenu();
       return;
     }
@@ -612,17 +746,58 @@ export function BattleField({
       return;
     }
 
+    if (action === 'guard') {
+      onQuickGuard?.();
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'strong_guard') {
+      onQuickStrongGuard?.();
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'clear-source') {
+      onClearSelectedSource?.();
+      closeContextMenu();
+      return;
+    }
+
+    if (action === 'dash' && contextMenu.type === 'enemy' && contextMenu.tileX !== undefined && contextMenu.tileY !== undefined) {
+      const closer = getMoveCloserTile(contextMenu.tileX, contextMenu.tileY);
+      if (!closer) {
+        onStatusMessage?.('Нет доступной клетки для рывка к цели.');
+      } else {
+        const dashMove = { ...closer, movementType: MovementType.Dash };
+        if (onQuickMove) {
+          onQuickMove(dashMove);
+        } else {
+          onMoveTileSelect?.(dashMove);
+        }
+      }
+      closeContextMenu();
+      return;
+    }
+
     if (action === 'reset-defense') {
       onResetDefense?.();
       closeContextMenu();
       return;
     }
 
-    if ((action === 'move' || action === 'disengage') && contextMenu.tileX !== undefined && contextMenu.tileY !== undefined) {
+    if ((action === 'move' || action === 'dash' || action === 'disengage') && contextMenu.tileX !== undefined && contextMenu.tileY !== undefined) {
       const moveInfo = movablePositions.get(`${contextMenu.tileX}:${contextMenu.tileY}`);
       const inferredType: MovementType = action === 'disengage'
         ? MovementType.Disengage
-        : (moveInfo?.dist ?? 1) <= 1 ? MovementType.Step : MovementType.Dash;
+        : action === 'dash'
+          ? MovementType.Dash
+          : MovementType.Step;
+      if (!moveInfo && action !== 'disengage') {
+        onStatusMessage?.('Нельзя построить путь в эту клетку.');
+        closeContextMenu();
+        return;
+      }
       onMoveTileSelect?.({
         x: contextMenu.tileX,
         y: contextMenu.tileY,
@@ -749,6 +924,10 @@ export function BattleField({
       <div
         className="tactical-board-container"
         ref={boardRef}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
         <div
           className="tactical-scene"
@@ -802,6 +981,7 @@ export function BattleField({
                   onDoubleClick={(e) => handleTileDoubleClick(x, y, e)}
                   onContextMenu={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     const placementInfo = placementByTile.get(`${x}:${y}`);
                     const entityInfo = placementInfo ? entityById.get(placementInfo.entityId) : null;
                     if (entityInfo && entityInfo.isAlive) {
@@ -813,10 +993,14 @@ export function BattleField({
                       } else {
                         openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
                       }
-                    } else if (movablePositions.has(`${x}:${y}`)) {
-                      openContextMenu(e.clientX, e.clientY, 'cell', x, y);
                     } else {
-                      onCancelSelection?.();
+                      const tileType = tileTypeByKey.get(`${x}:${y}`) ?? BattlefieldTileType.Empty;
+                      const isWalkable = !isBlockingTile(tileType);
+                      if (isWalkable) {
+                      openContextMenu(e.clientX, e.clientY, 'cell', x, y);
+                      } else {
+                        onCancelSelection?.();
+                      }
                     }
                   }}
                   role="button"
@@ -836,9 +1020,21 @@ export function BattleField({
                      const isFocus = entity.id === playerId || entity.id === selectedTargetId;
                      const isSelected = entity.id === selectedTargetId;
                      const floats = floatingDamages.filter((entry) => entry.entityId === entity.id);
+                     const moveAnim = tokenMoveAnimations[entity.id];
+                     const progress = moveAnim
+                       ? Math.min(1, Math.max(0, (animationNowMs - moveAnim.startAt) / Math.max(1, moveAnim.durationMs)))
+                       : 1;
+                     const offsetX = moveAnim ? (1 - progress) * moveAnim.dxCells * sceneCellSize : 0;
+                     const offsetY = moveAnim ? (1 - progress) * moveAnim.dyCells * sceneCellSize : 0;
+                     const attackPulseUntil = tokenImpactUntilMs[entity.id] ?? 0;
+                     const isAttackPulse = attackPulseUntil > Date.now();
 
                      return (
-                       <div className="tactical-token" title={entity.name}>
+                       <div
+                         className={`tactical-token ${isAttackPulse ? 'is-attack-pulse' : ''}`}
+                         title={entity.name}
+                         style={{ transform: `translate(${offsetX}px, ${offsetY}px)` }}
+                       >
                          <div
                            className={`token-avatar-shell ${teamClass} ${entity.isAlive ? '' : 'is-dead'} ${isFocus ? 'is-focus' : ''} ${isSelected ? 'is-selected' : ''}`}
                            style={{ width: `${tokenSizePx}px`, height: `${tokenSizePx}px` }}
@@ -876,6 +1072,7 @@ export function BattleField({
             {contextMenu.type === 'enemy' && (
               <>
                 {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('attack')}>⚔ Базовая атака</button> : null}
+                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('heavy_attack')}>💥 Сильная атака</button> : null}
                 {contextEntity?.team === TeamSide.Right && availableSkills.length > 0 ? (
                   <div className="tactical-context-group">
                     <span className="tactical-context-group-title">Навыки</span>
@@ -909,6 +1106,7 @@ export function BattleField({
                 ) : null}
                 <button type="button" onClick={() => { if (contextMenu.targetId) { onInspectEntity?.(contextMenu.targetId); } closeContextMenu(); }}>🔍 Осмотреть</button>
                 {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('move-closer')}>⇢ Подойти ближе</button> : null}
+                {contextEntity?.team === TeamSide.Right ? <button type="button" onClick={() => handleContextMenuAction('dash')}>💨 Рывок ближе</button> : null}
                 <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
               </>
             )}
@@ -930,6 +1128,10 @@ export function BattleField({
                       {`🛡 Отход (${COMBAT_ACTION_COSTS.disengage.stamina ?? 0} STA)`}
                     </button>
                   )}
+                  <button type="button" onClick={() => handleContextMenuAction('dash')}>
+                    {`💨 Рывок (${COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0} STA)`}
+                  </button>
+                  <button type="button" onClick={() => handleContextMenuAction('clear-source')}>✕ Сбросить источник</button>
                   <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
                 </>
               );
@@ -957,6 +1159,8 @@ export function BattleField({
                   </div>
                 ) : null}
                 <button type="button" onClick={() => handleContextMenuAction('reset-defense')}>🗙 Сбросить защиту</button>
+                <button type="button" onClick={() => handleContextMenuAction('guard')}>🛡 Защита</button>
+                <button type="button" onClick={() => handleContextMenuAction('strong_guard')}>🛡 Усиленная защита</button>
                 <button type="button" onClick={() => handleContextMenuAction('wait')}>⌛ Ожидание</button>
                 <button type="button" onClick={closeContextMenu}>✕ Отмена</button>
               </>

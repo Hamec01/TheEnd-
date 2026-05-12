@@ -1,4 +1,5 @@
 import {
+  COMBAT_ACTION_COSTS,
   canAppendCombatCommand,
   collectAreaEffectTargets,
   createCombatCommandFromType,
@@ -131,6 +132,9 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
     debug,
   };
 
+  let virtualX = context.actor.battlefieldX ?? 0;
+  let virtualY = context.actor.battlefieldY ?? 0;
+
   const target = selectAiTarget({
     battleState: context.battleState,
     actor: context.actor,
@@ -168,7 +172,7 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
       break;
     }
 
-    const distance = getBattlefieldDistance(context.actor, liveTarget);
+    const distance = getCellDistance({ x: virtualX, y: virtualY }, { x: liveTarget.battlefieldX ?? 0, y: liveTarget.battlefieldY ?? 0 });
     const attackRange = Math.max(1, Math.floor(context.actor.attackRange ?? 1));
     const lowTargetHpRatio = liveTarget.currentHp / Math.max(1, liveTarget.maxHp);
 
@@ -198,7 +202,7 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
         continue;
       }
 
-      const singleSkillApplied = tryUseSingleTargetSkill(context, liveTarget);
+      const singleSkillApplied = tryUseSingleTargetSkill(context, liveTarget, distance);
       if (singleSkillApplied) {
         context.debug.intent = 'use_skill';
         continue;
@@ -212,6 +216,15 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
 
     const moveCommand = createAiMoveCommand(context.actor, liveTarget, context.battleState);
     if (moveCommand && tryAppend(context, moveCommand)) {
+      if (moveCommand.target.kind === 'cell') {
+        virtualX = moveCommand.target.x;
+        virtualY = moveCommand.target.y;
+
+        const projectedDistance = getCellDistance({ x: virtualX, y: virtualY }, { x: liveTarget.battlefieldX ?? 0, y: liveTarget.battlefieldY ?? 0 });
+        if (projectedDistance <= attackRange && !isAtPlanCapacity(context)) {
+          tryAppend(context, createAiBasicAttackCommand(liveTarget));
+        }
+      }
       context.debug.intent = 'move_to_range';
       continue;
     }
@@ -256,7 +269,12 @@ export function createAiMoveCommand(
     return undefined;
   }
 
+  const fromX = actor.battlefieldX ?? 0;
+  const fromY = actor.battlefieldY ?? 0;
+  const currentDistance = Math.abs(fromX - (target.battlefieldX ?? 0)) + Math.abs(fromY - (target.battlefieldY ?? 0));
+
   const best = reachable
+    .filter((cell) => !(cell.x === fromX && cell.y === fromY))
     .slice()
     .sort((left, right) => {
       const leftDistance = Math.abs(left.x - (target.battlefieldX ?? 0)) + Math.abs(left.y - (target.battlefieldY ?? 0));
@@ -271,9 +289,17 @@ export function createAiMoveCommand(
     return undefined;
   }
 
+  const bestDistance = Math.abs(best.x - (target.battlefieldX ?? 0)) + Math.abs(best.y - (target.battlefieldY ?? 0));
+  if (bestDistance >= currentDistance && currentDistance <= Math.max(1, Math.floor(actor.attackRange ?? 1))) {
+    return undefined;
+  }
+
+  const moveType = best.distance > 1 ? 'dash' : 'move';
+
   return createCombatCommandFromType({
-    type: 'move',
+    type: moveType,
     target: { kind: 'cell', x: best.x, y: best.y },
+    payload: { movementType: moveType === 'dash' ? 'dash' : 'walk' },
   });
 }
 
@@ -352,14 +378,6 @@ function tryUseHealing(context: PlannerContext): boolean {
     }
   }
 
-  if (hasUsableHealingPotion(context.actor)) {
-    const potion = createAiItemUseCommand('potion_hp_small', { kind: 'self' });
-    if (tryAppend(context, potion)) {
-      context.debug.log?.push('heal via potion_hp_small');
-      return true;
-    }
-  }
-
   return false;
 }
 
@@ -396,13 +414,13 @@ function tryUseAreaSkill(context: PlannerContext, target: ArenaCombatEntity): bo
   return tryAppend(context, command);
 }
 
-function tryUseSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity): boolean {
-  const attackSkill = getSingleTargetSkill(context, target);
+function tryUseSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity, currentDistance?: number): boolean {
+  const attackSkill = getSingleTargetSkill(context, target, currentDistance);
   if (!attackSkill) {
     return false;
   }
 
-  const distance = getBattlefieldDistance(context.actor, target);
+  const distance = typeof currentDistance === 'number' ? currentDistance : getBattlefieldDistance(context.actor, target);
   const skillRange = Math.max(1, Math.floor(attackSkill.range ?? Math.max(1, context.actor.attackRange ?? 1)));
   if (distance > skillRange) {
     context.debug.rejectedActions?.push({ action: `skill:${attackSkill.id}`, reason: 'TARGET_OUT_OF_RANGE' });
@@ -433,8 +451,10 @@ function getAreaSkill(context: PlannerContext): DynamicAiSkill | undefined {
   return skills[0];
 }
 
-function getSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity): DynamicAiSkill | undefined {
-  const distance = getBattlefieldDistance(context.actor, target);
+function getSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity, currentDistance?: number): DynamicAiSkill | undefined {
+  const distance = typeof currentDistance === 'number'
+    ? currentDistance
+    : getBattlefieldDistance(context.actor, target);
   const skills = listActorSkills(context.actor)
     .filter((skill) => (skill.target ?? 'entity') === 'entity')
     .filter((skill) => canUseSkillByCooldown(skill.id, context.skillCooldowns))
@@ -444,6 +464,10 @@ function getSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity
       return distance <= range;
     });
   return skills[0];
+}
+
+function getCellDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function hasResourcesForSkill(skill: DynamicAiSkill, actor: ArenaCombatEntity): boolean {
@@ -506,37 +530,7 @@ function listActorSkills(actor: ArenaCombatEntity): DynamicAiSkill[] {
     }
   }
 
-  // Fallback P0 skill set to guarantee skill_cast behavior even without custom skill metadata.
-  const fallback: DynamicAiSkill[] = [];
-  if (actor.currentMp >= 6) {
-    fallback.push({
-      id: 'second_wind',
-      target: 'self',
-      mpCost: 6,
-      isHealing: true,
-    });
-  }
-
-  if ((actor.combatStyleHint === 'MAGIC' || (actor.attackRange ?? 1) > 1) && actor.currentMp >= 10) {
-    fallback.push({
-      id: 'fireball',
-      target: 'cell',
-      mpCost: 10,
-      areaRadius: 1,
-      range: Math.max(2, actor.attackRange ?? 4),
-    });
-  }
-
-  if (actor.currentMp >= 4) {
-    fallback.push({
-      id: 'power_strike',
-      target: 'entity',
-      mpCost: 4,
-      range: Math.max(1, actor.attackRange ?? 1),
-    });
-  }
-
-  return fallback;
+  return [];
 }
 
 function appendDefensiveFallback(context: PlannerContext): void {
@@ -639,12 +633,26 @@ function fallbackWaitOrGuardPlan(
   actorId: string,
   actor?: ArenaCombatEntity,
 ): CombatTurnPlan {
-  const preferGuard = Boolean(actor) && (actor?.currentStamina ?? 0) >= 10;
+  const guardStaminaCost = COMBAT_ACTION_COSTS.guard.stamina ?? 15;
+  const flags = actor as {
+    isStunned?: boolean;
+    isKnockedDown?: boolean;
+    isIncapacitated?: boolean;
+    isFeared?: boolean;
+    isSleeping?: boolean;
+  } | undefined;
+  const canGuard = Boolean(actor)
+    && (actor?.currentStamina ?? 0) >= guardStaminaCost
+    && !flags?.isStunned
+    && !flags?.isKnockedDown
+    && !flags?.isIncapacitated
+    && !flags?.isFeared
+    && !flags?.isSleeping;
   return {
     battleId: battleState.combatId,
     roundNumber: battleState.roundNumber,
     actorId,
-    commands: [preferGuard ? createAiGuardCommand() : createAiWaitCommand()],
+    commands: [canGuard ? createAiGuardCommand() : createAiWaitCommand()],
     ready: true,
     submittedAt: new Date().toISOString(),
   };
@@ -652,28 +660,6 @@ function fallbackWaitOrGuardPlan(
 
 function isTargetEscaping(target: ArenaCombatEntity, state: ArenaBattleState): boolean {
   return Boolean(state.escapeStates?.[target.id]?.active);
-}
-
-function hasUsableHealingPotion(actor: ArenaCombatEntity): boolean {
-  const inventory = (actor as { inventory?: unknown }).inventory;
-  if (!inventory || typeof inventory !== 'object') {
-    return false;
-  }
-
-  const items = (inventory as { items?: unknown[] }).items;
-  if (!Array.isArray(items)) {
-    return false;
-  }
-
-  return items.some((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return false;
-    }
-    const row = entry as Record<string, unknown>;
-    const itemId = typeof row.itemId === 'string' ? row.itemId : '';
-    const quantity = toSafeNumber(row.quantity);
-    return itemId === 'potion_hp_small' && quantity > 0;
-  });
 }
 
 function shouldUseStrongGuard(context: PlannerContext): boolean {

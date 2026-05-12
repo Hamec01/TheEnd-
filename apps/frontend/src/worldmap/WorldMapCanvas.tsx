@@ -28,7 +28,7 @@ import {
 } from './zoneTaxonomy';
 import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScreen, movePolygonPoint, moveZone, resizeCircle, screenToMapNormalized, type EditorViewport, type ZoneHandleHit } from './zoneGeometry';
 import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
-import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
+import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
 import type { QuestMarkerDefinition } from '../types/quest';
 
 const PLAY_ZOOM = 5.2;
@@ -363,6 +363,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       quests: 'visible',
       resources: 'visible',
       zones: 'visible',
+      passability: 'visible',
     },
   } = props;
 
@@ -576,13 +577,25 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
             return true;
           }
 
-          return cell.regionType !== 'blocked' && cell.regionType !== 'water';
+          return !isBlockedRegionType(cell.regionType);
+        }, (x, y) => {
+          const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
+          const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
+          const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+          if (!cell) {
+            return 1;
+          }
+
+          return getRegionMoveSpeedMultiplier(cell.regionType);
         });
         const enteredZone = detectCurrentZone(zones as Zone[], tick.player.x, tick.player.y) as WorldMapZone | null;
         playerStateRef.current = tick.state;
         setCurrentZone(enteredZone);
 
-        return tick.player;
+        return {
+          ...tick.player,
+          speed: prev.speed,
+        };
       });
       frameId = window.requestAnimationFrame(animate);
     };
@@ -878,6 +891,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     if (markerPickMode) {
       onPickMarkerPoint?.(mapPoint);
+      return;
+    }
+
+    if (activeEditorLayer === 'passability') {
+      onCheckpoint?.();
+      onSelectZone?.(null);
+      onDraftChange?.(null);
+      const cell = mapPointToRegionCell(mapPoint);
+      paintRegionAlongLine(cell, cell);
+      setDragState({ kind: 'region-paint', lastCell: cell });
       return;
     }
 

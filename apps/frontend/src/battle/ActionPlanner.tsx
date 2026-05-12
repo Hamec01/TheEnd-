@@ -79,7 +79,8 @@ function getEstimatedTotalCost(actionType: ActionType, movementType: MovementTyp
     ? (COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0)
     : (COMBAT_ACTION_COSTS.guard.stamina ?? 0);
   const actionCost = actionType === ActionType.Defend ? defendCost : ACTION_COSTS[actionType as Exclude<ActionType, ActionType.Defend>];
-  return actionCost + (movementType ? MOVEMENT_COSTS[movementType] : 0);
+  const moveCost = actionType === ActionType.Wait ? 0 : (movementType ? MOVEMENT_COSTS[movementType] : 0);
+  return actionCost + moveCost;
 }
 
 export function ActionPlanner(props: ActionPlannerProps) {
@@ -165,7 +166,12 @@ export function ActionPlanner(props: ActionPlannerProps) {
         <button type="button" className={props.actionType === ActionType.Move ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Move)}>
           Движение
         </button>
-        <button type="button" className={props.actionType === ActionType.Wait ? 'is-active' : ''} onClick={() => props.onActionTypeChange(ActionType.Wait)}>
+        <button
+          type="button"
+          className={props.actionType === ActionType.Wait ? 'is-active' : ''}
+          onClick={() => props.onActionTypeChange(ActionType.Wait)}
+          title="Ничего не делать в этом шаге. Не тратит AP и stamina, но не даёт защиты."
+        >
           Ожидание
         </button>
       </div>

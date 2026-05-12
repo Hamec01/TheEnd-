@@ -36,7 +36,7 @@ const ZONE_TYPES: ZoneType[] = [
   'rest',
 ];
 
-const REGION_TYPES: RegionType[] = ['walkable', 'blocked', 'water', 'road', 'danger', 'trigger'];
+const REGION_TYPES: RegionType[] = ['walkable', 'blocked', 'water', 'swamp', 'sand', 'road', 'danger', 'trigger'];
 const QUEST_MARKER_TYPES: QuestMarkerType[] = [
   'quest_start',
   'quest_objective',

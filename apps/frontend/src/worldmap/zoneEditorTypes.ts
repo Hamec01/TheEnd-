@@ -29,7 +29,7 @@ export type ZoneType =
 
 export type ZoneEditorTool = 'select' | 'circle' | 'polygon' | 'rectangle' | 'pan' | 'measure';
 
-export type RegionType = 'walkable' | 'blocked' | 'water' | 'road' | 'danger' | 'trigger';
+export type RegionType = 'walkable' | 'blocked' | 'water' | 'swamp' | 'sand' | 'road' | 'danger' | 'trigger';
 
 export type RegionToolMode = 'circle' | 'pencil' | 'eraser';
 
@@ -83,7 +83,7 @@ export interface WorldMapZone {
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;
-  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones' | 'passability';
   interactionMode?: 'none' | 'inspect' | 'enter' | 'quest' | 'resource' | 'battle' | 'random_event' | 'danger' | 'transition' | 'fast_travel' | 'rest' | 'locked';
   playerClickable?: boolean;
   blocksClick?: boolean;
@@ -129,7 +129,7 @@ export interface ZoneEditorDraft {
   professionId: string;
   respawnSeconds: number | null;
   cooldownSeconds: number | null;
-  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones';
+  editorLayer?: 'areas' | 'locations' | 'quests' | 'resources' | 'zones' | 'passability';
   interactionMode?: 'none' | 'inspect' | 'enter' | 'quest' | 'resource' | 'battle' | 'random_event' | 'danger' | 'transition' | 'fast_travel' | 'rest' | 'locked';
   playerClickable?: boolean;
   blocksClick?: boolean;

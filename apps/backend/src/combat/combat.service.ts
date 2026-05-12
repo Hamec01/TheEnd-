@@ -627,9 +627,9 @@ export class CombatService {
   }
 
   private syncTurnPlanState(session: CombatSession): void {
-    const aliveEntities = session.state.entities.filter((entity) => this.canActorPlan(session.state, entity));
-    session.state.readyActorIds = aliveEntities.filter((entity) => session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
-    session.state.pendingActorIds = aliveEntities.filter((entity) => !session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
+    const controllableActors = this.getLivingControllableActors(session.state);
+    session.state.readyActorIds = controllableActors.filter((entity) => session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
+    session.state.pendingActorIds = controllableActors.filter((entity) => !session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
     session.state.roundPhase = session.state.isFinished ? undefined : 'PLANNING';
     session.state.phase = session.state.isFinished ? 'finished' : 'planning';
     this.syncSubmittedPlansState(session);
@@ -1012,6 +1012,13 @@ export class CombatService {
   private getLivingControllableActors(state: ArenaBattleState): ArenaCombatEntity[] {
     return state.entities.filter((entity) => (
       entity.team === TeamSide.Left
+      && this.canActorPlan(state, entity)
+    ));
+  }
+
+  private getLivingAiActors(state: ArenaBattleState): ArenaCombatEntity[] {
+    return state.entities.filter((entity) => (
+      entity.team === TeamSide.Right
       && this.canActorPlan(state, entity)
     ));
   }
@@ -1721,40 +1728,89 @@ export class CombatService {
       type: 'command_started',
       actorId: actor.id,
       commandId: command.id,
-      message: `${actor.name} начинает действие ${command.type}.`,
+      message: command.type === 'wait'
+        ? `${actor.name} waits and watches the battlefield.`
+        : `${actor.name} начинает действие ${command.type}.`,
     });
 
     switch (command.type) {
       case 'move':
       case 'dash':
       case 'disengage': {
-        if (command.target.kind === 'cell') {
-          const from = { x: actor.battlefieldX ?? 0, y: actor.battlefieldY ?? 0 };
-          actor.battlefieldX = command.target.x;
-          actor.battlefieldY = command.target.y;
-          this.addCombatEvent(
-            state,
-            {
-              id: randomUUID(),
-              roundNumber: state.roundNumber,
-              stepIndex,
-              orderIndex,
-              type: command.type,
-              actorId: actor.id,
-              commandId: command.id,
-              message: `${actor.name} смещается на позицию ${command.target.x + 1}:${command.target.y + 1}.`,
-            },
-            {
-              id: randomUUID(),
-              roundNumber: state.roundNumber,
-              stepIndex,
-              type: 'move_token',
-              actorId: actor.id,
-              from,
-              to: { x: command.target.x, y: command.target.y },
-            },
-          );
+        if (command.target.kind !== 'cell') {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может выполнить перемещение: неверная цель.`,
+            data: { reason: 'invalid_target' },
+          });
+          break;
         }
+
+        const from = { x: actor.battlefieldX ?? 0, y: actor.battlefieldY ?? 0 };
+        const to = { x: command.target.x, y: command.target.y };
+        const isInside = to.x >= 0 && to.x < state.battleMapWidth && to.y >= 0 && to.y < state.battleMapHeight;
+        const tile = state.battlefieldTiles.find((entry) => entry.x === to.x && entry.y === to.y);
+        const isBlocked = tile?.blocksMovement === true
+          || tile?.type === BattlefieldTileType.Blocked
+          || tile?.type === BattlefieldTileType.HighCover
+          || tile?.type === BattlefieldTileType.Summon;
+        const isOccupied = state.entities.some((entry) => (
+          entry.id !== actor.id
+          && entry.isAlive
+          && (entry.battlefieldX ?? 0) === to.x
+          && (entry.battlefieldY ?? 0) === to.y
+        ));
+
+        if (!isInside || isBlocked || isOccupied) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может сместиться в выбранную клетку.`,
+            data: {
+              reason: !isInside ? 'invalid_cell' : isBlocked ? 'cell_blocked' : 'cell_occupied',
+            },
+          });
+          break;
+        }
+
+        actor.battlefieldX = to.x;
+        actor.battlefieldY = to.y;
+        const movementType = command.type === 'dash' ? 'dash' : command.type === 'disengage' ? 'disengage' : 'walk';
+        this.addCombatEvent(
+          state,
+          {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'movement',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} moves closer to the enemy.`,
+            data: { from, to, movementType },
+          },
+          {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            type: 'move_token',
+            actorId: actor.id,
+            from,
+            to,
+            movementType,
+          },
+        );
         break;
       }
       case 'guard': {
@@ -1964,10 +2020,9 @@ export class CombatService {
               id: randomUUID(),
               roundNumber: state.roundNumber,
               stepIndex,
-              type: 'damage_number',
+              type: 'attack_bump',
               actorId: actor.id,
               targetId: target.id,
-              value: damage,
             },
           );
 
@@ -2006,41 +2061,120 @@ export class CombatService {
         break;
       }
       case 'skill_cast': {
-        if (command.target.kind === 'cell') {
-          const radius = Math.max(1, Math.floor(Number((command.payload as { radius?: number } | undefined)?.radius ?? 1)));
-          const minDamage = Math.max(1, Math.floor(actor.intelligence * 0.75));
-          const maxDamage = Math.max(minDamage, Math.floor(actor.intelligence * 1.25));
-          const center = { x: command.target.x, y: command.target.y };
-
+        const skillId = typeof command.payload?.skillId === 'string' ? command.payload.skillId : '';
+        if (!skillId) {
           this.addCombatEvent(state, {
             id: randomUUID(),
             roundNumber: state.roundNumber,
             stepIndex,
             orderIndex,
-            type: 'skill_cast',
+            type: 'command_failed',
             actorId: actor.id,
             commandId: command.id,
-            message: `${actor.name} направляет ${command.payload?.skillId ?? 'unknown'} в клетку ${center.x + 1}:${center.y + 1}.`,
-            data: { radius },
-          });
-
-          // Friendly fire is always enabled for area/cell effects.
-          await this.applyCellAreaDamage({
-            session,
-            state,
-            actor,
-            command,
-            guardStates,
-            center,
-            radius,
-            minDamage,
-            maxDamage,
-            damageKind: 'magical',
-            stepIndex,
-            orderIndex,
-            sourceText: command.payload?.skillId ?? 'skill',
+            message: `${actor.name} не может использовать навык: не указан skillId.`,
+            data: { reason: 'skill_missing' },
           });
           break;
+        }
+
+        const skillDef = this.skillRuntime.getSkillDefinition(skillId);
+        if (!skillDef) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может использовать навык ${skillId}: навык не найден.`,
+            data: { reason: 'skill_not_found' },
+          });
+          break;
+        }
+
+        const skillLevel = Math.max(1, Math.floor(Number((command.payload as { skillLevel?: number } | undefined)?.skillLevel ?? 1)));
+        const validation = await this.skillRuntime.validateSkillUse(actor.id, skillId, session.skillCooldowns, actor);
+        if (!validation.valid) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: validation.reason ?? `${actor.name} не может использовать навык ${skillId}.`,
+            data: { reason: 'skill_validation_failed', error: validation.reason },
+          });
+          break;
+        }
+
+        const targets: ArenaCombatEntity[] = [];
+        if (command.target.kind === 'entity') {
+          const entityTargetId = command.target.entityId;
+          const target = state.entities.find((entry) => entry.id === entityTargetId && entry.isAlive);
+          if (target) {
+            targets.push(target);
+          }
+        } else if (command.target.kind === 'self') {
+          targets.push(actor);
+        } else if (command.target.kind === 'cell') {
+          const radius = Math.max(1, Math.floor(Number((command.payload as { radius?: number } | undefined)?.radius ?? 1)));
+          const center = { x: command.target.x, y: command.target.y };
+          const areaTargets = collectAreaEffectTargets({
+            battleState: state,
+            originCell: center,
+            radius,
+            casterId: actor.id,
+            shape: 'circle',
+          });
+          for (const entry of areaTargets) {
+            const entity = state.entities.find((item) => item.id === entry.entityId && item.isAlive);
+            if (entity) {
+              targets.push(entity);
+            }
+          }
+        }
+
+        if (targets.length === 0) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не находит подходящую цель для навыка ${skillId}.`,
+            data: { reason: 'target_missing' },
+          });
+          break;
+        }
+
+        const resourceTemplate = this.skillRuntime.resolveSkillExecution(skillDef, actor, targets[0] ?? null, skillLevel);
+        if (resourceTemplate.resourcesSpent.mp) {
+          actor.currentMp = Math.max(0, actor.currentMp - resourceTemplate.resourcesSpent.mp);
+        }
+        if (resourceTemplate.resourcesSpent.stamina) {
+          actor.currentStamina = Math.max(0, actor.currentStamina - resourceTemplate.resourcesSpent.stamina);
+        }
+        if (resourceTemplate.resourcesSpent.hp) {
+          actor.currentHp = Math.max(0, actor.currentHp - resourceTemplate.resourcesSpent.hp);
+        }
+
+        if (skillDef.cooldown.cooldownTurns > 0 || skillDef.cooldown.oncePerCombat) {
+          const existing = session.skillCooldowns.find((entry) => entry.skillId === skillId);
+          if (existing) {
+            existing.remainingRounds = skillDef.cooldown.cooldownTurns;
+            existing.oncePerCombat = skillDef.cooldown.oncePerCombat ?? existing.oncePerCombat;
+          } else {
+            session.skillCooldowns.push({
+              skillId,
+              remainingRounds: skillDef.cooldown.cooldownTurns,
+              oncePerCombat: skillDef.cooldown.oncePerCombat ?? false,
+            });
+          }
         }
 
         this.addCombatEvent(state, {
@@ -2051,8 +2185,126 @@ export class CombatService {
           type: 'skill_cast',
           actorId: actor.id,
           commandId: command.id,
-          message: `${actor.name} использует навык ${command.payload?.skillId ?? 'unknown'}.`,
+          message: command.target.kind === 'cell'
+            ? `${actor.name} направляет ${skillId} в область.`
+            : `${actor.name} использует навык ${skillId}.`,
+          data: { targets: targets.map((target) => target.id) },
         });
+
+        for (const target of targets) {
+          const execution = this.skillRuntime.resolveSkillExecution(skillDef, actor, target, skillLevel);
+
+          for (const dmg of execution.damageDone) {
+            const dmgTarget = state.entities.find((entity) => entity.id === dmg.targetId);
+            if (!dmgTarget || !dmgTarget.isAlive) {
+              continue;
+            }
+
+            const damage = Math.max(0, Math.floor(dmg.amount));
+            if (damage <= 0) {
+              continue;
+            }
+            dmgTarget.currentHp = Math.max(0, dmgTarget.currentHp - damage);
+            dmgTarget.isAlive = dmgTarget.currentHp > 0;
+
+            this.addCombatEvent(
+              state,
+              {
+                id: randomUUID(),
+                roundNumber: state.roundNumber,
+                stepIndex,
+                orderIndex,
+                type: 'damage',
+                actorId: actor.id,
+                targetId: dmgTarget.id,
+                commandId: command.id,
+                message: `${actor.name} наносит ${damage} урона навыком ${skillId} цели ${dmgTarget.name}.`,
+                data: { amount: damage, skillId },
+              },
+              {
+                id: randomUUID(),
+                roundNumber: state.roundNumber,
+                stepIndex,
+                type: 'damage_number',
+                actorId: actor.id,
+                targetId: dmgTarget.id,
+                value: damage,
+              },
+            );
+
+            if (!dmgTarget.isAlive) {
+              await this.processActorDeath({
+                session,
+                actor: dmgTarget,
+                sourceActorId: actor.id,
+                roundNumber: state.roundNumber,
+                stepIndex,
+                orderIndex,
+                commandId: command.id,
+              });
+            }
+          }
+
+          for (const heal of execution.healingDone) {
+            const healTarget = state.entities.find((entity) => entity.id === heal.targetId && entity.isAlive);
+            if (!healTarget) {
+              continue;
+            }
+            const amount = Math.max(0, Math.floor(heal.amount));
+            if (amount <= 0) {
+              continue;
+            }
+            const restored = Math.max(0, Math.min(healTarget.maxHp - healTarget.currentHp, amount));
+            if (restored <= 0) {
+              continue;
+            }
+            healTarget.currentHp += restored;
+
+            this.addCombatEvent(
+              state,
+              {
+                id: randomUUID(),
+                roundNumber: state.roundNumber,
+                stepIndex,
+                orderIndex,
+                type: 'heal',
+                actorId: actor.id,
+                targetId: healTarget.id,
+                commandId: command.id,
+                message: `${actor.name} восстанавливает ${restored} HP цели ${healTarget.name} навыком ${skillId}.`,
+                data: { amount: restored, skillId },
+              },
+              {
+                id: randomUUID(),
+                roundNumber: state.roundNumber,
+                stepIndex,
+                type: 'heal_number',
+                actorId: actor.id,
+                targetId: healTarget.id,
+                value: restored,
+              },
+            );
+          }
+
+          for (const applied of execution.effectsApplied) {
+            this.addCombatEvent(state, {
+              id: randomUUID(),
+              roundNumber: state.roundNumber,
+              stepIndex,
+              orderIndex,
+              type: 'status_applied',
+              actorId: actor.id,
+              targetId: applied.targetId,
+              commandId: command.id,
+              message: `${actor.name} накладывает ${applied.effectType} на цель.`,
+              data: {
+                effectType: applied.effectType,
+                durationTurns: applied.durationTurns,
+                skillId,
+              },
+            });
+          }
+        }
         break;
       }
       case 'item_use': {
@@ -2110,6 +2362,144 @@ export class CombatService {
           break;
         }
 
+        const effects = this.normalizeItemEffects(item, itemData);
+        if (effects.length === 0) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может использовать предмет: нет боевых эффектов.`,
+            data: { reason: 'item_no_effects' },
+          });
+          break;
+        }
+
+        if (command.target.kind === 'cell') {
+          const radius = Math.max(1, Math.floor(Number(itemData?.splashRadius ?? itemData?.areaRadius ?? 1)));
+          const center = { x: command.target.x, y: command.target.y };
+          const targets = state.entities.filter((entity) => {
+            if (!entity.isAlive) {
+              return false;
+            }
+            const distance = this.getCellDistance({ x: entity.battlefieldX ?? 0, y: entity.battlefieldY ?? 0 }, center);
+            return distance <= radius;
+          });
+
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'item_used',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} использует предмет по области (${targets.length} целей).`,
+            data: { radius, targets: targets.map((target) => target.id) },
+          });
+
+          for (const target of targets) {
+            for (const effect of effects) {
+              const amount = Math.max(0, Math.floor(effect.amount));
+              if (effect.type === 'damage_target') {
+                if (amount <= 0) {
+                  continue;
+                }
+                target.currentHp = Math.max(0, target.currentHp - amount);
+                target.isAlive = target.currentHp > 0;
+                this.addCombatEvent(
+                  state,
+                  {
+                    id: randomUUID(),
+                    roundNumber: state.roundNumber,
+                    stepIndex,
+                    orderIndex,
+                    type: 'damage',
+                    actorId: actor.id,
+                    targetId: target.id,
+                    commandId: command.id,
+                    message: `${actor.name} наносит ${amount} урона предметом цели ${target.name}.`,
+                    data: { amount, itemId },
+                  },
+                  {
+                    id: randomUUID(),
+                    roundNumber: state.roundNumber,
+                    stepIndex,
+                    type: 'damage_number',
+                    actorId: actor.id,
+                    targetId: target.id,
+                    value: amount,
+                  },
+                );
+                if (!target.isAlive) {
+                  await this.processActorDeath({
+                    session,
+                    actor: target,
+                    sourceActorId: actor.id,
+                    roundNumber: state.roundNumber,
+                    stepIndex,
+                    orderIndex,
+                    commandId: command.id,
+                  });
+                }
+                continue;
+              }
+
+              if (effect.type === 'heal_hp') {
+                const restored = Math.max(0, Math.min(target.maxHp - target.currentHp, amount));
+                if (restored > 0) {
+                  target.currentHp += restored;
+                  this.addCombatEvent(
+                    state,
+                    {
+                      id: randomUUID(),
+                      roundNumber: state.roundNumber,
+                      stepIndex,
+                      orderIndex,
+                      type: 'heal',
+                      actorId: actor.id,
+                      targetId: target.id,
+                      commandId: command.id,
+                      message: `${actor.name} восстанавливает ${restored} HP цели ${target.name} предметом.`,
+                      data: { amount: restored, itemId },
+                    },
+                    {
+                      id: randomUUID(),
+                      roundNumber: state.roundNumber,
+                      stepIndex,
+                      type: 'heal_number',
+                      actorId: actor.id,
+                      targetId: target.id,
+                      value: restored,
+                    },
+                  );
+                }
+                continue;
+              }
+
+              if (effect.type === 'restore_mana') {
+                const restored = Math.max(0, Math.min(target.maxMp - target.currentMp, amount));
+                target.currentMp += restored;
+                continue;
+              }
+
+              if (effect.type === 'restore_stamina') {
+                const restored = Math.max(0, Math.min(target.maxStamina - target.currentStamina, amount));
+                target.currentStamina += restored;
+                continue;
+              }
+            }
+          }
+          break;
+        }
+
+        const targetId = command.target.kind === 'entity'
+          ? command.target.entityId
+          : actor.id;
+        const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, state, state.roundNumber, targetId));
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -2118,7 +2508,9 @@ export class CombatService {
           type: 'item_used',
           actorId: actor.id,
           commandId: command.id,
-          message: `${actor.name} использует предмет.`,
+          targetId: command.target.kind === 'entity' ? command.target.entityId : actor.id,
+          message: effectLogs[0]?.text ?? `${actor.name} использует предмет.`,
+          data: { itemId, effects: effects.map((effect) => effect.type) },
         });
         break;
       }
@@ -2374,11 +2766,20 @@ export class CombatService {
       return;
     }
 
-    const aliveEntities = session.state.entities.filter((entity) => entity.isAlive);
-    const allReady = aliveEntities.every((entity) => session.turnPlans.get(entity.id)?.ready);
+    const controllableActors = this.getLivingControllableActors(session.state);
+    const allReady = controllableActors.every((entity) => session.turnPlans.get(entity.id)?.ready);
     if (!allReady) {
       return;
     }
+
+    for (const aiActor of this.getLivingAiActors(session.state)) {
+      const plan = session.turnPlans.get(aiActor.id);
+      if (!plan || plan.commands.length === 0) {
+        session.turnPlans.set(aiActor.id, this.buildNpcAiPlan(session, aiActor));
+      }
+    }
+
+    this.syncTurnPlanState(session);
 
     await this.resolveCombatRoundByPlans(session);
   }
@@ -2417,10 +2818,8 @@ export class CombatService {
 
     state.roundPhase = 'PLANNING';
     state.phase = 'planning';
-    state.readyActorIds = [...session.plannedActions.keys()];
-    state.pendingActorIds = aliveEntities
-      .map((entity) => entity.id)
-      .filter((entityId) => !session.plannedActions.has(entityId));
+    state.readyActorIds = [];
+    state.pendingActorIds = this.getLivingControllableActors(state).map((entity) => entity.id);
     this.syncSubmittedPlansState(session);
     state.turnStartedAt = new Date().toISOString();
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;

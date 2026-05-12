@@ -21,6 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cancelCombatReady,
+  fetchCombatState,
   setCombatReady,
   submitCombatPlan,
   validateCombatPlan,
@@ -363,8 +364,10 @@ function getCommandDisplayText(command: CombatCommand, state: ArenaBattleState):
       return 'Начать побег';
     case 'confirm_retreat':
       return 'Подтвердить побег';
+    case 'wait':
+      return '⏳ Ожидать';
     default:
-      return 'Ожидание';
+      return 'Действие';
   }
 }
 
@@ -379,6 +382,9 @@ function getQueueCommandLine(command: CombatCommand, state: ArenaBattleState, re
     const wid = command.payload?.weaponItemId ?? command.payload?.weaponInstanceId;
     const weaponName = wid && resolveAdminItemById ? (resolveAdminItemById(wid)?.name ?? wid) : (wid ?? '?');
     return `🔄 Сменить оружие: ${weaponName} — ${command.apCost} AP / ${command.costs.stamina ?? 0} STA`;
+  }
+  if (command.type === 'wait') {
+    return '⏳ Ожидать — 0 AP';
   }
   return `${getCommandDisplayText(command, state)} - ${command.apCost} AP / ${command.costs.stamina ?? 0} STA / ${command.costs.mp ?? 0} MP / ${command.costs.hp ?? 0} HP`;
 }
@@ -411,6 +417,35 @@ function isWeaponAdminItem(item: AdminItem | null): boolean {
   const type = String(raw?.itemType ?? '').toLowerCase();
   const subtype = String(raw?.itemSubType ?? '').toLowerCase();
   return type === 'weapon' || subtype.includes('sword') || subtype.includes('axe') || subtype.includes('bow');
+}
+
+function formatRevalidationReason(reason: string): string {
+  switch (reason) {
+    case 'target_out_of_range':
+      return 'цель вне радиуса действия';
+    case 'target_too_close':
+      return 'цель слишком близко для текущего действия';
+    case 'line_of_sight_blocked':
+      return 'линия атаки перекрыта препятствием';
+    case 'cell_blocked':
+      return 'клетка заблокирована';
+    case 'cell_occupied':
+      return 'клетка занята';
+    case 'not_enough_stamina':
+      return 'недостаточно выносливости';
+    case 'not_enough_mp':
+      return 'недостаточно маны';
+    case 'not_enough_hp':
+      return 'недостаточно здоровья';
+    case 'actor_dead':
+      return 'исполнитель мертв';
+    case 'target_dead':
+      return 'цель уже мертва';
+    case 'target_missing':
+      return 'цель недоступна';
+    default:
+      return reason;
+  }
 }
 
 export function BattlePanel({
@@ -474,7 +509,9 @@ export function BattlePanel({
   const [planWarningDetails, setPlanWarningDetails] = useState<Array<{ code: string; commandId?: string; message?: string }>>([]);
   const [planErrors, setPlanErrors] = useState<string[]>([]);
   const isSubmittingRef = useRef(false);
+  const timeoutSyncRoundRef = useRef<string | null>(null);
   const previousRoundRef = useRef<number>(state.roundNumber);
+  const lastReportedFailureEventRef = useRef<string | null>(null);
   const selectedSkill = useMemo(
     () => availableSkills.find((skill) => skill.skillId === selectedSkillId) ?? null,
     [availableSkills, selectedSkillId],
@@ -682,7 +719,8 @@ export function BattlePanel({
     if (!state.turnDeadlineAt || state.isFinished) {
       return null;
     }
-    const diff = state.turnDeadlineAt - nowMs;
+    const deadlineMs = new Date(state.turnDeadlineAt).getTime();
+    const diff = deadlineMs - nowMs;
     return Math.max(0, Math.ceil(diff / 1000));
   }, [nowMs, state.isFinished, state.turnDeadlineAt]);
 
@@ -764,6 +802,23 @@ export function BattlePanel({
     }
     return null;
   }, [guardStatusByActorId, selectedEnemy?.id]);
+
+  useEffect(() => {
+    const latestFailure = [...(state.recentCombatEvents ?? [])]
+      .reverse()
+      .find((event) => event.type === 'command_failed' && event.actorId === playerId);
+    if (!latestFailure) {
+      return;
+    }
+    if (latestFailure.id === lastReportedFailureEventRef.current) {
+      return;
+    }
+    lastReportedFailureEventRef.current = latestFailure.id;
+
+    const reasonRaw = typeof latestFailure.data?.reason === 'string' ? latestFailure.data.reason : null;
+    const reason = reasonRaw ? formatRevalidationReason(reasonRaw) : null;
+    onStatus(reason ? `${latestFailure.message} Причина: ${reason}.` : latestFailure.message);
+  }, [onStatus, playerId, state.recentCombatEvents]);
 
   useEffect(() => {
     if (previousRoundRef.current !== state.roundNumber) {
@@ -933,6 +988,7 @@ export function BattlePanel({
     }
 
     if (useQuickAttack || selectedSource.kind === 'basic_attack') {
+      setSelectedSource({ kind: 'basic_attack' });
       await appendCommandDirect(createCombatCommandFromType({
         type: 'basic_attack',
         target: { kind: 'entity', entityId },
@@ -950,7 +1006,7 @@ export function BattlePanel({
     const targetId = selectedTargetId || enemies[0]?.id || '';
     const commands: CombatCommand[] = [];
 
-    if (movementType && selectedMoveTile) {
+    if (selectedType !== ActionType.Wait && movementType && selectedMoveTile) {
       const moveType = movementType === MovementType.Dash
         ? 'dash'
         : movementType === MovementType.Disengage
@@ -1087,7 +1143,7 @@ export function BattlePanel({
         setPlanErrors(formatted);
         setPlanWarningCodes([]);
         setPlanWarningDetails([]);
-        setPlanWarnings(warningCodes.map((code) => formatPlanWarning(code)));
+        setPlanWarnings([]);
         onStatus(formatted[0] ?? 'План не принят.');
         return;
       }
@@ -1109,11 +1165,83 @@ export function BattlePanel({
     }
   }, [combatId, draftCommands, isResolving, onBattleFinished, onStateChange, onStatus, player, state.roundNumber]);
 
+  useEffect(() => {
+    if (!combatId || state.isFinished || state.roundPhase !== 'PLANNING') {
+      return;
+    }
+    if (secondsLeft === null || secondsLeft > 0) {
+      return;
+    }
+
+    const roundKey = `${combatId}:${state.roundNumber}`;
+    if (timeoutSyncRoundRef.current === roundKey) {
+      return;
+    }
+    timeoutSyncRoundRef.current = roundKey;
+
+    void (async () => {
+      try {
+        const freshState = await fetchCombatState(combatId);
+        onStateChange(freshState);
+      } catch (error) {
+        onStatus(error instanceof Error ? error.message : 'Не удалось синхронизировать состояние боя по таймеру.');
+      }
+    })();
+  }, [combatId, onStateChange, onStatus, secondsLeft, state.isFinished, state.roundNumber, state.roundPhase]);
+
   const toggleReady = useCallback(async (): Promise<void> => {
     if (!player || isSubmittingRef.current || isResolving) {
       return;
     }
     if (!isPlanReady) {
+      if (draftCommands.length === 0) {
+        const waitCommand = createCombatCommandFromType({
+          type: 'wait',
+          target: { kind: 'self' },
+        });
+        const nextDraft = [waitCommand];
+        setDraftCommands(nextDraft);
+        setPlanErrors([]);
+        setPlanWarnings([]);
+        setPlanWarningCodes([]);
+        setPlanWarningDetails([]);
+        onStatus('Пустой план: добавлено Ожидание (0 AP).');
+
+        try {
+          isSubmittingRef.current = true;
+          const submitResult = await submitCombatPlan({
+            battleId: combatId,
+            actorId: player.id,
+            roundNumber: state.roundNumber,
+            commands: nextDraft,
+            ready: true,
+          });
+
+          if (!submitResult.ok) {
+            const formatted = [formatPlanError(submitResult.errorCode)];
+            setPlanErrors(formatted);
+            onStatus(formatted[0] ?? 'План не принят.');
+            return;
+          }
+
+          setDraftCommands(submitResult.acceptedPlan.commands);
+          onStateChange(submitResult.battleState);
+          setPlanningMode(submitResult.battleState.roundPhase === 'RESOLVING' ? 'resolving' : 'ready');
+          onStatus(submitResult.battleState.isFinished
+            ? `Battle finished. Winner: ${submitResult.battleState.winner ?? 'none'}.`
+            : 'План подтверждён. Ожидание противника...');
+          if (submitResult.battleState.isFinished) {
+            await onBattleFinished?.(submitResult.battleState);
+          }
+          return;
+        } catch (error) {
+          onStatus(error instanceof Error ? error.message : 'Unknown ready error');
+          return;
+        } finally {
+          isSubmittingRef.current = false;
+        }
+      }
+
       const dangerousFriendlyFire = planWarningCodes.some((code) => code === 'FRIENDLY_FIRE' || code === 'ALLY_IN_AREA' || code === 'SELF_IN_AREA' || code === 'NEUTRAL_IN_AREA');
       if (dangerousFriendlyFire) {
         const confirmed = window.confirm('В плане есть действия, которые могут задеть союзников или нейтральные цели. Продолжить?');
@@ -1138,7 +1266,7 @@ export function BattlePanel({
     } finally {
       isSubmittingRef.current = false;
     }
-  }, [combatId, isPlanReady, isResolving, onStateChange, onStatus, planWarningCodes, player, state.roundNumber, submitReady]);
+  }, [combatId, draftCommands.length, isPlanReady, isResolving, onBattleFinished, onStateChange, onStatus, planWarningCodes, player, state.roundNumber, submitReady]);
 
   const undoDraftCommand = useCallback(() => {
     if (isPlanReady) {
@@ -1165,6 +1293,56 @@ export function BattlePanel({
   const submitRound = useCallback(async (): Promise<void> => {
     await appendSelectedCommands();
   }, [appendSelectedCommands]);
+
+  const repeatLastSelectedAction = useCallback(async (): Promise<boolean> => {
+    if (isResolving || isPlanReady) {
+      return false;
+    }
+
+    if (selectedSource.kind === 'skill' || selectedSource.kind === 'item' || selectedSource.kind === 'weapon' || selectedSource.kind === 'basic_attack') {
+      if (!selectedTargetId) {
+        onStatus('Сначала выберите цель для повторного действия.');
+        return true;
+      }
+      await addEntityTargetCommand(selectedTargetId, selectedSource.kind === 'basic_attack');
+      return true;
+    }
+
+    if (selectedSource.kind === 'guard' || selectedSource.kind === 'strong_guard') {
+      await appendCommandDirect(createCombatCommandFromType({
+        type: selectedSource.kind,
+        target: { kind: 'self' },
+      }));
+      return true;
+    }
+
+    if (selectedSource.kind !== 'none') {
+      return true;
+    }
+
+    if (actionType === ActionType.Attack && selectedTargetId) {
+      setSelectedSource({ kind: 'basic_attack' });
+      await addEntityTargetCommand(selectedTargetId, true);
+      return true;
+    }
+
+    if (actionType === ActionType.Defend) {
+      const guardType = guardMode === 'strong_guard' ? 'strong_guard' : 'guard';
+      setSelectedSource({ kind: guardType });
+      await appendCommandDirect(createCombatCommandFromType({
+        type: guardType,
+        target: { kind: 'self' },
+      }));
+      return true;
+    }
+
+    if (selectedMoveTile && movementType) {
+      await addMoveFromTile({ x: selectedMoveTile.x, y: selectedMoveTile.y, movementType });
+      return true;
+    }
+
+    return false;
+  }, [actionType, addEntityTargetCommand, addMoveFromTile, appendCommandDirect, guardMode, isPlanReady, isResolving, movementType, onStatus, selectedMoveTile, selectedSource.kind, selectedTargetId]);
 
   const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
     setMovementType(tile.movementType);
@@ -1204,7 +1382,12 @@ export function BattlePanel({
           return;
         }
         event.preventDefault();
-        void toggleReady();
+        void (async () => {
+          const consumed = await repeatLastSelectedAction();
+          if (!consumed) {
+            await toggleReady();
+          }
+        })();
         return;
       }
 
@@ -1268,7 +1451,7 @@ export function BattlePanel({
 
     window.addEventListener('keydown', handleHotkeys);
     return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [actionSlots, appendCommandDirect, clearDraftCommands, onSkillChange, onStatus, resolveAdminItemById, submitRound, toggleReady, undoDraftCommand]);
+  }, [actionSlots, appendCommandDirect, clearDraftCommands, onSkillChange, onStatus, repeatLastSelectedAction, submitRound, toggleReady, undoDraftCommand]);
 
   if (!player) {
     return <p>Player entity not found.</p>;
@@ -1455,8 +1638,32 @@ export function BattlePanel({
                 onStatusMessage={onStatus}
                 onQuickAttack={(targetId) => {
                   setSelectedTargetId(targetId);
+                  setSelectedSource({ kind: 'basic_attack' });
                   setPlanningMode('selecting_target');
                   void addEntityTargetCommand(targetId, true);
+                }}
+                onQuickHeavyAttack={(targetId) => {
+                  setSelectedTargetId(targetId);
+                  setPlanningMode('selecting_target');
+                  void appendCommandDirect(createCombatCommandFromType({
+                    type: 'heavy_attack',
+                    target: { kind: 'entity', entityId: targetId },
+                    payload: { targetZone: TargetZone.Chest },
+                  }));
+                }}
+                onQuickWait={() => {
+                  void appendCommandDirect(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
+                }}
+                onQuickGuard={() => {
+                  void appendCommandDirect(createCombatCommandFromType({ type: 'guard', target: { kind: 'self' } }));
+                }}
+                onQuickStrongGuard={() => {
+                  void appendCommandDirect(createCombatCommandFromType({ type: 'strong_guard', target: { kind: 'self' } }));
+                }}
+                onClearSelectedSource={() => {
+                  setSelectedSource({ kind: 'none' });
+                  onSkillChange(null);
+                  onStatus('Источник действия сброшен.');
                 }}
               onQuickMove={(tile) => {
                 applyMoveSelection(tile);
@@ -1476,6 +1683,7 @@ export function BattlePanel({
               enemyVisualState={feedback.enemyVisualState}
               floatingText={feedback.floatingText}
               animationTick={state.logs.length}
+              animationEvents={state.recentAnimationEvents ?? []}
             />
 
             <div className="battle-center-controls card">

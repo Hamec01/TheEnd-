@@ -223,12 +223,12 @@ function normalizeExitZones(exitZones: unknown, width: number, height: number): 
     .map((zone, index) => {
       const candidate = zone as Partial<ExitZone>;
       const id = typeof candidate.id === 'string' && candidate.id.trim().length > 0 ? candidate.id.trim() : `exit_zone_${String(index + 1).padStart(3, '0')}`;
-      const team = candidate.team === 'enemy' || candidate.team === 'any' ? candidate.team : 'player';
+      const team: ExitZone['team'] = candidate.team === 'enemy' || candidate.team === 'any' ? candidate.team : 'player';
       return {
         id,
         cells: uniqueCells(Array.isArray(candidate.cells) ? candidate.cells : [], width, height),
         team,
-        enabledForArena: false,
+        enabledForArena: false as const,
         label: typeof candidate.label === 'string' ? candidate.label : undefined,
         description: typeof candidate.description === 'string' ? candidate.description : undefined,
       };
