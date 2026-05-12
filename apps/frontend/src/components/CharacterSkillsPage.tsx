@@ -1,123 +1,18 @@
 import { getSkillCostSummary, type AdminSkillDefinition } from '@theend/rpg-domain';
 import { useEffect, useMemo, useState } from 'react';
 import type { CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
-import { getPlayerQuestState } from '../services/questRuntime';
-
-const PLAYER_ITEMS_KEY = 'theend.player.items';
-const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
-
-export interface SkillTrainingPlayerContext {
-  playerId: string;
-  level: number;
-  race?: string | null;
-  classId?: string | null;
-  npcId?: string | null;
-}
+import type { SkillTrainingPlayerContext, TrainerSkillCandidate } from './training/trainerSkillResolver';
+import { resolveTrainerSkillCandidates } from './training/trainerSkillResolver';
 
 interface CharacterSkillsPageProps {
   learnedSkills: CharacterSkillRow[];
   availableSkills: AdminSkillDefinition[];
   loadout: CharacterSkillLoadout | null;
   playerContext: SkillTrainingPlayerContext;
+  trainerSkillIds?: unknown;
   onLearnSkill: (skillId: string) => Promise<void>;
   onSaveLoadout: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
   onStatus: (text: string) => void;
-}
-
-function readArray(key: string): string[] {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.map((entry) => String(entry));
-  } catch {
-    return [];
-  }
-}
-
-export function canShowSkillInTraining(
-  skill: AdminSkillDefinition,
-  context: SkillTrainingPlayerContext,
-  learnedSkillIds: Set<string>,
-): boolean {
-  if (!skill.isActive || !skill.isPublished) {
-    return false;
-  }
-  if (skill.isHidden) {
-    return false;
-  }
-  if (skill.isTrainable !== true) {
-    return false;
-  }
-  if (skill.acquisitionMode !== 'trainer') {
-    return false;
-  }
-  if (learnedSkillIds.has(skill.id)) {
-    return false;
-  }
-
-  const requiredLevel = skill.requiredLevel ?? skill.requirements?.minCharacterLevel;
-  if (typeof requiredLevel === 'number' && context.level < requiredLevel) {
-    return false;
-  }
-
-  if (skill.requiredQuestId) {
-    const state = getPlayerQuestState(context.playerId, skill.requiredQuestId);
-    if (!state) {
-      return false;
-    }
-  }
-
-  if (skill.requiredCompletedQuestId) {
-    const state = getPlayerQuestState(context.playerId, skill.requiredCompletedQuestId);
-    if (!state || state.status !== 'completed') {
-      return false;
-    }
-  }
-
-  if (skill.requiredQuestItemId && !readArray(PLAYER_QUEST_ITEMS_KEY).includes(skill.requiredQuestItemId)) {
-    return false;
-  }
-
-  if (skill.requiredNpcId && (!context.npcId || context.npcId !== skill.requiredNpcId)) {
-    return false;
-  }
-
-  if (skill.requiredClassIds && skill.requiredClassIds.length > 0) {
-    if (!context.classId || !skill.requiredClassIds.includes(context.classId)) {
-      return false;
-    }
-  }
-
-  const requiredRaceIds = skill.requiredRaceIds && skill.requiredRaceIds.length > 0
-    ? skill.requiredRaceIds
-    : (skill.requirements?.allowedRaces ?? []);
-  if (requiredRaceIds.length > 0 && (!context.race || !requiredRaceIds.includes(context.race))) {
-    return false;
-  }
-
-  const requiredKnownSkillIds = [
-    ...(skill.requiredKnownSkillIds ?? []),
-    ...(skill.requirements?.requiredSkills ?? []),
-  ];
-  if (requiredKnownSkillIds.some((requiredSkillId) => !learnedSkillIds.has(requiredSkillId))) {
-    return false;
-  }
-
-  const requiredItems = skill.requirements?.requiredItems ?? [];
-  if (requiredItems.length > 0) {
-    const itemIds = new Set(readArray(PLAYER_ITEMS_KEY));
-    if (requiredItems.some((itemId) => !itemIds.has(itemId))) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 function getSkillSummary(skill: AdminSkillDefinition | null | undefined, level: number): string {
@@ -143,7 +38,7 @@ function getSlotTypeLabel(slot: CombatSkillSlot): string {
 }
 
 export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
-  const { learnedSkills, availableSkills, loadout, playerContext, onLearnSkill, onSaveLoadout, onStatus } = props;
+  const { learnedSkills, availableSkills, loadout, playerContext, trainerSkillIds, onLearnSkill, onSaveLoadout, onStatus } = props;
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [draftSlots, setDraftSlots] = useState<CombatSkillSlot[]>([]);
   const [isSavingLoadout, setIsSavingLoadout] = useState(false);
@@ -162,9 +57,34 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
 
   const learnedSkillIds = useMemo(() => new Set(learnedSkills.map((entry) => entry.skillId)), [learnedSkills]);
 
+  const trainerCandidates = useMemo<TrainerSkillCandidate[]>(() => {
+    const npcId = playerContext.npcId?.trim() || null;
+    if (!npcId) return [];
+    return resolveTrainerSkillCandidates({
+      npcId,
+      trainerSkillIds,
+      allSkills: availableSkills,
+      context: playerContext,
+      learnedSkillIds,
+    });
+  }, [availableSkills, learnedSkillIds, playerContext, trainerSkillIds]);
+
+  const trainerAvailable = useMemo(
+    () => trainerCandidates.filter((entry) => entry.isAvailable && entry.skill),
+    [trainerCandidates],
+  );
+  const trainerLocked = useMemo(
+    () => trainerCandidates.filter((entry) => !entry.isAvailable && !entry.isLearned),
+    [trainerCandidates],
+  );
+  const trainerLearned = useMemo(
+    () => trainerCandidates.filter((entry) => entry.isLearned),
+    [trainerCandidates],
+  );
+
   const learnableSkills = useMemo(
-    () => availableSkills.filter((skill) => canShowSkillInTraining(skill, playerContext, learnedSkillIds)),
-    [availableSkills, learnedSkillIds, playerContext],
+    () => trainerAvailable.map((entry) => entry.skill).filter((entry): entry is AdminSkillDefinition => Boolean(entry)),
+    [trainerAvailable],
   );
 
   const learnedSkillDetails = useMemo(
@@ -176,7 +96,7 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
   );
 
   const selectedLearnedSkill = learnedSkillDetails.find((entry) => entry.skillId === selectedSkillId) ?? null;
-  const selectedAvailableSkill = learnableSkills.find((entry) => entry.id === selectedSkillId) ?? null;
+  const selectedAvailableSkill = trainerAvailable.find((entry) => entry.skill?.id === selectedSkillId)?.skill ?? null;
   const selectedDefinition = selectedLearnedSkill?.definition ?? selectedAvailableSkill ?? null;
   const selectedLevel = selectedLearnedSkill?.level ?? 1;
 

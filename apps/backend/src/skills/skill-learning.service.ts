@@ -41,6 +41,104 @@ type StoredCharacterSkill = {
 type StoredCharacterSkillMap = Record<string, StoredCharacterSkill[]>;
 type StoredCharacterLoadoutMap = Record<string, CombatSkillSlot[]>;
 
+function parseIdList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(value.map((entry) => String(entry ?? '').trim()).filter(Boolean)),
+    );
+  }
+  if (typeof value === 'string') {
+    return Array.from(
+      new Set(
+        value
+          .split(/[\n,]+/g)
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+      ),
+    );
+  }
+  return [];
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function isTeacherMethod(method: unknown): boolean {
+  const rec = toRecord(method);
+  const t = typeof rec?.type === 'string' ? rec.type.trim().toLowerCase() : '';
+  return t === 'teacher' || t === 'trainer';
+}
+
+function getTrainerNpcIdFromMethod(method: unknown): string | null {
+  const rec = toRecord(method);
+  if (!rec) return null;
+  const raw =
+    rec.teacherNpcId
+    ?? rec.npcId
+    ?? rec.trainerNpcId
+    ?? rec.teacherId;
+  const id = typeof raw === 'string' ? raw.trim() : '';
+  return id ? id : null;
+}
+
+function getPriceGoldFromMethod(method: unknown): number | null {
+  const rec = toRecord(method);
+  if (!rec) return null;
+  const raw = rec.priceGold;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
+}
+
+function skillHasTeacherLink(skill: AdminSkillDefinition, npcId: string): boolean {
+  const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
+  for (const method of methods) {
+    if (!isTeacherMethod(method)) continue;
+    const linkedNpcId = getTrainerNpcIdFromMethod(method);
+    if (linkedNpcId && linkedNpcId === npcId) return true;
+  }
+  return false;
+}
+
+function isTrainableLike(skill: AdminSkillDefinition): boolean {
+  const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
+  return skill.isTrainable === true
+    || (skill as any).acquisitionMode === 'trainer'
+    || methods.some(isTeacherMethod);
+}
+
+function isCandidateForTrainer(skill: AdminSkillDefinition, npcId: string, trainerSkillIds: Set<string>): boolean {
+  if (trainerSkillIds.has(skill.id)) return true;
+  if (skill.requiredNpcId?.trim() === npcId) return true;
+  if (skillHasTeacherLink(skill, npcId)) return true;
+  return false;
+}
+
+function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null | undefined): number {
+  const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
+  const trainerMethods = methods.filter(isTeacherMethod);
+
+  if (npcId) {
+    for (const method of trainerMethods) {
+      const teacherNpcId = getTrainerNpcIdFromMethod(method);
+      if (teacherNpcId && teacherNpcId === npcId) {
+        const price = getPriceGoldFromMethod(method);
+        if (typeof price === 'number') return price;
+      }
+    }
+  }
+
+  for (const method of trainerMethods) {
+    const price = getPriceGoldFromMethod(method);
+    if (typeof price === 'number') return price;
+  }
+
+  const top = (skill as any).priceGold;
+  const topN = typeof top === 'number' ? top : Number(top);
+  return Number.isFinite(topN) ? Math.max(0, Math.floor(topN)) : 0;
+}
+
 @Injectable()
 export class SkillLearningService {
   private readonly logger = new Logger(SkillLearningService.name);
@@ -100,11 +198,50 @@ export class SkillLearningService {
     }
 
     this.assertSkillIsUsable(skillDef, skillId);
-    this.assertSkillIsTrainable(skillDef, skillId, sourceId);
+
+    const trainerNpcId = (sourceId ?? '').trim();
+    const hasTrainerNpc = Boolean(trainerNpcId);
+    const trainerSkillIds = new Set<string>();
+    if (hasTrainerNpc) {
+      const npc = this.contentService.getCollectionEntry('npcs', trainerNpcId) as unknown as Record<string, unknown> | null;
+      if (!npc) {
+        throw new BadRequestException(`Trainer not found: ${trainerNpcId}`);
+      }
+      if ('canTrain' in npc && npc.canTrain !== true) {
+        throw new BadRequestException(`NPC ${trainerNpcId} cannot train skills`);
+      }
+      const trainer = toRecord((npc as any).trainer);
+      const rawSkillIds =
+        trainer?.skillIds
+        ?? (npc as any).trainerSkillIds
+        ?? (npc as any).trainerSkillIdsText;
+      for (const id of parseIdList(rawSkillIds)) {
+        trainerSkillIds.add(id);
+      }
+    }
+
+    if (!isTrainableLike(skillDef)) {
+      throw new BadRequestException(`Skill is not available for trainer learning: ${skillId}`);
+    }
+
+    const requiredTrainerId = skillDef.requiredNpcId?.trim();
+    if (hasTrainerNpc && requiredTrainerId && requiredTrainerId !== trainerNpcId) {
+      throw new BadRequestException(`Skill can only be learned from trainer ${requiredTrainerId}`);
+    }
+    if (!hasTrainerNpc && requiredTrainerId) {
+      throw new BadRequestException(`Skill can only be learned from trainer ${requiredTrainerId}`);
+    }
+
+    if (hasTrainerNpc && !isCandidateForTrainer(skillDef, trainerNpcId, trainerSkillIds)) {
+      throw new BadRequestException(`Skill ${skillId} is not offered by trainer ${trainerNpcId}`);
+    }
 
     const characterRecord = await this.ensureCharacterExists(characterId);
     const character = {
       race: String(characterRecord.race ?? ''),
+      classId: typeof (characterRecord as { classId?: unknown }).classId === 'string'
+        ? String((characterRecord as { classId?: string }).classId ?? '').trim()
+        : '',
       level: Number(characterRecord.level ?? 0) || 0,
       strength: Number(characterRecord.strength ?? 0) || 0,
       endurance: Number(characterRecord.endurance ?? 0) || 0,
@@ -115,21 +252,59 @@ export class SkillLearningService {
       willpower: Number(characterRecord.willpower ?? 0) || 0,
     };
 
+    const currentGold = Number((characterRecord as { gold?: unknown }).gold ?? 0) || 0;
+    const priceGold = hasTrainerNpc ? getSkillTrainingPrice(skillDef, trainerNpcId) : getSkillTrainingPrice(skillDef, null);
+
     // Check already learned
     const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
     if (existing) {
       throw new BadRequestException('Character already knows this skill');
     }
 
-    await this.assertTrainingRequirements(characterId, character, skillDef, sourceId);
+    await this.assertTrainingRequirements(characterId, character, skillDef, trainerNpcId || undefined);
 
-    const row = await this.createCharacterSkill({
-      characterId,
-      skillId,
-      level: 1,
-      sourceType: 'teacher',
-      sourceId: sourceId ?? null,
-    });
+    if (priceGold > 0 && currentGold < priceGold) {
+      throw new BadRequestException('Недостаточно золота.');
+    }
+
+    let row: CharacterSkill;
+    if (isFileStorageMode()) {
+      if (priceGold > 0) {
+        await this.runtimeStore.updateCharacter(characterId, { gold: currentGold - priceGold });
+      }
+      row = await this.createCharacterSkill({
+        characterId,
+        skillId,
+        level: 1,
+        sourceType: 'teacher',
+        sourceId: hasTrainerNpc ? trainerNpcId : null,
+      });
+    } else {
+      const created = await this.prisma.$transaction(async (tx) => {
+        if (priceGold > 0) {
+          const refreshed = await tx.character.findUnique({ where: { id: characterId }, select: { gold: true } });
+          const latestGold = Number(refreshed?.gold ?? 0) || 0;
+          if (latestGold < priceGold) {
+            throw new BadRequestException('Недостаточно золота.');
+          }
+          await tx.character.update({ where: { id: characterId }, data: { gold: { decrement: priceGold } } });
+        }
+        const createdRow = await (tx as any).characterSkill.create({
+          data: {
+            characterId,
+            skillId,
+            level: 1,
+            sourceType: 'teacher',
+            sourceId: hasTrainerNpc ? trainerNpcId : null,
+          },
+        });
+        return this.normalizeSkillRow(createdRow as unknown as Record<string, unknown>);
+      });
+      if (!created) {
+        throw new BadRequestException('Failed to persist learned skill');
+      }
+      row = created;
+    }
 
     return {
       skill: {
@@ -191,6 +366,7 @@ export class SkillLearningService {
     characterId: string,
     character: {
       race: string;
+      classId?: string;
       level: number;
       strength: number;
       endurance: number;
@@ -270,7 +446,13 @@ export class SkillLearningService {
     }
 
     if (skillDef.requiredClassIds && skillDef.requiredClassIds.length > 0) {
-      throw new BadRequestException(`Skill requires one of classes: ${skillDef.requiredClassIds.join(', ')}`);
+      const classId = typeof character.classId === 'string' ? character.classId.trim() : '';
+      if (!classId) {
+        throw new BadRequestException(`Character class system missing (requires: ${skillDef.requiredClassIds.join(', ')})`);
+      }
+      if (!skillDef.requiredClassIds.includes(classId)) {
+        throw new BadRequestException(`Skill requires one of classes: ${skillDef.requiredClassIds.join(', ')}`);
+      }
     }
 
     const requiredNpcId = skillDef.requiredNpcId?.trim();
@@ -312,15 +494,8 @@ export class SkillLearningService {
     }
   }
 
-  private assertSkillIsTrainable(skillDef: AdminSkillDefinition, skillId: string, sourceId?: string): void {
-    if (skillDef.isTrainable !== true || skillDef.acquisitionMode !== 'trainer') {
-      throw new BadRequestException(`Skill is not available for generic training: ${skillId}`);
-    }
-
-    const trainerLocked = skillDef.requiredNpcId?.trim();
-    if (trainerLocked && trainerLocked !== (sourceId ?? '').trim()) {
-      throw new BadRequestException(`Skill can only be learned from trainer ${trainerLocked}`);
-    }
+  private assertSkillIsTrainable(_skillDef: AdminSkillDefinition, _skillId: string, _sourceId?: string): void {
+    // Legacy: training validation now lives in learnSkillFromTraining (universal trainer resolver).
   }
 
   async knowsSkill(characterId: string, skillId: string): Promise<boolean> {
