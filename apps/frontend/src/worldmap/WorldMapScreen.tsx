@@ -501,7 +501,7 @@ interface WorldMapScreenProps {
   ) => Promise<void>;
   onStartBattleMap?: (battleMapId: string) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
-  onOpenSkills: () => void;
+  onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown) => void;
   onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
   onStatus: (text: string) => void;
   cityMerchants?: AdminMerchant[];
@@ -2617,7 +2617,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStatus("\u042d\u0442\u043e\u0442 NPC \u043d\u0435 \u043e\u0431\u0443\u0447\u0430\u0435\u0442 \u043d\u0430\u0432\u044b\u043a\u0430\u043c.");
       return;
     }
-    onOpenSkills();
+    onOpenSkills(selectedNpcForInteraction.id, selectedNpcForInteraction.trainer?.skillIds);
     const trainerCount =
       selectedNpcForInteraction.trainer?.skillIds?.length ?? 0;
     onStatus(
@@ -2816,7 +2816,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         if (intent.type === "OPEN_TRAINING") {
           dialogueRunner.closeDialogue();
           setActiveWorldModal(null);
-          onOpenSkills();
+          onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
           modalClosed = true;
           break;
         }
@@ -2869,7 +2869,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       } else if (primaryModalIntent?.type === 'START_COMBAT') {
         void onStartCombat();
       } else if (primaryModalIntent?.type === 'OPEN_TRAINING') {
-        onOpenSkills();
+        onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
       }
 
       if (modalIntents.length > 1) {
@@ -3666,7 +3666,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             <button
               onClick={() => {
                 closeModal();
-                onOpenSkills();
+                onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
               }}
             >
               {"\u0422\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430"}
