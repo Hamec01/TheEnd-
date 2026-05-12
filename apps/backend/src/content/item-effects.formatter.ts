@@ -1,3 +1,4 @@
+import { canonicalCombatStatusId } from '@theend/rpg-domain';
 import type { DamageCategory, ElementType, ItemEffect, MagicSchool, PhysicalType, StatKey } from './content.types';
 
 export interface FormatItemEffectOptions {
@@ -68,21 +69,15 @@ const TRIGGER_LABELS: Record<NonNullable<ItemEffect['trigger']>, string> = {
 
 const DEFAULT_STATUS_NAMES: Record<string, string> = {
   blinded: 'ослепление',
-  blind: 'ослепление',
   stunned: 'оглушение',
-  stun: 'оглушение',
   bleeding: 'кровотечение',
-  bleed: 'кровотечение',
   poisoned: 'отравление',
-  poison: 'отравление',
   burning: 'горение',
-  burn: 'горение',
   frozen: 'заморозка',
-  freeze: 'заморозка',
   silenced: 'немота',
-  silence: 'немота',
   cursed: 'проклятие',
-  curse: 'проклятие',
+  knockdown: 'сбит с ног',
+  slowed: 'замедление',
 };
 
 export function formatItemEffect(effect: ItemEffect, options?: FormatItemEffectOptions): string {
@@ -261,11 +256,12 @@ function formatStatusName(statusId?: string, customNames?: Partial<Record<string
   }
   const normalized = statusId.trim();
   const lower = normalized.toLowerCase();
-  const mapped = customNames?.[lower] ?? DEFAULT_STATUS_NAMES[lower];
+  const canonical = canonicalCombatStatusId(lower) ?? lower;
+  const mapped = customNames?.[canonical] ?? customNames?.[lower] ?? DEFAULT_STATUS_NAMES[canonical];
   if (mapped) {
     return mapped;
   }
-  return lower
+  return canonical
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

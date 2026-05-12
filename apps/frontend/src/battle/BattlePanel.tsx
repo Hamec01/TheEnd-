@@ -1,30 +1,28 @@
+﻿// BattlePanel.tsx — P0 Sequential Turn-Based Combat UI
+// Replaces simultaneous planning model with active-actor turn flow.
 import {
   ActionType,
   COMBAT_ACTION_COSTS,
+  DistanceBand,
   MovementType,
   TargetZone,
   TeamSide,
   createCombatCommandFromType,
-  getCombatPlanCostTotal,
-  getCombatRoundLimits,
-  getSkillCostSummary,
   getBattlefieldDistance,
+  getSkillCostSummary,
   isActorStandingOnExitZone,
   type AdminSkillDefinition,
-  type CombatCommand,
-  getItemById,
-  type ItemDefinition,
   type ArenaBattleState,
+  type ArenaCombatEntity,
+  type CombatCommand,
   type Equipment,
   type InventoryState,
+  type ItemDefinition,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cancelCombatReady,
+  executeCombatAction,
   fetchCombatState,
-  setCombatReady,
-  submitCombatPlan,
-  validateCombatPlan,
   type ArenaHubState,
   type CharacterActionSlot,
 } from '../api';
@@ -34,6 +32,8 @@ import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
 import { FighterCard } from './FighterCard';
 import { InspectPanel } from './InspectPanel';
+
+// ── Types ─────────────────────────────────────────────────────────────────
 
 interface BattlePanelProps {
   combatId: string;
@@ -61,28 +61,21 @@ interface BattlePanelProps {
   playerEquipment?: Equipment;
 }
 
-type CombatPlanningMode =
-  | 'idle'
-  | 'selecting_target'
-  | 'selecting_cell'
-  | 'context_menu_open'
-  | 'ready'
-  | 'resolving';
+/** What the player has currently selected to do next */
+type SelectedSource =
+  | { kind: 'none' }
+  | { kind: 'basic_attack' }
+  | { kind: 'heavy_attack' }
+  | { kind: 'guard' }
+  | { kind: 'strong_guard' }
+  | { kind: 'skill'; slotId?: CharacterActionSlot['slotId']; skillId: string }
+  | { kind: 'item'; slotId?: CharacterActionSlot['slotId']; itemId: string; itemInstanceId?: string }
+  | { kind: 'weapon'; slotId?: CharacterActionSlot['slotId']; weaponItemId: string; weaponInstanceId?: string };
 
-interface SelectedCombatSource {
-  kind: 'none' | 'basic_attack' | 'skill' | 'item' | 'weapon' | 'guard' | 'strong_guard';
-  slotId?: CharacterActionSlot['slotId'];
-  skillId?: string;
-  itemId?: string;
-  itemInstanceId?: string;
-  weaponItemId?: string;
-  weaponInstanceId?: string;
-}
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function toRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
 
@@ -90,363 +83,127 @@ function toFiniteAmount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-function accumulateResourceCost(costs: { mana: number; stamina: number; hp: number }, resource: unknown, amount: unknown): void {
-  const key = String(resource ?? '').trim().toLowerCase();
-  const safeAmount = toFiniteAmount(amount);
-  if (safeAmount <= 0) {
-    return;
-  }
-  if (key === 'mana' || key === 'mp') {
-    costs.mana += safeAmount;
-    return;
-  }
-  if (key === 'stamina' || key === 'sta') {
-    costs.stamina += safeAmount;
-    return;
-  }
-  if (key === 'hp' || key === 'health') {
-    costs.hp += safeAmount;
-  }
-}
-
-function normalizeAdminItemCosts(rawItem: AdminItem | null): { mana: number; stamina: number; hp: number } {
-  const costs = { mana: 0, stamina: 0, hp: 0 };
-  const raw = toRecord(rawItem as unknown);
-  if (!raw) {
-    return costs;
-  }
-  accumulateResourceCost(costs, 'mana', raw.manaCost);
-  accumulateResourceCost(costs, 'stamina', raw.staminaCost);
-  accumulateResourceCost(costs, 'hp', raw.hpCost);
-
-  const directCosts = Array.isArray(raw.costs) ? raw.costs : [];
-  for (const entry of directCosts) {
-    const record = toRecord(entry);
-    if (record) {
-      accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
-    }
-  }
-
-  const nestedCosts = toRecord(raw.costs);
-  const nestedResources = Array.isArray(nestedCosts?.resources) ? nestedCosts.resources : [];
-  for (const entry of nestedResources) {
-    const record = toRecord(entry);
-    if (record) {
-      accumulateResourceCost(costs, record.resource ?? record.type, record.amount);
-    }
-  }
-
-  return costs;
-}
-
-function normalizeAdminItemEffects(rawItem: AdminItem | null): Array<{ type: string; amount: number; target?: string }> {
-  const raw = toRecord(rawItem as unknown);
-  if (!raw) {
-    return [];
-  }
-
-  const sources: unknown[] = [];
-  const singleEffect = toRecord(raw.useEffect);
-  if (singleEffect) {
-    sources.push(singleEffect);
-  }
-  if (Array.isArray(raw.effects)) {
-    sources.push(...raw.effects);
-  }
-  if (Array.isArray(raw.combatEffects)) {
-    sources.push(...raw.combatEffects);
-  }
-
-  return sources
-    .map((entry) => toRecord(entry))
-    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-    .map((entry) => ({
-      type: String(entry.type ?? '').trim().toLowerCase(),
-      amount: toFiniteAmount(entry.amount),
-      target: typeof entry.target === 'string' ? entry.target : undefined,
-    }))
-    .filter((entry) => entry.type.length > 0);
-}
-
-function parseZoneFromLogText(text: string): TargetZone | null {
-  const match = text.match(/in\s+([A-Z_]+)/i);
-  const token = match?.[1]?.toUpperCase();
-  if (!token) {
-    return null;
-  }
-  if (token === 'HEAD' || token === 'H') return TargetZone.Head;
-  if (token === 'CHEST' || token === 'C') return TargetZone.Chest;
-  if (token === 'ABDOMEN' || token === 'A') return TargetZone.Abdomen;
-  if (token === 'LEFT_ARM' || token === 'LA') return TargetZone.LeftArm;
-  if (token === 'RIGHT_ARM' || token === 'RA') return TargetZone.RightArm;
-  if (token === 'LEGS' || token === 'L') return TargetZone.Legs;
-  return null;
+function classifyCombatStyle(
+  entity: Pick<ArenaCombatEntity, 'strength' | 'dexterity' | 'intelligence' | 'combatStyleHint' | 'attackRange'>,
+): 'MELEE' | 'RANGED' | 'MAGIC' {
+  if (entity.combatStyleHint) return entity.combatStyleHint;
+  if (typeof entity.attackRange === 'number' && entity.attackRange > 1) return 'RANGED';
+  if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) return 'MAGIC';
+  if (entity.dexterity > entity.strength) return 'RANGED';
+  return 'MELEE';
 }
 
 function formatCountdown(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds));
-  const minutes = Math.floor(safe / 60);
-  const seconds = safe % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function classifyCombatStyle(entity: { strength: number; dexterity: number; intelligence: number; combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC'; attackRange?: number }): 'MELEE' | 'RANGED' | 'MAGIC' {
-  if (entity.combatStyleHint) {
-    return entity.combatStyleHint;
-  }
-  if (typeof entity.attackRange === 'number' && entity.attackRange > 1) {
-    return 'RANGED';
-  }
-  if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
-    return 'MAGIC';
-  }
-  if (entity.dexterity > entity.strength) {
-    return 'RANGED';
-  }
-  return 'MELEE';
-}
-
-function getActionCost(actionType: ActionType, movementType: MovementType | null, guardMode: 'guard' | 'strong_guard'): number {
-  const actionCost = actionType === ActionType.Attack
-    ? (COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0)
-    : actionType === ActionType.Defend
-      ? (guardMode === 'strong_guard' ? (COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0) : (COMBAT_ACTION_COSTS.guard.stamina ?? 0))
-      : 0;
-  const moveCost = movementType === MovementType.Step
-    ? (COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0)
-    : movementType === MovementType.Extra
-      ? (COMBAT_ACTION_COSTS.move_2_cells.stamina ?? 0)
-      : movementType === MovementType.Dash
-        ? (COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0)
-        : movementType === MovementType.Disengage
-          ? (COMBAT_ACTION_COSTS.disengage.stamina ?? 0)
-          : 0;
-  return actionCost + moveCost;
-}
-
-function formatPlanError(error: string): string {
-  switch (error) {
-    case 'MAX_COMMANDS_REACHED':
-      return 'Достигнут лимит команд.';
-    case 'NOT_ENOUGH_AP':
-      return 'Недостаточно AP.';
-    case 'NOT_ENOUGH_STAMINA':
-      return 'Недостаточно stamina.';
-    case 'NOT_ENOUGH_MP':
-      return 'Недостаточно MP.';
-    case 'NOT_ENOUGH_HP':
-      return 'Недостаточно HP.';
-    case 'TARGET_OUT_OF_RANGE':
-      return 'Цель вне дальности.';
-    case 'INVALID_TARGET':
-      return 'Некорректная цель команды.';
-    case 'BATTLE_NOT_PLANNING':
-      return 'Сейчас нельзя менять план: раунд уже разыгрывается.';
-    case 'ROUND_MISMATCH':
-      return 'План относится к другому раунду.';
-    case 'GUARD_ALREADY_PLANNED':
-      return 'Защитная стойка уже запланирована.';
-    case 'WEAPON_ID_REQUIRED':
-      return 'Не указано оружие для смены.';
-    case 'WEAPON_NOT_FOUND':
-      return 'Оружие не найдено.';
-    case 'ITEM_IS_NOT_WEAPON':
-      return 'Это не оружие.';
-    case 'WEAPON_ALREADY_EQUIPPED':
-      return 'Это оружие уже экипировано.';
-    case 'WEAPON_NOT_OWNED':
-      return 'У персонажа нет этого оружия.';
-    default:
-      return error;
-  }
-}
-
-function formatPlanWarning(warning: string): string {
-  switch (warning) {
-    case 'FRIENDLY_FIRE':
-      return 'Friendly fire включён: все существа в зоне получат эффект. Позиции могут измениться до выполнения действия.';
-    case 'ALLY_IN_AREA':
-      return 'Внимание: действие заденет союзника.';
-    case 'SELF_IN_AREA':
-      return 'Внимание: вы тоже попадете в область действия.';
-    case 'NEUTRAL_IN_AREA':
-      return 'Внимание: действие заденет нейтральную цель.';
-    case 'AREA_TARGETS_MAY_CHANGE':
-      return 'Текущая зона действия — preview. Реальные цели пересчитываются при выполнении.';
-    case 'LOW_STAMINA_AFTER_ACTION':
-      return 'Low stamina: после плана останется мало выносливости.';
-    case 'LOW_HP_AFTER_HP_COST':
-      return 'Low HP: после плана останется мало здоровья.';
-    case 'ACTION_MAY_FAIL_IF_TARGET_MOVES':
-      return 'Цель может выйти из зоны удара до выполнения команды.';
-    case 'ESCAPE_CAN_BE_INTERRUPTED':
-      return 'Побег может быть прерван.';
-    default:
-      return warning;
-  }
-}
-
-function formatCommandSpecificPlanError(error: string, commandType?: CombatCommand['type']): string {
-  if (error === 'GUARD_ALREADY_PLANNED') {
-    return 'Защитная стойка уже запланирована.';
-  }
-  if (commandType === 'weapon_swap') {
-    if (error === 'NOT_ENOUGH_STAMINA') return 'Недостаточно stamina для смены оружия.';
-    if (error === 'NOT_ENOUGH_AP') return 'Недостаточно AP для смены оружия.';
-    if (error === 'WEAPON_ID_REQUIRED') return 'Не указано оружие для смены.';
-    if (error === 'WEAPON_NOT_FOUND') return 'Оружие не найдено.';
-    if (error === 'ITEM_IS_NOT_WEAPON') return 'Это не оружие (нельзя сменить на данный предмет).';
-    if (error === 'WEAPON_ALREADY_EQUIPPED') return 'Это оружие уже экипировано.';
-    if (error === 'WEAPON_NOT_OWNED') return 'У персонажа нет этого оружия.';
-    if (error === 'ITEM_NOT_USABLE') return 'Нельзя сменить оружие: персонаж разоружён.';
-  }
-  if (commandType === 'strong_guard') {
-    if (error === 'NOT_ENOUGH_STAMINA') {
-      return 'Недостаточно stamina для усиленной защиты.';
-    }
-    if (error === 'NOT_ENOUGH_AP') {
-      return 'Недостаточно AP для усиленной защиты.';
-    }
-    if (error === 'MAX_COMMANDS_REACHED') {
-      return 'Достигнут лимит команд на раунд.';
-    }
-  }
-  if (commandType === 'guard') {
-    if (error === 'NOT_ENOUGH_STAMINA') {
-      return 'Недостаточно stamina для защиты.';
-    }
-    if (error === 'NOT_ENOUGH_AP') {
-      return 'Недостаточно AP для защиты.';
-    }
-    if (error === 'MAX_COMMANDS_REACHED') {
-      return 'Достигнут лимит команд на раунд.';
-    }
-  }
-  return formatPlanError(error);
-}
-
-function getCommandDisplayText(command: CombatCommand, state: ArenaBattleState): string {
-  let targetText = 'себя';
-  if (command.target.kind === 'entity') {
-    const entityTarget = command.target as Extract<CombatCommand['target'], { kind: 'entity' }>;
-    targetText = state.entities.find((entity) => entity.id === entityTarget.entityId)?.name ?? 'цель';
-  } else if (command.target.kind === 'cell') {
-    const cellTarget = command.target as Extract<CombatCommand['target'], { kind: 'cell' }>;
-    targetText = `клетка ${cellTarget.x + 1},${cellTarget.y + 1}`;
-  }
-
-  switch (command.type) {
-    case 'move':
-      return `Подойти (${targetText})`;
-    case 'dash':
-      return `Рывок (${targetText})`;
-    case 'disengage':
-      return `Отход (${targetText})`;
-    case 'basic_attack':
-      return `Атака (${targetText})`;
-    case 'heavy_attack':
-      return `Сильная атака (${targetText})`;
-    case 'guard':
-      return 'Защита';
-    case 'strong_guard':
-      return 'Усиленная защита';
-    case 'skill_cast':
-      return `Навык (${command.payload?.skillId ?? 'unknown'}) -> ${targetText}`;
-    case 'item_use':
-      return `Предмет (${command.payload?.itemId ?? command.payload?.itemInstanceId ?? 'unknown'}) -> ${targetText}`;
-    case 'weapon_swap':
-      return 'Смена оружия';
-    case 'place_trap':
-      return `Ловушка (${targetText})`;
-    case 'loot':
-      return `Лут (${targetText})`;
-    case 'start_retreat':
-      return 'Начать побег';
-    case 'confirm_retreat':
-      return 'Подтвердить побег';
-    case 'wait':
-      return '⏳ Ожидать';
-    default:
-      return 'Действие';
-  }
-}
-
-function getQueueCommandLine(command: CombatCommand, state: ArenaBattleState, resolveAdminItemById?: ((id: string) => AdminItem | null) | null): string {
-  if (command.type === 'strong_guard') {
-    return `🛡 Усиленная защита - ${command.apCost} AP / ${command.costs.stamina ?? 0} STA`;
-  }
-  if (command.type === 'guard') {
-    return `🛡 Защита - ${command.apCost} AP / ${command.costs.stamina ?? 0} STA`;
-  }
-  if (command.type === 'weapon_swap') {
-    const wid = command.payload?.weaponItemId ?? command.payload?.weaponInstanceId;
-    const weaponName = wid && resolveAdminItemById ? (resolveAdminItemById(wid)?.name ?? wid) : (wid ?? '?');
-    return `🔄 Сменить оружие: ${weaponName} — ${command.apCost} AP / ${command.costs.stamina ?? 0} STA`;
-  }
-  if (command.type === 'wait') {
-    return '⏳ Ожидать — 0 AP';
-  }
-  return `${getCommandDisplayText(command, state)} - ${command.apCost} AP / ${command.costs.stamina ?? 0} STA / ${command.costs.mp ?? 0} MP / ${command.costs.hp ?? 0} HP`;
-}
-
-function getCommandTimingWarning(command: CombatCommand, index: number): string | null {
-  if (index === 0) return null;
-  if (command.type === 'strong_guard') {
-    return '⚠ Усиленная защита начнет действовать только после выполнения этой команды. Если враг ударит раньше, защита может не успеть сработать.';
-  }
-  if (command.type === 'guard') {
-    return `⚠ Защита начнёт действовать только на ${index + 1}-м шаге раунда. Если враг ударит раньше, защита может не успеть.`;
-  }
-  return null;
+function formatActionError(errorCode: string, message: string): string {
+  const map: Record<string, string> = {
+    NOT_ENOUGH_AP: 'Недостаточно AP.',
+    NOT_ENOUGH_STAMINA: 'Недостаточно выносливости.',
+    NOT_ENOUGH_MP: 'Недостаточно маны.',
+    NOT_ENOUGH_HP: 'Недостаточно HP.',
+    TARGET_OUT_OF_RANGE: 'Цель вне дальности.',
+    NOT_ACTIVE_ACTOR: 'Сейчас не ваш ход.',
+    BATTLE_FINISHED: 'Бой уже завершён.',
+    ROUND_MISMATCH: 'Несоответствие раунда — обновите состояние.',
+    COMMAND_REVALIDATION_FAILED: 'Действие не прошло проверку.',
+    ACTOR_DEAD: 'Персонаж мёртв.',
+  };
+  return map[errorCode] ?? message;
 }
 
 function isCellTargetItem(item: AdminItem | null): boolean {
-  if (!item) {
-    return false;
-  }
+  if (!item) return false;
   const raw = toRecord(item as unknown);
   const subtype = String(raw?.itemSubType ?? '').toLowerCase();
   return subtype.includes('bomb') || subtype.includes('trap') || subtype.includes('grenade');
 }
 
 function isWeaponAdminItem(item: AdminItem | null): boolean {
-  if (!item) {
-    return false;
-  }
+  if (!item) return false;
   const raw = toRecord(item as unknown);
   const type = String(raw?.itemType ?? '').toLowerCase();
   const subtype = String(raw?.itemSubType ?? '').toLowerCase();
   return type === 'weapon' || subtype.includes('sword') || subtype.includes('axe') || subtype.includes('bow');
 }
 
-function formatRevalidationReason(reason: string): string {
-  switch (reason) {
-    case 'target_out_of_range':
-      return 'цель вне радиуса действия';
-    case 'target_too_close':
-      return 'цель слишком близко для текущего действия';
-    case 'line_of_sight_blocked':
-      return 'линия атаки перекрыта препятствием';
-    case 'cell_blocked':
-      return 'клетка заблокирована';
-    case 'cell_occupied':
-      return 'клетка занята';
-    case 'not_enough_stamina':
-      return 'недостаточно выносливости';
-    case 'not_enough_mp':
-      return 'недостаточно маны';
-    case 'not_enough_hp':
-      return 'недостаточно здоровья';
-    case 'actor_dead':
-      return 'исполнитель мертв';
-    case 'target_dead':
-      return 'цель уже мертва';
-    case 'target_missing':
-      return 'цель недоступна';
-    default:
-      return reason;
+function normalizeAdminItemCosts(rawItem: AdminItem | null): { mana: number; stamina: number; hp: number } {
+  const costs = { mana: 0, stamina: 0, hp: 0 };
+  const raw = toRecord(rawItem as unknown);
+  if (!raw) return costs;
+  const add = (key: string, val: unknown) => {
+    const k = key.toLowerCase();
+    const v = toFiniteAmount(val);
+    if (v <= 0) return;
+    if (k === 'mana' || k === 'mp') costs.mana += v;
+    else if (k === 'stamina' || k === 'sta') costs.stamina += v;
+    else if (k === 'hp' || k === 'health') costs.hp += v;
+  };
+  add('mana', raw.manaCost);
+  add('stamina', raw.staminaCost);
+  add('hp', raw.hpCost);
+  const directCosts = Array.isArray(raw.costs) ? raw.costs : [];
+  for (const entry of directCosts) {
+    const r = toRecord(entry);
+    if (r) add(String(r.resource ?? r.type ?? ''), r.amount);
   }
+  return costs;
 }
+
+function normalizeAdminItemEffects(rawItem: AdminItem | null): Array<{ type: string; amount: number; target?: string }> {
+  const raw = toRecord(rawItem as unknown);
+  if (!raw) return [];
+  const sources: unknown[] = [];
+  const single = toRecord(raw.useEffect);
+  if (single) sources.push(single);
+  if (Array.isArray(raw.effects)) sources.push(...raw.effects);
+  if (Array.isArray(raw.combatEffects)) sources.push(...raw.combatEffects);
+  return sources
+    .map((e) => toRecord(e))
+    .filter((e): e is Record<string, unknown> => Boolean(e))
+    .map((e) => ({
+      type: String(e.type ?? '').trim().toLowerCase(),
+      amount: toFiniteAmount(e.amount),
+      target: typeof e.target === 'string' ? e.target : undefined,
+    }))
+    .filter((e) => e.type.length > 0);
+}
+
+function parseZoneFromLogText(text: string): TargetZone | null {
+  const match = text.match(/in\s+([A-Z_]+)/i);
+  const token = match?.[1]?.toUpperCase();
+  if (!token) return null;
+  if (token === 'HEAD') return TargetZone.Head;
+  if (token === 'CHEST') return TargetZone.Chest;
+  if (token === 'ABDOMEN') return TargetZone.Abdomen;
+  if (token === 'LEFT_ARM') return TargetZone.LeftArm;
+  if (token === 'RIGHT_ARM') return TargetZone.RightArm;
+  if (token === 'LEGS') return TargetZone.Legs;
+  return null;
+}
+
+function formatRevalidationReason(reason: string): string {
+  const map: Record<string, string> = {
+    target_out_of_range: 'цель вне радиуса действия',
+    target_too_close: 'цель слишком близко',
+    line_of_sight_blocked: 'линия атаки перекрыта',
+    cell_blocked: 'клетка заблокирована',
+    cell_occupied: 'клетка занята',
+    not_enough_stamina: 'недостаточно выносливости',
+    not_enough_mp: 'недостаточно маны',
+    not_enough_hp: 'недостаточно здоровья',
+    actor_dead: 'исполнитель мёртв',
+    target_dead: 'цель уже мертва',
+    target_missing: 'цель недоступна',
+  };
+  return map[reason] ?? reason;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────
 
 export function BattlePanel({
   combatId,
@@ -469,9 +226,39 @@ export function BattlePanel({
   resolveAdminItemById,
   playerEquipment,
 }: BattlePanelProps) {
-  const player = useMemo(() => state.entities.find((item) => item.id === playerId), [state, playerId]);
-  const enemies = useMemo(() => state.entities.filter((item) => item.team === TeamSide.Right && item.isAlive), [state]);
+  // ── Core entity refs ────────────────────────────────────────────────────
+  const player = useMemo(
+    () => state.entities.find((e) => e.id === playerId) ?? null,
+    [state.entities, playerId],
+  );
+  const enemies = useMemo(
+    () => state.entities.filter((e) => e.team === TeamSide.Right && e.isAlive),
+    [state.entities],
+  );
 
+  // ── Sequential turn model ───────────────────────────────────────────────
+  const stateWithTurn = state as ArenaBattleState & {
+    roundPhase?: string;
+    activeActorId?: string;
+    currentTurnAp?: Record<string, number>;
+    pendingActorIds?: string[];
+  };
+  const roundPhase = stateWithTurn.roundPhase;
+  const isPlayerPending = Boolean((state.pendingActorIds ?? stateWithTurn.pendingActorIds ?? []).includes(playerId));
+  const isLegacyPlanningMode =
+    !state.isFinished &&
+    (isPlayerPending
+      || (!stateWithTurn.activeActorId && (state.phase === 'planning' || roundPhase === 'PLANNING')));
+  const isPlayerTurn = !state.isFinished && (isPlayerPending || stateWithTurn.activeActorId === playerId || isLegacyPlanningMode);
+  const currentTurnAp = isLegacyPlanningMode
+    ? Math.max(0, 3 - ((state.submittedPlans?.[playerId]?.commands ?? []).reduce((sum, cmd) => sum + Math.max(0, Number(cmd.apCost ?? 0)), 0)))
+    : (stateWithTurn.currentTurnAp?.[playerId] ?? 0);
+  const activeActor = useMemo(
+    () => (stateWithTurn.activeActorId ? state.entities.find((e) => e.id === stateWithTurn.activeActorId) ?? null : null),
+    [stateWithTurn.activeActorId, state.entities],
+  );
+
+  // ── Timer ───────────────────────────────────────────────────────────────
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -479,1270 +266,808 @@ export function BattlePanel({
   }, []);
 
   const remainingSeconds = useMemo(() => {
-    if (!state.turnDeadlineAt) {
-      return null;
-    }
-    const deadlineMs = Date.parse(state.turnDeadlineAt);
-    if (!Number.isFinite(deadlineMs)) {
-      return null;
-    }
-    return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
-  }, [nowMs, state.turnDeadlineAt]);
+    if (!state.turnDeadlineAt || !isPlayerTurn) return null;
+    const deadline = Date.parse(state.turnDeadlineAt);
+    if (!Number.isFinite(deadline)) return null;
+    return Math.max(0, Math.ceil((deadline - nowMs) / 1000));
+  }, [nowMs, state.turnDeadlineAt, isPlayerTurn]);
 
-  const playerEscapeState = useMemo(() => state.escapeStates?.[playerId] ?? null, [playerId, state.escapeStates]);
-  const playerOnExitZone = useMemo(() => {
-    const check = isActorStandingOnExitZone({ battleState: state, actorId: playerId });
-    return Boolean(check.ok);
-  }, [playerId, state]);
-
-  const [selectedTargetId, setSelectedTargetId] = useState(enemies[0]?.id ?? '');
-  const [actionType, setActionType] = useState<ActionType>(ActionType.Attack);
-  const [guardMode, setGuardMode] = useState<'guard' | 'strong_guard'>('guard');
+  // ── UI state ────────────────────────────────────────────────────────────
+  const [selectedTargetId, setSelectedTargetId] = useState(() => enemies[0]?.id ?? '');
+  const [selectedSource, setSelectedSource] = useState<SelectedSource>({ kind: 'none' });
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [selectedMoveTile, setSelectedMoveTile] = useState<{ x: number; y: number } | null>(null);
   const [inspectEntityId, setInspectEntityId] = useState<string | null>(null);
-  const [planningMode, setPlanningMode] = useState<CombatPlanningMode>('idle');
-  const [selectedSource, setSelectedSource] = useState<SelectedCombatSource>({ kind: 'none' });
-  const [draftCommands, setDraftCommands] = useState<CombatCommand[]>([]);
-  const [planWarnings, setPlanWarnings] = useState<string[]>([]);
-  const [planWarningCodes, setPlanWarningCodes] = useState<string[]>([]);
-  const [planWarningDetails, setPlanWarningDetails] = useState<Array<{ code: string; commandId?: string; message?: string }>>([]);
-  const [planErrors, setPlanErrors] = useState<string[]>([]);
+  const [actionType, setActionType] = useState<ActionType>(ActionType.Attack);
+  const [guardMode, setGuardMode] = useState<'guard' | 'strong_guard'>('guard');
   const isSubmittingRef = useRef(false);
-  const timeoutSyncRoundRef = useRef<string | null>(null);
-  const previousRoundRef = useRef<number>(state.roundNumber);
-  const lastReportedFailureEventRef = useRef<string | null>(null);
+  const lastFailureEventIdRef = useRef<string | null>(null);
+
+  const legacyPlan = useMemo(
+    () => (state.submittedPlans?.[playerId] ?? null),
+    [playerId, state.submittedPlans],
+  );
+  const legacyApSpent = useMemo(
+    () => (legacyPlan?.commands ?? []).reduce((sum, cmd) => sum + Math.max(0, Number(cmd.apCost ?? 0)), 0),
+    [legacyPlan],
+  );
+  const legacyApLeft = Math.max(0, 3 - legacyApSpent);
+
+  // ── Derived ─────────────────────────────────────────────────────────────
+  const playerStyle = useMemo(() => (player ? classifyCombatStyle(player) : 'MELEE'), [player]);
   const selectedSkill = useMemo(
-    () => availableSkills.find((skill) => skill.skillId === selectedSkillId) ?? null,
+    () => availableSkills.find((s) => s.skillId === selectedSkillId) ?? null,
     [availableSkills, selectedSkillId],
   );
-
-  const battleInventoryItems = useMemo(
-    () => actionSlots
-      .filter((slot) => slot.kind === 'item' && Boolean(slot.refId))
-      .map((slot) => {
-        const itemId = slot.refId;
-        if (!itemId) {
-          return null;
-        }
-        const quantity = inventory.items.find((entry) => entry.itemId === itemId)?.quantity ?? 0;
-        const item = resolveItemById ? resolveItemById(itemId) : getItemById(itemId);
-        if (!item) {
-          return {
-            id: itemId,
-            name: itemId,
-            description: 'Missing item definition.',
-            icon: '?',
-            itemType: 'missing',
-            quantity,
-            disabled: true,
-            disabledReason: 'Предмет не найден в контенте.',
-            effectSummary: 'Definition missing',
-            costSummary: null,
-          };
-        }
-        const adminItem = resolveAdminItemById ? resolveAdminItemById(itemId) : null;
-        const costs = normalizeAdminItemCosts(adminItem);
-        const effects = normalizeAdminItemEffects(adminItem);
-        const wantsEnemyTarget = effects.some((effect) => effect.type === 'damage_target' || String(effect.target ?? '').toLowerCase().includes('enemy'));
-        const costSummary = [
-          costs.mana > 0 ? `${costs.mana} mana` : null,
-          costs.stamina > 0 ? `${costs.stamina} stamina` : null,
-          costs.hp > 0 ? `${costs.hp} HP` : null,
-        ].filter(Boolean).join(', ') || null;
-        const effectSummary = effects.length > 0
-          ? effects.map((effect) => `${effect.type}${effect.amount > 0 ? ` ${effect.amount}` : ''}`).join(', ')
-          : (item.description || null);
-        const notEnoughMana = costs.mana > (player?.currentMp ?? 0);
-        const notEnoughStamina = costs.stamina > (player?.currentStamina ?? 0);
-        const invalidTarget = wantsEnemyTarget && !enemies.some((enemy) => enemy.id === selectedTargetId);
-        const disabledReason = quantity <= 0
-          ? 'Количество закончилось.'
-          : notEnoughMana
-            ? 'Not enough mana'
-            : notEnoughStamina
-              ? 'Not enough stamina'
-              : invalidTarget
-                ? 'Нет цели для предмета.'
-                : null;
-        return {
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          icon: item.icon,
-          itemType: item.itemType,
-          quantity,
-          disabled: Boolean(disabledReason),
-          disabledReason,
-          effectSummary,
-          costSummary,
-        };
-      })
-      .filter(Boolean) as Array<{ id: string; name: string; description: string; icon: string; itemType: string; quantity: number; disabled?: boolean; disabledReason?: string | null; effectSummary?: string | null; costSummary?: string | null }>,
-    [actionSlots, enemies, inventory.items, player?.currentMp, player?.currentStamina, resolveAdminItemById, resolveItemById, selectedTargetId],
-  );
-
-  useEffect(() => {
-    console.info('[combatItems] loaded', battleInventoryItems);
-  }, [battleInventoryItems]);
-
-  useEffect(() => {
-    console.info('[combatSkills] loaded', availableSkills.map((entry) => entry.skillId));
-  }, [availableSkills]);
-
-  const lastLog = state.logs.at(-1);
-  const recentLogs = useMemo(() => state.logs.slice(-8), [state.logs]);
-  const lastHitZone = useMemo(() => (lastLog ? parseZoneFromLogText(lastLog.text) : null), [lastLog]);
   const selectedEnemy = useMemo(
-    () => enemies.find((enemy) => enemy.id === selectedTargetId) ?? enemies[0] ?? null,
+    () => enemies.find((e) => e.id === selectedTargetId) ?? enemies[0] ?? null,
     [enemies, selectedTargetId],
   );
-  const selectedEnemyPlacement = useMemo(
-    () => state.entities.find((item) => item.id === selectedTargetId) ?? null,
-    [selectedTargetId, state.entities],
-  );
   const playerPlacement = useMemo(
-    () => state.entities.find((item) => item.id === playerId) ?? null,
-    [playerId, state.entities],
+    () => state.entities.find((e) => e.id === playerId) ?? null,
+    [state.entities, playerId],
   );
   const pendingPlayerPlacement = useMemo(() => {
-    if (!playerPlacement) {
-      return null;
-    }
+    if (!playerPlacement) return null;
     return {
       ...playerPlacement,
       battlefieldX: selectedMoveTile?.x ?? playerPlacement.battlefieldX,
       battlefieldY: selectedMoveTile?.y ?? playerPlacement.battlefieldY,
     };
   }, [playerPlacement, selectedMoveTile]);
-  const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
-  const inspectedEntity = useMemo(
-    () => state.entities.find((entity) => entity.id === inspectEntityId) ?? null,
-    [inspectEntityId, state.entities],
+  const selectedEnemyPlacement = useMemo(
+    () => state.entities.find((e) => e.id === selectedTargetId) ?? null,
+    [state.entities, selectedTargetId],
   );
   const targetInRange = useMemo(() => {
-    if (!pendingPlayerPlacement || !selectedEnemyPlacement) {
-      return false;
-    }
-
+    if (!pendingPlayerPlacement || !selectedEnemyPlacement) return false;
     const dist = getBattlefieldDistance(pendingPlayerPlacement, selectedEnemyPlacement);
-    if (playerStyle === 'MELEE') {
-      return dist <= 1;
-    }
-    if (playerStyle === 'RANGED') {
-      const maxRange = typeof player?.attackRange === 'number' && player.attackRange > 1 ? Math.floor(player.attackRange) : 6;
-      return dist <= Math.max(2, maxRange);
-    }
-    const maxRange = typeof player?.attackRange === 'number' && player.attackRange > 1 ? Math.floor(player.attackRange) : 5;
+    if (playerStyle === 'MELEE') return dist <= 1;
+    const maxRange = typeof player?.attackRange === 'number' && player.attackRange > 1
+      ? Math.floor(player.attackRange)
+      : playerStyle === 'RANGED' ? 6 : 5;
     return dist <= Math.max(2, maxRange);
   }, [pendingPlayerPlacement, player?.attackRange, playerStyle, selectedEnemyPlacement]);
+
+  const playerEscapeState = useMemo(
+    () => state.escapeStates?.[playerId] ?? null,
+    [state.escapeStates, playerId],
+  );
+  const playerOnExitZone = useMemo(
+    () => Boolean(isActorStandingOnExitZone({ battleState: state, actorId: playerId }).ok),
+    [state, playerId],
+  );
+
+  const lastLog = state.logs.at(-1) ?? null;
+  const recentLogs = useMemo(() => state.logs.slice(-8), [state.logs]);
 
   const feedback = useMemo(() => {
     if (!lastLog) {
       return { playerVisualState: 'idle' as const, enemyVisualState: 'idle' as const, floatingText: null as string | null };
     }
-
-    const playerIsActor = lastLog.actorId === playerId;
-    const playerIsTarget = lastLog.targetId === playerId;
-
+    const isActor = lastLog.actorId === playerId;
+    const isTarget = lastLog.targetId === playerId;
     if (lastLog.type === 'HIT') {
       const floatingText = /critical/i.test(lastLog.text) ? `CRIT -${lastLog.amount ?? 0}` : `-${lastLog.amount ?? 0}`;
       return {
-        playerVisualState: playerIsActor ? 'attack' as const : playerIsTarget ? 'hit' as const : 'idle' as const,
-        enemyVisualState: playerIsActor ? 'hit' as const : playerIsTarget ? 'attack' as const : 'idle' as const,
+        playerVisualState: isActor ? 'attack' as const : isTarget ? 'hit' as const : 'idle' as const,
+        enemyVisualState: isActor ? 'hit' as const : isTarget ? 'attack' as const : 'idle' as const,
         floatingText,
       };
     }
-
     if (lastLog.type === 'BLOCK') {
       return {
-        playerVisualState: playerIsActor ? 'block' as const : playerIsTarget ? 'attack' as const : 'idle' as const,
-        enemyVisualState: playerIsActor ? 'attack' as const : playerIsTarget ? 'block' as const : 'idle' as const,
+        playerVisualState: isActor ? 'block' as const : isTarget ? 'attack' as const : 'idle' as const,
+        enemyVisualState: isActor ? 'attack' as const : isTarget ? 'block' as const : 'idle' as const,
         floatingText: 'BLOCK',
       };
     }
-
     if (lastLog.type === 'MISS') {
       return {
-        playerVisualState: playerIsActor ? 'attack' as const : playerIsTarget ? 'dodge' as const : 'idle' as const,
-        enemyVisualState: playerIsActor ? 'dodge' as const : playerIsTarget ? 'attack' as const : 'idle' as const,
+        playerVisualState: isActor ? 'attack' as const : isTarget ? 'dodge' as const : 'idle' as const,
+        enemyVisualState: isActor ? 'dodge' as const : isTarget ? 'attack' as const : 'idle' as const,
         floatingText: 'DODGE',
       };
     }
-
     return { playerVisualState: 'idle' as const, enemyVisualState: 'idle' as const, floatingText: null as string | null };
   }, [lastLog, playerId]);
 
-  const actionWarning = useMemo(() => {
-    if (actionType === ActionType.Attack && movementType === MovementType.Dash) {
-      return 'После Dash атака недоступна.';
-    }
-    if (actionType === ActionType.Attack && movementType === MovementType.Disengage) {
-      return 'После Disengage атака недоступна.';
-    }
-    if (actionType === ActionType.Attack && movementType === MovementType.Extra) {
-      return 'После 2 клеток движения атака по базовым правилам недоступна.';
-    }
-    if (getActionCost(actionType, movementType, guardMode) > (player?.currentStamina ?? 0)) {
-      return 'Недостаточно stamina для выбранной комбинации действий.';
-    }
-    if (selectedSkill) {
-      const resourceSummary = getSkillCostSummary(selectedSkill.definition, selectedSkill.level);
-      const manaCost = resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('mp') ? sum + entry.amount : sum, 0);
-      const staminaCost = resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('stamina') ? sum + entry.amount : sum, 0);
-      const hpCost = resourceSummary.reduce((sum, entry) => String(entry.type).toLowerCase().includes('hp') ? sum + entry.amount : sum, 0);
-      if (manaCost > (player?.currentMp ?? 0)) {
-        return 'Not enough mana';
-      }
-      if (staminaCost + getActionCost(actionType, movementType, guardMode) > (player?.currentStamina ?? 0)) {
-        return 'Not enough stamina';
-      }
-      if (hpCost >= (player?.currentHp ?? 0)) {
-        return 'Not enough HP (skill cost too high)';
-      }
-    }
-    return null;
-  }, [actionType, guardMode, movementType, player?.currentMp, player?.currentStamina, player?.currentHp, selectedSkill]);
+  // Inventory items for hotbar
+  const battleInventoryItems = useMemo(() => {
+    return actionSlots
+      .filter((slot) => slot.kind === 'item' && Boolean(slot.refId))
+      .map((slot) => {
+        const itemId = slot.refId!;
+        const quantity = inventory.items.find((e) => e.itemId === itemId)?.quantity ?? 0;
+        const adminItem = resolveAdminItemById ? resolveAdminItemById(itemId) : null;
+        const costs = normalizeAdminItemCosts(adminItem);
+        const effects = normalizeAdminItemEffects(adminItem);
+        const wantsEnemy = effects.some(
+          (e) => e.type === 'damage_target' || String(e.target ?? '').toLowerCase().includes('enemy'),
+        );
+        const costSummary = [
+          costs.mana > 0 ? `${costs.mana} MP` : null,
+          costs.stamina > 0 ? `${costs.stamina} STA` : null,
+          costs.hp > 0 ? `${costs.hp} HP` : null,
+        ].filter(Boolean).join(', ') || null;
+        const effectSummary = effects.length > 0
+          ? effects.map((e) => `${e.type}${e.amount > 0 ? ` ${e.amount}` : ''}`).join(', ')
+          : null;
+        const notEnoughMana = costs.mana > (player?.currentMp ?? 0);
+        const notEnoughStamina = costs.stamina > (player?.currentStamina ?? 0);
+        const invalidTarget = wantsEnemy && !enemies.some((e) => e.id === selectedTargetId);
+        const disabledReason = quantity <= 0
+          ? 'Закончилось.'
+          : notEnoughMana ? 'Нет маны.'
+          : notEnoughStamina ? 'Нет выносливости.'
+          : invalidTarget ? 'Нет цели.'
+          : null;
+        return {
+          id: itemId,
+          name: adminItem ? String(toRecord(adminItem as unknown)?.name ?? itemId) : itemId,
+          description: adminItem ? String(toRecord(adminItem as unknown)?.description ?? '') : '',
+          icon: adminItem ? String(toRecord(adminItem as unknown)?.icon ?? '?') : '?',
+          itemType: adminItem ? String(toRecord(adminItem as unknown)?.itemType ?? 'item') : 'item',
+          quantity,
+          disabled: Boolean(disabledReason),
+          disabledReason,
+          effectSummary,
+          costSummary,
+        };
+      });
+  }, [actionSlots, enemies, inventory.items, player?.currentMp, player?.currentStamina, resolveAdminItemById, selectedTargetId]);
 
-  // Soft hint — shown in UI but does NOT disable the button
+  // Skill resource warning
+  const skillResourceWarning = useMemo(() => {
+    if (!selectedSkill || !player) return null;
+    const summary = getSkillCostSummary(selectedSkill.definition, selectedSkill.level);
+    const mp = summary.reduce((s, e) => String(e.type).toLowerCase().includes('mp') ? s + e.amount : s, 0);
+    const sta = summary.reduce((s, e) => String(e.type).toLowerCase().includes('stamina') ? s + e.amount : s, 0);
+    const hp = summary.reduce((s, e) => String(e.type).toLowerCase().includes('hp') ? s + e.amount : s, 0);
+    if (mp > player.currentMp) return 'Недостаточно маны для навыка.';
+    if (sta > player.currentStamina) return 'Недостаточно выносливости для навыка.';
+    if (hp >= player.currentHp) return 'Недостаточно HP для навыка.';
+    return null;
+  }, [player, selectedSkill]);
+
   const actionHint = useMemo(() => {
-    if (actionType === ActionType.Attack && selectedMoveTile && !targetInRange) {
-      return 'Цель вне досягаемости даже после перемещения.';
-    }
-    if (actionType === ActionType.Attack && !selectedMoveTile && !targetInRange) {
-      return 'Цель далеко — подойди к ней на карте или просто атакуй (сервер проверит дистанцию).';
+    if (!isPlayerTurn) return null;
+    if (selectedSource.kind === 'basic_attack' && !targetInRange) {
+      return 'Цель вне досягаемости. Подойди ближе.';
     }
     return null;
-  }, [actionType, selectedMoveTile, targetInRange]);
+  }, [isPlayerTurn, selectedSource.kind, targetInRange]);
 
-  const secondsLeft = useMemo(() => {
-    if (!state.turnDeadlineAt || state.isFinished) {
-      return null;
-    }
-    const deadlineMs = new Date(state.turnDeadlineAt).getTime();
-    const diff = deadlineMs - nowMs;
-    return Math.max(0, Math.ceil(diff / 1000));
-  }, [nowMs, state.isFinished, state.turnDeadlineAt]);
+  // ── Core action executor ────────────────────────────────────────────────
 
-  const readyCount = state.readyActorIds?.length ?? 0;
-  const pendingCount = state.pendingActorIds?.length ?? 0;
-  const planningStatus = state.roundPhase === 'PLANNING'
-    ? `Planning: ${readyCount} ready${pendingCount > 0 ? `, ${pendingCount} pending` : ''}`
-    : state.roundPhase === 'RESOLVING'
-      ? 'Раунд выполняется...'
-      : 'Combat in Progress';
+  const executeAction = useCallback(async (command: CombatCommand): Promise<boolean> => {
+    if (!player || isSubmittingRef.current) return false;
+    if (!isPlayerTurn) { onStatus('Сейчас не ваш ход.'); return false; }
+    if (state.isFinished) return false;
 
-  useEffect(() => {
-    if (!enemies.some((enemy) => enemy.id === selectedTargetId)) {
-      setSelectedTargetId(enemies[0]?.id ?? '');
-    }
-  }, [enemies, selectedTargetId]);
-
-  useEffect(() => {
-    if (!movementType) {
-      setSelectedMoveTile(null);
-    }
-  }, [movementType]);
-
-  const playerSubmittedPlan = useMemo(
-    () => state.submittedPlans?.[playerId],
-    [playerId, state.submittedPlans],
-  );
-
-  const planLimits = useMemo(() => (player ? getCombatRoundLimits(player) : { maxCommands: 3, maxAP: 3 }), [player]);
-  const draftTotals = useMemo(() => getCombatPlanCostTotal(draftCommands), [draftCommands]);
-  const isPlanReady = Boolean(playerSubmittedPlan?.ready);
-  const isResolving = state.roundPhase === 'RESOLVING' || state.isFinished;
-
-  const guardStatusByActorId = useMemo(() => {
-    const statuses = new Map<string, 'none' | 'guard' | 'strong_guard' | 'broken'>();
-    for (const event of state.recentCombatEvents ?? []) {
-      const actorId = event.actorId ?? event.targetId;
-      if (!actorId) {
-        continue;
-      }
-      if (event.type === 'guard_applied') {
-        const guardType = String(event.data?.guardType ?? 'guard');
-        statuses.set(actorId, guardType === 'strong_guard' ? 'strong_guard' : 'guard');
-      }
-      if (event.type === 'guard_broken') {
-        statuses.set(actorId, 'broken');
-      }
-    }
-    return statuses;
-  }, [state.recentCombatEvents]);
-
-  const playerGuardStatusLabel = useMemo(() => {
-    const status = guardStatusByActorId.get(playerId);
-    if (status === 'strong_guard') {
-      return 'Усиленная защита';
-    }
-    if (status === 'guard') {
-      return 'Защита';
-    }
-    if (status === 'broken') {
-      return 'Усиленная защита пробита';
-    }
-    return null;
-  }, [guardStatusByActorId, playerId]);
-
-  const enemyGuardStatusLabel = useMemo(() => {
-    if (!selectedEnemy?.id) {
-      return null;
-    }
-    const status = guardStatusByActorId.get(selectedEnemy.id);
-    if (status === 'strong_guard') {
-      return 'Усиленная защита';
-    }
-    if (status === 'guard') {
-      return 'Защита';
-    }
-    if (status === 'broken') {
-      return 'Усиленная защита пробита';
-    }
-    return null;
-  }, [guardStatusByActorId, selectedEnemy?.id]);
-
-  useEffect(() => {
-    const latestFailure = [...(state.recentCombatEvents ?? [])]
-      .reverse()
-      .find((event) => event.type === 'command_failed' && event.actorId === playerId);
-    if (!latestFailure) {
-      return;
-    }
-    if (latestFailure.id === lastReportedFailureEventRef.current) {
-      return;
-    }
-    lastReportedFailureEventRef.current = latestFailure.id;
-
-    const reasonRaw = typeof latestFailure.data?.reason === 'string' ? latestFailure.data.reason : null;
-    const reason = reasonRaw ? formatRevalidationReason(reasonRaw) : null;
-    onStatus(reason ? `${latestFailure.message} Причина: ${reason}.` : latestFailure.message);
-  }, [onStatus, playerId, state.recentCombatEvents]);
-
-  useEffect(() => {
-    if (previousRoundRef.current !== state.roundNumber) {
-      previousRoundRef.current = state.roundNumber;
-      setDraftCommands([]);
-      setPlanErrors([]);
-      setPlanWarnings([]);
-      setPlanWarningCodes([]);
-      setPlanWarningDetails([]);
-    }
-
-    if (playerSubmittedPlan && playerSubmittedPlan.roundNumber === state.roundNumber) {
-      setDraftCommands(playerSubmittedPlan.commands ?? []);
-      setPlanningMode(playerSubmittedPlan.ready ? 'ready' : 'idle');
-    }
-  }, [playerSubmittedPlan, state.roundNumber]);
-
-  const appendCommandDirect = useCallback(async (command: CombatCommand): Promise<void> => {
-    if (!player || isSubmittingRef.current || isResolving) {
-      return;
-    }
-    if (isPlanReady) {
-      onStatus('План уже подтверждён. Отмените готовность для редактирования.');
-      return;
-    }
-
-    const candidateCommands = [...draftCommands, command];
     try {
       isSubmittingRef.current = true;
-      const preview = await validateCombatPlan({
+      const result = await executeCombatAction({
         battleId: combatId,
         actorId: player.id,
         roundNumber: state.roundNumber,
-        commands: candidateCommands,
+        command,
       });
 
-      if (!preview.ok) {
-        const attemptedType = candidateCommands[candidateCommands.length - 1]?.type;
-        const errors = preview.errors.map((code) => formatCommandSpecificPlanError(code, attemptedType));
-        setPlanErrors(errors);
-        const warningCodes = preview.warnings ?? [];
-        setPlanWarningCodes(warningCodes);
-        setPlanWarningDetails((preview.warningDetails ?? []).map((item) => ({ code: item.code, commandId: item.commandId, message: item.message })));
-        setPlanWarnings([]);
-        onStatus(errors[0] ?? 'План отклонён сервером.');
-        return;
+      if (!result.ok) {
+        if (
+          result.errorCode === 'ROUND_MISMATCH'
+          || result.errorCode === 'TURN_ALREADY_ENDED'
+          || result.errorCode === 'BATTLE_NOT_PLANNING'
+          || result.errorCode === 'ALREADY_SUBMITTED_THIS_ROUND'
+          || result.errorCode === 'HTTP_400'
+        ) {
+          try {
+            const fresh = await fetchCombatState(combatId);
+            onStateChange(fresh);
+          } catch {
+            // Keep original error status message below.
+          }
+        }
+        onStatus(formatActionError(result.errorCode, result.message));
+        return false;
       }
 
-      setDraftCommands(preview.normalizedCommands ?? candidateCommands);
-      setPlanErrors([]);
-      const warningCodes = preview.warnings ?? [];
-      setPlanWarningCodes(warningCodes);
-      setPlanWarningDetails((preview.warningDetails ?? []).map((item) => ({ code: item.code, commandId: item.commandId, message: item.message })));
-      const warnings = warningCodes.map((code) => formatPlanWarning(code));
-      setPlanWarnings(warnings);
+      onStateChange(result.battleState);
+      setSelectedMoveTile(null);
+      setMovementType(null);
       setSelectedSource({ kind: 'none' });
-      setPlanningMode('idle');
-      const effectiveCommands = preview.normalizedCommands ?? candidateCommands;
-      const lastCommand = effectiveCommands[effectiveCommands.length - 1];
-      const lastIndex = effectiveCommands.length - 1;
-      const guardHint = lastCommand && lastIndex > 0
-        ? getCommandTimingWarning(lastCommand, lastIndex)
-        : null;
-      onStatus(guardHint ?? (warnings.length > 0 ? warnings[0]! : 'Команда добавлена в очередь.'));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown plan error';
-      onStatus(message);
+
+      if (result.battleState.isFinished) {
+        onStatus(`Бой завершён. Победитель: ${result.battleState.winner ?? 'ничья'}.`);
+        await onBattleFinished?.(result.battleState);
+      }
+      return true;
+    } catch (err) {
+      onStatus(err instanceof Error ? err.message : 'Ошибка выполнения действия.');
+      return false;
     } finally {
       isSubmittingRef.current = false;
     }
-  }, [combatId, draftCommands, isPlanReady, isResolving, onStatus, player, state.roundNumber]);
+  }, [
+    combatId,
+    isPlayerTurn,
+    onBattleFinished,
+    onStateChange,
+    onStatus,
+    player,
+    state.isFinished,
+    state.roundNumber,
+  ]);
 
-  const addMoveFromTile = useCallback(async (tile: { x: number; y: number; movementType: MovementType }): Promise<void> => {
+  // End turn (wait — 0 AP, 0 stamina)
+  const endTurn = useCallback(async () => {
+    await executeAction(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
+  }, [executeAction]);
+
+  // Move to cell
+  const executeMoveToTile = useCallback(async (tile: { x: number; y: number; movementType: MovementType }) => {
     const moveType = tile.movementType === MovementType.Dash
       ? 'dash'
       : tile.movementType === MovementType.Disengage
         ? 'disengage'
         : 'move';
-
-    await appendCommandDirect(createCombatCommandFromType({
+    await executeAction(createCombatCommandFromType({
       type: moveType,
       target: { kind: 'cell', x: tile.x, y: tile.y },
       payload: { movementType: moveType === 'dash' ? 'dash' : moveType === 'disengage' ? 'disengage' : 'walk' },
     }));
-  }, [appendCommandDirect]);
+  }, [executeAction]);
 
-  const addEntityTargetCommand = useCallback(async (entityId: string, useQuickAttack = false): Promise<void> => {
-    if (!player || isResolving) {
-      return;
-    }
+  // Attack / skill / item / weapon on entity
+  const executeOnEntity = useCallback(async (entityId: string, forceBasicAttack = false) => {
+    if (!player) return;
 
-    if (selectedSource.kind === 'skill' && selectedSource.skillId) {
-      await appendCommandDirect(createCombatCommandFromType({
+    if (!forceBasicAttack && selectedSource.kind === 'skill') {
+      await executeAction(createCombatCommandFromType({
         type: 'skill_cast',
         target: { kind: 'entity', entityId },
         sourceSlotId: selectedSource.slotId,
         payload: { skillId: selectedSource.skillId, targetZone: TargetZone.Chest },
       }));
+      onSkillChange(null);
       return;
     }
 
-    if (selectedSource.kind === 'item' && (selectedSource.itemId || selectedSource.itemInstanceId)) {
-      const targetEntity = state.entities.find((entity) => entity.id === entityId);
-      const adminItem = selectedSource.itemId && resolveAdminItemById ? resolveAdminItemById(selectedSource.itemId) : null;
+    if (!forceBasicAttack && selectedSource.kind === 'item') {
+      const targetEntity = state.entities.find((e) => e.id === entityId);
+      const adminItem = resolveAdminItemById ? resolveAdminItemById(selectedSource.itemId) : null;
       if (targetEntity && isCellTargetItem(adminItem)) {
-        await appendCommandDirect(createCombatCommandFromType({
+        await executeAction(createCombatCommandFromType({
           type: 'item_use',
           target: { kind: 'cell', x: targetEntity.battlefieldX ?? 0, y: targetEntity.battlefieldY ?? 0 },
           sourceSlotId: selectedSource.slotId,
-          payload: {
-            itemId: selectedSource.itemId,
-            itemInstanceId: selectedSource.itemInstanceId,
-          },
+          payload: { itemId: selectedSource.itemId, itemInstanceId: selectedSource.itemInstanceId },
         }));
       } else {
-        await appendCommandDirect(createCombatCommandFromType({
+        await executeAction(createCombatCommandFromType({
           type: 'item_use',
           target: { kind: 'entity', entityId },
           sourceSlotId: selectedSource.slotId,
-          payload: {
-            itemId: selectedSource.itemId,
-            itemInstanceId: selectedSource.itemInstanceId,
-          },
+          payload: { itemId: selectedSource.itemId, itemInstanceId: selectedSource.itemInstanceId },
         }));
       }
       return;
     }
 
-    if (selectedSource.kind === 'weapon' && (selectedSource.weaponItemId || selectedSource.weaponInstanceId)) {
-      const selectedWeaponId = selectedSource.weaponItemId ?? selectedSource.weaponInstanceId;
-      const isAlreadyEquipped = Boolean(selectedWeaponId && player.activeWeaponItemId === selectedWeaponId);
-
-      if (isAlreadyEquipped) {
-        await appendCommandDirect(createCombatCommandFromType({
-          type: 'basic_attack',
-          target: { kind: 'entity', entityId },
+    if (!forceBasicAttack && selectedSource.kind === 'weapon') {
+      const alreadyEquipped = player.activeWeaponItemId === selectedSource.weaponItemId;
+      if (!alreadyEquipped) {
+        await executeAction(createCombatCommandFromType({
+          type: 'weapon_swap',
+          target: { kind: 'self' },
           sourceSlotId: selectedSource.slotId,
-          payload: { targetZone: TargetZone.Chest },
+          payload: { weaponItemId: selectedSource.weaponItemId, weaponInstanceId: selectedSource.weaponInstanceId },
         }));
         return;
       }
-
-      const swapCommand = createCombatCommandFromType({
-        type: 'weapon_swap',
-        target: { kind: 'self' },
-        sourceSlotId: selectedSource.slotId,
-        payload: {
-          weaponItemId: selectedSource.weaponItemId,
-          weaponInstanceId: selectedSource.weaponInstanceId,
-        },
-      });
-
-      const wantsSwapAndAttack = window.confirm('Оружие не экипировано. Добавить в план "Сменить и атаковать"?\nОК = Сменить и атаковать, Отмена = только сменить.');
-      if (!wantsSwapAndAttack) {
-        await appendCommandDirect(swapCommand);
-        return;
-      }
-
-      await appendCommandDirect(swapCommand);
-      await appendCommandDirect(createCombatCommandFromType({
-        type: 'basic_attack',
-        target: { kind: 'entity', entityId },
-        sourceSlotId: selectedSource.slotId,
-        payload: { targetZone: TargetZone.Chest },
-      }));
-      return;
     }
 
-    if (useQuickAttack || selectedSource.kind === 'basic_attack') {
-      setSelectedSource({ kind: 'basic_attack' });
-      await appendCommandDirect(createCombatCommandFromType({
-        type: 'basic_attack',
-        target: { kind: 'entity', entityId },
-        payload: { targetZone: TargetZone.Chest },
-      }));
-    }
-  }, [appendCommandDirect, isResolving, player, resolveAdminItemById, selectedSource, state.entities]);
+    // Default: basic attack
+    setSelectedSource({ kind: 'basic_attack' });
+    await executeAction(createCombatCommandFromType({
+      type: 'basic_attack',
+      target: { kind: 'entity', entityId },
+      payload: { targetZone: TargetZone.Chest },
+    }));
+  }, [executeAction, onSkillChange, player, resolveAdminItemById, selectedSource, state.entities]);
 
-  const createSelectionCommands = useCallback((forcedType?: ActionType): CombatCommand[] => {
-    if (!player) {
-      return [];
-    }
+  // Guard
+  const executeGuard = useCallback(async (type: 'guard' | 'strong_guard') => {
+    setGuardMode(type);
+    setSelectedSource({ kind: type });
+    await executeAction(createCombatCommandFromType({ type, target: { kind: 'self' } }));
+  }, [executeAction]);
 
-    const selectedType = forcedType ?? actionType;
-    const targetId = selectedTargetId || enemies[0]?.id || '';
-    const commands: CombatCommand[] = [];
+  // Heavy attack
+  const executeHeavyAttack = useCallback(async (entityId: string) => {
+    await executeAction(createCombatCommandFromType({
+      type: 'heavy_attack',
+      target: { kind: 'entity', entityId },
+      payload: { targetZone: TargetZone.Chest },
+    }));
+  }, [executeAction]);
 
-    if (selectedType !== ActionType.Wait && movementType && selectedMoveTile) {
-      const moveType = movementType === MovementType.Dash
-        ? 'dash'
-        : movementType === MovementType.Disengage
-          ? 'disengage'
-          : 'move';
+  // ── Effects ─────────────────────────────────────────────────────────────
 
-      commands.push(createCombatCommandFromType({
-        type: moveType,
-        target: { kind: 'cell', x: selectedMoveTile.x, y: selectedMoveTile.y },
-        payload: { movementType: moveType === 'dash' ? 'dash' : moveType === 'disengage' ? 'disengage' : 'walk' },
-      }));
-    }
-
-    if (selectedType === ActionType.Attack) {
-      if (!targetId) {
-        return commands;
-      }
-      commands.push(
-        selectedSkill
-          ? createCombatCommandFromType({
-            type: 'skill_cast',
-            target: { kind: 'entity', entityId: targetId },
-            sourceSlotId: actionSlots.find((slot) => slot.kind === 'skill' && slot.refId === selectedSkill.skillId)?.slotId,
-            payload: { skillId: selectedSkill.skillId, targetZone: TargetZone.Chest },
-          })
-          : createCombatCommandFromType({
-            type: 'basic_attack',
-            target: { kind: 'entity', entityId: targetId },
-            payload: { targetZone: TargetZone.Chest },
-          }),
-      );
-    } else if (selectedType === ActionType.Defend) {
-      commands.push(createCombatCommandFromType({
-        type: guardMode === 'strong_guard' ? 'strong_guard' : 'guard',
-        target: { kind: 'self' },
-      }));
-    } else if (selectedType === ActionType.Wait) {
-      commands.push(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
-    } else if (selectedType === ActionType.Move && movementType && selectedMoveTile) {
-      // Move action already represented by movement command above.
-    }
-
-    return commands;
-  }, [actionSlots, actionType, enemies, guardMode, movementType, player, selectedMoveTile, selectedSkill, selectedTargetId]);
-
-  const appendSelectedCommands = useCallback(async (forcedType?: ActionType): Promise<void> => {
-    if (!player || isResolving) {
-      onStatus('Player entity not found.');
-      return;
-    }
-    if (isSubmittingRef.current) {
-      return;
-    }
-    if (isPlanReady) {
-      onStatus('План уже подтверждён. Отмените готовность для редактирования.');
-      return;
-    }
-    if (!forcedType && actionWarning) {
-      onStatus(actionWarning);
-      return;
-    }
-
-    const nextCommands = createSelectionCommands(forcedType);
-    if (nextCommands.length === 0) {
-      onStatus('Не удалось сформировать команду. Выберите цель/клетку.');
-      return;
-    }
-
-    const candidateCommands = [...draftCommands, ...nextCommands];
-
-    try {
-      isSubmittingRef.current = true;
-      const preview = await validateCombatPlan({
-        battleId: combatId,
-        actorId: player.id,
-        roundNumber: state.roundNumber,
-        commands: candidateCommands,
-      });
-
-      if (!preview.ok) {
-        const attemptedType = candidateCommands[candidateCommands.length - 1]?.type;
-        const errors = preview.errors.map((code) => formatCommandSpecificPlanError(code, attemptedType));
-        setPlanErrors(errors);
-        const warningCodes = preview.warnings ?? [];
-        setPlanWarningCodes(warningCodes);
-        setPlanWarningDetails((preview.warningDetails ?? []).map((item) => ({ code: item.code, commandId: item.commandId, message: item.message })));
-        setPlanWarnings([]);
-        onStatus(errors[0] ?? 'План отклонён сервером.');
-        return;
-      }
-
-      setDraftCommands(preview.normalizedCommands ?? candidateCommands);
-      setPlanErrors([]);
-      const warningCodes = preview.warnings ?? [];
-      setPlanWarningCodes(warningCodes);
-      setPlanWarningDetails((preview.warningDetails ?? []).map((item) => ({ code: item.code, commandId: item.commandId, message: item.message })));
-      const warnings = warningCodes.map((code) => formatPlanWarning(code));
-      setPlanWarnings(warnings);
-      const effectiveCommands = preview.normalizedCommands ?? candidateCommands;
-      const lastCommand = effectiveCommands[effectiveCommands.length - 1];
-      const lastIndex = effectiveCommands.length - 1;
-      const guardHint = lastCommand && lastIndex > 0
-        ? getCommandTimingWarning(lastCommand, lastIndex)
-        : null;
-      onStatus(guardHint ?? (warnings.length > 0 ? warnings[0]! : 'Команда добавлена в очередь.'));
-      setSelectedMoveTile(null);
-      setMovementType(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown plan error';
-      onStatus(message);
-    } finally {
-      isSubmittingRef.current = false;
-    }
-  }, [actionWarning, combatId, createSelectionCommands, draftCommands, isPlanReady, isResolving, onStatus, player, state.roundNumber]);
-
-  const submitReady = useCallback(async (): Promise<void> => {
-    if (!player || isSubmittingRef.current || isResolving) {
-      return;
-    }
-
-    try {
-      isSubmittingRef.current = true;
-
-      const submitResult = await submitCombatPlan({
-        battleId: combatId,
-        actorId: player.id,
-        roundNumber: state.roundNumber,
-        commands: draftCommands,
-        ready: true,
-      });
-
-      if (!submitResult.ok) {
-        const formatted = [formatPlanError(submitResult.errorCode)];
-        setPlanErrors(formatted);
-        setPlanWarningCodes([]);
-        setPlanWarningDetails([]);
-        setPlanWarnings([]);
-        onStatus(formatted[0] ?? 'План не принят.');
-        return;
-      }
-
-      onStateChange(submitResult.battleState);
-      setPlanErrors([]);
-      setPlanningMode(submitResult.battleState.roundPhase === 'RESOLVING' ? 'resolving' : 'ready');
-      if (submitResult.battleState.isFinished) {
-        onStatus(`Battle finished. Winner: ${submitResult.battleState.winner ?? 'none'}.`);
-        await onBattleFinished?.(submitResult.battleState);
-      } else {
-        onStatus('План подтверждён. Ожидание противника...');
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown ready error';
-      onStatus(message);
-    } finally {
-      isSubmittingRef.current = false;
-    }
-  }, [combatId, draftCommands, isResolving, onBattleFinished, onStateChange, onStatus, player, state.roundNumber]);
-
+  // Report command_failed events
   useEffect(() => {
-    if (!combatId || state.isFinished || state.roundPhase !== 'PLANNING') {
-      return;
-    }
-    if (secondsLeft === null || secondsLeft > 0) {
-      return;
-    }
+    const latest = [...(state.recentCombatEvents ?? [])]
+      .reverse()
+      .find((e) => e.type === 'command_failed' && e.actorId === playerId);
+    if (!latest || latest.id === lastFailureEventIdRef.current) return;
+    lastFailureEventIdRef.current = latest.id;
+    const reason = typeof latest.data?.reason === 'string' ? formatRevalidationReason(latest.data.reason) : null;
+    onStatus(reason ? `${latest.message} Причина: ${reason}.` : latest.message);
+  }, [onStatus, playerId, state.recentCombatEvents]);
 
-    const roundKey = `${combatId}:${state.roundNumber}`;
-    if (timeoutSyncRoundRef.current === roundKey) {
-      return;
+  // Auto-select first alive enemy
+  useEffect(() => {
+    if (!enemies.some((e) => e.id === selectedTargetId)) {
+      setSelectedTargetId(enemies[0]?.id ?? '');
     }
-    timeoutSyncRoundRef.current = roundKey;
+  }, [enemies, selectedTargetId]);
 
+  // Clear move tile when movement type cleared
+  useEffect(() => {
+    if (!movementType) setSelectedMoveTile(null);
+  }, [movementType]);
+
+  // Timer expiry: sync state from server
+  useEffect(() => {
+    if (!isPlayerTurn || state.isFinished || remainingSeconds === null || remainingSeconds > 0) return;
     void (async () => {
       try {
-        const freshState = await fetchCombatState(combatId);
-        onStateChange(freshState);
-      } catch (error) {
-        onStatus(error instanceof Error ? error.message : 'Не удалось синхронизировать состояние боя по таймеру.');
-      }
+        const fresh = await fetchCombatState(combatId);
+        onStateChange(fresh);
+      } catch { /* ignore */ }
     })();
-  }, [combatId, onStateChange, onStatus, secondsLeft, state.isFinished, state.roundNumber, state.roundPhase]);
+  }, [combatId, isPlayerTurn, onStateChange, remainingSeconds, state.isFinished]);
 
-  const toggleReady = useCallback(async (): Promise<void> => {
-    if (!player || isSubmittingRef.current || isResolving) {
-      return;
-    }
-    if (!isPlanReady) {
-      if (draftCommands.length === 0) {
-        const waitCommand = createCombatCommandFromType({
-          type: 'wait',
-          target: { kind: 'self' },
-        });
-        const nextDraft = [waitCommand];
-        setDraftCommands(nextDraft);
-        setPlanErrors([]);
-        setPlanWarnings([]);
-        setPlanWarningCodes([]);
-        setPlanWarningDetails([]);
-        onStatus('Пустой план: добавлено Ожидание (0 AP).');
-
-        try {
-          isSubmittingRef.current = true;
-          const submitResult = await submitCombatPlan({
-            battleId: combatId,
-            actorId: player.id,
-            roundNumber: state.roundNumber,
-            commands: nextDraft,
-            ready: true,
-          });
-
-          if (!submitResult.ok) {
-            const formatted = [formatPlanError(submitResult.errorCode)];
-            setPlanErrors(formatted);
-            onStatus(formatted[0] ?? 'План не принят.');
-            return;
-          }
-
-          setDraftCommands(submitResult.acceptedPlan.commands);
-          onStateChange(submitResult.battleState);
-          setPlanningMode(submitResult.battleState.roundPhase === 'RESOLVING' ? 'resolving' : 'ready');
-          onStatus(submitResult.battleState.isFinished
-            ? `Battle finished. Winner: ${submitResult.battleState.winner ?? 'none'}.`
-            : 'План подтверждён. Ожидание противника...');
-          if (submitResult.battleState.isFinished) {
-            await onBattleFinished?.(submitResult.battleState);
-          }
-          return;
-        } catch (error) {
-          onStatus(error instanceof Error ? error.message : 'Unknown ready error');
-          return;
-        } finally {
-          isSubmittingRef.current = false;
-        }
-      }
-
-      const dangerousFriendlyFire = planWarningCodes.some((code) => code === 'FRIENDLY_FIRE' || code === 'ALLY_IN_AREA' || code === 'SELF_IN_AREA' || code === 'NEUTRAL_IN_AREA');
-      if (dangerousFriendlyFire) {
-        const confirmed = window.confirm('В плане есть действия, которые могут задеть союзников или нейтральные цели. Продолжить?');
-        if (!confirmed) {
-          onStatus('Подтверждение отменено. Проверьте предупреждения в плане.');
-          return;
-        }
-      }
-      await submitReady();
-      return;
-    }
-
-    try {
-      isSubmittingRef.current = true;
-      const result = await cancelCombatReady({ combatId, actorId: player.id, roundNumber: state.roundNumber });
-      onStateChange(result.state);
-      setPlanningMode('idle');
-      onStatus('Готовность отменена. План можно редактировать.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown cancel-ready error';
-      onStatus(message);
-    } finally {
-      isSubmittingRef.current = false;
-    }
-  }, [combatId, draftCommands.length, isPlanReady, isResolving, onBattleFinished, onStateChange, onStatus, planWarningCodes, player, state.roundNumber, submitReady]);
-
-  const undoDraftCommand = useCallback(() => {
-    if (isPlanReady) {
-      onStatus('Сначала отмените готовность, затем редактируйте очередь.');
-      return;
-    }
-    setDraftCommands((prev) => prev.slice(0, -1));
-    setPlanningMode('idle');
-    setPlanErrors([]);
-  }, [isPlanReady, onStatus]);
-
-  const clearDraftCommands = useCallback(() => {
-    if (isPlanReady) {
-      onStatus('Сначала отмените готовность, затем редактируйте очередь.');
-      return;
-    }
-    setDraftCommands([]);
-    setSelectedSource({ kind: 'none' });
-    setPlanningMode('idle');
-    setPlanErrors([]);
-    setPlanWarnings([]);
-  }, [isPlanReady, onStatus]);
-
-  const submitRound = useCallback(async (): Promise<void> => {
-    await appendSelectedCommands();
-  }, [appendSelectedCommands]);
-
-  const repeatLastSelectedAction = useCallback(async (): Promise<boolean> => {
-    if (isResolving || isPlanReady) {
-      return false;
-    }
-
-    if (selectedSource.kind === 'skill' || selectedSource.kind === 'item' || selectedSource.kind === 'weapon' || selectedSource.kind === 'basic_attack') {
-      if (!selectedTargetId) {
-        onStatus('Сначала выберите цель для повторного действия.');
-        return true;
-      }
-      await addEntityTargetCommand(selectedTargetId, selectedSource.kind === 'basic_attack');
-      return true;
-    }
-
-    if (selectedSource.kind === 'guard' || selectedSource.kind === 'strong_guard') {
-      await appendCommandDirect(createCombatCommandFromType({
-        type: selectedSource.kind,
-        target: { kind: 'self' },
-      }));
-      return true;
-    }
-
-    if (selectedSource.kind !== 'none') {
-      return true;
-    }
-
-    if (actionType === ActionType.Attack && selectedTargetId) {
-      setSelectedSource({ kind: 'basic_attack' });
-      await addEntityTargetCommand(selectedTargetId, true);
-      return true;
-    }
-
-    if (actionType === ActionType.Defend) {
-      const guardType = guardMode === 'strong_guard' ? 'strong_guard' : 'guard';
-      setSelectedSource({ kind: guardType });
-      await appendCommandDirect(createCombatCommandFromType({
-        type: guardType,
-        target: { kind: 'self' },
-      }));
-      return true;
-    }
-
-    if (selectedMoveTile && movementType) {
-      await addMoveFromTile({ x: selectedMoveTile.x, y: selectedMoveTile.y, movementType });
-      return true;
-    }
-
-    return false;
-  }, [actionType, addEntityTargetCommand, addMoveFromTile, appendCommandDirect, guardMode, isPlanReady, isResolving, movementType, onStatus, selectedMoveTile, selectedSource.kind, selectedTargetId]);
-
-  const applyMoveSelection = useCallback((tile: { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean }) => {
-    setMovementType(tile.movementType);
-    setSelectedMoveTile({ x: tile.x, y: tile.y });
-    setPlanningMode('selecting_cell');
-    if (tile.willTriggerOpportunity) {
-      onStatus('Маршрут опасен: будет удар вслед.');
-    } else {
-      onStatus(`Move planned to ${tile.x + 1}:${tile.y + 1}`);
-    }
-  }, [onStatus]);
-
+  // Keyboard shortcuts
   useEffect(() => {
-    const isEditableTarget = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-      const tag = target.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    const isEditable = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable;
     };
 
-    const handleHotkeys = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target) || !isPlayerTurn || state.isFinished) return;
+
+      // Space = end turn
+      if ((e.key === ' ' || e.code === 'Space') && !e.repeat) {
+        e.preventDefault();
+        void endTurn();
         return;
       }
-
-      if (event.shiftKey && !event.ctrlKey && !event.altKey && event.key === 'Enter') {
-        event.preventDefault();
-        if (!event.repeat) {
-          void submitRound();
-        }
+      // E = guard, Shift+E = strong guard
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'e' && !e.repeat) {
+        e.preventDefault();
+        void executeGuard(e.shiftKey ? 'strong_guard' : 'guard');
         return;
       }
-
-      if (event.key === ' ' || event.code === 'Space') {
-        if (event.repeat) {
-          return;
-        }
-        event.preventDefault();
-        void (async () => {
-          const consumed = await repeatLastSelectedAction();
-          if (!consumed) {
-            await toggleReady();
-          }
-        })();
-        return;
-      }
-
-      if (event.key === 'Backspace') {
-        event.preventDefault();
-        clearDraftCommands();
-        return;
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        undoDraftCommand();
-        return;
-      }
-
-      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'e') {
-        event.preventDefault();
-        setActionType(ActionType.Defend);
-        setGuardMode(event.shiftKey ? 'strong_guard' : 'guard');
-        setSelectedSource({ kind: event.shiftKey ? 'strong_guard' : 'guard' });
-        void appendCommandDirect(createCombatCommandFromType({
-          type: event.shiftKey ? 'strong_guard' : 'guard',
-          target: { kind: 'self' },
-        }));
-        return;
-      }
-
-      if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Escape') {
-        event.preventDefault();
+      // Escape = clear selection
+      if (e.key === 'Escape') {
+        e.preventDefault();
         setSelectedMoveTile(null);
         setMovementType(null);
+        setSelectedSource({ kind: 'none' });
         onSkillChange(null);
         return;
       }
-
-      if (!event.ctrlKey && !event.metaKey && !event.altKey && /^[0-9]$/.test(event.key)) {
-        const slotId = event.key === '0' ? 'quick10' : (`quick${event.key}` as CharacterActionSlot['slotId']);
-        const slot = actionSlots.find((item) => item.slotId === slotId);
-        if (slot?.kind === 'skill' && slot.refId) {
+      // 1-9, 0 = hotbar
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9]$/.test(e.key)) {
+        const slotId = e.key === '0' ? 'quick10' : (`quick${e.key}` as CharacterActionSlot['slotId']);
+        const slot = actionSlots.find((s) => s.slotId === slotId);
+        if (!slot?.kind || !slot.refId) return;
+        e.preventDefault();
+        if (slot.kind === 'skill') {
           setSelectedSource({ kind: 'skill', slotId, skillId: slot.refId });
           onSkillChange(slot.refId);
-          setActionType(ActionType.Attack);
-          setPlanningMode('selecting_target');
-          onStatus(`Выбран слот ${slotId}. Выберите цель.`);
-          event.preventDefault();
-        }
-        if ((slot?.kind === 'item' || slot?.kind === 'weapon') && slot.refId) {
-          if (slot.kind === 'weapon') {
-            setSelectedSource({ kind: 'weapon', slotId, weaponItemId: slot.refId, weaponInstanceId: slot.weaponInstanceId ?? slot.itemInstanceId ?? undefined });
-            setPlanningMode('selecting_target');
-            onStatus(`Выбран слот ${slotId}. Выберите цель или себя.`);
-          } else {
-            setSelectedSource({ kind: 'item', slotId, itemId: slot.refId, itemInstanceId: slot.itemInstanceId ?? undefined });
-            setPlanningMode('selecting_target');
-            onStatus(`Выбран слот ${slotId}. Выберите цель или клетку.`);
-          }
-          event.preventDefault();
+          onStatus(`Навык ${slot.refId} выбран. Кликните цель.`);
+        } else if (slot.kind === 'weapon') {
+          setSelectedSource({ kind: 'weapon', slotId, weaponItemId: slot.refId, weaponInstanceId: slot.weaponInstanceId ?? undefined });
+          onStatus(`Оружие выбрано. Кликните цель.`);
+        } else if (slot.kind === 'item') {
+          setSelectedSource({ kind: 'item', slotId, itemId: slot.refId, itemInstanceId: slot.itemInstanceId ?? undefined });
+          onStatus(`Предмет выбран. Кликните цель.`);
         }
       }
     };
 
-    window.addEventListener('keydown', handleHotkeys);
-    return () => window.removeEventListener('keydown', handleHotkeys);
-  }, [actionSlots, appendCommandDirect, clearDraftCommands, onSkillChange, onStatus, repeatLastSelectedAction, submitRound, toggleReady, undoDraftCommand]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [actionSlots, endTurn, executeGuard, isPlayerTurn, onSkillChange, onStatus, state.isFinished]);
 
-  if (!player) {
-    return <p>Player entity not found.</p>;
-  }
+  // ── Guard status labels (from recentCombatEvents) ───────────────────────
+  const guardStatusByActorId = useMemo(() => {
+    const map = new Map<string, { type: 'guard' | 'strong_guard'; broken: boolean }>();
+    for (const event of state.recentCombatEvents ?? []) {
+      if (event.type === 'guard_applied' && event.actorId) {
+        const guardType = String(event.data?.guardType ?? 'guard') as 'guard' | 'strong_guard';
+        map.set(event.actorId, { type: guardType, broken: false });
+      }
+      if (event.type === 'guard_broken' && event.actorId) {
+        const existing = map.get(event.actorId);
+        if (existing) map.set(event.actorId, { ...existing, broken: true });
+      }
+    }
+    return map;
+  }, [state.recentCombatEvents]);
 
+  const playerGuardLabel = useMemo(() => {
+    const g = guardStatusByActorId.get(playerId);
+    if (!g) return null;
+    if (g.broken) return g.type === 'strong_guard' ? 'Усиленная защита пробита' : 'Защита пробита';
+    return g.type === 'strong_guard' ? 'Усиленная защита' : 'Защита';
+  }, [guardStatusByActorId, playerId]);
+
+  const enemyGuardLabel = useMemo(() => {
+    if (!selectedEnemy) return null;
+    const g = guardStatusByActorId.get(selectedEnemy.id);
+    if (!g) return null;
+    if (g.broken) return g.type === 'strong_guard' ? 'Усиленная защита пробита' : 'Защита пробита';
+    return g.type === 'strong_guard' ? 'Усиленная защита' : 'Защита';
+  }, [guardStatusByActorId, selectedEnemy]);
+
+  const inspectedEntity = useMemo(
+    () => state.entities.find((e) => e.id === inspectEntityId) ?? null,
+    [inspectEntityId, state.entities],
+  );
+
+  if (!player) return <p>Player entity not found.</p>;
+
+  // ── Turn status bar text ────────────────────────────────────────────────
+  const turnStatusText = state.isFinished
+    ? `Бой завершён — ${state.winner ?? 'ничья'}`
+    : isLegacyPlanningMode
+      ? `Ваш ход — AP: ${legacyApLeft} / 3`
+    : isPlayerTurn
+      ? `Ваш ход — AP: ${currentTurnAp} / 3`
+      : `Ход: ${activeActor?.name ?? '...'}`;
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="battle-fullscreen-root" role="dialog" aria-modal="true">
       <div className="battle-fullscreen">
+
+        {/* ── Header ── */}
         <div className="battle-header">
           <div className="battle-header-left">
-            <h2>Arena Combat</h2>
-            <span>Round {state.roundNumber}</span>
+            <h2>Бой</h2>
+            <span>Раунд {state.roundNumber}</span>
           </div>
           <div className="battle-header-center">
-            <span>{state.isFinished ? `Battle Over: ${state.winner ?? 'none'} wins` : planningStatus}</span>
-            {secondsLeft !== null ? (
-              <span className="battle-turn-timer" title={`Turn deadline: ${new Date(state.turnDeadlineAt ?? 0).toLocaleTimeString()}`}>
-                Turn: {formatCountdown(secondsLeft)}
+            <span
+              className={isPlayerTurn ? 'turn-status-active' : 'turn-status-waiting'}
+              aria-live="polite"
+            >
+              {turnStatusText}
+            </span>
+            {remainingSeconds !== null && (
+              <span
+                className={`battle-turn-timer${remainingSeconds <= 10 ? ' battle-turn-timer--urgent' : ''}`}
+                title={`Дедлайн: ${new Date(state.turnDeadlineAt ?? 0).toLocaleTimeString()}`}
+              >
+                {formatCountdown(remainingSeconds)}
               </span>
-            ) : null}
+            )}
           </div>
           <div className="battle-header-right">
-            <button type="button" onClick={() => onClose?.()} aria-label="Close battle">✕</button>
+            <button type="button" onClick={() => onClose?.()} aria-label="Закрыть бой">✕</button>
           </div>
         </div>
 
+        {/* ── Main grid ── */}
         <div className="battle-main-grid">
+
+          {/* ── Left column: player card + hotbar + action planner ── */}
           <div className="battle-left-column battle-column">
             <div className="column-player-section">
               <FighterCard
                 key={`player-${state.logs.length}`}
                 fighter={player}
-                highlighted
+                highlighted={isPlayerTurn}
                 side="player"
                 avatarUrl={player.avatarUrl ?? playerAvatarUrl}
                 visualState={feedback.playerVisualState}
                 floatingText={feedback.floatingText}
-                subtitle={playerGuardStatusLabel ? `You - ${playerGuardStatusLabel}` : 'You'}
+                subtitle={playerGuardLabel ? `Вы — ${playerGuardLabel}` : 'Вы'}
               />
             </div>
 
-            <div className="column-command-section">
-              <div className="battle-detail-popover" style={{ marginBottom: 12 }}>
-                <strong>Hotbar quick1-quick10</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, marginTop: 8 }}>
-                  {actionSlots.map((slot) => {
-                    const isSelected = selectedSource.slotId === slot.slotId;
-                    const adminItem = (slot.kind === 'item' || slot.kind === 'weapon') && slot.refId && resolveAdminItemById ? resolveAdminItemById(slot.refId) : null;
-                    const slotIsWeapon = slot.kind === 'weapon' || (slot.kind === 'item' && isWeaponAdminItem(adminItem));
-                    const isEquippedWeapon = slotIsWeapon && slot.refId && player.activeWeaponItemId === slot.refId;
-                    return (
-                      <button
-                        key={slot.slotId}
-                        type="button"
-                        className={isSelected ? 'is-active' : ''}
-                        onClick={() => {
-                          if (!slot.kind || !slot.refId) {
-                            onStatus('Слот пуст.');
-                            return;
-                          }
-                          if (slot.kind === 'skill') {
-                            setSelectedSource({ kind: 'skill', slotId: slot.slotId, skillId: slot.refId });
-                            onSkillChange(slot.refId);
-                            setPlanningMode('selecting_target');
-                            onStatus(`Выбран слот ${slot.slotId}: ${slot.refId}. Выберите цель.`);
-                            return;
-                          }
-                          if (slot.kind === 'item' || slot.kind === 'weapon') {
-                            if (slotIsWeapon) {
-                              if (isEquippedWeapon) {
-                                onStatus('Оружие уже экипировано. Клик по врагу добавит атаку этим оружием.');
-                              }
-                              setSelectedSource({ kind: 'weapon', slotId: slot.slotId, weaponItemId: slot.refId, weaponInstanceId: slot.weaponInstanceId ?? slot.itemInstanceId ?? undefined });
-                              setPlanningMode('selecting_target');
-                              if (!isEquippedWeapon) {
-                                onStatus('Кликните цель или себя для смены оружия.');
-                              }
-                            } else {
-                              setSelectedSource({ kind: 'item', slotId: slot.slotId, itemId: slot.refId, itemInstanceId: slot.itemInstanceId ?? undefined });
-                              setPlanningMode('selecting_target');
-                              onStatus(`Выбран предмет ${slot.refId}. Выберите цель или клетку.`);
-                            }
-                          }
-                        }}
-                      >
-                        {slot.slotId}
-                        <br />
-                        {slot.refId ?? 'empty'}
-                        {isEquippedWeapon ? <><br />[active]</> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <ActionPlanner
-                enemies={enemies}
-                selectedTargetId={selectedTargetId}
-                actionType={actionType}
-                guardMode={guardMode}
-                currentDistance={state.distance}
-                movementType={movementType}
-                selectedMoveTile={selectedMoveTile}
-                currentStamina={player.currentStamina}
-                maxStamina={player.maxStamina}
-                currentMp={player.currentMp}
-                maxMp={player.maxMp}
-                availableSkills={availableSkills}
-                inventoryItems={battleInventoryItems}
-                selectedSkillId={selectedSkillId}
-                actionWarning={actionWarning ?? actionHint}
-                onActionTypeChange={setActionType}
-                onGuardModeChange={setGuardMode}
-                onSkillChange={onSkillChange}
-                onTargetChange={setSelectedTargetId}
-                onUseInventoryItem={(itemId) => {
-                  console.info('[combatItems] use', { itemId, targetId: selectedTargetId });
-                  if (onUseItem) {
-                    void onUseItem(itemId, selectedTargetId);
-                  }
-                }}
-                onSubmit={submitRound}
-                showSubmitButton={false}
-                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning)}
-              />
-
-              <div className="battle-detail-popover" style={{ marginTop: 12 }}>
-                <strong>План раунда</strong>
-                {draftCommands.length === 0 ? <p>План раунда пуст. Выберите действие или нажмите "Готово", чтобы занять защитную стойку.</p> : null}
-                {draftCommands.map((command, index) => (
-                  <p key={command.id}>
-                    {index + 1}. {getQueueCommandLine(command, state, resolveAdminItemById)}
-                    {(command.type === 'basic_attack' || command.type === 'heavy_attack') ? ' | ⚠ Если цель уйдёт из range до удара, атака сорвётся.' : ''}
-                    {command.type === 'weapon_swap' && player.offHandItemId && (() => {
-                      const wid = command.payload?.weaponItemId ?? command.payload?.weaponInstanceId;
-                      const wi = wid && resolveAdminItemById ? resolveAdminItemById(wid) : null;
-                      return wi?.handsRequired === 2 ? ' | ⚠ Щит будет убран из активной руки.' : null;
-                    })()}
-                    {planWarningDetails.some((item) => item.commandId === command.id && (item.code === 'FRIENDLY_FIRE' || item.code === 'ALLY_IN_AREA' || item.code === 'SELF_IN_AREA' || item.code === 'NEUTRAL_IN_AREA')) ? ' | ⚠ Friendly fire' : ''}
-                    {getCommandTimingWarning(command, index) ? ` | ${getCommandTimingWarning(command, index)}` : ''}
-                  </p>
+            {/* AP indicator */}
+            {isPlayerTurn && (
+              <div className="battle-ap-bar" aria-label="Action Points">
+                {(() => {
+                  const visibleAp = isLegacyPlanningMode ? legacyApLeft : currentTurnAp;
+                  return (
+                    <>
+                {[1, 2, 3].map((pip) => (
+                  <span
+                    key={pip}
+                    className={`battle-ap-pip${pip <= visibleAp ? ' battle-ap-pip--filled' : ''}`}
+                    title={`AP ${pip}`}
+                  />
                 ))}
-                <p>Команды: {draftTotals.commands} / {planLimits.maxCommands}</p>
-                <p>AP: {draftTotals.ap} / {planLimits.maxAP}</p>
-                <p>STA: {draftTotals.stamina} / {player.currentStamina} | MP: {draftTotals.mp} / {player.currentMp} | HP: {draftTotals.hp} / {player.currentHp}</p>
-                {planErrors.length > 0 ? <p style={{ color: '#d64545' }}>{planErrors[0]}</p> : null}
-                {planWarnings.length > 0 ? <p style={{ color: '#d58f2a' }}>{planWarnings[0]}</p> : null}
-                {planWarningCodes.some((code) => code === 'FRIENDLY_FIRE' || code === 'ALLY_IN_AREA' || code === 'SELF_IN_AREA' || code === 'NEUTRAL_IN_AREA')
-                  ? <p style={{ color: '#d58f2a' }}>⚠ В плане есть действия, которые заденут союзников/нейтралов/вас.</p>
-                  : null}
+                <span className="battle-ap-label">AP {visibleAp} / 3</span>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Hotbar */}
+            <div className="battle-detail-popover" style={{ marginBottom: 12 }}>
+              <strong>Быстрые слоты</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, marginTop: 8 }}>
+                {actionSlots.map((slot) => {
+                  const isSelected = selectedSource.kind !== 'none' && 'slotId' in selectedSource && selectedSource.slotId === slot.slotId;
+                  const adminItem = (slot.kind === 'item' || slot.kind === 'weapon') && slot.refId && resolveAdminItemById
+                    ? resolveAdminItemById(slot.refId)
+                    : null;
+                  const slotIsWeapon = slot.kind === 'weapon' || (slot.kind === 'item' && isWeaponAdminItem(adminItem));
+                  const isEquipped = slotIsWeapon && slot.refId && player.activeWeaponItemId === slot.refId;
+                  const disabled = !isPlayerTurn || !slot.kind || !slot.refId;
+                  return (
+                    <button
+                      key={slot.slotId}
+                      type="button"
+                      className={`hotbar-slot${isSelected ? ' is-active' : ''}${isEquipped ? ' is-equipped' : ''}`}
+                      disabled={disabled}
+                      title={slot.refId ?? 'Пусто'}
+                      onClick={() => {
+                        if (!slot.kind || !slot.refId) { onStatus('Слот пуст.'); return; }
+                        if (slot.kind === 'skill') {
+                          setSelectedSource({ kind: 'skill', slotId: slot.slotId, skillId: slot.refId });
+                          onSkillChange(slot.refId);
+                          onStatus(`Навык выбран. Кликните цель.`);
+                        } else if (slotIsWeapon) {
+                          if (isEquipped) {
+                            // Already equipped — just attack
+                            setSelectedSource({ kind: 'basic_attack' });
+                            onStatus('Оружие активно. Кликните врага для атаки.');
+                          } else {
+                            setSelectedSource({ kind: 'weapon', slotId: slot.slotId, weaponItemId: slot.refId, weaponInstanceId: slot.weaponInstanceId ?? undefined });
+                            onStatus('Кликните цель для смены оружия.');
+                          }
+                        } else {
+                          setSelectedSource({ kind: 'item', slotId: slot.slotId, itemId: slot.refId, itemInstanceId: slot.itemInstanceId ?? undefined });
+                          onStatus('Предмет выбран. Кликните цель.');
+                        }
+                      }}
+                    >
+                      <span className="hotbar-slot-id">{slot.slotId.replace('quick', '')}</span>
+                      <span className="hotbar-slot-label">{slot.refId ?? '—'}</span>
+                      {isEquipped && <span className="hotbar-slot-badge">●</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Action planner (target/skill/guard selectors) */}
+            <ActionPlanner
+              enemies={enemies}
+              selectedTargetId={selectedTargetId}
+              actionType={actionType}
+              guardMode={guardMode}
+              currentDistance={state.distance}
+              movementType={movementType}
+              selectedMoveTile={selectedMoveTile}
+              currentStamina={player.currentStamina}
+              maxStamina={player.maxStamina}
+              currentMp={player.currentMp}
+              maxMp={player.maxMp}
+              availableSkills={availableSkills}
+              inventoryItems={battleInventoryItems}
+              selectedSkillId={selectedSkillId}
+              actionWarning={skillResourceWarning ?? actionHint}
+              onActionTypeChange={setActionType}
+              onGuardModeChange={setGuardMode}
+              onSkillChange={(id) => {
+                onSkillChange(id);
+                if (id) setSelectedSource({ kind: 'skill', skillId: id });
+                else setSelectedSource({ kind: 'none' });
+              }}
+              onTargetChange={setSelectedTargetId}
+              onUseInventoryItem={(itemId) => {
+                if (onUseItem) void onUseItem(itemId, selectedTargetId);
+              }}
+              onSubmit={() => {
+                // ActionPlanner submit = execute the selected action on the selected target
+                if (!isPlayerTurn) return;
+                const targetId = selectedTargetId || enemies[0]?.id;
+                if (!targetId) { void endTurn(); return; }
+                if (actionType === ActionType.Defend) {
+                  void executeGuard(guardMode);
+                } else if (actionType === ActionType.Wait) {
+                  void endTurn();
+                } else if (actionType === ActionType.Attack) {
+                  if (selectedSkillId) {
+                    setSelectedSource({ kind: 'skill', skillId: selectedSkillId });
+                    void executeOnEntity(targetId, false);
+                  } else {
+                    void executeOnEntity(targetId, true);
+                  }
+                } else if (actionType === ActionType.Move) {
+                  if (selectedMoveTile && movementType) {
+                    void executeMoveToTile({ x: selectedMoveTile.x, y: selectedMoveTile.y, movementType });
+                  } else {
+                    onStatus('Выберите клетку для движения на карте.');
+                  }
+                }
+              }}
+              showSubmitButton={true}
+              disabled={!isPlayerTurn || state.isFinished || enemies.length === 0}
+            />
+
+            {/* Escape button */}
+            {state.battleType !== 'arena' && playerOnExitZone && !playerEscapeState?.active && isPlayerTurn && (
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ marginTop: 8 }}
+                title="Побег займёт 3 раунда в зоне выхода."
+                onClick={() => {
+                  if (!window.confirm('Начать побег? Нужно продержаться 3 раунда в зоне выхода.')) return;
+                  void executeAction(createCombatCommandFromType({ type: 'start_retreat', target: { kind: 'self' } }));
+                }}
+              >
+                СБЕЖАТЬ ИЗ БОЯ
+              </button>
+            )}
+            {playerEscapeState?.active && (
+              <div className="battle-escape-status">
+                Побег: осталось {playerEscapeState.remainingRounds} раунда(ов)
+              </div>
+            )}
           </div>
 
+          {/* ── Center column: battlefield + log + controls ── */}
           <div className="battle-center-column battle-column">
             <div className="battle-center-log card">
               <CombatLogPanel logs={state.logs} />
             </div>
 
-              <BattleField
-                entities={state.entities}
-                battlefieldTiles={state.battlefieldTiles}
-                battleMapWidth={state.battleMapWidth}
-                battleMapHeight={state.battleMapHeight}
-                viewportWidth={state.viewportWidth}
-                viewportHeight={state.viewportHeight}
-                mapImageUrl={mapImageUrl}
-                mapCalibration={mapCalibration}
-                distance={state.distance}
-                selectedTargetId={selectedTargetId}
-                playerId={playerId}
-                playerAvatarUrl={playerAvatarUrl}
-                movementType={movementType}
-                selectedMoveTile={selectedMoveTile}
-                lastLog={lastLog}
-                recentLogs={recentLogs}
-                onTargetSelect={(targetId) => {
-                  setSelectedTargetId(targetId);
-                  setPlanningMode('selecting_target');
-                  if (selectedSource.kind !== 'none') {
-                    void addEntityTargetCommand(targetId, false);
-                  }
-                }}
-                onStatusMessage={onStatus}
-                onQuickAttack={(targetId) => {
-                  setSelectedTargetId(targetId);
-                  setSelectedSource({ kind: 'basic_attack' });
-                  setPlanningMode('selecting_target');
-                  void addEntityTargetCommand(targetId, true);
-                }}
-                onQuickHeavyAttack={(targetId) => {
-                  setSelectedTargetId(targetId);
-                  setPlanningMode('selecting_target');
-                  void appendCommandDirect(createCombatCommandFromType({
-                    type: 'heavy_attack',
-                    target: { kind: 'entity', entityId: targetId },
-                    payload: { targetZone: TargetZone.Chest },
-                  }));
-                }}
-                onQuickWait={() => {
-                  void appendCommandDirect(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
-                }}
-                onQuickGuard={() => {
-                  void appendCommandDirect(createCombatCommandFromType({ type: 'guard', target: { kind: 'self' } }));
-                }}
-                onQuickStrongGuard={() => {
-                  void appendCommandDirect(createCombatCommandFromType({ type: 'strong_guard', target: { kind: 'self' } }));
-                }}
-                onClearSelectedSource={() => {
-                  setSelectedSource({ kind: 'none' });
-                  onSkillChange(null);
-                  onStatus('Источник действия сброшен.');
-                }}
-              onQuickMove={(tile) => {
-                applyMoveSelection(tile);
-                if (selectedSource.kind === 'none') {
-                  void addMoveFromTile(tile);
-                }
-              }}
-              onMoveTileSelect={(tile) => {
-                applyMoveSelection(tile);
-                if (selectedSource.kind === 'none') {
-                  void addMoveFromTile(tile);
-                }
-              }}
-              onCancelSelection={() => setSelectedMoveTile(null)}
-              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
+            <BattleField
+              entities={state.entities}
+              battlefieldTiles={state.battlefieldTiles}
+              battleMapWidth={state.battleMapWidth}
+              battleMapHeight={state.battleMapHeight}
+              viewportWidth={state.viewportWidth}
+              viewportHeight={state.viewportHeight}
+              mapImageUrl={mapImageUrl}
+              mapCalibration={mapCalibration}
+              distance={state.distance}
+              selectedTargetId={selectedTargetId}
+              playerId={playerId}
+              playerAvatarUrl={playerAvatarUrl}
+              movementType={movementType}
+              selectedMoveTile={selectedMoveTile}
+              lastLog={lastLog}
+              recentLogs={recentLogs}
+              animationEvents={state.recentAnimationEvents ?? []}
+              selectedSkillId={selectedSkillId}
               playerVisualState={feedback.playerVisualState}
               enemyVisualState={feedback.enemyVisualState}
               floatingText={feedback.floatingText}
               animationTick={state.logs.length}
-              animationEvents={state.recentAnimationEvents ?? []}
+              onTargetSelect={(targetId) => {
+                setSelectedTargetId(targetId);
+                if (isPlayerTurn && selectedSource.kind !== 'none') {
+                  void executeOnEntity(targetId, false);
+                }
+              }}
+              onQuickAttack={(targetId) => {
+                if (!isPlayerTurn) return;
+                setSelectedTargetId(targetId);
+                void executeOnEntity(targetId, true);
+              }}
+              onQuickHeavyAttack={(targetId) => {
+                if (!isPlayerTurn) return;
+                setSelectedTargetId(targetId);
+                void executeHeavyAttack(targetId);
+              }}
+              onQuickWait={() => { if (isPlayerTurn) void endTurn(); }}
+              onQuickGuard={() => { if (isPlayerTurn) void executeGuard('guard'); }}
+              onQuickStrongGuard={() => { if (isPlayerTurn) void executeGuard('strong_guard'); }}
+              onClearSelectedSource={() => {
+                setSelectedSource({ kind: 'none' });
+                onSkillChange(null);
+              }}
+              onMoveTileSelect={(tile) => {
+                if (!isPlayerTurn) return;
+                setMovementType(tile.movementType);
+                setSelectedMoveTile({ x: tile.x, y: tile.y });
+                onStatus(`Перемещение к ${tile.x + 1}:${tile.y + 1}.`);
+                void executeMoveToTile(tile);
+              }}
+              onQuickMove={(tile) => {
+                if (!isPlayerTurn) return;
+                void executeMoveToTile(tile);
+              }}
+              onCancelSelection={() => setSelectedMoveTile(null)}
+              onInspectEntity={(entityId) => setInspectEntityId(entityId)}
+              onStatusMessage={onStatus}
             />
 
+            {/* Controls bar */}
             <div className="battle-center-controls card">
-              {remainingSeconds != null ? (
-                <div style={{ marginBottom: 10 }} title="Если время истечёт, будет отправлен текущий план. Если план пустой, персонаж встанет в защиту.">
-                  Осталось: {remainingSeconds} сек{remainingSeconds <= 10 ? ' (Раунд скоро завершится)' : ''}
+              {/* Enemy turn overlay */}
+              {!isPlayerTurn && !state.isFinished && (
+                <div className="battle-enemy-turn-notice" aria-live="polite">
+                  {activeActor
+                    ? `Ход: ${activeActor.name}...`
+                    : 'Ожидание хода...'}
                 </div>
-              ) : null}
-              {playerEscapeState?.active ? (
-                <div style={{ marginBottom: 10 }}>
-                  Побег: осталось {playerEscapeState.remainingRounds} раунда(ов)
+              )}
+
+              {/* Quick action buttons */}
+              {isPlayerTurn && (
+                <div className="battle-quick-actions">
+                  <button
+                    type="button"
+                    className={`secondary-button${selectedSource.kind === 'basic_attack' ? ' is-active' : ''}`}
+                    disabled={enemies.length === 0}
+                    onClick={() => {
+                      setSelectedSource({ kind: 'basic_attack' });
+                      if (selectedEnemy) void executeOnEntity(selectedEnemy.id, true);
+                    }}
+                    title={`1 AP / ${COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0} STA`}
+                  >
+                    ⚔ Атака
+                  </button>
+                  <button
+                    type="button"
+                    className={`secondary-button${selectedSource.kind === 'heavy_attack' ? ' is-active' : ''}`}
+                    disabled={enemies.length === 0}
+                    onClick={() => {
+                      setSelectedSource({ kind: 'heavy_attack' });
+                      if (selectedEnemy) void executeHeavyAttack(selectedEnemy.id);
+                    }}
+                    title={`2 AP / ${COMBAT_ACTION_COSTS.heavy_attack.stamina ?? 0} STA`}
+                  >
+                    💥 Сильная атака
+                  </button>
+                  <button
+                    type="button"
+                    className={`secondary-button${selectedSource.kind === 'guard' ? ' is-active' : ''}`}
+                    onClick={() => void executeGuard('guard')}
+                    title={`1 AP / ${COMBAT_ACTION_COSTS.guard.stamina ?? 0} STA`}
+                  >
+                    🛡 Защита
+                  </button>
+                  <button
+                    type="button"
+                    className={`secondary-button${selectedSource.kind === 'strong_guard' ? ' is-active' : ''}`}
+                    onClick={() => void executeGuard('strong_guard')}
+                    title={`1 AP / ${COMBAT_ACTION_COSTS.strong_guard.stamina ?? 0} STA`}
+                  >
+                    🛡🛡 Усиленная защита
+                  </button>
                 </div>
-              ) : null}
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={state.isFinished || enemies.length === 0 || Boolean(actionWarning) || isPlanReady}
-                onClick={submitRound}
-              >
-                ДОБАВИТЬ КОМАНДУ
-              </button>
-              <button type="button" className="secondary-button" disabled={isPlanReady || draftCommands.length === 0} onClick={undoDraftCommand}>
-                ОТМЕНИТЬ ПОСЛЕДНЮЮ
-              </button>
-              <button type="button" className="secondary-button" disabled={isPlanReady || draftCommands.length === 0} onClick={clearDraftCommands}>
-                ОЧИСТИТЬ
-              </button>
-              {state.phase === 'planning' && state.battleType !== 'arena' && playerOnExitZone && !playerEscapeState?.active ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={state.isFinished || enemies.length === 0 || isPlanReady}
-                  title="Сбежать из боя можно только из зоны выхода. Побег займёт 3 раунда."
-                  onClick={() => {
-                    const confirmed = window.confirm('Вы уверены? Нужно продержаться 3 раунда в зоне выхода.');
-                    if (!confirmed) {
-                      return;
-                    }
-                    void appendCommandDirect(createCombatCommandFromType({
-                      type: 'start_retreat',
-                      target: { kind: 'self' },
-                    }));
-                  }}
-                >
-                  СБЕЖАТЬ ИЗ БОЯ
-                </button>
-              ) : null}
+              )}
+
+              {/* End turn button */}
               <button
                 type="button"
                 className="confirm-turn-button battle-confirm-large"
-                disabled={state.isFinished || enemies.length === 0}
-                title={isPlanReady ? 'Отменить готовность' : 'Подтвердить план раунда'}
-                onClick={toggleReady}
+                disabled={!isPlayerTurn || state.isFinished}
+                onClick={endTurn}
+                title="Завершить ход (Space)"
               >
-                {isPlanReady ? 'ОТМЕНИТЬ ГОТОВНОСТЬ' : 'ГОТОВО'}
+                {isPlayerTurn ? 'ЗАВЕРШИТЬ ХОД' : (state.isFinished ? 'БОЙ ЗАВЕРШЁН' : 'ОЖИДАНИЕ...')}
               </button>
             </div>
           </div>
 
+          {/* ── Right column: enemy card ── */}
           <div className="battle-right-column battle-column">
             <div className="column-enemy-section">
               {selectedEnemy ? (
@@ -1753,18 +1078,46 @@ export function BattlePanel({
                   avatarUrl={selectedEnemy.avatarUrl}
                   visualState={feedback.enemyVisualState}
                   floatingText={feedback.floatingText}
-                  subtitle={enemyGuardStatusLabel ? `Target - ${enemyGuardStatusLabel}` : 'Target'}
+                  subtitle={enemyGuardLabel ? `Цель — ${enemyGuardLabel}` : 'Цель'}
                 />
               ) : (
-                <div className="no-enemy-placeholder">No target</div>
+                <div className="no-enemy-placeholder">Нет цели</div>
+              )}
+
+              {/* All enemies list */}
+              {enemies.length > 1 && (
+                <div className="battle-enemy-list" style={{ marginTop: 12 }}>
+                  <strong>Противники</strong>
+                  {enemies.map((enemy) => (
+                    <button
+                      key={enemy.id}
+                      type="button"
+                      className={`enemy-list-item${enemy.id === selectedTargetId ? ' is-selected' : ''}`}
+                      onClick={() => {
+                        setSelectedTargetId(enemy.id);
+                        if (isPlayerTurn && selectedSource.kind !== 'none') {
+                          void executeOnEntity(enemy.id, false);
+                        }
+                      }}
+                    >
+                      <span>{enemy.name}</span>
+                      <span className="enemy-hp-mini">{enemy.currentHp}/{enemy.maxHp} HP</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {inspectedEntity ? (
-          <div className="battle-inspect-backdrop" onClick={() => setInspectEntityId(null)} role="presentation">
-            <div className="battle-inspect-dialog" onClick={(event) => event.stopPropagation()} role="presentation">
+        {/* ── Inspect panel overlay ── */}
+        {inspectedEntity && (
+          <div
+            className="battle-inspect-backdrop"
+            onClick={() => setInspectEntityId(null)}
+            role="presentation"
+          >
+            <div onClick={(e) => e.stopPropagation()} role="presentation">
               <InspectPanel
                 entity={inspectedEntity}
                 playerId={playerId}
@@ -1774,7 +1127,7 @@ export function BattlePanel({
               />
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );

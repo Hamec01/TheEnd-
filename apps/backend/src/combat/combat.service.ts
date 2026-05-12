@@ -22,6 +22,7 @@ import {
   createNpcAction,
   collectAreaEffectTargets,
   getBattlefieldDistance,
+  getReachableBattlefieldTiles,
   getRelationToCaster,
   buildCombatLogMessage,
   normalizeArenaBattleState,
@@ -35,6 +36,15 @@ import {
   createGuardState,
   markGuardBroken,
   COMBAT_ACTION_COSTS,
+  clampHitChance,
+  buildStatusResistanceImmunityProfile,
+  tryApplyCombatStatus,
+  collectPeriodicStatusDamage,
+  tickCombatStatusDurationsEndOfRound,
+  getAttackerHitChanceDeltaFromStatuses,
+  syncControlFlagsFromActiveStatuses,
+  effectNumericPercent,
+  type TryApplyCombatStatusResult,
   type ArenaBattleState,
   type ArenaCombatAction,
   type ArenaCombatEntity,
@@ -56,6 +66,7 @@ import {
   type CombatResolveErrorCode,
   type CombatRoundLimits,
   type CombatTurnPlan,
+  type ArenaCombatEquipmentModifiers,
   type BattlefieldTile,
   type Equipment,
   type Race,
@@ -67,14 +78,10 @@ import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-runtime.service';
 import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto } from './dto.start-combat.dto';
-import type { AdminItem } from '../content/content.types';
+import type { AdminItem, ItemEffect } from '../content/content.types';
+import { resolveCharacterEquipmentModifiers } from '../content/item-effects.resolver';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 import { isFileStorageMode } from '../config/storage-mode';
-import {
-  buildAiCombatTurnPlan,
-  getAiRoundLimits,
-  type AiCombatPersonality,
-} from './ai-combat-planner';
 
 interface CharacterRecord {
   id: string;
@@ -110,6 +117,8 @@ interface CombatSession {
   enemyTempoBreaks: Array<{ targetId: string; remainingRounds: number }>;
   damageContribution: number;
   skillCooldowns: SkillCooldownEntry[];
+  /** Снимок экипировки по id сущности (для прок-эффектов и сетов). */
+  equipmentByActorId: Map<string, Equipment>;
 }
 
 interface NormalizedResourceCosts {
@@ -582,14 +591,7 @@ export class CombatService {
   }
 
   private getCombatRoundLimitsForActor(actor: { combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC' }): CombatRoundLimits {
-    const style = actor.combatStyleHint;
-    if (style === 'RANGED' || style === 'MAGIC') {
-      return {
-        maxCommands: HARD_MAX_COMMANDS_PER_ROUND,
-        maxAP: HARD_MAX_AP_PER_ROUND,
-      };
-    }
-
+    void actor;
     return {
       maxCommands: DEFAULT_MAX_COMMANDS_PER_ROUND,
       maxAP: DEFAULT_MAX_AP_PER_ROUND,
@@ -627,7 +629,7 @@ export class CombatService {
   }
 
   private syncTurnPlanState(session: CombatSession): void {
-    const controllableActors = this.getLivingControllableActors(session.state);
+    const controllableActors = this.getLivingControllableActors(session.state, session.playerId);
     session.state.readyActorIds = controllableActors.filter((entity) => session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
     session.state.pendingActorIds = controllableActors.filter((entity) => !session.turnPlans.get(entity.id)?.ready).map((entity) => entity.id);
     session.state.roundPhase = session.state.isFinished ? undefined : 'PLANNING';
@@ -647,7 +649,7 @@ export class CombatService {
       return;
     }
 
-    const actors = this.getLivingControllableActors(state);
+    const actors = this.getLivingControllableActors(state, session.playerId);
     for (const actor of actors) {
       const plan = session.turnPlans.get(actor.id);
       if (plan && plan.commands.length > 0) {
@@ -909,6 +911,297 @@ export class CombatService {
     return Math.floor(Math.random() * 6);
   }
 
+  private rollUniform01(): number {
+    return Math.random();
+  }
+
+  private getActorEquipmentSnapshot(session: CombatSession, actor: ArenaCombatEntity): Equipment {
+    const base = session.equipmentByActorId.get(actor.id) ?? this.contentService.normalizeEquipment({});
+    const merged: Partial<Equipment> = { ...base };
+    if (actor.activeWeaponItemId) {
+      merged.weapon = actor.activeWeaponItemId;
+    }
+    if (actor.offHandItemId !== undefined) {
+      merged.shield = actor.offHandItemId ?? undefined;
+    }
+    return this.contentService.normalizeEquipment(merged);
+  }
+
+  private getResolvedCombatItemEffects(equipment: Equipment): ItemEffect[] {
+    return resolveCharacterEquipmentModifiers({
+      equipment,
+      items: this.contentService.listCollection('items'),
+      itemSets: this.contentService.listCollection('itemSets'),
+      activeStatuses: [],
+      activationContexts: ['combat'],
+    }).effects;
+  }
+
+  private buildTargetStatusDefenseProfile(session: CombatSession, target: ArenaCombatEntity) {
+    const equipment = this.getActorEquipmentSnapshot(session, target);
+    return buildStatusResistanceImmunityProfile(this.getResolvedCombatItemEffects(equipment));
+  }
+
+  private emitTryApplyStatusResult(
+    state: ArenaBattleState,
+    ctx: {
+      stepIndex: number;
+      orderIndex: number;
+      commandId: string;
+      attackerId: string;
+      targetId: string;
+    },
+    result: TryApplyCombatStatusResult,
+  ): void {
+    if (!result.messageRu) {
+      return;
+    }
+    const eventType =
+      result.outcome === 'immune'
+        ? 'status_immune'
+        : result.outcome === 'resisted' || result.outcome === 'missed_chance'
+          ? 'status_resisted'
+          : result.outcome === 'applied'
+            ? 'status_applied'
+            : 'effect_triggered';
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber: state.roundNumber,
+      stepIndex: ctx.stepIndex,
+      orderIndex: ctx.orderIndex,
+      type: eventType,
+      actorId: ctx.attackerId,
+      targetId: ctx.targetId,
+      commandId: ctx.commandId,
+      message: result.messageRu,
+      data: {
+        statusId: result.canonicalStatusId,
+        baseChancePercent: result.baseChancePercent,
+        finalChancePercent: result.finalChancePercent,
+        durationTurns: result.durationApplied,
+        outcome: result.outcome,
+      },
+    });
+  }
+
+  private applyAttackStatusProcs(params: {
+    session: CombatSession;
+    state: ArenaBattleState;
+    attacker: ArenaCombatEntity;
+    target: ArenaCombatEntity;
+    trigger: 'on_hit' | 'on_crit';
+    stepIndex: number;
+    orderIndex: number;
+    commandId: string;
+  }): void {
+    if (!params.target.isAlive) {
+      return;
+    }
+    const equipment = this.getActorEquipmentSnapshot(params.session, params.attacker);
+    const effects = this.getResolvedCombatItemEffects(equipment).filter(
+      (e) => e.trigger === params.trigger && e.type === 'apply_status',
+    );
+    if (effects.length === 0) {
+      return;
+    }
+    const profile = this.buildTargetStatusDefenseProfile(params.session, params.target);
+    const rng = () => this.rollUniform01();
+    const ctx = {
+      stepIndex: params.stepIndex,
+      orderIndex: params.orderIndex,
+      commandId: params.commandId,
+      attackerId: params.attacker.id,
+      targetId: params.target.id,
+    };
+    for (const effect of effects) {
+      const result = tryApplyCombatStatus({
+        effect: { ...effect, type: 'apply_status', data: effect.data },
+        target: params.target,
+        targetDefenseProfile: profile,
+        sourceActorId: params.attacker.id,
+        sourceItemId: params.attacker.activeWeaponItemId ?? undefined,
+        rng,
+        rollChance: true,
+      });
+      if (result.outcome !== 'skipped' || result.messageRu) {
+        this.emitTryApplyStatusResult(params.state, ctx, result);
+      }
+      syncControlFlagsFromActiveStatuses(params.target);
+    }
+  }
+
+  private applyLifestealFromAttack(params: {
+    session: CombatSession;
+    state: ArenaBattleState;
+    actor: ArenaCombatEntity;
+    damageDealt: number;
+    stepIndex: number;
+    orderIndex: number;
+    commandId: string;
+  }): void {
+    if (params.damageDealt <= 0 || !params.actor.isAlive) {
+      return;
+    }
+    const equipment = this.getActorEquipmentSnapshot(params.session, params.actor);
+    const effects = this.getResolvedCombatItemEffects(equipment).filter(
+      (e) => e.trigger === 'on_hit' && e.type === 'lifesteal',
+    );
+    if (effects.length === 0) {
+      return;
+    }
+    let totalPct = 0;
+    for (const e of effects) {
+      const ch = e.chancePercent ?? 100;
+      if (this.rollUniform01() * 100 > ch) {
+        continue;
+      }
+      totalPct += effectNumericPercent(e);
+    }
+    if (totalPct <= 0) {
+      return;
+    }
+    const heal = Math.max(0, Math.floor((params.damageDealt * Math.min(100, totalPct)) / 100));
+    if (heal <= 0) {
+      return;
+    }
+    const restored = Math.max(0, Math.min(params.actor.maxHp - params.actor.currentHp, heal));
+    if (restored <= 0) {
+      return;
+    }
+    params.actor.currentHp += restored;
+    this.addCombatEvent(params.state, {
+      id: randomUUID(),
+      roundNumber: params.state.roundNumber,
+      stepIndex: params.stepIndex,
+      orderIndex: params.orderIndex,
+      type: 'heal',
+      actorId: params.actor.id,
+      targetId: params.actor.id,
+      commandId: params.commandId,
+      message: `${params.actor.name} восстанавливает ${restored} HP (вампиризм).`,
+      data: { amount: restored, kind: 'lifesteal' },
+    });
+  }
+
+  private extractItemEffectsFromContentPayload(rawValue: unknown): ItemEffect[] {
+    const raw = this.toRecord(rawValue);
+    if (!raw) {
+      return [];
+    }
+    const sources: unknown[] = [];
+    if (Array.isArray(raw.useEffects)) {
+      sources.push(...raw.useEffects);
+    }
+    const singleEffect = this.toRecord(raw.useEffect);
+    if (singleEffect) {
+      sources.push(singleEffect);
+    }
+    if (Array.isArray(raw.effects)) {
+      sources.push(...raw.effects);
+    }
+    if (Array.isArray(raw.combatEffects)) {
+      sources.push(...raw.combatEffects);
+    }
+    const out: ItemEffect[] = [];
+    for (const entry of sources) {
+      const rec = this.toRecord(entry);
+      if (!rec || typeof rec.type !== 'string') {
+        continue;
+      }
+      out.push({
+        type: rec.type as ItemEffect['type'],
+        stat: rec.stat as ItemEffect['stat'],
+        value: typeof rec.value === 'number' ? rec.value : undefined,
+        percent: typeof rec.percent === 'number' ? rec.percent : undefined,
+        flat: typeof rec.flat === 'number' ? rec.flat : undefined,
+        damageCategory: rec.damageCategory as ItemEffect['damageCategory'],
+        physicalType: rec.physicalType as ItemEffect['physicalType'],
+        elementType: rec.elementType as ItemEffect['elementType'],
+        magicSchool: rec.magicSchool as ItemEffect['magicSchool'],
+        statusId: typeof rec.statusId === 'string' ? rec.statusId : undefined,
+        chancePercent: typeof rec.chancePercent === 'number' ? rec.chancePercent : undefined,
+        durationTurns: typeof rec.durationTurns === 'number' ? rec.durationTurns : undefined,
+        trigger: rec.trigger as ItemEffect['trigger'],
+        activationContexts: Array.isArray(rec.activationContexts)
+          ? (rec.activationContexts as string[])
+          : undefined,
+        condition: typeof rec.condition === 'string' ? rec.condition : undefined,
+        data: (() => {
+          const dr = this.toRecord(rec.data);
+          return dr ? { ...dr } : undefined;
+        })(),
+      });
+    }
+    return out;
+  }
+
+  private async applyPeriodicDamagePhase(
+    session: CombatSession,
+    phase: 'turn_start' | 'turn_end',
+    stepIndex: number,
+    orderIndex: number,
+  ): Promise<void> {
+    const state = session.state;
+    const ticks = collectPeriodicStatusDamage(state.entities, phase);
+    for (const tick of ticks) {
+      const entity = state.entities.find((e) => e.id === tick.entityId);
+      if (!entity || !entity.isAlive) {
+        continue;
+      }
+      entity.currentHp = Math.max(0, entity.currentHp - tick.amount);
+      entity.isAlive = entity.currentHp > 0;
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'status_tick',
+        actorId: entity.id,
+        targetId: entity.id,
+        message: tick.messageRu,
+        data: {
+          amount: tick.amount,
+          statusId: tick.statusId,
+          damageCategory: tick.damageCategory,
+          elementType: tick.elementType,
+        },
+      });
+      if (!entity.isAlive) {
+        await this.processActorDeath({
+          session,
+          actor: entity,
+          sourceActorId: entity.id,
+          roundNumber: state.roundNumber,
+          stepIndex,
+          orderIndex,
+        });
+      }
+    }
+  }
+
+  private tickAllCombatStatusesEndOfRound(session: CombatSession, stepIndex: number, orderIndex: number): void {
+    const state = session.state;
+    const expired = tickCombatStatusDurationsEndOfRound(state.entities);
+    for (const ex of expired) {
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'status_removed',
+        actorId: ex.entityId,
+        targetId: ex.entityId,
+        message: ex.labelRu
+          ? `Эффект «${ex.labelRu}» спал с ${ex.entityName}.`
+          : `Эффект ${ex.statusId} спал с ${ex.entityName}.`,
+        data: { statusId: ex.statusId },
+      });
+    }
+    for (const entity of state.entities) {
+      syncControlFlagsFromActiveStatuses(entity);
+    }
+  }
+
   private addCombatEvent(
     state: ArenaBattleState,
     event: CombatEvent,
@@ -1009,9 +1302,10 @@ export class CombatService {
     ));
   }
 
-  private getLivingControllableActors(state: ArenaBattleState): ArenaCombatEntity[] {
+  private getLivingControllableActors(state: ArenaBattleState, playerId?: string): ArenaCombatEntity[] {
     return state.entities.filter((entity) => (
       entity.team === TeamSide.Left
+      && (playerId ? entity.id === playerId : true)
       && this.canActorPlan(state, entity)
     ));
   }
@@ -1959,6 +2253,9 @@ export class CombatService {
             shieldCleared: isTwoHanded && hadOffHand,
           },
         });
+
+        const eq = this.getActorEquipmentSnapshot(session, actor);
+        session.equipmentByActorId.set(actor.id, { ...eq, weapon: nextWeaponId });
         break;
       }
       case 'basic_attack':
@@ -1969,7 +2266,61 @@ export class CombatService {
           if (!target || !target.isAlive) {
             break;
           }
-          const base = Math.max(1, Math.round(actor.strength * (command.type === 'heavy_attack' ? 1.25 : 0.9)));
+
+          syncControlFlagsFromActiveStatuses(actor);
+          syncControlFlagsFromActiveStatuses(target);
+
+          const hitChance = clampHitChance(
+            85
+              + (actor.combatModifiers?.hitChancePercent ?? 0)
+              - (target.combatModifiers?.dodgeChancePercent ?? 0)
+              + getAttackerHitChanceDeltaFromStatuses(actor),
+          );
+          const hitRoll = this.rollUniform01() * 100;
+          if (hitRoll > hitChance) {
+            this.addCombatEvent(state, {
+              id: randomUUID(),
+              roundNumber: state.roundNumber,
+              stepIndex,
+              orderIndex,
+              type: 'attack',
+              actorId: actor.id,
+              targetId: target.id,
+              commandId: command.id,
+              message: `${actor.name} промахивается по ${target.name} (шанс попадания ${hitChance}%).`,
+              data: { hit: false, hitChancePercent: hitChance },
+            });
+            break;
+          }
+
+          let weaponDamageBonus = 0;
+          if (actor.activeWeaponItemId) {
+            const weapon = this.contentService.resolveItemById(actor.activeWeaponItemId);
+            if (weapon) {
+              const baseByRarity = weapon.rarity === 'rare' ? 6 : weapon.rarity === 'uncommon' ? 4 : 3;
+              const bonusSum = (weapon.bonuses.strength ?? 0) + (weapon.bonuses.dexterity ?? 0) + (weapon.bonuses.intelligence ?? 0);
+              weaponDamageBonus = baseByRarity + Math.floor(bonusSum * 0.5);
+            }
+          }
+          let base = Math.max(1, Math.round(actor.strength * (command.type === 'heavy_attack' ? 1.25 : 0.9) + weaponDamageBonus));
+          const outPct = actor.combatModifiers?.outgoingDamagePercent ?? 0;
+          if (outPct !== 0) {
+            base = Math.max(1, Math.round(base * (1 + outPct / 100)));
+          }
+
+          const critChance = Math.max(
+            0,
+            Math.min(
+              95,
+              5 + (actor.combatModifiers?.critChancePercent ?? 0) - (target.combatModifiers?.critChanceTakenPercent ?? 0),
+            ),
+          );
+          const critRoll = this.rollUniform01() * 100;
+          let isCrit = critRoll <= critChance;
+          if (isCrit) {
+            base = Math.max(1, Math.round(base * 1.5));
+          }
+
           const guardState = guardStates.get(target.id);
           const mitigation = applyGuardMitigation({
             guardState,
@@ -1978,6 +2329,7 @@ export class CombatService {
             damageKind: 'physical',
             attackCommandType: command.type,
             isProjectile: (actor.attackRange ?? 1) > 1,
+            random: this.rollUniform01.bind(this),
           });
 
           if (mitigation.guardBroken) {
@@ -1993,7 +2345,13 @@ export class CombatService {
             });
           }
 
-          const damage = Math.max(1, mitigation.finalDamage);
+          let damage = Math.max(0, mitigation.finalDamage);
+          const inc = target.combatModifiers?.incomingPhysical;
+          if (inc && (inc.percent !== 0 || inc.flat !== 0)) {
+            damage = Math.max(0, Math.floor(damage * (1 + inc.percent / 100) + inc.flat));
+          }
+          damage = Math.max(1, damage);
+
           target.currentHp = Math.max(0, target.currentHp - damage);
           target.isAlive = target.currentHp > 0;
 
@@ -2008,12 +2366,15 @@ export class CombatService {
               actorId: actor.id,
               targetId: target.id,
               commandId: command.id,
-              message: `${actor.name} наносит ${damage} урона цели ${target.name}.`,
+              message: isCrit
+                ? `${actor.name} наносит критический удар: ${damage} урона цели ${target.name}.`
+                : `${actor.name} наносит ${damage} урона цели ${target.name}.`,
               data: {
                 amount: damage,
                 blocked: mitigation.blocked,
                 partiallyBlocked: mitigation.partiallyBlocked,
                 guardBroken: mitigation.guardBroken,
+                crit: isCrit,
               },
             },
             {
@@ -2025,6 +2386,40 @@ export class CombatService {
               targetId: target.id,
             },
           );
+
+          if (isCrit) {
+            this.applyAttackStatusProcs({
+              session,
+              state,
+              attacker: actor,
+              target,
+              trigger: 'on_crit',
+              stepIndex,
+              orderIndex,
+              commandId: command.id,
+            });
+          }
+
+          this.applyAttackStatusProcs({
+            session,
+            state,
+            attacker: actor,
+            target,
+            trigger: 'on_hit',
+            stepIndex,
+            orderIndex,
+            commandId: command.id,
+          });
+
+          this.applyLifestealFromAttack({
+            session,
+            state,
+            actor,
+            damageDealt: damage,
+            stepIndex,
+            orderIndex,
+            commandId: command.id,
+          });
 
           if (!target.isAlive) {
             await this.processActorDeath({
@@ -2499,6 +2894,42 @@ export class CombatService {
         const targetId = command.target.kind === 'entity'
           ? command.target.entityId
           : actor.id;
+
+        const statusTargetEntity = state.entities.find((e) => e.id === targetId && e.isAlive);
+        if (statusTargetEntity && itemData) {
+          const rawItemEffects = this.extractItemEffectsFromContentPayload(itemData);
+          const prof = this.buildTargetStatusDefenseProfile(session, statusTargetEntity);
+          const ctx = {
+            stepIndex,
+            orderIndex,
+            commandId: command.id,
+            attackerId: actor.id,
+            targetId: statusTargetEntity.id,
+          };
+          for (const eff of rawItemEffects) {
+            if (eff.type !== 'apply_status') {
+              continue;
+            }
+            const tr = eff.trigger;
+            if (tr && tr !== 'on_use' && tr !== 'always') {
+              continue;
+            }
+            const result = tryApplyCombatStatus({
+              effect: eff,
+              target: statusTargetEntity,
+              targetDefenseProfile: prof,
+              sourceActorId: actor.id,
+              sourceItemId: typeof itemId === 'string' ? itemId : undefined,
+              rng: () => this.rollUniform01(),
+              rollChance: true,
+            });
+            if (result.outcome !== 'skipped' || result.messageRu) {
+              this.emitTryApplyStatusResult(state, ctx, result);
+            }
+            syncControlFlagsFromActiveStatuses(statusTargetEntity);
+          }
+        }
+
         const effectLogs = effects.flatMap((effect) => this.applyItemEffect(effect, actor, state, state.roundNumber, targetId));
         this.addCombatEvent(state, {
           id: randomUUID(),
@@ -2551,6 +2982,11 @@ export class CombatService {
     state.phase = 'resolving';
     state.recentCombatEvents = [];
     state.recentAnimationEvents = [];
+
+    for (const entity of state.entities) {
+      syncControlFlagsFromActiveStatuses(entity);
+    }
+    await this.applyPeriodicDamagePhase(session, 'turn_start', 0, -1);
 
     const guardStates = new Map<string, CombatGuardState>();
     const interruptedActorIds = new Set<string>();
@@ -2648,6 +3084,13 @@ export class CombatService {
           const reason = validation.reason ?? 'unknown';
           const strongGuardStaminaFail = item.command.type === 'strong_guard' && reason === 'not_enough_stamina';
           const guardStaminaFail = item.command.type === 'guard' && reason === 'not_enough_stamina';
+          state.logs.push({
+            round: state.roundNumber,
+            actorId: item.actor.id,
+            targetId: item.command.target.kind === 'entity' ? item.command.target.entityId : undefined,
+            type: 'INFO',
+            text: `[AI DEBUG] command_failed actor=${item.actor.name} command=${item.command.type} reason=${reason}`,
+          });
           this.addCombatEvent(state, {
             id: randomUUID(),
             roundNumber: state.roundNumber,
@@ -2743,8 +3186,73 @@ export class CombatService {
       });
     }
 
+    await this.applyPeriodicDamagePhase(session, 'turn_end', HARD_MAX_COMMANDS_PER_ROUND, 0);
+    this.tickAllCombatStatusesEndOfRound(session, HARD_MAX_COMMANDS_PER_ROUND, 0);
+
     this.applyEndOfRoundRegeneration(state);
     this.refreshBattleResult(state);
+
+    const roundDamage = state.logs
+      .filter((entry) => entry.round === state.roundNumber && entry.type === 'HIT' && entry.actorId === session.playerId)
+      .reduce((sum, entry) => sum + Math.max(0, entry.amount ?? 0), 0);
+    session.damageContribution += roundDamage;
+
+    if (state.isFinished && state.winner === TeamSide.Left) {
+      const rewards = await this.applyVictoryRewards(session.playerId, state, session.damageContribution);
+
+      if (rewards.progression.gainedExp > 0) {
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+          orderIndex: 0,
+          type: 'round_end',
+          actorId: session.playerId,
+          message: `Battle reward: +${rewards.progression.gainedExp} EXP`,
+          data: { gainedExp: rewards.progression.gainedExp },
+        });
+      }
+
+      if (rewards.progression.levelsGained > 0) {
+        const playerEntity = state.entities.find((entity) => entity.id === session.playerId);
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+          orderIndex: 0,
+          type: 'round_end',
+          actorId: session.playerId,
+          message: `${playerEntity?.name ?? 'Player'} levels up! +${rewards.progression.levelsGained * 5} free stat points`,
+          data: { levelsGained: rewards.progression.levelsGained },
+        });
+      }
+
+      if (rewards.gainedGold > 0) {
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+          orderIndex: 0,
+          type: 'round_end',
+          actorId: session.playerId,
+          message: `Battle reward: +${rewards.gainedGold} gold`,
+          data: { gainedGold: rewards.gainedGold },
+        });
+      }
+
+      if (rewards.itemName) {
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex: HARD_MAX_COMMANDS_PER_ROUND,
+          orderIndex: 0,
+          type: 'round_end',
+          actorId: session.playerId,
+          message: `Battle reward: loot ${rewards.itemName}`,
+          data: { itemName: rewards.itemName },
+        });
+      }
+    }
 
     if (!state.isFinished) {
       state.roundNumber += 1;
@@ -2766,17 +3274,15 @@ export class CombatService {
       return;
     }
 
-    const controllableActors = this.getLivingControllableActors(session.state);
+    const controllableActors = this.getLivingControllableActors(session.state, session.playerId);
     const allReady = controllableActors.every((entity) => session.turnPlans.get(entity.id)?.ready);
     if (!allReady) {
       return;
     }
 
     for (const aiActor of this.getLivingAiActors(session.state)) {
-      const plan = session.turnPlans.get(aiActor.id);
-      if (!plan || plan.commands.length === 0) {
-        session.turnPlans.set(aiActor.id, this.buildNpcAiPlan(session, aiActor));
-      }
+      // Rebuild AI plans from the latest state so NPCs react to player movement/actions this round.
+      session.turnPlans.set(aiActor.id, this.buildNpcAiPlan(session, aiActor));
     }
 
     this.syncTurnPlanState(session);
@@ -2798,6 +3304,9 @@ export class CombatService {
       return;
     }
 
+    state.roundPhase = 'PLANNING';
+    state.phase = 'planning';
+
     const aliveEntities = state.entities.filter((entity) => this.canActorPlan(state, entity));
     for (const entity of aliveEntities) {
       if (entity.team === TeamSide.Right) {
@@ -2816,10 +3325,8 @@ export class CombatService {
       }
     }
 
-    state.roundPhase = 'PLANNING';
-    state.phase = 'planning';
     state.readyActorIds = [];
-    state.pendingActorIds = this.getLivingControllableActors(state).map((entity) => entity.id);
+    state.pendingActorIds = this.getLivingControllableActors(state, session.playerId).map((entity) => entity.id);
     this.syncSubmittedPlansState(session);
     state.turnStartedAt = new Date().toISOString();
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
@@ -2827,52 +3334,163 @@ export class CombatService {
   }
 
   private buildNpcAiPlan(session: CombatSession, actor: ArenaBattleState['entities'][number]): CombatTurnPlan {
-    const personality = this.resolveAiPersonality(actor);
-    const aiLimits = getAiRoundLimits({ actor, personality });
-    const result = buildAiCombatTurnPlan({
-      battleState: session.state,
+    const state = session.state;
+    const limits = this.getCombatRoundLimitsForActor(actor);
+    const commands: CombatCommand[] = [];
+    const debugNotes: string[] = [];
+    let rejectReason = 'none';
+
+    const enemies = state.entities
+      .filter((entity) => entity.team !== actor.team && this.canActorPlan(state, entity))
+      .sort((left, right) => {
+        const leftPreferred = left.id === session.playerId ? 0 : 1;
+        const rightPreferred = right.id === session.playerId ? 0 : 1;
+        if (leftPreferred !== rightPreferred) {
+          return leftPreferred - rightPreferred;
+        }
+
+        const leftDistance = getBattlefieldDistance(actor, left);
+        const rightDistance = getBattlefieldDistance(actor, right);
+        if (leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
+
+        const leftHpRatio = left.currentHp / Math.max(1, left.maxHp);
+        const rightHpRatio = right.currentHp / Math.max(1, right.maxHp);
+        return leftHpRatio - rightHpRatio;
+      });
+
+    const target = enemies[0];
+    const attackRange = Math.max(1, Math.floor(actor.attackRange ?? 1));
+    if (!target) {
+      debugNotes.push('no_target');
+    }
+
+    if (target) {
+      const distanceToTarget = getBattlefieldDistance(actor, target);
+      debugNotes.push(`dist=${distanceToTarget}`);
+
+      if (distanceToTarget <= attackRange) {
+        while (commands.length < limits.maxCommands) {
+          const attackCommand = createCombatCommandFromType({
+            type: 'basic_attack',
+            target: { kind: 'entity', entityId: target.id },
+            payload: { targetZone: TargetZone.Chest },
+          });
+
+          const validation = canAppendCombatCommand({
+            actor,
+            currentCommands: commands,
+            nextCommand: attackCommand,
+            battleState: state,
+            limits,
+          });
+
+          if (!validation.ok) {
+            rejectReason = validation.errors[0] ?? 'attack_validation_failed';
+            break;
+          }
+
+          commands.push(attackCommand);
+        }
+      } else {
+        const maxMoveDistance = actor.currentStamina >= (COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0)
+          ? 3
+          : actor.currentStamina >= (COMBAT_ACTION_COSTS.move_2_cells.stamina ?? 0)
+            ? 2
+            : actor.currentStamina >= (COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0)
+              ? 1
+              : 0;
+        debugNotes.push(`moveBudget=${maxMoveDistance}`);
+
+        const reachable = maxMoveDistance > 0
+          ? getReachableBattlefieldTiles(state, actor.id, maxMoveDistance)
+          : [];
+        const bestCell = reachable
+          .map((cell) => ({
+            ...cell,
+            distanceToTarget: Math.abs((target.battlefieldX ?? 0) - cell.x) + Math.abs((target.battlefieldY ?? 0) - cell.y),
+          }))
+          .sort((left, right) => {
+            if (left.distanceToTarget !== right.distanceToTarget) {
+              return left.distanceToTarget - right.distanceToTarget;
+            }
+            return left.distance - right.distance;
+          })[0];
+
+        if (bestCell) {
+          const moveType = bestCell.distance >= 3 && maxMoveDistance >= 3 ? 'dash' : 'move';
+          debugNotes.push(`move=${moveType}@${bestCell.x}:${bestCell.y}`);
+          const moveCommand = createCombatCommandFromType({
+            type: moveType,
+            target: { kind: 'cell', x: bestCell.x, y: bestCell.y },
+            payload: { movementType: moveType === 'dash' ? 'dash' : 'walk' },
+          });
+
+          const moveValidation = canAppendCombatCommand({
+            actor,
+            currentCommands: commands,
+            nextCommand: moveCommand,
+            battleState: state,
+            limits,
+          });
+
+          if (moveValidation.ok) {
+            commands.push(moveCommand);
+          } else {
+            rejectReason = moveValidation.errors[0] ?? 'move_validation_failed';
+          }
+        } else if (maxMoveDistance <= 0) {
+          rejectReason = 'NOT_ENOUGH_STAMINA';
+          debugNotes.push('no_stamina_for_move');
+        } else {
+          debugNotes.push('no_reachable_cell');
+        }
+      }
+    }
+
+    if (commands.length === 0) {
+      const guardCommand = createCombatCommandFromType({
+        type: 'guard',
+        target: { kind: 'self' },
+      });
+      const guardValidation = canAppendCombatCommand({
+        actor,
+        currentCommands: commands,
+        nextCommand: guardCommand,
+        battleState: state,
+        limits,
+      });
+      if (guardValidation.ok) {
+        commands.push(guardCommand);
+        debugNotes.push('fallback=guard');
+      } else {
+        commands.push(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
+        rejectReason = guardValidation.errors[0] ?? 'guard_validation_failed';
+        debugNotes.push('fallback=wait');
+      }
+    }
+
+    const totalAp = commands.reduce((sum, command) => sum + Math.max(0, command.apCost), 0);
+    const planned = commands.map((command) => command.type).join(' -> ');
+    const debugEntry = {
+      round: state.roundNumber,
       actorId: actor.id,
-      personality,
-      preferredTargetId: session.playerId,
-      roundLimits: aiLimits,
-      skillCooldowns: session.skillCooldowns,
-    });
+      targetId: target?.id,
+      type: 'INFO' as const,
+      text: `[AI DEBUG] ${actor.name}: target=${target?.name ?? 'none'} plan=${planned || 'none'} ap=${totalAp}/${limits.maxAP} reject=${rejectReason} notes=${debugNotes.join(',') || 'none'}`,
+    };
+    state.logs.push(debugEntry);
+    state.lastRound?.logs.push(debugEntry);
 
     return {
-      ...result.plan,
+      battleId: state.combatId,
+      roundNumber: state.roundNumber,
+      actorId: actor.id,
+      commands,
       ready: true,
-      submittedAt: result.plan.submittedAt ?? new Date().toISOString(),
+      submittedAt: new Date().toISOString(),
     };
-  }
-
-  private resolveAiPersonality(actor: ArenaBattleState['entities'][number]): AiCombatPersonality {
-    const dynamic = actor as { aiPersonality?: unknown; isBoss?: unknown; powerTier?: unknown; combatStyleHint?: unknown };
-    if (dynamic.isBoss === true || String(dynamic.powerTier ?? '').trim().toLowerCase() === 'boss') {
-      return 'boss';
-    }
-
-    const explicit = String(dynamic.aiPersonality ?? '').trim().toLowerCase();
-    if (
-      explicit === 'normal'
-      || explicit === 'cautious'
-      || explicit === 'aggressive'
-      || explicit === 'reckless'
-      || explicit === 'stupid'
-      || explicit === 'traitor'
-      || explicit === 'boss'
-    ) {
-      return explicit;
-    }
-
-    const style = String(dynamic.combatStyleHint ?? '').toUpperCase();
-    if (style === 'RANGED') {
-      return 'aggressive';
-    }
-    if (style === 'MAGIC') {
-      return 'cautious';
-    }
-
-    return 'normal';
   }
 
   private calculateCombatGoldReward(state: ArenaBattleState, damageContribution: number): number {
@@ -2883,7 +3501,8 @@ export class CombatService {
       0,
     );
 
-    return Math.max(20, enemyCount * 14 + threatScore * 3 + Math.floor(damageContribution * 0.35));
+    // Increased base, per-enemy, and threat rewards for meaningful progression
+    return Math.max(50, enemyCount * 25 + threatScore * 5 + Math.floor(damageContribution * 0.8));
   }
 
   private rollCombatDrop(state: ArenaBattleState): string | null {
@@ -2939,7 +3558,10 @@ export class CombatService {
       return this.applyVictoryRewardsFileMode(characterId, state, damageContribution);
     }
 
-    const gainedExp = Math.max(0, Math.floor(damageContribution));
+    const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive);
+    const enemiesDefeated = enemies.length;
+    const baseExp = Math.max(50, enemiesDefeated * 35);
+    const gainedExp = Math.max(50, baseExp + Math.floor(damageContribution * 1.2));
     const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
     const droppedItemId = this.rollCombatDrop(state);
 
@@ -3002,7 +3624,10 @@ export class CombatService {
     itemName: string | null;
     hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
   }> {
-    const gainedExp = Math.max(0, Math.floor(damageContribution));
+    const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive);
+    const enemiesDefeated = enemies.length;
+    const baseExp = Math.max(50, enemiesDefeated * 35);
+    const gainedExp = Math.max(50, baseExp + Math.floor(damageContribution * 1.2));
     const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
     const droppedItemId = this.rollCombatDrop(state);
 
@@ -3077,6 +3702,7 @@ export class CombatService {
     const equipment = this.normalizeEquipment(character.equipment);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const weaponProfile = this.resolveWeaponCombatProfile(equipment);
+    const combatModifiers = this.contentService.getArenaCombatEquipmentModifiers(equipment);
 
     const entity = this.toCombatEntityFromStats({
       id: character.id,
@@ -3091,6 +3717,7 @@ export class CombatService {
       splashRadius: weaponProfile.splashRadius,
       splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
       splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
+      combatModifiers,
     });
 
     entity.activeWeaponItemId = equipment.weapon ?? null;
@@ -3163,6 +3790,7 @@ export class CombatService {
     splashRadius?: number;
     splashCenterMultiplier?: number;
     splashOuterMultiplier?: number;
+    combatModifiers?: ArenaCombatEquipmentModifiers;
   }) {
     return createArenaCombatEntity({
       id: params.id,
@@ -3190,6 +3818,7 @@ export class CombatService {
       splashRadius: params.splashRadius,
       splashCenterMultiplier: params.splashCenterMultiplier,
       splashOuterMultiplier: params.splashOuterMultiplier,
+      combatModifiers: params.combatModifiers,
     });
   }
 
@@ -3219,6 +3848,7 @@ export class CombatService {
     const equipment = this.normalizeEquipment(template.equipment);
     const activeStats = this.contentService.getStatsWithEquipment(template.stats, equipment);
     const weaponProfile = this.resolveWeaponCombatProfile(equipment);
+    const combatModifiers = this.contentService.getArenaCombatEquipmentModifiers(equipment);
 
     return this.toCombatEntityFromStats({
       id: `npc-${randomUUID()}`,
@@ -3234,6 +3864,7 @@ export class CombatService {
       splashRadius: weaponProfile.splashRadius,
       splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
       splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
+      combatModifiers,
     });
   }
 
@@ -3560,6 +4191,18 @@ export class CombatService {
     state.turnDeadlineAt = new Date(Date.now() + state.roundDurationSeconds * 1000).toISOString();
     state.lootContainers = [];
 
+    const equipmentByActorId = new Map<string, Equipment>();
+    equipmentByActorId.set(player.id, this.normalizeEquipment(character.equipment));
+    for (let i = 0; i < enemies.length; i++) {
+      const enemy = enemies[i]!;
+      if (normalizedCustomEnemies.length > 0) {
+        const tpl = normalizedCustomEnemies[i];
+        equipmentByActorId.set(enemy.id, this.normalizeEquipment(tpl?.equipment));
+      } else {
+        equipmentByActorId.set(enemy.id, this.normalizeEquipment({}));
+      }
+    }
+
     const session: CombatSession = {
       state,
       playerId: player.id,
@@ -3569,6 +4212,7 @@ export class CombatService {
       enemyTempoBreaks: [],
       damageContribution: 0,
       skillCooldowns: [],
+      equipmentByActorId,
     };
 
     this.primeRoundPlanning(session);
@@ -3589,6 +4233,97 @@ export class CombatService {
     }
     await this.resolveRoundByTimeoutIfNeeded(session);
     return normalizeArenaBattleState(session.state);
+  }
+
+  async executeSequentialAction(payload: {
+    battleId: string;
+    actorId: string;
+    roundNumber: number;
+    command: CombatCommand;
+  }): Promise<
+    | { ok: true; battleState: ArenaBattleState; events: CombatEvent[] }
+    | { ok: false; errorCode: string; message: string; details?: unknown }
+  > {
+    const session = this.sessions.get(payload.battleId);
+    if (!session) {
+      return { ok: false, errorCode: 'BATTLE_NOT_FOUND', message: 'Battle not found.' };
+    }
+
+    await this.resolveRoundByTimeoutIfNeeded(session);
+    if (session.state.isFinished || session.state.phase === 'finished') {
+      return { ok: false, errorCode: 'BATTLE_FINISHED', message: 'Battle is already finished.' };
+    }
+    if (session.state.roundPhase === 'RESOLVING' || session.state.phase === 'resolving') {
+      return { ok: false, errorCode: 'ROUND_ALREADY_RESOLVING', message: 'Round is already resolving.' };
+    }
+    if (payload.actorId !== session.playerId) {
+      return { ok: false, errorCode: 'ACTOR_NOT_CONTROLLED_BY_USER', message: 'Actor is not controlled by this user.' };
+    }
+    if (payload.roundNumber !== session.state.roundNumber) {
+      return { ok: false, errorCode: 'ROUND_MISMATCH', message: 'Round number mismatch.' };
+    }
+
+    const actor = session.state.entities.find((entity) => entity.id === payload.actorId);
+    if (!actor || !this.canActorPlan(session.state, actor)) {
+      return { ok: false, errorCode: 'ACTOR_DEAD', message: 'Actor cannot act right now.' };
+    }
+
+    const plan = this.getOrCreateTurnPlan(session, payload.actorId);
+    if (plan.roundNumber !== session.state.roundNumber) {
+      plan.roundNumber = session.state.roundNumber;
+      plan.commands = [];
+      plan.ready = false;
+      plan.submittedAt = undefined;
+    }
+    if (plan.ready) {
+      return { ok: false, errorCode: 'TURN_ALREADY_ENDED', message: 'Turn already ended for this round.' };
+    }
+
+    const normalized = this.normalizeAndValidateCommand({
+      session,
+      actor,
+      rawCommand: payload.command,
+      currentCommands: plan.commands,
+    });
+
+    if (!normalized.validation.ok) {
+      const firstError = normalized.validation.errors[0] ?? 'UNKNOWN';
+      return {
+        ok: false,
+        errorCode: firstError,
+        message: String(firstError),
+        details: {
+          errors: normalized.validation.errors,
+          warnings: normalized.validation.warnings,
+          warningDetails: normalized.validation.warningDetails,
+          total: normalized.validation.total,
+        },
+      };
+    }
+
+    plan.commands = [...plan.commands, normalized.command];
+    plan.submittedAt = new Date().toISOString();
+
+    const limits = this.getCombatRoundLimitsForActor(actor);
+    const totalAp = plan.commands.reduce((sum, command) => sum + Math.max(0, command.apCost), 0);
+    const shouldResolveNow =
+      normalized.command.type === 'wait'
+      || totalAp >= limits.maxAP
+      || plan.commands.length >= limits.maxCommands;
+
+    if (shouldResolveNow) {
+      plan.ready = true;
+      this.syncTurnPlanState(session);
+      await this.tryResolveWhenAllReady(session);
+    } else {
+      this.syncTurnPlanState(session);
+    }
+
+    return {
+      ok: true,
+      battleState: normalizeArenaBattleState(session.state),
+      events: session.state.recentCombatEvents ?? [],
+    };
   }
 
   async submitCombatPlanV2(
@@ -3633,6 +4368,17 @@ export class CombatService {
     }
 
     const plan = this.getOrCreateTurnPlan(session, payload.actorId);
+    const alreadyReadyThisRound =
+      (session.state.readyActorIds ?? []).includes(payload.actorId) &&
+      plan.roundNumber === payload.roundNumber;
+    if (alreadyReadyThisRound) {
+      return {
+        ok: false,
+        errorCode: 'ALREADY_SUBMITTED_THIS_ROUND',
+        message: 'Action for this round is already submitted.',
+      };
+    }
+
     plan.battleId = combatId;
     plan.roundNumber = payload.roundNumber;
     plan.actorId = payload.actorId;

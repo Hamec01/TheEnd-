@@ -78,10 +78,12 @@ export interface ItemPreviewResponse {
     setId: string;
     setName: string;
     totalPieces: number;
+    pieceSummaries?: Array<{ itemId: string; itemName: string }>;
     bonuses: Array<{
       requiredPieces: number;
       description?: string;
       effects: string[];
+      penaltyEffects?: string[];
     }>;
   };
 }

@@ -14,6 +14,7 @@ exports.canAppendCombatCommand = canAppendCombatCommand;
 exports.createCombatCommandFromType = createCombatCommandFromType;
 exports.revalidateCombatCommandBeforeExecute = revalidateCombatCommandBeforeExecute;
 exports.calculateCommandInitiative = calculateCommandInitiative;
+const combat_status_sync_1 = require("./combat-status-sync");
 const combat_costs_1 = require("./combat-costs");
 exports.DEFAULT_MAX_COMMANDS_PER_ROUND = 3;
 exports.HARD_MAX_COMMANDS_PER_ROUND = 4;
@@ -596,6 +597,7 @@ function revalidateCombatCommandBeforeExecute(params) {
     if (!actor.isAlive) {
         return { ok: false, reason: 'actor_dead', message: 'План прерван: исполнитель уже мертв.' };
     }
+    (0, combat_status_sync_1.syncControlFlagsFromActiveStatuses)(actor);
     const actorFlags = actor;
     if (actorFlags.isStunned) {
         return { ok: false, reason: 'actor_stunned', message: 'Действие сорвано: исполнитель оглушен.' };

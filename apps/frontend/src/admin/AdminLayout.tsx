@@ -16,6 +16,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
     title: 'Content',
     links: [
       { path: '/admin/items', label: 'Предметы' },
+      { path: '/admin/item-sets', label: 'Сеты предметов' },
       { path: '/admin/skills', label: 'Skills' },
       { path: '/admin/quests', label: 'Квесты' },
       { path: '/admin/quest-items', label: 'Квестовые предметы' },

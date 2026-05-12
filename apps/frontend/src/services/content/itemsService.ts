@@ -2,6 +2,113 @@ import type { AdminItem } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { nowIso, uid } from './storage';
 
+/** Базовые поля для частичного JSON-импорта (остальное подставляется из файла). */
+export function createAdminItemDefaults(): AdminItem {
+  const now = nowIso();
+  return {
+    id: '',
+    name: '',
+    type: 'weapon',
+    subtype: '',
+    slot: 'rightHand',
+    handsRequired: 1,
+    rarity: 'common',
+    price: 0,
+    stackable: false,
+    maxStack: 1,
+    requiredStats: {},
+    bonuses: {},
+    gameplayDescription: '',
+    loreDescription: '',
+    imagePath: '',
+    isEnabled: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Извлекает массив сырых записей предметов из экспорта/ручного JSON.
+ * Поддерживает: массив, { items }, полный backup { content: { items } }.
+ */
+export function extractRawItemsFromImportJson(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const root = payload as Record<string, unknown>;
+    if (Array.isArray(root.items)) {
+      return root.items;
+    }
+    const content = root.content;
+    if (content && typeof content === 'object' && !Array.isArray(content)) {
+      const items = (content as Record<string, unknown>).items;
+      if (Array.isArray(items)) {
+        return items;
+      }
+    }
+  }
+  throw new Error('Ожидался массив предметов или объект с полем items (или content.items).');
+}
+
+export interface ItemsJsonImportResult {
+  created: string[];
+  updated: string[];
+  errors: Array<{ id: string; message: string }>;
+}
+
+/**
+ * Импорт предметов в хранилище контента (то же API, что у формы админки).
+ * Существующие id обновляются целиком (после слияния с дефолтами и normalize).
+ */
+export async function importItemsFromJsonEntries(entries: unknown[]): Promise<ItemsJsonImportResult> {
+  const existingIds = new Set((await itemsService.getAll()).map((i) => i.id));
+  const seen = new Set<string>();
+  const created: string[] = [];
+  const updated: string[] = [];
+  const errors: Array<{ id: string; message: string }> = [];
+
+  for (const raw of entries) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      errors.push({ id: '—', message: 'Элемент списка должен быть объектом.' });
+      continue;
+    }
+    const record = raw as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    if (!id) {
+      errors.push({ id: '—', message: 'У записи нет строкового id.' });
+      continue;
+    }
+    if (seen.has(id)) {
+      errors.push({ id, message: 'Повторяющийся id внутри файла.' });
+      continue;
+    }
+    seen.add(id);
+
+    const candidate = normalize({ ...createAdminItemDefaults(), ...record, id } as AdminItem);
+    const validationErrors = validateItem(candidate);
+    if (validationErrors.length > 0) {
+      errors.push({ id, message: validationErrors.join(', ') });
+      continue;
+    }
+
+    try {
+      if (existingIds.has(id)) {
+        await itemsService.update(id, candidate);
+        updated.push(id);
+      } else {
+        await itemsService.create(candidate);
+        existingIds.add(id);
+        created.push(id);
+      }
+    } catch (error) {
+      errors.push({ id, message: (error as Error).message || 'Ошибка сохранения' });
+    }
+  }
+
+  return { created, updated, errors };
+}
+
 function normalizeItemSlot(slot: AdminItem['slot'] | string | undefined): AdminItem['slot'] {
   switch (slot) {
     case 'cloak':

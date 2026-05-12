@@ -5,6 +5,7 @@ import {
   MovementType,
   TeamSide,
   getBattlefieldTilePlacements,
+  getCombatStatusDefinition,
   type AdminSkillDefinition,
   type ArenaCombatEntity,
   type CombatAnimationEvent,
@@ -101,7 +102,8 @@ interface TileState {
   triggersOpportunity: boolean;
 }
 
-const CAMERA_TILE_BUDGET = 12;
+const MIN_CAMERA_ZOOM = 0.5;
+const MAX_CAMERA_ZOOM = 3;
 
 function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
   if (entity.combatStyleHint) {
@@ -249,12 +251,15 @@ export function BattleField({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const processedLogKeysRef = useRef<Set<string>>(new Set());
   const processedAnimationKeysRef = useRef<Set<string>>(new Set());
+  const sceneCellSizeRef = useRef(48);
   const [boardSize, setBoardSize] = useState({ width: 0, height: 0 });
+  const [cameraZoom, setCameraZoom] = useState(1);
+  const [cameraCenter, setCameraCenter] = useState<{ x: number; y: number } | null>(null);
+  const [cameraDrag, setCameraDrag] = useState<null | { startX: number; startY: number; originX: number; originY: number }>(null);
     const gridOffsetX = mapCalibration?.gridOffsetX ?? 0;
     const gridOffsetY = mapCalibration?.gridOffsetY ?? 0;
     const showVisualGrid = Boolean(mapCalibration?.showEditorGrid);
     const visualGridOpacity = mapCalibration?.gridOpacity ?? 0.12;
-    const viewportCellCount = CAMERA_TILE_BUDGET;
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu>({ x: 0, y: 0, type: 'cell', show: false });
@@ -455,20 +460,23 @@ export function BattleField({
     rafId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(rafId);
   }, [tokenMoveAnimations]);
+
   const viewport = useMemo(() => {
-    const width = Math.min(viewportCellCount, battleMapWidth);
-    const height = Math.min(viewportCellCount, battleMapHeight);
-    const playerX = playerPlacement?.x ?? 0;
-    const playerY = playerPlacement?.y ?? 0;
+    const baseWidth = Math.max(1, Math.min(viewportWidth, battleMapWidth));
+    const baseHeight = Math.max(1, Math.min(viewportHeight, battleMapHeight));
+    const width = Math.max(4, Math.min(battleMapWidth, Math.round(baseWidth / cameraZoom)));
+    const height = Math.max(4, Math.min(battleMapHeight, Math.round(baseHeight / cameraZoom)));
+    const focusX = cameraCenter?.x ?? playerPlacement?.x ?? 0;
+    const focusY = cameraCenter?.y ?? playerPlacement?.y ?? 0;
     const maxOffsetX = Math.max(0, battleMapWidth - width);
     const maxOffsetY = Math.max(0, battleMapHeight - height);
     return {
       width,
       height,
-      offsetX: Math.max(0, Math.min(maxOffsetX, playerX - Math.floor(width / 2))),
-      offsetY: Math.max(0, Math.min(maxOffsetY, playerY - Math.floor(height / 2))),
+      offsetX: Math.max(0, Math.min(maxOffsetX, Math.round(focusX - Math.floor(width / 2)))),
+      offsetY: Math.max(0, Math.min(maxOffsetY, Math.round(focusY - Math.floor(height / 2)))),
     };
-  }, [battleMapHeight, battleMapWidth, playerPlacement?.x, playerPlacement?.y, viewportCellCount]);
+  }, [battleMapHeight, battleMapWidth, cameraCenter?.x, cameraCenter?.y, cameraZoom, playerPlacement?.x, playerPlacement?.y, viewportHeight, viewportWidth]);
 
   const adjacentMeleeEnemies = useMemo(() => {
     if (!playerPlacement) {
@@ -905,6 +913,7 @@ export function BattleField({
     22,
     Math.min(cellByWidth, cellByHeight)
   );
+  sceneCellSizeRef.current = sceneCellSize;
   const tokenSizePx = Math.max(24, Math.floor(sceneCellSize * 0.72));
 
   const visibleMapPixelWidth = viewport.width * sceneCellSize;
@@ -918,12 +927,46 @@ export function BattleField({
     <div className="battle-field tactical-field">
       <div className="tactical-header">
         <h3>Tactical Battlefield</h3>
-        <div className="tactical-distance-indicator">Distance: {distance} | LMB: select target | DBL LMB: quick attack | RMB: action menu | Space: confirm | Esc: cancel</div>
+        <div className="tactical-distance-indicator">Distance: {distance} | LMB: select target | DBL LMB: quick attack | RMB: action menu | MMB drag: pan | Alt+Wheel: zoom | Space: confirm | Esc: cancel</div>
       </div>
 
       <div
         className="tactical-board-container"
         ref={boardRef}
+        onMouseDown={(event) => {
+          if (event.button !== 1) {
+            return;
+          }
+          event.preventDefault();
+          setCameraDrag({
+            startX: event.clientX,
+            startY: event.clientY,
+            originX: cameraCenter?.x ?? playerPlacement?.x ?? 0,
+            originY: cameraCenter?.y ?? playerPlacement?.y ?? 0,
+          });
+        }}
+        onMouseMove={(event) => {
+          if (!cameraDrag) {
+            return;
+          }
+          event.preventDefault();
+          const cellSize = Math.max(1, sceneCellSizeRef.current);
+          const deltaX = (event.clientX - cameraDrag.startX) / cellSize;
+          const deltaY = (event.clientY - cameraDrag.startY) / cellSize;
+          setCameraCenter({
+            x: cameraDrag.originX - deltaX,
+            y: cameraDrag.originY - deltaY,
+          });
+        }}
+        onMouseUp={() => setCameraDrag(null)}
+        onMouseLeave={() => setCameraDrag(null)}
+        onWheel={(event) => {
+          if (!event.altKey) {
+            return;
+          }
+          event.preventDefault();
+          setCameraZoom((current) => Math.max(MIN_CAMERA_ZOOM, Math.min(MAX_CAMERA_ZOOM, current * (event.deltaY < 0 ? 1.12 : 0.9))));
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1045,6 +1088,22 @@ export function BattleField({
                              <div className="token-hp-bar-fill" style={{ width: `${hpPercent}%` }} />
                            </div>
                          </div>
+
+                         {entity.activeCombatStatuses?.some((s) => s.remainingTurns > 0) ? (
+                           <div className="token-status-badges" aria-hidden="true">
+                             {entity.activeCombatStatuses
+                               .filter((s) => s.remainingTurns > 0)
+                               .map((s, idx) => {
+                                 const def = getCombatStatusDefinition(s.id);
+                                 const label = def?.labelRu ?? s.rawStatusId ?? s.id;
+                                 return (
+                                   <span key={`${entity.id}-${s.id}-${idx}`} className="token-status-badge" title={`${label}, осталось ходов: ${s.remainingTurns}`}>
+                                     {label} {s.remainingTurns}
+                                   </span>
+                                 );
+                               })}
+                           </div>
+                         ) : null}
 
                          {floats.map((entry) => (
                            <div

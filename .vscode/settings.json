@@ -1,0 +1,8 @@
+{
+    "kiroAgent.trustedCommands": [
+        "npm *",
+        "git * ",
+        "ls *",
+        "cd *"
+    ]
+}

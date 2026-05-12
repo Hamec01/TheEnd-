@@ -9,6 +9,7 @@ import {
   getItemHandsRequired,
   type AdminSkillDefinition,
   type BattleMapDefinition,
+  type ArenaCombatEquipmentModifiers,
   type Equipment,
   type ItemDefinition,
   type Merchant,
@@ -49,6 +50,8 @@ import type {
   WorldMapContent,
   WorldMapZone,
 } from './content.types';
+import { aggregateArenaCombatEquipmentModifiers } from './arena-combat-modifiers';
+import { applyPassiveStatBonusesToStatBlock, resolveCharacterEquipmentModifiers } from './item-effects.resolver';
 
 const CONTENT_DB_VERSION = 1 as const;
 const CONTENT_COLLECTIONS: ContentCollectionName[] = [
@@ -707,16 +710,73 @@ function normalizeItemSetInput(input: ItemSet): ItemSet {
     pieceItemIds: normalizeStringList(input.pieceItemIds),
     bonuses: Array.isArray(input.bonuses)
       ? input.bonuses
-        .map((bonus) => ({
-          requiredPieces: Math.max(1, Math.round(toFiniteNumber(bonus?.requiredPieces) ?? 1)),
-          effects: normalizeOptionalItemEffects(bonus?.effects) ?? [],
-          description: typeof bonus?.description === 'string' && bonus.description.trim() ? bonus.description.trim() : undefined,
-        }))
+        .map((bonus) => {
+          const penaltyRaw = normalizeOptionalItemEffects((bonus as { penaltyEffects?: unknown }).penaltyEffects) ?? [];
+          return {
+            requiredPieces: Math.max(1, Math.round(toFiniteNumber(bonus?.requiredPieces) ?? 1)),
+            effects: normalizeOptionalItemEffects(bonus?.effects) ?? [],
+            penaltyEffects: penaltyRaw.length > 0 ? penaltyRaw : undefined,
+            description: typeof bonus?.description === 'string' && bonus.description.trim() ? bonus.description.trim() : undefined,
+          };
+        })
       : [],
     isEnabled: input.isEnabled !== false,
+    imagePath: typeof input.imagePath === 'string' && input.imagePath.trim() ? input.imagePath.trim() : undefined,
+    gameplayDescription: typeof input.gameplayDescription === 'string' && input.gameplayDescription.trim()
+      ? input.gameplayDescription.trim()
+      : undefined,
+    loreDescription: typeof input.loreDescription === 'string' && input.loreDescription.trim()
+      ? input.loreDescription.trim()
+      : undefined,
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
   };
+}
+
+export function removeDeletedItemIdFromItemSets(itemSets: ItemSet[] | undefined, deletedItemId: string, timestamp = nowIso()): ItemSet[] {
+  if (!Array.isArray(itemSets) || !deletedItemId.trim()) {
+    return itemSets ?? [];
+  }
+
+  return itemSets.map((itemSet) => {
+    const pieceItemIds = Array.isArray(itemSet.pieceItemIds) ? itemSet.pieceItemIds : [];
+    if (!pieceItemIds.includes(deletedItemId)) {
+      return itemSet;
+    }
+
+    return {
+      ...itemSet,
+      pieceItemIds: pieceItemIds.filter((pieceItemId) => pieceItemId !== deletedItemId),
+      updatedAt: timestamp,
+    };
+  });
+}
+
+export function collectMissingItemSetReferenceWarnings(db: ContentDatabase): string[] {
+  const itemIds = new Set((db.items ?? []).map((item) => String(item?.id ?? '').trim()).filter(Boolean));
+  const warnings: string[] = [];
+
+  for (const itemSet of db.itemSets ?? []) {
+    if (!itemSet || typeof itemSet !== 'object') {
+      continue;
+    }
+
+    const missingPieceIds = Array.from(new Set(
+      (Array.isArray(itemSet.pieceItemIds) ? itemSet.pieceItemIds : [])
+        .map((pieceItemId) => String(pieceItemId ?? '').trim())
+        .filter((pieceItemId) => pieceItemId && !itemIds.has(pieceItemId)),
+    ));
+
+    if (missingPieceIds.length === 0) {
+      continue;
+    }
+
+    warnings.push(
+      `Item set '${String(itemSet.id ?? '').trim()}' has ${missingPieceIds.length} missing item references: ${missingPieceIds.join(', ')}`,
+    );
+  }
+
+  return warnings;
 }
 
 function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
@@ -1543,6 +1603,7 @@ export class ContentService implements OnModuleInit {
 
   private validateDatabaseIntegrity(db: ContentDatabase): string[] {
     const errors: string[] = [];
+    const warnings = new Set<string>();
 
     const duplicateItems = findDuplicateIds(db.items);
     if (duplicateItems.length > 0) {
@@ -1658,6 +1719,8 @@ export class ContentService implements OnModuleInit {
       }
     }
 
+    const itemSetIds = new Set((db.itemSets ?? []).map((s) => (s && typeof s === 'object' ? String(s.id ?? '').trim() : '')).filter(Boolean));
+
     for (const set of db.itemSets ?? []) {
       // Skip null or invalid entries
       if (!set || typeof set !== 'object') {
@@ -1665,11 +1728,6 @@ export class ContentService implements OnModuleInit {
         continue;
       }
       const pieceIds = Array.isArray(set.pieceItemIds) ? set.pieceItemIds : [];
-      for (const pieceItemId of pieceIds) {
-        if (!itemIds.has(pieceItemId)) {
-          errors.push(`Item set '${set.id}' references missing item '${pieceItemId}' in pieceItemIds.`);
-        }
-      }
 
       for (const bonus of Array.isArray(set.bonuses) ? set.bonuses : []) {
         const requiredPieces = (bonus as { requiredPieces?: number }).requiredPieces ?? pieceIds.length;
@@ -1679,9 +1737,15 @@ export class ContentService implements OnModuleInit {
         }
 
         if (requiredPieces > pieceIds.length) {
-          errors.push(`Item set '${set.id}' has bonus requiredPieces (${requiredPieces}) greater than pieceItemIds length (${pieceIds.length}).`);
+          warnings.add(
+            `Item set '${set.id}' has bonus requiredPieces (${requiredPieces}) greater than pieceItemIds length (${pieceIds.length}).`,
+          );
         }
       }
+    }
+
+    for (const warning of collectMissingItemSetReferenceWarnings(db)) {
+      warnings.add(warning);
     }
 
     for (const complex of db.runeComplexes ?? []) {
@@ -1702,6 +1766,10 @@ export class ContentService implements OnModuleInit {
       if (!item || typeof item !== 'object') {
         errors.push(`items contains invalid entry`);
         continue;
+      }
+      const setRef = typeof item.setId === 'string' ? item.setId.trim() : '';
+      if (setRef && !itemSetIds.has(setRef)) {
+        warnings.add(`Item '${item.id}' references missing item set '${setRef}'.`);
       }
       for (const socket of item.augmentSlots ?? []) {
         const augmentItemId = String(socket.socketedAugmentItemId ?? '').trim();
@@ -1772,6 +1840,10 @@ export class ContentService implements OnModuleInit {
       if (hasMojibakeQuestionMarks(quest.title) || hasMojibakeQuestionMarks(quest.adminDescription) || hasMojibakeQuestionMarks(quest.playerDescription)) {
         errors.push(`Quest '${quest.id}' contains suspicious mojibake text ('???').`);
       }
+    }
+
+    for (const warning of warnings) {
+      this.logger.warn(warning);
     }
 
     return errors;
@@ -2244,6 +2316,9 @@ export class ContentService implements OnModuleInit {
     const collectionName = ensureCollectionName(name);
     const collections = db as unknown as Record<ContentCollectionName, unknown[]>;
     collections[collectionName] = (collections[collectionName] as Array<{ id: string }>).filter((entry) => entry.id !== id);
+    if (collectionName === 'items') {
+      db.itemSets = removeDeletedItemIdFromItemSets(db.itemSets ?? [], id, nowIso());
+    }
     await this.persist(db);
   }
 
@@ -2435,7 +2510,27 @@ export class ContentService implements OnModuleInit {
       }
     }
 
+    const db = this.ensureLoaded();
+    const resolved = resolveCharacterEquipmentModifiers({
+      equipment,
+      items: db.items,
+      itemSets: db.itemSets ?? [],
+      activationContexts: ['combat', 'arena'],
+    });
+    applyPassiveStatBonusesToStatBlock(next, resolved.effects);
+
     return next;
+  }
+
+  getArenaCombatEquipmentModifiers(equipment: Equipment): ArenaCombatEquipmentModifiers {
+    const db = this.ensureLoaded();
+    const resolved = resolveCharacterEquipmentModifiers({
+      equipment,
+      items: db.items,
+      itemSets: db.itemSets ?? [],
+      activationContexts: ['combat', 'arena'],
+    });
+    return aggregateArenaCombatEquipmentModifiers(resolved.effects);
   }
 
   canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment, preferredSlot?: keyof Equipment): { ok: boolean; reason?: string } {

@@ -23,6 +23,8 @@ const CONTENT_KEYS = [
   'questItems',
   'questMarkers',
   'battleMaps',
+  'itemSets',
+  'runeComplexes',
 ] as const;
 
 const ROOT_METADATA_KEYS = new Set(['schemaVersion', 'game', 'exportedAt', 'exportedBy', 'appEnv', 'gitCommit', 'contentCounts', 'content']);
@@ -101,6 +103,8 @@ function countContent(content: Partial<ContentSnapshot>): CountMap {
     lootTables: Array.isArray(content.lootTables) ? content.lootTables.length : 0,
     images: Array.isArray(content.images) ? content.images.length : 0,
     battleMaps: Array.isArray(content.battleMaps) ? content.battleMaps.length : 0,
+    itemSets: Array.isArray(content.itemSets) ? content.itemSets.length : 0,
+    runeComplexes: Array.isArray(content.runeComplexes) ? content.runeComplexes.length : 0,
     zones: Array.isArray(worldMap?.zones) ? worldMap.zones.length : 0,
     markers: (Array.isArray(content.questMarkers) ? content.questMarkers.length : 0)
       + (Array.isArray(worldMap?.questMarkers) ? worldMap.questMarkers.length : 0),

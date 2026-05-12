@@ -76,7 +76,7 @@ function normalizeArenaBattleState(state) {
     return {
         ...state,
         phase: state.phase ?? (state.isFinished ? 'finished' : 'planning'),
-        roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber > 0 ? state.roundNumber : 1,
+        roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber >= 0 ? state.roundNumber : 0,
         submittedPlans: state.submittedPlans ?? {},
         readyActorIds: state.readyActorIds ?? [],
         escapeStates: state.escapeStates ?? {},
@@ -388,6 +388,7 @@ function getManaRegen(entity) {
 function createArenaCombatEntity(input) {
     return {
         ...input,
+        activeCombatStatuses: input.activeCombatStatuses ?? [],
         initiative: calculateInitiative(input),
         isAlive: input.currentHp > 0,
     };
@@ -719,6 +720,13 @@ function resolveOpportunityAttacks(params) {
         }
     }
 }
+function applyIncomingEquipmentDamageAdjust(damage, combatStyle, target) {
+    const cat = combatStyle === 'MAGIC' ? target.combatModifiers?.incomingMagic : target.combatModifiers?.incomingPhysical;
+    if (!cat || (cat.flat === 0 && cat.percent === 0)) {
+        return damage;
+    }
+    return Math.max(1, Math.round(damage * (1 + cat.percent / 100)) + cat.flat);
+}
 function resolveAttack(params) {
     const { state, actor, target, actorAction, targetAction, byActor, logs, random } = params;
     const combatStyle = classifyCombatStyle(actor);
@@ -765,7 +773,14 @@ function resolveAttack(params) {
                 : actualBand === DistanceBand.Near
                     ? 0
                     : 2;
-    const hitChance = clampHitChance(58 + actor.perception * 3 + actor.luck - target.dexterity * 2 - distancePenalty + getHitChanceBonus(actorGuardMode));
+    const hitChance = clampHitChance(58
+        + actor.perception * 3
+        + actor.luck
+        - target.dexterity * 2
+        - distancePenalty
+        + getHitChanceBonus(actorGuardMode)
+        + (actor.combatModifiers?.hitChancePercent ?? 0)
+        - (target.combatModifiers?.dodgeChancePercent ?? 0));
     const roll = Math.floor(random() * 100) + 1;
     if (roll > hitChance) {
         logs.push({
@@ -786,10 +801,12 @@ function resolveAttack(params) {
         + (combatStyle === 'MAGIC' ? actor.intelligence : actor.perception)
         + (actorAction.attackZone === TargetZone.Head ? 18 : 4)
         + getCritChanceBonus(actorGuardMode)
-        + getEnemyCritBonusAgainst(targetGuardMode));
+        + getEnemyCritBonusAgainst(targetGuardMode)
+        + (actor.combatModifiers?.critChancePercent ?? 0)
+        + (target.combatModifiers?.critChanceTakenPercent ?? 0));
     const isCritical = Math.floor(random() * 100) + 1 <= criticalChance;
     const criticalMultiplier = isCritical ? 1.5 : 1;
-    const outgoingMultiplier = getOutgoingDamageMultiplier(actorGuardMode);
+    const outgoingMultiplier = getOutgoingDamageMultiplier(actorGuardMode) * (1 + (actor.combatModifiers?.outgoingDamagePercent ?? 0) / 100);
     const incomingMultiplier = getIncomingDamageMultiplier(targetGuardMode);
     const matchedDefense = targetAction.defenseZones.includes(actorAction.attackZone);
     let finalDamage = 0;
@@ -883,7 +900,8 @@ function resolveAttack(params) {
         if (!victim.isAlive) {
             continue;
         }
-        victim.currentHp = Math.max(0, victim.currentHp - entry.damage);
+        const appliedDamage = applyIncomingEquipmentDamageAdjust(entry.damage, combatStyle, victim);
+        victim.currentHp = Math.max(0, victim.currentHp - appliedDamage);
         victim.isAlive = victim.currentHp > 0;
         const tag = entry.kind === 'primary'
             ? ''
@@ -895,8 +913,8 @@ function resolveAttack(params) {
             actorId: actor.id,
             targetId: victim.id,
             type: 'HIT',
-            amount: entry.damage,
-            text: `${actor.name} hits ${victim.name} in ${actorAction.attackZone} for ${entry.damage} damage${isCritical ? ' (critical)' : ''}${tag}`,
+            amount: appliedDamage,
+            text: `${actor.name} hits ${victim.name} in ${actorAction.attackZone} for ${appliedDamage} damage${isCritical ? ' (critical)' : ''}${tag}`,
         });
         if (!victim.isAlive) {
             logs.push({
@@ -956,7 +974,9 @@ function createNpcAction(state, actorId) {
         ? [TargetZone.Head]
         : [TargetZone.Chest, TargetZone.Abdomen];
     const currentDistance = getBattlefieldDistance(actor, target);
-    if (lowHpRatio < 0.25 && currentDistance <= 1) {
+    const inRange = currentDistance <= maxRange;
+    const canAttackNow = inRange && actor.currentStamina >= 10;
+    if (lowHpRatio < 0.25 && currentDistance <= 1 && !canAttackNow) {
         return ensureActionPoints(actor, {
             actorId,
             targetId: target.id,
@@ -1004,7 +1024,7 @@ function createNpcAction(state, actorId) {
             movementType: MovementType.Step,
         });
     }
-    if (lowHpRatio < 0.3) {
+    if (lowHpRatio < 0.3 && !canAttackNow) {
         return ensureActionPoints(actor, {
             actorId,
             targetId: target.id,
@@ -1074,7 +1094,9 @@ function resolveRound(params) {
             });
             continue;
         }
-        const fallback = defaultWaitAction(actor, enemies[0]);
+        const fallback = actor.team === TeamSide.Right
+            ? createNpcAction(state, actorId)
+            : defaultWaitAction(actor, enemies[0]);
         const actorAction = byActor.get(actorId) ?? fallback;
         const target = enemies.find((item) => item.id === actorAction.targetId) ?? enemies[0];
         const targetAction = byActor.get(target.id) ?? defaultWaitAction(target, actor);

@@ -183,7 +183,7 @@ export function buildItemPreview(
   if (item.setId) {
     const foundSet = allSets.find((s) => s.id === item.setId);
     if (foundSet) {
-      setPreview = buildSetPreview(foundSet);
+      setPreview = buildSetPreview(foundSet, allItems);
     }
   }
 
@@ -202,18 +202,28 @@ export function buildItemPreview(
 // ---------------------------------------------------------------------------
 
 function buildSetBonusPreviews(set: ItemSet): SetBonusPreview[] {
-  return (set.bonuses ?? []).map((bonus) => ({
-    requiredPieces: bonus.requiredPieces,
-    description: bonus.description,
-    effects: formatEffects(bonus.effects),
-  }));
+  return (set.bonuses ?? []).map((bonus) => {
+    const penalties = formatEffects((bonus as { penaltyEffects?: ItemEffect[] }).penaltyEffects);
+    return {
+      requiredPieces: bonus.requiredPieces,
+      description: bonus.description,
+      effects: formatEffects(bonus.effects),
+      penaltyEffects: penalties.length > 0 ? penalties : undefined,
+    };
+  });
 }
 
-function buildSetPreview(set: ItemSet): SetPreview {
+function buildSetPreview(set: ItemSet, allItems?: ReadonlyArray<AdminItem>): SetPreview {
+  const itemById = allItems ? new Map(allItems.map((i) => [i.id, i])) : null;
+  const pieceSummaries = (set.pieceItemIds ?? []).map((id) => ({
+    itemId: id,
+    itemName: itemById?.get(id)?.name ?? id,
+  }));
   return {
     setId: set.id,
     setName: set.name,
     totalPieces: set.pieceItemIds.length,
+    pieceSummaries: pieceSummaries.length > 0 ? pieceSummaries : undefined,
     bonuses: buildSetBonusPreviews(set),
   };
 }

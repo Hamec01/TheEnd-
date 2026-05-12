@@ -66,6 +66,8 @@ export interface ItemEffect {
   trigger?: 'on_hit' | 'on_crit' | 'on_use' | 'on_turn_start' | 'on_turn_end' | 'always';
   activationContexts?: string[];
   condition?: string;
+  /** Произвольные поля рантайма (tickDamage, damageCategory и т.д.). */
+  data?: Record<string, unknown>;
 }
 
 export type ItemAugmentType = 'rune' | 'magic_stone' | 'enchantment' | 'other';
@@ -104,6 +106,8 @@ export interface SlotUpgradeRules {
 export interface ItemSetBonus {
   requiredPieces: number;
   effects: ItemEffect[];
+  /** Необязательные штрафы сета (тот же контракт ItemEffect, отдельно в UI). */
+  penaltyEffects?: ItemEffect[];
   description?: string;
 }
 
@@ -115,6 +119,9 @@ export interface ItemSet {
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+  imagePath?: string;
+  gameplayDescription?: string;
+  loreDescription?: string;
 }
 
 export interface RuneComplex {

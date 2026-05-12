@@ -57,6 +57,7 @@ export interface SetBonusPreview {
   description?: string;
   /** Человекочитаемые эффекты этого бонуса. */
   effects: string[];
+  penaltyEffects?: string[];
 }
 
 /**
@@ -66,6 +67,8 @@ export interface SetPreview {
   setId: string;
   setName: string;
   totalPieces: number;
+  /** Части сета (id и отображаемое имя). */
+  pieceSummaries?: Array<{ itemId: string; itemName: string }>;
   bonuses: SetBonusPreview[];
 }
 

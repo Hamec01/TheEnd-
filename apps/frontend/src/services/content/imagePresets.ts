@@ -1,4 +1,4 @@
-export type ImagePresetId = 'item-icon' | 'merchant-portrait' | 'battle-map-background';
+export type ImagePresetId = 'item-icon' | 'set-icon' | 'merchant-portrait' | 'battle-map-background';
 
 export interface ImagePreset {
   id: ImagePresetId;
@@ -13,6 +13,12 @@ export const IMAGE_PRESETS: Record<ImagePresetId, ImagePreset> = {
     width: 128,
     height: 128,
     label: 'Иконка предмета',
+  },
+  'set-icon': {
+    id: 'set-icon',
+    width: 128,
+    height: 128,
+    label: 'Иконка сета',
   },
   'merchant-portrait': {
     id: 'merchant-portrait',

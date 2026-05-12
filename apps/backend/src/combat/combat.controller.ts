@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import type { ArenaBattleState, CombatCommand, CombatPlanErrorCode, CombatPlanWarning, CombatPlanWarningCode, CombatTurnPlan } from '@theend/rpg-domain';
-import { CombatActionDto } from './dto.combat-action.dto';
+import type { ArenaBattleState, CombatCommand, CombatEvent } from '@theend/rpg-domain';
+import { ExecuteCombatActionDto } from './dto.execute-action.dto';
 import { StartCombatDto } from './dto.start-combat.dto';
 import { UseCombatItemDto } from './dto.use-combat-item.dto';
-import { CombatService, type CombatActionResult } from './combat.service';
+import { CombatService } from './combat.service';
 
 type CombatApiErrorResponse = {
   ok: false;
@@ -30,46 +30,6 @@ type UseCombatItemResponse = {
   actionSlots: Array<{ slotIndex: number; kind: 'skill' | 'item' | 'weapon' | null; refId: string | null; itemInstanceId?: string | null; weaponInstanceId?: string | null }>;
 };
 
-type CombatPlanResponse = {
-  state: ArenaBattleState;
-  plan?: CombatTurnPlan;
-};
-
-type ValidateCombatPlanRequest = {
-  actorId: string;
-  roundNumber: number;
-  commands: CombatCommand[];
-};
-
-type ValidateCombatPlanResponse = {
-  ok: boolean;
-  errors: CombatPlanErrorCode[];
-  warnings?: CombatPlanWarningCode[];
-  warningDetails?: CombatPlanWarning[];
-  normalizedCommands?: CombatCommand[];
-  total?: {
-    commands: number;
-    ap: number;
-    stamina: number;
-    mp: number;
-    hp: number;
-  };
-};
-
-type SubmitCombatPlanRequest = {
-  actorId: string;
-  roundNumber: number;
-  commands: CombatCommand[];
-  ready?: boolean;
-};
-
-type SubmitCombatPlanResponse = {
-  ok: true;
-  acceptedPlan: CombatTurnPlan;
-  battleState: ArenaBattleState;
-  warnings?: CombatPlanWarning[];
-};
-
 @Controller(['combat', 'api/combat'])
 export class CombatController {
   constructor(private readonly combatService: CombatService) {}
@@ -79,73 +39,17 @@ export class CombatController {
     return this.combatService.startCombat(dto.characterId, dto.enemyCount ?? 1, dto.customEnemies ?? [], dto.battleMap, dto.blockedTiles ?? []);
   }
 
-  @Post('action')
-  async action(@Body() dto: CombatActionDto): Promise<CombatActionResult> {
-    return this.combatService.resolvePlayerRound(dto.combatId, {
+  @Post(':battleId/action')
+  async executeAction(
+    @Param('battleId') battleId: string,
+    @Body() dto: ExecuteCombatActionDto,
+  ): Promise<{ ok: true; battleState: ArenaBattleState; events: CombatEvent[] } | CombatApiErrorResponse> {
+    return this.combatService.executeSequentialAction({
+      battleId,
       actorId: dto.actorId,
-      targetId: dto.targetId,
-      attackZone: dto.attackZone,
-      defenseZones: dto.defenseZones,
-      attackPointsSpent: dto.attackPointsSpent,
-      defensePointsSpent: dto.defensePointsSpent,
-      actionType: dto.actionType,
-      movementType: dto.movementType,
-      preferredDistance: dto.preferredDistance,
-      destinationX: dto.destinationX,
-      destinationY: dto.destinationY,
-      skillId: dto.skillId,
-      skillLevel: dto.skillLevel,
-      guardMode: dto.guardMode,
+      roundNumber: dto.roundNumber,
+      command: dto.command as unknown as CombatCommand,
     });
-  }
-
-  @Post('plan')
-  async plan(@Body() dto: { combatId: string; actorId: string; command: CombatCommand }): Promise<CombatPlanResponse> {
-    const result = this.combatService.addCombatCommand(dto.combatId, dto.actorId, dto.command);
-    return {
-      state: await this.combatService.getCombatState(dto.combatId),
-      plan: result.plan,
-    };
-  }
-
-  @Post('clear-plan')
-  async clearPlan(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = await this.combatService.clearCombatCommands(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: await this.combatService.getCombatState(dto.combatId), plan };
-  }
-
-  @Post('undo-command')
-  async undoCommand(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = await this.combatService.undoCombatCommand(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: await this.combatService.getCombatState(dto.combatId), plan };
-  }
-
-  @Post('ready')
-  async ready(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = await this.combatService.setCombatReady(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: await this.combatService.getCombatState(dto.combatId), plan };
-  }
-
-  @Post('cancel-ready')
-  async cancelReady(@Body() dto: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResponse> {
-    const plan = await this.combatService.cancelCombatReady(dto.combatId, dto.actorId, dto.roundNumber);
-    return { state: await this.combatService.getCombatState(dto.combatId), plan };
-  }
-
-  @Post(':battleId/validate-plan')
-  async validatePlan(
-    @Param('battleId') battleId: string,
-    @Body() dto: ValidateCombatPlanRequest,
-  ): Promise<ValidateCombatPlanResponse> {
-    return this.combatService.validateCombatPlan(battleId, dto);
-  }
-
-  @Post(':battleId/submit-plan')
-  async submitPlan(
-    @Param('battleId') battleId: string,
-    @Body() dto: SubmitCombatPlanRequest,
-  ): Promise<SubmitCombatPlanResponse | CombatApiErrorResponse> {
-    return this.combatService.submitCombatPlanV2(battleId, dto);
   }
 
   @Post('use-item')

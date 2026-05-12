@@ -1,4 +1,4 @@
-import type { Equipment } from '@theend/rpg-domain';
+import type { Equipment, StatBlock } from '@theend/rpg-domain';
 import type { AdminItem, ItemEffect, ItemSet } from './content.types';
 
 /**
@@ -263,19 +263,27 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
  */
 export function getActiveItemSetBonuses(args: ActiveItemSetBonusesArgs): ActiveItemSetBonus[] {
   const itemById = createItemMap(args.items);
-  const equippedItemIds = new Set<string>();
-
-  for (const rawItemId of Object.values(args.equipment ?? {})) {
-    const itemId = normalizeString(rawItemId);
-    if (!itemId) {
-      continue;
+  /** Экипированные предметы, которые относятся к сету: по pieceItemIds или по item.setId. */
+  const equippedIdsForSet = (itemSet: ItemSet): Set<string> => {
+    const pieceIds = new Set(
+      Array.from(new Set((itemSet.pieceItemIds ?? []).filter((entry) => Boolean(normalizeString(entry))))),
+    );
+    const matched = new Set<string>();
+    for (const rawItemId of Object.values(args.equipment ?? {})) {
+      const itemId = normalizeString(rawItemId);
+      if (!itemId) {
+        continue;
+      }
+      const item = itemById.get(itemId);
+      if (!item || item.isEnabled === false) {
+        continue;
+      }
+      if (pieceIds.has(itemId) || normalizeString(item.setId) === itemSet.id) {
+        matched.add(itemId);
+      }
     }
-    const item = itemById.get(itemId);
-    if (!item || item.isEnabled === false) {
-      continue;
-    }
-    equippedItemIds.add(itemId);
-  }
+    return matched;
+  };
 
   const result: ActiveItemSetBonus[] = [];
 
@@ -284,12 +292,13 @@ export function getActiveItemSetBonuses(args: ActiveItemSetBonusesArgs): ActiveI
       continue;
     }
 
-    const pieceIds = Array.from(new Set((itemSet.pieceItemIds ?? []).filter((entry) => Boolean(normalizeString(entry)))));
-    if (pieceIds.length === 0) {
+    const equippedSetPieces = equippedIdsForSet(itemSet);
+    const activePieces = equippedSetPieces.size;
+
+    const hasPieceDefinitions = (itemSet.pieceItemIds ?? []).some((entry) => Boolean(normalizeString(entry)));
+    if (!hasPieceDefinitions && activePieces === 0) {
       continue;
     }
-
-    const activePieces = pieceIds.reduce((acc, pieceId) => (equippedItemIds.has(pieceId) ? acc + 1 : acc), 0);
 
     for (const bonus of itemSet.bonuses ?? []) {
       if (!bonus || typeof bonus.requiredPieces !== 'number') {
@@ -299,7 +308,8 @@ export function getActiveItemSetBonuses(args: ActiveItemSetBonusesArgs): ActiveI
         continue;
       }
 
-      const effects = sanitizeEffects(bonus.effects);
+      const rawPenalty = (bonus as { penaltyEffects?: ItemEffect[] }).penaltyEffects;
+      const effects = [...sanitizeEffects(bonus.effects), ...sanitizeEffects(rawPenalty)];
       if (effects.length === 0) {
         continue;
       }
@@ -315,6 +325,32 @@ export function getActiveItemSetBonuses(args: ActiveItemSetBonusesArgs): ActiveI
   }
 
   return result;
+}
+
+function isPassiveEquipmentTrigger(trigger: ItemEffect['trigger'] | undefined): boolean {
+  return trigger === undefined || trigger === 'always';
+}
+
+/**
+ * Пассивные stat_bonus из списка эффектов (только trigger always / без trigger).
+ */
+export function applyPassiveStatBonusesToStatBlock(stats: StatBlock, effects: readonly ItemEffect[]): void {
+  for (const effect of effects) {
+    if (!effect || effect.type !== 'stat_bonus' || !isPassiveEquipmentTrigger(effect.trigger)) {
+      continue;
+    }
+    const stat = effect.stat;
+    if (!stat) {
+      continue;
+    }
+    const flat = (typeof effect.flat === 'number' && Number.isFinite(effect.flat) ? effect.flat : 0)
+      + (typeof effect.value === 'number' && Number.isFinite(effect.value) ? effect.value : 0);
+    let delta = flat;
+    if (typeof effect.percent === 'number' && Number.isFinite(effect.percent)) {
+      delta += Math.round((stats[stat] ?? 0) * (effect.percent / 100));
+    }
+    stats[stat] = (stats[stat] ?? 0) + delta;
+  }
 }
 
 /**

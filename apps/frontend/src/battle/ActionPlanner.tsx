@@ -313,7 +313,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
 
       {props.showSubmitButton !== false && (
         <button className="confirm-turn-button" disabled={props.disabled} onClick={props.onSubmit}>
-          ГОТОВО
+          ВЫПОЛНИТЬ
         </button>
       )}
     </div>

@@ -1,4 +1,6 @@
 import type { Race } from './races';
+import type { DamageCategory } from './damage';
+import type { ArenaCombatEquipmentModifiers } from './arena-combat-equipment';
 import { COMBAT_ACTION_COSTS } from './combat-costs';
 import type { ExitZone } from './battle-map';
 import type {
@@ -67,6 +69,23 @@ export enum BattlefieldTileType {
 
 export const BATTLEFIELD_GRID_SIZE = 12;
 
+/**
+ * Активный боевой статус на сущности (игрок, NPC, монстр).
+ * Длительность уменьшается в конце полного цикла resolve раунда (см. combat-status-runtime).
+ */
+export interface ActiveCombatStatus {
+  id: string;
+  sourceActorId?: string;
+  sourceItemId?: string;
+  sourceAbilityId?: string;
+  remainingTurns: number;
+  stacks?: number;
+  rawStatusId?: string;
+  /** Переопределение урона тика из effect.data.tickDamage. */
+  tickDamageFlatOverride?: number;
+  tickDamageCategoryOverride?: DamageCategory;
+}
+
 export interface ArenaCombatEntity {
   id: string;
   name: string;
@@ -112,6 +131,10 @@ export interface ArenaCombatEntity {
   activeWeaponItemId?: string | null;
   /** Currently equipped off-hand item id (admin item id, e.g. shield). Cleared when two-handed weapon equipped. */
   offHandItemId?: string | null;
+  /** Пассивные модификаторы из экипировки и сетов (агрегируются на бэкенде). */
+  combatModifiers?: ArenaCombatEquipmentModifiers;
+  /** Наложенные статусы (яд, оглушение и т.д.). */
+  activeCombatStatuses?: ActiveCombatStatus[];
 }
 
 export interface ArenaCombatAction {
@@ -261,7 +284,7 @@ export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleS
   return {
     ...state,
     phase: state.phase ?? (state.isFinished ? 'finished' : 'planning'),
-    roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber > 0 ? state.roundNumber : 1,
+    roundNumber: Number.isFinite(state.roundNumber) && state.roundNumber >= 0 ? state.roundNumber : 0,
     submittedPlans: state.submittedPlans ?? {},
     readyActorIds: state.readyActorIds ?? [],
     escapeStates: state.escapeStates ?? {},
@@ -679,6 +702,7 @@ export function getManaRegen(entity: Pick<ArenaCombatEntity, 'willpower'>): numb
 export function createArenaCombatEntity(input: Omit<ArenaCombatEntity, 'initiative' | 'isAlive'>): ArenaCombatEntity {
   return {
     ...input,
+    activeCombatStatuses: input.activeCombatStatuses ?? [],
     initiative: calculateInitiative(input),
     isAlive: input.currentHp > 0,
   };
@@ -1115,6 +1139,18 @@ function resolveOpportunityAttacks(params: {
   }
 }
 
+function applyIncomingEquipmentDamageAdjust(
+  damage: number,
+  combatStyle: ReturnType<typeof classifyCombatStyle>,
+  target: ArenaCombatEntity,
+): number {
+  const cat = combatStyle === 'MAGIC' ? target.combatModifiers?.incomingMagic : target.combatModifiers?.incomingPhysical;
+  if (!cat || (cat.flat === 0 && cat.percent === 0)) {
+    return damage;
+  }
+  return Math.max(1, Math.round(damage * (1 + cat.percent / 100)) + cat.flat);
+}
+
 function resolveAttack(params: {
   state: ArenaBattleState;
   actor: ArenaCombatEntity;
@@ -1175,7 +1211,16 @@ function resolveAttack(params: {
             ? 0
             : 2;
 
-  const hitChance = clampHitChance(58 + actor.perception * 3 + actor.luck - target.dexterity * 2 - distancePenalty + getHitChanceBonus(actorGuardMode));
+  const hitChance = clampHitChance(
+    58
+      + actor.perception * 3
+      + actor.luck
+      - target.dexterity * 2
+      - distancePenalty
+      + getHitChanceBonus(actorGuardMode)
+      + (actor.combatModifiers?.hitChancePercent ?? 0)
+      - (target.combatModifiers?.dodgeChancePercent ?? 0),
+  );
   const roll = Math.floor(random() * 100) + 1;
   if (roll > hitChance) {
     logs.push({
@@ -1200,11 +1245,14 @@ function resolveAttack(params: {
       + (combatStyle === 'MAGIC' ? actor.intelligence : actor.perception)
       + (actorAction.attackZone === TargetZone.Head ? 18 : 4)
       + getCritChanceBonus(actorGuardMode)
-      + getEnemyCritBonusAgainst(targetGuardMode),
+      + getEnemyCritBonusAgainst(targetGuardMode)
+      + (actor.combatModifiers?.critChancePercent ?? 0)
+      + (target.combatModifiers?.critChanceTakenPercent ?? 0),
   );
   const isCritical = Math.floor(random() * 100) + 1 <= criticalChance;
   const criticalMultiplier = isCritical ? 1.5 : 1;
-  const outgoingMultiplier = getOutgoingDamageMultiplier(actorGuardMode);
+  const outgoingMultiplier =
+    getOutgoingDamageMultiplier(actorGuardMode) * (1 + (actor.combatModifiers?.outgoingDamagePercent ?? 0) / 100);
   const incomingMultiplier = getIncomingDamageMultiplier(targetGuardMode);
   const matchedDefense = targetAction.defenseZones.includes(actorAction.attackZone);
 
@@ -1309,7 +1357,8 @@ function resolveAttack(params: {
       continue;
     }
 
-    victim.currentHp = Math.max(0, victim.currentHp - entry.damage);
+    const appliedDamage = applyIncomingEquipmentDamageAdjust(entry.damage, combatStyle, victim);
+    victim.currentHp = Math.max(0, victim.currentHp - appliedDamage);
     victim.isAlive = victim.currentHp > 0;
 
     const tag = entry.kind === 'primary'
@@ -1323,8 +1372,8 @@ function resolveAttack(params: {
       actorId: actor.id,
       targetId: victim.id,
       type: 'HIT',
-      amount: entry.damage,
-      text: `${actor.name} hits ${victim.name} in ${actorAction.attackZone} for ${entry.damage} damage${isCritical ? ' (critical)' : ''}${tag}`,
+      amount: appliedDamage,
+      text: `${actor.name} hits ${victim.name} in ${actorAction.attackZone} for ${appliedDamage} damage${isCritical ? ' (critical)' : ''}${tag}`,
     });
 
     if (!victim.isAlive) {
@@ -1389,7 +1438,10 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
     : [TargetZone.Chest, TargetZone.Abdomen];
   const currentDistance = getBattlefieldDistance(actor, target);
 
-  if (lowHpRatio < 0.25 && currentDistance <= 1) {
+  const inRange = currentDistance <= maxRange;
+  const canAttackNow = inRange && actor.currentStamina >= 10;
+
+  if (lowHpRatio < 0.25 && currentDistance <= 1 && !canAttackNow) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
@@ -1441,7 +1493,7 @@ export function createNpcAction(state: ArenaBattleState, actorId: string): Arena
     });
   }
 
-  if (lowHpRatio < 0.3) {
+  if (lowHpRatio < 0.3 && !canAttackNow) {
     return ensureActionPoints(actor, {
       actorId,
       targetId: target.id,
@@ -1526,7 +1578,9 @@ export function resolveRound(params: {
       continue;
     }
 
-    const fallback = defaultWaitAction(actor, enemies[0]!);
+    const fallback = actor.team === TeamSide.Right
+      ? createNpcAction(state, actorId)
+      : defaultWaitAction(actor, enemies[0]!);
     const actorAction = byActor.get(actorId) ?? fallback;
     const target = enemies.find((item) => item.id === actorAction.targetId) ?? enemies[0]!;
     const targetAction = byActor.get(target.id) ?? defaultWaitAction(target, actor);

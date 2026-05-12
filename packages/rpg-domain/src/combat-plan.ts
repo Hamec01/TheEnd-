@@ -1,4 +1,5 @@
 import type { ArenaBattleState, ArenaCombatEntity, TargetZone } from './arena-battle';
+import { syncControlFlagsFromActiveStatuses } from './combat-status-sync';
 import { resolveCombatCommandCost, type CombatActionCostKey } from './combat-costs';
 
 export const DEFAULT_MAX_COMMANDS_PER_ROUND = 3;
@@ -159,6 +160,10 @@ export type CombatEventType =
   | 'heal'
   | 'status_applied'
   | 'status_removed'
+  | 'status_tick'
+  | 'status_resisted'
+  | 'status_immune'
+  | 'effect_triggered'
   | 'guard_applied'
   | 'guard_broken'
   | 'guard_regen'
@@ -1043,6 +1048,8 @@ export function revalidateCombatCommandBeforeExecute(params: {
   if (!actor.isAlive) {
     return { ok: false, reason: 'actor_dead', message: 'План прерван: исполнитель уже мертв.' };
   }
+
+  syncControlFlagsFromActiveStatuses(actor);
 
   const actorFlags = actor as {
     isStunned?: boolean;

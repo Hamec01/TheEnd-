@@ -557,129 +557,33 @@ export async function startCustomCombat(
   return res.json();
 }
 
-export async function sendCombatAction(payload: {
-  combatId: string;
+/**
+ * P0 Sequential Turn-Based Combat: Execute a single action for the active actor.
+ */
+export async function executeCombatAction(payload: {
+  battleId: string;
   actorId: string;
-  targetId: string;
-  attackZone?: TargetZone;
-  defenseZones?: TargetZone[];
-  attackPointsSpent?: number;
-  defensePointsSpent?: number;
-  actionType: ActionType;
-  movementType?: MovementType;
-  preferredDistance?: DistanceBand;
-  destinationX?: number;
-  destinationY?: number;
-  skillId?: string;
-  skillLevel?: number;
-  guardMode?: 'guard' | 'strong_guard';
-}): Promise<CombatActionResult> {
-  const res = await fetch(`${API_BASE}/combat/action`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function addCombatCommand(payload: {
-  combatId: string;
-  actorId: string;
+  roundNumber: number;
   command: CombatCommand;
-}): Promise<CombatPlanResult> {
-  const res = await fetch(`${API_BASE}/combat/plan`, {
+}): Promise<
+  | { ok: true; battleState: ArenaBattleState; events: import('@theend/rpg-domain').CombatEvent[] }
+  | { ok: false; errorCode: string; message: string }
+> {
+  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, command: payload.command }),
   });
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function clearCombatPlan(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
-  const res = await fetch(`${API_BASE}/combat/clear-plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function undoCombatCommand(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
-  const res = await fetch(`${API_BASE}/combat/undo-command`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function setCombatReady(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
-  const res = await fetch(`${API_BASE}/combat/ready`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function cancelCombatReady(payload: { combatId: string; actorId: string; roundNumber?: number }): Promise<CombatPlanResult> {
-  const res = await fetch(`${API_BASE}/combat/cancel-ready`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function validateCombatPlan(payload: {
-  battleId: string;
-  actorId: string;
-  roundNumber: number;
-  commands: CombatCommand[];
-}): Promise<ValidateCombatPlanResponse> {
-  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/validate-plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands }),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
-  }
-  return res.json();
-}
-
-export async function submitCombatPlan(payload: {
-  battleId: string;
-  actorId: string;
-  roundNumber: number;
-  commands: CombatCommand[];
-  ready?: boolean;
-}): Promise<SubmitCombatPlanResponse> {
-  const res = await fetch(`${API_BASE}/combat/${encodeURIComponent(payload.battleId)}/submit-plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actorId: payload.actorId, roundNumber: payload.roundNumber, commands: payload.commands, ready: payload.ready }),
-  });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const raw = await res.text();
+    try {
+      const parsed = JSON.parse(raw) as { errorCode?: unknown; message?: unknown };
+      const errorCode = typeof parsed.errorCode === 'string' ? parsed.errorCode : `HTTP_${res.status}`;
+      const message = typeof parsed.message === 'string' ? parsed.message : raw;
+      return { ok: false, errorCode, message };
+    } catch {
+      return { ok: false, errorCode: `HTTP_${res.status}`, message: raw || `HTTP ${res.status}` };
+    }
   }
   return res.json();
 }

@@ -30,7 +30,7 @@ describe('formatItemEffect', () => {
   it('apply_status with trigger on_hit → "При попадании: N% шанс наложить …"', () => {
     const effect: ItemEffect = {
       type: 'apply_status',
-      statusId: 'blind',
+      statusId: 'blinded',
       chancePercent: 10,
       durationTurns: 1,
       trigger: 'on_hit',
@@ -56,9 +56,15 @@ describe('formatItemEffect', () => {
   });
 
   it('status_immunity → "Иммунитет к эффекту"', () => {
-    const effect: ItemEffect = { type: 'status_immunity', statusId: 'stun' };
+    const effect: ItemEffect = { type: 'status_immunity', statusId: 'stunned' };
     const result = formatItemEffect(effect);
     expect(result).toContain('Иммунитет');
+    expect(result).toContain('оглушение');
+  });
+
+  it('legacy status alias is still formatted via canonical lookup', () => {
+    const effect: ItemEffect = { type: 'status_immunity', statusId: 'stun' };
+    const result = formatItemEffect(effect);
     expect(result).toContain('оглушение');
   });
 

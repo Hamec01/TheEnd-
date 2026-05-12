@@ -18,17 +18,19 @@ import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
 import { CitiesPage } from './pages/CitiesPage';
 import { BackupPage } from './pages/BackupPage';
+import { ItemSetsPage } from './pages/ItemSetsPage';
 
 interface AdminAppProps {
   currentPath: string;
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/backup';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/backup';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
     path === '/admin/items'
+    || path === '/admin/item-sets'
     || path === '/admin/skills'
     || path === '/admin/quests'
     || path === '/admin/quest-items'
@@ -57,6 +59,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     switch (route) {
       case '/admin/items':
         return 'Предметы';
+      case '/admin/item-sets':
+        return 'Сеты предметов';
       case '/admin/skills':
         return 'Skills';
       case '/admin/quests':
@@ -108,7 +112,10 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
   let page: React.ReactNode;
   switch (route) {
     case '/admin/items':
-      page = <ItemsPage />;
+      page = <ItemsPage onNavigate={onNavigate} />;
+      break;
+    case '/admin/item-sets':
+      page = <ItemSetsPage onNavigate={onNavigate} />;
       break;
     case '/admin/skills':
       page = <SkillsPage />;

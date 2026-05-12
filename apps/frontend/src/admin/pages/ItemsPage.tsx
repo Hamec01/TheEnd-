@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import type {
   AdminItem,
@@ -17,9 +17,17 @@ import type {
 } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
-import { itemsService, validateItem } from '../../services/content/itemsService';
+import {
+  createAdminItemDefaults,
+  extractRawItemsFromImportJson,
+  importItemsFromJsonEntries,
+  itemsService,
+  validateItem,
+} from '../../services/content/itemsService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
+import { ItemEffectEditor } from '../components/ItemEffectEditor';
+import type { ItemEffectJson } from '../itemEffectConstants';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
 import {
@@ -46,24 +54,6 @@ const DAMAGE_CATEGORIES: DamageCategory[] = ['physical', 'elemental', 'magic', '
 const PHYSICAL_TYPES: PhysicalType[] = ['slash', 'pierce', 'blunt', 'cleave', 'unarmed'];
 const ELEMENT_TYPES: ElementType[] = ['fire', 'water', 'earth', 'air', 'light', 'dark'];
 const MAGIC_SCHOOLS: MagicSchool[] = ['blood', 'death', 'life', 'mind', 'illusion', 'curse', 'arcane'];
-const ITEM_EFFECT_TYPES: ItemEffect['type'][] = [
-  'stat_bonus',
-  'incoming_damage_modifier',
-  'outgoing_damage_modifier',
-  'armor_penetration',
-  'crit_chance_modifier',
-  'crit_damage_modifier',
-  'crit_chance_taken_modifier',
-  'lifesteal',
-  'apply_status',
-  'status_resistance',
-  'status_immunity',
-  'block_chance_modifier',
-  'dodge_chance_modifier',
-  'hit_chance_modifier',
-  'extra_attack_chance',
-];
-const EFFECT_TRIGGERS: NonNullable<ItemEffect['trigger']>[] = ['always', 'on_use', 'on_hit', 'on_crit', 'on_turn_start', 'on_turn_end'];
 const AUGMENT_TYPES: ItemAugmentType[] = ['rune', 'magic_stone', 'enchantment', 'other'];
 const SOCKET_SOURCES: Array<'base' | 'blacksmith_added' | 'scripted'> = ['base', 'blacksmith_added', 'scripted'];
 const SLOT_FAILURE_MODES: Array<'none' | 'material_lost' | 'item_damaged' | 'slot_locked'> = ['none', 'material_lost', 'item_damaged', 'slot_locked'];
@@ -74,27 +64,33 @@ type ExtendedAdminItemCollections = {
 };
 
 function emptyItem(): AdminItem {
-  const now = new Date().toISOString();
-  return {
-    id: '',
-    name: '',
-    type: 'weapon',
-    subtype: '',
-    slot: 'rightHand',
-    handsRequired: 1,
-    rarity: 'common',
-    price: 0,
-    stackable: false,
-    maxStack: 1,
-    requiredStats: {},
-    bonuses: {},
-    gameplayDescription: '',
-    loreDescription: '',
-    imagePath: '',
-    isEnabled: true,
-    createdAt: now,
-    updatedAt: now,
+  return createAdminItemDefaults();
+}
+
+function formatExportStamp(): string {
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}_${p(now.getHours())}-${p(now.getMinutes())}`;
+}
+
+function downloadItemsJson(items: AdminItem[]) {
+  const envelope = {
+    schemaVersion: 1,
+    game: 'TheEnd' as const,
+    exportedAt: new Date().toISOString(),
+    exportedBy: 'admin' as const,
+    contentCounts: { items: items.length },
+    items,
   };
+  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `theend_items_${formatExportStamp()}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function parseNumber(value: string): number | undefined {
@@ -157,7 +153,12 @@ function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
 
-export function ItemsPage() {
+export interface ItemsPageProps {
+  onNavigate?: (path: string) => void;
+}
+
+export function ItemsPage(props: ItemsPageProps = {}) {
+  const { onNavigate } = props;
   const [items, setItems] = useState<AdminItem[]>([]);
   const [itemSets, setItemSets] = useState<ExtendedAdminItemCollections['itemSets']>([]);
   const [runeComplexes, setRuneComplexes] = useState<ExtendedAdminItemCollections['runeComplexes']>([]);
@@ -181,6 +182,8 @@ export function ItemsPage() {
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   function syncAdvancedEditors(item: AdminItem) {
     setEquipmentEffectsText(toPrettyJson(item.equipmentEffects, '[]'));
@@ -339,35 +342,6 @@ export function ItemsPage() {
   function setSlotUpgradeRules(next: AdminItem['slotUpgradeRules']) {
     patch({ slotUpgradeRules: next });
     setSlotUpgradeRulesText(toPrettyJson(next, '{}'));
-  }
-
-  function addEffect(kind: 'equipment' | 'use') {
-    const nextEffect: ItemEffect = { type: 'stat_bonus', trigger: 'always' };
-    if (kind === 'equipment') {
-      setEquipmentEffects([...(draft.equipmentEffects ?? []), nextEffect]);
-      return;
-    }
-    setUseEffects([...(draft.useEffects ?? []), nextEffect]);
-  }
-
-  function updateEffect(kind: 'equipment' | 'use', index: number, effectPatch: Partial<ItemEffect>) {
-    const source = kind === 'equipment' ? (draft.equipmentEffects ?? []) : (draft.useEffects ?? []);
-    const next = source.map((entry, idx) => (idx === index ? { ...entry, ...effectPatch } : entry));
-    if (kind === 'equipment') {
-      setEquipmentEffects(next);
-      return;
-    }
-    setUseEffects(next);
-  }
-
-  function removeEffect(kind: 'equipment' | 'use', index: number) {
-    const source = kind === 'equipment' ? (draft.equipmentEffects ?? []) : (draft.useEffects ?? []);
-    const next = source.filter((_, idx) => idx !== index);
-    if (kind === 'equipment') {
-      setEquipmentEffects(next);
-      return;
-    }
-    setUseEffects(next);
   }
 
   function ensureAugment() {
@@ -619,13 +593,71 @@ export function ItemsPage() {
     if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
       return;
     }
-    await itemsService.delete(selectedId);
+    const deletedId = selectedId;
+    await itemsService.delete(deletedId);
     setSelectedId(null);
     const next = emptyItem();
     setDraft(next);
     syncAdvancedEditors(next);
     await refresh();
-    setStatus(`Предмет удалён: ${selectedId}`);
+    setStatus(`Предмет удалён: ${deletedId}`);
+  }
+
+  function exportItemsJson() {
+    try {
+      downloadItemsJson(items);
+      setStatus(`Экспорт: ${items.length} предметов в JSON.`);
+    } catch (error) {
+      setStatus(translateAdminErrorMessage((error as Error).message));
+    }
+  }
+
+  function openItemsImportPicker() {
+    importFileRef.current?.click();
+  }
+
+  async function onItemsImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+    if (isImporting || isSaving) {
+      return;
+    }
+    setIsImporting(true);
+    setStatus('Импорт JSON…');
+    try {
+      const text = await file.text();
+      const parsed: unknown = JSON.parse(text);
+      const rawList = extractRawItemsFromImportJson(parsed);
+      if (!window.confirm(
+        `Импортировать ${rawList.length} записей из «${file.name}»?\n`
+        + 'Существующие id будут обновлены; новые id будут созданы. Проверка такая же, как при сохранении в форме.',
+      )) {
+        setStatus('Импорт отменён.');
+        setIsImporting(false);
+        return;
+      }
+      const result = await importItemsFromJsonEntries(rawList);
+      await refresh();
+      const errPreview = result.errors.slice(0, 8).map((e) => `${e.id}: ${translateAdminErrorMessage(e.message)}`).join('; ');
+      const extra = result.errors.length > 8 ? ` …ещё ${result.errors.length - 8}` : '';
+      setStatus(
+        `Импорт завершён: создано ${result.created.length}, обновлено ${result.updated.length}, ошибок ${result.errors.length}.`
+        + (result.errors.length ? ` ${errPreview}${extra}` : ''),
+      );
+      if (result.errors.length === 0) {
+        setSaveState({ state: 'saved', message: `Импорт: +${result.created.length} / ~${result.updated.length}` });
+      } else {
+        setSaveState({ state: 'warning', message: `Импорт с ошибками: ${result.errors.length}` });
+      }
+    } catch (error) {
+      setStatus(translateAdminErrorMessage((error as Error).message));
+      setSaveState({ state: 'error', message: translateAdminErrorMessage((error as Error).message) });
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -911,54 +943,10 @@ export function ItemsPage() {
 
         <section className="card">
           <h4>Пассивные эффекты экипировки (equipmentEffects)</h4>
-          <div className="admin-actions-row">
-            <button type="button" onClick={() => addEffect('equipment')}>Добавить эффект</button>
-          </div>
-          {(draft.equipmentEffects ?? []).map((effect, index) => (
-            <div key={`equipment-effect-${index}`} className="admin-form-grid card">
-              <label>
-                <AdminFieldLabel label="type" hint="Тип эффекта." />
-                <select value={effect.type} onChange={(event) => updateEffect('equipment', index, { type: event.target.value as ItemEffect['type'] })}>
-                  {ITEM_EFFECT_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="stat" hint="Целевая характеристика (если нужна для типа эффекта)." />
-                <select value={effect.stat ?? ''} onChange={(event) => updateEffect('equipment', index, { stat: (event.target.value || undefined) as StatKey | undefined })}>
-                  <option value="">Не задана</option>
-                  {STAT_KEYS.map((entry) => <option key={entry} value={entry}>{translateStatKey(entry)}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="value" hint="Абсолютное значение эффекта." />
-                <input type="number" value={effect.value ?? ''} onChange={(event) => updateEffect('equipment', index, { value: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="percent" hint="Процентное значение эффекта." />
-                <input type="number" value={effect.percent ?? ''} onChange={(event) => updateEffect('equipment', index, { percent: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="flat" hint="Плоская добавка (flat)." />
-                <input type="number" value={effect.flat ?? ''} onChange={(event) => updateEffect('equipment', index, { flat: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="trigger" hint="Триггер активации эффекта." />
-                <select value={effect.trigger ?? ''} onChange={(event) => updateEffect('equipment', index, { trigger: (event.target.value || undefined) as ItemEffect['trigger'] })}>
-                  <option value="">Не задан</option>
-                  {EFFECT_TRIGGERS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="activationContexts" hint="Через запятую: weapon, melee, combat и т.д." />
-                <input value={formatCommaList(effect.activationContexts)} onChange={(event) => updateEffect('equipment', index, { activationContexts: parseCommaList(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="condition" hint="Опциональное условие активации." />
-                <input value={effect.condition ?? ''} onChange={(event) => updateEffect('equipment', index, { condition: event.target.value || undefined })} />
-              </label>
-              <button type="button" onClick={() => removeEffect('equipment', index)}>Удалить эффект</button>
-            </div>
-          ))}
+          <ItemEffectEditor
+            effects={(draft.equipmentEffects ?? []) as ItemEffectJson[]}
+            onChange={(next) => setEquipmentEffects(next as ItemEffect[])}
+          />
           <p className="muted">Raw JSON (для точной ручной правки):</p>
           <textarea
             rows={6}
@@ -977,54 +965,10 @@ export function ItemsPage() {
 
         <section className="card">
           <h4>Эффекты использования (useEffects)</h4>
-          <div className="admin-actions-row">
-            <button type="button" onClick={() => addEffect('use')}>Добавить эффект</button>
-          </div>
-          {(draft.useEffects ?? []).map((effect, index) => (
-            <div key={`use-effect-${index}`} className="admin-form-grid card">
-              <label>
-                <AdminFieldLabel label="type" hint="Тип эффекта." />
-                <select value={effect.type} onChange={(event) => updateEffect('use', index, { type: event.target.value as ItemEffect['type'] })}>
-                  {ITEM_EFFECT_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="stat" hint="Целевая характеристика (если нужна для типа эффекта)." />
-                <select value={effect.stat ?? ''} onChange={(event) => updateEffect('use', index, { stat: (event.target.value || undefined) as StatKey | undefined })}>
-                  <option value="">Не задана</option>
-                  {STAT_KEYS.map((entry) => <option key={entry} value={entry}>{translateStatKey(entry)}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="value" hint="Абсолютное значение эффекта." />
-                <input type="number" value={effect.value ?? ''} onChange={(event) => updateEffect('use', index, { value: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="percent" hint="Процентное значение эффекта." />
-                <input type="number" value={effect.percent ?? ''} onChange={(event) => updateEffect('use', index, { percent: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="flat" hint="Плоская добавка (flat)." />
-                <input type="number" value={effect.flat ?? ''} onChange={(event) => updateEffect('use', index, { flat: parseNumber(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="trigger" hint="Триггер активации эффекта." />
-                <select value={effect.trigger ?? ''} onChange={(event) => updateEffect('use', index, { trigger: (event.target.value || undefined) as ItemEffect['trigger'] })}>
-                  <option value="">Не задан</option>
-                  {EFFECT_TRIGGERS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-                </select>
-              </label>
-              <label>
-                <AdminFieldLabel label="activationContexts" hint="Через запятую: potion, consumable, combat и т.д." />
-                <input value={formatCommaList(effect.activationContexts)} onChange={(event) => updateEffect('use', index, { activationContexts: parseCommaList(event.target.value) })} />
-              </label>
-              <label>
-                <AdminFieldLabel label="condition" hint="Опциональное условие активации." />
-                <input value={effect.condition ?? ''} onChange={(event) => updateEffect('use', index, { condition: event.target.value || undefined })} />
-              </label>
-              <button type="button" onClick={() => removeEffect('use', index)}>Удалить эффект</button>
-            </div>
-          ))}
+          <ItemEffectEditor
+            effects={(draft.useEffects ?? []) as ItemEffectJson[]}
+            onChange={(next) => setUseEffects(next as ItemEffect[])}
+          />
           <p className="muted">Raw JSON (для точной ручной правки). Legacy useEffect остаётся без изменений:</p>
           <textarea
             rows={6}
@@ -1314,6 +1258,9 @@ export function ItemsPage() {
                 onChange={(event) => patch({ setId: event.target.value || undefined })}
               >
                 <option value="">Не задан</option>
+                {draft.setId && !itemSets.some((s) => s.id === draft.setId) ? (
+                  <option value={draft.setId}>{draft.setId} (нет в списке)</option>
+                ) : null}
                 {itemSets.map((set) => (
                   <option key={set.id} value={set.id}>
                     {set.name} ({set.id}){set.isEnabled ? '' : ' [disabled]'}
@@ -1388,7 +1335,28 @@ export function ItemsPage() {
               )}
               <p className="muted">Сокетов: {itemPreview.socketsPreview.length}, неактивных аугментов: {itemPreview.inactiveAugments.length}</p>
               {itemPreview.setPreview ? (
-                <p className="muted">Сет: {itemPreview.setPreview.setName} ({itemPreview.setPreview.setId}), частей: {itemPreview.setPreview.totalPieces}</p>
+                <div className="muted">
+                  <p>
+                    Сет: {itemPreview.setPreview.setName} ({itemPreview.setPreview.setId}), частей: {itemPreview.setPreview.totalPieces}
+                  </p>
+                  {itemPreview.setPreview.pieceSummaries && itemPreview.setPreview.pieceSummaries.length > 0 ? (
+                    <ul>
+                      {itemPreview.setPreview.pieceSummaries.map((p) => (
+                        <li key={p.itemId}>{p.itemName} ({p.itemId})</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {itemPreview.setPreview.bonuses?.length ? (
+                    <ul>
+                      {itemPreview.setPreview.bonuses.map((b, i) => (
+                        <li key={i}>
+                          {b.requiredPieces} ч.: {b.effects.join('; ')}
+                          {b.penaltyEffects?.length ? ` | штрафы: ${b.penaltyEffects.join('; ')}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ) : null}
             </>
           ) : (
@@ -1405,6 +1373,11 @@ export function ItemsPage() {
             <p className="admin-catalog-kicker">Asset Library</p>
             <h3>Все предметы</h3>
             <p className="muted">Режим как в проводнике Windows: обычные значки. Нажми на иконку предмета, чтобы снова редактировать его выше.</p>
+            {onNavigate ? (
+              <div className="admin-actions-row">
+                <button type="button" onClick={() => onNavigate('/admin/item-sets')}>Сеты предметов</button>
+              </div>
+            ) : null}
           </div>
           <div className="admin-catalog-metrics">
             <span>{visibleItems.length} в выдаче</span>
@@ -1422,6 +1395,19 @@ export function ItemsPage() {
             <option value="all">Любая редкость</option>
             {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
           </select>
+          <button type="button" disabled={isImporting} onClick={exportItemsJson}>
+            Экспорт JSON
+          </button>
+          <button type="button" disabled={isImporting || isSaving} onClick={openItemsImportPicker}>
+            {isImporting ? 'Импорт…' : 'Импорт JSON'}
+          </button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(event) => { void onItemsImportFileChange(event); }}
+          />
           <button
             onClick={() => {
               setSelectedId(null);
