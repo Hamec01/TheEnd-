@@ -1522,9 +1522,9 @@ export class ArenaService implements OnModuleInit {
     const effectiveStored = runtimeOverride
       ? {
         ...stored,
-        currentHp: typeof runtimeOverride.currentHp === 'number' ? runtimeOverride.currentHp : stored?.currentHp,
-        currentMp: typeof runtimeOverride.currentMp === 'number' ? runtimeOverride.currentMp : stored?.currentMp,
-        currentStamina: typeof runtimeOverride.currentStamina === 'number' ? runtimeOverride.currentStamina : stored?.currentStamina,
+        currentHp: typeof stored?.currentHp === 'number' ? stored.currentHp : runtimeOverride.currentHp,
+        currentMp: typeof stored?.currentMp === 'number' ? stored.currentMp : runtimeOverride.currentMp,
+        currentStamina: typeof stored?.currentStamina === 'number' ? stored.currentStamina : runtimeOverride.currentStamina,
       }
       : stored;
 
@@ -1794,9 +1794,41 @@ export class ArenaService implements OnModuleInit {
 
     for (const effect of effects) {
       const type = String(effect.type ?? '').trim().toLowerCase();
-      const amount = Number(effect.amount);
+      const amount = Number(effect.amount ?? effect.flat ?? effect.value);
       if (!Number.isFinite(amount) || amount <= 0) {
         continue;
+      }
+
+      if (type === 'stat_bonus') {
+        const stat = String(effect.stat ?? '').trim().toLowerCase();
+        if (stat === 'hp' || stat === 'health') {
+          restore.hp += Math.floor(amount);
+          continue;
+        }
+        if (stat === 'mp' || stat === 'mana') {
+          restore.mp += Math.floor(amount);
+          continue;
+        }
+        if (stat === 'stamina' || stat === 'sta') {
+          restore.stamina += Math.floor(amount);
+          continue;
+        }
+      }
+
+      if (type === 'restore_resource' || type === 'restoreresource' || type === 'restore' || type === 'heal_resource') {
+        const resource = String(effect.resource ?? effect.stat ?? '').trim().toLowerCase();
+        if (resource === 'hp' || resource === 'health') {
+          restore.hp += Math.floor(amount);
+          continue;
+        }
+        if (resource === 'mp' || resource === 'mana') {
+          restore.mp += Math.floor(amount);
+          continue;
+        }
+        if (resource === 'stamina' || resource === 'sta') {
+          restore.stamina += Math.floor(amount);
+          continue;
+        }
       }
 
       if (type === 'heal_hp' || type === 'heal' || type === 'restore_hp') {
@@ -2054,6 +2086,13 @@ export class ArenaService implements OnModuleInit {
       currentMp: Math.min(resources.maxMp, resources.currentMp + restore.mp),
       currentStamina: Math.min(resources.maxStamina, resources.currentStamina + restore.stamina),
     };
+    if (
+      nextResources.currentHp === resources.currentHp
+      && nextResources.currentMp === resources.currentMp
+      && nextResources.currentStamina === resources.currentStamina
+    ) {
+      throw new BadRequestException('Ресурс уже полон.');
+    }
 
     if (isFileStorageMode()) {
       await this.updateRuntimeInventoryItemQuantity(characterId, itemId, -1);

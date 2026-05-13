@@ -9,6 +9,7 @@ interface PaperDollProps {
   slotLabels: Partial<Record<EquipmentSlotId, string>>;
   /** Text badge to display in a slot when there is no item (used for skill assignments in quick slots) */
   slotTextContent?: Partial<Record<EquipmentSlotId, string>>;
+  slotImageContent?: Partial<Record<EquipmentSlotId, { src: string; alt: string }>>;
   /** Slot to highlight as selected (e.g. waiting for a skill to be assigned) */
   selectedSlotId?: EquipmentSlotId | null;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
@@ -53,6 +54,7 @@ export function PaperDoll({
   slotItems,
   slotLabels,
   slotTextContent,
+  slotImageContent,
   selectedSlotId,
   resolveItemImage,
   canDropItemInSlot,
@@ -136,13 +138,14 @@ export function PaperDoll({
             const equippedItem = slotItems[slot.id] ?? null;
             const label = slotLabels[slot.id] ?? slot.id;
             const textBadge = slotTextContent?.[slot.id] ?? null;
+            const imageBadge = slotImageContent?.[slot.id] ?? null;
             const isSelected = slot.id === selectedSlotId;
 
             return (
               <button
                 key={slot.id}
                 type="button"
-                className={`paper-doll-slot ${debug ? 'is-debug' : ''} ${equippedItem || textBadge ? 'is-equipped' : 'is-empty'} ${isSelected ? 'is-selected' : ''}`}
+                className={`paper-doll-slot ${debug ? 'is-debug' : ''} ${equippedItem || imageBadge || textBadge ? 'is-equipped' : 'is-empty'} ${isSelected ? 'is-selected' : ''}`}
                 style={{
                   left: `${rect.left}px`,
                   top: `${rect.top}px`,
@@ -199,7 +202,7 @@ export function PaperDoll({
                   }
                   onSlotDrop(slot.id, itemId);
                 }}
-                title={equippedItem ? `${label}: ${equippedItem.name}${textBadge ? ` (${textBadge})` : ''}` : textBadge ? `${label}: ${textBadge}` : label}
+                title={equippedItem ? `${label}: ${equippedItem.name}${textBadge ? ` (${textBadge})` : ''}` : imageBadge ? `${label}: ${imageBadge.alt}` : textBadge ? `${label}: ${textBadge}` : label}
                 data-slot-id={slot.id}
               >
                 {debug ? <span className="paper-doll-slot-id">{slot.id}</span> : null}
@@ -223,6 +226,25 @@ export function PaperDoll({
                       <small>{equippedItem.itemType} / {equippedItem.itemSubType}</small>
                     </span>
                     {textBadge ? <span className="paper-doll-slot-skill-badge">{textBadge}</span> : null}
+                  </>
+                ) : imageBadge ? (
+                  <>
+                    <span className="paper-doll-slot-item-wrap">
+                      <img
+                        src={imageBadge.src}
+                        alt={imageBadge.alt}
+                        className="paper-doll-slot-item-icon"
+                        draggable={false}
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </span>
+                    {textBadge ? <span className="paper-doll-slot-skill-badge">{textBadge}</span> : null}
+                    <span className="paper-doll-slot-tooltip" role="tooltip">
+                      <strong>{label}</strong>
+                      <span>{imageBadge.alt}</span>
+                    </span>
                   </>
                 ) : textBadge ? (
                   <>

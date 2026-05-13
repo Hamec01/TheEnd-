@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel } from '../adminUi';
+import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from '../adminVisuals';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
   deleteDialogue,
@@ -15,10 +16,13 @@ import {
 } from '../../services/dialogueRepository';
 import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
+import { imageService } from '../../services/content/imageService';
 import { itemsService } from '../../services/content/itemsService';
 import { skillsService } from '../../services/content/skillsService';
 import { validateDialogue } from '../../services/dialogueValidator';
 import type { DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
+import type { NpcDefinition } from '../../types/npc';
+import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 function emptyDialogue(): DialogueDefinition {
@@ -73,6 +77,8 @@ export function DialoguesPage() {
   const [itemIds, setItemIds] = useState<string[]>([]);
   const [questItemIds, setQuestItemIds] = useState<string[]>([]);
   const [skillIds, setSkillIds] = useState<string[]>([]);
+  const [npcDefinitions, setNpcDefinitions] = useState<NpcDefinition[]>([]);
+  const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
 
   async function refreshReferences() {
     await Promise.all([
@@ -81,14 +87,18 @@ export function DialoguesPage() {
       ensureQuestsLoaded(),
     ]);
 
-    const [items, skills] = await Promise.all([
+    const [items, skills, images] = await Promise.all([
       itemsService.getAll().catch(() => []),
       skillsService.getAll().catch(() => []),
+      imageService.getAll().catch(() => []),
     ]);
 
     setItemIds(items.map((entry) => entry.id));
     setSkillIds(skills.map((entry) => entry.id));
-    setNpcIds(getAllNpcs().map((entry) => entry.id));
+    const allNpcs = getAllNpcs();
+    setNpcDefinitions(allNpcs);
+    setStoredImages(images);
+    setNpcIds(allNpcs.map((entry) => entry.id));
     setQuestIds(getAllQuests().map((entry) => entry.id));
     setQuestItemIds(getQuestItems().map((entry) => entry.id));
   }
@@ -144,6 +154,8 @@ export function DialoguesPage() {
       return entry.id.toLowerCase().includes(q) || entry.title.toLowerCase().includes(q) || (entry.npcId ?? '').toLowerCase().includes(q);
     });
   }, [dialogues, query]);
+
+  const npcById = useMemo(() => new Map(npcDefinitions.map((npc) => [npc.id, npc])), [npcDefinitions]);
 
   function patch(next: Partial<DialogueDefinition>) {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
@@ -286,13 +298,44 @@ export function DialoguesPage() {
           <button onClick={importJson}>ИМПОРТ JSON</button>
         </div>
 
-        <div className="admin-scroll-list">
-          {visible.map((entry) => (
-            <button key={entry.id} className={selectedId === entry.id ? 'is-active' : ''} onClick={() => selectDialogue(entry)}>
-              <strong>{entry.title || '(без названия)'}</strong>
-              <span>{entry.id} | {entry.npcId || 'без NPC'} | {entry.status}</span>
-            </button>
-          ))}
+        {draft.npcId ? (
+          <section className="card admin-item-preview">
+            <div className="admin-selected-visual">
+              <span className="admin-catalog-thumb admin-catalog-thumb-lg">
+                {(() => {
+                  const npc = npcById.get(draft.npcId ?? '');
+                  const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
+                  return imageSrc
+                    ? <img src={imageSrc} alt={npc?.name ?? draft.npcId} />
+                    : getAdminInitials(npc?.name ?? draft.npcId, 'NPC');
+                })()}
+              </span>
+              <div>
+                <h4>{npcById.get(draft.npcId)?.name ?? draft.npcId}</h4>
+                <p>{draft.title || draft.id || 'Dialogue'}</p>
+                <p className="muted">{draft.npcId}</p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="admin-scroll-list admin-visual-list">
+          {visible.map((entry) => {
+            const npc = entry.npcId ? npcById.get(entry.npcId) : null;
+            const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
+            return (
+              <button key={entry.id} className={`admin-entity-card ${selectedId === entry.id ? 'is-active' : ''}`} onClick={() => selectDialogue(entry)}>
+                <span className="admin-catalog-thumb">
+                  {imageSrc ? <img src={imageSrc} alt={npc?.name ?? entry.npcId ?? entry.id} /> : getAdminInitials(npc?.name ?? entry.title ?? entry.id, 'DLG')}
+                </span>
+                <span className="admin-entity-copy">
+                  <strong>{entry.title || '(без названия)'}</strong>
+                  <span>{npc?.name ?? entry.npcId ?? 'без NPC'}</span>
+                  <span>{entry.id} | {entry.status}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 

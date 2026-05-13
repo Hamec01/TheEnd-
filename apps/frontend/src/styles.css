@@ -2347,6 +2347,31 @@ h3 {
   background: rgba(23, 18, 12, 0.88);
 }
 
+.admin-selected-visual {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-selected-visual h4,
+.admin-selected-visual p {
+  margin: 0 0 4px;
+}
+
+.admin-visual-list {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  align-content: start;
+}
+
+.admin-visual-list .admin-entity-card {
+  min-height: 82px;
+}
+
+.admin-visual-list .admin-catalog-thumb,
+.admin-selected-visual .admin-catalog-thumb {
+  flex: 0 0 auto;
+}
+
 .admin-entity-copy {
   min-width: 0;
   flex: 1 1 auto;
@@ -4754,6 +4779,12 @@ h3 {
   border-color: rgba(232, 188, 110, 0.95);
   box-shadow: 0 0 0 2px rgba(232, 188, 110, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
   transform: translateY(-1px);
+}
+
+.hotbar-slot:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.75);
+  cursor: not-allowed;
 }
 
 .battle-selection-hint {
@@ -7396,6 +7427,13 @@ body:has(.page.page--scroll) {
   place-items: center;
   font-size: 0.65rem;
   background: rgba(82, 62, 41, 0.45);
+}
+
+.character-skill-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .character-skill-detail {

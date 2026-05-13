@@ -6,6 +6,7 @@ import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout
 import type { AdminItem } from '../services/content/models';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { resolveTrainerSkillCandidates, type TrainerSkillCandidate } from './training/trainerSkillResolver';
+import { canUseSkillOutsideCombat, getSkillDetailFacts, getSkillSummaryLines } from './skillDisplay';
 import { PaperDoll } from './PaperDoll';
 import { PAPER_DOLL_ASSETS, type EquipmentSlotId, type PaperDollRace } from './paperDollSlots';
 import {
@@ -40,6 +41,7 @@ interface InventoryPanelProps {
   onResetStatAllocation?: () => void;
   onRespecStats?: () => Promise<void> | void;
   onLearnSkill?: (skillId: string) => Promise<void>;
+  onUseSkillOutOfCombat?: (skillId: string) => Promise<void>;
   onSaveSkillLoadout?: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
   onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
@@ -300,6 +302,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onResetStatAllocation,
   onRespecStats,
   onLearnSkill,
+  onUseSkillOutOfCombat,
   onSaveSkillLoadout,
   onSaveActionSlots,
   onSaveHotbar,
@@ -332,6 +335,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [selectedQuickSlotId, setSelectedQuickSlotId] = useState<EquipmentSlotId | null>(null);
   const [isSavingSkillLoadout, setIsSavingSkillLoadout] = useState(false);
   const [learningSkillId, setLearningSkillId] = useState<string | null>(null);
+  const [usingSkillId, setUsingSkillId] = useState<string | null>(null);
   const [trainerPopupSkillId, setTrainerPopupSkillId] = useState<string | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
@@ -454,10 +458,33 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
       const learned = learnedSkills.find((entry) => entry.skillId === slot.refId) ?? null;
       const def = learned?.definition ?? availableSkills.find((entry) => entry.id === slot.refId) ?? null;
+      if (resolveSkillIcon?.(def)) {
+        continue;
+      }
       content[slotId] = def ? def.name.slice(0, 2).toUpperCase() : '??';
     }
     return content;
-  }, [actionSlotsBySlot, availableSkills, inventoryByItemId, learnedSkills]);
+  }, [actionSlotsBySlot, availableSkills, inventoryByItemId, learnedSkills, resolveSkillIcon]);
+
+  const actionSlotQuickImages = useMemo(() => {
+    const content: Partial<Record<EquipmentSlotId, { src: string; alt: string }>> = {};
+    for (const slotId of QUICK_SLOT_IDS) {
+      const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
+      const slot = actionSlotsBySlot.get(slotIndex);
+      if (!slot?.kind || !slot.refId) {
+        continue;
+      }
+      if (slot.kind === 'skill') {
+        const learned = learnedSkills.find((entry) => entry.skillId === slot.refId) ?? null;
+        const def = learned?.definition ?? availableSkills.find((entry) => entry.id === slot.refId) ?? null;
+        const src = resolveSkillIcon?.(def);
+        if (src) {
+          content[slotId] = { src, alt: def?.name ?? slot.refId };
+        }
+      }
+    }
+    return content;
+  }, [actionSlotsBySlot, availableSkills, learnedSkills, resolveSkillIcon]);
 
   function isUsableHotbarItem(item: ItemDefinition | null): boolean {
     if (!item) {
@@ -982,6 +1009,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }
 
+  async function handleUseSkillOutOfCombat(skillId: string): Promise<void> {
+    if (!onUseSkillOutOfCombat) return;
+    try {
+      setUsingSkillId(skillId);
+      await onUseSkillOutOfCombat(skillId);
+    } catch (error) {
+      onStatus(`Не удалось применить навык: ${(error as Error).message}`);
+    } finally {
+      setUsingSkillId(null);
+    }
+  }
+
   function openTrainerPopup(skillId: string) {
     setTrainerPopupSkillId(skillId);
   }
@@ -1112,7 +1151,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     // Diagnostics for trainer content setup.
     console.debug('[trainer]', {
       npcId: skillsPlayerContext.npcId,
+      npcName: trainerNpcName,
       trainerSkillIdsRaw: trainerSkillIds,
+      allSkillsCount: availableSkills.length,
+      allSkillIds: availableSkills.map((skill) => skill.id),
       candidates: skillsTrainerCandidates.map((entry) => ({
         skillId: entry.skillId,
         sources: entry.sources,
@@ -1122,7 +1164,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         reasons: entry.reasons.map((r) => r.code),
       })),
     });
-  }, [skillsPlayerContext.npcId, skillsTrainerCandidates, trainerSkillIds]);
+  }, [availableSkills, skillsPlayerContext.npcId, skillsTrainerCandidates, trainerNpcName, trainerSkillIds]);
   const skillsLearnedFull = useMemo(
     () => learnedSkills.map((entry) => ({
       ...entry,
@@ -1137,12 +1179,27 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       const slotId = QUICK_SLOT_IDS[slot.slotIndex];
       if (!slotId) continue;
       const def = availableSkills.find((s) => s.id === slot.refId);
+      if (resolveSkillIcon?.(def)) continue;
       result[slotId] = def
         ? def.name.slice(0, 2).toUpperCase()
         : '??';
     }
     return result;
-  }, [actionSlots, availableSkills]);
+  }, [actionSlots, availableSkills, resolveSkillIcon]);
+  const skillsQuickImages = useMemo<Partial<Record<EquipmentSlotId, { src: string; alt: string }>>>(() => {
+    const result: Partial<Record<EquipmentSlotId, { src: string; alt: string }>> = {};
+    for (const slot of actionSlots) {
+      if (slot.kind !== 'skill' || !slot.refId) continue;
+      const slotId = QUICK_SLOT_IDS[slot.slotIndex];
+      if (!slotId) continue;
+      const def = availableSkills.find((s) => s.id === slot.refId);
+      const src = resolveSkillIcon?.(def);
+      if (src) {
+        result[slotId] = { src, alt: def?.name ?? slot.refId };
+      }
+    }
+    return result;
+  }, [actionSlots, availableSkills, resolveSkillIcon]);
   const skillsSelectedDef = useMemo(() => {
     if (!selectedLearnedSkillId) return null;
     const learned = skillsLearnedFull.find((e) => e.skillId === selectedLearnedSkillId);
@@ -1317,52 +1374,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     const skillType = skill?.type ?? 'unknown';
     const iconSrc = resolveSkillIcon?.(skill);
     const glyphFallback = skillName.slice(0, 2).toUpperCase();
-
-    const damageComponents = skill && Array.isArray((skill as any).damage) ? (skill as any).damage as Array<any> : [];
-    const damageSummary = damageComponents.length > 0
-      ? {
-          totalMin: damageComponents.reduce((sum, c) => sum + (typeof c?.minDamage === 'number' ? c.minDamage : 0), 0),
-          totalMax: damageComponents.reduce((sum, c) => sum + (typeof c?.maxDamage === 'number' ? c.maxDamage : 0), 0),
-          elements: Array.from(new Set(damageComponents.flatMap((c) => Array.isArray(c?.elements) ? c.elements : []).map((e) => String(e)))),
-          schools: Array.from(new Set(damageComponents.map((c) => (typeof c?.magicSchool === 'string' ? c.magicSchool : '')).filter(Boolean))),
-          kinds: Array.from(new Set(damageComponents.map((c) => (typeof c?.damageKind === 'string' ? c.damageKind : '')).filter(Boolean))),
-        }
-      : null;
-
-    const healingComponents = skill && Array.isArray((skill as any).healing) ? (skill as any).healing as Array<any> : [];
-    const healingSummary = healingComponents.length > 0
-      ? {
-          totalMin: healingComponents.reduce((sum, c) => sum + (typeof c?.minHeal === 'number' ? c.minHeal : 0), 0),
-          totalMax: healingComponents.reduce((sum, c) => sum + (typeof c?.maxHeal === 'number' ? c.maxHeal : 0), 0),
-          types: Array.from(new Set(healingComponents.map((c) => (typeof c?.healType === 'string' ? c.healType : '')).filter(Boolean))),
-        }
-      : null;
-
-    const effectComponents = skill && Array.isArray((skill as any).effects) ? (skill as any).effects as Array<any> : [];
-    const effectsPreview = effectComponents.length > 0
-      ? effectComponents
-          .slice(0, 3)
-          .map((c) => {
-            const t = typeof c?.effectType === 'string' ? c.effectType : 'effect';
-            const chance = typeof c?.chancePercent === 'number' ? c.chancePercent : null;
-            const dur = typeof c?.durationTurns === 'number' ? c.durationTurns : null;
-            return [t, chance !== null ? `${chance}%` : null, dur !== null ? `${dur} ход.` : null].filter(Boolean).join(' ');
-          })
-          .filter(Boolean)
-      : [];
-
-    const targetCfg = skill ? (skill as any).target as any : null;
-    const castCfg = skill ? (skill as any).cast as any : null;
-    const cooldownCfg = skill ? (skill as any).cooldown as any : null;
-    const castSummary = skill
-      ? {
-          range: typeof targetCfg?.range === 'number' ? targetCfg.range : null,
-          targetType: typeof targetCfg?.targetType === 'string' ? targetCfg.targetType : null,
-          isArea: Boolean(targetCfg?.area),
-          requiresLos: castCfg?.requiresLineOfSight === true,
-          cooldownTurns: typeof cooldownCfg?.cooldownTurns === 'number' ? cooldownCfg.cooldownTurns : null,
-        }
-      : null;
+    const skillSummaryLines = skill ? getSkillSummaryLines(skill) : ['Описание пока не заполнено.'];
 
     const costsGold = entry.costs.gold ?? 0;
     const costsItems = entry.costs.items ?? [];
@@ -1419,61 +1431,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
           <div className="character-item-popup-body">
             <section className="character-item-popup-main">
               <p style={{ whiteSpace: 'pre-wrap' }}>
-                {skill?.gameplayDescription?.trim()
-                  || skill?.shortDescription?.trim()
-                  || 'Описание пока не заполнено.'}
+                {skillSummaryLines[0]}
               </p>
             </section>
             <section className="character-item-compare">
               <div style={{ border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
                 <p className="muted" style={{ margin: 0 }}>Параметры</p>
-                {damageSummary ? (
-                  <p style={{ margin: '6px 0 0' }}>
-                    Урон: {damageSummary.totalMin}-{damageSummary.totalMax}
-                    {damageSummary.kinds.length ? ` · ${damageSummary.kinds.join(', ')}` : ''}
-                  </p>
-                ) : null}
-                {damageSummary?.schools.length ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Школа: {damageSummary.schools.join(', ')}
-                  </p>
-                ) : null}
-                {damageSummary?.elements.length ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Элементы: {damageSummary.elements.join(', ')}
-                  </p>
-                ) : null}
-                {healingSummary ? (
-                  <p style={{ margin: '6px 0 0' }}>
-                    Лечение: {healingSummary.totalMin}-{healingSummary.totalMax}
-                    {healingSummary.types.length ? ` · ${healingSummary.types.join(', ')}` : ''}
-                  </p>
-                ) : null}
-                {effectsPreview.length > 0 ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Эффекты: {effectsPreview.join(', ')}
-                  </p>
-                ) : null}
-                {castSummary?.targetType ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Цель: {castSummary.targetType}{castSummary.isArea ? ' (область)' : ''}
-                  </p>
-                ) : null}
-                {typeof castSummary?.range === 'number' ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Дистанция: {castSummary.range}
-                  </p>
-                ) : null}
-                {typeof castSummary?.cooldownTurns === 'number' ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Перезарядка: {castSummary.cooldownTurns} ходов
-                  </p>
-                ) : null}
-                {castSummary?.requiresLos ? (
-                  <p className="muted" style={{ margin: '6px 0 0' }}>
-                    Требует линию видимости
-                  </p>
-                ) : null}
+                {skillSummaryLines.slice(1).map((line) => (
+                  <p key={line} className="muted" style={{ margin: '6px 0 0' }}>{line}</p>
+                ))}
               </div>
 
               <div style={{ border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
@@ -1534,6 +1500,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               slotItems={paperDollSlotItems}
               slotLabels={SLOT_LABELS}
               slotTextContent={actionSlotQuickContent}
+              slotImageContent={actionSlotQuickImages}
               resolveItemImage={resolveItemImage}
               canDropItemInSlot={(slotId, itemId) => {
                 try {
@@ -1601,6 +1568,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               slotItems={paperDollSlotItems}
               slotLabels={SLOT_LABELS}
               slotTextContent={skillsQuickContent}
+              slotImageContent={skillsQuickImages}
               selectedSlotId={selectedQuickSlotId}
               resolveItemImage={resolveItemImage}
               canDropItemInSlot={(slotId, itemId) => {
@@ -1902,9 +1870,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 </div>
               </div>
               <div className="character-status-bars">
-                <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
-                <p><span>Мана</span><strong>{character.activeStats.mp}</strong></p>
-                <p><span>Выносливость</span><strong>{character.activeStats.stamina}</strong></p>
+                <p><span>HP</span><strong>{character.currentHp}/{character.maxHp}</strong></p>
+                <p><span>Мана</span><strong>{character.currentMp}/{character.maxMp}</strong></p>
+                <p><span>Выносливость</span><strong>{character.currentStamina}/{character.maxStamina}</strong></p>
                 <p><span>Золото</span><strong>{inventory.gold}</strong></p>
                 <p><span>Опыт</span><strong>{character.exp}</strong></p>
                 <p><span>До уровня</span><strong>{expToNextLevel}</strong></p>
@@ -2212,7 +2180,13 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                           }}
                           onMouseEnter={() => setSelectedLearnedSkillId(entry.skillId)}
                         >
-                          <span className="character-skill-icon">{(entry.definition?.name ?? entry.skillId).slice(0, 2).toUpperCase()}</span>
+                          <span className="character-skill-icon">
+                            {(() => {
+                              const iconSrc = resolveSkillIcon?.(entry.definition);
+                              const fallback = (entry.definition?.name ?? entry.skillId).slice(0, 2).toUpperCase();
+                              return iconSrc ? <img src={iconSrc} alt="" /> : fallback;
+                            })()}
+                          </span>
                           <span className="skills-card-copy">
                             <strong>{entry.definition?.name ?? entry.skillId}</strong>
                             <small>Ур. {entry.level} · {entry.definition?.type ?? 'unknown'}</small>
@@ -2339,26 +2313,36 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 {skillsSelectedDef ? (
                   <>
                     <div className="skills-detail-head">
-                      <span className="character-skill-icon skills-detail-icon">{skillsSelectedDef.def.name.slice(0, 2).toUpperCase()}</span>
+                      <span className="character-skill-icon skills-detail-icon">
+                        {(() => {
+                          const iconSrc = resolveSkillIcon?.(skillsSelectedDef.def);
+                          return iconSrc
+                            ? <img src={iconSrc} alt="" />
+                            : skillsSelectedDef.def.name.slice(0, 2).toUpperCase();
+                        })()}
+                      </span>
                       <div>
                         <strong>{skillsSelectedDef.def.name}</strong>
-                        <p className="muted">ID: {skillsSelectedDef.def.id} · Уровень {skillsSelectedDef.level}/{skillsSelectedDef.def.maxLevel}</p>
+                        <p className="muted">Уровень {skillsSelectedDef.level}/{skillsSelectedDef.def.maxLevel}</p>
                       </div>
                     </div>
                     <div className="skills-detail-facts">
-                      <p><span>Тип</span><strong>{skillsSelectedDef.def.type}</strong></p>
-                      <p><span>Навык</span><strong>{skillsSelectedDef.def.name}</strong></p>
-                      <p><span>Макс. уровень</span><strong>{skillsSelectedDef.def.maxLevel}</strong></p>
-                      <p><span>Перезарядка</span><strong>{skillsSelectedDef.def.cooldown.cooldownTurns} ходов</strong></p>
+                      {getSkillDetailFacts(skillsSelectedDef.def).map((fact) => (
+                        <p key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></p>
+                      ))}
                     </div>
                     <p className="skills-detail-text" style={{ whiteSpace: 'pre-wrap' }}>
-                      {[
-                        skillsSelectedDef.def.gameplayDescription?.trim() || skillsSelectedDef.def.shortDescription?.trim() || 'Описание не заполнено.',
-                        `Ресурсы: ${skillsSelectedDef.def.costs.isFree ? 'без затрат' : 'смотри описание'}`,
-                        `Перезарядка: ${skillsSelectedDef.def.cooldown.cooldownTurns} ходов`,
-                        `Тип: ${skillsSelectedDef.def.type}`,
-                      ].join('\n')}
+                      {getSkillSummaryLines(skillsSelectedDef.def).join('\n')}
                     </p>
+                    {canUseSkillOutsideCombat(skillsSelectedDef.def) && onUseSkillOutOfCombat ? (
+                      <button
+                        type="button"
+                        disabled={usingSkillId === skillsSelectedDef.def.id}
+                        onClick={() => { void handleUseSkillOutOfCombat(skillsSelectedDef.def.id); }}
+                      >
+                        {usingSkillId === skillsSelectedDef.def.id ? 'Применение...' : 'Использовать на себя'}
+                      </button>
+                    ) : null}
                     {selectedQuickSlotId ? (
                       <button
                         type="button"
@@ -2415,9 +2399,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   </div>
                 </div>
                 <div className="combined-char-hero-bars">
-                  <p><span>HP</span><strong>{character.activeStats.hp}</strong></p>
-                  <p><span>Мана</span><strong>{character.activeStats.mp}</strong></p>
-                  <p><span>Выносл.</span><strong>{character.activeStats.stamina}</strong></p>
+                  <p><span>HP</span><strong>{character.currentHp}/{character.maxHp}</strong></p>
+                  <p><span>Мана</span><strong>{character.currentMp}/{character.maxMp}</strong></p>
+                  <p><span>Выносл.</span><strong>{character.currentStamina}/{character.maxStamina}</strong></p>
                   <p><span>Золото</span><strong>{inventory.gold}</strong></p>
                   <p><span>Опыт</span><strong>{character.exp} / {levelProgress.next}</strong></p>
                 </div>
@@ -2514,6 +2498,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   onLearnSkill={onLearnSkill ?? (async () => undefined)}
                   onSaveLoadout={onSaveSkillLoadout ?? (async () => undefined)}
                   onStatus={onStatus}
+                  resolveSkillIcon={resolveSkillIcon}
                 />
               </section>
             </div>

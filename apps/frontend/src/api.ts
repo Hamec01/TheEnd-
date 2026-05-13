@@ -684,6 +684,27 @@ export async function learnSkill(
   return res.json();
 }
 
+export interface OutOfCombatSkillUseResult {
+  skillId: string;
+  message: string;
+  restored: { hp: number; mp: number; stamina: number };
+}
+
+export async function useSkillOutOfCombat(
+  characterId: string,
+  skillId: string,
+): Promise<OutOfCombatSkillUseResult> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills/use`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skillId }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 export async function grantSkill(
   characterId: string,
   payload: { skillId: string; sourceType?: string; sourceId?: string },
