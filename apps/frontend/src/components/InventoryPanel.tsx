@@ -1318,6 +1318,52 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     const iconSrc = resolveSkillIcon?.(skill);
     const glyphFallback = skillName.slice(0, 2).toUpperCase();
 
+    const damageComponents = skill && Array.isArray((skill as any).damage) ? (skill as any).damage as Array<any> : [];
+    const damageSummary = damageComponents.length > 0
+      ? {
+          totalMin: damageComponents.reduce((sum, c) => sum + (typeof c?.minDamage === 'number' ? c.minDamage : 0), 0),
+          totalMax: damageComponents.reduce((sum, c) => sum + (typeof c?.maxDamage === 'number' ? c.maxDamage : 0), 0),
+          elements: Array.from(new Set(damageComponents.flatMap((c) => Array.isArray(c?.elements) ? c.elements : []).map((e) => String(e)))),
+          schools: Array.from(new Set(damageComponents.map((c) => (typeof c?.magicSchool === 'string' ? c.magicSchool : '')).filter(Boolean))),
+          kinds: Array.from(new Set(damageComponents.map((c) => (typeof c?.damageKind === 'string' ? c.damageKind : '')).filter(Boolean))),
+        }
+      : null;
+
+    const healingComponents = skill && Array.isArray((skill as any).healing) ? (skill as any).healing as Array<any> : [];
+    const healingSummary = healingComponents.length > 0
+      ? {
+          totalMin: healingComponents.reduce((sum, c) => sum + (typeof c?.minHeal === 'number' ? c.minHeal : 0), 0),
+          totalMax: healingComponents.reduce((sum, c) => sum + (typeof c?.maxHeal === 'number' ? c.maxHeal : 0), 0),
+          types: Array.from(new Set(healingComponents.map((c) => (typeof c?.healType === 'string' ? c.healType : '')).filter(Boolean))),
+        }
+      : null;
+
+    const effectComponents = skill && Array.isArray((skill as any).effects) ? (skill as any).effects as Array<any> : [];
+    const effectsPreview = effectComponents.length > 0
+      ? effectComponents
+          .slice(0, 3)
+          .map((c) => {
+            const t = typeof c?.effectType === 'string' ? c.effectType : 'effect';
+            const chance = typeof c?.chancePercent === 'number' ? c.chancePercent : null;
+            const dur = typeof c?.durationTurns === 'number' ? c.durationTurns : null;
+            return [t, chance !== null ? `${chance}%` : null, dur !== null ? `${dur} ход.` : null].filter(Boolean).join(' ');
+          })
+          .filter(Boolean)
+      : [];
+
+    const targetCfg = skill ? (skill as any).target as any : null;
+    const castCfg = skill ? (skill as any).cast as any : null;
+    const cooldownCfg = skill ? (skill as any).cooldown as any : null;
+    const castSummary = skill
+      ? {
+          range: typeof targetCfg?.range === 'number' ? targetCfg.range : null,
+          targetType: typeof targetCfg?.targetType === 'string' ? targetCfg.targetType : null,
+          isArea: Boolean(targetCfg?.area),
+          requiresLos: castCfg?.requiresLineOfSight === true,
+          cooldownTurns: typeof cooldownCfg?.cooldownTurns === 'number' ? cooldownCfg.cooldownTurns : null,
+        }
+      : null;
+
     const costsGold = entry.costs.gold ?? 0;
     const costsItems = entry.costs.items ?? [];
     const costsQuestItems = entry.costs.questItems ?? [];
@@ -1365,7 +1411,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               </span>
               <div>
                 <h3>{skillName}</h3>
-                <p className="muted">ID: {entry.skillId} · {skillType}</p>
+                <p className="muted">{skillType}</p>
               </div>
             </div>
             <button type="button" className="character-item-popup-close" onClick={closeTrainerPopup}>×</button>
@@ -1377,13 +1423,59 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   || skill?.shortDescription?.trim()
                   || 'Описание пока не заполнено.'}
               </p>
-              {entry.sources?.length ? (
-                <p className="muted" style={{ marginTop: 10 }}>
-                  Источники: {entry.sources.join(', ')}
-                </p>
-              ) : null}
             </section>
             <section className="character-item-compare">
+              <div style={{ border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
+                <p className="muted" style={{ margin: 0 }}>Параметры</p>
+                {damageSummary ? (
+                  <p style={{ margin: '6px 0 0' }}>
+                    Урон: {damageSummary.totalMin}-{damageSummary.totalMax}
+                    {damageSummary.kinds.length ? ` · ${damageSummary.kinds.join(', ')}` : ''}
+                  </p>
+                ) : null}
+                {damageSummary?.schools.length ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Школа: {damageSummary.schools.join(', ')}
+                  </p>
+                ) : null}
+                {damageSummary?.elements.length ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Элементы: {damageSummary.elements.join(', ')}
+                  </p>
+                ) : null}
+                {healingSummary ? (
+                  <p style={{ margin: '6px 0 0' }}>
+                    Лечение: {healingSummary.totalMin}-{healingSummary.totalMax}
+                    {healingSummary.types.length ? ` · ${healingSummary.types.join(', ')}` : ''}
+                  </p>
+                ) : null}
+                {effectsPreview.length > 0 ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Эффекты: {effectsPreview.join(', ')}
+                  </p>
+                ) : null}
+                {castSummary?.targetType ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Цель: {castSummary.targetType}{castSummary.isArea ? ' (область)' : ''}
+                  </p>
+                ) : null}
+                {typeof castSummary?.range === 'number' ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Дистанция: {castSummary.range}
+                  </p>
+                ) : null}
+                {typeof castSummary?.cooldownTurns === 'number' ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Перезарядка: {castSummary.cooldownTurns} ходов
+                  </p>
+                ) : null}
+                {castSummary?.requiresLos ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Требует линию видимости
+                  </p>
+                ) : null}
+              </div>
+
               <div style={{ border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
                 <p className="muted" style={{ margin: 0 }}>Стоимость</p>
                 <p style={{ margin: '6px 0 0' }}>{costsGold > 0 ? `${costsGold} золота` : 'Бесплатно'}</p>
