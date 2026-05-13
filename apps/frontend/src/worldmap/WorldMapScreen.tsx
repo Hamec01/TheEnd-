@@ -2816,7 +2816,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         if (intent.type === "OPEN_TRAINING") {
           dialogueRunner.closeDialogue();
           setActiveWorldModal(null);
-          onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
+          const resolvedTrainerId = intent.trainerNpcId?.trim()
+            || selectedNpcForInteraction?.id
+            || dialogueNpcId
+            || '';
+          const trainerNpc = npcs.find((entry) => entry.id === resolvedTrainerId) ?? null;
+          onOpenSkills(resolvedTrainerId || undefined, trainerNpc?.trainer?.skillIds);
           modalClosed = true;
           break;
         }
@@ -2869,7 +2874,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       } else if (primaryModalIntent?.type === 'START_COMBAT') {
         void onStartCombat();
       } else if (primaryModalIntent?.type === 'OPEN_TRAINING') {
-        onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
+        const resolvedTrainerId = primaryModalIntent.trainerNpcId?.trim()
+          || selectedNpcForInteraction?.id
+          || dialogueNpcId
+          || '';
+        const trainerNpc = npcs.find((entry) => entry.id === resolvedTrainerId) ?? null;
+        onOpenSkills(resolvedTrainerId || undefined, trainerNpc?.trainer?.skillIds);
       }
 
       if (modalIntents.length > 1) {

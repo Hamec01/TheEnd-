@@ -157,6 +157,8 @@ export interface DialogueAction {
     | 'open_training'
     | 'setNpcDisposition'
     | 'setGlobalFlag';
+  npcId?: string;
+  trainerNpcId?: string;
   questId?: string;
   objectiveId?: string;
   itemId?: string;
