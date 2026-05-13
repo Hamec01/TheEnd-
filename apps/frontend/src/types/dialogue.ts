@@ -153,6 +153,8 @@ export interface DialogueAction {
     | 'unlock_dialogue'
     | 'openDialogue'
     | 'open_dialogue'
+    | 'openTraining'
+    | 'open_training'
     | 'setNpcDisposition'
     | 'setGlobalFlag';
   questId?: string;

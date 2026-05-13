@@ -466,6 +466,8 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'openShop';
     case 'start_combat':
       return 'startCombat';
+    case 'open_training':
+      return 'openTraining';
     case 'unlock_location':
       return 'unlockLocation';
     case 'unlock_dialogue':
@@ -671,6 +673,10 @@ export function executeDialogueActions(
       case 'startCombat':
         intents.push({ type: 'START_COMBAT' });
         events.push({ type: 'startCombat', npcId });
+        break;
+      case 'openTraining':
+        intents.push({ type: 'OPEN_TRAINING', skillId: action.skillId ?? null });
+        events.push({ type: 'trainSkill', npcId, skillId: action.skillId ?? null });
         break;
       case 'trainSkill':
         if (action.skillId) {
