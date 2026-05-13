@@ -138,6 +138,7 @@ const DEFAULT_TURN_SECONDS = 60;
 const DEFAULT_ROUND_DURATION_SECONDS = DEFAULT_TURN_SECONDS;
 const ACTIVE_TURN_DURATION_SECONDS = 30;
 const MAX_AUTOMATED_TURN_LOOPS = 24;
+const ARENA_GOLD_PER_DEFEATED_ENEMY = 50;
 const PVP_LOOT_CONFIG = {
   maxDroppedItems: 2,
   itemDropChance: 0.15,
@@ -4082,16 +4083,13 @@ export class CombatService {
     };
   }
 
-  private calculateCombatGoldReward(state: ArenaBattleState, damageContribution: number): number {
-    const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right);
-    const enemyCount = enemies.length;
-    const threatScore = enemies.reduce(
-      (sum, enemy) => sum + Math.round((enemy.strength + enemy.constitution + enemy.dexterity + enemy.perception) / 4),
-      0,
-    );
+  private calculateCombatExperienceReward(damageContribution: number): number {
+    return Math.max(0, Math.floor(damageContribution));
+  }
 
-    // Increased base, per-enemy, and threat rewards for meaningful progression
-    return Math.max(50, enemyCount * 25 + threatScore * 5 + Math.floor(damageContribution * 0.8));
+  private calculateCombatGoldReward(state: ArenaBattleState): number {
+    const defeatedEnemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive).length;
+    return defeatedEnemies * ARENA_GOLD_PER_DEFEATED_ENEMY;
   }
 
   private rollCombatDrop(state: ArenaBattleState): string | null {
@@ -4147,11 +4145,8 @@ export class CombatService {
       return this.applyVictoryRewardsFileMode(characterId, state, damageContribution);
     }
 
-    const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive);
-    const enemiesDefeated = enemies.length;
-    const baseExp = Math.max(50, enemiesDefeated * 35);
-    const gainedExp = Math.max(50, baseExp + Math.floor(damageContribution * 1.2));
-    const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
+    const gainedExp = this.calculateCombatExperienceReward(damageContribution);
+    const gainedGold = this.calculateCombatGoldReward(state);
     const droppedItemId = this.rollCombatDrop(state);
 
     let progression = { gainedExp: 0, levelsGained: 0 };
@@ -4213,11 +4208,8 @@ export class CombatService {
     itemName: string | null;
     hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
   }> {
-    const enemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive);
-    const enemiesDefeated = enemies.length;
-    const baseExp = Math.max(50, enemiesDefeated * 35);
-    const gainedExp = Math.max(50, baseExp + Math.floor(damageContribution * 1.2));
-    const gainedGold = this.calculateCombatGoldReward(state, damageContribution);
+    const gainedExp = this.calculateCombatExperienceReward(damageContribution);
+    const gainedGold = this.calculateCombatGoldReward(state);
     const droppedItemId = this.rollCombatDrop(state);
 
     const character = await this.runtimeStore.getCharacterById(characterId);
@@ -4826,7 +4818,20 @@ export class CombatService {
       throw new NotFoundException('Combat not found.');
     }
     await this.resolveRoundByTimeoutIfNeeded(session);
-    return normalizeArenaBattleState(session.state);
+    return normalizeArenaBattleState({
+      ...session.state,
+      skillCooldowns: this.serializeSkillCooldowns(session),
+    });
+  }
+
+  private serializeSkillCooldowns(session: CombatSession): SkillCooldownEntry[] {
+    return session.skillCooldowns
+      .filter((entry) => entry.remainingRounds > 0 || entry.oncePerCombat)
+      .map((entry) => ({
+        skillId: entry.skillId,
+        remainingRounds: Math.max(0, Math.floor(entry.remainingRounds)),
+        oncePerCombat: entry.oncePerCombat,
+      }));
   }
 
   async executeSequentialAction(payload: {
@@ -4961,6 +4966,32 @@ export class CombatService {
       };
     }
 
+    if (command.type === 'skill_cast') {
+      const skillId = typeof command.payload?.skillId === 'string' ? command.payload.skillId.trim() : '';
+      if (skillId) {
+        const skillValidation = await this.skillRuntime.validateSkillUse(actor.id, skillId, session.skillCooldowns, actor);
+        if (!skillValidation.valid) {
+          this.addCombatEvent(session.state, {
+            id: randomUUID(),
+            roundNumber: session.state.roundNumber,
+            stepIndex: 0,
+            orderIndex: 0,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: skillValidation.reason ?? 'Навык сейчас недоступен.',
+            data: { reason: 'skill_validation_failed', error: skillValidation.reason, skillId },
+          });
+          return {
+            ok: false,
+            errorCode: 'SKILL_VALIDATION_FAILED',
+            message: skillValidation.reason ?? 'Skill is not available.',
+            details: { skillId },
+          };
+        }
+      }
+    }
+
     session.state.recentCombatEvents = [];
     session.state.recentAnimationEvents = [];
     await this.executeImmediateCombatCommand({
@@ -5033,7 +5064,10 @@ export class CombatService {
 
     return {
       ok: true,
-      battleState: normalizeArenaBattleState(session.state),
+      battleState: normalizeArenaBattleState({
+        ...session.state,
+        skillCooldowns: this.serializeSkillCooldowns(session),
+      }),
       events: session.state.recentCombatEvents ?? [],
     };
   }

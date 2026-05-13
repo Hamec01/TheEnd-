@@ -1,8 +1,9 @@
-import { getSkillCostSummary, type AdminSkillDefinition } from '@theend/rpg-domain';
+import type { AdminSkillDefinition } from '@theend/rpg-domain';
 import { useEffect, useMemo, useState } from 'react';
 import type { CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { SkillTrainingPlayerContext, TrainerSkillCandidate } from './training/trainerSkillResolver';
 import { resolveTrainerSkillCandidates } from './training/trainerSkillResolver';
+import { getSkillDetailFacts, getSkillSummaryLines } from './skillDisplay';
 
 interface CharacterSkillsPageProps {
   learnedSkills: CharacterSkillRow[];
@@ -12,27 +13,10 @@ interface CharacterSkillsPageProps {
   trainerSkillIds?: unknown;
   mode?: 'character' | 'trainer';
   trainerNpcName?: string | null;
+  resolveSkillIcon?: (skill: AdminSkillDefinition | null | undefined) => string | undefined;
   onLearnSkill: (skillId: string) => Promise<void>;
   onSaveLoadout: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
   onStatus: (text: string) => void;
-}
-
-function getSkillSummary(skill: AdminSkillDefinition | null | undefined, level: number): string {
-  if (!skill) {
-    return 'Данные навыка недоступны.';
-  }
-
-  const resourceSummary = getSkillCostSummary(skill, level);
-  const resources = resourceSummary.length > 0
-    ? resourceSummary.map((entry) => `${entry.type} ${entry.amount}`).join(', ')
-    : (skill.costs.isFree ? 'Без затрат' : 'Нет');
-
-  return [
-    skill.gameplayDescription?.trim() || skill.shortDescription?.trim() || 'Описание пока не заполнено.',
-    `Ресурсы: ${resources}`,
-    `Перезарядка: ${skill.cooldown.cooldownTurns} ходов`,
-    `Тип: ${skill.type}`,
-  ].join('\n');
 }
 
 function getSlotTypeLabel(slot: CombatSkillSlot): string {
@@ -40,7 +24,7 @@ function getSlotTypeLabel(slot: CombatSkillSlot): string {
 }
 
 export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
-  const { learnedSkills, availableSkills, loadout, playerContext, trainerSkillIds, mode = 'character', trainerNpcName, onLearnSkill, onSaveLoadout, onStatus } = props;
+  const { learnedSkills, availableSkills, loadout, playerContext, trainerSkillIds, mode = 'character', trainerNpcName, resolveSkillIcon, onLearnSkill, onSaveLoadout, onStatus } = props;
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [draftSlots, setDraftSlots] = useState<CombatSkillSlot[]>([]);
   const [isSavingLoadout, setIsSavingLoadout] = useState(false);
@@ -98,6 +82,7 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
   const selectedAvailableSkill = trainerAvailable.find((entry) => entry.skill?.id === selectedSkillId)?.skill ?? null;
   const selectedDefinition = selectedLearnedSkill?.definition ?? selectedAvailableSkill ?? null;
   const selectedLevel = selectedLearnedSkill?.level ?? 1;
+  const selectedDefinitionIcon = resolveSkillIcon?.(selectedDefinition);
 
   const hasLoadoutChanges = useMemo(() => {
     if (!loadout) {
@@ -152,21 +137,27 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
             </div>
             {learnedSkillDetails.length > 0 ? (
               <div className="skills-card-grid">
-                {learnedSkillDetails.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className={`character-skill-card ${selectedSkillId === entry.skillId ? 'is-active' : ''}`}
-                    onClick={() => setSelectedSkillId(entry.skillId)}
-                    onMouseEnter={() => setSelectedSkillId(entry.skillId)}
-                  >
-                    <span className="character-skill-icon">{(entry.definition?.name ?? entry.skillId).slice(0, 2).toUpperCase()}</span>
-                    <span className="skills-card-copy">
-                      <strong>{entry.definition?.name ?? entry.skillId}</strong>
-                      <small>Уровень {entry.level} · {entry.definition?.type ?? 'unknown'}</small>
-                    </span>
-                  </button>
-                ))}
+                {learnedSkillDetails.map((entry) => {
+                  const iconSrc = resolveSkillIcon?.(entry.definition);
+                  const name = entry.definition?.name ?? entry.skillId;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={`character-skill-card ${selectedSkillId === entry.skillId ? 'is-active' : ''}`}
+                      onClick={() => setSelectedSkillId(entry.skillId)}
+                      onMouseEnter={() => setSelectedSkillId(entry.skillId)}
+                    >
+                      <span className="character-skill-icon">
+                        {iconSrc ? <img src={iconSrc} alt="" /> : name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className="skills-card-copy">
+                        <strong>{name}</strong>
+                        <small>Уровень {entry.level} · {entry.definition?.type ?? 'unknown'}</small>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="muted">Персонаж пока не изучил ни одного навыка.</p>
@@ -207,6 +198,7 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                       const disabledReason = notEnoughGold ? 'Недостаточно золота.' : undefined;
                       const costsItems = entry.costs.items ?? [];
                       const costsQuestItems = entry.costs.questItems ?? [];
+                      const iconSrc = resolveSkillIcon?.(skill);
                       const extraCostsLine = costsItems.length > 0 || costsQuestItems.length > 0
                         ? `Доп. оплата: ${[
                           ...costsItems.map((c) => `${c.itemId} x${c.quantity}`),
@@ -217,7 +209,9 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                       return (
                         <article key={entry.skillId} className="skill-training-card">
                           <div className="skill-training-card-head">
-                            <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
+                            <span className="character-skill-icon">
+                              {iconSrc ? <img src={iconSrc} alt="" /> : skill.name.slice(0, 2).toUpperCase()}
+                            </span>
                             <div>
                               <strong>{skill.name}</strong>
                               <small>{skill.type}</small>
@@ -258,6 +252,7 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                         const reasons = entry.reasons ?? [];
                         const costsItems = entry.costs.items ?? [];
                         const costsQuestItems = entry.costs.questItems ?? [];
+                        const iconSrc = resolveSkillIcon?.(skill);
                         const extraCostsLine = costsItems.length > 0 || costsQuestItems.length > 0
                           ? `Доп. оплата: ${[
                             ...costsItems.map((c) => `${c.itemId} x${c.quantity}`),
@@ -268,7 +263,9 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                         return (
                           <article key={`locked-${entry.skillId}`} className="skill-training-card" style={{ opacity: 0.65 }}>
                             <div className="skill-training-card-head">
-                              <span className="character-skill-icon">{name.slice(0, 2).toUpperCase()}</span>
+                              <span className="character-skill-icon">
+                                {iconSrc ? <img src={iconSrc} alt="" /> : name.slice(0, 2).toUpperCase()}
+                              </span>
                               <div>
                                 <strong>{name}</strong>
                                 <small>{skill?.type ?? 'locked'}</small>
@@ -299,10 +296,13 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                         const skill = entry.skill;
                         const name = skill?.name ?? entry.skillId;
                         const description = skill?.shortDescription || skill?.gameplayDescription || 'Описание пока не заполнено.';
+                        const iconSrc = resolveSkillIcon?.(skill);
                         return (
                           <article key={`learned-${entry.skillId}`} className="skill-training-card" style={{ opacity: 0.55 }}>
                             <div className="skill-training-card-head">
-                              <span className="character-skill-icon">{name.slice(0, 2).toUpperCase()}</span>
+                              <span className="character-skill-icon">
+                                {iconSrc ? <img src={iconSrc} alt="" /> : name.slice(0, 2).toUpperCase()}
+                              </span>
                               <div>
                                 <strong>{name}</strong>
                                 <small>{skill?.type ?? 'learned'}</small>
@@ -330,19 +330,20 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
           {selectedDefinition ? (
             <>
               <div className="skills-detail-head">
-                <span className="character-skill-icon skills-detail-icon">{selectedDefinition.name.slice(0, 2).toUpperCase()}</span>
+                <span className="character-skill-icon skills-detail-icon">
+                  {selectedDefinitionIcon ? <img src={selectedDefinitionIcon} alt="" /> : selectedDefinition.name.slice(0, 2).toUpperCase()}
+                </span>
                 <div>
                   <strong>{selectedDefinition.name}</strong>
-                  <p className="muted">ID: {selectedDefinition.id} · Уровень {selectedLevel}/{selectedDefinition.maxLevel}</p>
+                  <p className="muted">Уровень {selectedLevel}/{selectedDefinition.maxLevel}</p>
                 </div>
               </div>
               <div className="skills-detail-facts">
-                <p><span>Тип</span><strong>{selectedDefinition.type}</strong></p>
-                <p><span>Навык</span><strong>{selectedDefinition.name}</strong></p>
-                <p><span>Макс. уровень</span><strong>{selectedDefinition.maxLevel}</strong></p>
-                <p><span>Перезарядка</span><strong>{selectedDefinition.cooldown.cooldownTurns} ходов</strong></p>
+                {getSkillDetailFacts(selectedDefinition).map((fact) => (
+                  <p key={fact.label}><span>{fact.label}</span><strong>{fact.value}</strong></p>
+                ))}
               </div>
-              <p className="skills-detail-text" style={{ whiteSpace: 'pre-wrap' }}>{getSkillSummary(selectedDefinition, selectedLevel)}</p>
+              <p className="skills-detail-text" style={{ whiteSpace: 'pre-wrap' }}>{getSkillSummaryLines(selectedDefinition).join('\n')}</p>
             </>
           ) : (
             <p className="muted">Выберите навык, чтобы посмотреть детали.</p>

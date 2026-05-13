@@ -20,6 +20,14 @@ export class CharacterSkillsController {
     return this.skillLearning.learnSkillFromTraining(characterId, dto.skillId, dto.sourceId);
   }
 
+  @Post('skills/use')
+  async useSkillOutOfCombat(
+    @Param('characterId') characterId: string,
+    @Body() dto: LearnSkillDto,
+  ) {
+    return this.skillLearning.useSkillOutOfCombat(characterId, dto.skillId);
+  }
+
   @Post('skills/grant')
   async grantSkill(
     @Param('characterId') characterId: string,

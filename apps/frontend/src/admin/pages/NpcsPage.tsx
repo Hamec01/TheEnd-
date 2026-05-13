@@ -4,8 +4,10 @@ import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel } from '../adminUi';
+import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from '../adminVisuals';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import { ensureDialoguesLoaded, getAllDialogues, saveDialogue } from '../../services/dialogueRepository';
+import { imageService } from '../../services/content/imageService';
 import { itemsService } from '../../services/content/itemsService';
 import { lootTablesService } from '../../services/content/lootTablesService';
 import { merchantsService } from '../../services/content/merchantsService';
@@ -28,6 +30,7 @@ import type {
 } from '../../types/npc';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
@@ -108,6 +111,7 @@ export function NpcsPage() {
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [lootTableIds, setLootTableIds] = useState<string[]>([]);
   const [cities, setCities] = useState<City[]>([]);
+  const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
 
   const [mapBindingsJson, setMapBindingsJson] = useState('[]');
   const [dialogueBindingsJson, setDialogueBindingsJson] = useState('[]');
@@ -137,9 +141,11 @@ export function NpcsPage() {
       itemsService.getAll(),
       merchantsService.getAll(),
       lootTablesService.getAll(),
-    ]).then(([, , , , skills, items, merchants, lootTables]) => {
+      imageService.getAll().catch(() => []),
+    ]).then(([, , , , skills, items, merchants, lootTables, images]) => {
       setSkillIds(skills.map((entry) => entry.id));
       setItemIds(items.map((entry) => entry.id));
+      setStoredImages(images);
       setTraderOptions(merchants.map((entry) => ({
         id: entry.id,
         name: entry.name,
@@ -171,9 +177,11 @@ export function NpcsPage() {
           itemsService.getAll(),
           merchantsService.getAll(),
           lootTablesService.getAll(),
-        ]).then(([, , , skills, items, merchants, lootTables]) => {
+          imageService.getAll().catch(() => []),
+        ]).then(([, , , skills, items, merchants, lootTables, images]) => {
           setSkillIds(skills.map((entry) => entry.id));
           setItemIds(items.map((entry) => entry.id));
+          setStoredImages(images);
           setTraderOptions(merchants.map((entry) => ({
             id: entry.id,
             name: entry.name,
@@ -453,20 +461,41 @@ export function NpcsPage() {
 
         {selectedNpc ? (
           <section className="card admin-item-preview">
-            <h4>{selectedNpc.name || '(без названия)'}</h4>
-            <p>{selectedNpc.id}</p>
-            <p>{formatLabel(selectedNpc.kind)} | {formatLabel(selectedNpc.status)}</p>
-            <p>{formatLabel(selectedNpc.race)} | {formatLabel(selectedNpc.defaultDisposition)}</p>
+            <div className="admin-selected-visual">
+              <span className="admin-catalog-thumb admin-catalog-thumb-lg">
+                {(() => {
+                  const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(selectedNpc), storedImages);
+                  return imageSrc
+                    ? <img src={imageSrc} alt={selectedNpc.name || selectedNpc.id} />
+                    : getAdminInitials(selectedNpc.name || selectedNpc.id, 'NPC');
+                })()}
+              </span>
+              <div>
+                <h4>{selectedNpc.name || '(без названия)'}</h4>
+                <p>{selectedNpc.id}</p>
+                <p>{formatLabel(selectedNpc.kind)} | {formatLabel(selectedNpc.status)}</p>
+                <p>{formatLabel(selectedNpc.race)} | {formatLabel(selectedNpc.defaultDisposition)}</p>
+              </div>
+            </div>
           </section>
         ) : null}
 
-        <div className="admin-scroll-list">
-          {visibleNpcs.map((entry) => (
-            <button key={entry.id} className={selectedId === entry.id ? 'is-active' : ''} onClick={() => selectNpc(entry)}>
-              <strong>{entry.name || '(без названия)'}</strong>
-              <span>{entry.id} | {formatLabel(entry.kind)} | {formatLabel(entry.status)}</span>
-            </button>
-          ))}
+        <div className="admin-scroll-list admin-visual-list">
+          {visibleNpcs.map((entry) => {
+            const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(entry), storedImages);
+            return (
+              <button key={entry.id} className={`admin-entity-card ${selectedId === entry.id ? 'is-active' : ''}`} onClick={() => selectNpc(entry)}>
+                <span className="admin-catalog-thumb">
+                  {imageSrc ? <img src={imageSrc} alt={entry.name || entry.id} /> : getAdminInitials(entry.name || entry.id, 'NPC')}
+                </span>
+                <span className="admin-entity-copy">
+                  <strong>{entry.name || '(без названия)'}</strong>
+                  <span>{entry.id}</span>
+                  <span>{formatLabel(entry.kind)} | {formatLabel(entry.status)}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 

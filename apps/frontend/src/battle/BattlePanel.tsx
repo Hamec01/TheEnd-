@@ -58,6 +58,7 @@ interface BattlePanelProps {
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  resolveSkillIcon?: (skill: AdminSkillDefinition | null | undefined) => string | undefined;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   playerEquipment?: Equipment;
 }
@@ -112,6 +113,7 @@ function formatActionError(errorCode: string, message: string): string {
     BATTLE_FINISHED: 'Бой уже завершён.',
     ROUND_MISMATCH: 'Несоответствие раунда — обновите состояние.',
     COMMAND_REVALIDATION_FAILED: 'Действие не прошло проверку.',
+    SKILL_VALIDATION_FAILED: 'Навык сейчас недоступен.',
     ACTOR_DEAD: 'Персонаж мёртв.',
   };
   return map[errorCode] ?? message;
@@ -243,6 +245,7 @@ export function BattlePanel({
   playerAvatarUrl,
   resolveItemById,
   resolveItemImage,
+  resolveSkillIcon,
   resolveAdminItemById,
   playerEquipment,
 }: BattlePanelProps) {
@@ -255,6 +258,16 @@ export function BattlePanel({
     () => state.entities.filter((e) => e.team === TeamSide.Right && e.isAlive),
     [state.entities],
   );
+  const skillCooldowns = useMemo(() => {
+    const raw = (state as unknown as { skillCooldowns?: Array<{ skillId: string; remainingRounds: number }> }).skillCooldowns;
+    const map = new Map<string, number>();
+    for (const entry of Array.isArray(raw) ? raw : []) {
+      if (entry.skillId && entry.remainingRounds > 0) {
+        map.set(entry.skillId, entry.remainingRounds);
+      }
+    }
+    return map;
+  }, [state]);
 
   // ── Sequential turn model ───────────────────────────────────────────────
   const isPlayerTurn = !state.isFinished && state.activeActorId === playerId;
@@ -452,10 +465,15 @@ export function BattlePanel({
       return selectedSource.slotId;
     }
 
+    if (slot.kind === 'skill') {
+      const skill = availableSkills.find((entry) => entry.skillId === slot.refId || entry.definition.id === slot.refId)?.definition ?? null;
+      return skill?.name ?? slot.refId;
+    }
+
     const resolvedItem = resolveItemById ? resolveItemById(slot.refId) : null;
     const adminItem = resolveAdminItemById ? resolveAdminItemById(slot.refId) : null;
     return resolvedItem?.name ?? adminItem?.name ?? slot.refId;
-  }, [actionSlots, resolveAdminItemById, resolveItemById, selectedSource]);
+  }, [actionSlots, availableSkills, resolveAdminItemById, resolveItemById, selectedSource]);
 
   // ── Core action executor ────────────────────────────────────────────────
 
@@ -791,6 +809,11 @@ export function BattlePanel({
     if (!player) return;
 
     if (!forceBasicAttack && selectedSource.kind === 'skill') {
+      const cooldownRemaining = skillCooldowns.get(selectedSource.skillId) ?? 0;
+      if (cooldownRemaining > 0) {
+        onStatus(`Навык на перезарядке: ${cooldownRemaining} ход.`);
+        return;
+      }
       await executeAction(createCombatCommandFromType({
         type: 'skill_cast',
         target: { kind: 'entity', entityId },
@@ -842,7 +865,7 @@ export function BattlePanel({
       target: { kind: 'entity', entityId },
       payload: { targetZone: TargetZone.Chest },
     }));
-  }, [executeAction, executeItemUseCommand, onSkillChange, player, resolveAdminItemById, selectedSource, state.entities]);
+  }, [executeAction, executeItemUseCommand, onSkillChange, onStatus, player, resolveAdminItemById, selectedSource, skillCooldowns, state.entities]);
 
   const quickUseSelectedSlotItemAt = useCallback((target: { kind: 'entity'; entityId: string } | { kind: 'cell'; x: number; y: number }) => {
     if (!isPlayerTurn || state.isFinished) {
@@ -1107,17 +1130,27 @@ export function BattlePanel({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6, marginTop: 8 }}>
                 {actionSlots.map((slot) => {
                   const isSelected = selectedSource.kind !== 'none' && 'slotId' in selectedSource && selectedSource.slotId === slot.slotId;
-                  const resolvedItem = slot.refId && resolveItemById ? resolveItemById(slot.refId) : null;
+                  const skillOption = slot.kind === 'skill' && slot.refId
+                    ? availableSkills.find((entry) => entry.skillId === slot.refId || entry.definition.id === slot.refId) ?? null
+                    : null;
+                  const skillDef = skillOption?.definition ?? null;
+                  const skillCooldownRemaining = slot.kind === 'skill' && slot.refId ? skillCooldowns.get(slot.refId) ?? 0 : 0;
+                  const isOnCooldown = skillCooldownRemaining > 0;
+                  const resolvedItem = slot.kind !== 'skill' && slot.refId && resolveItemById ? resolveItemById(slot.refId) : null;
                   const adminItem = (slot.kind === 'item' || slot.kind === 'weapon') && slot.refId && resolveAdminItemById
                     ? resolveAdminItemById(slot.refId)
                     : null;
                   const slotIsWeapon = slot.kind === 'weapon' || (slot.kind === 'item' && isWeaponAdminItem(adminItem));
                   const isEquipped = slotIsWeapon && slot.refId && player.activeWeaponItemId === slot.refId;
-                  const disabled = playback.isPlaying || !isPlayerTurn || !slot.kind || !slot.refId;
-                  const slotImage = resolvedItem ? resolveItemImage?.(resolvedItem) : undefined;
-                  const slotTitle = resolvedItem?.name ?? adminItem?.name ?? slot.refId ?? 'Пусто';
+                  const disabled = playback.isPlaying || !isPlayerTurn || !slot.kind || !slot.refId || isOnCooldown;
+                  const slotImage = slot.kind === 'skill'
+                    ? resolveSkillIcon?.(skillDef)
+                    : resolvedItem ? resolveItemImage?.(resolvedItem) : undefined;
+                  const slotTitle = slot.kind === 'skill'
+                    ? (skillDef?.name ?? slot.refId ?? 'Навык')
+                    : resolvedItem?.name ?? adminItem?.name ?? slot.refId ?? 'Пусто';
                   const slotFallbackText = slot.kind === 'skill'
-                    ? slot.refId?.slice(0, 2)?.toUpperCase() ?? '??'
+                    ? slotTitle.slice(0, 2).toUpperCase()
                     : slotIsWeapon
                       ? '⚔'
                       : String(toRecord(adminItem as unknown)?.icon ?? '•');
@@ -1127,10 +1160,14 @@ export function BattlePanel({
                       type="button"
                       className={`hotbar-slot${isSelected ? ' is-active' : ''}${isEquipped ? ' is-equipped' : ''}`}
                       disabled={disabled}
-                      title={slotTitle}
+                      title={isOnCooldown ? `${slotTitle}: перезарядка ${skillCooldownRemaining} ход.` : slotTitle}
                       onClick={() => {
                         if (playback.isPlaying) { onStatus('Дождитесь окончания действия.'); return; }
                         if (!slot.kind || !slot.refId) { onStatus('Слот пуст.'); return; }
+                        if (slot.kind === 'skill' && isOnCooldown) {
+                          onStatus(`Навык на перезарядке: ${skillCooldownRemaining} ход.`);
+                          return;
+                        }
                         if (isSelected) {
                           setSelectedSource({ kind: 'none' });
                           onSkillChange(null);
@@ -1190,6 +1227,7 @@ export function BattlePanel({
                         {slot.kind === 'skill' ? slotTitle : (slot.kind === 'item' || slot.kind === 'weapon' ? slotTitle : slot.slotId.replace('quick', ''))}
                       </span>
                       {isEquipped && <span className="hotbar-slot-badge">●</span>}
+                      {isOnCooldown && <span className="hotbar-slot-badge">{skillCooldownRemaining}</span>}
                     </button>
                   );
                 })}

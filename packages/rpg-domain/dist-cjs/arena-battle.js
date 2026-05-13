@@ -82,6 +82,7 @@ function normalizeArenaBattleState(state) {
         turnQueue: state.turnQueue ?? [],
         turnIndex: typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex) ? Math.max(0, Math.floor(state.turnIndex)) : 0,
         currentTurnAp: typeof state.currentTurnAp === 'number' && Number.isFinite(state.currentTurnAp) ? Math.max(0, Math.floor(state.currentTurnAp)) : 0,
+        skillCooldowns: Array.isArray(state.skillCooldowns) ? state.skillCooldowns : [],
         escapeStates: state.escapeStates ?? {},
         lootContainers: state.lootContainers ?? [],
     };

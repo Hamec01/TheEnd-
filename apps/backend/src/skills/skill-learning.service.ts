@@ -7,6 +7,7 @@ import { isFileStorageMode } from '../config/storage-mode';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
+import { ArenaService } from '../arena/arena.service';
 import type { CharacterSkill, CharacterSkillLoadout, CharacterSkillSourceType, CombatSkillSlot } from './character-skill.types';
 import { createDefaultLoadout, getUnlockedSlotCount } from './character-skill.types';
 
@@ -202,6 +203,7 @@ export class SkillLearningService {
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
     private readonly runtimeStore: RuntimeCharacterStore,
+    private readonly arenaService: ArenaService,
   ) {}
 
   async getCharacterSkills(characterId: string): Promise<Array<CharacterSkill & { definition: AdminSkillDefinition | null }>> {
@@ -219,6 +221,78 @@ export class SkillLearningService {
       sourceId: row.sourceId,
       definition: this.contentService.getCollectionEntry('skills', row.skillId) as AdminSkillDefinition | null,
     })).sort((a, b) => a.learnedAt.getTime() - b.learnedAt.getTime());
+  }
+
+  async useSkillOutOfCombat(characterId: string, skillId: string): Promise<{
+    skillId: string;
+    message: string;
+    restored: { hp: number; mp: number; stamina: number };
+  }> {
+    await this.contentService.ensureInitialized();
+    const characterRecord = await this.ensureCharacterExists(characterId);
+    const skillDef = this.contentService.getCollectionEntry('skills', skillId) as AdminSkillDefinition | null;
+    if (!skillDef) {
+      throw new NotFoundException(`Skill not found: ${skillId}`);
+    }
+    this.assertSkillIsUsable(skillDef, skillId);
+
+    const known = (await this.readCharacterSkills(characterId)).some((entry) => entry.skillId === skillId);
+    if (!known) {
+      throw new BadRequestException('Character has not learned this skill');
+    }
+    if (!this.canUseOutsideCombat(skillDef)) {
+      throw new BadRequestException('Этот навык нельзя использовать вне боя.');
+    }
+
+    const resources = await this.arenaService.getCharacterResources(characterId);
+    const costs = this.resolveSkillResourceCosts(skillDef, 1);
+    if (costs.hp >= resources.currentHp) {
+      throw new BadRequestException('Недостаточно HP.');
+    }
+    if (costs.mp > resources.currentMp) {
+      throw new BadRequestException('Недостаточно маны.');
+    }
+    if (costs.stamina > resources.currentStamina) {
+      throw new BadRequestException('Недостаточно выносливости.');
+    }
+
+    const healing = this.resolveOutOfCombatSkillHealing(skillDef, characterRecord as unknown as Record<string, unknown>);
+    if (healing.hp <= 0 && healing.mp <= 0 && healing.stamina <= 0) {
+      throw new BadRequestException('Внебоевые эффекты этого навыка ещё не подключены.');
+    }
+
+    const afterCosts = {
+      currentHp: Math.max(0, resources.currentHp - costs.hp),
+      currentMp: Math.max(0, resources.currentMp - costs.mp),
+      currentStamina: Math.max(0, resources.currentStamina - costs.stamina),
+    };
+    const nextResources = {
+      currentHp: Math.min(resources.maxHp, afterCosts.currentHp + healing.hp),
+      currentMp: Math.min(resources.maxMp, afterCosts.currentMp + healing.mp),
+      currentStamina: Math.min(resources.maxStamina, afterCosts.currentStamina + healing.stamina),
+    };
+    const restored = {
+      hp: Math.max(0, nextResources.currentHp - afterCosts.currentHp),
+      mp: Math.max(0, nextResources.currentMp - afterCosts.currentMp),
+      stamina: Math.max(0, nextResources.currentStamina - afterCosts.currentStamina),
+    };
+
+    if (restored.hp <= 0 && restored.mp <= 0 && restored.stamina <= 0) {
+      throw new BadRequestException('Ресурс уже полон.');
+    }
+
+    await this.arenaService.updateCharacterResources(characterId, nextResources);
+
+    const parts = [
+      restored.hp > 0 ? `${restored.hp} HP` : null,
+      restored.mp > 0 ? `${restored.mp} MP` : null,
+      restored.stamina > 0 ? `${restored.stamina} STA` : null,
+    ].filter(Boolean).join(', ');
+    return {
+      skillId,
+      message: `${skillDef.name} применён: восстановлено ${parts}.`,
+      restored,
+    };
   }
 
   async learnSkill(
@@ -866,6 +940,100 @@ export class SkillLearningService {
       this.logger.warn(`Unable to read inventory items for ${characterId}: ${(error as Error).message}`);
       return [];
     }
+  }
+
+  private canUseOutsideCombat(skillDef: AdminSkillDefinition): boolean {
+    const raw = skillDef as unknown as Record<string, unknown>;
+    const outOfCombat = toRecord(raw.outOfCombat);
+    const explicitlyAllowed = raw.canUseOutsideCombat === true
+      || raw.usableOutsideCombat === true
+      || outOfCombat?.enabled === true;
+    const hasHealing = Array.isArray(skillDef.healing) && skillDef.healing.length > 0;
+    return explicitlyAllowed || hasHealing;
+  }
+
+  private resolveSkillResourceCosts(skillDef: AdminSkillDefinition, level: number): { hp: number; mp: number; stamina: number } {
+    const resources = Array.isArray(skillDef.costs?.resources) ? skillDef.costs.resources : [];
+    const costs = { hp: 0, mp: 0, stamina: 0 };
+    if (skillDef.costs?.isFree === true) {
+      return costs;
+    }
+
+    for (const cost of resources) {
+      const type = String((cost as { type?: unknown }).type ?? '').trim().toLowerCase();
+      const base = this.toSafeNumber((cost as { amount?: unknown }).amount);
+      const perLevel = this.toSafeNumber((cost as { amountPerLevel?: unknown }).amountPerLevel);
+      const amount = Math.max(0, Math.floor(base + perLevel * Math.max(0, level - 1)));
+      if (type === 'hp' || type === 'health' || type === 'blood') {
+        costs.hp += amount;
+      } else if (type === 'mp' || type === 'mana') {
+        costs.mp += amount;
+      } else if (type === 'stamina' || type === 'sta') {
+        costs.stamina += amount;
+      }
+    }
+
+    return costs;
+  }
+
+  private resolveOutOfCombatSkillHealing(
+    skillDef: AdminSkillDefinition,
+    character: Record<string, unknown>,
+  ): { hp: number; mp: number; stamina: number } {
+    const healing = Array.isArray(skillDef.healing) ? skillDef.healing : [];
+    const restored = { hp: 0, mp: 0, stamina: 0 };
+
+    for (const heal of healing) {
+      const minHeal = this.toSafeNumber((heal as { minHeal?: unknown }).minHeal);
+      const maxHeal = this.toSafeNumber((heal as { maxHeal?: unknown }).maxHeal);
+      const baseHeal = Math.max(0, Math.floor(maxHeal > 0 ? maxHeal : minHeal));
+      const scalingStat = String((heal as { scalingStat?: unknown }).scalingStat ?? '').trim();
+      const scalingMultiplier = this.toSafeNumber((heal as { scalingMultiplier?: unknown }).scalingMultiplier);
+      const scaling = scalingStat
+        ? Math.floor(this.getCharacterStatValue(character, scalingStat) * scalingMultiplier)
+        : 0;
+      const amount = Math.max(0, baseHeal + scaling);
+      const healType = String((heal as { healType?: unknown }).healType ?? 'hp').trim().toLowerCase();
+      if (healType === 'hp' || healType === 'health' || healType === 'heal') {
+        restored.hp += amount;
+      } else if (healType === 'mp' || healType === 'mana') {
+        restored.mp += amount;
+      } else if (healType === 'stamina' || healType === 'sta') {
+        restored.stamina += amount;
+      } else {
+        restored.hp += amount;
+      }
+    }
+
+    return restored;
+  }
+
+  private getCharacterStatValue(character: Record<string, unknown>, stat: string): number {
+    const key = stat.trim().toLowerCase();
+    const aliases: Record<string, string[]> = {
+      constitution: ['constitution', 'endurance'],
+      endurance: ['endurance', 'constitution'],
+      perception: ['perception', 'speed'],
+      speed: ['speed', 'perception'],
+      intelligence: ['intelligence'],
+      willpower: ['willpower'],
+      strength: ['strength'],
+      dexterity: ['dexterity'],
+      luck: ['luck'],
+    };
+    const candidates = aliases[key] ?? [key];
+    for (const candidate of candidates) {
+      const value = this.toSafeNumber(character[candidate]);
+      if (value > 0) {
+        return value;
+      }
+    }
+    return 0;
+  }
+
+  private toSafeNumber(value: unknown): number {
+    const numeric = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
   }
 
   private async readCharacterSkills(characterId: string): Promise<CharacterSkill[]> {

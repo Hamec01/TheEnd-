@@ -48,6 +48,7 @@ import {
   sellArenaItem,
   unequipArenaItem,
   useArenaItem,
+  useSkillOutOfCombat,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -1860,19 +1861,27 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus(`Открыт торговец: ${merchant.name}`);
   }
 
-  function openSkillsOverlay(trainerNpcId?: string, trainerSkillIds?: unknown): void {
+  function openSkillsOverlay(trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string): void {
     onNavigate?.('/skills');
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
-    setActiveTrainerNpcId(trainerNpcId?.trim() ? trainerNpcId.trim() : null);
-    setActiveTrainerNpcName(null);
+    const resolvedTrainerId = trainerNpcId?.trim() ? trainerNpcId.trim() : null;
+    const resolvedTrainerName = trainerNpcName?.trim() ? trainerNpcName.trim() : null;
+    setActiveTrainerNpcId(resolvedTrainerId);
+    setActiveTrainerNpcName(resolvedTrainerName);
     setActiveTrainerSkillIds(trainerSkillIds ?? null);
 
-    const resolvedTrainerId = trainerNpcId?.trim() ? trainerNpcId.trim() : null;
+    console.debug('[App] skills mode set', {
+      mode: resolvedTrainerId ? 'trainer' : 'character',
+      activeTrainerNpcId: resolvedTrainerId,
+      activeTrainerName: resolvedTrainerName,
+      activeTrainerSkillIds: trainerSkillIds ?? null,
+    });
+
     if (resolvedTrainerId) {
       void ensureNpcsLoaded()
         .then(() => getAllNpcs().find((npc) => npc.id === resolvedTrainerId) ?? null)
-        .then((npc) => setActiveTrainerNpcName(npc?.name ?? resolvedTrainerId))
+        .then((npc) => setActiveTrainerNpcName(resolvedTrainerName ?? npc?.name ?? resolvedTrainerId))
         .catch(() => setActiveTrainerNpcName(resolvedTrainerId));
     }
 
@@ -2192,6 +2201,23 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setStatus(`${resolveItem(itemId).name} used.`);
     } catch (error) {
       setStatus(`Consumable error: ${(error as Error).message}`);
+    }
+  }
+
+  async function handleUseSkillOutOfCombat(skillId: string): Promise<void> {
+    try {
+      if (!character) {
+        setStatus('Character is not selected.');
+        return;
+      }
+
+      const result = await useSkillOutOfCombat(character.id, skillId);
+      const updatedHub = await getArenaHubState(character.id);
+      applyHubState(updatedHub);
+      setStatus(result.message || 'Skill used.');
+    } catch (error) {
+      setStatus(`Skill use error: ${(error as Error).message}`);
+      throw error;
     }
   }
 
@@ -2525,9 +2551,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           equipment={equipment}
           playerAvatarUrl={playerAvatarUrl}
           battleStats={{
-            hp: battlePlayer?.currentHp ?? character.activeStats.hp,
-            mp: battlePlayer?.currentMp ?? character.activeStats.mp,
-            stamina: battlePlayer?.currentStamina ?? character.activeStats.stamina,
+            hp: battlePlayer?.currentHp ?? character.currentHp,
+            mp: battlePlayer?.currentMp ?? character.currentMp,
+            stamina: battlePlayer?.currentStamina ?? character.currentStamina,
           }}
           chatLines={chatLines}
           onOpenStats={() => {
@@ -2594,6 +2620,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onSaveActionSlots={handleSaveCharacterActionSlots}
             onSaveHotbar={handleSaveCharacterHotbar}
             onUseItem={handleUseConsumable}
+            onUseSkillOutOfCombat={handleUseSkillOutOfCombat}
             onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={playerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
@@ -2935,6 +2962,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 playerAvatarUrl={playerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
                 resolveItemImage={resolveItemImage}
+                resolveSkillIcon={resolveSkillIcon}
                 resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
                 playerEquipment={equipment}
               />

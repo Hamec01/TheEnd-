@@ -501,7 +501,7 @@ interface WorldMapScreenProps {
   ) => Promise<void>;
   onStartBattleMap?: (battleMapId: string) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
-  onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown) => void;
+  onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string) => void;
   onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
   onStatus: (text: string) => void;
   cityMerchants?: AdminMerchant[];
@@ -516,6 +516,20 @@ interface WorldMapScreenProps {
   initialMode?: WorldMapMode;
   adminEditorOnly?: boolean;
   showAdminShortcuts?: boolean;
+}
+
+function resolveNpcTrainerSkillIds(npc: NpcDefinition | null | undefined): unknown {
+  const record = npc as unknown as {
+    trainerSkillIds?: unknown;
+    trainingSkillIds?: unknown;
+    trainer?: { skillIds?: unknown };
+    skills?: { trainerSkillIds?: unknown };
+  } | null | undefined;
+  return record?.trainerSkillIds
+    ?? record?.trainingSkillIds
+    ?? record?.trainer?.skillIds
+    ?? record?.skills?.trainerSkillIds
+    ?? [];
 }
 
 export function WorldMapScreen(props: WorldMapScreenProps) {
@@ -2612,18 +2626,46 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onOpenMerchant(selectedNpcForInteraction.traderId);
   }, [onOpenMerchant, onStatus, selectedNpcForInteraction]);
 
-  const handleNpcTrain = useCallback(() => {
-    if (!selectedNpcForInteraction?.canTrain) {
+  const openTrainingForNpc = useCallback((npc: NpcDefinition | null | undefined) => {
+    if (!npc) {
+      console.warn("[openTrainingForNpc] missing npc");
+      return;
+    }
+    if (!npc.id) {
+      console.warn("[openTrainingForNpc] missing npc.id", npc);
+      return;
+    }
+    if (!npc.canTrain) {
+      console.warn("[openTrainingForNpc] npc cannot train", {
+        npcId: npc.id,
+        npcName: npc.name,
+      });
       onStatus("\u042d\u0442\u043e\u0442 NPC \u043d\u0435 \u043e\u0431\u0443\u0447\u0430\u0435\u0442 \u043d\u0430\u0432\u044b\u043a\u0430\u043c.");
       return;
     }
-    onOpenSkills(selectedNpcForInteraction.id, selectedNpcForInteraction.trainer?.skillIds);
+
+    const trainerSkillIds = resolveNpcTrainerSkillIds(npc);
+    console.debug("[WorldMapScreen] openTrainingForNpc -> onOpenSkills", {
+      npcId: npc.id,
+      npcName: npc.name,
+      canTrain: npc.canTrain,
+      trainerSkillIds,
+    });
+    onOpenSkills(npc.id, trainerSkillIds, npc.name);
+  }, [onOpenSkills, onStatus]);
+
+  const handleNpcTrain = useCallback(() => {
+    openTrainingForNpc(selectedNpcForInteraction);
     const trainerCount =
-      selectedNpcForInteraction.trainer?.skillIds?.length ?? 0;
-    onStatus(
-      `\u041e\u0442\u043a\u0440\u044b\u0442\u043e \u043e\u0431\u0443\u0447\u0435\u043d\u0438\u0435 \u0443 NPC: ${selectedNpcForInteraction.name}. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043d\u0430\u0432\u044b\u043a\u043e\u0432: ${trainerCount}.`,
-    );
-  }, [onOpenSkills, onStatus, selectedNpcForInteraction]);
+      Array.isArray(resolveNpcTrainerSkillIds(selectedNpcForInteraction))
+        ? (resolveNpcTrainerSkillIds(selectedNpcForInteraction) as unknown[]).length
+        : 0;
+    if (selectedNpcForInteraction?.canTrain) {
+      onStatus(
+        `\u041e\u0442\u043a\u0440\u044b\u0442\u043e \u043e\u0431\u0443\u0447\u0435\u043d\u0438\u0435 \u0443 NPC: ${selectedNpcForInteraction.name}. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043d\u0430\u0432\u044b\u043a\u043e\u0432: ${trainerCount}.`,
+      );
+    }
+  }, [openTrainingForNpc, onStatus, selectedNpcForInteraction]);
 
   const handleNpcAttack = useCallback(async () => {
     if (!selectedNpcForInteraction?.canFight) {
@@ -2821,7 +2863,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             || dialogueNpcId
             || '';
           const trainerNpc = npcs.find((entry) => entry.id === resolvedTrainerId) ?? null;
-          onOpenSkills(resolvedTrainerId || undefined, trainerNpc?.trainer?.skillIds);
+          openTrainingForNpc(trainerNpc);
           modalClosed = true;
           break;
         }
@@ -2879,7 +2921,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           || dialogueNpcId
           || '';
         const trainerNpc = npcs.find((entry) => entry.id === resolvedTrainerId) ?? null;
-        onOpenSkills(resolvedTrainerId || undefined, trainerNpc?.trainer?.skillIds);
+        openTrainingForNpc(trainerNpc);
       }
 
       if (modalIntents.length > 1) {
@@ -2889,7 +2931,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch (error) {
       onStatus((error as Error).message);
     }
-  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onOpenMerchant, onOpenSkills, onStartCombat, onStatus, questDefinitions, resolveItemById, selectedNpcForInteraction]);
+  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onOpenMerchant, openTrainingForNpc, onGrantSkill, onStartCombat, onStatus, questDefinitions, resolveItemById, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
@@ -3675,8 +3717,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           {canTrain ? (
             <button
               onClick={() => {
+                console.debug("[NPC CARD] training clicked", {
+                  npcId: npc?.id,
+                  npcName: npc?.name,
+                  canTrain: npc?.canTrain,
+                  trainerSkillIds: resolveNpcTrainerSkillIds(npc),
+                });
                 closeModal();
-                onOpenSkills(selectedNpcForInteraction?.id, selectedNpcForInteraction?.trainer?.skillIds);
+                openTrainingForNpc(npc);
               }}
             >
               {"\u0422\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430"}
@@ -4683,9 +4731,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             name={character.name}
             avatarLetter={avatarLetter}
             avatarUrl={playerAvatarUrl}
-            hpText={`${battleStats.hp}/${character.activeStats.hp}`}
-            mpText={`${battleStats.mp}/${character.activeStats.mp}`}
-            staminaText={`${battleStats.stamina}/${character.activeStats.stamina}`}
+            hpText={`${battleStats.hp}/${character.maxHp}`}
+            mpText={`${battleStats.mp}/${character.maxMp}`}
+            staminaText={`${battleStats.stamina}/${character.maxStamina}`}
             activeStats={character.activeStats as StatBlock}
             equipment={equipment}
             inventory={inventory}
