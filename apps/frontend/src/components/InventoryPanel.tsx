@@ -29,6 +29,7 @@ interface InventoryPanelProps {
   allocatingStats: boolean;
   focusSection: CharacterPageFocus;
   trainerNpcId?: string | null;
+  trainerNpcName?: string | null;
   trainerSkillIds?: unknown;
   onClose: () => void;
   onStatus: (text: string) => void;
@@ -287,6 +288,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   allocatingStats,
   focusSection,
   trainerNpcId,
+  trainerNpcName,
   trainerSkillIds,
   onClose,
   onStatus,
@@ -1092,7 +1094,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       candidates: skillsTrainerCandidates.map((entry) => ({
         skillId: entry.skillId,
         sources: entry.sources,
-        priceGold: entry.priceGold,
+        costs: entry.costs,
         isLearned: entry.isLearned,
         isAvailable: entry.isAvailable,
         reasons: entry.reasons.map((r) => r.code),
@@ -1989,7 +1991,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <section className="inner-card skills-training-section">
                   <div className="skills-section-head">
                     <div>
-                      <h3 style={{ margin: 0 }}>Обучение</h3>
+                      <h3 style={{ margin: 0 }}>
+                        {trainerNpcId ? `Обучение у ${trainerNpcName ?? trainerNpcId}` : 'Обучение'}
+                      </h3>
                       <span className="muted">Навыки у выбранного тренера.</span>
                     </div>
                   </div>
@@ -2004,7 +2008,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                           {skillsTrainerAvailable.map((entry) => {
                             const skill = entry.skill;
                             if (!skill) return null;
-                            const price = entry.priceGold ?? 0;
+                            const price = entry.costs.gold ?? 0;
                             const gold = typeof skillsPlayerContext.gold === 'number' ? skillsPlayerContext.gold : null;
                             const notEnoughGold = gold !== null && gold < price;
                             const disabledReason = notEnoughGold ? 'Недостаточно золота.' : undefined;
@@ -2059,7 +2063,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                                     </div>
                                   </div>
                                   <p className="muted">{description}</p>
-                                  {entry.priceGold > 0 ? <p className="muted" style={{ margin: '6px 0 0' }}>Цена: {entry.priceGold}</p> : null}
+                                  {entry.costs.gold > 0 ? <p className="muted" style={{ margin: '6px 0 0' }}>Цена: {entry.costs.gold}</p> : null}
                                   {reasons.length > 0 ? (
                                     <ul className="muted" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
                                       {reasons.slice(0, 4).map((reason) => (
@@ -2248,6 +2252,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   availableSkills={availableSkills}
                   loadout={skillLoadout}
                   trainerSkillIds={trainerSkillIds}
+                  mode={trainerNpcId ? 'trainer' : 'character'}
+                  trainerNpcName={trainerNpcName}
                   playerContext={{
                     playerId: character.id,
                     level: character.level,
