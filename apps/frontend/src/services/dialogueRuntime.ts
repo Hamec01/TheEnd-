@@ -35,7 +35,7 @@ export type DialogueRuntimeEvent =
 export type DialogueRuntimeIntent =
   | { type: 'OPEN_SHOP'; merchantId?: string | null }
   | { type: 'START_COMBAT' }
-  | { type: 'OPEN_TRAINING'; skillId?: string | null }
+  | { type: 'OPEN_TRAINING'; skillId?: string | null; trainerNpcId?: string | null }
   | { type: 'GRANT_SKILL'; skillId: string }
   | { type: 'QUEST_STARTED'; questId: string }
   | { type: 'QUEST_ADVANCED'; questId: string }
@@ -675,8 +675,15 @@ export function executeDialogueActions(
         events.push({ type: 'startCombat', npcId });
         break;
       case 'openTraining':
-        intents.push({ type: 'OPEN_TRAINING', skillId: action.skillId ?? null });
-        events.push({ type: 'trainSkill', npcId, skillId: action.skillId ?? null });
+        {
+          const rawTrainerId =
+            (typeof (action as { trainerNpcId?: unknown }).trainerNpcId === 'string' ? String((action as { trainerNpcId?: string }).trainerNpcId) : '')
+            || (typeof (action as { npcId?: unknown }).npcId === 'string' ? String((action as { npcId?: string }).npcId) : '')
+            || (typeof action.value === 'string' ? action.value : '');
+          const resolvedTrainerNpcId = rawTrainerId.trim() ? rawTrainerId.trim() : npcId;
+          intents.push({ type: 'OPEN_TRAINING', skillId: action.skillId ?? null, trainerNpcId: resolvedTrainerNpcId });
+          events.push({ type: 'trainSkill', npcId: resolvedTrainerNpcId, skillId: action.skillId ?? null });
+        }
         break;
       case 'trainSkill':
         if (action.skillId) {
