@@ -49,6 +49,7 @@ interface InventoryPanelProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  resolveSkillIcon?: (skill: import('@theend/rpg-domain').AdminSkillDefinition | null | undefined) => string | undefined;
 }
 
 const CORE_SLOT_BY_LAYOUT: Partial<Record<EquipmentSlotId, keyof Equipment>> = {
@@ -308,6 +309,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   resolveItemById,
   resolveAdminItemById,
   resolveItemImage,
+  resolveSkillIcon,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemDetailOpen, setItemDetailOpen] = useState(false);
@@ -330,6 +332,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [selectedQuickSlotId, setSelectedQuickSlotId] = useState<EquipmentSlotId | null>(null);
   const [isSavingSkillLoadout, setIsSavingSkillLoadout] = useState(false);
   const [learningSkillId, setLearningSkillId] = useState<string | null>(null);
+  const [trainerPopupSkillId, setTrainerPopupSkillId] = useState<string | null>(null);
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -979,6 +982,25 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }
 
+  function openTrainerPopup(skillId: string) {
+    setTrainerPopupSkillId(skillId);
+  }
+
+  function closeTrainerPopup() {
+    setTrainerPopupSkillId(null);
+  }
+
+  useEffect(() => {
+    if (!trainerPopupSkillId) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setTrainerPopupSkillId(null);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [trainerPopupSkillId]);
+
   // Sorted/filtered inventory entries
   const sortedFilteredInventory = useMemo(() => {
     let entries = [...inventoryEntries];
@@ -1277,6 +1299,129 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     </p>
                   );
                 })}
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderTrainerSkillPopup() {
+    if (!trainerPopupSkillId) return null;
+    const entry = skillsTrainerCandidates.find((candidate) => candidate.skillId === trainerPopupSkillId) ?? null;
+    if (!entry) return null;
+
+    const skill = entry.skill;
+    const skillName = skill?.name ?? entry.skillId;
+    const skillType = skill?.type ?? 'unknown';
+    const iconSrc = resolveSkillIcon?.(skill);
+    const glyphFallback = skillName.slice(0, 2).toUpperCase();
+
+    const costsGold = entry.costs.gold ?? 0;
+    const costsItems = entry.costs.items ?? [];
+    const costsQuestItems = entry.costs.questItems ?? [];
+    const hasNonGoldCosts = costsItems.length > 0 || costsQuestItems.length > 0;
+
+    const isBusy = learningSkillId === entry.skillId;
+    const canLearn = Boolean(skill) && entry.isAvailable && !entry.isLearned && !isBusy;
+    const learnDisabledReason =
+      !skill
+        ? 'Навык не найден.'
+        : entry.isLearned
+          ? 'Навык уже изучен.'
+          : entry.reasons?.[0]?.message ?? 'Навык недоступен.';
+
+    return (
+      <div
+        className="character-item-popup-backdrop"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            closeTrainerPopup();
+          }
+        }}
+      >
+        <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Детали навыка">
+          <div className="character-item-popup-head">
+            <div className="character-item-popup-title">
+              <span
+                className="character-item-popup-icon"
+                style={iconSrc
+                  ? {
+                      backgroundImage: `url("${iconSrc}")`,
+                      backgroundSize: 'cover',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'center',
+                    }
+                  : {
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontWeight: 700,
+                      color: 'rgba(232, 188, 110, 0.92)',
+                    }}
+              >
+                {!iconSrc ? glyphFallback : null}
+              </span>
+              <div>
+                <h3>{skillName}</h3>
+                <p className="muted">ID: {entry.skillId} · {skillType}</p>
+              </div>
+            </div>
+            <button type="button" className="character-item-popup-close" onClick={closeTrainerPopup}>×</button>
+          </div>
+          <div className="character-item-popup-body">
+            <section className="character-item-popup-main">
+              <p style={{ whiteSpace: 'pre-wrap' }}>
+                {skill?.gameplayDescription?.trim()
+                  || skill?.shortDescription?.trim()
+                  || 'Описание пока не заполнено.'}
+              </p>
+              {entry.sources?.length ? (
+                <p className="muted" style={{ marginTop: 10 }}>
+                  Источники: {entry.sources.join(', ')}
+                </p>
+              ) : null}
+            </section>
+            <section className="character-item-compare">
+              <div style={{ border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
+                <p className="muted" style={{ margin: 0 }}>Стоимость</p>
+                <p style={{ margin: '6px 0 0' }}>{costsGold > 0 ? `${costsGold} золота` : 'Бесплатно'}</p>
+                {costsItems.length > 0 ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Предметы: {costsItems.map((c) => `${c.itemId} x${c.quantity}`).join(', ')}
+                  </p>
+                ) : null}
+                {costsQuestItems.length > 0 ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Квестовые предметы: {costsQuestItems.map((c) => `${c.questItemId} x${c.quantity}`).join(', ')}
+                  </p>
+                ) : null}
+                {hasNonGoldCosts ? (
+                  <p className="muted" style={{ margin: '6px 0 0' }}>
+                    Оплата предметами пока не подключена.
+                  </p>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: 12, border: '1px solid rgba(169, 139, 87, 0.28)', background: 'rgba(12, 9, 7, 0.55)', padding: 10 }}>
+                <p className="muted" style={{ margin: 0 }}>Требования</p>
+                {entry.reasons?.length ? (
+                  <ul className="muted" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
+                    {entry.reasons.map((reason) => (
+                      <li key={`${entry.skillId}-${reason.code}`}>{reason.message}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted" style={{ margin: '8px 0 0' }}>Нет</p>
+                )}
+              </div>
+
+              <div className="character-item-actions" style={{ marginTop: 12 }}>
+                <button type="button" disabled={!canLearn} title={!canLearn ? learnDisabledReason : undefined} onClick={() => { void handleLearnSkill(entry.skillId); }}>
+                  {entry.isLearned ? 'Изучено' : isBusy ? 'Обучение...' : entry.isAvailable ? 'Изучить' : 'Недоступно'}
+                </button>
+                <button type="button" onClick={closeTrainerPopup}>Закрыть</button>
               </div>
             </section>
           </div>
@@ -2004,74 +2149,84 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   ) : (
                     <>
                       {skillsTrainerAvailable.length > 0 ? (
-                        <div className="skills-training-grid">
-                          {skillsTrainerAvailable.map((entry) => {
-                            const skill = entry.skill;
-                            if (!skill) return null;
-                            const price = entry.costs.gold ?? 0;
-                            const gold = typeof skillsPlayerContext.gold === 'number' ? skillsPlayerContext.gold : null;
-                            const notEnoughGold = gold !== null && gold < price;
-                            const disabledReason = notEnoughGold ? 'Недостаточно золота.' : undefined;
-                            return (
-                              <article key={entry.skillId} className="skill-training-card">
-                                <div className="skill-training-card-head">
-                                  <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
-                                  <div>
-                                    <strong>{skill.name}</strong>
-                                    <small>{skill.type}</small>
-                                  </div>
-                                </div>
-                                <p className="muted">{skill.shortDescription || skill.gameplayDescription || 'Описание пока не заполнено.'}</p>
-                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
-                                  <span className="muted">{price > 0 ? `Цена: ${price}` : 'Бесплатно'}</span>
-                                  <button
-                                    type="button"
-                                    disabled={learningSkillId === skill.id || notEnoughGold}
-                                    onClick={() => { void handleLearnSkill(skill.id); }}
-                                    title={disabledReason}
-                                  >
-                                    {learningSkillId === skill.id ? 'Обучение...' : 'Изучить'}
-                                  </button>
-                                </div>
-                                {disabledReason ? <p className="muted" style={{ marginTop: 6 }}>{disabledReason}</p> : null}
-                              </article>
-                            );
-                          })}
+                        <div style={{ marginTop: 12 }}>
+                          <p className="muted" style={{ margin: 0 }}>Доступно для изучения</p>
+                          <div className="skill-icon-grid" style={{ marginTop: 8 }}>
+                            {skillsTrainerAvailable.map((entry) => {
+                              const skill = entry.skill;
+                              const name = skill?.name ?? entry.skillId;
+                              const iconSrc = resolveSkillIcon?.(skill);
+                              const glyph = name.slice(0, 2).toUpperCase();
+                              return (
+                                <button
+                                  key={entry.skillId}
+                                  type="button"
+                                  className={`skill-icon-item ${trainerPopupSkillId === entry.skillId ? 'is-active' : ''}`}
+                                  onClick={() => openTrainerPopup(entry.skillId)}
+                                >
+                                  <span className="skill-icon-glyph">
+                                    {iconSrc ? <img src={iconSrc} alt="" /> : glyph}
+                                  </span>
+                                  <span className="skill-icon-label">{name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       ) : null}
 
                       {skillsTrainerLocked.length > 0 ? (
-                        <div style={{ marginTop: skillsTrainerAvailable.length > 0 ? 12 : 0 }}>
+                        <div style={{ marginTop: 12 }}>
                           {skillsTrainerAvailable.length === 0 ? (
-                            <p className="muted" style={{ marginTop: 12 }}>Навыки найдены, но условия не выполнены.</p>
+                            <p className="muted" style={{ margin: 0 }}>Навыки найдены, но условия не выполнены.</p>
                           ) : (
-                            <p className="muted" style={{ marginTop: 12 }}>Недоступные навыки</p>
+                            <p className="muted" style={{ margin: 0 }}>Заблокировано</p>
                           )}
-                          <div className="skills-training-grid">
+                          <div className="skill-icon-grid" style={{ marginTop: 8 }}>
                             {skillsTrainerLocked.map((entry) => {
                               const skill = entry.skill;
                               const name = skill?.name ?? entry.skillId;
-                              const description = skill?.shortDescription || skill?.gameplayDescription || 'Описание пока не заполнено.';
-                              const reasons = entry.reasons ?? [];
+                              const iconSrc = resolveSkillIcon?.(skill);
+                              const glyph = name.slice(0, 2).toUpperCase();
                               return (
-                                <article key={`locked-${entry.skillId}`} className="skill-training-card" style={{ opacity: 0.65 }}>
-                                  <div className="skill-training-card-head">
-                                    <span className="character-skill-icon">{name.slice(0, 2).toUpperCase()}</span>
-                                    <div>
-                                      <strong>{name}</strong>
-                                      <small>{skill?.type ?? 'locked'}</small>
-                                    </div>
-                                  </div>
-                                  <p className="muted">{description}</p>
-                                  {entry.costs.gold > 0 ? <p className="muted" style={{ margin: '6px 0 0' }}>Цена: {entry.costs.gold}</p> : null}
-                                  {reasons.length > 0 ? (
-                                    <ul className="muted" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
-                                      {reasons.slice(0, 4).map((reason) => (
-                                        <li key={`${entry.skillId}-${reason.code}`}>{reason.message}</li>
-                                      ))}
-                                    </ul>
-                                  ) : null}
-                                </article>
+                                <button
+                                  key={`locked-${entry.skillId}`}
+                                  type="button"
+                                  className={`skill-icon-item is-locked ${trainerPopupSkillId === entry.skillId ? 'is-active' : ''}`}
+                                  onClick={() => openTrainerPopup(entry.skillId)}
+                                >
+                                  <span className="skill-icon-glyph">
+                                    {iconSrc ? <img src={iconSrc} alt="" /> : glyph}
+                                  </span>
+                                  <span className="skill-icon-label">{name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {skillsTrainerLearned.length > 0 ? (
+                        <div style={{ marginTop: 12 }}>
+                          <p className="muted" style={{ margin: 0 }}>Уже изучено</p>
+                          <div className="skill-icon-grid" style={{ marginTop: 8 }}>
+                            {skillsTrainerLearned.map((entry) => {
+                              const skill = entry.skill;
+                              const name = skill?.name ?? entry.skillId;
+                              const iconSrc = resolveSkillIcon?.(skill);
+                              const glyph = name.slice(0, 2).toUpperCase();
+                              return (
+                                <button
+                                  key={`learned-${entry.skillId}`}
+                                  type="button"
+                                  className={`skill-icon-item is-learned ${trainerPopupSkillId === entry.skillId ? 'is-active' : ''}`}
+                                  onClick={() => openTrainerPopup(entry.skillId)}
+                                >
+                                  <span className="skill-icon-glyph">
+                                    {iconSrc ? <img src={iconSrc} alt="" /> : glyph}
+                                  </span>
+                                  <span className="skill-icon-label">{name}</span>
+                                </button>
                               );
                             })}
                           </div>
@@ -2135,6 +2290,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             </div>
           </div>
         </div>
+        {renderTrainerSkillPopup()}
       </>
     );
   }

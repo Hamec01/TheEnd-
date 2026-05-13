@@ -897,6 +897,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     (item: ItemDefinition | null | undefined) => resolveItemImageSource(item, runtimeImages),
     [runtimeImages],
   );
+  const resolveSkillIcon = useCallback(
+    (skill: AdminSkillDefinition | null | undefined) => {
+      const raw = skill?.iconUrl?.trim();
+      if (!raw) return undefined;
+      return resolveStoredImageSource(raw, runtimeImages) ?? raw;
+    },
+    [runtimeImages],
+  );
   const resolveMerchantImage = useCallback(
     (merchant: AdminMerchant | null | undefined) => resolveMerchantImageSource(merchant, runtimeImages),
     [runtimeImages],
@@ -2591,6 +2599,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
             resolveItemImage={resolveItemImage}
+            resolveSkillIcon={resolveSkillIcon}
           />
         ) : null}
 
