@@ -10,6 +10,8 @@ interface CharacterSkillsPageProps {
   loadout: CharacterSkillLoadout | null;
   playerContext: SkillTrainingPlayerContext;
   trainerSkillIds?: unknown;
+  mode?: 'character' | 'trainer';
+  trainerNpcName?: string | null;
   onLearnSkill: (skillId: string) => Promise<void>;
   onSaveLoadout: (slots: Array<{ slotIndex: number; skillId: string | null }>) => Promise<void>;
   onStatus: (text: string) => void;
@@ -38,7 +40,7 @@ function getSlotTypeLabel(slot: CombatSkillSlot): string {
 }
 
 export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
-  const { learnedSkills, availableSkills, loadout, playerContext, trainerSkillIds, onLearnSkill, onSaveLoadout, onStatus } = props;
+  const { learnedSkills, availableSkills, loadout, playerContext, trainerSkillIds, mode = 'character', trainerNpcName, onLearnSkill, onSaveLoadout, onStatus } = props;
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [draftSlots, setDraftSlots] = useState<CombatSkillSlot[]>([]);
   const [isSavingLoadout, setIsSavingLoadout] = useState(false);
@@ -47,13 +49,6 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
   useEffect(() => {
     setDraftSlots(loadout?.slots ?? []);
   }, [loadout]);
-
-  useEffect(() => {
-    if (selectedSkillId && learnedSkills.some((entry) => entry.skillId === selectedSkillId)) {
-      return;
-    }
-    setSelectedSkillId(learnedSkills[0]?.skillId ?? availableSkills[0]?.id ?? null);
-  }, [availableSkills, learnedSkills, selectedSkillId]);
 
   const learnedSkillIds = useMemo(() => new Set(learnedSkills.map((entry) => entry.skillId)), [learnedSkills]);
 
@@ -82,10 +77,14 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
     [trainerCandidates],
   );
 
-  const learnableSkills = useMemo(
-    () => trainerAvailable.map((entry) => entry.skill).filter((entry): entry is AdminSkillDefinition => Boolean(entry)),
-    [trainerAvailable],
-  );
+  useEffect(() => {
+    const isKnown = selectedSkillId && learnedSkills.some((entry) => entry.skillId === selectedSkillId);
+    const isTrainerAvailable = selectedSkillId && trainerAvailable.some((entry) => entry.skill?.id === selectedSkillId);
+    if (isKnown || isTrainerAvailable) {
+      return;
+    }
+    setSelectedSkillId(learnedSkills[0]?.skillId ?? trainerAvailable[0]?.skillId ?? null);
+  }, [learnedSkills, selectedSkillId, trainerAvailable]);
 
   const learnedSkillDetails = useMemo(
     () => learnedSkills.map((entry) => ({
@@ -177,30 +176,150 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
           <section className="inner-card skills-training-section">
             <div className="skills-section-head">
               <div>
-                <h3 style={{ margin: 0 }}>Обучение</h3>
-                <span className="muted">Показываются только навыки, явно доступные для обычного обучения и подходящие по требованиям.</span>
+                <h3 style={{ margin: 0 }}>
+                  {mode === 'trainer' && playerContext.npcId
+                    ? `Обучение у ${trainerNpcName ?? playerContext.npcId}`
+                    : 'Обучение'}
+                </h3>
+                <span className="muted">
+                  {mode === 'trainer'
+                    ? 'Навыки у выбранного тренера.'
+                    : 'Чтобы обучиться, откройте навыки через NPC-тренера.'}
+                </span>
               </div>
             </div>
-            {learnableSkills.length > 0 ? (
-              <div className="skills-training-grid">
-                {learnableSkills.map((skill) => (
-                  <article key={skill.id} className="skill-training-card">
-                    <div className="skill-training-card-head">
-                      <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
-                      <div>
-                        <strong>{skill.name}</strong>
-                        <small>{skill.type}</small>
-                      </div>
-                    </div>
-                    <p className="muted">{skill.shortDescription || skill.gameplayDescription || 'Описание пока не заполнено.'}</p>
-                    <button type="button" disabled={learningSkillId === skill.id} onClick={() => { void handleLearn(skill.id); }}>
-                      {learningSkillId === skill.id ? 'Обучение...' : 'Изучить'}
-                    </button>
-                  </article>
-                ))}
-              </div>
+            {mode !== 'trainer' ? (
+              <p className="muted" style={{ marginTop: 12 }}>Чтобы обучиться, поговорите с тренером.</p>
+            ) : !playerContext.npcId ? (
+              <p className="muted" style={{ marginTop: 12 }}>Тренер не выбран.</p>
+            ) : trainerCandidates.length === 0 ? (
+              <p className="muted" style={{ marginTop: 12 }}>Этот персонаж пока ничему не обучает.</p>
             ) : (
-              <p className="muted" style={{ marginTop: 12 }}>Все доступные навыки уже изучены или ещё не опубликованы.</p>
+              <>
+                {trainerAvailable.length > 0 ? (
+                  <div className="skills-training-grid">
+                    {trainerAvailable.map((entry) => {
+                      const skill = entry.skill;
+                      if (!skill) return null;
+                      const price = entry.costs.gold ?? 0;
+                      const gold = typeof playerContext.gold === 'number' ? playerContext.gold : null;
+                      const notEnoughGold = gold !== null && gold < price;
+                      const disabledReason = notEnoughGold ? 'Недостаточно золота.' : undefined;
+                      const costsItems = entry.costs.items ?? [];
+                      const costsQuestItems = entry.costs.questItems ?? [];
+                      const extraCostsLine = costsItems.length > 0 || costsQuestItems.length > 0
+                        ? `Доп. оплата: ${[
+                          ...costsItems.map((c) => `${c.itemId} x${c.quantity}`),
+                          ...costsQuestItems.map((c) => `${c.questItemId} x${c.quantity}`),
+                        ].join(', ')}`
+                        : null;
+
+                      return (
+                        <article key={entry.skillId} className="skill-training-card">
+                          <div className="skill-training-card-head">
+                            <span className="character-skill-icon">{skill.name.slice(0, 2).toUpperCase()}</span>
+                            <div>
+                              <strong>{skill.name}</strong>
+                              <small>{skill.type}</small>
+                            </div>
+                          </div>
+                          <p className="muted">{skill.shortDescription || skill.gameplayDescription || 'Описание пока не заполнено.'}</p>
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span className="muted">{price > 0 ? `Цена: ${price}` : 'Бесплатно'}</span>
+                            <button
+                              type="button"
+                              disabled={learningSkillId === skill.id || notEnoughGold}
+                              onClick={() => { void handleLearn(skill.id); }}
+                              title={disabledReason}
+                            >
+                              {learningSkillId === skill.id ? 'Обучение...' : 'Изучить'}
+                            </button>
+                          </div>
+                          {extraCostsLine ? <p className="muted" style={{ marginTop: 6 }}>{extraCostsLine}</p> : null}
+                          {disabledReason ? <p className="muted" style={{ marginTop: 6 }}>{disabledReason}</p> : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {trainerLocked.length > 0 ? (
+                  <div style={{ marginTop: trainerAvailable.length > 0 ? 12 : 0 }}>
+                    {trainerAvailable.length === 0 ? (
+                      <p className="muted" style={{ marginTop: 12 }}>Навыки найдены, но условия не выполнены.</p>
+                    ) : (
+                      <p className="muted" style={{ marginTop: 12 }}>Заблокировано</p>
+                    )}
+                    <div className="skills-training-grid">
+                      {trainerLocked.map((entry) => {
+                        const skill = entry.skill;
+                        const name = skill?.name ?? entry.skillId;
+                        const description = skill?.shortDescription || skill?.gameplayDescription || 'Описание пока не заполнено.';
+                        const reasons = entry.reasons ?? [];
+                        const costsItems = entry.costs.items ?? [];
+                        const costsQuestItems = entry.costs.questItems ?? [];
+                        const extraCostsLine = costsItems.length > 0 || costsQuestItems.length > 0
+                          ? `Доп. оплата: ${[
+                            ...costsItems.map((c) => `${c.itemId} x${c.quantity}`),
+                            ...costsQuestItems.map((c) => `${c.questItemId} x${c.quantity}`),
+                          ].join(', ')}`
+                          : null;
+
+                        return (
+                          <article key={`locked-${entry.skillId}`} className="skill-training-card" style={{ opacity: 0.65 }}>
+                            <div className="skill-training-card-head">
+                              <span className="character-skill-icon">{name.slice(0, 2).toUpperCase()}</span>
+                              <div>
+                                <strong>{name}</strong>
+                                <small>{skill?.type ?? 'locked'}</small>
+                              </div>
+                            </div>
+                            <p className="muted">{description}</p>
+                            {entry.costs.gold > 0 ? <p className="muted" style={{ margin: '6px 0 0' }}>Цена: {entry.costs.gold}</p> : null}
+                            {extraCostsLine ? <p className="muted" style={{ margin: '6px 0 0' }}>{extraCostsLine}</p> : null}
+                            {reasons.length > 0 ? (
+                              <ul className="muted" style={{ margin: '8px 0 0', paddingLeft: 16 }}>
+                                {reasons.slice(0, 4).map((reason) => (
+                                  <li key={`${entry.skillId}-${reason.code}`}>{reason.message}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {trainerLearned.length > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <p className="muted" style={{ marginTop: 12 }}>Уже изучено</p>
+                    <div className="skills-training-grid">
+                      {trainerLearned.map((entry) => {
+                        const skill = entry.skill;
+                        const name = skill?.name ?? entry.skillId;
+                        const description = skill?.shortDescription || skill?.gameplayDescription || 'Описание пока не заполнено.';
+                        return (
+                          <article key={`learned-${entry.skillId}`} className="skill-training-card" style={{ opacity: 0.55 }}>
+                            <div className="skill-training-card-head">
+                              <span className="character-skill-icon">{name.slice(0, 2).toUpperCase()}</span>
+                              <div>
+                                <strong>{name}</strong>
+                                <small>{skill?.type ?? 'learned'}</small>
+                              </div>
+                            </div>
+                            <p className="muted">{description}</p>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {trainerAvailable.length === 0 && trainerLocked.length === 0 && trainerLearned.length > 0 ? (
+                  <p className="muted" style={{ marginTop: 12 }}>Все навыки этого тренера уже изучены.</p>
+                ) : null}
+              </>
             )}
           </section>
         </div>

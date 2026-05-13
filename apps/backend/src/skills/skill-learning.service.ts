@@ -91,6 +91,44 @@ function getPriceGoldFromMethod(method: unknown): number | null {
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
 }
 
+function parseTrainingCosts(value: unknown): { gold: number; items: Array<{ itemId: string; quantity: number }>; questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> } {
+  const rec = toRecord(value);
+  const goldRaw = rec?.gold;
+  const goldN = typeof goldRaw === 'number' ? goldRaw : Number(goldRaw);
+  const gold = Number.isFinite(goldN) ? Math.max(0, Math.floor(goldN)) : 0;
+
+  const items: Array<{ itemId: string; quantity: number }> = [];
+  const rawItems = rec?.items;
+  if (Array.isArray(rawItems)) {
+    for (const entry of rawItems) {
+      const itemRec = toRecord(entry);
+      if (!itemRec) continue;
+      const itemId = typeof itemRec.itemId === 'string' ? itemRec.itemId.trim() : '';
+      const qtyRaw = itemRec.quantity;
+      const qtyN = typeof qtyRaw === 'number' ? qtyRaw : Number(qtyRaw);
+      const quantity = Number.isFinite(qtyN) ? Math.max(1, Math.floor(qtyN)) : 1;
+      if (itemId) items.push({ itemId, quantity });
+    }
+  }
+
+  const questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> = [];
+  const rawQuestItems = rec?.questItems;
+  if (Array.isArray(rawQuestItems)) {
+    for (const entry of rawQuestItems) {
+      const qiRec = toRecord(entry);
+      if (!qiRec) continue;
+      const questItemId = typeof qiRec.questItemId === 'string' ? qiRec.questItemId.trim() : '';
+      const qtyRaw = qiRec.quantity;
+      const qtyN = typeof qtyRaw === 'number' ? qtyRaw : Number(qtyRaw);
+      const quantity = Number.isFinite(qtyN) ? Math.max(1, Math.floor(qtyN)) : 1;
+      const consume = typeof qiRec.consume === 'boolean' ? qiRec.consume : undefined;
+      if (questItemId) questItems.push({ questItemId, quantity, consume });
+    }
+  }
+
+  return { gold, items, questItems };
+}
+
 function skillHasTeacherLink(skill: AdminSkillDefinition, npcId: string): boolean {
   const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
   for (const method of methods) {
@@ -115,7 +153,7 @@ function isCandidateForTrainer(skill: AdminSkillDefinition, npcId: string, train
   return false;
 }
 
-function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null | undefined): number {
+function getSkillTrainingCosts(skill: AdminSkillDefinition, npcId: string | null | undefined): { gold: number; items: Array<{ itemId: string; quantity: number }>; questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> } {
   const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
   const trainerMethods = methods.filter(isTeacherMethod);
 
@@ -123,20 +161,37 @@ function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null
     for (const method of trainerMethods) {
       const teacherNpcId = getTrainerNpcIdFromMethod(method);
       if (teacherNpcId && teacherNpcId === npcId) {
-        const price = getPriceGoldFromMethod(method);
-        if (typeof price === 'number') return price;
+        const legacyGold = getPriceGoldFromMethod(method) ?? 0;
+        const costs = parseTrainingCosts((toRecord(method) as any)?.costs);
+        return {
+          gold: costs.gold > 0 ? costs.gold : legacyGold,
+          items: costs.items,
+          questItems: costs.questItems,
+        };
       }
     }
   }
 
   for (const method of trainerMethods) {
-    const price = getPriceGoldFromMethod(method);
-    if (typeof price === 'number') return price;
+    const legacyGold = getPriceGoldFromMethod(method) ?? 0;
+    const costs = parseTrainingCosts((toRecord(method) as any)?.costs);
+    if (costs.gold > 0 || legacyGold > 0 || costs.items.length > 0 || costs.questItems.length > 0) {
+      return {
+        gold: costs.gold > 0 ? costs.gold : legacyGold,
+        items: costs.items,
+        questItems: costs.questItems,
+      };
+    }
   }
 
   const top = (skill as any).priceGold;
   const topN = typeof top === 'number' ? top : Number(top);
-  return Number.isFinite(topN) ? Math.max(0, Math.floor(topN)) : 0;
+  const gold = Number.isFinite(topN) ? Math.max(0, Math.floor(topN)) : 0;
+  return { gold, items: [], questItems: [] };
+}
+
+function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null | undefined): number {
+  return getSkillTrainingCosts(skill, npcId).gold;
 }
 
 @Injectable()
@@ -253,7 +308,8 @@ export class SkillLearningService {
     };
 
     const currentGold = Number((characterRecord as { gold?: unknown }).gold ?? 0) || 0;
-    const priceGold = hasTrainerNpc ? getSkillTrainingPrice(skillDef, trainerNpcId) : getSkillTrainingPrice(skillDef, null);
+    const trainingCosts = hasTrainerNpc ? getSkillTrainingCosts(skillDef, trainerNpcId) : getSkillTrainingCosts(skillDef, null);
+    const priceGold = trainingCosts.gold;
 
     // Check already learned
     const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
@@ -262,6 +318,13 @@ export class SkillLearningService {
     }
 
     await this.assertTrainingRequirements(characterId, character, skillDef, trainerNpcId || undefined);
+
+    if (trainingCosts.items.length > 0) {
+      throw new BadRequestException('Оплата предметами ещё не подключена.');
+    }
+    if (trainingCosts.questItems.length > 0) {
+      throw new BadRequestException('Оплата квестовыми предметами ещё не подключена.');
+    }
 
     if (priceGold > 0 && currentGold < priceGold) {
       throw new BadRequestException('Недостаточно золота.');

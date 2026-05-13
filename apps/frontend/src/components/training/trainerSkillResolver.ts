@@ -34,7 +34,11 @@ export type RequirementReasonCode =
   | 'forbidden_race'
   | 'missing_magic_school_system'
   | 'missing_magic_school'
-  | 'not_enough_gold';
+  | 'not_enough_gold'
+  | 'cost_items_not_supported'
+  | 'cost_quest_items_not_supported'
+  | 'missing_reputation_system'
+  | 'missing_reputation';
 
 export interface RequirementReason {
   code: RequirementReasonCode;
@@ -46,7 +50,11 @@ export interface TrainerSkillCandidate {
   skillId: string;
   skill: AdminSkillDefinition | null;
   sources: string[];
-  priceGold: number;
+  costs: {
+    gold: number;
+    items: Array<{ itemId: string; quantity: number }>;
+    questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }>;
+  };
   isLearned: boolean;
   isAvailable: boolean;
   reasons: RequirementReason[];
@@ -112,7 +120,45 @@ function getPriceGoldFromMethod(method: unknown): number | null {
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
 }
 
-export function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null | undefined): number {
+function parseTrainingCosts(value: unknown): { gold: number; items: Array<{ itemId: string; quantity: number }>; questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> } {
+  const rec = toRecord(value);
+  const goldRaw = rec?.gold;
+  const goldN = typeof goldRaw === 'number' ? goldRaw : Number(goldRaw);
+  const gold = Number.isFinite(goldN) ? Math.max(0, Math.floor(goldN)) : 0;
+
+  const items: Array<{ itemId: string; quantity: number }> = [];
+  const rawItems = rec?.items;
+  if (Array.isArray(rawItems)) {
+    for (const entry of rawItems) {
+      const itemRec = toRecord(entry);
+      if (!itemRec) continue;
+      const itemId = typeof itemRec.itemId === 'string' ? itemRec.itemId.trim() : '';
+      const qtyRaw = itemRec.quantity;
+      const qtyN = typeof qtyRaw === 'number' ? qtyRaw : Number(qtyRaw);
+      const quantity = Number.isFinite(qtyN) ? Math.max(1, Math.floor(qtyN)) : 1;
+      if (itemId) items.push({ itemId, quantity });
+    }
+  }
+
+  const questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> = [];
+  const rawQuestItems = rec?.questItems;
+  if (Array.isArray(rawQuestItems)) {
+    for (const entry of rawQuestItems) {
+      const qiRec = toRecord(entry);
+      if (!qiRec) continue;
+      const questItemId = typeof qiRec.questItemId === 'string' ? qiRec.questItemId.trim() : '';
+      const qtyRaw = qiRec.quantity;
+      const qtyN = typeof qtyRaw === 'number' ? qtyRaw : Number(qtyRaw);
+      const quantity = Number.isFinite(qtyN) ? Math.max(1, Math.floor(qtyN)) : 1;
+      const consume = typeof qiRec.consume === 'boolean' ? qiRec.consume : undefined;
+      if (questItemId) questItems.push({ questItemId, quantity, consume });
+    }
+  }
+
+  return { gold, items, questItems };
+}
+
+export function getSkillTrainingCosts(skill: AdminSkillDefinition, npcId: string | null | undefined): { gold: number; items: Array<{ itemId: string; quantity: number }>; questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> } {
   const methods = Array.isArray((skill as any)?.acquisition?.methods) ? (skill as any).acquisition.methods as unknown[] : [];
   const trainerMethods = methods.filter(isTeacherMethod);
 
@@ -120,20 +166,33 @@ export function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string
     for (const method of trainerMethods) {
       const teacherNpcId = getTrainerNpcIdFromMethod(method);
       if (teacherNpcId && teacherNpcId === npcId) {
-        const price = getPriceGoldFromMethod(method);
-        if (typeof price === 'number') return price;
+        const legacyGold = getPriceGoldFromMethod(method) ?? 0;
+        const costs = parseTrainingCosts((toRecord(method) as any)?.costs);
+        return {
+          gold: costs.gold > 0 ? costs.gold : legacyGold,
+          items: costs.items,
+          questItems: costs.questItems,
+        };
       }
     }
   }
 
   for (const method of trainerMethods) {
-    const price = getPriceGoldFromMethod(method);
-    if (typeof price === 'number') return price;
+    const legacyGold = getPriceGoldFromMethod(method) ?? 0;
+    const costs = parseTrainingCosts((toRecord(method) as any)?.costs);
+    if (costs.gold > 0 || legacyGold > 0 || costs.items.length > 0 || costs.questItems.length > 0) {
+      return {
+        gold: costs.gold > 0 ? costs.gold : legacyGold,
+        items: costs.items,
+        questItems: costs.questItems,
+      };
+    }
   }
 
   const top = (skill as any).priceGold;
   const topN = typeof top === 'number' ? top : Number(top);
-  return Number.isFinite(topN) ? Math.max(0, Math.floor(topN)) : 0;
+  const gold = Number.isFinite(topN) ? Math.max(0, Math.floor(topN)) : 0;
+  return { gold, items: [], questItems: [] };
 }
 
 function skillHasTeacherLink(skill: AdminSkillDefinition, npcId: string): boolean {
@@ -170,9 +229,9 @@ export function checkSkillRequirements(params: {
   skill: AdminSkillDefinition;
   context: SkillTrainingPlayerContext;
   learnedSkillIds: Set<string>;
-  priceGold: number;
+  costs: { gold: number; items: Array<{ itemId: string; quantity: number }>; questItems: Array<{ questItemId: string; quantity: number; consume?: boolean }> };
 }): RequirementReason[] {
-  const { skill, context, learnedSkillIds, priceGold } = params;
+  const { skill, context, learnedSkillIds, costs } = params;
   const reasons: RequirementReason[] = [];
 
   if (learnedSkillIds.has(skill.id)) {
@@ -275,9 +334,23 @@ export function checkSkillRequirements(params: {
     reasons.push({ code: 'missing_magic_school_system', message: `Требуются школы магии: ${requiredMagicSchools.join(', ')} (система школ у персонажа не найдена).` });
   }
 
+  const requiredReputation = (skill as any).requirements?.requiredReputation;
+  if (Array.isArray(requiredReputation) && requiredReputation.length > 0) {
+    reasons.push({ code: 'missing_reputation_system', message: 'Требуется репутация (система репутации у персонажа не найдена).' });
+  }
+
   const gold = typeof context.gold === 'number' ? context.gold : null;
-  if (gold !== null && priceGold > 0 && gold < priceGold) {
-    reasons.push({ code: 'not_enough_gold', message: `Недостаточно золота: нужно ${priceGold}, у вас ${gold}.` });
+  if (gold !== null && costs.gold > 0 && gold < costs.gold) {
+    reasons.push({ code: 'not_enough_gold', message: `Недостаточно золота: нужно ${costs.gold}, у вас ${gold}.` });
+  }
+
+  if (costs.items.length > 0) {
+    const preview = costs.items.slice(0, 3).map((entry) => `${entry.itemId} x${entry.quantity}`).join(', ');
+    reasons.push({ code: 'cost_items_not_supported', message: `Требуются предметы: ${preview}. (Оплата предметами ещё не подключена)` });
+  }
+  if (costs.questItems.length > 0) {
+    const preview = costs.questItems.slice(0, 3).map((entry) => `${entry.questItemId} x${entry.quantity}`).join(', ');
+    reasons.push({ code: 'cost_quest_items_not_supported', message: `Требуются квестовые предметы: ${preview}. (Оплата квестовыми предметами ещё не подключена)` });
   }
 
   return reasons;
@@ -302,12 +375,12 @@ export function resolveTrainerSkillCandidates(params: {
       : [];
     if (sources.length === 0) continue;
 
-    const priceGold = getSkillTrainingPrice(skill, npcId);
+    const costs = getSkillTrainingCosts(skill, npcId);
     const reasons = checkSkillRequirements({
       skill,
       context: { ...params.context, npcId },
       learnedSkillIds: params.learnedSkillIds,
-      priceGold,
+      costs,
     });
     const isLearned = params.learnedSkillIds.has(skill.id);
     const isAvailable = !isLearned && reasons.length === 0;
@@ -316,7 +389,7 @@ export function resolveTrainerSkillCandidates(params: {
       skillId: skill.id,
       skill,
       sources,
-      priceGold,
+      costs,
       isLearned,
       isAvailable,
       reasons,
@@ -330,7 +403,7 @@ export function resolveTrainerSkillCandidates(params: {
       skillId: referencedId,
       skill: null,
       sources: ['npc.trainerSkillIds'],
-      priceGold: 0,
+      costs: { gold: 0, items: [], questItems: [] },
       isLearned: false,
       isAvailable: false,
       reasons: [{ code: 'not_trainable', message: `Навык не найден в базе: ${referencedId}.` }],

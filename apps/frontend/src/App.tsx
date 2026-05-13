@@ -798,6 +798,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
   const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
   const [activeTrainerNpcId, setActiveTrainerNpcId] = useState<string | null>(null);
+  const [activeTrainerNpcName, setActiveTrainerNpcName] = useState<string | null>(null);
   const [activeTrainerSkillIds, setActiveTrainerSkillIds] = useState<unknown>(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
 
@@ -1856,7 +1857,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
     setActiveTrainerNpcId(trainerNpcId?.trim() ? trainerNpcId.trim() : null);
+    setActiveTrainerNpcName(null);
     setActiveTrainerSkillIds(trainerSkillIds ?? null);
+
+    const resolvedTrainerId = trainerNpcId?.trim() ? trainerNpcId.trim() : null;
+    if (resolvedTrainerId) {
+      void ensureNpcsLoaded()
+        .then(() => getAllNpcs().find((npc) => npc.id === resolvedTrainerId) ?? null)
+        .then((npc) => setActiveTrainerNpcName(npc?.name ?? resolvedTrainerId))
+        .catch(() => setActiveTrainerNpcName(resolvedTrainerId));
+    }
 
     const pendingRaw = window.localStorage.getItem(PENDING_SKILL_GRANT_KEY);
     if (pendingRaw) {
@@ -1881,6 +1891,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCharacterPageFocus('character');
     setOverlayPanel('character');
     setActiveTrainerNpcId(null);
+    setActiveTrainerNpcName(null);
     setActiveTrainerSkillIds(null);
     setStatus('Открыта страница персонажа.');
   }
@@ -1890,6 +1901,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setCharacterPageFocus('equipment');
     setOverlayPanel('character');
     setActiveTrainerNpcId(null);
+    setActiveTrainerNpcName(null);
     setActiveTrainerSkillIds(null);
     setStatus('Открыта страница экипировки.');
   }
@@ -1904,6 +1916,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         setCharacterPageFocus('inventory');
         setOverlayPanel('character');
         setActiveTrainerNpcId(null);
+        setActiveTrainerNpcName(null);
         setActiveTrainerSkillIds(null);
         setStatus('Открыт инвентарь.');
         return;
@@ -1912,6 +1925,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         setCharacterPageFocus('stats');
         setOverlayPanel('character');
         setActiveTrainerNpcId(null);
+        setActiveTrainerNpcName(null);
         setActiveTrainerSkillIds(null);
         setStatus('Открыта страница статов.');
         return;
@@ -2553,6 +2567,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             allocatingStats={allocatingStats}
             focusSection={characterPageFocus}
             trainerNpcId={activeTrainerNpcId}
+            trainerNpcName={activeTrainerNpcName}
             trainerSkillIds={activeTrainerSkillIds}
             onClose={() => setOverlayPanel(null)}
             onStatus={setStatus}
