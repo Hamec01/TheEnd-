@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
@@ -16,7 +16,6 @@ import {
   deleteQuest,
   duplicateQuest,
   ensureQuestsLoaded,
-  exportQuestsJson,
   getAllQuests,
   getQuestInteractions,
   getQuestItems,
@@ -28,6 +27,7 @@ import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { validateQuest } from '../../services/questValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
+import { extractRawCollectionFromImportJson, formatExportStamp } from '../../services/content/adminJsonImportExport';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import type {
   QuestCategory,
@@ -193,6 +193,8 @@ export function QuestsPage() {
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
   const [validation, setValidation] = useState<QuestValidationResult>({ errors: [], warnings: [] });
   const [npcIds, setNpcIds] = useState<string[]>([]);
   const [itemIds, setItemIds] = useState<string[]>([]);
@@ -526,27 +528,76 @@ export function QuestsPage() {
     patch({ steps: [...existingSteps, nextStep] });
   }
 
-  async function exportJson() {
-    const payload = await exportQuestsJson();
-    navigator.clipboard.writeText(payload).then(() => {
-      setStatus('JSON квестов скопирован в буфер обмена.');
-    }).catch(() => {
-      setStatus('Не удалось скопировать JSON автоматически.');
-    });
+  function exportJson() {
+    const payload = {
+      schemaVersion: 1,
+      game: 'TheEnd',
+      exportedAt: new Date().toISOString(),
+      exportedBy: 'admin',
+      contentCounts: {
+        quests: quests.length,
+        questInteractions: getQuestInteractions().length,
+        questItems: getQuestItems().length,
+      },
+      quests,
+      questInteractions: getQuestInteractions(),
+      questItems: getQuestItems(),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `theend_quests_bundle_${formatExportStamp()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    setStatus(`Экспорт квестов: ${quests.length}`);
   }
 
-  async function importJson() {
-    const raw = window.prompt('Вставьте JSON для импорта квестов и предметов:');
-    if (!raw) {
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
       return;
     }
 
+    setIsImporting(true);
+
     try {
-      const result = await importQuestsJson(raw);
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const questsPayload = extractRawCollectionFromImportJson(payload, 'quests');
+      const questInteractionsPayload = (() => {
+        try {
+          return extractRawCollectionFromImportJson(payload, 'questInteractions');
+        } catch {
+          return [] as unknown[];
+        }
+      })();
+      const questItemsPayload = (() => {
+        try {
+          return extractRawCollectionFromImportJson(payload, 'questItems');
+        } catch {
+          return [] as unknown[];
+        }
+      })();
+
+      const result = await importQuestsJson(JSON.stringify({
+        quests: questsPayload,
+        questInteractions: questInteractionsPayload,
+        questItems: questItemsPayload,
+      }));
       await refresh();
-      setStatus(`Импорт завершен: квестов ${result.quests}, квестовых предметов ${result.questItems}.`);
+      setStatus(`Импорт завершен: квестов ${result.quests}, взаимодействий ${result.questInteractions}, квестовых предметов ${result.questItems}.`);
+      setSaveState({ state: 'saved', message: `Импорт квестов: ${result.quests}` });
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
+      setSaveState({ state: 'error', message: translateAdminErrorMessage((error as Error).message) });
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -881,7 +932,8 @@ export function QuestsPage() {
           </select>
           <button onClick={createQuest}>Новый квест</button>
           <button onClick={exportJson}>Экспорт JSON</button>
-          <button onClick={importJson}>Импорт JSON</button>
+          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
 
         <div className="admin-items-selected-row">

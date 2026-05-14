@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { City, CityLocation, CityLocationShape, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
 import { cityService } from '../../services/cityRepository';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 
 const STATUS_OPTIONS: CityStatus[] = ['active', 'ruined', 'occupied', 'hidden', 'locked'];
@@ -84,8 +85,10 @@ export function CitiesPage() {
   const [autoTriggersText, setAutoTriggersText] = useState('');
   const [autoTriggersError, setAutoTriggersError] = useState<string | null>(null);
   const [images, setImages] = useState<StoredImage[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   async function reload(selectId?: string) {
     const next = await cityService.getCities();
@@ -238,6 +241,37 @@ export function CitiesPage() {
     await reload(next[0]?.id);
   }
 
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_cities',
+      collectionKey: 'cities',
+      entries: cities,
+    });
+    setStatus(`Экспорт городов: ${cities.length}`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'cities');
+      await cityService.importCities(JSON.stringify(entries));
+      await reload();
+      setStatus(`Импорт городов завершен: ${entries.length}`);
+    } catch (error) {
+      setStatus(`Импорт городов: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   async function uploadBackground(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -345,6 +379,9 @@ export function CitiesPage() {
         <button type="button" onClick={duplicateCity} disabled={!draft}>DUPLICATE</button>
         <button type="button" onClick={deleteCity} disabled={!draft}>DELETE</button>
         <button type="button" onClick={saveCity} disabled={!draft}>SAVE</button>
+        <button type="button" onClick={exportJson}>EXPORT JSON</button>
+        <button type="button" disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'IMPORT...' : 'IMPORT JSON'}</button>
+        <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         <label className="city-upload-button">
           Upload Background
           <input type="file" accept="image/*" onChange={uploadBackground} disabled={!draft} />
@@ -384,7 +421,7 @@ export function CitiesPage() {
             <button type="button" className={tool === 'circle' ? 'is-active' : ''} onClick={() => setTool('circle')}>CIRCLE</button>
             <button type="button" onClick={addLocation}>+ LOCATION</button>
             <button type="button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>FIT</button>
-            <span>Alt + wheel = zoom, middle mouse drag = pan, Shift + drag = move marker, Shift + wheel = resize marker</span>
+            <span>Alt + wheel = zoom, middle mouse drag = pan, hold left click + move = move marker, hold left click + wheel = resize marker</span>
           </div>
 
           <div
@@ -422,7 +459,7 @@ export function CitiesPage() {
                       className={`city-location-shape city-location-circle ${selected ? 'is-selected' : ''}`}
                       style={{ ...common, width: `${r * 2}px`, height: `${r * 2}px` }}
                       onPointerDown={(event) => {
-                        if (!event.shiftKey || event.button !== 0) {
+                        if (event.button !== 0 || tool !== 'select') {
                           return;
                         }
                         event.preventDefault();
@@ -441,7 +478,7 @@ export function CitiesPage() {
                         event.currentTarget.setPointerCapture(event.pointerId);
                       }}
                       onWheel={(event) => {
-                        if (!event.shiftKey) {
+                        if (dragLocationId !== location.id || dragPointerId === null) {
                           return;
                         }
                         event.preventDefault();
@@ -464,7 +501,7 @@ export function CitiesPage() {
                     className={`city-location-shape city-location-rect ${selected ? 'is-selected' : ''}`}
                     style={{ ...common, width: `${shape.width ?? 120}px`, height: `${shape.height ?? 80}px` }}
                     onPointerDown={(event) => {
-                      if (!event.shiftKey || event.button !== 0) {
+                      if (event.button !== 0 || tool !== 'select') {
                         return;
                       }
                       event.preventDefault();
@@ -483,7 +520,7 @@ export function CitiesPage() {
                       event.currentTarget.setPointerCapture(event.pointerId);
                     }}
                     onWheel={(event) => {
-                      if (!event.shiftKey) {
+                      if (dragLocationId !== location.id || dragPointerId === null) {
                         return;
                       }
                       event.preventDefault();
@@ -605,7 +642,8 @@ export function CitiesPage() {
                     <div className="city-location-list">
                       {draft.locations.map((location) => (
                         <button key={location.id} type="button" className={selectedLocationId === location.id ? 'is-active' : ''} onClick={() => setSelectedLocationId(location.id)}>
-                          {location.name} / {location.id}
+                          <strong>{location.name || 'Без названия'}</strong>
+                          <span className="city-location-list-id">{location.id}</span>
                         </button>
                       ))}
                     </div>

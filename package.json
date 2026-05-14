@@ -18,9 +18,11 @@
     "prepare": "npx husky"
   },
   "devDependencies": {
+    "@prisma/client": "^6.19.0",
     "@typescript-eslint/parser": "^8.59.1",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "prisma": "^6.19.0"
   }
 }

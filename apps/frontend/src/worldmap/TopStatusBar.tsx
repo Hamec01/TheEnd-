@@ -18,6 +18,8 @@ interface TopStatusBarProps {
   onEquipment: () => void;
   onQuests: () => void;
   onMap: () => void;
+  onToggleMiniMap?: () => void;
+  miniMapVisible?: boolean;
   onClan: () => void;
   onExit: () => void;
 }
@@ -41,6 +43,8 @@ export function TopStatusBar(props: TopStatusBarProps) {
     onEquipment,
     onQuests,
     onMap,
+    onToggleMiniMap,
+    miniMapVisible = true,
     onClan,
     onExit,
   } = props;
@@ -69,7 +73,8 @@ export function TopStatusBar(props: TopStatusBarProps) {
         <button onClick={onInventory}>Инвентарь</button>
         <button onClick={onSkills}>Навыки</button>
         <button onClick={onCharacter}>Персонаж</button>
-        <button onClick={onMap}>Карта</button>
+        <button onClick={onMap}>Карта (M)</button>
+        <button onClick={onToggleMiniMap}>{miniMapVisible ? 'Миникарта: ВКЛ' : 'Миникарта: ВЫКЛ'}</button>
         <button onClick={onQuests}>Журнал</button>
         <button onClick={onEquipment}>Экипировка</button>
         <button onClick={onClan}>Клан</button>

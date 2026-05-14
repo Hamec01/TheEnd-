@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { REGION_TYPE_COLORS } from './regionPaintSystem';
 import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
 import {
@@ -50,6 +50,29 @@ const REGION_TYPE_OPTIONS: Array<{ value: RegionType; label: string }> = [
 
 const BRUSH_SIZE_OPTIONS: RegionBrushSize[] = [1, 2, 3, 5];
 
+const EDITOR_LAYER_OPTIONS: Array<{ value: MapEditorLayer; label: string }> = [
+  { value: 'areas', label: 'Территории' },
+  { value: 'locations', label: 'Локации' },
+  { value: 'quests', label: 'Квесты' },
+  { value: 'resources', label: 'Ресурсы' },
+  { value: 'zones', label: 'Зоны' },
+];
+
+const INTERACTION_MODE_OPTIONS: Array<{ value: NonNullable<ZoneEditorDraft['interactionMode']>; label: string }> = [
+  { value: 'none', label: 'Нет' },
+  { value: 'inspect', label: 'Осмотр' },
+  { value: 'enter', label: 'Вход' },
+  { value: 'quest', label: 'Квест' },
+  { value: 'resource', label: 'Ресурс' },
+  { value: 'battle', label: 'Бой' },
+  { value: 'random_event', label: 'Случайное событие' },
+  { value: 'danger', label: 'Опасность' },
+  { value: 'transition', label: 'Переход' },
+  { value: 'fast_travel', label: 'Быстрое перемещение' },
+  { value: 'rest', label: 'Отдых' },
+  { value: 'locked', label: 'Закрыто' },
+];
+
 interface ZoneEditorPanelProps {
   activeEditorLayer: MapEditorLayer;
   layerVisibility: LayerVisibilityState;
@@ -79,8 +102,10 @@ interface ZoneEditorPanelProps {
   onClearAll: () => void;
   onResetStorage: () => void;
   onExport: () => void;
+  onExportFile: () => void;
   onCopyJson: () => void;
   onImportJson: () => void;
+  onImportJsonFile: (text: string) => void;
   onValidateJson: () => void;
   onJsonChange: (value: string) => void;
   onDeleteSelectedPoint: () => void;
@@ -131,6 +156,19 @@ function deriveCityIdFromDraft(draft: ZoneEditorDraft): string {
   return fromId || 'arklein';
 }
 
+function hasPassiveEffectsEnabled(draft: ZoneEditorDraft | null): boolean {
+  if (!draft) {
+    return false;
+  }
+  if (typeof draft.passiveEffects === 'boolean') {
+    return draft.passiveEffects;
+  }
+  if (Array.isArray(draft.passiveEffects)) {
+    return draft.passiveEffects.length > 0;
+  }
+  return false;
+}
+
 export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   const {
     activeEditorLayer,
@@ -161,8 +199,10 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     onClearAll,
     onResetStorage,
     onExport,
+    onExportFile,
     onCopyJson,
     onImportJson,
+    onImportJsonFile,
     onValidateJson,
     onJsonChange,
     onDeleteSelectedPoint,
@@ -189,6 +229,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   const hasSelectedZone = Boolean(selectedZoneId);
   const [hexInputValue, setHexInputValue] = useState('');
   const [hexWarning, setHexWarning] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!draft) {
@@ -419,11 +460,24 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     }
 
     const prevLayer = draft.editorLayer ?? getDefaultEditorLayer(draft.type);
-    const nextLayer = draft.editorLayer ?? getDefaultEditorLayer(nextType);
+    const nextLayer = getDefaultEditorLayer(nextType);
     const prevDefault = getDefaultZoneColor(draft.type, prevLayer);
     const nextDefault = getDefaultZoneColor(nextType, nextLayer);
     const currentResolved = getResolvedZoneColor(draft);
     const shouldUseNextDefault = !draft.color || isDefaultZoneColor(currentResolved, draft.type, prevLayer) || currentResolved === prevDefault;
+
+    if (nextType === 'kingdom_area') {
+      updateDraft({
+        type: nextType,
+        editorLayer: 'areas',
+        interactionMode: 'none',
+        playerClickable: false,
+        blocksClick: false,
+        passiveEffects: true,
+        color: shouldUseNextDefault ? nextDefault : currentResolved,
+      });
+      return;
+    }
 
     updateDraft({
       type: nextType,
@@ -478,6 +532,22 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       cityId,
       color: draft.color ?? getDefaultZoneColor('city_area', 'areas'),
     });
+  }
+
+  function handleImportJsonFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    void file.text()
+      .then((text) => {
+        onImportJsonFile(text);
+      })
+      .catch(() => {
+        // Ignore local read errors; parent handler will report parse/validation issues.
+      });
   }
 
   return (
@@ -776,6 +846,57 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
               <option key={option} value={option}>{option}</option>
             ))}
           </select>
+        </label>
+        <label>
+          <span>Слой редактора</span>
+          <select
+            disabled={!draft || draft.type === 'kingdom_area'}
+            value={draft?.editorLayer ?? getDefaultEditorLayer(draft?.type ?? 'city')}
+            onChange={(event) => updateDraft({ editorLayer: event.target.value as ZoneEditorDraft['editorLayer'] })}
+          >
+            {EDITOR_LAYER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Режим взаимодействия</span>
+          <select
+            disabled={!draft || draft.type === 'kingdom_area'}
+            value={draft?.interactionMode ?? 'none'}
+            onChange={(event) => updateDraft({ interactionMode: event.target.value as ZoneEditorDraft['interactionMode'] })}
+          >
+            {INTERACTION_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            disabled={!draft || draft.type === 'kingdom_area'}
+            type="checkbox"
+            checked={draft?.playerClickable === true}
+            onChange={(event) => updateDraft({ playerClickable: event.target.checked })}
+          />
+          <span>Кликабельна игроком</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            disabled={!draft || draft.type === 'kingdom_area'}
+            type="checkbox"
+            checked={draft?.blocksClick === true}
+            onChange={(event) => updateDraft({ blocksClick: event.target.checked })}
+          />
+          <span>Блокирует клики</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input
+            disabled={!draft || draft.type === 'kingdom_area'}
+            type="checkbox"
+            checked={hasPassiveEffectsEnabled(draft)}
+            onChange={(event) => updateDraft({ passiveEffects: event.target.checked })}
+          />
+          <span>Пассивные эффекты</span>
         </label>
         <label>
           <span>Region</span>
@@ -1109,11 +1230,20 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       <details className="zone-editor-section zone-editor-collapsible">
         <summary>Import / Export JSON</summary>
         <div className="zone-editor-actions">
-          <button onClick={onExport}>Export JSON</button>
-          <button onClick={onCopyJson}>Copy JSON</button>
-          <button onClick={onImportJson}>Import JSON</button>
-          <button onClick={onValidateJson}>Validate JSON</button>
+          <button type="button" onClick={onExportFile}>Export JSON File</button>
+          <button type="button" onClick={() => importFileRef.current?.click()}>Import JSON File</button>
+          <button type="button" onClick={onExport}>Export JSON</button>
+          <button type="button" onClick={onCopyJson}>Copy JSON</button>
+          <button type="button" onClick={onImportJson}>Import JSON</button>
+          <button type="button" onClick={onValidateJson}>Validate JSON</button>
         </div>
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={handleImportJsonFile}
+        />
         <div className="zone-json-area">
           <textarea value={jsonValue} rows={12} onChange={(event) => onJsonChange(event.target.value)} />
         </div>

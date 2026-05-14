@@ -210,6 +210,9 @@ export function getDefaultPassiveEffects(type: ZoneType): boolean | string[] {
   if (type === 'city' || type === 'settlement' || type === 'dungeon' || type === 'landmark') {
     return false;
   }
+  if (type === 'kingdom_area') {
+    return true;
+  }
   if (type === 'city_area') {
     return true;
   }

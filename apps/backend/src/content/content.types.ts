@@ -350,6 +350,10 @@ export interface QuestMarkerDefinition {
   hideAfterQuestCompleted?: boolean;
   hideAfterObjectiveCompleted?: boolean;
   hideAfterStepCompleted?: boolean;
+  showOnWorldMap?: boolean;
+  showOnMiniMap?: boolean;
+  worldMapVisibility?: 'always' | 'nearby' | 'selectedQuestOnly' | 'discoveredOnly' | 'hidden';
+  miniMapVisibility?: 'always' | 'nearby' | 'selectedQuestOnly' | 'discoveredOnly' | 'hidden';
 }
 
 export type QuestInteractionRequirementType =

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel } from '../adminUi';
@@ -8,7 +8,6 @@ import {
   deleteDialogue,
   duplicateDialogue,
   ensureDialoguesLoaded,
-  exportDialoguesJson,
   getAllDialogues,
   importDialoguesJson,
   renameDialogue,
@@ -23,6 +22,7 @@ import { validateDialogue } from '../../services/dialogueValidator';
 import type { DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
 import type { StoredImage } from '../../services/content/models';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 function emptyDialogue(): DialogueDefinition {
@@ -70,6 +70,8 @@ export function DialoguesPage() {
   const [statusText, setStatusText] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
   const [nodesJson, setNodesJson] = useState('[]');
 
   const [npcIds, setNpcIds] = useState<string[]>([]);
@@ -248,26 +250,36 @@ export function DialoguesPage() {
     setStatusText(`Диалог удален: ${selectedId}`);
   }
 
-  async function exportJson() {
-    const json = await exportDialoguesJson();
-    navigator.clipboard.writeText(json).then(() => {
-      setStatusText('JSON диалогов скопирован в буфер обмена.');
-    }).catch(() => {
-      setStatusText('Не удалось скопировать JSON диалогов.');
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_dialogues',
+      collectionKey: 'dialogues',
+      entries: dialogues,
     });
+    setStatusText(`Экспорт диалогов: ${dialogues.length}`);
   }
 
-  async function importJson() {
-    const raw = window.prompt('Вставьте JSON диалогов для импорта:');
-    if (!raw) {
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
       return;
     }
+
+    setIsImporting(true);
     try {
-      const count = await importDialoguesJson(raw);
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'dialogues');
+      const count = await importDialoguesJson(JSON.stringify(entries));
       refresh();
       setStatusText(`Импорт диалогов завершен: ${count}`);
+      setSaveState({ state: 'saved', message: `Импорт диалогов: ${count}` });
     } catch (error) {
       setStatusText((error as Error).message);
+      setSaveState({ state: 'error', message: (error as Error).message });
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -295,7 +307,8 @@ export function DialoguesPage() {
           <button disabled={!selectedId} onClick={duplicateSelectedDialogue}>ДУБЛИРОВАТЬ</button>
           <button disabled={!selectedId} onClick={deleteSelectedDialogue}>УДАЛИТЬ</button>
           <button onClick={exportJson}>ЭКСПОРТ JSON</button>
-          <button onClick={importJson}>ИМПОРТ JSON</button>
+          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'ИМПОРТ...' : 'ИМПОРТ JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
 
         {draft.npcId ? (

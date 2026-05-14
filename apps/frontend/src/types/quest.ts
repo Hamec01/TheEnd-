@@ -410,6 +410,13 @@ export type QuestMarkerType =
   | 'inspect_object'
   | 'hidden_location';
 
+export type QuestMarkerVisibilityMode =
+  | 'always'
+  | 'nearby'
+  | 'selectedQuestOnly'
+  | 'discoveredOnly'
+  | 'hidden';
+
 export interface QuestMarkerDefinition {
   id: string;
   mapId: string;
@@ -420,6 +427,7 @@ export interface QuestMarkerDefinition {
   linkedQuestId?: string;
   linkedStepId?: string;
   linkedObjectiveId?: string;
+  objectiveId?: string;
   linkedNpcId?: string;
   icon?: string;
   visibleToPlayer: boolean;
@@ -430,6 +438,10 @@ export interface QuestMarkerDefinition {
   hideAfterQuestCompleted?: boolean;
   hideAfterObjectiveCompleted?: boolean;
   hideAfterStepCompleted?: boolean;
+  showOnWorldMap?: boolean;
+  showOnMiniMap?: boolean;
+  worldMapVisibility?: QuestMarkerVisibilityMode;
+  miniMapVisibility?: QuestMarkerVisibilityMode;
 }
 
 export type QuestZoneType =

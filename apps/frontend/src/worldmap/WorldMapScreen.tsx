@@ -11,6 +11,8 @@ import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
 import { TopStatusBar } from "./TopStatusBar";
 import { PlayerQuickPanel } from "./PlayerQuickPanel";
 import { WorldMapCanvas, type WorldMapCanvasHandle } from "./WorldMapCanvas";
+import { WorldMapViewer } from "./WorldMapViewer";
+import { MiniMapWidget } from "./MiniMapWidget";
 import { ZoneEditorPanel } from "./ZoneEditorPanel";
 import { QuestJournalModal } from "./QuestJournalModal";
 import { QuestInteractionModal } from "./QuestInteractionModal";
@@ -129,6 +131,12 @@ import {
   hasTriggeredLocationAutoTrigger,
   markLocationAutoTriggerTriggered,
 } from "../services/locationAutoTriggerStore";
+import {
+  getExplorationCellKeyFromPosition,
+  loadDiscoveredCells,
+  revealCellsAroundPosition,
+  saveDiscoveredCells,
+} from "./worldMapExploration";
 import type { NpcDefinition } from "../types/npc";
 
 type LocationView = "map" | "city";
@@ -151,6 +159,10 @@ type ActiveWorldModal =
     type: "location";
     locationId: string;
   }
+  | {
+    type: "zone";
+    zoneId: string;
+  }
   | null;
 type SidePanelKey =
   | "adminEditor"
@@ -161,10 +173,28 @@ const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const UI_LEFT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.leftPanelCollapsed";
 const UI_RIGHT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.rightPanelCollapsed";
 const UI_CHAT_MINIMIZED_KEY = "theend.worldMap.ui.chatMinimized";
+const UI_MINI_MAP_VISIBLE_KEY = "theend.worldMap.ui.miniMapVisible";
 const UI_EDITOR_ACTIVE_LAYER_KEY = "theend.worldMap.editor.activeLayer";
 const UI_EDITOR_LAYER_VISIBILITY_KEY = "theend.worldMap.editor.layerVisibility";
 const POPUP_HIDE_DELAY_MS = 3000;
 const POPUP_FADE_DURATION_MS = 450;
+const PLAY_WORLD_MAP_IMAGE_PATH = "/map/main_world_map.webp";
+const LABELED_WORLD_MAP_IMAGE_PATH = "/map/world_mini_map.webp";
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === "input"
+    || tag === "textarea"
+    || tag === "select"
+    || target.isContentEditable
+    || target.closest("[contenteditable='true']") !== null
+  );
+}
 
 function normalizeLayerVisibilityState(raw: unknown): LayerVisibilityState {
   const fallback = getDefaultLayerVisibilityState();
@@ -254,6 +284,39 @@ function getLocationPercent(location: CityLocation): {
 
 function getPlayerPositionStorageKey(characterId: string): string {
   return `theend.worldMap.playerPosition.${characterId}`;
+}
+
+interface TrackedQuestState {
+  questId: string | null;
+  objectiveId: string | null;
+}
+
+function getTrackedQuestStorageKey(characterId: string): string {
+  return `theend.worldMap.trackedQuest.${characterId}`;
+}
+
+function loadTrackedQuestState(characterId: string): TrackedQuestState {
+  if (typeof window === "undefined") {
+    return { questId: null, objectiveId: null };
+  }
+
+  const raw = window.localStorage.getItem(getTrackedQuestStorageKey(characterId));
+  if (!raw) {
+    return { questId: null, objectiveId: null };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { questId?: unknown; objectiveId?: unknown };
+    const questId = typeof parsed.questId === "string" && parsed.questId.trim().length > 0
+      ? parsed.questId.trim()
+      : null;
+    const objectiveId = typeof parsed.objectiveId === "string" && parsed.objectiveId.trim().length > 0
+      ? parsed.objectiveId.trim()
+      : null;
+    return { questId, objectiveId };
+  } catch {
+    return { questId: null, objectiveId: null };
+  }
 }
 
 function evaluateLocationAutoTriggerCondition(
@@ -479,6 +542,31 @@ function normalizeClipboardText(text: string): string {
   return JSON.stringify([parsed], null, 2);
 }
 
+function formatJsonExportStamp(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+}
+
+function downloadJsonFile(filePrefix: string, payload: string): boolean {
+  try {
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filePrefix}_${formatJsonExportStamp()}.json`;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Delay revoke to avoid race in browsers with slow download handoff.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface WorldMapScreenProps {
   character: ArenaCharacter;
   inventory: InventoryState;
@@ -575,6 +663,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const lastZoneTransitionRef = useRef<{ zoneId: string; at: number } | null>(
     null,
   );
+  const queuedEditorSaveRef = useRef<{
+    zones: WorldMapZone[];
+    regions: PaintedRegion[];
+    questMarkers: QuestMarkerDefinition[];
+  } | null>(null);
+  const editorSaveInFlightRef = useRef<Promise<void> | null>(null);
+  const lastRevealedCellRef = useRef<string | null>(null);
 
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(
     adminEditorOnly ? "editor" : initialMode,
@@ -593,6 +688,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [playerPosition, setPlayerPosition] = useState(() =>
     loadPlayerPosition(character.id),
   );
+  const [trackedQuestId, setTrackedQuestId] = useState<string | null>(() =>
+    loadTrackedQuestState(character.id).questId,
+  );
+  const [trackedObjectiveId, setTrackedObjectiveId] = useState<string | null>(
+    () => loadTrackedQuestState(character.id).objectiveId,
+  );
+  const [worldMapViewerOpen, setWorldMapViewerOpen] = useState(false);
+  const [discoveredWorldMapCells, setDiscoveredWorldMapCells] = useState<string[]>(() =>
+    loadDiscoveredCells(character.id),
+  );
   const [playSpawnPosition, setPlaySpawnPosition] = useState(() =>
     loadPlayerPosition(character.id),
   );
@@ -607,6 +712,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const [chatMinimized, setChatMinimized] = useState(() =>
     loadUiBoolean(UI_CHAT_MINIMIZED_KEY, false),
+  );
+  const [miniMapVisible, setMiniMapVisible] = useState(() =>
+    loadUiBoolean(UI_MINI_MAP_VISIBLE_KEY, true),
   );
   const [eventOverlayMessages, setEventOverlayMessages] = useState<
     Array<ChatMessage & { isFading: boolean }>
@@ -690,6 +798,22 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     player: dialoguePlayer,
     onStartQuest: refreshPlayerQuestStates,
   });
+
+  const handleTrackQuest = useCallback((questId: string, objectiveId: string | null) => {
+    setTrackedQuestId(questId);
+    setTrackedObjectiveId(objectiveId);
+    onStatus(`Отслеживание: ${questId}${objectiveId ? ` / ${objectiveId}` : ""}`);
+  }, [onStatus]);
+
+  const handleClearTrackedQuest = useCallback(() => {
+    setTrackedQuestId(null);
+    setTrackedObjectiveId(null);
+    onStatus("Отслеживание квеста отключено.");
+  }, [onStatus]);
+
+  const handleToggleMiniMap = useCallback(() => {
+    setMiniMapVisible((current) => !current);
+  }, []);
 
   const [selectedCityLocationId, setSelectedCityLocationId] = useState<
     string | null
@@ -836,7 +960,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         if (marker.linkedStepId && marker.linkedStepId !== state.currentStepId) {
           return false;
         }
-        if (marker.linkedObjectiveId && state.completedObjectiveIds.includes(marker.linkedObjectiveId)) {
+        const markerObjectiveId = String(
+          marker.linkedObjectiveId ?? marker.objectiveId ?? ""
+        ).trim();
+
+        if (markerObjectiveId && state.completedObjectiveIds.includes(markerObjectiveId)) {
           return false;
         }
         return true;
@@ -867,6 +995,55 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     questDefinitions,
     questMarkers,
   ]);
+  const trackedQuestMarkerId = useMemo(() => {
+    if (trackedQuestId) {
+      const tracked = playQuestMarkers.find((entry) => {
+        if ((entry.linkedQuestId ?? "").trim() !== trackedQuestId) {
+          return false;
+        }
+
+        if (!trackedObjectiveId) {
+          return true;
+        }
+
+        const markerObjectiveId = String(
+          entry.linkedObjectiveId ?? entry.objectiveId ?? "",
+        ).trim();
+        return markerObjectiveId === trackedObjectiveId;
+      }) ?? null;
+
+      if (tracked) {
+        return tracked.id;
+      }
+    }
+
+    const activeState = playerQuestStates.find((entry) => entry.status === "active") ?? null;
+    if (!activeState) {
+      return null;
+    }
+
+    const marker = playQuestMarkers.find((entry) => {
+      const questMatches = (entry.linkedQuestId ?? "").trim() === activeState.questId;
+      if (!questMatches) {
+        return false;
+      }
+
+      if (entry.linkedStepId && activeState.currentStepId && entry.linkedStepId !== activeState.currentStepId) {
+        return false;
+      }
+
+      const markerObjectiveId = String(
+        entry.linkedObjectiveId ?? entry.objectiveId ?? "",
+      ).trim();
+      if (markerObjectiveId && activeState.completedObjectiveIds.includes(markerObjectiveId)) {
+        return false;
+      }
+
+      return true;
+    }) ?? null;
+
+    return marker?.id ?? null;
+  }, [playQuestMarkers, playerQuestStates, trackedObjectiveId, trackedQuestId]);
   const playNpcMarkers = useMemo(() => {
     // NPC interactions stay available, but map labels/markers are intentionally hidden.
     return [] as Array<{
@@ -998,6 +1175,70 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [regionBrushSize, regionToolMode, regionType],
   );
 
+  const flushQueuedEditorSaves = useCallback(function run() {
+    if (editorSaveInFlightRef.current || !queuedEditorSaveRef.current) {
+      return;
+    }
+
+    const nextSnapshot = queuedEditorSaveRef.current;
+    queuedEditorSaveRef.current = null;
+    setAutosaveStatus("saving");
+
+    editorSaveInFlightRef.current = (async () => {
+      try {
+        if (
+          nextSnapshot.zones.length === 0
+          && nextSnapshot.regions.length === 0
+          && nextSnapshot.questMarkers.length === 0
+        ) {
+          clearZoneStorage();
+          await saveEditorDataToBackend([], [], []);
+          replaceAllZones([]);
+        } else {
+          await saveEditorDataToBackend(
+            nextSnapshot.zones,
+            nextSnapshot.regions,
+            nextSnapshot.questMarkers,
+          );
+          replaceAllZones(nextSnapshot.zones);
+        }
+        setAutosaveStatus("autosaved");
+      } catch {
+        setAutosaveStatus("save failed");
+      }
+    })().finally(() => {
+      editorSaveInFlightRef.current = null;
+      run();
+    });
+  }, []);
+
+  const queueEditorSave = useCallback(
+    (
+      snapshot: {
+        zones: WorldMapZone[];
+        regions: PaintedRegion[];
+        questMarkers: QuestMarkerDefinition[];
+      },
+    ) => {
+      queuedEditorSaveRef.current = {
+        zones: cloneZones(snapshot.zones),
+        regions: snapshot.regions.map((region) => ({
+          ...region,
+          cells: region.cells.map((cell) => ({ ...cell })),
+        })),
+        questMarkers: snapshot.questMarkers.map((marker) => ({
+          ...marker,
+          conditionIds: [...marker.conditionIds],
+          requirements: marker.requirements
+            ? marker.requirements.map((entry) => ({ ...entry }))
+            : undefined,
+        })),
+      };
+      flushQueuedEditorSaves();
+    },
+    [flushQueuedEditorSaves],
+  );
+
   const reloadWorldMapFromBackend = useCallback(
     async (options?: { force?: boolean }) => {
       if (worldMapMode === "editor") {
@@ -1058,6 +1299,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    // Block the persist effect from firing with stale WORLD_MAP_ZONES while
+    // the async backend load is in progress.  This ref must be set
+    // synchronously here (before the persist effect runs in the same render
+    // cycle) so that the first persist triggered by worldMapMode→"editor"
+    // is skipped.  The second skip (after setZones) is set inside .then().
+    skipNextZonePersistRef.current = true;
+
     let cancelled = false;
     void loadEditorDataFromBackend(cloneZones(WORLD_MAP_ZONES))
       .then((loaded) => {
@@ -1072,6 +1320,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       })
       .catch(() => {
         // Keep the current editor state if backend content is unavailable.
+        // Allow normal saves after a failed load.
+        skipNextZonePersistRef.current = false;
       });
 
     return () => {
@@ -1088,6 +1338,50 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setMarkerPickMode(false);
     }
   }, [markerPickMode, worldMapMode]);
+
+  useEffect(() => {
+    if (worldMapMode === "play") {
+      return;
+    }
+
+    if (worldMapViewerOpen) {
+      setWorldMapViewerOpen(false);
+    }
+  }, [worldMapMode, worldMapViewerOpen]);
+
+  useEffect(() => {
+    if (worldMapMode !== "play") {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      if (event.key === "Escape" && worldMapViewerOpen) {
+        event.preventDefault();
+        setWorldMapViewerOpen(false);
+        return;
+      }
+
+      if (event.code === "KeyM") {
+        event.preventDefault();
+        setWorldMapViewerOpen((current) => !current);
+        return;
+      }
+
+      if (event.code === "KeyN") {
+        event.preventDefault();
+        setMiniMapVisible((current) => !current);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [worldMapMode, worldMapViewerOpen]);
 
   useEffect(() => {
     if (!activeCityId) {
@@ -1275,11 +1569,68 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    const tracked = loadTrackedQuestState(character.id);
+    setTrackedQuestId(tracked.questId);
+    setTrackedObjectiveId(tracked.objectiveId);
+    setDiscoveredWorldMapCells(loadDiscoveredCells(character.id));
+    lastRevealedCellRef.current = null;
+  }, [character.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      getTrackedQuestStorageKey(character.id),
+      JSON.stringify({
+        questId: trackedQuestId,
+        objectiveId: trackedObjectiveId,
+      }),
+    );
+  }, [character.id, trackedObjectiveId, trackedQuestId]);
+
+  useEffect(() => {
+    saveDiscoveredCells(character.id, discoveredWorldMapCells);
+  }, [character.id, discoveredWorldMapCells]);
+
+  useEffect(() => {
+    if (worldMapMode !== "play") {
+      return;
+    }
+
+    const currentCellKey = getExplorationCellKeyFromPosition(
+      playerPosition.x,
+      playerPosition.y,
+    );
+    if (lastRevealedCellRef.current === currentCellKey) {
+      return;
+    }
+
+    lastRevealedCellRef.current = currentCellKey;
+    setDiscoveredWorldMapCells((current) =>
+      revealCellsAroundPosition(current, playerPosition.x, playerPosition.y),
+    );
+  }, [playerPosition.x, playerPosition.y, worldMapMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     window.localStorage.setItem(
       getPlayerPositionStorageKey(character.id),
       JSON.stringify(playerPosition),
     );
   }, [character.id, playerPosition]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(UI_MINI_MAP_VISIBLE_KEY, String(miniMapVisible));
+  }, [miniMapVisible]);
 
   useEffect(() => {
     if (worldMapMode !== "editor") {
@@ -1291,27 +1642,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
-    setAutosaveStatus("saving");
-    void (async () => {
-      try {
-        if (
-          zones.length === 0 &&
-          regions.length === 0 &&
-          questMarkers.length === 0
-        ) {
-          clearZoneStorage();
-          await saveEditorDataToBackend([], [], []);
-          replaceAllZones([]);
-        } else {
-          await saveEditorDataToBackend(zones, regions, questMarkers);
-          replaceAllZones(zones);
-        }
-        setAutosaveStatus("autosaved");
-      } catch {
-        setAutosaveStatus("save failed");
-      }
-    })();
-  }, [questMarkers, regions, worldMapMode, zones]);
+    queueEditorSave({ zones, regions, questMarkers });
+  }, [questMarkers, queueEditorSave, regions, worldMapMode, zones]);
 
   useEffect(() => {
     if (skipNextSettingsPersistRef.current) {
@@ -1971,49 +2303,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return;
       }
 
-      if (interactionMode === "inspect") {
-        onStatus(`Осмотр точки: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "quest") {
-        onStatus(`Квестовая область: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "resource") {
-        if (!clickable) {
-          return;
-        }
-        onStatus(`Источник ресурсов: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "battle") {
-        onStatus(`Опасная зона: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "transition") {
-        onStatus(`Переход: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "fast_travel") {
-        onStatus(`Быстрое перемещение: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "rest") {
-        onStatus(`Место отдыха: ${zone.name}`);
-        return;
-      }
-
-      if (interactionMode === "locked") {
-        onStatus(`Локация закрыта: ${zone.name}`);
-      }
+      // For all other interactive modes open a zone info popup.
+      setActiveWorldModal({ type: "zone", zoneId: zone.id });
+      setContextMode("location");
     },
-    [onStatus, worldMapMode],
+    [onStatus, setActiveWorldModal, setContextMode, worldMapMode],
   );
 
   const handleInspectCurrentZone = useCallback(() => {
@@ -2937,6 +3231,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (mode !== "play") {
       rememberCurrentMapPosition();
     }
+    if (mode !== "play") {
+      setWorldMapViewerOpen(false);
+    }
     setWorldMapMode(mode);
     if (mode === "editor") {
       setLocationView("map");
@@ -3106,7 +3403,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     clearZoneStorage();
     replaceAllZones([]);
     setQuestMarkers([]);
-    void saveEditorDataToBackend([], [], []);
+    queueEditorSave({ zones: [], regions: [], questMarkers: [] });
     onStatus("Editor: all zones and regions cleared.");
   }
 
@@ -3114,12 +3411,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     skipNextZonePersistRef.current = true;
     skipNextSettingsPersistRef.current = true;
     clearZoneStorage();
-    void saveEditorDataToBackend([], [], []);
     clearEditorSettingsStorage();
-    setZones(cloneZones(WORLD_MAP_ZONES));
-    replaceAllZones(cloneZones(WORLD_MAP_ZONES));
+    const defaultZones = cloneZones(WORLD_MAP_ZONES);
+    setZones(defaultZones);
+    replaceAllZones(defaultZones);
     setRegions([]);
     setQuestMarkers([]);
+    queueEditorSave({ zones: defaultZones, regions: [], questMarkers: [] });
     setEditorSettings(createDefaultEditorSettings());
     setActiveEditorLayer("zones");
     setLayerVisibility(getDefaultLayerVisibilityState());
@@ -3127,14 +3425,32 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setEditorDraft(null);
     setValidationErrors([]);
     setHistory(createEmptyHistory());
-    setEditorJson(exportEditorDataJson(cloneZones(WORLD_MAP_ZONES), [], []));
+    setEditorJson(exportEditorDataJson(defaultZones, [], []));
     onStatus("Editor: storage reset to defaults.");
   }
 
   function handleExportJson() {
-    setEditorJson(exportEditorDataJson(zones, regions, questMarkers));
+    const payload = exportEditorDataJson(zones, regions, questMarkers);
+    setEditorJson(payload);
     setValidationErrors([]);
-    onStatus("Editor: JSON exported to textarea.");
+    const downloaded = downloadJsonFile("theend_worldmap", payload);
+    onStatus(
+      downloaded
+        ? "Editor: JSON exported to textarea and file."
+        : "Editor: JSON exported to textarea (file download blocked).",
+    );
+  }
+
+  function handleExportJsonFile() {
+    const payload = exportEditorDataJson(zones, regions, questMarkers);
+    setEditorJson(payload);
+    setValidationErrors([]);
+    const downloaded = downloadJsonFile("theend_worldmap", payload);
+    onStatus(
+      downloaded
+        ? "Editor: JSON exported to file."
+        : "Editor: file export blocked by browser.",
+    );
   }
 
   async function handleCopyJson(zone: WorldMapZone | null = selectedZone) {
@@ -3222,12 +3538,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return true;
   }
 
-  function handleImportJson() {
-    const result = validateJsonText(editorJson);
+  function handleImportJson(sourceText: string = editorJson) {
+    const result = validateJsonText(sourceText);
     setValidationErrors(result.errors);
     if (!result.valid) {
       onStatus(`Editor: import failed with ${result.errors.length} errors.`);
       return;
+    }
+
+    if (sourceText !== editorJson) {
+      setEditorJson(sourceText);
     }
 
     if (mergeImportedData(result.zones, result.regions, result.questMarkers)) {
@@ -3487,11 +3807,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }
 
   function handleSaveShortcut() {
-    void saveEditorDataToBackend(zones, regions, questMarkers);
-    replaceAllZones(zones);
+    queueEditorSave({ zones, regions, questMarkers });
     saveEditorSettings(editorSettings);
-    setAutosaveStatus("autosaved");
-    onStatus("Editor: saved to backend content store.");
+    setAutosaveStatus("saving");
+    onStatus("Editor: save queued to backend content store.");
   }
 
   function handleOpenLocation(locationId: string) {
@@ -3649,7 +3968,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     const modalLocation =
       activeCity?.locations.find(
-        (location) => location.id === activeWorldModal.locationId,
+        (location) =>
+          activeWorldModal.type !== "zone" &&
+          "locationId" in activeWorldModal &&
+          location.id === activeWorldModal.locationId,
       ) ?? null;
     const closeModal = () => {
       setActiveWorldModal(null);
@@ -4067,6 +4389,48 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
         </>
       );
+    } else if (activeWorldModal.type === "zone") {
+      const worldZone = zones.find((z) => z.id === activeWorldModal.zoneId) ?? null;
+      title = worldZone?.name ?? activeWorldModal.zoneId;
+      description = worldZone?.description || undefined;
+
+      const zoneInteractions = questInteractions.filter(
+        (qi) => qi.triggerType === "zone_inspect" && qi.zoneId === activeWorldModal.zoneId,
+      );
+      const questRuntimePlayer = {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
+      };
+
+      content = zoneInteractions.length > 0 ? (
+        <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
+          {zoneInteractions.map((qi) => (
+            <button
+              key={qi.id}
+              className="btn"
+              onClick={() => {
+                const choices = getAvailableQuestInteractionChoices(qi, questRuntimePlayer);
+                setActiveInteraction(qi);
+                setActiveInteractionChoices(choices);
+                closeModal();
+              }}
+            >
+              {qi.title || qi.id}
+            </button>
+          ))}
+        </div>
+      ) : null;
+
+      if (worldZone?.dangerLevel && worldZone.dangerLevel > 0) {
+        subtitle = `Уровень опасности: ${worldZone.dangerLevel}`;
+      }
+      if (worldZone?.recommendedLevel) {
+        subtitle = `${subtitle ? subtitle + " | " : ""}Рек. уровень: ${worldZone.recommendedLevel}`;
+      }
+
+      buttons = <button onClick={closeModal}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>;
     } else {
       const _exhaustive: never = activeWorldModal;
       title = modalLocation?.name ?? String((_exhaustive as any)?.locationId ?? "");
@@ -4697,13 +5061,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onEquipment={onOpenEquipment}
         onQuests={() => setQuestJournalOpen(true)}
         onMap={() => {
-          if (locationView === "map") {
-            setContextMode(currentZone ? "location" : "empty");
+          if (worldMapMode !== "play") {
             return;
           }
 
-          handleReturnToMap();
+          setWorldMapViewerOpen((current) => !current);
         }}
+        onToggleMiniMap={handleToggleMiniMap}
+        miniMapVisible={miniMapVisible}
         onClan={onOpenClan}
         onExit={onExit}
       />
@@ -4754,20 +5119,33 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
         <div className="wm-main-column">
           {locationView === "map" ? (
-            <WorldMapCanvas
-              mode="play"
-              playerStartPosition={playSpawnPosition}
-              zones={zones}
-              regions={regions}
-              playQuestMarkers={playQuestMarkers}
-              playNpcMarkers={playNpcMarkers}
-              onOpenLocation={handleOpenLocation}
-              onEnterZone={handleZoneEnterMemoized}
-              onHoverZone={handleHoverZone}
-              onRuntimeZoneInteract={handleRuntimeZoneInteract}
-              onPlayerPosition={handlePlayerPosition}
-              onPlayerState={handlePlayerState}
-            />
+            <div className="wm-play-map-wrap">
+              <WorldMapCanvas
+                mode="play"
+                gameplayPaused={worldMapViewerOpen}
+                playerStartPosition={playSpawnPosition}
+                zones={zones}
+                regions={regions}
+                playQuestMarkers={playQuestMarkers}
+                playNpcMarkers={playNpcMarkers}
+                onOpenLocation={handleOpenLocation}
+                onEnterZone={handleZoneEnterMemoized}
+                onHoverZone={handleHoverZone}
+                onRuntimeZoneInteract={handleRuntimeZoneInteract}
+                onPlayerPosition={handlePlayerPosition}
+                onPlayerState={handlePlayerState}
+              />
+              {miniMapVisible ? (
+                <MiniMapWidget
+                  mapImagePath={LABELED_WORLD_MAP_IMAGE_PATH}
+                  fallbackMapImagePath={PLAY_WORLD_MAP_IMAGE_PATH}
+                  playerPosition={playerPosition}
+                  questMarkers={playQuestMarkers}
+                  trackedMarkerId={trackedQuestMarkerId}
+                  onOpenViewer={() => setWorldMapViewerOpen(true)}
+                />
+              ) : null}
+            </div>
           ) : (
             <section className="wm-map card">
               <div
@@ -4906,6 +5284,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onClose={() => setQuestJournalOpen(false)}
           questDefinitions={questDefinitions}
           playerQuestStates={playerQuestStates}
+          trackedQuestId={trackedQuestId}
+          trackedObjectiveId={trackedObjectiveId}
+          onTrackQuest={handleTrackQuest}
+          onClearTrackedQuest={handleClearTrackedQuest}
         />
         <QuestInteractionModal
           interaction={activeInteraction}
@@ -5093,6 +5475,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
           </div>
         </div>
+        <WorldMapViewer
+          isOpen={worldMapViewerOpen}
+          mapImagePath={LABELED_WORLD_MAP_IMAGE_PATH}
+          fallbackMapImagePath={PLAY_WORLD_MAP_IMAGE_PATH}
+          playerPosition={playerPosition}
+          discoveredCells={discoveredWorldMapCells}
+          questMarkers={playQuestMarkers}
+          playerQuestStates={playerQuestStates}
+          trackedMarkerId={trackedQuestMarkerId}
+          trackedQuestId={trackedQuestId}
+          trackedObjectiveId={trackedObjectiveId}
+          onClose={() => setWorldMapViewerOpen(false)}
+        />
       </section>
     </>
   );
@@ -5176,6 +5571,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             mode="editor"
             zones={zones}
             regions={regions}
+            playQuestMarkers={questMarkers}
             activeEditorLayer={activeEditorLayer}
             layerVisibility={layerVisibility}
             selectedZoneId={selectedZoneId}
@@ -5237,10 +5633,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onClearAll={handleClearAllZones}
           onResetStorage={handleResetStorage}
           onExport={handleExportJson}
+          onExportFile={handleExportJsonFile}
           onCopyJson={() => {
             void handleCopyJson();
           }}
           onImportJson={handleImportJson}
+          onImportJsonFile={(text) => {
+            handleImportJson(text);
+          }}
           onValidateJson={handleValidateJson}
           onJsonChange={setEditorJson}
           onDeleteSelectedPoint={handleDeleteSelectedPoint}

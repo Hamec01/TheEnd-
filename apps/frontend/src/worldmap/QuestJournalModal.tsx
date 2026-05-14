@@ -42,13 +42,48 @@ function renderObjectiveLine(objective: QuestObjective, state: PlayerQuestState)
   return `${prefix} ${objective.description || objective.id}`;
 }
 
+function pickTrackObjectiveId(step: QuestStep | null, state: PlayerQuestState | null): string | null {
+  if (!step || !state) {
+    return null;
+  }
+
+  const objectives = asArray(step.objectives);
+  if (objectives.length === 0) {
+    return null;
+  }
+
+  const preferred = objectives.find((objective) => {
+    if (objective.isOptional) {
+      return false;
+    }
+    return !state.completedObjectiveIds.includes(objective.id);
+  }) ?? objectives.find((objective) => !state.completedObjectiveIds.includes(objective.id))
+    ?? objectives[0]
+    ?? null;
+
+  return preferred?.id ?? null;
+}
+
 export function QuestJournalModal(props: {
   isOpen: boolean;
   onClose: () => void;
   questDefinitions: QuestDefinition[];
   playerQuestStates: PlayerQuestState[];
+  trackedQuestId?: string | null;
+  trackedObjectiveId?: string | null;
+  onTrackQuest?: (questId: string, objectiveId: string | null) => void;
+  onClearTrackedQuest?: () => void;
 }) {
-  const { isOpen, onClose, questDefinitions, playerQuestStates } = props;
+  const {
+    isOpen,
+    onClose,
+    questDefinitions,
+    playerQuestStates,
+    trackedQuestId = null,
+    trackedObjectiveId = null,
+    onTrackQuest,
+    onClearTrackedQuest,
+  } = props;
   const [filter, setFilter] = useState<QuestJournalFilter>('active');
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
 
@@ -83,6 +118,8 @@ export function QuestJournalModal(props: {
   const selectedState = selectedQuest ? filteredStates.find((state) => state.questId === selectedQuest.id) ?? null : null;
   const step = selectedQuest && selectedState ? currentStep(selectedQuest, selectedState) : null;
   const progress = step && selectedState ? objectiveProgress(step, selectedState) : null;
+  const nextTrackObjectiveId = pickTrackObjectiveId(step, selectedState);
+  const isTrackedSelectedQuest = Boolean(selectedQuest && trackedQuestId === selectedQuest.id);
 
   return (
     <div
@@ -178,6 +215,28 @@ export function QuestJournalModal(props: {
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
                   <span className="muted">Статус: {selectedState.status}</span>
                   {progress ? <span className="muted">Цели: {progress.completed}/{progress.total}</span> : null}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                  {selectedState.status === 'active' ? (
+                    <button
+                      type="button"
+                      onClick={() => onTrackQuest?.(selectedQuest.id, nextTrackObjectiveId)}
+                      className={isTrackedSelectedQuest ? 'is-active' : ''}
+                    >
+                      {isTrackedSelectedQuest ? 'Отслеживается' : 'Отслеживать'}
+                    </button>
+                  ) : null}
+                  {isTrackedSelectedQuest ? (
+                    <button type="button" onClick={() => onClearTrackedQuest?.()}>
+                      Снять отслеживание
+                    </button>
+                  ) : null}
+                  {isTrackedSelectedQuest ? (
+                    <span className="muted" style={{ alignSelf: 'center' }}>
+                      Цель: {trackedObjectiveId ?? 'квест целиком'}
+                    </span>
+                  ) : null}
                 </div>
 
                 {step ? (

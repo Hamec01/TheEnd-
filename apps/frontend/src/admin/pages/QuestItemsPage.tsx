@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
@@ -7,6 +7,7 @@ import { getContentCollection, getContentEntry } from '../../services/content/co
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { deleteQuestItem, ensureQuestsLoaded, getAllQuests, getQuestItems, renameQuestItem, saveQuestItem } from '../../services/questRepository';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import type { StoredImage } from '../../services/content/models';
 import type { QuestItemDefinition } from '../../types/quest';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
@@ -41,7 +42,9 @@ export function QuestItemsPage() {
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     await ensureQuestsLoaded();
@@ -165,6 +168,63 @@ export function QuestItemsPage() {
     setStatus(`Квестовый предмет удален: ${selectedId}`);
   }
 
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_quest_items',
+      collectionKey: 'questItems',
+      entries: items,
+    });
+    setStatus(`Экспорт квестовых предметов: ${items.length}`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      await ensureQuestsLoaded();
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'questItems');
+      const existingIds = new Set(getQuestItems().map((entry) => entry.id));
+      let created = 0;
+      let updated = 0;
+
+      for (const raw of entries) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          continue;
+        }
+        const item = raw as QuestItemDefinition;
+        const id = String(item.id ?? '').trim();
+        if (!id) {
+          continue;
+        }
+        const wasExisting = existingIds.has(id);
+        await saveQuestItem({ ...item, id });
+        if (wasExisting) {
+          updated += 1;
+        } else {
+          created += 1;
+          existingIds.add(id);
+        }
+      }
+
+      await refresh();
+      setStatus(`Импорт завершен: создано ${created}, обновлено ${updated}.`);
+      setSaveState({ state: 'saved', message: `Импорт questItems: +${created} / ~${updated}` });
+    } catch (error) {
+      const message = translateAdminErrorMessage((error as Error).message);
+      setStatus(message);
+      setSaveState({ state: 'error', message });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   function resolveImage(imageKey: string | undefined): string | undefined {
     if (!imageKey) {
       return undefined;
@@ -184,6 +244,9 @@ export function QuestItemsPage() {
         <div className="admin-list-tools">
           <input placeholder="Поиск предмета" value={query} onChange={(event) => setQuery(event.target.value)} />
           <button onClick={createNew}>Новый квестовый предмет</button>
+          <button onClick={exportJson}>Экспорт JSON</button>
+          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
 
         <div className="admin-scroll-list">

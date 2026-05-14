@@ -30,17 +30,18 @@ import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScree
 import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
 import type { QuestMarkerDefinition } from '../types/quest';
+import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
 
-const PLAY_ZOOM = 5.2;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
 const OVERSCROLL = 120;
-const PLAY_PLAYER: MapPlayer = {
+const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
+const EDITOR_WORLD_MAP_IMAGE_PATH = '/map/world-map.png';
+const PLAY_PLAYER_BASE: Omit<MapPlayer, 'speed'> = {
   x: 0.53,
   y: 0.83,
   targetX: null,
   targetY: null,
-  speed: 0.00025,
 };
 
 interface TooltipState {
@@ -132,6 +133,7 @@ export interface WorldMapCanvasHandle {
 
 interface WorldMapCanvasProps {
   mode: 'play' | 'editor';
+  gameplayPaused?: boolean;
   playerStartPosition?: { x: number; y: number };
   zones?: WorldMapZone[];
   selectedZoneId?: string | null;
@@ -319,6 +321,7 @@ function drawZoneHandles(ctx: CanvasRenderingContext2D, zone: WorldMapZone, view
 export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasProps>(function WorldMapCanvas(props, ref) {
   const {
     mode,
+    gameplayPaused = false,
     playerStartPosition,
     zones = WORLD_MAP_ZONES,
     selectedZoneId = null,
@@ -372,12 +375,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   const prevZoneRef = useRef<WorldMapZone | null>(null);
   const playerStateRef = useRef<PlayerWorldState>('idle');
   const pendingCityEntryRef = useRef<string | null>(null);
+  const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
   const [player, setPlayer] = useState<MapPlayer>(() => ({
-    ...PLAY_PLAYER,
-    x: clamp(playerStartPosition?.x ?? PLAY_PLAYER.x, 0, 1),
-    y: clamp(playerStartPosition?.y ?? PLAY_PLAYER.y, 0, 1),
+    ...PLAY_PLAYER_BASE,
+    speed: runtimeSettings.playerSpeed,
+    x: clamp(playerStartPosition?.x ?? PLAY_PLAYER_BASE.x, 0, 1),
+    y: clamp(playerStartPosition?.y ?? PLAY_PLAYER_BASE.y, 0, 1),
   }));
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
@@ -538,14 +543,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
   useEffect(() => {
     const image = new Image();
-    image.src = '/map/world-map.png';
+    image.src = mode === 'editor' ? EDITOR_WORLD_MAP_IMAGE_PATH : PLAY_WORLD_MAP_IMAGE_PATH;
     image.onload = () => setWorldImage(image);
     image.onerror = () => {
       const fallback = new Image();
-      fallback.src = '/map/1.png';
+      fallback.src = PLAY_WORLD_MAP_IMAGE_PATH;
       fallback.onload = () => setWorldImage(fallback);
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'editor' || !worldImage || didInitialFit) {
@@ -569,6 +574,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     const animate = () => {
       setPlayer((prev) => {
+        if (gameplayPaused) {
+          playerStateRef.current = 'idle';
+          return prev;
+        }
+
         const tick = tickPlayerMovement(prev, 0.0012, (x, y) => {
           const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
           const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
@@ -602,7 +612,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [mode, paintedCellMap, zones]);
+  }, [gameplayPaused, mode, paintedCellMap, zones]);
 
   // Separate effect to handle callbacks when player position or zone changes
   useEffect(() => {
@@ -825,8 +835,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   }
 
   function getPlayCamera() {
-    const width = 1 / PLAY_ZOOM;
-    const height = 1 / PLAY_ZOOM;
+    const width = 1 / runtimeSettings.playZoom;
+    const height = 1 / runtimeSettings.playZoom;
     const left = clamp(player.x - width / 2, 0, 1 - width);
     const top = clamp(player.y - height / 2, 0, 1 - height);
     return { left, top, width, height };
@@ -1023,6 +1033,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   function handleMouseDown(event: ReactMouseEvent<HTMLCanvasElement>) {
     if (mode === 'editor') {
       handleEditorMouseDown(event);
+      return;
+    }
+
+    if (gameplayPaused) {
       return;
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
@@ -15,6 +15,7 @@ import {
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { getAllZones } from '../../services/worldRepository';
 import { getContentCollection } from '../../services/content/contentApi';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import type { AdminItem, AdminSkill } from '../../services/content/models';
 import type { QuestInteractionDefinition, QuestInteractionChoice } from '../../types/quest';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
@@ -138,6 +139,8 @@ export function QuestInteractionsPage() {
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     await Promise.all([ensureQuestsLoaded(), ensureQuestMarkersLoaded()]);
@@ -335,6 +338,62 @@ export function QuestInteractionsPage() {
     }
   }
 
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_quest_interactions',
+      collectionKey: 'questInteractions',
+      entries: interactions,
+    });
+    setStatus(`Экспорт interactions: ${interactions.length}`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      await ensureQuestsLoaded();
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'questInteractions');
+      const existingIds = new Set(getQuestInteractions().map((entry) => entry.id));
+      let created = 0;
+      let updated = 0;
+
+      for (const raw of entries) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          continue;
+        }
+        const normalized = normalizeInteraction(raw as QuestInteractionDefinition);
+        if (!normalized.id) {
+          continue;
+        }
+        const wasExisting = existingIds.has(normalized.id);
+        await saveQuestInteraction(normalized);
+        if (wasExisting) {
+          updated += 1;
+        } else {
+          created += 1;
+          existingIds.add(normalized.id);
+        }
+      }
+
+      await refresh();
+      setStatus(`Импорт завершен: создано ${created}, обновлено ${updated}.`);
+      setSaveState({ state: 'saved', message: `Импорт interactions: +${created} / ~${updated}` });
+    } catch (error) {
+      const message = translateAdminErrorMessage((error as Error).message);
+      setStatus(message);
+      setSaveState({ state: 'error', message });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
@@ -345,6 +404,9 @@ export function QuestInteractionsPage() {
             onChange={(event) => setQuery(event.target.value)}
           />
           <button onClick={createNew}>Новый interaction</button>
+          <button onClick={exportJson}>Экспорт JSON</button>
+          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
 
         <div className="admin-scroll-list">

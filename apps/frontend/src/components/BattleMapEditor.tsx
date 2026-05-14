@@ -7,7 +7,7 @@ import type {
   BattleMapNpcRole,
   ExitZone,
 } from '@theend/rpg-domain';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { AdminImageField } from '../admin/AdminImageField';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import {
@@ -16,11 +16,14 @@ import {
   loadBattleMaps,
   loadBattleMapsFromStore,
   normalizeBattleMap,
+  saveBattleMaps,
+  saveBattleMapsToStore,
   upsertBattleMap,
   validateBattleMap,
 } from '../services/battleMaps/battleMapStorage';
 import { ensureNpcsLoaded, getAllNpcs } from '../services/npcRepository';
 import { imageService } from '../services/content/imageService';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../services/content/adminJsonImportExport';
 import type { NpcDefinition } from '../types/npc';
 
 const CELL_TOOL_OPTIONS: Array<{ value: BattleMapCellType | 'erase'; label: string; helpField: string }> = [
@@ -139,6 +142,7 @@ function isDirectImageSource(value: string): boolean {
 
 export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatusMessage }: BattleMapEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
   const lastPaintedCellRef = useRef<string | null>(null);
   const [maps, setMaps] = useState<BattleMapDefinition[]>(() => loadBattleMaps());
   const [currentMapId, setCurrentMapId] = useState<string>(selectedMapId ?? loadBattleMaps()[0]?.id ?? createDefaultBattleMap().id);
@@ -163,6 +167,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [panDrag, setPanDrag] = useState<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
   const [resolvedMapImageUrl, setResolvedMapImageUrl] = useState<string>('/map/battle-map_arena.png');
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -339,6 +344,62 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
     onSelectedMapIdChange?.(fallback.id);
     onStatusMessage?.(`Карта удалена: ${draft.name}`);
   };
+
+  const handleExportJson = () => {
+    downloadCollectionJson({
+      filePrefix: 'theend_battle_maps',
+      collectionKey: 'battleMaps',
+      entries: maps,
+    });
+    onStatusMessage?.(`Экспорт battle maps: ${maps.length}`);
+  };
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'battleMaps');
+      const normalized = entries
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry))
+        .map((entry) => normalizeBattleMap(entry as Partial<BattleMapDefinition>));
+
+      if (normalized.length === 0) {
+        throw new Error('Файл не содержит battle maps.');
+      }
+
+      const seen = new Set<string>();
+      for (const map of normalized) {
+        if (seen.has(map.id)) {
+          throw new Error(`Повторяющийся id карты: ${map.id}`);
+        }
+        seen.add(map.id);
+      }
+
+      saveBattleMaps(normalized);
+      await saveBattleMapsToStore(normalized);
+      setMaps(normalized);
+      const nextMap = normalized.find((map) => map.id === currentMapId) ?? normalized[0];
+      if (nextMap) {
+        setCurrentMapId(nextMap.id);
+        setDraft(nextMap);
+        onSelectedMapIdChange?.(nextMap.id);
+      }
+      setUndoStack([]);
+      setRedoStack([]);
+      onStatusMessage?.(`Импорт battle maps завершен: ${normalized.length}`);
+    } catch (error) {
+      onStatusMessage?.(`Импорт battle maps: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   const updateIdentityField = (field: keyof BattleMapDefinition, value: string | number | string[] | boolean) => {
     commitDraft((current) => ({ ...current, [field]: value, updatedAt: Date.now() }));
@@ -715,6 +776,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <button type="button" onClick={handleUndo} disabled={undoStack.length === 0}>Undo</button>
           <button type="button" onClick={handleRedo} disabled={redoStack.length === 0}>Redo</button>
           <button type="button" onClick={handleSave}>Save</button>
+          <button type="button" onClick={handleExportJson}>Export JSON</button>
+          <button type="button" disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Importing...' : 'Import JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
       </div>
 

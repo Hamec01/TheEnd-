@@ -157,7 +157,7 @@ export function isInsideZone(zone: Zone, x: number, y: number, extraRadius = 0):
 export function detectCurrentZone(zones: Zone[], x: number, y: number): Zone | null {
   const ordered = getZonesAtPoint(zones, x, y);
   for (const zone of ordered) {
-    if (!resolveZonePlayerClickable(zone)) {
+    if (isPassiveOverlayZone(zone)) {
       continue;
     }
     return zone;

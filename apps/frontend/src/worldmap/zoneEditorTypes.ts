@@ -283,6 +283,27 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
 
 export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: number): WorldMapZone {
   const now = Date.now();
+  const isKingdomArea = draft.type === 'kingdom_area';
+  const resolvedEditorLayer = isKingdomArea ? 'areas' : draft.editorLayer;
+  const resolvedInteractionMode = isKingdomArea ? 'none' : draft.interactionMode;
+  const resolvedPlayerClickable = isKingdomArea
+    ? false
+    : typeof draft.playerClickable === 'boolean'
+      ? draft.playerClickable
+      : undefined;
+  const resolvedBlocksClick = isKingdomArea
+    ? false
+    : typeof draft.blocksClick === 'boolean'
+      ? draft.blocksClick
+      : undefined;
+  const resolvedPassiveEffects = isKingdomArea
+    ? true
+    : typeof draft.passiveEffects === 'boolean'
+      ? draft.passiveEffects
+      : Array.isArray(draft.passiveEffects)
+        ? draft.passiveEffects
+        : undefined;
+
   const base = {
     id: draft.id.trim(),
     name: draft.name.trim(),
@@ -308,16 +329,11 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     professionId: draft.professionId.trim() || undefined,
     respawnSeconds: draft.respawnSeconds ?? undefined,
     cooldownSeconds: draft.cooldownSeconds ?? undefined,
-    editorLayer: draft.editorLayer,
-    interactionMode: draft.interactionMode,
-    playerClickable: typeof draft.playerClickable === 'boolean' ? draft.playerClickable : undefined,
-    blocksClick: typeof draft.blocksClick === 'boolean' ? draft.blocksClick : undefined,
-    passiveEffects:
-      typeof draft.passiveEffects === 'boolean'
-        ? draft.passiveEffects
-        : Array.isArray(draft.passiveEffects)
-          ? draft.passiveEffects
-          : undefined,
+    editorLayer: resolvedEditorLayer,
+    interactionMode: resolvedInteractionMode,
+    playerClickable: resolvedPlayerClickable,
+    blocksClick: resolvedBlocksClick,
+    passiveEffects: resolvedPassiveEffects,
     color: draft.color?.trim() || undefined,
     parentAreaId: draft.parentAreaId?.trim() || undefined,
     layerPriority: draft.layerPriority || undefined,

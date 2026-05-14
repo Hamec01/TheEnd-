@@ -16,7 +16,7 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import type { Prisma } from '@prisma/client';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
@@ -74,7 +74,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
-const CONTENT_DB_MAX_BACKUPS = 40;
+const CONTENT_DB_BACKUP_SLOTS = 3;
 const CONTENT_AUTOSAVE_DIR = 'autosaves';
 const CONTENT_AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000;
 const CONTENT_AUTOSAVE_SOURCES = [
@@ -1073,6 +1073,15 @@ function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
   const linkedStepId = marker.linkedStepId ?? marker.stepId;
   const linkedNpcId = marker.linkedNpcId ?? marker.npcId;
   const type = String(marker.type ?? marker.markerType ?? 'quest_objective').trim() || 'quest_objective';
+  const normalizeVisibility = (value: unknown): QuestMarkerDefinition['miniMapVisibility'] => {
+    return value === 'always'
+      || value === 'nearby'
+      || value === 'selectedQuestOnly'
+      || value === 'discoveredOnly'
+      || value === 'hidden'
+      ? value
+      : undefined;
+  };
 
   return {
     id: String(marker.id ?? '').trim(),
@@ -1094,6 +1103,10 @@ function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
     hideAfterQuestCompleted: marker.hideAfterQuestCompleted === true ? true : undefined,
     hideAfterObjectiveCompleted: marker.hideAfterObjectiveCompleted === true ? true : undefined,
     hideAfterStepCompleted: marker.hideAfterStepCompleted === true ? true : undefined,
+    showOnWorldMap: marker.showOnWorldMap === false ? false : true,
+    showOnMiniMap: marker.showOnMiniMap === false ? false : true,
+    worldMapVisibility: normalizeVisibility(marker.worldMapVisibility),
+    miniMapVisibility: normalizeVisibility(marker.miniMapVisibility),
   };
 }
 
@@ -1466,6 +1479,30 @@ function hasMojibakeQuestionMarks(value: string | undefined): boolean {
   return /\?{3,}/.test(value);
 }
 
+function toFallbackLabelFromId(id: string, defaultLabel: string): string {
+  const normalized = String(id ?? '').trim();
+  if (!normalized) {
+    return defaultLabel;
+  }
+
+  const words = normalized
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+  return words.length > 0 ? words.join(' ') : defaultLabel;
+}
+
+function repairSuspiciousText(value: string | undefined, fallback: string): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return hasMojibakeQuestionMarks(normalized) ? fallback : normalized;
+}
+
 function resolveContentDataDir(): string {
   const configured = String(process.env.CONTENT_DATA_DIR ?? '').trim();
   if (!configured) {
@@ -1506,10 +1543,6 @@ function resolveStorageMode(): ContentStorageMode {
   return getContentStorageMode();
 }
 
-function toSafeBackupStamp(date = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
-}
 
 function contentFromMaybeEnvelope(raw: unknown): Partial<ContentDatabase> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'content' in raw) {
@@ -1545,6 +1578,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
   private readonly legacyTemplateFile = resolveLegacyContentTemplatePath();
   private readonly backupDir = join(this.dataDir, CONTENT_DB_BACKUP_DIR);
   private readonly autosaveDir = join(this.dataDir, CONTENT_AUTOSAVE_DIR);
+  private backupSlot = 0;
   private readonly storageMode: ContentStorageMode = resolveStorageMode();
   private dbCache: ContentDatabase | null = null;
   private initPromise: Promise<void> | null = null;
@@ -1919,18 +1953,9 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       mkdirSync(this.backupDir, { recursive: true });
     }
 
-    const timestamp = toSafeBackupStamp();
-    const backupFile = join(this.backupDir, `theend_content_${timestamp}.json`);
+    this.backupSlot = (this.backupSlot % CONTENT_DB_BACKUP_SLOTS) + 1;
+    const backupFile = join(this.backupDir, `theend_content_backup_${this.backupSlot}.json`);
     copyFileSync(this.runtimeFile, backupFile);
-
-    const backups = readdirSync(this.backupDir)
-      .filter((file) => file.startsWith('theend_content_') && file.endsWith('.json'))
-      .sort();
-
-    const toDelete = backups.slice(0, Math.max(0, backups.length - CONTENT_DB_MAX_BACKUPS));
-    for (const file of toDelete) {
-      unlinkSync(join(this.backupDir, file));
-    }
   }
 
   private startAutosaveLoop(): void {
@@ -2662,8 +2687,26 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
 
   async saveWorldMap(payload: WorldMapContent): Promise<WorldMapContent> {
     const db = this.ensureLoaded();
-    const safeZones = sanitizeIdObjectArray<WorldMapZone>(payload?.zones);
-    const safeRegions = sanitizeIdObjectArray<PaintedRegion>(payload?.regions);
+    const safeZones = sanitizeIdObjectArray<WorldMapZone>(payload?.zones)
+      .map((zone) => {
+        const fallbackName = toFallbackLabelFromId(zone.id, 'Zone');
+        const safeName = repairSuspiciousText(zone.name, fallbackName);
+        return {
+          ...zone,
+          name: safeName,
+          description: repairSuspiciousText(zone.description, safeName),
+        };
+      });
+    const safeRegions = sanitizeIdObjectArray<PaintedRegion>(payload?.regions)
+      .map((region) => {
+        const fallbackName = toFallbackLabelFromId(region.id, 'Region');
+        const safeName = repairSuspiciousText(region.name, fallbackName);
+        return {
+          ...region,
+          name: safeName,
+          description: repairSuspiciousText(region.description, safeName),
+        };
+      });
     const safeQuestMarkers = sanitizeIdObjectArray<QuestMarkerDefinition>(payload?.questMarkers)
       .map((entry) => normalizeQuestMarkerInput(entry))
       .filter((m) => Boolean(m.id));

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
@@ -14,10 +14,11 @@ import { merchantsService } from '../../services/content/merchantsService';
 import { skillsService } from '../../services/content/skillsService';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
-import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, exportNpcsJson, importNpcsJson } from '../../services/npcRepository';
+import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, importNpcsJson } from '../../services/npcRepository';
 import { validateNpc } from '../../services/npcValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { cityService } from '../../services/cityRepository';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import type {
   NpcCondition,
   NpcDefinition,
@@ -100,6 +101,8 @@ export function NpcsPage() {
   const [statusText, setStatusText] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const [dialogueIds, setDialogueIds] = useState<string[]>([]);
   const [questIds, setQuestIds] = useState<string[]>([]);
@@ -389,27 +392,36 @@ export function NpcsPage() {
     setStatusText(`NPC удален: ${selectedId}`);
   }
 
-  async function exportJson() {
-    const json = await exportNpcsJson();
-    navigator.clipboard.writeText(json).then(() => {
-      setStatusText('JSON NPC скопирован в буфер обмена.');
-    }).catch(() => {
-      setStatusText('Не удалось скопировать JSON.');
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_npcs',
+      collectionKey: 'npcs',
+      entries: npcs,
     });
+    setStatusText(`Экспорт NPC: ${npcs.length}`);
   }
 
-  async function importJson() {
-    const raw = window.prompt('Вставьте JSON NPC для импорта:');
-    if (!raw) {
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
       return;
     }
 
+    setIsImporting(true);
     try {
-      const count = await importNpcsJson(raw);
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'npcs');
+      const count = await importNpcsJson(JSON.stringify(entries));
       refresh();
       setStatusText(`Импорт NPC завершен: ${count}`);
+      setSaveState({ state: 'saved', message: `Импорт NPC: ${count}` });
     } catch (error) {
       setStatusText((error as Error).message);
+      setSaveState({ state: 'error', message: (error as Error).message });
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -456,7 +468,8 @@ export function NpcsPage() {
           <button disabled={!selectedId} onClick={disableSelected}>ОТКЛЮЧИТЬ</button>
           <button disabled={!selectedId} onClick={removeSelected}>УДАЛИТЬ</button>
           <button onClick={exportJson}>ЭКСПОРТ JSON</button>
-          <button onClick={importJson}>ИМПОРТ JSON</button>
+          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'ИМПОРТ...' : 'ИМПОРТ JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
         </div>
 
         {selectedNpc ? (

@@ -79,6 +79,10 @@ interface QuestMarkerExportJson {
   hideAfterQuestCompleted?: boolean;
   hideAfterObjectiveCompleted?: boolean;
   hideAfterStepCompleted?: boolean;
+  showOnWorldMap?: boolean;
+  showOnMiniMap?: boolean;
+  worldMapVisibility?: QuestMarkerDefinition['worldMapVisibility'];
+  miniMapVisibility?: QuestMarkerDefinition['miniMapVisibility'];
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -152,6 +156,17 @@ function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
   const title = String(marker.title ?? '').trim();
   const typeValue = String(marker.type ?? marker.markerType ?? 'quest_objective').trim();
   const type = QUEST_MARKER_TYPES.includes(typeValue as QuestMarkerType) ? typeValue as QuestMarkerType : 'quest_objective';
+  const worldMapVisibility = marker.worldMapVisibility;
+  const miniMapVisibility = marker.miniMapVisibility;
+  const normalizeVisibility = (value: unknown): QuestMarkerDefinition['miniMapVisibility'] => {
+    return value === 'always'
+      || value === 'nearby'
+      || value === 'selectedQuestOnly'
+      || value === 'discoveredOnly'
+      || value === 'hidden'
+      ? value
+      : undefined;
+  };
   if (!id || !title) {
     return null;
   }
@@ -178,6 +193,10 @@ function normalizeQuestMarker(input: unknown): QuestMarkerDefinition | null {
     hideAfterQuestCompleted: marker.hideAfterQuestCompleted === true ? true : undefined,
     hideAfterObjectiveCompleted: marker.hideAfterObjectiveCompleted === true ? true : undefined,
     hideAfterStepCompleted: marker.hideAfterStepCompleted === true ? true : undefined,
+    showOnWorldMap: marker.showOnWorldMap === false ? false : true,
+    showOnMiniMap: marker.showOnMiniMap === false ? false : true,
+    worldMapVisibility: normalizeVisibility(worldMapVisibility),
+    miniMapVisibility: normalizeVisibility(miniMapVisibility),
   };
 }
 
@@ -226,6 +245,18 @@ function serializeQuestMarker(marker: QuestMarkerDefinition): QuestMarkerExportJ
   }
   if (marker.hideAfterStepCompleted) {
     output.hideAfterStepCompleted = true;
+  }
+  if (marker.showOnWorldMap === false) {
+    output.showOnWorldMap = false;
+  }
+  if (marker.showOnMiniMap === false) {
+    output.showOnMiniMap = false;
+  }
+  if (marker.worldMapVisibility && marker.worldMapVisibility !== 'always') {
+    output.worldMapVisibility = marker.worldMapVisibility;
+  }
+  if (marker.miniMapVisibility && marker.miniMapVisibility !== 'always') {
+    output.miniMapVisibility = marker.miniMapVisibility;
   }
 
   return output;
@@ -317,7 +348,7 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     updatedAt: isFiniteNumber(zone.updatedAt) ? zone.updatedAt : Date.now(),
   };
 
-  if (!normalized.id || !normalized.name || !normalized.description) {
+  if (!normalized.id || !normalized.name) {
     return null;
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { AdminItem, ItemSet, ItemSetBonus, ItemType, ItemRarity, ItemSlot, StoredImage } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { itemSetsService, validateItemSet } from '../../services/content/itemSetsService';
@@ -8,6 +8,7 @@ import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
 import { ItemEffectEditor } from '../components/ItemEffectEditor';
 import type { ItemEffectJson } from '../itemEffectConstants';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { AdminFieldLabel, translateAdminErrorMessage, translateItemType, translateRarity, translateItemSlot } from '../adminUi';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { AdminSaveStatus } from '../AdminSaveStatus';
@@ -55,7 +56,9 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const selectedIdRef = useRef<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const [itemQuery, setItemQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | ItemType>('all');
@@ -356,6 +359,62 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
     setStatus(`Сет удалён: ${selectedId}`);
   }
 
+  function exportJson() {
+    downloadCollectionJson({
+      filePrefix: 'theend_item_sets',
+      collectionKey: 'itemSets',
+      entries: sets,
+    });
+    setStatus(`Экспорт сетов: ${sets.length}`);
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || isImporting || isSaving) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const entries = extractRawCollectionFromImportJson(payload, 'itemSets');
+      const existingIds = new Set((await itemSetsService.getAll()).map((entry) => entry.id));
+      let created = 0;
+      let updated = 0;
+
+      for (const raw of entries) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          continue;
+        }
+        const record = raw as ItemSet;
+        const id = String(record.id ?? '').trim();
+        if (!id) {
+          continue;
+        }
+        if (existingIds.has(id)) {
+          await itemSetsService.update(id, record);
+          updated += 1;
+        } else {
+          await itemSetsService.create({ ...record, id });
+          existingIds.add(id);
+          created += 1;
+        }
+      }
+
+      await refresh();
+      setStatus(`Импорт сетов завершен: создано ${created}, обновлено ${updated}.`);
+      setSaveState({ state: 'saved', message: `Импорт set: +${created} / ~${updated}` });
+    } catch (error) {
+      const message = translateAdminErrorMessage((error as Error).message);
+      setStatus(message);
+      setSaveState({ state: 'error', message });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   function addBonusTier() {
     patchDraft({ bonuses: [...(draft.bonuses ?? []), emptyBonusTier()] });
   }
@@ -549,6 +608,9 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
           <button type="button" disabled={!selectedId} onClick={() => { void duplicateSelected(); }}>Дублировать</button>
           <button type="button" disabled={!selectedId} onClick={() => { void disableSelected(); }}>Отключить</button>
           <button type="button" disabled={!selectedId} onClick={() => { void deleteSelected(); }}>Удалить</button>
+          <button type="button" onClick={exportJson}>Экспорт JSON</button>
+          <button type="button" disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
           <button
             type="button"
             onClick={() => {
