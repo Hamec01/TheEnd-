@@ -4087,6 +4087,23 @@ export class CombatService {
     return Math.max(0, Math.floor(damageContribution));
   }
 
+  private calculateDamageContributionFromLogs(state: ArenaBattleState, actorId: string): number {
+    return state.logs
+      .filter((entry) => entry.type === 'HIT' && entry.actorId === actorId)
+      .reduce((sum, entry) => sum + Math.max(0, entry.amount ?? 0), 0);
+  }
+
+  private resolveDamageContributionForRewards(
+    state: ArenaBattleState,
+    actorId: string,
+    damageContribution: number,
+  ): number {
+    const tracked = Math.max(0, damageContribution);
+    const fromLogs = this.calculateDamageContributionFromLogs(state, actorId);
+    // Some combat flows can finish without updating the session accumulator.
+    return Math.max(tracked, fromLogs);
+  }
+
   private calculateCombatGoldReward(state: ArenaBattleState): number {
     const defeatedEnemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive).length;
     return defeatedEnemies * ARENA_GOLD_PER_DEFEATED_ENEMY;
@@ -4141,11 +4158,13 @@ export class CombatService {
     itemName: string | null;
     hubState: Awaited<ReturnType<ArenaService['getHubState']>>;
   }> {
+    const effectiveDamageContribution = this.resolveDamageContributionForRewards(state, characterId, damageContribution);
+
     if (isFileStorageMode()) {
-      return this.applyVictoryRewardsFileMode(characterId, state, damageContribution);
+      return this.applyVictoryRewardsFileMode(characterId, state, effectiveDamageContribution);
     }
 
-    const gainedExp = this.calculateCombatExperienceReward(damageContribution);
+    const gainedExp = this.calculateCombatExperienceReward(effectiveDamageContribution);
     const gainedGold = this.calculateCombatGoldReward(state);
     const droppedItemId = this.rollCombatDrop(state);
 

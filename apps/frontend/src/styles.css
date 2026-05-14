@@ -9946,6 +9946,15 @@ body:has(.page.page--scroll) {
   font-weight: 800;
 }
 
+.admin-backup-safe-mode {
+  padding: 10px 12px;
+  border: 1px solid rgba(120, 190, 112, 0.5);
+  border-radius: 6px;
+  background: rgba(29, 72, 34, 0.28);
+  color: #d8f2c4;
+  font-weight: 800;
+}
+
 .admin-backup-mode {
   display: grid;
   gap: 6px;

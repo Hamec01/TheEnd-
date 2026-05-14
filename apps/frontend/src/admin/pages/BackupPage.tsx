@@ -39,6 +39,7 @@ interface PendingImport {
   currentCounts: CountMap;
   warnings: string[];
   conflicts: string[];
+  addMissingPlan: string[];
 }
 
 function formatDatePart(value: number): string {
@@ -208,6 +209,63 @@ function collectChangedSameIds(current: Partial<ContentSnapshot>, incoming: Part
   return messages;
 }
 
+function collectAddMissingOnlyPlan(current: Partial<ContentSnapshot>, incoming: Partial<ContentSnapshot>): string[] {
+  const messages: string[] = [];
+  const collect = (key: string, currentEntries: unknown, incomingEntries: unknown) => {
+    if (!Array.isArray(incomingEntries)) {
+      return;
+    }
+    const currentIds = new Set(Array.isArray(currentEntries)
+      ? currentEntries.map((entry) => String((entry as { id?: unknown })?.id ?? '').trim()).filter(Boolean)
+      : []);
+    const createMissing: string[] = [];
+    const skippedExisting: string[] = [];
+
+    for (const entry of incomingEntries) {
+      const id = String((entry as { id?: unknown })?.id ?? '').trim();
+      if (!id) {
+        continue;
+      }
+      if (currentIds.has(id)) {
+        skippedExisting.push(id);
+      } else {
+        createMissing.push(id);
+      }
+    }
+
+    if (createMissing.length > 0) {
+      messages.push(`${key}: create missing ${createMissing.slice(0, 12).join(', ')}${createMissing.length > 12 ? '...' : ''}`);
+    }
+    if (skippedExisting.length > 0) {
+      messages.push(`${key}: skip existing ${skippedExisting.slice(0, 12).join(', ')}${skippedExisting.length > 12 ? '...' : ''}`);
+    }
+  };
+
+  for (const key of CONTENT_KEYS) {
+    collect(key, current[key], incoming[key]);
+  }
+
+  collect('worldMap.zones', current.worldMap?.zones, incoming.worldMap?.zones);
+  collect('worldMap.regions', current.worldMap?.regions, incoming.worldMap?.regions);
+  collect('worldMap.questMarkers', current.worldMap?.questMarkers, incoming.worldMap?.questMarkers);
+
+  return messages;
+}
+
+function describeImportMode(mode: ContentImportMode): string {
+  switch (mode) {
+    case 'add_missing_only':
+      return 'Safe mode: creates only records with new IDs. Existing IDs are skipped without changes.';
+    case 'merge':
+      return 'Merge by ID: creates new IDs and updates existing IDs from the backup.';
+    case 'replace':
+      return 'Danger mode: replaces all local admin content with the backup.';
+    case 'dryRun':
+    default:
+      return 'Dry run / validate only: validates the backup and saves nothing.';
+  }
+}
+
 function collectReferenceWarnings(content: Partial<ContentSnapshot>): string[] {
   const messages: string[] = [];
   const itemIds = new Set((content.items ?? []).map((entry) => entry.id));
@@ -326,7 +384,8 @@ export function BackupPage() {
         ...collectDuplicateIds(backup.content),
         ...collectChangedSameIds(current.content, backup.content),
       ];
-      const dryRun = await importFullContent(backup, 'dryRun');
+      const addMissingPlan = collectAddMissingOnlyPlan(current.content, backup.content);
+      const dryRun = await importFullContent(backup, 'add_missing_only', { dryRun: true });
       setPendingImport({
         fileName: file.name,
         fileSize: file.size,
@@ -335,9 +394,10 @@ export function BackupPage() {
         currentCounts,
         warnings: [...warnings, ...dryRun.warnings],
         conflicts,
+        addMissingPlan,
       });
       setImportMode('dryRun');
-      setStatus('Dry run complete. Review preview, then choose Replace all or Merge by ID.');
+      setStatus('Dry run complete. Review preview, then choose Add missing only, Merge by ID, or Replace all.');
     } catch (error) {
       setPendingImport(null);
       setStatus(translateAdminErrorMessage((error as Error).message));
@@ -346,7 +406,7 @@ export function BackupPage() {
     }
   }
 
-  async function runImport(mode: ContentImportMode) {
+  async function runImport(mode: ContentImportMode, options?: { dryRun?: boolean }) {
     if (!pendingImport) {
       return;
     }
@@ -356,17 +416,21 @@ export function BackupPage() {
     }
 
     setIsBusy(true);
-    setStatus(mode === 'dryRun' ? 'Validating backup...' : 'Importing backup...');
+    const isDryRun = options?.dryRun === true || mode === 'dryRun';
+    setStatus(isDryRun ? 'Validating backup...' : 'Importing backup...');
     try {
-      const result = await importFullContent(pendingImport.backup, mode);
+      const result = await importFullContent(pendingImport.backup, mode, options);
       setLastBackup({
         ...pendingImport.backup,
         content: result.snapshot,
         contentCounts: countContent(result.snapshot),
       });
+      const summaryText = result.summary
+        ? ` created: ${result.summary.created}, skipped existing: ${result.summary.skippedExisting}, updated: ${result.summary.updated}.`
+        : '';
       setStatus(result.dryRun
-        ? `Dry run passed with ${result.warnings.length} warning(s).`
-        : `Import complete in ${mode} mode with ${result.warnings.length} warning(s).`);
+        ? `Dry run passed with ${result.warnings.length} warning(s).${summaryText}`
+        : `Import complete in ${mode} mode with ${result.warnings.length} warning(s).${summaryText}`);
       if (!result.dryRun) {
         setPendingImport(null);
       }
@@ -430,30 +494,52 @@ export function BackupPage() {
           </div>
 
           <p className="admin-backup-import-warning">
-            Import will replace or merge content depending on selected mode. Make a backup before importing.
+            Import behavior depends on selected mode. Make a backup before dangerous imports.
           </p>
 
           <label className="admin-backup-mode">
             Import mode
             <select value={importMode} onChange={(event) => setImportMode(event.target.value as ContentImportMode)} disabled={isBusy}>
               <option value="dryRun">Dry run / validate only</option>
-              <option value="replace">Replace all content</option>
+              <option value="add_missing_only">Add missing only / Добавить только отсутствующие</option>
               <option value="merge">Merge by ID</option>
+              <option value="replace">Replace all content</option>
             </select>
           </label>
+          <p className={importMode === 'add_missing_only' ? 'admin-backup-safe-mode' : 'muted'}>
+            {describeImportMode(importMode)}
+          </p>
 
           <div className="admin-backup-actions">
-            <button type="button" onClick={() => runImport('dryRun')} disabled={isBusy}>Run Dry Run</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (importMode === 'add_missing_only') {
+                  void runImport('add_missing_only', { dryRun: true });
+                } else {
+                  void runImport('dryRun');
+                }
+              }}
+              disabled={isBusy}
+            >
+              Run Dry Run
+            </button>
             <button type="button" onClick={() => runImport(importMode)} disabled={isBusy || importMode === 'dryRun'}>
               Apply Selected Mode
             </button>
           </div>
 
-          {(pendingImport.conflicts.length > 0 || pendingImport.warnings.length > 0) && (
+          {(pendingImport.addMissingPlan.length > 0 || pendingImport.conflicts.length > 0 || pendingImport.warnings.length > 0) && (
             <div className="admin-backup-report">
+              {pendingImport.addMissingPlan.length > 0 && (
+                <>
+                  <h3>Add missing only preview</h3>
+                  <ul>{pendingImport.addMissingPlan.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+                </>
+              )}
               {pendingImport.conflicts.length > 0 && (
                 <>
-                  <h3>Conflict report</h3>
+                  <h3>Merge conflict report</h3>
                   <ul>{pendingImport.conflicts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
                 </>
               )}

@@ -26,8 +26,11 @@ export class ContentController {
     const rawMode = payload && typeof payload === 'object' && !Array.isArray(payload) && 'mode' in payload
       ? ((payload as { mode?: ContentImportMode }).mode ?? 'replace')
       : 'replace';
-    const mode: ContentImportMode = rawMode === 'merge' || rawMode === 'dryRun' ? rawMode : 'replace';
-    return this.contentService.importFullContent(payload ?? {}, mode);
+    const mode: ContentImportMode = rawMode === 'merge' || rawMode === 'dryRun' || rawMode === 'add_missing_only' ? rawMode : 'replace';
+    const dryRun = payload && typeof payload === 'object' && !Array.isArray(payload) && 'dryRun' in payload
+      ? Boolean((payload as { dryRun?: unknown }).dryRun)
+      : undefined;
+    return this.contentService.importFullContent(payload ?? {}, mode, dryRun);
   }
 
   @Post('import-local')
