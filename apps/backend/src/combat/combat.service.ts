@@ -3783,6 +3783,13 @@ export class CombatService {
     await this.applyPeriodicDamagePhase(session, 'turn_end', HARD_MAX_COMMANDS_PER_ROUND, 0);
     this.tickAllCombatStatusesEndOfRound(session, HARD_MAX_COMMANDS_PER_ROUND, 0);
 
+    // Уменьшаем кулдауны скиллов в конце раунда
+    for (const cooldown of session.skillCooldowns) {
+      if (cooldown.remainingRounds > 0) {
+        cooldown.remainingRounds -= 1;
+      }
+    }
+
     this.applyEndOfRoundRegeneration(state);
     this.refreshBattleResult(state);
 

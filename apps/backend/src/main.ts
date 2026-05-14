@@ -12,8 +12,8 @@ async function bootstrap(): Promise<void> {
 
   const corsOrigin = process.env.CORS_ORIGIN?.trim();
   app.enableCors({ origin: corsOrigin || true, credentials: true });
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  app.use(json({ limit: '1gb' }));
+  app.use(urlencoded({ extended: true, limit: '1gb' }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

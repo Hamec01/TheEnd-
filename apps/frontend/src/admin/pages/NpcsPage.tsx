@@ -33,8 +33,11 @@ import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
 import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
+import { NpcGroupList } from '../components/NpcGroupList';
+import { groupNpcsByKey, getGroupingLabel, type GroupingKey } from '../utils/npcGrouping';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
+const GROUPING_OPTIONS: GroupingKey[] = ['kingdom', 'faction', 'city', 'kind', 'type', 'status', 'race'];
 const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'guard', 'enemy', 'boss', 'companion', 'random_encounter', 'story_character', 'monster', 'animal'];
 const NPC_RACES: NpcRace[] = ['human', 'high_elf', 'forest_elf', 'ancient_elf', 'dwarf', 'orc', 'dark_elf', 'arin_fellar', 'monster', 'beast', 'undead', 'spirit', 'other'];
 const NPC_DISPOSITIONS: NpcDispositionMode[] = ['friendly', 'neutral', 'hostile', 'fearful', 'aggressive_on_sight', 'quest_locked', 'hidden'];
@@ -98,6 +101,7 @@ export function NpcsPage() {
   const [draft, setDraft] = useState<NpcDefinition>(emptyNpc());
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<NpcTab>('basic');
+  const [groupingKey, setGroupingKey] = useState<GroupingKey>('city');
   const [statusText, setStatusText] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
@@ -459,73 +463,20 @@ export function NpcsPage() {
   }
 
   return (
-    <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <input placeholder="Поиск NPC" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={createNpc}>СОЗДАТЬ</button>
-          <button disabled={!selectedId} onClick={duplicateSelected}>ДУБЛИРОВАТЬ</button>
-          <button disabled={!selectedId} onClick={disableSelected}>ОТКЛЮЧИТЬ</button>
-          <button disabled={!selectedId} onClick={removeSelected}>УДАЛИТЬ</button>
-          <button onClick={exportJson}>ЭКСПОРТ JSON</button>
-          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'ИМПОРТ...' : 'ИМПОРТ JSON'}</button>
-          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
-        </div>
-
-        {selectedNpc ? (
-          <section className="card admin-item-preview">
-            <div className="admin-selected-visual">
-              <span className="admin-catalog-thumb admin-catalog-thumb-lg">
-                {(() => {
-                  const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(selectedNpc), storedImages);
-                  return imageSrc
-                    ? <img src={imageSrc} alt={selectedNpc.name || selectedNpc.id} />
-                    : getAdminInitials(selectedNpc.name || selectedNpc.id, 'NPC');
-                })()}
-              </span>
-              <div>
-                <h4>{selectedNpc.name || '(без названия)'}</h4>
-                <p>{selectedNpc.id}</p>
-                <p>{formatLabel(selectedNpc.kind)} | {formatLabel(selectedNpc.status)}</p>
-                <p>{formatLabel(selectedNpc.race)} | {formatLabel(selectedNpc.defaultDisposition)}</p>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="admin-scroll-list admin-visual-list">
-          {visibleNpcs.map((entry) => {
-            const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(entry), storedImages);
-            return (
-              <button key={entry.id} className={`admin-entity-card ${selectedId === entry.id ? 'is-active' : ''}`} onClick={() => selectNpc(entry)}>
-                <span className="admin-catalog-thumb">
-                  {imageSrc ? <img src={imageSrc} alt={entry.name || entry.id} /> : getAdminInitials(entry.name || entry.id, 'NPC')}
-                </span>
-                <span className="admin-entity-copy">
-                  <strong>{entry.name || '(без названия)'}</strong>
-                  <span>{entry.id}</span>
-                  <span>{formatLabel(entry.kind)} | {formatLabel(entry.status)}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="admin-form-panel">
-        <div className="admin-tabbar">
-          <button className={activeTab === 'basic' ? 'is-active' : ''} onClick={() => setActiveTab('basic')}>Основное</button>
-          <button className={activeTab === 'images' ? 'is-active' : ''} onClick={() => setActiveTab('images')}>Изображения</button>
-          <button className={activeTab === 'location' ? 'is-active' : ''} onClick={() => setActiveTab('location')}>Локация</button>
-          <button className={activeTab === 'combat' ? 'is-active' : ''} onClick={() => setActiveTab('combat')}>Боевые статы</button>
-          <button className={activeTab === 'skills' ? 'is-active' : ''} onClick={() => setActiveTab('skills')}>Скиллы</button>
-          <button className={activeTab === 'inventory' ? 'is-active' : ''} onClick={() => setActiveTab('inventory')}>Инвентарь/Лут</button>
-          <button className={activeTab === 'trade' ? 'is-active' : ''} onClick={() => setActiveTab('trade')}>Торговля</button>
-          <button className={activeTab === 'dialogues' ? 'is-active' : ''} onClick={() => setActiveTab('dialogues')}>Диалоги</button>
-          <button className={activeTab === 'quests' ? 'is-active' : ''} onClick={() => setActiveTab('quests')}>Квесты</button>
-          <button className={activeTab === 'behavior' ? 'is-active' : ''} onClick={() => setActiveTab('behavior')}>Поведение</button>
-          <button className={activeTab === 'validation' ? 'is-active' : ''} onClick={() => setActiveTab('validation')}>Валидация</button>
-        </div>
+    <div className="admin-form-panel">
+      <div className="admin-tabbar">
+        <button className={activeTab === 'basic' ? 'is-active' : ''} onClick={() => setActiveTab('basic')}>Основное</button>
+        <button className={activeTab === 'images' ? 'is-active' : ''} onClick={() => setActiveTab('images')}>Изображения</button>
+        <button className={activeTab === 'location' ? 'is-active' : ''} onClick={() => setActiveTab('location')}>Локация</button>
+        <button className={activeTab === 'combat' ? 'is-active' : ''} onClick={() => setActiveTab('combat')}>Боевые статы</button>
+        <button className={activeTab === 'skills' ? 'is-active' : ''} onClick={() => setActiveTab('skills')}>Скиллы</button>
+        <button className={activeTab === 'inventory' ? 'is-active' : ''} onClick={() => setActiveTab('inventory')}>Инвентарь/Лут</button>
+        <button className={activeTab === 'trade' ? 'is-active' : ''} onClick={() => setActiveTab('trade')}>Торговля</button>
+        <button className={activeTab === 'dialogues' ? 'is-active' : ''} onClick={() => setActiveTab('dialogues')}>Диалоги</button>
+        <button className={activeTab === 'quests' ? 'is-active' : ''} onClick={() => setActiveTab('quests')}>Квесты</button>
+        <button className={activeTab === 'behavior' ? 'is-active' : ''} onClick={() => setActiveTab('behavior')}>Поведение</button>
+        <button className={activeTab === 'validation' ? 'is-active' : ''} onClick={() => setActiveTab('validation')}>Валидация</button>
+      </div>
 
         {activeTab === 'basic' ? (
           <div className="admin-form-grid">
@@ -809,7 +760,49 @@ export function NpcsPage() {
 
         <AdminSaveStatus value={saveState} />
         <p className="muted">{statusText}</p>
-      </section>
-    </div>
-  );
+
+        <hr style={{ margin: '2rem 0', borderColor: 'rgba(117, 92, 57, 0.3)' }} />
+
+        <div className="npc-list-bottom-section">
+          <h3>ВСЕ NPC</h3>
+          <div className="npc-list-bottom-controls">
+            <button onClick={createNpc} title="Создать новый NPC">+ СОЗДАТЬ</button>
+            <button disabled={!selectedId} onClick={duplicateSelected} title="Дублировать выбранный NPC">ДУБЛИРОВАТЬ</button>
+            <button disabled={!selectedId} onClick={disableSelected} title="Отключить выбранный NPC">ОТКЛЮЧИТЬ</button>
+            <button disabled={!selectedId} onClick={removeSelected} title="Удалить выбранный NPC">УДАЛИТЬ</button>
+            <button onClick={exportJson} title="Экспортировать все NPC в JSON">ЭКСПОРТ</button>
+            <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()} title="Импортировать NPC из JSON файла">
+              {isImporting ? 'ИМПОРТ...' : 'ИМПОРТ'}
+            </button>
+            <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+          </div>
+
+          <div className="npc-list-bottom-filters">
+            <input
+              placeholder="Поиск по имени, ID или городу..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <label className="npc-list-grouping">
+              <strong>Группировать:</strong>
+              <select value={groupingKey} onChange={(event) => setGroupingKey(event.target.value as GroupingKey)}>
+                {GROUPING_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {getGroupingLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="muted">Всего: {visibleNpcs.length}</span>
+          </div>
+
+          <NpcGroupList
+            groups={groupNpcsByKey(visibleNpcs, groupingKey)}
+            selectedId={selectedId}
+            storedImages={storedImages}
+            onSelect={selectNpc}
+          />
+        </div>
+      </div>
+    );
 }

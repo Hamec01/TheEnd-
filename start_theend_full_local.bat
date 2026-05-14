@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title TheEnd Full Local Launcher
 
-set "PROJECT_DIR=C:\theend"
+set "PROJECT_DIR=C:\Users\ham\Documents\TheEnd"
 set "BACKEND_DIR=%PROJECT_DIR%\apps\backend"
 set "FRONTEND_DIR=%PROJECT_DIR%\apps\frontend"
 set "DOMAIN_DIR=%PROJECT_DIR%\packages\rpg-domain"
