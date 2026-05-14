@@ -1,0 +1,325 @@
+THEEND — ЛОКАЛЬНЫЙ ЗАПУСК НА WINDOWS
+
+Репозиторий:
+https://github.com/Hamec01/TheEnd-
+
+Папка проекта в этом туториале:
+C:\theend
+
+ВАЖНО:
+Команды ниже рассчитаны на Windows.
+Если ты работаешь в CMD — команды rmdir /s /q работают нормально.
+Если ты работаешь в PowerShell — для удаления лучше использовать Remove-Item.
+BAT-файл в комплекте работает через CMD, поэтому внутри него используются CMD-команды.
+
+
+============================================================
+1. ЧТО НУЖНО УСТАНОВИТЬ
+============================================================
+
+Перед запуском должны быть установлены:
+
+1) Git
+2) Node.js LTS, лучше Node 20
+3) npm
+4) Желательно VS Code
+
+Проверить:
+
+git --version
+node -v
+npm -v
+
+
+============================================================
+2. КАК СКАЧАТЬ ПРОЕКТ В C:\theend
+============================================================
+
+Если папка C:\theend уже есть и в ней мусор, лучше удалить её и создать заново:
+
+cd /d C:\
+rmdir /s /q C:\theend
+mkdir C:\theend
+cd /d C:\theend
+
+Скачать репозиторий прямо в C:\theend:
+
+git clone https://github.com/Hamec01/TheEnd-.git .
+
+Точка в конце важна. Она означает: скачать прямо в текущую папку, а не создавать C:\theend\TheEnd-.
+
+
+============================================================
+3. ЕСЛИ НУЖНА НЕ MAIN, А ВЕТКА CODEX
+============================================================
+
+Например, ветка:
+codex/universal-npc-training
+
+Команды:
+
+cd /d C:\theend
+git fetch --all --prune
+git checkout -b codex/universal-npc-training origin/codex/universal-npc-training
+
+Если локальная ветка уже существует:
+
+git checkout codex/universal-npc-training
+git pull origin codex/universal-npc-training
+
+
+============================================================
+4. УСТАНОВКА ЗАВИСИМОСТЕЙ
+============================================================
+
+В корне проекта:
+
+cd /d C:\theend
+npm install
+
+Если npm пишет vulnerabilities — НЕ нажимай сразу:
+
+npm audit fix --force
+
+Это может обновить важные зависимости и сломать проект.
+
+
+============================================================
+5. PRISMA
+============================================================
+
+Проект локально может работать в file/local mode, но Prisma Client всё равно должен быть сгенерирован,
+потому что backend импортирует @prisma/client.
+
+Важно использовать Prisma 6, потому что Prisma 7 ломает старый формат schema.prisma.
+
+Команды:
+
+cd /d C:\theend
+npm install -D prisma@6.19.0 @prisma/client@6.19.0
+npm install -D prisma@6.19.0 @prisma/client@6.19.0 -w apps/backend
+
+Потом:
+
+npx prisma generate --schema=apps/backend/prisma/schema.prisma
+
+
+============================================================
+6. .ENV ДЛЯ ЛОКАЛЬНОГО ЗАПУСКА
+============================================================
+
+В корне проекта должен быть файл:
+
+C:\theend\.env
+
+Пример содержимого:
+
+NODE_ENV=development
+DATA_MODE=file
+CONTENT_STORAGE=file
+STORAGE_MODE=file
+
+PORT=3000
+HOST=localhost
+
+FRONTEND_URL=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173
+
+DATABASE_URL="postgresql://local:local@localhost:5432/theend_local?schema=public"
+
+JWT_SECRET="local-dev-secret-change-me"
+JWT_EXPIRES_IN="7d"
+
+ADMIN_EMAIL="admin@local.dev"
+ADMIN_PASSWORD="admin"
+
+UPLOAD_DIR="./uploads"
+CONTENT_DATA_DIR="./data"
+
+После создания .env желательно скопировать его в backend:
+
+copy .env apps\backend\.env
+
+
+============================================================
+7. СБОРКА @theend/rpg-domain
+============================================================
+
+Это обязательный шаг после свежего клона или смены ветки.
+
+Команда:
+
+cd /d C:\theend
+npm run build -w @theend/rpg-domain
+
+Если frontend ругается:
+
+Failed to resolve entry for package "@theend/rpg-domain"
+
+значит rpg-domain не собран или dist устарел.
+
+Исправление:
+
+cd /d C:\theend
+rmdir /s /q packages\rpg-domain\dist
+npm run build -w @theend/rpg-domain
+rmdir /s /q apps\frontend\node_modules\.vite
+
+
+============================================================
+8. ЕСЛИ TYPESCRIPT РУГАЕТСЯ НА moduleResolution=node10
+============================================================
+
+Ошибка может быть такой:
+
+Option 'moduleResolution=node10' is deprecated
+Specify compilerOption "ignoreDeprecations": "6.0"
+
+Исправление:
+
+Открыть:
+
+packages\rpg-domain\tsconfig.json
+
+Внутри compilerOptions добавить:
+
+"ignoreDeprecations": "6.0",
+
+То же самое сделать в:
+
+packages\rpg-domain\tsconfig.cjs.json
+
+Потом снова:
+
+npm run build -w @theend/rpg-domain
+
+
+============================================================
+9. ЗАПУСК ИГРЫ
+============================================================
+
+Backend:
+http://localhost:3000
+
+Frontend:
+http://localhost:5173
+
+Можно запускать вручную в двух окнах.
+
+Окно 1 — backend:
+
+cd /d C:\theend\apps\backend
+npm run start:dev
+
+Окно 2 — frontend:
+
+cd /d C:\theend\apps\frontend
+npm run dev -- --force
+
+
+============================================================
+10. BAT-ФАЙЛ ДЛЯ ЗАПУСКА
+============================================================
+
+В комплекте есть файл:
+
+start_theend_full_local.bat
+
+Он делает следующее:
+
+1) Проверяет C:\theend
+2) Создаёт .env, если его нет
+3) Устанавливает зависимости, если нет node_modules
+4) Ставит Prisma 6.19.0
+5) Генерирует Prisma Client
+6) Собирает @theend/rpg-domain
+7) Чистит Vite cache
+8) Запускает backend в отдельном окне
+9) Запускает frontend в отдельном окне
+10) Открывает браузер
+
+Если проект уже настроен, BAT можно использовать просто для запуска.
+
+
+============================================================
+11. ЕСЛИ ПОРТ 3000 ЗАНЯТ
+============================================================
+
+Ошибка:
+
+EADDRINUSE: address already in use :::3000
+
+Значит backend уже запущен.
+
+В CMD:
+
+netstat -ano | findstr :3000
+
+Найди PID в последнем столбце и убей:
+
+taskkill /PID НОМЕР_PID /F
+
+В PowerShell можно так:
+
+Get-NetTCPConnection -LocalPort 3000 | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }
+
+
+============================================================
+12. ЕСЛИ БРАУЗЕР ДЕРЖИТ СТАРУЮ ВЕРСИЮ
+============================================================
+
+Если открывается старая версия игры или странные ошибки PWA/workbox:
+
+1) Открой http://localhost:5173
+2) F12
+3) Application
+4) Service Workers
+5) Unregister
+6) Storage
+7) Clear site data
+8) Обнови страницу
+
+Или открой в режиме инкогнито.
+
+
+============================================================
+13. КОРОТКАЯ ПАМЯТКА ПОСЛЕ СВЕЖЕГО КЛОНА
+============================================================
+
+cd /d C:\theend
+npm install
+npm install -D prisma@6.19.0 @prisma/client@6.19.0
+npm install -D prisma@6.19.0 @prisma/client@6.19.0 -w apps/backend
+copy .env apps\backend\.env
+npx prisma generate --schema=apps/backend/prisma/schema.prisma
+npm run build -w @theend/rpg-domain
+
+Потом запуск:
+
+start_theend_full_local.bat
+
+
+============================================================
+14. КОРОТКАЯ ПАМЯТКА ДЛЯ GIT
+============================================================
+
+Проверить ветку:
+
+git branch
+
+Забрать свежие изменения из GitHub:
+
+git pull origin main
+
+Забрать конкретную ветку:
+
+git fetch --all --prune
+git checkout codex/universal-npc-training
+git pull origin codex/universal-npc-training
+
+Запушить изменения в main:
+
+git status
+git add .
+git commit -m "Update local dev setup"
+git push origin main
