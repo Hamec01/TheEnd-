@@ -768,7 +768,7 @@ export interface ContentDatabase {
   worldMap: WorldMapContent;
 }
 
-export type ContentImportMode = 'replace' | 'merge' | 'dryRun';
+export type ContentImportMode = 'replace' | 'merge' | 'dryRun' | 'add_missing_only';
 
 export interface ContentBackupMetadata {
   schemaVersion: number;
@@ -797,6 +797,15 @@ export interface ContentImportResult {
   snapshot: ContentDatabase;
   warnings: string[];
   errors: string[];
+  summary?: {
+    created: number;
+    updated: number;
+    skippedExisting: number;
+  };
+  actions?: Record<string, {
+    createMissing: string[];
+    skippedExisting: string[];
+  }>;
 }
 
 export type ContentCollectionName =

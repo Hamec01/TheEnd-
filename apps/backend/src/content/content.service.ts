@@ -1370,6 +1370,50 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
   return [...merged.values()];
 }
 
+function addMissingById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const existingIds = new Set(existing.map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+  const addedIds = new Set<string>();
+  const result = existing
+    .filter((entry) => entry && typeof entry === 'object' && String(entry.id ?? '').trim())
+    .map((entry) => clone(entry));
+
+  for (const entry of incoming) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const id = String(entry.id ?? '').trim();
+    if (!id || existingIds.has(id) || addedIds.has(id)) {
+      continue;
+    }
+    addedIds.add(id);
+    result.push(clone({ ...entry, id }));
+  }
+
+  return result;
+}
+
+interface AddMissingImportActions {
+  createMissing: string[];
+  skippedExisting: string[];
+}
+
+type AddMissingImportActionMap = Record<string, AddMissingImportActions>;
+
+function emptyAddMissingActions(): AddMissingImportActions {
+  return { createMissing: [], skippedExisting: [] };
+}
+
+function countAddMissingActions(actions: AddMissingImportActionMap): { created: number; updated: number; skippedExisting: number } {
+  return Object.values(actions).reduce(
+    (summary, action) => ({
+      created: summary.created + action.createMissing.length,
+      updated: 0,
+      skippedExisting: summary.skippedExisting + action.skippedExisting.length,
+    }),
+    { created: 0, updated: 0, skippedExisting: 0 },
+  );
+}
+
 function findDuplicateIds<T extends { id: string }>(entries: T[]): string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -2046,6 +2090,111 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private addMissingDatabasesById(existing: ContentDatabase, incoming: ContentDatabase): ContentDatabase {
+    const hasWorldMapChanges = incoming.worldMap.zones.length > 0
+      || incoming.worldMap.regions.length > 0
+      || (incoming.worldMap.questMarkers ?? []).length > 0;
+
+    return {
+      version: CONTENT_DB_VERSION,
+      items: addMissingById(existing.items, incoming.items),
+      skills: addMissingById(existing.skills, incoming.skills),
+      merchants: addMissingById(existing.merchants, incoming.merchants),
+      cities: addMissingById(existing.cities, incoming.cities),
+      materials: addMissingById(existing.materials, incoming.materials),
+      lootTables: addMissingById(existing.lootTables, incoming.lootTables),
+      images: addMissingById(existing.images, incoming.images),
+      dialogues: addMissingById(existing.dialogues, incoming.dialogues),
+      npcs: addMissingById(existing.npcs, incoming.npcs),
+      quests: addMissingById(existing.quests, incoming.quests),
+      questInteractions: addMissingById(existing.questInteractions, incoming.questInteractions),
+      questItems: addMissingById(existing.questItems, incoming.questItems),
+      questMarkers: addMissingById(existing.questMarkers, incoming.questMarkers),
+      battleMaps: addMissingById(existing.battleMaps, incoming.battleMaps),
+      itemSets: addMissingById(existing.itemSets ?? [], incoming.itemSets ?? []),
+      runeComplexes: addMissingById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
+      worldMap: {
+        zones: addMissingById(existing.worldMap.zones, incoming.worldMap.zones),
+        regions: addMissingById(existing.worldMap.regions, incoming.worldMap.regions),
+        questMarkers: addMissingById(existing.worldMap.questMarkers ?? [], incoming.worldMap.questMarkers ?? []),
+        updatedAt: hasWorldMapChanges ? nowIso() : existing.worldMap.updatedAt,
+      },
+    };
+  }
+
+  private filterAddMissingOnlyContent(existing: ContentDatabase, incoming: Partial<ContentDatabase>): {
+    content: Partial<ContentDatabase>;
+    actions: AddMissingImportActionMap;
+  } {
+    const actions: AddMissingImportActionMap = {};
+    const filterCollection = (key: string, entries: unknown, existingEntries: Array<{ id?: unknown }> | undefined): unknown[] | undefined => {
+      if (!Array.isArray(entries)) {
+        return undefined;
+      }
+      const action = emptyAddMissingActions();
+      actions[key] = action;
+      const existingIds = new Set((existingEntries ?? []).map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+      const acceptedIds = new Set<string>();
+      const missingEntries: unknown[] = [];
+
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object') {
+          missingEntries.push(entry);
+          continue;
+        }
+        const id = String((entry as { id?: unknown }).id ?? '').trim();
+        if (!id) {
+          missingEntries.push(entry);
+          continue;
+        }
+        if (existingIds.has(id)) {
+          action.skippedExisting.push(id);
+          continue;
+        }
+        if (!acceptedIds.has(id)) {
+          action.createMissing.push(id);
+          acceptedIds.add(id);
+        }
+        missingEntries.push(entry);
+      }
+
+      return missingEntries;
+    };
+
+    const worldMap = incoming.worldMap && typeof incoming.worldMap === 'object'
+      ? {
+          zones: (filterCollection('worldMap.zones', incoming.worldMap.zones, existing.worldMap.zones) ?? []) as WorldMapZone[],
+          regions: (filterCollection('worldMap.regions', incoming.worldMap.regions, existing.worldMap.regions) ?? []) as PaintedRegion[],
+          questMarkers: (filterCollection('worldMap.questMarkers', incoming.worldMap.questMarkers, existing.worldMap.questMarkers ?? []) ?? []) as QuestMarkerDefinition[],
+          updatedAt: incoming.worldMap.updatedAt,
+        }
+      : undefined;
+
+    return {
+      content: {
+        version: CONTENT_DB_VERSION,
+        items: filterCollection('items', incoming.items, existing.items) as AdminItem[] | undefined,
+        skills: filterCollection('skills', incoming.skills, existing.skills) as AdminSkillDefinition[] | undefined,
+        merchants: filterCollection('merchants', incoming.merchants, existing.merchants) as AdminMerchant[] | undefined,
+        cities: filterCollection('cities', incoming.cities, existing.cities) as City[] | undefined,
+        materials: filterCollection('materials', incoming.materials, existing.materials) as Material[] | undefined,
+        lootTables: filterCollection('lootTables', incoming.lootTables, existing.lootTables) as LootTable[] | undefined,
+        images: filterCollection('images', incoming.images, existing.images) as StoredImage[] | undefined,
+        dialogues: filterCollection('dialogues', incoming.dialogues, existing.dialogues) as DialogueDefinition[] | undefined,
+        npcs: filterCollection('npcs', incoming.npcs, existing.npcs) as NpcDefinition[] | undefined,
+        quests: filterCollection('quests', incoming.quests, existing.quests) as QuestDefinition[] | undefined,
+        questInteractions: filterCollection('questInteractions', incoming.questInteractions, existing.questInteractions) as QuestInteractionDefinition[] | undefined,
+        questItems: filterCollection('questItems', incoming.questItems, existing.questItems) as QuestItemDefinition[] | undefined,
+        questMarkers: filterCollection('questMarkers', incoming.questMarkers, existing.questMarkers) as QuestMarkerDefinition[] | undefined,
+        battleMaps: filterCollection('battleMaps', incoming.battleMaps, existing.battleMaps) as BattleMapDefinition[] | undefined,
+        itemSets: filterCollection('itemSets', incoming.itemSets, existing.itemSets ?? []) as ItemSet[] | undefined,
+        runeComplexes: filterCollection('runeComplexes', incoming.runeComplexes, existing.runeComplexes ?? []) as RuneComplex[] | undefined,
+        worldMap,
+      },
+      actions,
+    };
+  }
+
   private collectImportWarnings(db: ContentDatabase): string[] {
     const warnings: string[] = [];
     const imageIds = new Set(db.images.map((image) => String(image.id ?? '').trim()).filter(Boolean));
@@ -2190,20 +2339,36 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     return this.createBackupEnvelope(this.ensureLoaded());
   }
 
-  async importFullContent(payload: unknown, mode: ContentImportMode = 'replace'): Promise<ContentImportResult> {
+  async importFullContent(payload: unknown, mode: ContentImportMode = 'replace', dryRunOverride?: boolean): Promise<ContentImportResult> {
     const previousExtraContent = this.extraContent;
     const content = this.unwrapImportPayload(payload);
-    const normalized = this.normalizeDatabase(content);
-    const next = mode === 'merge'
-      ? this.mergeDatabasesById(this.ensureLoaded(), normalized)
-      : normalized;
+    const existing = this.ensureLoaded();
+    const shouldDryRun = dryRunOverride ?? mode === 'dryRun';
+    let actions: AddMissingImportActionMap | undefined;
+    let summary: { created: number; updated: number; skippedExisting: number } | undefined;
+    let next: ContentDatabase;
+
+    if (mode === 'add_missing_only') {
+      const filtered = this.filterAddMissingOnlyContent(existing, content);
+      actions = filtered.actions;
+      summary = countAddMissingActions(actions);
+      const normalized = this.normalizeDatabase(filtered.content);
+      next = this.addMissingDatabasesById(existing, normalized);
+      this.extraContent = previousExtraContent;
+    } else {
+      const normalized = this.normalizeDatabase(content);
+      next = mode === 'merge'
+        ? this.mergeDatabasesById(existing, normalized)
+        : normalized;
+    }
+
     const errors = this.validateDatabaseIntegrity(next);
     if (errors.length > 0) {
       this.extraContent = previousExtraContent;
       throw new BadRequestException(`Content import validation failed:\n- ${errors.join('\n- ')}`);
     }
 
-    if (mode === 'dryRun') {
+    if (shouldDryRun) {
       this.extraContent = previousExtraContent;
       return {
         mode,
@@ -2211,6 +2376,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         snapshot: clone(next),
         warnings: this.collectImportWarnings(next),
         errors: [],
+        summary,
+        actions,
       };
     }
 
@@ -2221,6 +2388,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       snapshot: saved,
       warnings: this.collectImportWarnings(saved),
       errors: [],
+      summary,
+      actions,
     };
   }
 
@@ -2443,12 +2612,13 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       db.runeComplexes = mergeById(db.runeComplexes ?? [], normalized);
     }
     if (payload.worldMap && (payload.worldMap.zones?.length || payload.worldMap.regions?.length || payload.worldMap.questMarkers?.length)) {
+      const normalizedQuestMarkers = Array.isArray(payload.worldMap.questMarkers)
+        ? payload.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
+        : [];
       db.worldMap = {
-        zones: clone(payload.worldMap.zones ?? []),
-        regions: clone(payload.worldMap.regions ?? []),
-        questMarkers: Array.isArray(payload.worldMap.questMarkers)
-          ? payload.worldMap.questMarkers.map((entry) => normalizeQuestMarkerInput(entry as QuestMarkerDefinition)).filter((m) => Boolean(m.id))
-          : [],
+        zones: mergeById(db.worldMap.zones ?? [], clone(payload.worldMap.zones ?? [])),
+        regions: mergeById(db.worldMap.regions ?? [], clone(payload.worldMap.regions ?? [])),
+        questMarkers: mergeById(db.worldMap.questMarkers ?? [], normalizedQuestMarkers),
         updatedAt: nowIso(),
       };
     }

@@ -115,7 +115,7 @@ export interface ContentSnapshot {
   worldMap: WorldMapContent;
 }
 
-export type ContentImportMode = 'replace' | 'merge' | 'dryRun';
+export type ContentImportMode = 'replace' | 'merge' | 'dryRun' | 'add_missing_only';
 
 export interface ContentBackupEnvelope {
   schemaVersion: number;
@@ -134,6 +134,15 @@ export interface ContentImportResult {
   snapshot: ContentSnapshot;
   warnings: string[];
   errors: string[];
+  summary?: {
+    created: number;
+    updated: number;
+    skippedExisting: number;
+  };
+  actions?: Record<string, {
+    createMissing: string[];
+    skippedExisting: string[];
+  }>;
 }
 
 let bootstrapPromise: Promise<void> | null = null;
@@ -240,11 +249,12 @@ export async function exportFullContent(): Promise<ContentBackupEnvelope> {
 export async function importFullContent(
   payload: Partial<ContentSnapshot> | ContentBackupEnvelope,
   mode: ContentImportMode = 'replace',
+  options?: { dryRun?: boolean },
 ): Promise<ContentImportResult> {
   await ensureContentBackendReady();
   const result = await requestJson<ContentImportResult>('/content/import', {
     method: 'POST',
-    body: JSON.stringify({ mode, backup: payload }),
+    body: JSON.stringify({ mode, dryRun: options?.dryRun, backup: payload }),
   });
   if (!result.dryRun) {
     notifyContentSync('all');
