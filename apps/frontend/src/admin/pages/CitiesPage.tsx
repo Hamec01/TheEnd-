@@ -262,9 +262,9 @@ export function CitiesPage() {
       const text = await file.text();
       const payload = JSON.parse(text) as unknown;
       const entries = extractRawCollectionFromImportJson(payload, 'cities');
-      await cityService.importCities(JSON.stringify(entries));
+      const result = await cityService.importCities(JSON.stringify(entries), 'addOnly');
       await reload();
-      setStatus(`Импорт городов завершен: ${entries.length}`);
+      setStatus(`Импорт городов: добавлено ${result.created}, пропущено ${result.skipped}`);
     } catch (error) {
       setStatus(`Импорт городов: ${(error as Error).message}`);
     } finally {

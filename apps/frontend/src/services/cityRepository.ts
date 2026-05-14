@@ -292,19 +292,34 @@ export const cityService = {
     return JSON.stringify(await this.getCities(), null, 2);
   },
 
-  async importCities(json: string): Promise<void> {
+  async importCities(
+    json: string,
+    mode: 'upsert' | 'addOnly' = 'upsert',
+  ): Promise<{ created: number; updated: number; skipped: number }> {
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) throw new Error('Cities import must be an array.');
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
 
     for (const entry of parsed as City[]) {
       const normalized = normalizeCity(entry);
       const existing = await this.getCityById(normalized.id);
       if (existing) {
+        if (mode === 'addOnly') {
+          skipped += 1;
+          continue;
+        }
         await updateContentEntry<City>('cities', normalized.id, normalized);
+        updated += 1;
       } else {
         await createContentEntry<City>('cities', normalized);
+        created += 1;
       }
     }
+
+    return { created, updated, skipped };
   },
 };
 
