@@ -229,6 +229,8 @@ export interface AdminMerchant {
   location?: string;
   cityId?: string;
   cityLocationId?: string;
+  placeType?: 'city' | 'location';
+  placeId?: string;
   type: MerchantType;
   description?: string;
   portraitPath?: string;

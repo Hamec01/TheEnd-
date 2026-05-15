@@ -382,7 +382,7 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
       const entries = extractRawCollectionFromImportJson(payload, 'itemSets');
       const existingIds = new Set((await itemSetsService.getAll()).map((entry) => entry.id));
       let created = 0;
-      let updated = 0;
+      let skippedExisting = 0;
 
       for (const raw of entries) {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -394,8 +394,7 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
           continue;
         }
         if (existingIds.has(id)) {
-          await itemSetsService.update(id, record);
-          updated += 1;
+          skippedExisting += 1;
         } else {
           await itemSetsService.create({ ...record, id });
           existingIds.add(id);
@@ -404,8 +403,8 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
       }
 
       await refresh();
-      setStatus(`Импорт сетов завершен: создано ${created}, обновлено ${updated}.`);
-      setSaveState({ state: 'saved', message: `Импорт set: +${created} / ~${updated}` });
+      setStatus(`?????? ????? ????????: ??????? ${created}, ????????? ???????????? ${skippedExisting}.`);
+      setSaveState({ state: 'saved', message: `?????? set: +${created} / =${skippedExisting}` });
     } catch (error) {
       const message = translateAdminErrorMessage((error as Error).message);
       setStatus(message);

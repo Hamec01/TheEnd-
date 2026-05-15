@@ -20,7 +20,21 @@ import type {
 } from './worldMapValidation';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
+import type { WorldLocation } from '../types/location';
+import type { StoredImage } from '../services/content/models';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
+
+type LocationPreviewEntry = {
+  id: string;
+  name: string;
+  subtype?: string;
+  currentState?: string;
+  regionId?: string;
+  factionId?: string;
+  isHidden?: boolean;
+  published?: boolean;
+  previewImage?: string | null;
+};
 
 const TOOL_OPTIONS: Array<{ value: ZoneEditorTool; label: string }> = [
   { value: 'select', label: 'Select Tool' },
@@ -119,6 +133,8 @@ interface ZoneEditorPanelProps {
   onDeleteQuestMarker: () => void;
   onPlaceQuestMarkerAtCursor: () => void;
   npcOptions?: NpcDefinition[];
+  locationOptions?: WorldLocation[];
+  locationPreviewImages?: StoredImage[];
   selectedNpcIdForPlacement?: string;
   onSelectNpcForPlacement?: (id: string) => void;
   onPlaceNpcAtCursor?: () => void;
@@ -126,6 +142,22 @@ interface ZoneEditorPanelProps {
   onSelectValidationIssue: (issue: WorldMapValidationIssue) => void;
   onRepairValidationIssue: (issue: WorldMapValidationIssue) => void;
   onRepairSelectedZoneContract: (action: WorldMapRepairActionId) => void;
+}
+
+function resolveLocationPreviewImage(location: WorldLocation, images: StoredImage[]): string | null {
+  const activeState = location.stateVariants?.find((state) => state.stateKey === location.currentState);
+  const imageId = activeState?.imageId ?? location.defaultImageId;
+  const imagePath = activeState?.imagePath ?? location.defaultImagePath;
+
+  if (imageId) {
+    const stored = images.find((image) => image.id === imageId);
+    if (stored?.dataUrl) {
+      return stored.dataUrl;
+    }
+    return imageId.startsWith('img_') ? null : imageId;
+  }
+
+  return imagePath || null;
 }
 
 function parseNumber(value: string): number | null {
@@ -216,6 +248,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     onDeleteQuestMarker,
     onPlaceQuestMarkerAtCursor,
     npcOptions = [],
+    locationOptions = [],
+    locationPreviewImages = [],
     selectedNpcIdForPlacement = '',
     onSelectNpcForPlacement,
     onPlaceNpcAtCursor,
@@ -249,6 +283,23 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   const typeOptions = draft?.type && !typeOptionsBase.includes(draft.type)
     ? [...typeOptionsBase, draft.type]
     : typeOptionsBase;
+  const selectedLinkedLocationId = draft?.linkedLocationId?.trim() ?? '';
+  const selectedLinkedLocation = selectedLinkedLocationId
+    ? locationOptions.find((location) => location.id === selectedLinkedLocationId) ?? null
+    : null;
+  const selectedLinkedLocationPreview: LocationPreviewEntry | null = selectedLinkedLocation
+    ? {
+      id: selectedLinkedLocation.id,
+      name: selectedLinkedLocation.name,
+      subtype: selectedLinkedLocation.subtype,
+      currentState: selectedLinkedLocation.currentState,
+      regionId: selectedLinkedLocation.regionId,
+      factionId: selectedLinkedLocation.factionId,
+      isHidden: selectedLinkedLocation.isHidden,
+      published: selectedLinkedLocation.published,
+      previewImage: resolveLocationPreviewImage(selectedLinkedLocation, locationPreviewImages),
+    }
+    : null;
   const looksLikeArklein = Boolean(draft && /арклейн|arklein/i.test(`${draft.name} ${draft.id}`));
   const draftLayerForChecks = draft ? (draft.editorLayer ?? getDefaultEditorLayer(draft.type)) : null;
   const showRepairAsCity = Boolean(draft && (
@@ -906,6 +957,50 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>Faction</span>
           <input disabled={!draft} value={draft?.faction ?? ''} onChange={(event) => updateDraft({ faction: event.target.value })} />
         </label>
+        {draft?.type === 'location' ? (
+          <>
+            <label>
+              <span>Linked location</span>
+              <select
+                disabled={!draft}
+                value={draft?.linkedLocationId ?? ''}
+                onChange={(event) => updateDraft({ linkedLocationId: event.target.value })}
+              >
+                <option value="">-</option>
+                {locationOptions.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name} ({location.id}{location.subtype ? ` | ${location.subtype}` : ''}{location.currentState ? ` | ${location.currentState}` : ''})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedLinkedLocationPreview ? (
+              <div className="zone-editor-linked-location-preview">
+                <strong>{selectedLinkedLocationPreview.name}</strong>
+                <div>ID: {selectedLinkedLocationPreview.id}</div>
+                <div>Subtype: {selectedLinkedLocationPreview.subtype || '-'}</div>
+                <div>Region: {selectedLinkedLocationPreview.regionId || '-'}</div>
+                <div>Faction: {selectedLinkedLocationPreview.factionId || '-'}</div>
+                <div>State: {selectedLinkedLocationPreview.currentState || '-'}</div>
+                <div>Hidden: {selectedLinkedLocationPreview.isHidden ? 'yes' : 'no'}</div>
+                <div>Published: {selectedLinkedLocationPreview.published ? 'yes' : 'no'}</div>
+                {selectedLinkedLocationPreview.previewImage ? (
+                  <img
+                    src={selectedLinkedLocationPreview.previewImage}
+                    alt={selectedLinkedLocationPreview.name}
+                    style={{ maxWidth: 180, maxHeight: 120, objectFit: 'cover', border: '1px solid rgba(214,179,95,0.35)', marginTop: 8 }}
+                  />
+                ) : (
+                  <div style={{ marginTop: 8, opacity: 0.7 }}>No preview</div>
+                )}
+              </div>
+            ) : (
+              <div className="zone-validation-errors">
+                <p>Select an existing location from WORLD → ЛОКАЦИИ.</p>
+              </div>
+            )}
+          </>
+        ) : null}
         <div className="zone-editor-color-row">
           <span>Цвет</span>
         </div>

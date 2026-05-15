@@ -2,9 +2,12 @@ import { nowIso } from './storage';
 
 export interface JsonImportResult {
   created: string[];
+  skippedExisting: string[];
   updated: string[];
   errors: Array<{ id: string; message: string }>;
 }
+
+export type JsonImportMode = 'addOnly' | 'merge';
 
 export function formatExportStamp(): string {
   const now = new Date();
@@ -73,10 +76,13 @@ export async function importCollectionFromJsonEntries<T extends { id: string }>(
   getAll: () => Promise<T[]>;
   create: (value: T) => Promise<unknown>;
   update: (id: string, value: T) => Promise<unknown>;
+  mode?: JsonImportMode;
 }): Promise<JsonImportResult> {
+  const mode = params.mode ?? 'addOnly';
   const existingIds = new Set((await params.getAll()).map((entry) => entry.id));
   const seen = new Set<string>();
   const created: string[] = [];
+  const skippedExisting: string[] = [];
   const updated: string[] = [];
   const errors: Array<{ id: string; message: string }> = [];
 
@@ -107,8 +113,12 @@ export async function importCollectionFromJsonEntries<T extends { id: string }>(
 
     try {
       if (existingIds.has(id)) {
-        await params.update(id, candidate);
-        updated.push(id);
+        if (mode === 'addOnly') {
+          skippedExisting.push(id);
+        } else {
+          await params.update(id, candidate);
+          updated.push(id);
+        }
       } else {
         await params.create(candidate);
         existingIds.add(id);
@@ -119,6 +129,6 @@ export async function importCollectionFromJsonEntries<T extends { id: string }>(
     }
   }
 
-  return { created, updated, errors };
+  return { created, skippedExisting, updated, errors };
 }
 

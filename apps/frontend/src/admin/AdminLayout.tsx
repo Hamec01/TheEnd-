@@ -33,6 +33,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
     title: 'World',
     links: [
       { path: '/admin/cities', label: 'Города' },
+      { path: '/admin/locations', label: 'ЛОКАЦИИ' },
       { path: '/admin/zone-editor', label: 'Zone Editor' },
       { path: '/admin/battle-maps', label: 'Battle Maps' },
     ],

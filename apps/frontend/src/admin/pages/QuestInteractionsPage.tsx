@@ -362,7 +362,7 @@ export function QuestInteractionsPage() {
       const entries = extractRawCollectionFromImportJson(payload, 'questInteractions');
       const existingIds = new Set(getQuestInteractions().map((entry) => entry.id));
       let created = 0;
-      let updated = 0;
+      let skippedExisting = 0;
 
       for (const raw of entries) {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -372,19 +372,17 @@ export function QuestInteractionsPage() {
         if (!normalized.id) {
           continue;
         }
-        const wasExisting = existingIds.has(normalized.id);
-        await saveQuestInteraction(normalized);
-        if (wasExisting) {
-          updated += 1;
-        } else {
-          created += 1;
-          existingIds.add(normalized.id);
+        if (existingIds.has(normalized.id)) {
+          skippedExisting += 1;
+          continue;
         }
+        await saveQuestInteraction(normalized);
+        created += 1;
+        existingIds.add(normalized.id);
       }
 
-      await refresh();
-      setStatus(`Импорт завершен: создано ${created}, обновлено ${updated}.`);
-      setSaveState({ state: 'saved', message: `Импорт interactions: +${created} / ~${updated}` });
+      setStatus(`?????? ????????: ??????? ${created}, ????????? ???????????? ${skippedExisting}.`);
+      setSaveState({ state: 'saved', message: `?????? interactions: +${created} / =${skippedExisting}` });
     } catch (error) {
       const message = translateAdminErrorMessage((error as Error).message);
       setStatus(message);

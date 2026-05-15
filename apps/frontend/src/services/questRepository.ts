@@ -12,6 +12,7 @@ import {
   getContentCollection,
   updateContentEntry,
 } from './content/contentApi';
+import type { JsonImportMode, JsonImportResult } from './content/adminJsonImportExport';
 import { saveCharacterQuestState } from '../api';
 
 const PLAYER_QUESTS_KEY = 'theend.playerQuests';
@@ -346,7 +347,7 @@ export async function exportQuestsJson(): Promise<string> {
   );
 }
 
-export async function importQuestsJson(raw: string): Promise<{ quests: number; questInteractions: number; questItems: number }> {
+export async function importQuestsJson(raw: string, mode: JsonImportMode = 'addOnly'): Promise<{ quests: number; questInteractions: number; questItems: number }> {
   const parsed = JSON.parse(raw) as {
     quests?: QuestDefinition[];
     questInteractions?: QuestInteractionDefinition[];
@@ -360,55 +361,94 @@ export async function importQuestsJson(raw: string): Promise<{ quests: number; q
   const questIds = new Set(questsCache.map((entry) => entry.id));
   const questInteractionIds = new Set(questInteractionsCache.map((entry) => entry.id));
   const questItemIds = new Set(questItemsCache.map((entry) => entry.id));
+  const questSeen = new Set<string>();
+  const interactionSeen = new Set<string>();
+  const itemSeen = new Set<string>();
+  const questResult: JsonImportResult = { created: [], skippedExisting: [], updated: [], errors: [] };
+  const interactionResult: JsonImportResult = { created: [], skippedExisting: [], updated: [], errors: [] };
+  const itemResult: JsonImportResult = { created: [], skippedExisting: [], updated: [], errors: [] };
 
-  let questCount = 0;
   for (const entry of quests) {
-    if (!entry?.id?.trim()) {
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+    if (!id) {
+      questResult.errors.push({ id: '—', message: 'У записи нет строкового id.' });
       continue;
     }
-    if (questIds.has(entry.id.trim())) {
-      await updateContentEntry<QuestDefinition>('quests', entry.id.trim(), entry);
-    } else {
-      await createContentEntry<QuestDefinition>('quests', entry);
-      questIds.add(entry.id.trim());
+    if (questSeen.has(id)) {
+      questResult.errors.push({ id, message: 'Повторяющийся id внутри файла.' });
+      continue;
     }
-    questCount += 1;
+    questSeen.add(id);
+    if (questIds.has(id)) {
+      if (mode === 'addOnly') {
+        questResult.skippedExisting.push(id);
+      } else {
+        await updateContentEntry<QuestDefinition>('quests', id, { ...entry, id });
+        questResult.updated.push(id);
+      }
+    } else {
+      await createContentEntry<QuestDefinition>('quests', { ...entry, id });
+      questIds.add(id);
+      questResult.created.push(id);
+    }
   }
 
-  let questInteractionCount = 0;
   for (const entry of questInteractions) {
-    if (!entry?.id?.trim()) {
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+    if (!id) {
+      interactionResult.errors.push({ id: '—', message: 'У записи нет строкового id.' });
       continue;
     }
-    if (questInteractionIds.has(entry.id.trim())) {
-      await updateContentEntry<QuestInteractionDefinition>('questInteractions', entry.id.trim(), entry);
-    } else {
-      await createContentEntry<QuestInteractionDefinition>('questInteractions', entry);
-      questInteractionIds.add(entry.id.trim());
+    if (interactionSeen.has(id)) {
+      interactionResult.errors.push({ id, message: 'Повторяющийся id внутри файла.' });
+      continue;
     }
-    questInteractionCount += 1;
+    interactionSeen.add(id);
+    if (questInteractionIds.has(id)) {
+      if (mode === 'addOnly') {
+        interactionResult.skippedExisting.push(id);
+      } else {
+        await updateContentEntry<QuestInteractionDefinition>('questInteractions', id, { ...entry, id });
+        interactionResult.updated.push(id);
+      }
+    } else {
+      await createContentEntry<QuestInteractionDefinition>('questInteractions', { ...entry, id });
+      questInteractionIds.add(id);
+      interactionResult.created.push(id);
+    }
   }
 
-  let questItemCount = 0;
   for (const entry of questItems) {
-    if (!entry?.id?.trim()) {
+    const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+    if (!id) {
+      itemResult.errors.push({ id: '—', message: 'У записи нет строкового id.' });
       continue;
     }
-    if (questItemIds.has(entry.id.trim())) {
-      await updateContentEntry<QuestItemDefinition>('questItems', entry.id.trim(), entry);
-    } else {
-      await createContentEntry<QuestItemDefinition>('questItems', entry);
-      questItemIds.add(entry.id.trim());
+    if (itemSeen.has(id)) {
+      itemResult.errors.push({ id, message: 'Повторяющийся id внутри файла.' });
+      continue;
     }
-    questItemCount += 1;
+    itemSeen.add(id);
+    if (questItemIds.has(id)) {
+      if (mode === 'addOnly') {
+        itemResult.skippedExisting.push(id);
+      } else {
+        await updateContentEntry<QuestItemDefinition>('questItems', id, { ...entry, id });
+        itemResult.updated.push(id);
+      }
+    } else {
+      await createContentEntry<QuestItemDefinition>('questItems', { ...entry, id });
+      questItemIds.add(id);
+      itemResult.created.push(id);
+    }
   }
 
   invalidate();
   await ensureQuestsLoaded(true);
   return {
-    quests: questCount,
-    questInteractions: questInteractionCount,
-    questItems: questItemCount,
+    quests: questResult.created.length,
+    questInteractions: interactionResult.created.length,
+    questItems: itemResult.created.length,
   };
 }
 

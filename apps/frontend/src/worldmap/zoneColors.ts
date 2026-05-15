@@ -3,6 +3,7 @@ import type { ZoneType } from './zoneEditorTypes';
 export const ZONE_COLORS: Record<ZoneType, string> = {
   city: '#2f80ff',
   settlement: '#60cfff',
+  location: '#c8a154',
   quest: '#ffd84d',
   quest_area: '#f5d148',
   random_event_area: '#c67cff',

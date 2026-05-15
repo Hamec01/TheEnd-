@@ -382,10 +382,16 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
         seen.add(map.id);
       }
 
-      saveBattleMaps(normalized);
-      await saveBattleMapsToStore(normalized);
-      setMaps(normalized);
-      const nextMap = normalized.find((map) => map.id === currentMapId) ?? normalized[0];
+      const existingMaps = await loadBattleMapsFromStore();
+      const existingIds = new Set(existingMaps.map((map) => map.id));
+      const createdMaps = normalized.filter((map) => !existingIds.has(map.id));
+      const skippedExisting = normalized.length - createdMaps.length;
+      const mergedMaps = [...existingMaps, ...createdMaps];
+
+      saveBattleMaps(mergedMaps);
+      await saveBattleMapsToStore(mergedMaps);
+      setMaps(mergedMaps);
+      const nextMap = mergedMaps.find((map) => map.id === currentMapId) ?? mergedMaps[0];
       if (nextMap) {
         setCurrentMapId(nextMap.id);
         setDraft(nextMap);
@@ -393,9 +399,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       }
       setUndoStack([]);
       setRedoStack([]);
-      onStatusMessage?.(`Импорт battle maps завершен: ${normalized.length}`);
+      onStatusMessage?.(`?????? battle maps ????????: ??????? ${createdMaps.length}, ????????? ???????????? ${skippedExisting}.`);
     } catch (error) {
-      onStatusMessage?.(`Импорт battle maps: ${(error as Error).message}`);
+      onStatusMessage?.(`?????? battle maps: ${(error as Error).message}`);
     } finally {
       setIsImporting(false);
     }

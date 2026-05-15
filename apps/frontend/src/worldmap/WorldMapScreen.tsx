@@ -79,6 +79,11 @@ import type {
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
 import { getZoneCenter, moveZone } from "./zoneGeometry";
 import { getPassiveZonesAtPoint } from "./zoneSystem";
+import {
+  canEnterLinkedLocation,
+  getZoneLinkedLocation,
+  isLinkedLocationVisibleToPlayer,
+} from "./zoneLocationLinking";
 import type { AdminMerchant, StoredImage } from "../services/content/models";
 import {
   getContentSnapshot,
@@ -741,6 +746,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+  const [contentSnapshot, setContentSnapshot] = useState<ContentSnapshot | null>(
+    null,
+  );
   const [validationCities, setValidationCities] = useState<City[]>([]);
   const [validationSnapshot, setValidationSnapshot] =
     useState<ContentSnapshot | null>(null);
@@ -1116,10 +1124,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     },
     [runtimeImages],
   );
-  const cityMerchantById = useMemo(
-    () => new Map(cityMerchants.map((merchant) => [merchant.id, merchant])),
-    [cityMerchants],
-  );
+  const merchantById = useMemo(() => {
+    const entries = new Map<string, AdminMerchant>();
+    for (const merchant of cityMerchants) {
+      entries.set(merchant.id, merchant);
+    }
+    for (const merchant of contentSnapshot?.merchants ?? []) {
+      entries.set(merchant.id, merchant);
+    }
+    return entries;
+  }, [cityMerchants, contentSnapshot?.merchants]);
   const visibleCityLocations = useMemo(
     () =>
       (activeCity?.locations ?? []).filter(
@@ -1141,6 +1155,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => zones.find((zone) => zone.id === selectedZoneId) ?? null,
     [selectedZoneId, zones],
   );
+  const playVisibleZones = useMemo(() => {
+    return zones.filter((zone) => {
+      if (zone.isVisibleToPlayer === false) {
+        return false;
+      }
+      if (zone.type !== "location" || !contentSnapshot) {
+        return true;
+      }
+      const linkedLocation = getZoneLinkedLocation(zone, contentSnapshot);
+      if (!linkedLocation) {
+        return true;
+      }
+      return isLinkedLocationVisibleToPlayer(linkedLocation);
+    });
+  }, [contentSnapshot, zones]);
   const worldMapValidationIssues = useMemo(
     () =>
       validateWorldMapContent({
@@ -1328,6 +1357,40 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       cancelled = true;
     };
   }, [worldMapMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSnapshot = async () => {
+      try {
+        const snapshot = await getContentSnapshot();
+        if (!cancelled) {
+          setContentSnapshot(snapshot);
+        }
+      } catch {
+        if (!cancelled) {
+          setContentSnapshot(null);
+        }
+      }
+    };
+
+    void loadSnapshot();
+
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (
+        payload.scope === "all"
+        || payload.scope === "worldMap"
+        || payload.scope === "content"
+      ) {
+        void loadSnapshot();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     setEditorJson(exportEditorDataJson(zones, regions, questMarkers));
@@ -2059,6 +2122,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return;
       }
       const zone = zones.find((entry) => entry.id === locationId) ?? null;
+      if (zone?.type === "location") {
+        const linkedLocation = contentSnapshot
+          ? getZoneLinkedLocation(zone, contentSnapshot)
+          : null;
+        if (!linkedLocation || !isLinkedLocationVisibleToPlayer(linkedLocation)) {
+          onStatus("Вы ничего не находите.");
+          return;
+        }
+        if (!canEnterLinkedLocation(linkedLocation)) {
+          onStatus("Вы пока не можете войти сюда.");
+          return;
+        }
+        setActiveWorldModal({
+          type: "location",
+          locationId: linkedLocation.id,
+        });
+        setContextMode("location");
+        setPlayerState("in_zone");
+        onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+        return;
+      }
       const targetScene = zone?.targetScene?.trim().toLowerCase();
       const opensCityScene =
         isCitySceneId(locationId) || isCitySceneId(targetScene);
@@ -2077,7 +2161,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setPlayerState("in_city");
       onStatus(`\u0412\u044b \u0432\u043e\u0448\u043b\u0438 \u0432 ${zone?.name ?? "\u0433\u043e\u0440\u043e\u0434"}.`);
     },
-    [onStatus, rememberCurrentMapPosition, worldMapMode, zones],
+    [contentSnapshot, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
   );
 
   const handleZoneEnterMemoized = useCallback(
@@ -3818,6 +3902,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
     const zone = zones.find((entry) => entry.id === locationId) ?? null;
+    if (zone?.type === "location") {
+      const linkedLocation = contentSnapshot
+        ? getZoneLinkedLocation(zone, contentSnapshot)
+        : null;
+      if (!linkedLocation || !isLinkedLocationVisibleToPlayer(linkedLocation)) {
+        onStatus("Вы ничего не находите.");
+        return;
+      }
+      if (!canEnterLinkedLocation(linkedLocation)) {
+        onStatus("Вы пока не можете войти сюда.");
+        return;
+      }
+      setActiveWorldModal({
+        type: "location",
+        locationId: linkedLocation.id,
+      });
+      setContextMode("location");
+      setPlayerState("in_zone");
+      onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+      return;
+    }
     const targetScene = zone?.targetScene?.trim().toLowerCase();
     const opensCityScene =
       isCitySceneId(locationId) || isCitySceneId(targetScene);
@@ -3966,13 +4071,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return null;
     }
 
-    const modalLocation =
+    const modalCityLocation =
       activeCity?.locations.find(
         (location) =>
           activeWorldModal.type !== "zone" &&
           "locationId" in activeWorldModal &&
           location.id === activeWorldModal.locationId,
       ) ?? null;
+    const modalWorldLocation =
+      activeWorldModal.type !== "zone" && "locationId" in activeWorldModal
+        ? (contentSnapshot?.locations.find(
+          (location) => location.id === activeWorldModal.locationId,
+        ) ?? null)
+        : null;
+    const modalLocation = modalCityLocation ?? modalWorldLocation;
     const closeModal = () => {
       setActiveWorldModal(null);
       dialogueRunner.closeDialogue();
@@ -3989,7 +4101,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       activeWorldModal.type === "location" ? "min(760px, 100%)" : "min(520px, 100%)";
 
     if (activeWorldModal.type === "merchant") {
-      const merchant = cityMerchantById.get(activeWorldModal.merchantId) ?? null;
+      const merchant = merchantById.get(activeWorldModal.merchantId) ?? null;
       portrait = resolveMerchantImage?.(merchant);
       title = merchant?.name ?? activeWorldModal.merchantId;
       description = merchant?.description ?? modalLocation?.description;
@@ -4016,7 +4128,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const canQuest = Boolean(
         npc?.canGiveQuests ||
         npc?.questBindings.length ||
-        modalLocation?.questIds.length,
+        modalLocation?.questIds?.length,
       );
       const canTrain = Boolean(npc?.canTrain);
       const canTrade = Boolean(npc?.canTrade);
@@ -4095,8 +4207,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       title = modalLocation?.name ?? activeWorldModal.locationId;
       description = modalLocation?.description;
 
-      const encounter = modalLocation?.encounter;
-      const legacyBattleMapId = modalLocation?.linkedBattleMapId?.trim() || null;
+      const encounter = modalCityLocation?.encounter;
+      const legacyBattleMapId = modalCityLocation?.linkedBattleMapId?.trim() || null;
       const battleMapIds = [
         ...(encounter?.battleMapIds ?? []),
         ...(legacyBattleMapId ? [legacyBattleMapId] : []),
@@ -4104,7 +4216,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         .map((entry) => String(entry).trim())
         .filter(Boolean);
       const uniqueBattleMapIds = Array.from(new Set(battleMapIds));
-      const presets = (encounter?.presets ?? []).filter((preset) => Boolean(preset?.id && preset?.label));
+      const presets = (encounter?.presets ?? []).filter(
+        (preset: { id?: string; label?: string } | null | undefined) =>
+          Boolean(preset?.id && preset?.label),
+      );
 
       const startBattleMap = async (battleMapId?: string | null) => {
         closeModal();
@@ -4188,9 +4303,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         .map((npcId) => npcById.get(npcId))
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
-      const locationShopIds = modalLocation?.shopIds ?? [];
+      const locationShopIds =
+        modalCityLocation?.shopIds
+        ?? modalWorldLocation?.merchantIds
+        ?? [];
       const locationMerchants = locationShopIds
-        .map((merchantId) => cityMerchantById.get(merchantId) ?? null)
+        .map((merchantId) => merchantById.get(merchantId) ?? null)
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
       const hasPeople = locationNpcs.length > 0 || locationMerchants.length > 0;
@@ -4365,15 +4483,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
       );
 
-      const battleMapId = modalLocation?.linkedBattleMapId?.trim();
-      const hasEncounter = Boolean(modalLocation?.encounter) || Boolean(battleMapId);
+      const battleMapId =
+        modalCityLocation?.linkedBattleMapId?.trim()
+        || modalWorldLocation?.battleMapIds?.[0]?.trim()
+        || null;
+      const hasEncounter = Boolean(modalCityLocation?.encounter) || Boolean(battleMapId);
       buttons = (
         <>
           {hasEncounter ? (
             <button
               onClick={() => {
                 closeModal();
-                if (modalLocation?.encounter || battleMapId) {
+                if (modalCityLocation?.encounter || battleMapId) {
                   setActiveWorldModal({
                     type: "encounter",
                     locationId: modalLocation?.id ?? activeWorldModal.locationId,
@@ -5124,7 +5245,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 mode="play"
                 gameplayPaused={worldMapViewerOpen}
                 playerStartPosition={playSpawnPosition}
-                zones={zones}
+                zones={playVisibleZones}
                 regions={regions}
                 playQuestMarkers={playQuestMarkers}
                 playNpcMarkers={playNpcMarkers}
@@ -5162,7 +5283,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 <div className="wm-city-hotspots">
                   {visibleCityLocations.map((location) => {
                     const locationMerchant = location.shopIds?.[0]
-                      ? (cityMerchantById.get(location.shopIds[0]) ?? null)
+                    ? (merchantById.get(location.shopIds[0]) ?? null)
                       : null;
                     const merchantImage =
                       locationMerchant && resolveMerchantImage
@@ -5654,6 +5775,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onDeleteQuestMarker={handleDeleteQuestMarker}
           onPlaceQuestMarkerAtCursor={handlePlaceQuestMarkerAtCursor}
           npcOptions={npcs}
+          locationOptions={validationSnapshot?.locations ?? []}
+          locationPreviewImages={validationSnapshot?.images ?? []}
           selectedNpcIdForPlacement={selectedNpcIdForPlacement}
           onSelectNpcForPlacement={setSelectedNpcIdForPlacement}
           onPlaceNpcAtCursor={handlePlaceNpcAtCursor}

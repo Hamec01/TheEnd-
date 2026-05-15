@@ -63,6 +63,7 @@ export type ValidateWorldMapContentArgs = {
 const KNOWN_ZONE_TYPES: Set<ZoneType> = new Set<ZoneType>([
   'city',
   'settlement',
+  'location',
   'quest',
   'quest_area',
   'random_event_area',
@@ -288,6 +289,19 @@ function validateZoneContract(
         field: 'cityId',
         repairAction: 'repair_city_location',
       });
+    }
+    return;
+  }
+
+  if (zone.type === 'location') {
+    if (actualLayer !== 'locations') {
+      pushContractIssue('warning', 'location.layer', 'Location-маркер должен быть в слое Локации.', 'locations', actualLayer, 'editorLayer', 'assign_default_layer_contract');
+    }
+    if (actualInteraction !== 'enter') {
+      pushContractIssue('warning', 'location.interaction', 'Location-маркер обычно использует interactionMode=enter.', 'enter', actualInteraction, 'interactionMode', 'assign_default_layer_contract');
+    }
+    if (actualClickable !== true) {
+      pushContractIssue('warning', 'location.clickable', 'Location-маркер должен быть кликабельным.', 'true', String(actualClickable), 'playerClickable', 'assign_default_layer_contract');
     }
     return;
   }
@@ -567,6 +581,7 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
 
     const zoneLayer = getZoneLayer(zone);
     const cityId = asNonEmptyString(zone.cityId);
+    const linkedLocationId = asNonEmptyString(zone.linkedLocationId ?? zone.linkedLocation);
     const requiredQuestId = asNonEmptyString(zone.requiredQuestId);
     const requiredItemId = asNonEmptyString(zone.requiredItemId);
     const parentAreaId = asNonEmptyString(zone.parentAreaId);
@@ -583,6 +598,18 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
           field: 'cityId',
         });
       }
+    }
+
+    if (zone.type === 'location' && !linkedLocationId) {
+      pushIssue(issues, nextId, {
+        severity: 'warning',
+        code: 'zone.location.linked_missing',
+        message: 'У zone type=location не указан linkedLocationId.',
+        zoneId: zone.id,
+        zoneName: zone.name,
+        editorLayer: zoneLayer,
+        field: 'linkedLocationId',
+      });
     }
 
     if (requiredQuestId && questsById.size > 0 && !questsById.has(requiredQuestId)) {

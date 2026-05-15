@@ -11,6 +11,7 @@ let editorDataDraft: EditorDataPayload | null = null;
 const ZONE_TYPES: ZoneType[] = [
   'city',
   'settlement',
+  'location',
   'quest',
   'quest_area',
   'random_event_area',
@@ -344,6 +345,12 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     biome: typeof zone.biome === 'string' ? zone.biome : undefined,
     kingdomId: typeof zone.kingdomId === 'string' ? zone.kingdomId : undefined,
     cityId: typeof zone.cityId === 'string' ? zone.cityId : undefined,
+    linkedLocationId:
+      typeof zone.linkedLocationId === 'string'
+        ? zone.linkedLocationId
+        : typeof zone.linkedLocation === 'string'
+          ? zone.linkedLocation
+          : undefined,
     createdAt: isFiniteNumber(zone.createdAt) ? zone.createdAt : Date.now(),
     updatedAt: isFiniteNumber(zone.updatedAt) ? zone.updatedAt : Date.now(),
   };

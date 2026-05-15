@@ -25,6 +25,7 @@ import type {
   AdminMerchant,
   City,
   CityLocation,
+  WorldLocation,
   ContentBackupEnvelope,
   ContentCollectionMap,
   ContentCollectionName,
@@ -59,6 +60,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'skills',
   'merchants',
   'cities',
+  'locations',
   'materials',
   'lootTables',
   'images',
@@ -109,6 +111,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
     skills: db.skills.length,
     merchants: db.merchants.length,
     cities: db.cities.length,
+    locations: db.locations.length,
     materials: db.materials.length,
     lootTables: db.lootTables.length,
     images: db.images.length,
@@ -454,6 +457,7 @@ function createEmptyDatabase(): ContentDatabase {
     skills: [],
     merchants: [],
     cities: [],
+    locations: [],
     materials: [],
     lootTables: [],
     images: [],
@@ -483,6 +487,7 @@ function createSeedDatabase(): ContentDatabase {
     skills: [],
     merchants: MERCHANTS.map((merchant) => seedMerchantFromDomain(merchant, timestamp)),
     cities: seedStarterCities(timestamp),
+    locations: [],
     materials: [],
     lootTables: [],
     images: [],
@@ -1312,6 +1317,8 @@ function normalizeMerchantInput(input: AdminMerchant): AdminMerchant {
     cityId,
     cityLocationId,
     location: input.location?.trim() || undefined,
+    placeType: input.placeType === 'location' ? 'location' : input.placeType === 'city' ? 'city' : undefined,
+    placeId: input.placeId?.trim() || undefined,
     description: input.description?.trim() || undefined,
     portraitPath: input.portraitPath?.trim() || undefined,
     priceMultiplier: normalizePositiveMultiplier(input.priceMultiplier, 1),
@@ -1319,6 +1326,143 @@ function normalizeMerchantInput(input: AdminMerchant): AdminMerchant {
     items: Array.isArray(input.items) ? input.items.map(normalizeMerchantItem).filter((entry) => entry.itemId) : [],
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
+function normalizeLocationInput(input: WorldLocation): WorldLocation {
+  const now = nowIso();
+  const normalizeVariantStringList = (value: unknown): string[] =>
+    Array.isArray(value) ? value.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [];
+
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    slug: input.slug?.trim() || undefined,
+    type: 'location',
+    subtype: typeof input.subtype === 'string' ? input.subtype.trim() || undefined : undefined,
+    status: input.status === 'active' || input.status === 'disabled' || input.status === 'archived' ? input.status : 'draft',
+    description: input.description?.trim() || undefined,
+    shortDescription: input.shortDescription?.trim() || undefined,
+    regionId: input.regionId?.trim() || undefined,
+    parentLocationId: input.parentLocationId?.trim() || undefined,
+    kingdomId: input.kingdomId?.trim() || undefined,
+    factionId: input.factionId?.trim() || undefined,
+    clanId: input.clanId?.trim() || undefined,
+    tribeId: input.tribeId?.trim() || undefined,
+    isHidden: input.isHidden === true,
+    isDiscovered: input.isDiscovered === true,
+    requiresDiscovery: input.requiresDiscovery === true,
+    discoveryQuestId: input.discoveryQuestId?.trim() || undefined,
+    defaultImageId: input.defaultImageId?.trim() || undefined,
+    defaultImagePath: input.defaultImagePath?.trim() || undefined,
+    currentState: input.currentState?.trim() || undefined,
+    stateVariants: Array.isArray(input.stateVariants)
+      ? input.stateVariants
+        .map((variant) => ({
+          ...clone(variant),
+          stateKey: String(variant.stateKey ?? '').trim(),
+          name: String(variant.name ?? '').trim(),
+          descriptionOverride: variant.descriptionOverride?.trim() || undefined,
+          imageId: variant.imageId?.trim() || undefined,
+          imagePath: variant.imagePath?.trim() || undefined,
+          visibleOnMap: variant.visibleOnMap === true,
+          canEnter: variant.canEnter !== false,
+          ownerFactionId: variant.ownerFactionId?.trim() || undefined,
+          npcIds: normalizeVariantStringList(variant.npcIds),
+          merchantIds: normalizeVariantStringList(variant.merchantIds),
+          questIds: normalizeVariantStringList(variant.questIds),
+          dialogueIds: normalizeVariantStringList(variant.dialogueIds),
+          battleMapIds: normalizeVariantStringList(variant.battleMapIds),
+          tags: normalizeVariantStringList(variant.tags),
+        }))
+        .filter((variant) => Boolean(variant.stateKey) && Boolean(variant.name))
+      : [],
+    areas: Array.isArray(input.areas)
+      ? input.areas
+        .map((area) => ({
+          ...clone(area),
+          id: String(area.id ?? '').trim(),
+          name: String(area.name ?? '').trim(),
+          type: area.type?.trim() || undefined,
+          description: area.description?.trim() || undefined,
+          imageId: area.imageId?.trim() || undefined,
+          imagePath: area.imagePath?.trim() || undefined,
+          shapeType: area.shapeType === 'rectangle' || area.shapeType === 'circle' || area.shapeType === 'polygon' || area.shapeType === 'none'
+            ? area.shapeType
+            : 'none',
+          shape: area.shape
+            ? {
+                x: typeof area.shape.x === 'number' && Number.isFinite(area.shape.x) ? area.shape.x : undefined,
+                y: typeof area.shape.y === 'number' && Number.isFinite(area.shape.y) ? area.shape.y : undefined,
+                radius: typeof area.shape.radius === 'number' && Number.isFinite(area.shape.radius) ? area.shape.radius : undefined,
+                width: typeof area.shape.width === 'number' && Number.isFinite(area.shape.width) ? area.shape.width : undefined,
+                height: typeof area.shape.height === 'number' && Number.isFinite(area.shape.height) ? area.shape.height : undefined,
+                points: Array.isArray(area.shape.points)
+                  ? area.shape.points
+                    .filter((point) => point && typeof point === 'object')
+                    .map((point) => ({
+                      x: typeof point.x === 'number' && Number.isFinite(point.x) ? point.x : 0,
+                      y: typeof point.y === 'number' && Number.isFinite(point.y) ? point.y : 0,
+                    }))
+                  : undefined,
+              }
+            : undefined,
+          npcIds: normalizeVariantStringList(area.npcIds),
+          merchantIds: normalizeVariantStringList(area.merchantIds),
+          questIds: normalizeVariantStringList(area.questIds),
+          dialogueIds: normalizeVariantStringList(area.dialogueIds),
+          battleMapIds: normalizeVariantStringList(area.battleMapIds),
+          visibleInStates: normalizeVariantStringList(area.visibleInStates),
+          hiddenUntilQuestId: area.hiddenUntilQuestId?.trim() || undefined,
+          hiddenAfterQuestId: area.hiddenAfterQuestId?.trim() || undefined,
+          canEnter: area.canEnter !== false,
+          isHidden: area.isHidden === true,
+          tags: normalizeVariantStringList(area.tags),
+        }))
+        .filter((area) => Boolean(area.id) && Boolean(area.name))
+      : [],
+    npcIds: normalizeVariantStringList(input.npcIds),
+    merchantIds: normalizeVariantStringList(input.merchantIds),
+    questIds: normalizeVariantStringList(input.questIds),
+    dialogueIds: normalizeVariantStringList(input.dialogueIds),
+    battleMapIds: normalizeVariantStringList(input.battleMapIds),
+    entryRequirements: input.entryRequirements
+      ? {
+          minLevel: typeof input.entryRequirements.minLevel === 'number' && Number.isFinite(input.entryRequirements.minLevel)
+            ? Math.max(0, Math.round(input.entryRequirements.minLevel))
+            : undefined,
+          requiredQuestId: input.entryRequirements.requiredQuestId?.trim() || undefined,
+          requiredCompletedQuestId: input.entryRequirements.requiredCompletedQuestId?.trim() || undefined,
+          requiredItemIds: normalizeVariantStringList(input.entryRequirements.requiredItemIds),
+          requiredFactionId: input.entryRequirements.requiredFactionId?.trim() || undefined,
+          requiredFactionReputation: typeof input.entryRequirements.requiredFactionReputation === 'number'
+            && Number.isFinite(input.entryRequirements.requiredFactionReputation)
+            ? input.entryRequirements.requiredFactionReputation
+            : undefined,
+          requiredRace: normalizeVariantStringList(input.entryRequirements.requiredRace),
+          requiredClass: normalizeVariantStringList(input.entryRequirements.requiredClass),
+          requiredProfession: normalizeVariantStringList(input.entryRequirements.requiredProfession),
+          requiredFlag: input.entryRequirements.requiredFlag?.trim() || undefined,
+        }
+      : undefined,
+    locationEffects: Array.isArray(input.locationEffects)
+      ? input.locationEffects
+        .map((effect) => ({
+          ...clone(effect),
+          type: String(effect.type ?? '').trim(),
+          value: typeof effect.value === 'number' && Number.isFinite(effect.value) ? effect.value : undefined,
+          stat: effect.stat?.trim() || undefined,
+          element: effect.element?.trim() || undefined,
+          description: effect.description?.trim() || undefined,
+        }))
+        .filter((effect) => Boolean(effect.type))
+      : [],
+    tags: normalizeVariantStringList(input.tags),
+    published: input.published === true,
+    hidden: input.hidden === true,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
   };
 }
 
@@ -2001,6 +2145,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       skills: sanitizeIdObjectArray<AdminSkillDefinition>(raw.skills).map((skill) => normalizeSkillInput(skill)),
       merchants: sanitizeIdObjectArray<AdminMerchant>(raw.merchants).map((merchant) => normalizeMerchantInput(merchant)),
       cities: sanitizeIdObjectArray<City>(raw.cities).map((city) => normalizeCityInput(city)).filter((city) => Boolean(city.id)),
+      locations: sanitizeIdObjectArray<WorldLocation>(raw.locations).map((location) => normalizeLocationInput(location)).filter((location) => Boolean(location.id)),
       materials: clone(sanitizeIdObjectArray<Material>(raw.materials)),
       lootTables: clone(sanitizeIdObjectArray<LootTable>(raw.lootTables)),
       images: clone(sanitizeIdObjectArray<StoredImage>(raw.images)),
@@ -2094,6 +2239,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       skills: mergeById(existing.skills, incoming.skills),
       merchants: mergeById(existing.merchants, incoming.merchants),
       cities: mergeById(existing.cities, incoming.cities),
+      locations: mergeById(existing.locations, incoming.locations),
       materials: mergeById(existing.materials, incoming.materials),
       lootTables: mergeById(existing.lootTables, incoming.lootTables),
       images: mergeById(existing.images, incoming.images),
@@ -2126,6 +2272,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       skills: addMissingById(existing.skills, incoming.skills),
       merchants: addMissingById(existing.merchants, incoming.merchants),
       cities: addMissingById(existing.cities, incoming.cities),
+      locations: addMissingById(existing.locations, incoming.locations),
       materials: addMissingById(existing.materials, incoming.materials),
       lootTables: addMissingById(existing.lootTables, incoming.lootTables),
       images: addMissingById(existing.images, incoming.images),
@@ -2486,6 +2633,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else if (collectionName === 'cities') {
       nextEntry = normalizeCityInput(payload as ContentCollectionMap['cities']) as ContentCollectionMap[K];
+    } else if (collectionName === 'locations') {
+      nextEntry = normalizeLocationInput(payload as ContentCollectionMap['locations']) as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       nextEntry = normalizeDialogueInput(payload as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -2530,6 +2679,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else if (collectionName === 'cities') {
       merged = normalizeCityInput(mergedBase as ContentCollectionMap['cities']) as ContentCollectionMap[K];
+    } else if (collectionName === 'locations') {
+      merged = normalizeLocationInput(mergedBase as ContentCollectionMap['locations']) as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       merged = normalizeDialogueInput(mergedBase as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -2581,6 +2732,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.skills) && payload.skills.length > 0) {
       const normalizedSkills = payload.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition));
       db.skills = mergeById(db.skills, normalizedSkills);
+    }
+    if (Array.isArray(payload.locations) && payload.locations.length > 0) {
+      const normalizedLocations = payload.locations.map((location) => normalizeLocationInput(location as WorldLocation));
+      db.locations = mergeById(db.locations, normalizedLocations);
     }
     if (Array.isArray(payload.merchants) && payload.merchants.length > 0) {
       const normalizedMerchants = payload.merchants.map((merchant) => normalizeMerchantInput(merchant as AdminMerchant));

@@ -1052,7 +1052,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       onRuntimeZoneInteract?.(clickedZone, { x, y });
     }
 
-    if (clickedZone?.type === 'city') {
+    if (clickedZone?.type === 'city' || clickedZone?.type === 'location') {
       const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
       pendingCityEntryRef.current = clickedZone.id;
       setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));

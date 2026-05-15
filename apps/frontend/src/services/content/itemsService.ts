@@ -53,6 +53,7 @@ export function extractRawItemsFromImportJson(payload: unknown): unknown[] {
 
 export interface ItemsJsonImportResult {
   created: string[];
+  skippedExisting: string[];
   updated: string[];
   errors: Array<{ id: string; message: string }>;
 }
@@ -61,10 +62,14 @@ export interface ItemsJsonImportResult {
  * Импорт предметов в хранилище контента (то же API, что у формы админки).
  * Существующие id обновляются целиком (после слияния с дефолтами и normalize).
  */
-export async function importItemsFromJsonEntries(entries: unknown[]): Promise<ItemsJsonImportResult> {
+export async function importItemsFromJsonEntries(
+  entries: unknown[],
+  mode: 'addOnly' | 'merge' = 'addOnly',
+): Promise<ItemsJsonImportResult> {
   const existingIds = new Set((await itemsService.getAll()).map((i) => i.id));
   const seen = new Set<string>();
   const created: string[] = [];
+  const skippedExisting: string[] = [];
   const updated: string[] = [];
   const errors: Array<{ id: string; message: string }> = [];
 
@@ -94,8 +99,12 @@ export async function importItemsFromJsonEntries(entries: unknown[]): Promise<It
 
     try {
       if (existingIds.has(id)) {
-        await itemsService.update(id, candidate);
-        updated.push(id);
+        if (mode === 'addOnly') {
+          skippedExisting.push(id);
+        } else {
+          await itemsService.update(id, candidate);
+          updated.push(id);
+        }
       } else {
         await itemsService.create(candidate);
         existingIds.add(id);
@@ -106,7 +115,7 @@ export async function importItemsFromJsonEntries(entries: unknown[]): Promise<It
     }
   }
 
-  return { created, updated, errors };
+  return { created, skippedExisting, updated, errors };
 }
 
 function normalizeItemSlot(slot: AdminItem['slot'] | string | undefined): AdminItem['slot'] {

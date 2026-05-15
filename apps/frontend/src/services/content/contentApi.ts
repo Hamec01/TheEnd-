@@ -1,6 +1,7 @@
 import type { BattleMapDefinition } from '@theend/rpg-domain';
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import type { WorldLocation } from '../../types/location';
 import type { QuestMarkerDefinition } from '../../types/quest';
 import type {
   AdminDialogue,
@@ -30,6 +31,7 @@ export type ContentCollectionName =
   | 'skills'
   | 'merchants'
   | 'cities'
+  | 'locations'
   | 'materials'
   | 'lootTables'
   | 'images'
@@ -100,6 +102,7 @@ export interface ContentSnapshot {
   skills: AdminSkill[];
   merchants: AdminMerchant[];
   cities: City[];
+  locations: WorldLocation[];
   materials: Material[];
   lootTables: LootTable[];
   images: StoredImage[];

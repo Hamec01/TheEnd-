@@ -644,11 +644,11 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       const errPreview = result.errors.slice(0, 8).map((e) => `${e.id}: ${translateAdminErrorMessage(e.message)}`).join('; ');
       const extra = result.errors.length > 8 ? ` …ещё ${result.errors.length - 8}` : '';
       setStatus(
-        `Импорт завершён: создано ${result.created.length}, обновлено ${result.updated.length}, ошибок ${result.errors.length}.`
+        `?????? ????????: ??????? ${result.created.length}, ????????? ???????????? ${result.skippedExisting.length}, ?????? ${result.errors.length}.`
         + (result.errors.length ? ` ${errPreview}${extra}` : ''),
       );
       if (result.errors.length === 0) {
-        setSaveState({ state: 'saved', message: `Импорт: +${result.created.length} / ~${result.updated.length}` });
+        setSaveState({ state: 'saved', message: `??????: +${result.created.length} / =${result.skippedExisting.length}` });
       } else {
         setSaveState({ state: 'warning', message: `Импорт с ошибками: ${result.errors.length}` });
       }

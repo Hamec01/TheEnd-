@@ -6,6 +6,7 @@ import {
   getContentEntry,
   updateContentEntry,
 } from './content/contentApi';
+import type { JsonImportMode } from './content/adminJsonImportExport';
 
 let cache: DialogueDefinition[] = [];
 let loaded = false;
@@ -148,29 +149,49 @@ export async function exportDialoguesJson(): Promise<string> {
   return JSON.stringify(cache, null, 2);
 }
 
-export async function importDialoguesJson(raw: string): Promise<number> {
+export async function importDialoguesJson(raw: string, mode: JsonImportMode = 'addOnly'): Promise<number> {
   const parsed = JSON.parse(raw) as DialogueDefinition[];
   const values = Array.isArray(parsed) ? parsed : [];
 
   await ensureDialoguesLoaded();
   const existingIds = new Set(cache.map((entry) => entry.id));
+  const seen = new Set<string>();
+  const created: string[] = [];
+  const skippedExisting: string[] = [];
+  const updated: string[] = [];
+  const errors: Array<{ id: string; message: string }> = [];
 
-  let count = 0;
   for (const entry of values) {
-    if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !entry.id.trim()) {
+    if (!entry || typeof entry !== 'object') {
+      errors.push({ id: '—', message: 'Элемент списка должен быть объектом.' });
       continue;
     }
-    const id = entry.id.trim();
-    if (existingIds.has(id)) {
-      await updateContentEntry<DialogueDefinition>('dialogues', id, entry);
-    } else {
-      await createContentEntry<DialogueDefinition>('dialogues', entry);
-      existingIds.add(id);
+    const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+    if (!id) {
+      errors.push({ id: '—', message: 'У записи нет строкового id.' });
+      continue;
     }
-    count += 1;
+    if (seen.has(id)) {
+      errors.push({ id, message: 'Повторяющийся id внутри файла.' });
+      continue;
+    }
+    seen.add(id);
+
+    if (existingIds.has(id)) {
+      if (mode === 'addOnly') {
+        skippedExisting.push(id);
+      } else {
+        await updateContentEntry<DialogueDefinition>('dialogues', id, { ...entry, id });
+        updated.push(id);
+      }
+    } else {
+      await createContentEntry<DialogueDefinition>('dialogues', { ...entry, id });
+      existingIds.add(id);
+      created.push(id);
+    }
   }
 
   invalidateCache();
   await ensureDialoguesLoaded(true);
-  return count;
+  return created.length;
 }

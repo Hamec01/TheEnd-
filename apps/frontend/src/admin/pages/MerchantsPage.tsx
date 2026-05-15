@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
-import type { AdminItem, AdminMerchant, MerchantType } from '../../services/content/models';
+import type { AdminItem, AdminMerchant, MerchantType, StoredImage } from '../../services/content/models';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
+import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { extractRawMerchantsFromImportJson, importMerchantsFromJsonEntries, merchantsService, validateMerchant } from '../../services/content/merchantsService';
 import { cityService } from '../../services/cityRepository';
 import { uid } from '../../services/content/storage';
@@ -39,6 +40,7 @@ function emptyMerchant(): AdminMerchant {
 export function MerchantsPage() {
   const [merchants, setMerchants] = useState<AdminMerchant[]>([]);
   const [items, setItems] = useState<AdminItem[]>([]);
+  const [images, setImages] = useState<StoredImage[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -49,9 +51,15 @@ export function MerchantsPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh(nextSelectedId: string | null = selectedId) {
-    const [allMerchants, allItems] = await Promise.all([merchantsService.getAll(), itemsService.getAll()]);
+    const [allMerchants, allItems, allImages] = await Promise.all([
+      merchantsService.getAll(),
+      itemsService.getAll(),
+      loadRuntimeImages().catch(() => []),
+    ]);
+
     setMerchants(allMerchants);
     setItems(allItems.filter((item) => item.isEnabled));
+    setImages(allImages);
 
     if (!nextSelectedId) {
       return;
@@ -79,7 +87,7 @@ export function MerchantsPage() {
       collectionKey: 'merchants',
       entries: merchants,
     });
-    setStatus(`Экспорт: merchants (${merchants.length})`);
+    setStatus(`Экспортировано торговцев: ${merchants.length}`);
   }
 
   async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
@@ -98,12 +106,12 @@ export function MerchantsPage() {
       await refresh();
       const parts = [
         result.created.length ? `создано: ${result.created.length}` : null,
-        result.updated.length ? `обновлено: ${result.updated.length}` : null,
+        result.skippedExisting.length ? `пропущено существующих: ${result.skippedExisting.length}` : null,
         result.errors.length ? `ошибок: ${result.errors.length}` : null,
       ].filter(Boolean);
       setStatus(`Импорт торговцев: ${parts.join(', ') || 'нет изменений'}`);
     } catch (error) {
-      setStatus(`Импорт: ${(error as Error).message}`);
+      setStatus(`Импорт: ${translateAdminErrorMessage((error as Error).message)}`);
     } finally {
       setIsImporting(false);
     }
@@ -120,15 +128,15 @@ export function MerchantsPage() {
   }, [draft.cityLocationId, selectedCity]);
 
   const visibleMerchants = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const normalizedQuery = query.trim().toLowerCase();
     return merchants.filter((merchant) => {
-      if (!q) {
+      if (!normalizedQuery) {
         return true;
       }
 
-      return merchant.id.toLowerCase().includes(q)
-        || merchant.name.toLowerCase().includes(q)
-        || merchant.city.toLowerCase().includes(q);
+      return merchant.id.toLowerCase().includes(normalizedQuery)
+        || merchant.name.toLowerCase().includes(normalizedQuery)
+        || merchant.city.toLowerCase().includes(normalizedQuery);
     });
   }, [merchants, query]);
 
@@ -138,25 +146,25 @@ export function MerchantsPage() {
   );
 
   const visibleItems = useMemo(() => {
-    const q = itemSearch.trim().toLowerCase();
+    const normalizedQuery = itemSearch.trim().toLowerCase();
     return items
-      .filter((item) => !q || item.id.toLowerCase().includes(q) || item.name.toLowerCase().includes(q))
+      .filter((item) => !normalizedQuery || item.id.toLowerCase().includes(normalizedQuery) || item.name.toLowerCase().includes(normalizedQuery))
       .sort((left, right) => {
         const leftSelected = selectedItemIds.has(left.id);
         const rightSelected = selectedItemIds.has(right.id);
         if (leftSelected !== rightSelected) {
           return leftSelected ? -1 : 1;
         }
-
-        const leftTime = Date.parse(left.updatedAt || left.createdAt || '');
-        const rightTime = Date.parse(right.updatedAt || right.createdAt || '');
-        if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-          return rightTime - leftTime;
-        }
-
         return left.name.localeCompare(right.name, 'ru', { sensitivity: 'base' });
       });
   }, [itemSearch, items, selectedItemIds]);
+
+  const assignedItems = useMemo(
+    () => draft.items
+      .map((entry) => ({ binding: entry, item: items.find((candidate) => candidate.id === entry.itemId) ?? null }))
+      .sort((left, right) => (left.item?.name || left.binding.itemId).localeCompare(right.item?.name || right.binding.itemId, 'ru', { sensitivity: 'base' })),
+    [draft.items, items],
+  );
 
   const selectedMerchant = useMemo(
     () => (selectedId ? merchants.find((entry) => entry.id === selectedId) ?? null : null),
@@ -174,6 +182,10 @@ export function MerchantsPage() {
       return 'is-olive';
     }
     return 'is-sky';
+  }
+
+  function getItemThumbLabel(item: AdminItem): string {
+    return (item.name || item.id || '?').slice(0, 2).toUpperCase();
   }
 
   function select(merchant: AdminMerchant) {
@@ -227,9 +239,10 @@ export function MerchantsPage() {
           const created = await merchantsService.rename(selectedId, normalized.id, normalized);
           setSelectedId(created.id);
           await refresh(created.id);
-          setStatus(`Merchant renamed: ${created.id}`);
+          setStatus(`Торговец переименован: ${created.id}`);
           return;
         }
+
         await merchantsService.update(selectedId, normalized);
         await refresh(selectedId);
         setStatus(`Торговец обновлён: ${selectedId}`);
@@ -239,7 +252,6 @@ export function MerchantsPage() {
         await refresh(id);
         setStatus(`Торговец создан: ${id}`);
       }
-
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
     }
@@ -259,7 +271,7 @@ export function MerchantsPage() {
     if (!selectedId) {
       return;
     }
-    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+    if (!window.confirm('Удалить торговца? Это действие нельзя отменить.')) {
       return;
     }
 
@@ -271,11 +283,11 @@ export function MerchantsPage() {
   }
 
   return (
-    <div className="admin-page-grid">
-      <section className="admin-form-panel">
+    <div className="merchant-admin-layout">
+      <section className="admin-form-panel merchant-admin-editor">
         <div className="admin-form-grid">
           <label>
-            <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор торговца. На него ссылаются городские точки и игровые сервисы." />
+            <AdminFieldLabel label="ID" hint="Технический уникальный идентификатор торговца." />
             <AdminHelpTooltip section="merchants" field="id" />
             <input value={draft.id} onChange={(event) => patch({ id: event.target.value })} />
           </label>
@@ -287,35 +299,33 @@ export function MerchantsPage() {
           </label>
 
           <label>
-            <AdminFieldLabel label="Город" hint="Название города. Для появления в Арклейне укажи здесь: Арклейн." />
+            <AdminFieldLabel label="Город" hint="Старое текстовое поле для совместимости." />
             <input value={draft.city} onChange={(event) => patch({ city: event.target.value })} />
           </label>
 
           <label>
-            <AdminFieldLabel label="Локация" hint="Более точное место внутри города: рынок, кузня, таверна, квартал и т.д. По этому полю игра старается поставить торговца в подходящую часть города." />
+            <AdminFieldLabel label="Локация" hint="Старое текстовое поле места внутри города." />
             <input value={draft.location ?? ''} onChange={(event) => patch({ location: event.target.value })} />
           </label>
 
           <label>
-            <AdminFieldLabel label="City (ID)" hint="Привязка к City Editor: выбери город по id. Это не ломает старые поля 'Город/Локация'." />
+            <AdminFieldLabel label="City (ID)" hint="Связь с редактором городов." />
             <select value={draft.cityId ?? ''} onChange={(event) => patch({ cityId: event.target.value || undefined, cityLocationId: undefined })}>
               <option value="">Не задано</option>
               {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
             </select>
           </label>
-          {draft.cityId && !selectedCity ? <p className="muted">City not found</p> : null}
 
           <label>
-            <AdminFieldLabel label="City Location (ID)" hint="Локация внутри выбранного города (из City Editor). Список фильтруется по выбранному City." />
+            <AdminFieldLabel label="City Location (ID)" hint="Место внутри выбранного города." />
             <select value={draft.cityLocationId ?? ''} onChange={(event) => patch({ cityLocationId: event.target.value || undefined })} disabled={!draft.cityId}>
               <option value="">Не задано</option>
               {(selectedCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
             </select>
           </label>
-          {draft.cityLocationId && draft.cityId && !selectedCityLocation ? <p className="muted">Location not found</p> : null}
 
           <label>
-            <AdminFieldLabel label="Тип" hint="Роль торговца. Помогает понять, чем именно он торгует." />
+            <AdminFieldLabel label="Тип" hint="Роль торговца." />
             <select value={draft.type} onChange={(event) => patch({ type: event.target.value as MerchantType })}>
               {MERCHANT_TYPES.map((type) => (
                 <option key={type} value={type}>
@@ -326,7 +336,7 @@ export function MerchantsPage() {
           </label>
 
           <label>
-            <AdminFieldLabel label="Множитель цены" hint="Наценка или скидка торговца. 1 — обычная цена, 1.2 — на 20% дороже, 0.8 — на 20% дешевле." />
+            <AdminFieldLabel label="Множитель цены" hint="1 — обычная цена, 1.2 — дороже, 0.8 — дешевле." />
             <input
               type="number"
               step="0.05"
@@ -338,12 +348,15 @@ export function MerchantsPage() {
 
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.isEnabled} onChange={(event) => patch({ isEnabled: event.target.checked })} />
-            <AdminFieldLabel label="Включён" hint="Если выключить, торговец сохранится в базе, но не будет использоваться в игре." />
+            <AdminFieldLabel label="Включён" hint="Отключённый торговец сохраняется в базе, но не используется в игре." />
           </label>
         </div>
 
+        {draft.cityId && !selectedCity ? <p className="muted">Выбранный город не найден.</p> : null}
+        {draft.cityLocationId && draft.cityId && !selectedCityLocation ? <p className="muted">Выбранное место внутри города не найдено.</p> : null}
+
         <label>
-          <AdminFieldLabel label="Описание" hint="Короткое описание торговца: чем известен, что продаёт, какой у него стиль." />
+          <AdminFieldLabel label="Описание" hint="Короткое описание торговца." />
           <AdminHelpTooltip section="merchants" field="description" />
           <textarea rows={3} value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value })} />
         </label>
@@ -355,45 +368,64 @@ export function MerchantsPage() {
           presetId="merchant-portrait"
           suggestedName={draft.name || draft.id || 'merchant-portrait'}
           label="Портрет торговца"
-          hint="Загружает портрет NPC, который будет показываться в городе и в окне торговли."
+          hint="Портрет NPC, который будет показан в интерфейсе торговли."
         />
 
         <h4 title="Список предметов, которые торговец может продавать игроку.">Ассортимент торговца</h4>
         <input placeholder="Поиск предметов для добавления" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} />
-        <p className="muted">Доступно предметов: {visibleItems.length}. Новые и уже выбранные позиции показаны выше.</p>
+        <p className="muted">Клик по предмету добавляет его торговцу. Повторный клик убирает предмет из ассортимента.</p>
 
-        <div className="admin-scroll-list merchant-item-pick">
+        <div className="card">
+          <h4>Выбранные товары</h4>
+          {assignedItems.length === 0 ? (
+            <p className="muted">Пока ничего не выбрано. Выберите предметы из каталога ниже.</p>
+          ) : (
+            <div className="admin-linked-editor-grid">
+              {assignedItems.map(({ binding, item }) => (
+                <div key={binding.itemId} className={`admin-linked-editor-row ${binding.isEnabled === false ? 'is-disabled' : ''}`}>
+                  <div>
+                    <strong>{item?.name || binding.itemId}</strong>
+                    <span>{binding.itemId} | {translateItemType(item?.type || 'misc')}</span>
+                  </div>
+                  <label>
+                    <AdminFieldLabel label="Запас" hint="Сколько единиц товара доступно." />
+                    <input type="number" min={0} value={binding.stock ?? 0} onChange={(event) => patchItem(binding.itemId, { stock: Number(event.target.value) || 0 })} />
+                  </label>
+                  <label className="zone-editor-checkbox">
+                    <input type="checkbox" checked={binding.infiniteStock ?? false} onChange={(event) => patchItem(binding.itemId, { infiniteStock: event.target.checked })} />
+                    <AdminFieldLabel label="Бесконечно" hint="Товар не заканчивается." />
+                  </label>
+                  <label className="zone-editor-checkbox">
+                    <input type="checkbox" checked={binding.isEnabled ?? true} onChange={(event) => patchItem(binding.itemId, { isEnabled: event.target.checked })} />
+                    <AdminFieldLabel label="Показывать" hint="Скрытый товар остаётся привязанным, но не показывается игроку." />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="admin-linked-grid merchant-item-pick">
           {visibleItems.map((item) => {
-            const assigned = draft.items.find((entry) => entry.itemId === item.id);
+            const assigned = selectedItemIds.has(item.id);
+            const image = resolveStoredImageSource(item.imagePath, images);
 
             return (
-              <div key={item.id} className={`merchant-item-row ${assigned ? 'is-active' : ''}`}>
-                <button onClick={() => toggleItem(item.id)}>{assigned ? 'Убрать' : 'Добавить'}</button>
-
-                <div>
-                  <strong>{item.name}</strong>
-                  <span>{item.id} | {translateItemType(item.type)}</span>
+              <button
+                key={item.id}
+                type="button"
+                className={`admin-linked-card ${assigned ? 'is-active' : ''}`}
+                onClick={() => toggleItem(item.id)}
+                title={assigned ? 'Убрать у торговца' : 'Добавить торговцу'}
+              >
+                <div className="admin-linked-thumb">
+                  {image ? <img src={image} alt={item.name} /> : getItemThumbLabel(item)}
                 </div>
-
-                {assigned ? (
-                  <>
-                    <label>
-                      <AdminFieldLabel label="Запас" hint="Сколько единиц этого предмета доступно у торговца. Если включён бесконечный запас, число можно игнорировать." />
-                      <input type="number" min={0} value={assigned.stock ?? 0} onChange={(event) => patchItem(item.id, { stock: Number(event.target.value) || 0 })} />
-                    </label>
-
-                    <label className="zone-editor-checkbox">
-                      <input type="checkbox" checked={assigned.infiniteStock ?? false} onChange={(event) => patchItem(item.id, { infiniteStock: event.target.checked })} />
-                      <AdminFieldLabel label="Бесконечный запас" hint="Если включено, этот предмет никогда не закончится у торговца." />
-                    </label>
-
-                    <label className="zone-editor-checkbox">
-                      <input type="checkbox" checked={assigned.isEnabled ?? true} onChange={(event) => patchItem(item.id, { isEnabled: event.target.checked })} />
-                      <AdminFieldLabel label="Показывать" hint="Если выключить, предмет останется привязан к торговцу, но игрок не увидит его в продаже." />
-                    </label>
-                  </>
-                ) : null}
-              </div>
+                <strong>{item.name}</strong>
+                <small>{item.id}</small>
+                <span>{translateItemType(item.type)}</span>
+                <span>{assigned ? 'Выбран' : 'Не выбран'}</span>
+              </button>
             );
           })}
         </div>
@@ -407,12 +439,12 @@ export function MerchantsPage() {
         <p className="muted">{status}</p>
       </section>
 
-      <section className="admin-items-catalog card">
+      <section className="admin-items-catalog card merchant-admin-library">
         <div className="admin-catalog-header">
           <div>
             <p className="admin-catalog-kicker">City Services</p>
             <h3>Все торговцы</h3>
-            <p className="muted">Выбирай торговца снизу, как обычный значок, и редактируй его в форме выше.</p>
+            <p className="muted">Выберите торговца из каталога, как в базе предметов, и редактируйте его слева.</p>
           </div>
           <div className="admin-catalog-metrics">
             <span>{visibleMerchants.length} в выдаче</span>
@@ -420,13 +452,13 @@ export function MerchantsPage() {
           </div>
         </div>
 
-      <div className="admin-list-tools admin-catalog-toolbar">
-        <input placeholder="Поиск по id, имени или городу" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <button onClick={exportJson}>Экспорт JSON</button>
-        <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
-        <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
-        <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
-      </div>
+        <div className="admin-list-tools admin-catalog-toolbar">
+          <input placeholder="Поиск по id, имени или городу" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <button onClick={exportJson}>Экспорт JSON</button>
+          <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+          <button onClick={() => { setSelectedId(null); setDraft(emptyMerchant()); }}>Новый торговец</button>
+        </div>
 
         <div className="admin-items-selected-row">
           <strong>Сейчас редактируется:</strong>

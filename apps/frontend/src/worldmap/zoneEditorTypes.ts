@@ -3,6 +3,7 @@ export type ZoneShape = 'circle' | 'polygon' | 'rect';
 export type ZoneType =
   | 'city'
   | 'settlement'
+  | 'location'
   | 'quest'
   | 'quest_area'
   | 'random_event_area'
@@ -96,6 +97,8 @@ export interface WorldMapZone {
   biome?: string;
   kingdomId?: string;
   cityId?: string;
+  linkedLocationId?: string;
+  linkedLocation?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -142,6 +145,7 @@ export interface ZoneEditorDraft {
   biome: string;
   kingdomId: string;
   cityId: string;
+  linkedLocationId: string;
   createdAt: number;
   updatedAt: number;
   selectedPointIndex: number | null;
@@ -222,6 +226,7 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     biome: '',
     kingdomId: '',
     cityId: '',
+    linkedLocationId: '',
     createdAt: now,
     updatedAt: now,
     selectedPointIndex: null,
@@ -275,6 +280,7 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     biome: zone.biome ?? '',
     kingdomId: zone.kingdomId ?? '',
     cityId: zone.cityId ?? '',
+    linkedLocationId: zone.linkedLocationId ?? zone.linkedLocation ?? '',
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
     selectedPointIndex: null,
@@ -345,6 +351,7 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     biome: draft.biome.trim() || undefined,
     kingdomId: draft.kingdomId.trim() || undefined,
     cityId: draft.cityId.trim() || undefined,
+    linkedLocationId: draft.linkedLocationId.trim() || undefined,
     createdAt: existingCreatedAt ?? draft.createdAt ?? now,
     updatedAt: now,
   };

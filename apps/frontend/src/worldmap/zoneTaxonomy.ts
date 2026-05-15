@@ -61,7 +61,7 @@ export const MAP_EDITOR_LAYER_OPTIONS: Array<{
 
 export const ZONE_TYPES_BY_LAYER: Record<MapEditorLayer, ZoneType[]> = {
   areas: ['kingdom_area', 'faction_area', 'city_area', 'danger_area', 'hidden_area', 'safe'],
-  locations: ['city', 'settlement', 'landmark', 'dungeon', 'faction'],
+  locations: ['city', 'settlement', 'location', 'landmark', 'dungeon', 'faction'],
   quests: ['quest', 'quest_area', 'story', 'event'],
   resources: ['resource', 'resource_area', 'profession'],
   zones: ['danger', 'grind', 'random_event_area', 'transition', 'fast_travel', 'rest', 'locked', 'safe'],
@@ -84,6 +84,7 @@ const LAYER_TYPE_COLORS: Record<MapEditorLayer, Partial<Record<ZoneType, string>
   locations: {
     city: '#d6b35f',
     settlement: '#c9a35a',
+    location: '#b99652',
     landmark: '#e0c76f',
     dungeon: '#8f6bd9',
     faction: '#b883d9',
@@ -162,7 +163,7 @@ export function getDefaultLayerVisibilityState(): LayerVisibilityState {
 }
 
 export function getDefaultInteractionMode(type: ZoneType): ZoneInteractionMode {
-  if (type === 'city' || type === 'settlement' || type === 'dungeon') {
+  if (type === 'city' || type === 'settlement' || type === 'location' || type === 'dungeon') {
     return 'enter';
   }
   if (type === 'landmark') {
@@ -199,15 +200,15 @@ export function getDefaultInteractionMode(type: ZoneType): ZoneInteractionMode {
 }
 
 export function getDefaultPlayerClickable(type: ZoneType): boolean {
-  return ['city', 'settlement', 'landmark', 'dungeon', 'faction', 'quest', 'resource', 'profession'].includes(type);
+  return ['city', 'settlement', 'location', 'landmark', 'dungeon', 'faction', 'quest', 'resource', 'profession'].includes(type);
 }
 
 export function getDefaultBlocksClick(type: ZoneType): boolean {
-  return ['city', 'settlement', 'dungeon', 'danger_area', 'locked', 'hidden_area'].includes(type);
+  return ['city', 'settlement', 'location', 'dungeon', 'danger_area', 'locked', 'hidden_area'].includes(type);
 }
 
 export function getDefaultPassiveEffects(type: ZoneType): boolean | string[] {
-  if (type === 'city' || type === 'settlement' || type === 'dungeon' || type === 'landmark') {
+  if (type === 'city' || type === 'settlement' || type === 'location' || type === 'dungeon' || type === 'landmark') {
     return false;
   }
   if (type === 'kingdom_area') {
@@ -378,6 +379,12 @@ export function normalizeWorldMapZone(zone: WorldMapZone): WorldMapZone {
     blocksClick: repairedBlocksClick,
     passiveEffects: repairedPassiveEffects,
     color,
+    linkedLocationId:
+      typeof raw.linkedLocationId === 'string'
+        ? raw.linkedLocationId
+        : typeof raw.linkedLocation === 'string'
+          ? raw.linkedLocation
+          : zone.linkedLocationId,
   };
 }
 

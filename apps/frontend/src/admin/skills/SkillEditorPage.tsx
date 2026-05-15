@@ -227,7 +227,7 @@ export function SkillEditorPage() {
       await refresh();
       const parts = [
         result.created.length ? `created: ${result.created.length}` : null,
-        result.updated.length ? `updated: ${result.updated.length}` : null,
+        result.skippedExisting.length ? `skipped existing: ${result.skippedExisting.length}` : null,
         result.errors.length ? `errors: ${result.errors.length}` : null,
       ].filter(Boolean);
       setStatus(`Import skills: ${parts.join(', ') || 'no changes'}`);
