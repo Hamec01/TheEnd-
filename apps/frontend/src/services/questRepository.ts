@@ -469,6 +469,11 @@ export function savePlayerQuestState(state: PlayerQuestState): void {
   });
 }
 
+export function deletePlayerQuestState(playerId: string, questId: string): void {
+  const next = getAllPlayerQuestStates().filter((entry) => !(entry.playerId === playerId && entry.questId === questId));
+  writeArray(PLAYER_QUESTS_KEY, next);
+}
+
 export function getRandomZoneCooldowns(): RandomQuestCooldown[] {
   return readArray<RandomQuestCooldown>(RANDOM_ZONE_COOLDOWNS_KEY);
 }

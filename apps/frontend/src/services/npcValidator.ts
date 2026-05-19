@@ -10,6 +10,9 @@ function hasId(list: string[], id: string | undefined): boolean {
 export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldData): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const safeDialogues = Array.isArray((npc as any).dialogues) ? (npc as any).dialogues : [];
+  const safeQuestBindings = Array.isArray((npc as any).questBindings) ? (npc as any).questBindings : [];
+  const safeMapBindings = Array.isArray((npc as any).mapBindings) ? (npc as any).mapBindings : [];
 
   if (npc.status === 'active' && !npc.name.trim()) {
     errors.push('Active NPC must have a name.');
@@ -31,7 +34,7 @@ export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldDat
     errors.push('Hostile NPC requires combat data.');
   }
 
-  if (npc.canTalk && npc.dialogues.length === 0 && !npc.description.trim()) {
+  if (npc.canTalk && safeDialogues.length === 0 && !String(npc.description ?? '').trim()) {
     errors.push('canTalk is true but there is no dialogue and no fallback description.');
   }
 
@@ -39,19 +42,19 @@ export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldDat
     errors.push(`Broken trader reference: ${npc.traderId}.`);
   }
 
-  for (const binding of npc.questBindings) {
+  for (const binding of safeQuestBindings) {
     if (!hasId(worldData.questIds, binding.questId)) {
       errors.push(`Broken quest reference: ${binding.questId}.`);
     }
   }
 
-  for (const dialogueBinding of npc.dialogues) {
+  for (const dialogueBinding of safeDialogues) {
     if (!hasId(worldData.dialogueIds, dialogueBinding.dialogueId)) {
       errors.push(`Broken dialogue reference: ${dialogueBinding.dialogueId}.`);
     }
   }
 
-  for (const mapBinding of npc.mapBindings) {
+  for (const mapBinding of safeMapBindings) {
     if (!hasId(worldData.mapIds, mapBinding.mapId)) {
       errors.push(`Broken map reference: ${mapBinding.mapId}.`);
     }
@@ -74,7 +77,8 @@ export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldDat
       }
     }
 
-    for (const skillId of npc.combat.skillIds) {
+    const safeSkillIds = Array.isArray((npc.combat as any).skillIds) ? (npc.combat as any).skillIds : [];
+    for (const skillId of safeSkillIds) {
       if (!hasId(worldData.skillIds, skillId)) {
         errors.push(`Broken combat skill reference: ${skillId}.`);
       }
@@ -82,13 +86,15 @@ export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldDat
   }
 
   if (npc.inventory) {
-    for (const itemId of npc.inventory.itemIds) {
+    const safeItemIds = Array.isArray((npc.inventory as any).itemIds) ? (npc.inventory as any).itemIds : [];
+    for (const itemId of safeItemIds) {
       if (!hasId(worldData.itemIds, itemId)) {
         errors.push(`Broken inventory item reference: ${itemId}.`);
       }
     }
 
-    for (const questItemId of npc.inventory.questItemIds) {
+    const safeQuestItemIds = Array.isArray((npc.inventory as any).questItemIds) ? (npc.inventory as any).questItemIds : [];
+    for (const questItemId of safeQuestItemIds) {
       if (!hasId(worldData.questItemIds, questItemId)) {
         errors.push(`Broken quest item reference: ${questItemId}.`);
       }
@@ -112,13 +118,13 @@ export function validateNpc(npc: NpcDefinition, worldData: NpcValidationWorldDat
   if (!npc.portraitUrl) {
     warnings.push('NPC has no portrait.');
   }
-  if (npc.mapBindings.length === 0) {
+  if (safeMapBindings.length === 0) {
     warnings.push('NPC has no map bindings.');
   }
   if (npc.isUnique && npc.canRespawn) {
     warnings.push('Unique NPC has respawn enabled.');
   }
-  if (npc.canGiveQuests && npc.questBindings.length === 0) {
+  if (npc.canGiveQuests && safeQuestBindings.length === 0) {
     warnings.push('canGiveQuests is true but quest bindings are empty.');
   }
   if (npc.canTrain && !npc.trainer) {

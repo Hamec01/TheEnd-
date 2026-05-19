@@ -81,6 +81,19 @@ export class CharacterRuntimeController {
     return this.arenaService.updateCharacterResources(characterId, dto);
   }
 
+  @Patch('inventory/dev')
+  async adjustInventory(
+    @Param('characterId') characterId: string,
+    @Body() dto: { itemId?: string; quantityDelta?: number },
+  ) {
+    await this.arenaService.adjustInventoryItemQuantityForDev(
+      characterId,
+      String(dto.itemId ?? ''),
+      Number(dto.quantityDelta ?? 0),
+    );
+    return this.arenaService.getHubState(characterId);
+  }
+
   @Put('quest-states/:questId')
   async saveQuestState(
     @Param('characterId') characterId: string,

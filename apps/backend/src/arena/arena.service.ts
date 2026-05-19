@@ -1565,6 +1565,38 @@ export class ArenaService implements OnModuleInit {
     return next;
   }
 
+  async adjustInventoryItemQuantityForDev(characterId: string, itemId: string, quantityDelta: number): Promise<void> {
+    const normalizedItemId = String(itemId ?? '').trim();
+    const safeDelta = Math.trunc(Number(quantityDelta));
+
+    if (!normalizedItemId) {
+      throw new BadRequestException('itemId is required.');
+    }
+
+    if (!Number.isFinite(safeDelta) || safeDelta === 0) {
+      throw new BadRequestException('quantityDelta must be a non-zero number.');
+    }
+
+    this.contentService.resolveItemById(normalizedItemId);
+
+    if (isFileStorageMode()) {
+      await this.requireRuntimeCharacter(characterId);
+      await this.updateRuntimeInventoryItemQuantity(characterId, normalizedItemId, safeDelta);
+      return;
+    }
+
+    this.assertDatabaseEnabled();
+    await this.ensureCharacterExists(characterId);
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (safeDelta > 0) {
+        await this.incrementInventoryItem(tx, characterId, normalizedItemId, safeDelta);
+        return;
+      }
+
+      await this.decrementInventoryItem(tx, characterId, normalizedItemId, Math.abs(safeDelta));
+    });
+  }
+
   private async sanitizeAllCharactersInventoryAndEquipment(): Promise<void> {
     const characters = await this.prisma.character.findMany({
       include: {

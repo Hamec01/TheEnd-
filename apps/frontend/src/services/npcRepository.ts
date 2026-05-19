@@ -6,10 +6,12 @@ import {
   updateContentEntry,
 } from './content/contentApi';
 import type { JsonImportMode } from './content/adminJsonImportExport';
+import { normalizeNpcForAdmin } from './npcAdminNormalization';
 
 let cache: NpcDefinition[] = [];
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
+let adminNormalizationIssuesById = new Map<string, string[]>();
 
 export async function ensureNpcsLoaded(force = false): Promise<void> {
   if (loaded && !force) {
@@ -17,7 +19,15 @@ export async function ensureNpcsLoaded(force = false): Promise<void> {
   }
   if (!loadPromise) {
     loadPromise = getContentCollection<NpcDefinition>('npcs').then((entries) => {
-      cache = entries;
+      const issues = new Map<string, string[]>();
+      cache = (Array.isArray(entries) ? entries : []).map((entry) => {
+        const result = normalizeNpcForAdmin(entry);
+        if (result.issues.length > 0) {
+          issues.set(result.npc.id || '(missing id)', result.issues);
+        }
+        return result.npc;
+      });
+      adminNormalizationIssuesById = issues;
       loaded = true;
       loadPromise = null;
     }).catch((error) => {
@@ -38,6 +48,10 @@ export function getAllNpcs(): NpcDefinition[] {
 
 export function getNpcById(id: string): NpcDefinition | null {
   return cache.find((entry) => entry.id === id) ?? null;
+}
+
+export function getNpcAdminNormalizationIssues(id: string): string[] {
+  return adminNormalizationIssuesById.get(id) ?? [];
 }
 
 export async function saveNpc(npc: NpcDefinition): Promise<NpcDefinition> {
@@ -130,7 +144,8 @@ export async function importNpcsJson(raw: string, mode: JsonImportMode = 'addOnl
       errors.push({ id: '—', message: 'Элемент списка должен быть объектом.' });
       continue;
     }
-    const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+    const normalized = normalizeNpcForAdmin(entry);
+    const id = typeof normalized.npc.id === 'string' ? normalized.npc.id.trim() : '';
     if (!id) {
       errors.push({ id: '—', message: 'У записи нет строкового id.' });
       continue;
@@ -145,11 +160,11 @@ export async function importNpcsJson(raw: string, mode: JsonImportMode = 'addOnl
       if (mode === 'addOnly') {
         skippedExisting.push(id);
       } else {
-        await updateContentEntry<NpcDefinition>('npcs', id, { ...entry, id });
+        await updateContentEntry<NpcDefinition>('npcs', id, { ...normalized.npc, id });
         updated.push(id);
       }
     } else {
-      await createContentEntry<NpcDefinition>('npcs', { ...entry, id });
+      await createContentEntry<NpcDefinition>('npcs', { ...normalized.npc, id });
       existingIds.add(id);
       created.push(id);
     }

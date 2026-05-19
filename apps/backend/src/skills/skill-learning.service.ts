@@ -499,6 +499,52 @@ export class SkillLearningService {
     };
   }
 
+  async revokeSkillFromCharacter(
+    characterId: string,
+    skillId: string,
+  ): Promise<{ characterId: string; skillId: string; removed: true }> {
+    const normalizedSkillId = String(skillId ?? '').trim();
+    if (!normalizedSkillId) {
+      throw new BadRequestException('skillId is required.');
+    }
+
+    await this.ensureCharacterExists(characterId);
+
+    const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === normalizedSkillId);
+    if (!existing) {
+      throw new NotFoundException(`Character does not know skill: ${normalizedSkillId}`);
+    }
+
+    await this.deleteCharacterSkill(characterId, normalizedSkillId);
+
+    const loadout = await this.getOrCreateLoadout(characterId);
+    const nextLoadout = loadout.slots.map((slot) => (
+      slot.skillId === normalizedSkillId
+        ? { ...slot, skillId: null }
+        : slot
+    ));
+    if (nextLoadout.some((slot, index) => slot.skillId !== loadout.slots[index]?.skillId)) {
+      await this.writeCharacterLoadout(characterId, nextLoadout);
+    }
+
+    const actionBar = await this.arenaService.getOrCreateActionBar(characterId);
+    const updates = actionBar
+      .filter((slot) => slot.entryKind === 'skill' && slot.skillId === normalizedSkillId)
+      .map((slot) => ({
+        slotId: slot.slotId,
+        entryKind: 'empty' as const,
+      }));
+    if (updates.length > 0) {
+      await this.arenaService.updateActionBar(characterId, updates);
+    }
+
+    return {
+      characterId,
+      skillId: normalizedSkillId,
+      removed: true,
+    };
+  }
+
   private async assertTrainingRequirements(
     characterId: string,
     character: {
@@ -1106,6 +1152,27 @@ export class SkillLearningService {
       ...row,
       learnedAt: new Date(row.learnedAt),
     };
+  }
+
+  private async deleteCharacterSkill(characterId: string, skillId: string): Promise<void> {
+    const model = this.getCharacterSkillModel() as {
+      deleteMany?: (args: unknown) => Promise<{ count?: number }>;
+    } | null;
+    if (model?.deleteMany) {
+      try {
+        await model.deleteMany({
+          where: { characterId, skillId },
+        });
+        return;
+      } catch (error) {
+        this.logger.warn(`Falling back to content-store skill delete for ${characterId}: ${(error as Error).message}`);
+      }
+    }
+
+    const map = await this.readMap<StoredCharacterSkillMap>(CHARACTER_SKILLS_STORE_KEY);
+    const list = Array.isArray(map[characterId]) ? map[characterId] : [];
+    map[characterId] = list.filter((entry) => entry.skillId !== skillId);
+    await this.writeMap(CHARACTER_SKILLS_STORE_KEY, map);
   }
 
   private async readCharacterLoadout(characterId: string): Promise<CombatSkillSlot[]> {

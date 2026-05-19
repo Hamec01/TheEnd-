@@ -754,6 +754,7 @@ export function LocationsPage() {
               <button type="button" className={tab === 'json' ? 'is-active' : ''} onClick={() => setTab('json')}>JSON</button>
             </div>
 
+            <div className="admin-location-editor-body">
             {tab === 'main' && (
               <div className="admin-form-grid admin-location-main-grid">
                 <label><span>ID</span><input value={draft.id} onChange={(event) => patchDraft({ id: event.target.value })} /></label>
@@ -1052,8 +1053,9 @@ export function LocationsPage() {
                 </div>
               </div>
             )}
+            </div>
 
-            <div className="admin-actions-row">
+            <div className="admin-actions-row admin-location-editor-actions">
               <button type="button" onClick={() => { void saveLocation(); }}>Сохранить</button>
             </div>
           </>

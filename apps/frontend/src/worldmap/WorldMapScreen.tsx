@@ -81,6 +81,7 @@ import { getZoneCenter, moveZone } from "./zoneGeometry";
 import { getPassiveZonesAtPoint } from "./zoneSystem";
 import {
   canEnterLinkedLocation,
+  getLocationActiveState,
   getZoneLinkedLocation,
   isLinkedLocationVisibleToPlayer,
 } from "./zoneLocationLinking";
@@ -126,8 +127,12 @@ import {
   getAllNpcs,
   saveNpc,
 } from "../services/npcRepository";
-import { ensureDialoguesLoaded } from "../services/dialogueRepository";
-import { getAllDialogues } from "../services/dialogueRepository";
+import {
+  ensureDialoguesLoaded,
+  getAllDialogues,
+  getDialogueById,
+  getDialoguesByNpc,
+} from "../services/dialogueRepository";
 import { useDialogueRunner } from "../services/dialogueRunner";
 import { getNpcQuestMarker, selectBestInteractionForNpc } from "../services/npcInteractionSelector";
 import { getNearbyMappedNpcs } from "../services/npcMapRuntime";
@@ -143,8 +148,9 @@ import {
   saveDiscoveredCells,
 } from "./worldMapExploration";
 import type { NpcDefinition } from "../types/npc";
+import type { LocationArea, WorldLocation } from "../types/location";
 
-type LocationView = "map" | "city";
+type LocationView = "map" | "city" | "location";
 type ActiveWorldModal =
   | {
     type: "merchant";
@@ -285,6 +291,85 @@ function getLocationPercent(location: CityLocation): {
     width: `${((shape.width ?? 140) / 1200) * 100}%`,
     height: `${((shape.height ?? 90) / 720) * 100}%`,
   };
+}
+
+function locationHasLocalMap(location: WorldLocation | null | undefined): boolean {
+  if (!location) return false;
+  const activeState = getLocationActiveState(location);
+  const hasImage = Boolean(
+    (activeState?.imageId && String(activeState.imageId).trim())
+    || (activeState?.imagePath && String(activeState.imagePath).trim())
+    || (location.defaultImageId && String(location.defaultImageId).trim())
+    || (location.defaultImagePath && String(location.defaultImagePath).trim()),
+  );
+  const hasAreas = Array.isArray(location.areas) && location.areas.length > 0;
+  return hasImage || hasAreas;
+}
+
+function resolveLocalLocationMapImageRef(location: WorldLocation | null | undefined): string {
+  if (!location) return "";
+  const activeState = getLocationActiveState(location);
+  const fromState = String(activeState?.imageId ?? activeState?.imagePath ?? "").trim();
+  if (fromState) return fromState;
+  const fallback = String(location.defaultImageId ?? location.defaultImagePath ?? "").trim();
+  return fallback;
+}
+
+function getAreaPercent(area: { shapeType?: string; shape?: any }): { left: string; top: string; width: string; height: string } {
+  const shape = area.shape ?? {};
+  const x = Math.max(0, Math.min(1200, shape.x ?? 0));
+  const y = Math.max(0, Math.min(720, shape.y ?? 0));
+  if (area.shapeType === "circle") {
+    const radius = Math.max(20, shape.radius ?? 48);
+    return {
+      left: `${((x - radius) / 1200) * 100}%`,
+      top: `${((y - radius) / 720) * 100}%`,
+      width: `${((radius * 2) / 1200) * 100}%`,
+      height: `${((radius * 2) / 720) * 100}%`,
+    };
+  }
+  return {
+    left: `${(x / 1200) * 100}%`,
+    top: `${(y / 720) * 100}%`,
+    width: `${((shape.width ?? 140) / 1200) * 100}%`,
+    height: `${((shape.height ?? 90) / 720) * 100}%`,
+  };
+}
+
+function getFirstString(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === "string" && entry.trim().length > 0);
+    return typeof first === "string" ? first.trim() : null;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  return null;
+}
+
+function getFirstAvailableNpcDialogueId(npc: NpcDefinition | null | undefined): string | null {
+  if (!npc) {
+    return null;
+  }
+
+  const bindings = Array.isArray(npc.dialogues) ? [...npc.dialogues] : [];
+  bindings.sort((left, right) => Number(right?.priority ?? 0) - Number(left?.priority ?? 0));
+
+  for (const binding of bindings) {
+    const dialogueId = getFirstString(binding?.dialogueId);
+    if (!dialogueId) {
+      continue;
+    }
+    const dialogue = getDialogueById(dialogueId);
+    if (dialogue?.status === "active") {
+      return dialogue.id;
+    }
+  }
+
+  const fallbackDialogue = getDialoguesByNpc(npc.id).find((dialogue) => dialogue.status === "active") ?? null;
+  return fallbackDialogue?.id ?? null;
 }
 
 function getPlayerPositionStorageKey(characterId: string): string {
@@ -596,6 +681,7 @@ interface WorldMapScreenProps {
   onOpenMerchant: (merchantId?: string) => void;
   onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string) => void;
   onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
+  onRuntimeInventoryChanged?: () => void;
   onStatus: (text: string) => void;
   cityMerchants?: AdminMerchant[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -606,6 +692,11 @@ interface WorldMapScreenProps {
     merchant: AdminMerchant | null | undefined,
   ) => string | undefined;
   playerAvatarUrl?: string;
+  devTravelRequest?: {
+    mode: 'world' | 'city' | 'location';
+    targetId?: string | null;
+    token: number;
+  } | null;
   initialMode?: WorldMapMode;
   adminEditorOnly?: boolean;
   showAdminShortcuts?: boolean;
@@ -643,12 +734,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onOpenMerchant,
     onOpenSkills,
     onGrantSkill,
+    onRuntimeInventoryChanged,
     onStatus,
     cityMerchants = [],
     resolveItemById,
     resolveItemImage,
     resolveMerchantImage,
     playerAvatarUrl,
+    devTravelRequest,
     initialMode = "play",
     adminEditorOnly = false,
     showAdminShortcuts = false,
@@ -684,6 +777,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeCityId, setActiveCityId] = useState<string | null>(null);
   const [activeCity, setActiveCity] = useState<City | null>(null);
   const [activeCityBackgroundUrl, setActiveCityBackgroundUrl] = useState("");
+  const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
+  const [activeLocationBackgroundUrl, setActiveLocationBackgroundUrl] = useState("");
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [playerState, setPlayerState] = useState<PlayerWorldState>("idle");
@@ -1134,6 +1229,23 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
     return entries;
   }, [cityMerchants, contentSnapshot?.merchants]);
+  const appendLocationPlaceSystemMessage = useCallback((text: string) => {
+    const message = text.trim();
+    if (!message) {
+      return;
+    }
+
+    const now = Date.now();
+    setSystemChat((prev) => [
+      ...prev,
+      {
+        id: `sys-location-place-${now}-${nextSystemChatIdRef.current++}`,
+        text: message,
+        type: "system" as const,
+      },
+    ].slice(-12));
+    onStatus(message);
+  }, [onStatus]);
   const visibleCityLocations = useMemo(
     () =>
       (activeCity?.locations ?? []).filter(
@@ -1504,6 +1616,120 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       cancelled = true;
     };
   }, [activeCity?.backgroundImageId, activeCity?.backgroundImageUrl]);
+
+  const activeLocation = useMemo(() => {
+    if (!activeLocationId || !contentSnapshot) return null;
+    return contentSnapshot.locations.find((entry) => entry.id === activeLocationId) ?? null;
+  }, [activeLocationId, contentSnapshot]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const imageRef = resolveLocalLocationMapImageRef(activeLocation);
+    if (!imageRef) {
+      setActiveLocationBackgroundUrl("");
+      return;
+    }
+    if (!imageRef.startsWith("img_")) {
+      setActiveLocationBackgroundUrl(imageRef);
+      return;
+    }
+    imageService
+      .get(imageRef)
+      .then((image) => {
+        if (!cancelled) {
+          setActiveLocationBackgroundUrl(image?.dataUrl ?? "");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveLocationBackgroundUrl("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLocation?.id, activeLocation?.currentState, (activeLocation?.stateVariants ?? []).length, activeLocation?.defaultImageId, activeLocation?.defaultImagePath]);
+
+  useEffect(() => {
+    if (!devTravelRequest || worldMapMode === "editor") {
+      return;
+    }
+
+    const targetId = String(devTravelRequest.targetId ?? "").trim();
+
+    if (devTravelRequest.mode === "world") {
+      setActiveCityId(null);
+      setActiveLocationId(null);
+      setActiveWorldModal(null);
+      setLocationView("map");
+      setSelectedCityLocationId(null);
+      setContextMode(currentZone ? "location" : "empty");
+      setPlayerState(currentZone ? "in_zone" : "idle");
+      onStatus("GODMODE: returned to world map.");
+      return;
+    }
+
+    if (devTravelRequest.mode === "city") {
+      if (!targetId) {
+        onStatus("GODMODE: city id is required.");
+        return;
+      }
+      void cityService
+        .getCityById(targetId)
+        .then((city) => {
+          if (!city) {
+            onStatus(`GODMODE: city not found: ${targetId}`);
+            return;
+          }
+          setActiveCityId(city.id);
+          setActiveLocationId(null);
+          setActiveWorldModal(null);
+          setLocationView("city");
+          setSelectedCityLocationId(null);
+          setContextMode("location");
+          setPlayerState("in_city");
+          onStatus(`GODMODE: teleported to city ${city.name}.`);
+        })
+        .catch((error) => {
+          onStatus(`GODMODE city teleport error: ${(error as Error).message}`);
+        });
+      return;
+    }
+
+    if (devTravelRequest.mode === "location") {
+      if (!targetId) {
+        onStatus("GODMODE: location id is required.");
+        return;
+      }
+      const linkedLocation = contentSnapshot?.locations.find((entry) => entry.id === targetId) ?? null;
+      if (!linkedLocation) {
+        onStatus(`GODMODE: location not found: ${targetId}`);
+        return;
+      }
+      if (locationHasLocalMap(linkedLocation)) {
+        setActiveLocationId(linkedLocation.id);
+        setActiveCityId(null);
+        setActiveWorldModal(null);
+        setLocationView("location");
+        setContextMode("location");
+        setPlayerState("in_zone");
+        onStatus(`GODMODE: teleported to ${linkedLocation.name}.`);
+        return;
+      }
+
+      setActiveLocationId(null);
+      setActiveCityId(null);
+      setActiveWorldModal({
+        type: "location",
+        locationId: linkedLocation.id,
+      });
+      setLocationView("map");
+      setContextMode("location");
+      setPlayerState("in_zone");
+      onStatus(`GODMODE: opened location ${linkedLocation.name}.`);
+    }
+  }, [contentSnapshot, currentZone, devTravelRequest, onStatus, worldMapMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2134,13 +2360,24 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onStatus("Вы пока не можете войти сюда.");
           return;
         }
-        setActiveWorldModal({
-          type: "location",
-          locationId: linkedLocation.id,
-        });
-        setContextMode("location");
-        setPlayerState("in_zone");
-        onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+        if (locationHasLocalMap(linkedLocation)) {
+          rememberCurrentMapPosition();
+          setActiveLocationId(linkedLocation.id);
+          setActiveCityId(null);
+          setActiveWorldModal(null);
+          setLocationView("location");
+          setContextMode("location");
+          setPlayerState("in_zone");
+          onStatus(`Вы вошли в ${linkedLocation.name}.`);
+        } else {
+          setActiveWorldModal({
+            type: "location",
+            locationId: linkedLocation.id,
+          });
+          setContextMode("location");
+          setPlayerState("in_zone");
+          onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+        }
         return;
       }
       const targetScene = zone?.targetScene?.trim().toLowerCase();
@@ -2155,6 +2392,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       );
       rememberCurrentMapPosition();
       setActiveCityId(cityId);
+      setActiveLocationId(null);
       setActiveWorldModal(null);
       setLocationView("city");
       setContextMode("location");
@@ -2196,6 +2434,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         questRuntimePlayer,
         { type: "zone_enter", zoneId: zone.id },
       );
+      onRuntimeInventoryChanged?.();
 
       appendQuestRuntimeLogsToSystemChat([
         ...zoneEnterResult.logs,
@@ -2465,6 +2704,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       player,
       { type: "zone_inspect", zoneId: currentZone.id },
     );
+    onRuntimeInventoryChanged?.();
 
     appendQuestRuntimeLogsToSystemChat(questEventResult.logs);
     applyCompletedQuestRewardsToChat(questEventResult.completedQuestIds);
@@ -2515,6 +2755,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const result = runQuestInteractionEffects(character.id, activeInteraction, choice);
+    onRuntimeInventoryChanged?.();
     if (result.logs.length > 0) {
       appendQuestRuntimeLogsToSystemChat(result.logs);
     }
@@ -2593,6 +2834,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     appendQuestRuntimeLogsToSystemChat,
     applyCompletedQuestRewardsToChat,
     character.id,
+    onRuntimeInventoryChanged,
     resolveItemById,
   ]);
 
@@ -2919,6 +3161,288 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   }, [mouseCoords.x, mouseCoords.y, npcs, onStatus, selectedNpcIdForPlacement]);
 
+  const openLocationPlaceDetails = useCallback((place: LocationArea) => {
+    appendLocationPlaceSystemMessage(
+      place.description?.trim()
+        ? `${place.name}: ${place.description}`
+        : place.name,
+    );
+  }, [appendLocationPlaceSystemMessage]);
+
+  const openDialogueFromLocationPlace = useCallback((params: {
+    place: LocationArea;
+    dialogueId: string;
+    npcId?: string | null;
+  }) => {
+    const currentLocationId = activeLocation?.id ?? activeLocationId ?? undefined;
+    const dialogue = getDialogueById(params.dialogueId);
+    const resolvedNpcId = params.npcId?.trim() || dialogue?.npcId?.trim() || null;
+
+    if (!dialogue) {
+      console.warn("[LocationPlaceClick] Dialogue not found", {
+        dialogueId: params.dialogueId,
+        placeId: params.place.id,
+        locationId: currentLocationId,
+      });
+      appendLocationPlaceSystemMessage(`[SYSTEM] Диалог не найден: ${params.dialogueId}`);
+      openLocationPlaceDetails(params.place);
+      return;
+    }
+
+    if (resolvedNpcId && !npcById.get(resolvedNpcId)) {
+      console.warn("[LocationPlaceClick] NPC not found", {
+        npcId: resolvedNpcId,
+        dialogueId: params.dialogueId,
+        placeId: params.place.id,
+        locationId: currentLocationId,
+      });
+      appendLocationPlaceSystemMessage(`[SYSTEM] NPC не найден: ${resolvedNpcId}`);
+      openLocationPlaceDetails(params.place);
+      return;
+    }
+
+    console.info("[LocationPlaceClick]", {
+      placeId: params.place.id,
+      placeName: params.place.name,
+      locationId: currentLocationId,
+      dialogueId: params.dialogueId,
+      npcId: resolvedNpcId,
+    });
+
+    if (resolvedNpcId) {
+      setSelectedNpcForInteractionId(resolvedNpcId);
+      setContextMode("npc");
+    } else {
+      setContextMode("location");
+    }
+
+    setActiveWorldModal(null);
+    setNpcQuestSceneModal(null);
+    dialogueRunner.openDialogue(dialogue.id, {
+      npcId: resolvedNpcId ?? undefined,
+      locationId: currentLocationId,
+      placeId: params.place.id,
+      sourceType: "location_place",
+    });
+  }, [
+    activeLocation?.id,
+    activeLocationId,
+    appendLocationPlaceSystemMessage,
+    dialogueRunner,
+    npcById,
+    openLocationPlaceDetails,
+  ]);
+
+  const openNpcFromLocationPlace = useCallback((params: {
+    place: LocationArea;
+    npcId: string;
+  }) => {
+    const currentLocationId = activeLocation?.id ?? activeLocationId ?? undefined;
+    const npc = npcById.get(params.npcId) ?? null;
+
+    if (!npc) {
+      console.warn("[LocationPlaceClick] NPC not found", {
+        npcId: params.npcId,
+        placeId: params.place.id,
+        locationId: currentLocationId,
+      });
+      appendLocationPlaceSystemMessage(`[SYSTEM] NPC не найден: ${params.npcId}`);
+      openLocationPlaceDetails(params.place);
+      return;
+    }
+
+    console.info("[LocationPlaceClick]", {
+      placeId: params.place.id,
+      placeName: params.place.name,
+      locationId: currentLocationId,
+      npcId: params.npcId,
+    });
+
+    setSelectedNpcForInteractionId(npc.id);
+
+    const npcDialogueId = getFirstAvailableNpcDialogueId(npc);
+    if (npcDialogueId) {
+      openDialogueFromLocationPlace({
+        place: params.place,
+        dialogueId: npcDialogueId,
+        npcId: npc.id,
+      });
+      return;
+    }
+
+    dialogueRunner.closeDialogue();
+    setNpcQuestSceneModal(null);
+    setActiveWorldModal({
+      type: "npc",
+      locationId: currentLocationId,
+      npcId: npc.id,
+    });
+    setContextMode("npc");
+    onStatus(`Вы видите: ${npc.name ?? npc.id}`);
+  }, [
+    activeLocation?.id,
+    activeLocationId,
+    appendLocationPlaceSystemMessage,
+    dialogueRunner,
+    npcById,
+    onStatus,
+    openDialogueFromLocationPlace,
+    openLocationPlaceDetails,
+  ]);
+
+  const openMerchantFromLocationPlace = useCallback((params: {
+    place: LocationArea;
+    merchantId: string;
+  }) => {
+    const currentLocationId = activeLocation?.id ?? activeLocationId ?? undefined;
+    const merchant = merchantById.get(params.merchantId) ?? null;
+
+    if (!merchant) {
+      console.warn("[LocationPlaceClick] Merchant not found", {
+        merchantId: params.merchantId,
+        placeId: params.place.id,
+        locationId: currentLocationId,
+      });
+      appendLocationPlaceSystemMessage(`[SYSTEM] Торговец не найден: ${params.merchantId}`);
+      openLocationPlaceDetails(params.place);
+      return;
+    }
+
+    console.info("[LocationPlaceClick]", {
+      placeId: params.place.id,
+      placeName: params.place.name,
+      locationId: currentLocationId,
+      merchantId: params.merchantId,
+    });
+
+    dialogueRunner.closeDialogue();
+    setNpcQuestSceneModal(null);
+    setActiveWorldModal({
+      type: "merchant",
+      locationId: currentLocationId ?? "",
+      merchantId: merchant.id,
+    });
+    setContextMode("location");
+    onStatus(`Открыт торговец: ${merchant.name ?? merchant.id}`);
+  }, [
+    activeLocation?.id,
+    activeLocationId,
+    appendLocationPlaceSystemMessage,
+    dialogueRunner,
+    merchantById,
+    onStatus,
+    openLocationPlaceDetails,
+  ]);
+
+  const openBattleMapFromLocationPlace = useCallback((params: {
+    place: LocationArea;
+    battleMapId: string;
+  }) => {
+    console.info("[LocationPlaceClick]", {
+      placeId: params.place.id,
+      placeName: params.place.name,
+      locationId: activeLocation?.id ?? activeLocationId ?? null,
+      battleMapId: params.battleMapId,
+    });
+
+    dialogueRunner.closeDialogue();
+    setActiveWorldModal(null);
+    setNpcQuestSceneModal(null);
+    setContextMode("location");
+
+    if (onStartBattleMap) {
+      void onStartBattleMap(params.battleMapId);
+    } else {
+      void onStartCombat(params.battleMapId);
+    }
+
+    onStatus(`Открыта боевая сцена: ${params.place.name}.`);
+  }, [activeLocation?.id, activeLocationId, dialogueRunner, onStartBattleMap, onStartCombat, onStatus]);
+
+  const handleLocationPlaceClick = useCallback((place: LocationArea | null | undefined) => {
+    if (!place || place.isHidden) {
+      return;
+    }
+
+    const dialogueId = getFirstString(place.dialogueIds);
+    const npcId = getFirstString(place.npcIds);
+    const merchantId = getFirstString(place.merchantIds);
+    const questId = getFirstString(place.questIds);
+    const battleMapId = getFirstString(place.battleMapIds);
+    const hasInteraction = Boolean(
+      dialogueId || npcId || merchantId || questId || battleMapId || place.canEnter,
+    );
+
+    console.info("[LocationPlaceClick]", {
+      placeId: place.id,
+      placeName: place.name,
+      locationId: activeLocation?.id ?? activeLocationId ?? null,
+      dialogueId,
+      npcId,
+      merchantId,
+      questId,
+      battleMapId,
+      canEnter: place.canEnter,
+    });
+
+    if (dialogueId) {
+      openDialogueFromLocationPlace({ place, dialogueId, npcId });
+      return;
+    }
+
+    if (npcId) {
+      openNpcFromLocationPlace({ place, npcId });
+      return;
+    }
+
+    if (merchantId) {
+      openMerchantFromLocationPlace({ place, merchantId });
+      return;
+    }
+
+    if (questId) {
+      const quest = questDefinitions.find((entry) => entry.id === questId) ?? null;
+      if (!quest) {
+        console.warn("[LocationPlaceClick] Quest not found", {
+          questId,
+          placeId: place.id,
+          locationId: activeLocation?.id ?? activeLocationId ?? null,
+        });
+        appendLocationPlaceSystemMessage(`[SYSTEM] Квест не найден: ${questId}`);
+        openLocationPlaceDetails(place);
+        return;
+      }
+
+      handleTrackQuest(quest.id, null);
+      setQuestJournalOpen(true);
+      appendLocationPlaceSystemMessage(`Связанный квест: ${quest.title}`);
+      return;
+    }
+
+    if (battleMapId) {
+      openBattleMapFromLocationPlace({ place, battleMapId });
+      return;
+    }
+
+    if (!hasInteraction) {
+      openLocationPlaceDetails(place);
+      return;
+    }
+
+    openLocationPlaceDetails(place);
+  }, [
+    activeLocation?.id,
+    activeLocationId,
+    appendLocationPlaceSystemMessage,
+    handleTrackQuest,
+    openBattleMapFromLocationPlace,
+    openDialogueFromLocationPlace,
+    openLocationPlaceDetails,
+    openMerchantFromLocationPlace,
+    openNpcFromLocationPlace,
+    questDefinitions,
+  ]);
+
   const openNpcDialogue = useCallback(
     (npcId: string, context?: { cityId?: string; locationId?: string }) => {
       const npc = npcs.find((entry) => entry.id === npcId) ?? null;
@@ -3093,6 +3617,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (!result) {
         return;
       }
+      onRuntimeInventoryChanged?.();
       const playerLogLines: string[] = [];
       for (const rawLine of result.logs ?? []) {
         const line = rawLine.trim();
@@ -3309,7 +3834,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch (error) {
       onStatus((error as Error).message);
     }
-  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onOpenMerchant, openTrainingForNpc, onGrantSkill, onStartCombat, onStatus, questDefinitions, resolveItemById, selectedNpcForInteraction]);
+  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onGrantSkill, onOpenMerchant, onRuntimeInventoryChanged, onStartCombat, onStatus, openTrainingForNpc, questDefinitions, resolveItemById, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
@@ -3914,13 +4439,24 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onStatus("Вы пока не можете войти сюда.");
         return;
       }
-      setActiveWorldModal({
-        type: "location",
-        locationId: linkedLocation.id,
-      });
-      setContextMode("location");
-      setPlayerState("in_zone");
-      onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+      if (locationHasLocalMap(linkedLocation)) {
+        rememberCurrentMapPosition();
+        setActiveLocationId(linkedLocation.id);
+        setActiveCityId(null);
+        setActiveWorldModal(null);
+        setLocationView("location");
+        setContextMode("location");
+        setPlayerState("in_zone");
+        onStatus(`Вы вошли в ${linkedLocation.name}.`);
+      } else {
+        setActiveWorldModal({
+          type: "location",
+          locationId: linkedLocation.id,
+        });
+        setContextMode("location");
+        setPlayerState("in_zone");
+        onStatus(`Вы прибыли к ${linkedLocation.name}.`);
+      }
       return;
     }
     const targetScene = zone?.targetScene?.trim().toLowerCase();
@@ -3935,6 +4471,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
     rememberCurrentMapPosition();
     setActiveCityId(cityId);
+    setActiveLocationId(null);
     setActiveWorldModal(null);
     setLocationView("city");
     setContextMode("location");
@@ -3945,6 +4482,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   function handleReturnToMap() {
     rememberCurrentMapPosition();
     setActiveCityId(null);
+    setActiveLocationId(null);
     setActiveWorldModal(null);
     setLocationView("map");
     setSelectedCityLocationId(null);
@@ -5267,7 +5805,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 />
               ) : null}
             </div>
-          ) : (
+          ) : locationView === "city" ? (
             <section className="wm-map card">
               <div
                 className="wm-map-surface wm-city-surface"
@@ -5333,6 +5871,82 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 </span>
                 <button className="wm-city-back" onClick={handleReturnToMap}>
                   {"\u041d\u0430\u0437\u0430\u0434 \u043a \u043a\u0430\u0440\u0442\u0435"}
+                </button>
+              </footer>
+            </section>
+          ) : (
+            <section className="wm-map card">
+              <div
+                className="wm-map-surface wm-city-surface"
+                style={{
+                  backgroundImage: activeLocationBackgroundUrl
+                    ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeLocationBackgroundUrl}')`
+                    : "linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))",
+                }}
+              >
+                <div className="wm-map-title">
+                  {activeLocation?.name ?? selectedLocationName}
+                </div>
+                <div className="wm-city-hotspots">
+                  {(activeLocation?.areas ?? []).map((area) => (
+                    <button
+                      key={area.id}
+                      type="button"
+                      className={`city-location-hotspot city-location-hotspot-${area.shapeType ?? "rectangle"}`}
+                      style={getAreaPercent(area)}
+                      onClick={() => handleLocationPlaceClick(area)}
+                    >
+                      <span className="city-location-hotspot-title">
+                        {area.name}
+                      </span>
+                    </button>
+                  ))}
+
+                  {(() => {
+                    const stateNpcIds = activeLocation ? getLocationActiveState(activeLocation)?.npcIds : undefined;
+                    const locationNpcIds: string[] = (stateNpcIds ?? activeLocation?.npcIds ?? [])
+                      .filter((npcId): npcId is string => typeof npcId === "string" && npcId.trim().length > 0);
+                    const locationNpcs: NpcDefinition[] = locationNpcIds
+                      .map((npcId) => npcById.get(npcId))
+                      .filter((entry): entry is NpcDefinition => Boolean(entry));
+                    return locationNpcs.map((npc: NpcDefinition, index: number) => {
+                      const left = 8 + (index % 5) * 18;
+                      const top = 72 + Math.floor(index / 5) * 12;
+                      return (
+                        <button
+                          key={npc.id}
+                          type="button"
+                          className="city-location-hotspot city-location-hotspot-rectangle"
+                          style={{
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            width: "16%",
+                            height: "10%",
+                          }}
+                          onClick={() =>
+                            handleLocationPlaceClick({
+                              id: `location_npc_${npc.id}`,
+                              name: npc.name ?? npc.id,
+                              type: "npc",
+                              npcIds: [npc.id],
+                              canEnter: true,
+                              isHidden: false,
+                            })
+                          }
+                        >
+                          <span className="city-location-hotspot-title">
+                            {npc.name ?? npc.id}
+                          </span>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+              <footer className="wm-map-legend">
+                <span>{activeLocation?.name ?? selectedLocationName}</span>
+                <button className="wm-city-back" onClick={handleReturnToMap}>
+                  {"← Мировая карта"}
                 </button>
               </footer>
             </section>

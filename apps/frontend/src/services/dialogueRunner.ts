@@ -15,11 +15,12 @@ import {
 import { markDialogueCompleted } from './dialogueProgressStore';
 import { selectBestInteractionForNpc } from './npcInteractionSelector';
 
-export type DialogueSourceType = 'npc' | 'location' | 'quest' | 'item' | 'zone' | 'system';
+export type DialogueSourceType = 'npc' | 'location' | 'location_place' | 'quest' | 'item' | 'zone' | 'system';
 
 export interface DialogueContext {
   npcId?: string;
   locationId?: string;
+  placeId?: string;
   cityId?: string;
   questId?: string;
   sourceType?: DialogueSourceType;

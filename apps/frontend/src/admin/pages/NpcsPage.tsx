@@ -14,11 +14,12 @@ import { merchantsService } from '../../services/content/merchantsService';
 import { skillsService } from '../../services/content/skillsService';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
-import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, importNpcsJson } from '../../services/npcRepository';
+import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, importNpcsJson, getNpcAdminNormalizationIssues } from '../../services/npcRepository';
 import { validateNpc } from '../../services/npcValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { cityService } from '../../services/cityRepository';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
+import { normalizeNpcForAdmin } from '../../services/npcAdminNormalization';
 import type {
   NpcCondition,
   NpcDefinition,
@@ -35,6 +36,7 @@ import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { NpcGroupList } from '../components/NpcGroupList';
 import { groupNpcsByKey, getGroupingLabel, type GroupingKey } from '../utils/npcGrouping';
+import { AdminSectionErrorBoundary } from '../components/AdminSectionErrorBoundary';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const GROUPING_OPTIONS: GroupingKey[] = ['kingdom', 'faction', 'city', 'kind', 'type', 'status', 'race'];
@@ -93,6 +95,10 @@ function parseJsonArray<T>(raw: string, fallback: T[]): T[] {
 
 function formatLabel(value: string): string {
   return value.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+function repairNpcInState(rawNpc: NpcDefinition): { npc: NpcDefinition; issues: string[] } {
+  return normalizeNpcForAdmin(rawNpc);
 }
 
 export function NpcsPage() {
@@ -255,6 +261,10 @@ export function NpcsPage() {
   }), [dialogueIds, itemIds, markerIds, questIds, questItemIds, skillIds, traderOptions, zoneIds]);
 
   const validation = useMemo(() => validateNpc(draft, worldData), [draft, worldData]);
+  const adminNormalizationIssues = useMemo(
+    () => (selectedId ? getNpcAdminNormalizationIssues(selectedId) : []),
+    [selectedId, npcs],
+  );
 
   const visibleNpcs = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -291,6 +301,16 @@ export function NpcsPage() {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
   }
 
+  function repairSelectedNpc() {
+    const repaired = repairNpcInState(draft);
+    setDraft(repaired.npc);
+    setStatusText('NPC приведён к безопасной структуре. Проверьте поля и нажмите Сохранить.');
+    setSaveState({
+      state: repaired.issues.length > 0 ? 'warning' : 'saved',
+      message: repaired.issues.length > 0 ? repaired.issues[0] : 'NPC приведён к безопасной структуре.',
+    });
+  }
+
   function createNpc() {
     setSelectedId(null);
     setDraft(emptyNpc());
@@ -298,8 +318,9 @@ export function NpcsPage() {
   }
 
   function selectNpc(npc: NpcDefinition) {
-    setSelectedId(npc.id);
-    setDraft({ ...npc });
+    const normalized = normalizeNpcForAdmin(npc).npc;
+    setSelectedId(normalized.id);
+    setDraft({ ...normalized });
     setStatusText(`Редактируется NPC: ${npc.id}`);
   }
 
@@ -477,6 +498,32 @@ export function NpcsPage() {
         <button className={activeTab === 'behavior' ? 'is-active' : ''} onClick={() => setActiveTab('behavior')}>Поведение</button>
         <button className={activeTab === 'validation' ? 'is-active' : ''} onClick={() => setActiveTab('validation')}>Валидация</button>
       </div>
+
+      <AdminSectionErrorBoundary
+        sectionName="Персонажи"
+        onReset={() => {
+          setSelectedId(null);
+          setDraft(emptyNpc());
+          setActiveTab('basic');
+          setStatusText('Выбранная запись сброшена после ошибки.');
+        }}
+      >
+        {adminNormalizationIssues.length > 0 ? (
+          <div className="admin-panel warning">
+            <h4>⚠ Запись NPC загружена в безопасном режиме</h4>
+            <p className="muted">Найдены проблемы:</p>
+            <ul>
+              {adminNormalizationIssues.slice(0, 8).map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+            <div className="admin-actions-row">
+              <button type="button" onClick={repairSelectedNpc} disabled={isSaving}>Починить запись</button>
+            </div>
+          </div>
+        ) : (
+          <div className="admin-actions-row" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" onClick={repairSelectedNpc} disabled={isSaving} title="Нормализовать текущую запись (на случай старого формата или ручных правок JSON)">Починить запись</button>
+          </div>
+        )}
 
         {activeTab === 'basic' ? (
           <div className="admin-form-grid">
@@ -803,6 +850,7 @@ export function NpcsPage() {
             onSelect={selectNpc}
           />
         </div>
-      </div>
+      </AdminSectionErrorBoundary>
+    </div>
     );
 }

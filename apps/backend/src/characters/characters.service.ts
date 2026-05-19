@@ -259,6 +259,71 @@ export class CharactersService {
     });
   }
 
+  async applyDevStatePatch(id: string, payload: Record<string, unknown>) {
+    const character = await this.getById(id);
+    if (!character) {
+      throw new NotFoundException('Character not found.');
+    }
+
+    const integerFields = [
+      'level',
+      'exp',
+      'freePoints',
+      'gold',
+      'hpBase',
+      'mpBase',
+      'staminaBase',
+      'strength',
+      'endurance',
+      'dexterity',
+      'intelligence',
+      'luck',
+      'speed',
+      'willpower',
+      'combatMastery',
+    ] as const;
+
+    const updates: Record<string, unknown> = {};
+
+    for (const fieldName of integerFields) {
+      if (!(fieldName in payload)) {
+        continue;
+      }
+
+      const numericValue = Number(payload[fieldName]);
+      if (!Number.isFinite(numericValue)) {
+        throw new BadRequestException(`Field ${fieldName} must be a number.`);
+      }
+
+      updates[fieldName] = Math.max(0, Math.floor(numericValue));
+    }
+
+    if (typeof payload.name === 'string' && payload.name.trim().length >= 1) {
+      updates.name = payload.name.trim();
+    }
+
+    if (typeof payload.race === 'string' && payload.race.trim().length >= 1) {
+      updates.race = payload.race.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return character;
+    }
+
+    if (this.isFileMode()) {
+      const updated = await this.runtimeStore.updateCharacter(id, updates);
+      if (!updated) {
+        throw new NotFoundException('Character not found.');
+      }
+      return updated;
+    }
+
+    return this.prisma.character.update({
+      where: { id },
+      data: updates,
+    });
+  }
+
   async deleteCharacter(id: string): Promise<{ ok: boolean; id: string }> {
     if (this.isFileMode()) {
       const deleted = await this.runtimeStore.deleteCharacter(id);

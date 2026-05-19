@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { SkillLearningService } from './skill-learning.service';
 import { LearnSkillDto } from './dto/learn-skill.dto';
 import { UpdateLoadoutDto } from './dto/update-loadout.dto';
@@ -39,6 +39,14 @@ export class CharacterSkillsController {
       dto.sourceType ?? 'admin',
       dto.sourceId,
     );
+  }
+
+  @Delete('skills/:skillId')
+  async revokeSkill(
+    @Param('characterId') characterId: string,
+    @Param('skillId') skillId: string,
+  ) {
+    return this.skillLearning.revokeSkillFromCharacter(characterId, skillId);
   }
 
   @Get('skill-loadout')

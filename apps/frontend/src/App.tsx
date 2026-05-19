@@ -19,6 +19,7 @@ import {
   type StatAllocation,
 } from '@theend/rpg-domain';
 import {
+  adjustDevInventoryItem,
   allocateStats,
   buyArenaItem,
   createCharacter,
@@ -39,9 +40,12 @@ import {
   listCharacters,
   loginAccount,
   MAX_COMBAT_ENEMIES,
+  patchDevCharacterState,
   registerAccount,
+  revokeCharacterSkill,
   startCombat,
   startCustomCombat,
+  updateCharacterResources,
   updateCharacterActionBar,
   updateCharacterHotbar,
   updateSkillLoadout,
@@ -54,6 +58,7 @@ import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
+import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/GodmodeConsole';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
@@ -78,11 +83,34 @@ import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource, 
 import { getDomainItemWithFallback } from './services/content/seedService';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps, loadBattleMapsFromStore } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
-import { ensureDialoguesLoaded } from './services/dialogueRepository';
+import { cityService } from './services/cityRepository';
+import { itemSetsService } from './services/content/itemSetsService';
+import { materialsService } from './services/content/materialsService';
+import { ensureDialoguesLoaded, getAllDialogues } from './services/dialogueRepository';
+import { locationService } from './services/locationRepository';
 import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npcRepository';
-import { ensureQuestsLoaded } from './services/questRepository';
+import { deletePlayerQuestState, ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests, getQuestById } from './services/questRepository';
 import { ensureQuestMarkersLoaded } from './services/questMapRepository';
+import { advanceQuest, applyQuestRewards, completeObjective, completeQuest, failQuest, getPlayerQuestState, setQuestFlag, startQuest } from './services/questRuntime';
 import type { NpcDefinition, NpcRace } from './types/npc';
+import {
+  PLAYER_FLAGS_STORAGE_KEY,
+  PLAYER_GOLD_STORAGE_KEY,
+  PLAYER_ITEMS_STORAGE_KEY,
+  PLAYER_MATERIALS_STORAGE_KEY,
+  PLAYER_QUEST_ITEMS_STORAGE_KEY,
+  PLAYER_RESOURCES_STORAGE_KEY,
+  PLAYER_UNLOCKED_DIALOGUES_STORAGE_KEY,
+  PLAYER_UNLOCKED_LOCATIONS_STORAGE_KEY,
+  PLAYER_UNLOCKED_SHOPS_STORAGE_KEY,
+  mergeInventoryWithRuntimeOverlay,
+  readNumberStorage,
+  readStringArrayStorage,
+  readStringNumberRecordStorage,
+  writeNumberStorage,
+  writeStringArrayStorage,
+  writeStringNumberRecordStorage,
+} from './utils/playerInventory';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -222,6 +250,10 @@ const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
 const PLAYER_SKILLS_STORAGE_KEY = 'theend.player.skills';
 const PENDING_SKILL_GRANT_KEY = 'theend.pendingSkillGrant';
+const TRACKED_QUEST_STORAGE_PREFIX = 'theend.worldMap.trackedQuest.';
+const GODMODE_LOGIN = 'godmod';
+const GODMODE_PASSWORD = 'godmod123';
+const GODMODE_TUTORIAL_PATH = 'C:\\theend\\docs\\GODMODE_CONSOLE_TUTORIAL.md';
 
 const MERCHANT_TYPE_LABELS: Record<Merchant['merchantType'], string> = {
   weaponsmith: 'Оружие и дуэльные наборы',
@@ -284,6 +316,219 @@ function createEmptyActionSlots(): CharacterActionSlot[] {
     itemInstanceId: null,
     weaponInstanceId: null,
   }));
+}
+
+function getTrackedQuestStorageKey(characterId: string): string {
+  return `${TRACKED_QUEST_STORAGE_PREFIX}${characterId}`;
+}
+
+function tokenizeGodmodeCommand(commandLine: string): string[] {
+  const matches = commandLine.match(/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|\S+/g) ?? [];
+  return matches.map((token) => token.replace(/^['"]|['"]$/g, ''));
+}
+
+function countIdEntries(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) {
+      continue;
+    }
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function parseLooseConsoleValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  if (trimmed === 'null') return null;
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return numeric;
+  }
+
+  if (/^[\[{"]/.test(trimmed)) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+
+  return trimmed;
+}
+
+function parseConsoleInteger(value: string | undefined, label: string): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    throw new Error(`${label} must be a number.`);
+  }
+  return Math.trunc(numeric);
+}
+
+function readJsonRecord(key: string): Record<string, unknown> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  const raw = window.localStorage.getItem(key);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeJsonRecord(key: string, value: Record<string, unknown>): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeGodmodeCommandTokens(commandLine: string): string[] {
+  const trimmed = commandLine.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const compactAliases: Array<{ prefix: string; tokens: string[] }> = [
+    { prefix: 'get_quest_', tokens: ['quest', 'get'] },
+    { prefix: 'delete_quest_', tokens: ['quest', 'reset'] },
+    { prefix: 'reset_quest_', tokens: ['quest', 'reset'] },
+    { prefix: 'start_quest_', tokens: ['quest', 'start'] },
+    { prefix: 'complete_quest_', tokens: ['quest', 'complete'] },
+    { prefix: 'fail_quest_', tokens: ['quest', 'fail'] },
+    { prefix: 'give_item_', tokens: ['item', 'add'] },
+    { prefix: 'remove_item_', tokens: ['item', 'remove'] },
+    { prefix: 'give_quest_item_', tokens: ['questitem', 'add'] },
+    { prefix: 'remove_quest_item_', tokens: ['questitem', 'remove'] },
+    { prefix: 'give_skill_', tokens: ['skill', 'add'] },
+    { prefix: 'remove_skill_', tokens: ['skill', 'remove'] },
+    { prefix: 'give_gold_', tokens: ['gold', 'add'] },
+    { prefix: 'set_gold_', tokens: ['gold', 'set'] },
+    { prefix: 'set_level_', tokens: ['level', 'set'] },
+    { prefix: 'teleport_city_', tokens: ['teleport', 'city'] },
+    { prefix: 'teleport_location_', tokens: ['teleport', 'location'] },
+    { prefix: 'open_merchant_', tokens: ['merchant', 'open'] },
+    { prefix: 'give_itemset_', tokens: ['itemset', 'give'] },
+  ];
+
+  const lowered = trimmed.toLowerCase();
+  for (const alias of compactAliases) {
+    if (!lowered.startsWith(alias.prefix)) {
+      continue;
+    }
+
+    const suffix = trimmed.slice(alias.prefix.length).trim();
+    return suffix ? [...alias.tokens, suffix] : [...alias.tokens];
+  }
+
+  const rawTokens = tokenizeGodmodeCommand(trimmed);
+  if (rawTokens.length === 0) {
+    return [];
+  }
+
+  const aliasHead = rawTokens[0]?.toLowerCase();
+  const aliasMap: Record<string, string[]> = {
+    get_quest: ['quest', 'get'],
+    delete_quest: ['quest', 'reset'],
+    reset_quest: ['quest', 'reset'],
+    start_quest: ['quest', 'start'],
+    complete_quest: ['quest', 'complete'],
+    fail_quest: ['quest', 'fail'],
+    give_item: ['item', 'add'],
+    remove_item: ['item', 'remove'],
+    give_quest_item: ['questitem', 'add'],
+    remove_quest_item: ['questitem', 'remove'],
+    give_skill: ['skill', 'add'],
+    remove_skill: ['skill', 'remove'],
+    give_gold: ['gold', 'add'],
+    set_gold: ['gold', 'set'],
+    add_xp: ['xp', 'add'],
+    set_xp: ['xp', 'set'],
+    set_level: ['level', 'set'],
+    set_stat: ['stat', 'set'],
+    add_stat: ['stat', 'add'],
+    teleport_city: ['teleport', 'city'],
+    teleport_location: ['teleport', 'location'],
+    merchant_open: ['merchant', 'open'],
+    give_itemset: ['itemset', 'give'],
+    open_panel: ['panel', 'open'],
+  };
+
+  const mapped = aliasHead ? aliasMap[aliasHead] : null;
+  if (mapped) {
+    return [...mapped, ...rawTokens.slice(1)];
+  }
+
+  return rawTokens;
+}
+
+function matchesGodmodeFilter(filter: string, ...values: Array<unknown>): boolean {
+  const normalizedFilter = filter.trim().toLowerCase();
+  if (!normalizedFilter) {
+    return true;
+  }
+
+  return values.some((value) => String(value ?? '').toLowerCase().includes(normalizedFilter));
+}
+
+function formatGodmodeListLines(label: string, entries: string[], filter = ''): string[] {
+  const limit = 40;
+  const visible = entries.slice(0, limit);
+
+  return [
+    `${label}: ${entries.length}${filter ? ` (filter: ${filter})` : ''}`,
+    ...(visible.length > 0 ? visible : ['— nothing found —']),
+    ...(entries.length > limit ? [`...and ${entries.length - limit} more.`] : []),
+  ];
+}
+
+function getGodmodeHelpLines(): string[] {
+  return [
+    'GODMODE commands:',
+    'help',
+    'state',
+    'gold add <amount> | gold set <amount>',
+    'xp add <amount> | xp set <amount>',
+    'level set <value> | points add <value> | points set <value>',
+    'stat set <hp|mp|stamina|strength|constitution|dexterity|intelligence|luck|perception|willpower> <value>',
+    'stat add <stat> <delta>',
+    'resource full | resource set <hp|mp|stamina|regen> <value>',
+    'item add <itemId> [qty] | item remove <itemId> [qty]',
+    'equip <itemId> [slot] | unequip <slot>',
+    'skill add <skillId> | skill remove <skillId>',
+    'quest start|get|complete|fail|reset|track|untrack|reward <questId> [objectiveId]',
+    'objective complete <questId> <objectiveId>',
+    'questitem add|remove <questItemId> [qty]',
+    'material add|remove <materialId> [qty] | resource add|remove <resourceId> [qty]',
+    'teleport world | teleport city <cityId> | teleport location <locationId>',
+    'panel open inventory|character|stats|skills|equipment|merchant|arena|map | panel close',
+    'merchant open <merchantId> | merchant list [filter]',
+    'battle map <battleMapId> | battle start [enemyCount] [battleMapId] | battle npc <npcId[,npcId2]> [battleMapId]',
+    'itemset give|remove <setId> | itemset list [filter]',
+    'list items|skills|quests|npcs|dialogues|merchants|cities|locations|battlemaps|itemsets|materials [filter]',
+    'flag get <key> | flag list | flag set <key> <value> | flag delete <key>',
+    'unlock location|dialogue|shop <id> | unlock all locations|dialogues|shops',
+    'clear questitems|materials|resources|flags|runtimeitems|allruntime',
+    'sync runtime',
+  ];
 }
 
 function actionBarSlotToActionSlot(slot: CharacterActionBarSlot): CharacterActionSlot {
@@ -711,6 +956,12 @@ interface AppProps {
   onNavigate?: (path: PlayerPath, options?: { replace?: boolean }) => void;
 }
 
+type GodmodeTravelRequest = {
+  mode: 'world' | 'city' | 'location';
+  targetId?: string | null;
+  token: number;
+};
+
 function createUnknownItem(itemId: string): ItemDefinition {
   return {
     id: itemId,
@@ -835,6 +1086,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
   const [equipment, setEquipment] = useState<Equipment>({ ...EMPTY_EQUIPMENT });
   const [actionSlots, setActionSlots] = useState<CharacterActionSlot[]>(() => createEmptyActionSlots());
+  const [runtimeInventoryRevision, setRuntimeInventoryRevision] = useState(0);
+  const [godmodeTravelRequest, setGodmodeTravelRequest] = useState<GodmodeTravelRequest | null>(null);
 
   const [combatId, setCombatId] = useState<string | null>(null);
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
@@ -883,6 +1136,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return base;
   }, [race, raceConfig.stats, selectedOrigin]);
   const runtimeMerchants = useMemo(() => getRuntimeMerchants(runtimeAdminMerchants), [runtimeAdminMerchants]);
+  const worldInventory = useMemo(
+    () => mergeInventoryWithRuntimeOverlay(inventory),
+    [inventory, runtimeInventoryRevision],
+  );
+  const isGodmodeAccount = accountId !== null && login.trim().toLowerCase() === GODMODE_LOGIN;
 
   function resolveItem(itemId: string): ItemDefinition {
     const resolved = getDomainItemWithFallback(itemId, runtimeAdminItems);
@@ -1595,6 +1853,78 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     window.localStorage.setItem(LAST_CHARACTER_STORAGE_KEY, hub.character.id);
   }
 
+  const handleRuntimeInventoryChanged = useCallback(() => {
+    setRuntimeInventoryRevision((current) => current + 1);
+  }, []);
+
+  const refreshActiveCharacterHub = useCallback(async () => {
+    if (!character) {
+      return null;
+    }
+
+    const hub = await getArenaHubState(character.id);
+    applyHubState(hub);
+    return hub;
+  }, [character]);
+
+  async function finalizeAccountLogin(account: { id: string; login: string }): Promise<void> {
+    setAccountId(account.id);
+    window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
+    window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
+    setLogin(account.login);
+    const characters = await listCharacters(account.id);
+
+    if (characters.length > 0) {
+      const latestCharacter = characters[0];
+      const hub = await getArenaHubState(latestCharacter.id);
+      applyHubState(hub);
+      setPhase('hub');
+      setStatus(`Welcome back, ${account.login}.`);
+      return;
+    }
+
+    setSetupStep('character');
+    setStatus(`Welcome, ${account.login}. Create your first character.`);
+  }
+
+  async function loginOrProvisionGodmodeAccount(): Promise<void> {
+    try {
+      const account = await loginAccount({ login: GODMODE_LOGIN, password: GODMODE_PASSWORD });
+      await finalizeAccountLogin(account);
+      return;
+    } catch (error) {
+      const message = (error as Error).message ?? '';
+      if (!/invalid login or password/i.test(message)) {
+        throw error;
+      }
+    }
+
+    try {
+      const account = await registerAccount({ login: GODMODE_LOGIN, password: GODMODE_PASSWORD });
+      await finalizeAccountLogin(account);
+    } catch (error) {
+      const message = (error as Error).message ?? '';
+      if (/already used/i.test(message) || /already exists/i.test(message)) {
+        const account = await loginAccount({ login: GODMODE_LOGIN, password: GODMODE_PASSWORD });
+        await finalizeAccountLogin(account);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function onUseGodmodeAccount(): Promise<void> {
+    setLogin(GODMODE_LOGIN);
+    setPassword(GODMODE_PASSWORD);
+    setStatus('Signing in as GODMODE...');
+
+    try {
+      await loginOrProvisionGodmodeAccount();
+    } catch (error) {
+      setStatus(`GODMODE login error: ${(error as Error).message}`);
+    }
+  }
+
   async function onRegister(): Promise<void> {
     setStatus('Registering account...');
     try {
@@ -1613,24 +1943,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   async function onLogin(): Promise<void> {
     setStatus('Signing in...');
     try {
-      const account = await loginAccount({ login, password });
-      setAccountId(account.id);
-      window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
-      window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
-      setLogin(account.login);
-      const characters = await listCharacters(account.id);
-
-      if (characters.length > 0) {
-        const latestCharacter = characters[0];
-        const hub = await getArenaHubState(latestCharacter.id);
-        applyHubState(hub);
-        setPhase('hub');
-        setStatus(`Welcome back, ${account.login}.`);
+      if (login.trim().toLowerCase() === GODMODE_LOGIN && password === GODMODE_PASSWORD) {
+        await loginOrProvisionGodmodeAccount();
         return;
       }
 
-      setSetupStep('character');
-      setStatus(`Welcome, ${account.login}. Create your first character.`);
+      const account = await loginAccount({ login, password });
+      await finalizeAccountLogin(account);
     } catch (error) {
       setStatus(`Login error: ${(error as Error).message}`);
     }
@@ -2221,6 +2540,1015 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }
 
+  const executeGodmodeCommand = useCallback(async (commandLine: string): Promise<GodmodeConsoleResult> => {
+    if (!isGodmodeAccount) {
+      return {
+        ok: false,
+        lines: ['GODMODE console is available only for the godmod account.'],
+      };
+    }
+
+    const tokens = normalizeGodmodeCommandTokens(commandLine);
+    if (tokens.length === 0) {
+      return { ok: true, lines: [] };
+    }
+
+    const [headRaw, actionRaw, ...rest] = tokens;
+    const head = headRaw.toLowerCase();
+    const action = actionRaw?.toLowerCase();
+
+    const requireCharacter = (): ArenaCharacter => {
+      if (!character) {
+        throw new Error('Create or load a character first.');
+      }
+      return character;
+    };
+
+    const applyHubAndRefresh = async (hub: ArenaHubState): Promise<ArenaHubState> => {
+      applyHubState(hub);
+      handleRuntimeInventoryChanged();
+      return hub;
+    };
+
+    const syncRuntimeGoldIntoBackend = async (player: ArenaCharacter, nextTotalGold: number): Promise<ArenaHubState> => {
+      writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
+      const hub = await patchDevCharacterState(player.id, { gold: Math.max(0, Math.floor(nextTotalGold)) });
+      return applyHubAndRefresh(hub);
+    };
+
+    const adjustIdArrayStorage = (
+      storageKey: string,
+      id: string,
+      delta: number,
+    ): number => {
+      const normalizedId = id.trim();
+      if (!normalizedId) {
+        throw new Error('ID is required.');
+      }
+
+      const safeDelta = Math.trunc(delta);
+      if (safeDelta === 0) {
+        return 0;
+      }
+
+      const current = readStringArrayStorage(storageKey);
+      if (safeDelta > 0) {
+        writeStringArrayStorage(storageKey, [...current, ...Array.from({ length: safeDelta }, () => normalizedId)]);
+        return safeDelta;
+      }
+
+      let removed = 0;
+      const remaining = current.filter((entry) => {
+        if (entry === normalizedId && removed < Math.abs(safeDelta)) {
+          removed += 1;
+          return false;
+        }
+        return true;
+      });
+      writeStringArrayStorage(storageKey, remaining);
+      return -removed;
+    };
+
+    const adjustCountRecordStorage = (
+      storageKey: string,
+      id: string,
+      delta: number,
+    ): number => {
+      const normalizedId = id.trim();
+      if (!normalizedId) {
+        throw new Error('ID is required.');
+      }
+
+      const safeDelta = Math.trunc(delta);
+      if (safeDelta === 0) {
+        return 0;
+      }
+
+      const current = readStringNumberRecordStorage(storageKey);
+      const previousValue = current[normalizedId] ?? 0;
+      const nextValue = Math.max(0, previousValue + safeDelta);
+      if (nextValue <= 0) {
+        delete current[normalizedId];
+      } else {
+        current[normalizedId] = nextValue;
+      }
+      writeStringNumberRecordStorage(storageKey, current);
+      return safeDelta > 0 ? safeDelta : -Math.min(Math.abs(safeDelta), previousValue);
+    };
+
+    const queueTravelRequest = (mode: GodmodeTravelRequest['mode'], targetId?: string | null): void => {
+      onNavigate?.('/map');
+      setOverlayPanel(null);
+      setGodmodeTravelRequest({
+        mode,
+        targetId: targetId ?? null,
+        token: Date.now(),
+      });
+    };
+
+    try {
+      if (head === 'help') {
+        return { ok: true, lines: getGodmodeHelpLines() };
+      }
+
+      if (head === 'state') {
+        const player = character;
+        const questStates = player ? getAllPlayerQuestStates().filter((entry) => entry.playerId === player.id) : [];
+        const runtimeItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+        const runtimeQuestItems = readStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY);
+        const materials = readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY);
+        const resources = readStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY);
+
+        return {
+          ok: true,
+          lines: [
+            `Account: ${login || '—'}`,
+            `Character: ${player?.name ?? '—'} (${player?.id ?? 'no-character'})`,
+            `Gold: base=${inventory.gold} overlay=${readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)} total=${inventory.gold + readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)}`,
+            `Level=${player?.level ?? 0}, XP=${player?.exp ?? 0}, FreePoints=${player?.freePoints ?? 0}`,
+            `Runtime items=${runtimeItems.length}, questItems=${runtimeQuestItems.length}, quests=${questStates.length}`,
+            `Known skills=${characterSkills.length}, materials=${Object.keys(materials).length}, resources=${Object.keys(resources).length}`,
+            `Tutorial: ${GODMODE_TUTORIAL_PATH}`,
+          ],
+        };
+      }
+
+      if (head === 'list') {
+        const scope = action;
+        const filter = rest.join(' ').trim();
+
+        if (scope === 'items' || scope === 'item') {
+          const byId = new Map<string, { id: string; name: string; type: string; subtype: string; enabled: boolean }>();
+          for (const item of Object.values(ITEMS)) {
+            byId.set(item.id, {
+              id: item.id,
+              name: item.name,
+              type: item.itemType,
+              subtype: item.itemSubType,
+              enabled: true,
+            });
+          }
+          for (const item of runtimeAdminItems) {
+            byId.set(item.id, {
+              id: item.id,
+              name: item.name,
+              type: item.type,
+              subtype: item.subtype ?? item.slot ?? '—',
+              enabled: item.isEnabled,
+            });
+          }
+          const lines = Array.from(byId.values())
+            .filter((item) => matchesGodmodeFilter(filter, item.id, item.name, item.type, item.subtype))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((item) => `${item.id} — ${item.name} [${item.type}/${item.subtype}] ${item.enabled ? 'enabled' : 'disabled'}`);
+          return { ok: true, lines: formatGodmodeListLines('Items', lines, filter) };
+        }
+
+        if (scope === 'skills' || scope === 'skill') {
+          const skillEntries = runtimeAdminSkills.map((skill) => ({ ...skill, school: skill.type, category: skill.subtypes.join(',') || 'base' }));
+          const lines = skillEntries
+            .filter((skill) => matchesGodmodeFilter(filter, skill.id, skill.name, skill.type, skill.subtypes.join(',')))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((skill) => `${skill.id} — ${skill.name} [${skill.school}/${skill.category}] ${skill.isPublished ? 'published' : 'draft'}${skill.isPassive ? ' passive' : ''}`);
+          return { ok: true, lines: formatGodmodeListLines('Skills', lines, filter) };
+        }
+
+        if (scope === 'quests' || scope === 'quest') {
+          await ensureQuestsLoaded();
+          const lines = getAllQuests()
+            .filter((quest) => matchesGodmodeFilter(filter, quest.id, quest.title, quest.status, quest.category))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((quest) => `${quest.id} — ${quest.title} [${quest.status}/${quest.category ?? 'general'}]`);
+          return { ok: true, lines: formatGodmodeListLines('Quests', lines, filter) };
+        }
+
+        if (scope === 'npcs' || scope === 'npc') {
+          await ensureNpcsLoaded();
+          const lines = getAllNpcs()
+            .filter((npc) => matchesGodmodeFilter(filter, npc.id, npc.name, npc.status, npc.kind, npc.race))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((npc) => `${npc.id} — ${npc.name} [${npc.status}/${npc.kind}/${npc.race}]`);
+          return { ok: true, lines: formatGodmodeListLines('NPCs', lines, filter) };
+        }
+
+        if (scope === 'dialogues' || scope === 'dialogue') {
+          await ensureDialoguesLoaded();
+          const lines = getAllDialogues()
+            .filter((dialogue) => matchesGodmodeFilter(filter, dialogue.id, dialogue.title, dialogue.status, dialogue.npcId))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((dialogue) => `${dialogue.id} — ${dialogue.title} [${dialogue.status}] npc=${dialogue.npcId ?? '—'}`);
+          return { ok: true, lines: formatGodmodeListLines('Dialogues', lines, filter) };
+        }
+
+        if (scope === 'merchants' || scope === 'merchant') {
+          const lines = runtimeAdminMerchants
+            .filter((merchant) => matchesGodmodeFilter(filter, merchant.id, merchant.name, merchant.type, merchant.city, merchant.location))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((merchant) => `${merchant.id} — ${merchant.name} [${merchant.type}] items=${merchant.items.length} ${merchant.isEnabled ? 'enabled' : 'disabled'}`);
+          return { ok: true, lines: formatGodmodeListLines('Merchants', lines, filter) };
+        }
+
+        if (scope === 'cities' || scope === 'city') {
+          const cities = await cityService.getCities();
+          const lines = cities
+            .filter((city) => matchesGodmodeFilter(filter, city.id, city.name, city.regionId, city.status))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((city) => `${city.id} — ${city.name} [${city.status}] region=${city.regionId ?? '—'}`);
+          return { ok: true, lines: formatGodmodeListLines('Cities', lines, filter) };
+        }
+
+        if (scope === 'locations' || scope === 'location') {
+          const locations = await locationService.getLocations();
+          const lines = locations
+            .filter((location) => matchesGodmodeFilter(filter, location.id, location.name, location.status, location.subtype, location.regionId))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((location) => `${location.id} — ${location.name} [${location.status}/${location.subtype ?? 'location'}] state=${location.currentState ?? 'default'}`);
+          return { ok: true, lines: formatGodmodeListLines('Locations', lines, filter) };
+        }
+
+        if (scope === 'battlemaps' || scope === 'battlemap') {
+          const maps = await loadBattleMapsFromStore();
+          const lines = maps
+            .filter((map) => matchesGodmodeFilter(filter, map.id, map.name, map.description))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((map) => `${map.id} — ${map.name} [${map.width}x${map.height}]${map.id === selectedBattleMapId ? ' (selected)' : ''}`);
+          return { ok: true, lines: formatGodmodeListLines('Battle maps', lines, filter) };
+        }
+
+        if (scope === 'itemsets' || scope === 'itemset') {
+          const sets = await itemSetsService.getAll();
+          const lines = sets
+            .filter((set) => matchesGodmodeFilter(filter, set.id, set.name, set.gameplayDescription, set.loreDescription))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((set) => `${set.id} — ${set.name} [pieces=${set.pieceItemIds.length}] ${set.isEnabled ? 'enabled' : 'disabled'}`);
+          return { ok: true, lines: formatGodmodeListLines('Item sets', lines, filter) };
+        }
+
+        if (scope === 'materials' || scope === 'material') {
+          const materials = await materialsService.getAll();
+          const lines = materials
+            .filter((material) => matchesGodmodeFilter(filter, material.id, material.name, material.category, material.region))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((material) => `${material.id} — ${material.name} [${material.category}/${material.rarity}] region=${material.region}`);
+          return { ok: true, lines: formatGodmodeListLines('Materials', lines, filter) };
+        }
+
+        throw new Error('Use: list items|skills|quests|npcs|dialogues|merchants|cities|locations|battlemaps|itemsets|materials [filter].');
+      }
+
+      if (head === 'teleport' || head === 'tp') {
+        const scope = action;
+        if (scope === 'world') {
+          queueTravelRequest('world');
+          setStatus('GODMODE: returning to world map.');
+          return { ok: true, lines: ['Travel request queued: world map.'] };
+        }
+
+        const targetId = String(rest[0] ?? '').trim();
+        if (scope === 'city') {
+          if (!targetId) {
+            throw new Error('Use: teleport city <cityId>.');
+          }
+          const city = await cityService.getCityById(targetId);
+          if (!city) {
+            throw new Error(`City not found: ${targetId}`);
+          }
+          queueTravelRequest('city', city.id);
+          setStatus(`GODMODE: teleport queued to city ${city.name}.`);
+          return { ok: true, lines: [`Travel request queued: city ${city.id} (${city.name}).`] };
+        }
+
+        if (scope === 'location') {
+          if (!targetId) {
+            throw new Error('Use: teleport location <locationId>.');
+          }
+          const location = await locationService.getLocationById(targetId);
+          if (!location) {
+            throw new Error(`Location not found: ${targetId}`);
+          }
+          queueTravelRequest('location', location.id);
+          setStatus(`GODMODE: teleport queued to location ${location.name}.`);
+          return { ok: true, lines: [`Travel request queued: location ${location.id} (${location.name}).`] };
+        }
+
+        throw new Error('Use: teleport world OR teleport city <cityId> OR teleport location <locationId>.');
+      }
+
+      if (head === 'panel') {
+        if (action === 'close') {
+          setOverlayPanel(null);
+          onNavigate?.('/map');
+          return { ok: true, lines: ['Closed active panel.'] };
+        }
+
+        if (action !== 'open') {
+          throw new Error('Use: panel open <inventory|character|stats|skills|equipment|merchant|arena|map> OR panel close.');
+        }
+
+        const panelName = String(rest[0] ?? '').trim().toLowerCase();
+        const panelTargetId = String(rest[1] ?? '').trim();
+
+        if (panelName === 'inventory') {
+          changeCharacterOverlayFocus('inventory');
+          return { ok: true, lines: ['Opened inventory panel.'] };
+        }
+        if (panelName === 'character') {
+          changeCharacterOverlayFocus('character');
+          return { ok: true, lines: ['Opened character panel.'] };
+        }
+        if (panelName === 'stats') {
+          changeCharacterOverlayFocus('stats');
+          return { ok: true, lines: ['Opened stats panel.'] };
+        }
+        if (panelName === 'skills') {
+          openSkillsOverlay();
+          return { ok: true, lines: ['Opened skills panel.'] };
+        }
+        if (panelName === 'equipment') {
+          openEquipmentOverlay();
+          return { ok: true, lines: ['Opened equipment panel.'] };
+        }
+        if (panelName === 'merchant') {
+          if (!panelTargetId && runtimeMerchants.length === 0) {
+            throw new Error('No merchants are loaded.');
+          }
+          if (panelTargetId && !runtimeMerchants.some((merchant) => merchant.id === panelTargetId)) {
+            throw new Error(`Merchant not found: ${panelTargetId}`);
+          }
+          openMerchantOverlay(panelTargetId || undefined);
+          return { ok: true, lines: [`Opened merchant panel${panelTargetId ? ` for ${panelTargetId}` : ''}.`] };
+        }
+        if (panelName === 'arena') {
+          openArenaOverlay();
+          return { ok: true, lines: ['Opened arena setup panel.'] };
+        }
+        if (panelName === 'map' || panelName === 'world') {
+          setOverlayPanel(null);
+          onNavigate?.('/map');
+          return { ok: true, lines: ['Switched to world map view.'] };
+        }
+
+        throw new Error('Unknown panel. Use: inventory|character|stats|skills|equipment|merchant|arena|map.');
+      }
+
+      if (head === 'gold') {
+        const player = requireCharacter();
+        const amount = parseConsoleInteger(rest[0], 'Amount');
+        const currentTotal = Math.max(0, inventory.gold + readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+        const nextTotal = action === 'set'
+          ? amount
+          : currentTotal + amount;
+        const hub = await syncRuntimeGoldIntoBackend(player, nextTotal);
+        setStatus(`GODMODE gold updated: ${hub.inventory.gold}`);
+        return { ok: true, lines: [`Gold set to ${hub.inventory.gold}.`] };
+      }
+
+      if (head === 'xp' || head === 'experience') {
+        const player = requireCharacter();
+        const amount = parseConsoleInteger(rest[0], 'Amount');
+        const nextExp = action === 'set'
+          ? amount
+          : player.exp + amount;
+        const hub = await applyHubAndRefresh(await patchDevCharacterState(player.id, { exp: Math.max(0, nextExp) }));
+        setStatus(`GODMODE XP updated: ${hub.character.exp}`);
+        return { ok: true, lines: [`Experience set to ${hub.character.exp}.`] };
+      }
+
+      if (head === 'level') {
+        const player = requireCharacter();
+        const value = parseConsoleInteger(rest[0], 'Level');
+        const hub = await applyHubAndRefresh(await patchDevCharacterState(player.id, { level: Math.max(0, value) }));
+        setStatus(`GODMODE level updated: ${hub.character.level}`);
+        return { ok: true, lines: [`Level set to ${hub.character.level}.`] };
+      }
+
+      if (head === 'points') {
+        const player = requireCharacter();
+        const amount = parseConsoleInteger(rest[0], 'Points');
+        const nextFreePoints = action === 'set'
+          ? amount
+          : player.freePoints + amount;
+        const hub = await applyHubAndRefresh(await patchDevCharacterState(player.id, { freePoints: Math.max(0, nextFreePoints) }));
+        setStatus(`GODMODE free points updated: ${hub.character.freePoints}`);
+        return { ok: true, lines: [`Free points set to ${hub.character.freePoints}.`] };
+      }
+
+      if (head === 'stat') {
+        const player = requireCharacter();
+        const statName = String(rest[0] ?? '').trim().toLowerCase();
+        const amount = parseConsoleInteger(rest[1], 'Stat value');
+        const fieldMap: Record<string, { field: string; current: number }> = {
+          hp: { field: 'hpBase', current: player.baseStats.hp },
+          mp: { field: 'mpBase', current: player.baseStats.mp },
+          stamina: { field: 'staminaBase', current: player.baseStats.stamina },
+          strength: { field: 'strength', current: player.baseStats.strength },
+          constitution: { field: 'endurance', current: player.baseStats.constitution },
+          endurance: { field: 'endurance', current: player.baseStats.constitution },
+          dexterity: { field: 'dexterity', current: player.baseStats.dexterity },
+          intelligence: { field: 'intelligence', current: player.baseStats.intelligence },
+          luck: { field: 'luck', current: player.baseStats.luck },
+          perception: { field: 'speed', current: player.baseStats.perception },
+          speed: { field: 'speed', current: player.baseStats.perception },
+          willpower: { field: 'willpower', current: player.baseStats.willpower },
+        };
+
+        const target = fieldMap[statName];
+        if (!target) {
+          throw new Error(`Unknown stat: ${statName}`);
+        }
+
+        const nextValue = action === 'set'
+          ? amount
+          : target.current + amount;
+        const hub = await applyHubAndRefresh(await patchDevCharacterState(player.id, {
+          [target.field]: Math.max(0, nextValue),
+        }));
+        setStatus(`GODMODE stat updated: ${statName}`);
+        return { ok: true, lines: [`${statName} set to ${Math.max(0, nextValue)}.`] };
+      }
+
+      if (head === 'resource') {
+        const player = requireCharacter();
+        if (action === 'full') {
+          await updateCharacterResources(player.id, {
+            currentHp: player.maxHp,
+            currentMp: player.maxMp,
+            currentStamina: player.maxStamina,
+          });
+          const hub = await refreshActiveCharacterHub();
+          if (hub) {
+            handleRuntimeInventoryChanged();
+          }
+          return { ok: true, lines: ['HP, MP and stamina restored to maximum.'] };
+        }
+
+        if (action !== 'set') {
+          throw new Error('Use: resource full OR resource set <hp|mp|stamina|regen> <value>.');
+        }
+
+        const resourceName = String(rest[0] ?? '').trim().toLowerCase();
+        const value = parseConsoleInteger(rest[1], 'Resource value');
+        const payload = resourceName === 'hp'
+          ? { currentHp: value }
+          : resourceName === 'mp'
+            ? { currentMp: value }
+            : resourceName === 'stamina'
+              ? { currentStamina: value }
+              : resourceName === 'regen'
+                ? { hpRegenPerTurn: value }
+                : null;
+
+        if (!payload) {
+          throw new Error(`Unknown resource: ${resourceName}`);
+        }
+
+        await updateCharacterResources(player.id, payload);
+        await refreshActiveCharacterHub();
+        return { ok: true, lines: [`Resource ${resourceName} updated.`] };
+      }
+
+      if (head === 'item') {
+        const player = requireCharacter();
+        const itemId = String(rest[0] ?? '').trim();
+        const quantity = Math.max(1, Math.abs(parseConsoleInteger(rest[1] ?? '1', 'Quantity')));
+        const delta = action === 'remove' ? -quantity : quantity;
+        const hub = await applyHubAndRefresh(await adjustDevInventoryItem(player.id, { itemId, quantityDelta: delta }));
+        setStatus(`GODMODE inventory updated: ${itemId}`);
+        return { ok: true, lines: [`${delta > 0 ? 'Added' : 'Removed'} ${Math.abs(delta)} x ${itemId}.`, `Inventory now has ${hub.inventory.items.find((entry) => entry.itemId === itemId)?.quantity ?? 0} x ${itemId}.`] };
+      }
+
+      if (head === 'equip') {
+        const player = requireCharacter();
+        const itemId = String(actionRaw ?? '').trim();
+        const slot = rest[0] ? String(rest[0]).trim() as keyof Equipment : undefined;
+        if (!itemId) {
+          throw new Error('Use: equip <itemId> [slot].');
+        }
+        const hub = await applyHubAndRefresh(await equipArenaItem(player.id, itemId, slot));
+        return { ok: true, lines: [`Equipped ${itemId}.`, `Weapon=${hub.equipment.weapon ?? 'empty'}, Armor=${hub.equipment.armor ?? 'empty'}.`] };
+      }
+
+      if (head === 'unequip') {
+        const player = requireCharacter();
+        const slot = String(actionRaw ?? '').trim() as keyof Equipment;
+        if (!slot) {
+          throw new Error('Use: unequip <slot>.');
+        }
+        const hub = await applyHubAndRefresh(await unequipArenaItem(player.id, slot));
+        return { ok: true, lines: [`Unequipped slot ${slot}.`, `Slot ${slot} is now ${hub.equipment[slot] ?? 'empty'}.`] };
+      }
+
+      if (head === 'skill') {
+        const player = requireCharacter();
+        const skillId = String(rest[0] ?? '').trim();
+        if (!skillId) {
+          throw new Error('Use: skill add <skillId> OR skill remove <skillId>.');
+        }
+
+        if (action === 'remove') {
+          await revokeCharacterSkill(player.id, skillId);
+          await refreshCharacterSkills(player.id);
+          await refreshActiveCharacterHub();
+          return { ok: true, lines: [`Removed skill ${skillId}.`] };
+        }
+
+        await grantSkill(player.id, {
+          skillId,
+          sourceType: 'admin',
+          sourceId: 'godmode_console',
+        });
+        await refreshCharacterSkills(player.id);
+        await refreshActiveCharacterHub();
+        return { ok: true, lines: [`Granted skill ${skillId}.`] };
+      }
+
+      if (head === 'merchant') {
+        const filter = rest.join(' ').trim();
+
+        if (action === 'list') {
+          const lines = runtimeAdminMerchants
+            .filter((merchant) => matchesGodmodeFilter(filter, merchant.id, merchant.name, merchant.type, merchant.city, merchant.location))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((merchant) => `${merchant.id} — ${merchant.name} [${merchant.type}] items=${merchant.items.length} ${merchant.isEnabled ? 'enabled' : 'disabled'}`);
+          return { ok: true, lines: formatGodmodeListLines('Merchants', lines, filter) };
+        }
+
+        if (action === 'open') {
+          const merchantId = String(rest[0] ?? '').trim();
+          if (!merchantId && runtimeMerchants.length === 0) {
+            throw new Error('No merchants are loaded.');
+          }
+          if (merchantId && !runtimeMerchants.some((merchant) => merchant.id === merchantId)) {
+            throw new Error(`Merchant not found: ${merchantId}`);
+          }
+          openMerchantOverlay(merchantId || undefined);
+          return { ok: true, lines: [`Opened merchant ${merchantId || selectedMerchantId || runtimeMerchants[0]?.id || 'default'}.`] };
+        }
+
+        throw new Error('Use: merchant open <merchantId> OR merchant list [filter].');
+      }
+
+      if (head === 'battle') {
+        if (action === 'map') {
+          const battleMapId = String(rest[0] ?? '').trim();
+          if (!battleMapId) {
+            throw new Error('Use: battle map <battleMapId>.');
+          }
+          const maps = await loadBattleMapsFromStore();
+          const battleMap = maps.find((entry) => entry.id === battleMapId) ?? null;
+          if (!battleMap) {
+            throw new Error(`Battle map not found: ${battleMapId}`);
+          }
+          setSelectedBattleMapId(battleMap.id);
+          return { ok: true, lines: [`Selected battle map: ${battleMap.id} (${battleMap.name}).`] };
+        }
+
+        if (action === 'start') {
+          requireCharacter();
+          let enemyCount = 3;
+          let battleMapId: string | undefined;
+          const firstArg = String(rest[0] ?? '').trim();
+          const secondArg = String(rest[1] ?? '').trim();
+
+          if (firstArg) {
+            const numeric = Number(firstArg);
+            if (Number.isFinite(numeric)) {
+              enemyCount = Math.max(1, Math.min(MAX_COMBAT_ENEMIES, Math.trunc(numeric)));
+              battleMapId = secondArg || undefined;
+            } else {
+              battleMapId = firstArg;
+            }
+          }
+
+          if (battleMapId) {
+            const maps = await loadBattleMapsFromStore();
+            if (!maps.some((entry) => entry.id === battleMapId)) {
+              throw new Error(`Battle map not found: ${battleMapId}`);
+            }
+            setSelectedBattleMapId(battleMapId);
+          }
+
+          await openCombat(battleMapId, { enemyCount });
+          return { ok: true, lines: [`Started battle with ${enemyCount} generated enemies${battleMapId ? ` on ${battleMapId}` : ''}.`] };
+        }
+
+        if (action === 'npc') {
+          requireCharacter();
+          const npcIdsRaw = String(rest[0] ?? '').trim();
+          const battleMapId = String(rest[1] ?? '').trim() || undefined;
+          if (!npcIdsRaw) {
+            throw new Error('Use: battle npc <npcId[,npcId2,...]> [battleMapId].');
+          }
+
+          await ensureNpcsLoaded();
+          const ids = npcIdsRaw.split(',').map((entry) => entry.trim()).filter(Boolean).slice(0, MAX_COMBAT_ENEMIES);
+          const npcById = new Map(getAllNpcs().map((npc) => [npc.id, npc] as const));
+          const missing = ids.filter((id) => !npcById.has(id));
+          if (missing.length > 0) {
+            throw new Error(`NPC not found: ${missing.join(', ')}`);
+          }
+
+          if (battleMapId) {
+            const maps = await loadBattleMapsFromStore();
+            if (!maps.some((entry) => entry.id === battleMapId)) {
+              throw new Error(`Battle map not found: ${battleMapId}`);
+            }
+            setSelectedBattleMapId(battleMapId);
+          }
+
+          const customEnemies = ids.map((id) => toCustomNpcPayload(toArenaNpcTemplate(npcById.get(id)!, resolveArenaNpcItem)));
+          await openCombat(battleMapId, { customEnemies });
+          return { ok: true, lines: [`Started battle against NPCs: ${ids.join(', ')}${battleMapId ? ` on ${battleMapId}` : ''}.`] };
+        }
+
+        throw new Error('Use: battle map <battleMapId> OR battle start [enemyCount] [battleMapId] OR battle npc <npcId[,npcId2,...]> [battleMapId].');
+      }
+
+      if (head === 'itemset') {
+        const setId = String(rest[0] ?? '').trim();
+        const filter = rest.join(' ').trim();
+
+        if (action === 'list') {
+          const sets = await itemSetsService.getAll();
+          const lines = sets
+            .filter((set) => matchesGodmodeFilter(filter, set.id, set.name, set.gameplayDescription, set.loreDescription))
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((set) => `${set.id} — ${set.name} [pieces=${set.pieceItemIds.length}] ${set.isEnabled ? 'enabled' : 'disabled'}`);
+          return { ok: true, lines: formatGodmodeListLines('Item sets', lines, filter) };
+        }
+
+        if (!setId) {
+          throw new Error('Use: itemset give|remove <setId> OR itemset list [filter].');
+        }
+
+        const player = requireCharacter();
+        const itemSet = await itemSetsService.getById(setId);
+        if (!itemSet) {
+          throw new Error(`Item set not found: ${setId}`);
+        }
+
+        if (action !== 'give' && action !== 'remove') {
+          throw new Error('Use: itemset give <setId> OR itemset remove <setId> OR itemset list [filter].');
+        }
+
+        let hub: ArenaHubState | null = null;
+        for (const pieceItemId of itemSet.pieceItemIds) {
+          hub = await applyHubAndRefresh(await adjustDevInventoryItem(player.id, {
+            itemId: pieceItemId,
+            quantityDelta: action === 'remove' ? -1 : 1,
+          }));
+        }
+
+        return {
+          ok: true,
+          lines: [
+            `${action === 'remove' ? 'Removed' : 'Granted'} item set ${itemSet.id} (${itemSet.name}).`,
+            `Pieces: ${itemSet.pieceItemIds.join(', ') || 'none'}.`,
+            ...(hub ? [`Inventory gold remains ${hub.inventory.gold}.`] : []),
+          ],
+        };
+      }
+
+      if (head === 'quest') {
+        const player = requireCharacter();
+        const questId = String(rest[0] ?? '').trim();
+        await ensureQuestsLoaded();
+        const questDefinition = questId ? getQuestById(questId) : null;
+
+        if (action !== 'track' && action !== 'untrack' && !questDefinition) {
+          throw new Error(`Quest not found: ${questId}`);
+        }
+
+        if (action === 'get') {
+          const state = getPlayerQuestState(player.id, questId);
+          return {
+            ok: true,
+            lines: state
+              ? [
+                  `Quest: ${questDefinition?.title ?? questId}`,
+                  `Status: ${state.status}`,
+                  `Current step: ${state.currentStepId ?? 'none'}`,
+                  `Completed objectives: ${(state.completedObjectiveIds ?? []).join(', ') || 'none'}`,
+                ]
+              : [`Quest ${questId} has no player state yet.`],
+          };
+        }
+
+        if (action === 'start') {
+          const state = startQuest(player.id, questId);
+          setStatus(`GODMODE quest started: ${questId}`);
+          return { ok: true, lines: [`Quest started: ${questDefinition?.title ?? questId}.`, `Step: ${state.currentStepId ?? 'none'}.`] };
+        }
+
+        if (action === 'advance') {
+          const state = advanceQuest(player.id, questId);
+          const rewards = state.status === 'completed' ? applyQuestRewards(player.id, questId) : { applied: false, rewards: [] };
+          return {
+            ok: true,
+            lines: [
+              `Quest advanced: ${questId}.`,
+              `Status: ${state.status}.`,
+              ...(rewards.applied ? [`Rewards: ${rewards.rewards.join(', ') || 'none'}.`] : []),
+            ],
+          };
+        }
+
+        if (action === 'complete') {
+          if (!getPlayerQuestState(player.id, questId)) {
+            startQuest(player.id, questId);
+          }
+          const state = completeQuest(player.id, questId);
+          const rewards = applyQuestRewards(player.id, questId);
+          handleRuntimeInventoryChanged();
+          return {
+            ok: true,
+            lines: [
+              `Quest completed: ${questDefinition?.title ?? questId}.`,
+              `Status: ${state.status}.`,
+              ...(rewards.applied ? [`Rewards: ${rewards.rewards.join(', ') || 'none'}.`] : []),
+            ],
+          };
+        }
+
+        if (action === 'fail') {
+          if (!getPlayerQuestState(player.id, questId)) {
+            startQuest(player.id, questId);
+          }
+          const reason = rest.slice(1).join(' ');
+          const state = failQuest(player.id, questId, reason || undefined);
+          return { ok: true, lines: [`Quest failed: ${questDefinition?.title ?? questId}.`, `Reason: ${reason || 'none'}.`, `Status: ${state.status}.`] };
+        }
+
+        if (action === 'reset') {
+          deletePlayerQuestState(player.id, questId);
+          window.localStorage.removeItem(getTrackedQuestStorageKey(player.id));
+          return { ok: true, lines: [`Quest state removed: ${questId}.`] };
+        }
+
+        if (action === 'untrack') {
+          window.localStorage.removeItem(getTrackedQuestStorageKey(player.id));
+          return { ok: true, lines: ['Tracked quest cleared.'] };
+        }
+
+        if (action === 'track') {
+          const objectiveId = rest[1] ? String(rest[1]).trim() : null;
+          window.localStorage.setItem(getTrackedQuestStorageKey(player.id), JSON.stringify({
+            questId: questId || null,
+            objectiveId,
+          }));
+          return { ok: true, lines: [`Tracked quest set to ${questId}${objectiveId ? ` / ${objectiveId}` : ''}.`] };
+        }
+
+        if (action === 'reward') {
+          const rewards = applyQuestRewards(player.id, questId);
+          handleRuntimeInventoryChanged();
+          return {
+            ok: true,
+            lines: [
+              `Quest rewards applied for ${questDefinition?.title ?? questId}.`,
+              ...(rewards.applied ? [`Rewards: ${rewards.rewards.join(', ') || 'none'}.`] : ['No reward payload was applied.']),
+            ],
+          };
+        }
+
+        if (action === 'flag') {
+          const key = String(rest[1] ?? '').trim();
+          if (!key) {
+            throw new Error('Use: quest flag <questId> <key> <value>.');
+          }
+          const value = parseLooseConsoleValue(rest.slice(2).join(' '));
+          const state = setQuestFlag(player.id, questId, key, value);
+          return { ok: true, lines: [`Quest flag set: ${questId}.${key} = ${JSON.stringify(state.flags?.[key] ?? value)}.`] };
+        }
+
+        throw new Error('Use: quest get|start|advance|complete|fail|reset|track|untrack|reward|flag <questId> ...');
+      }
+
+      if (head === 'objective') {
+        const player = requireCharacter();
+        const objectiveAction = action;
+        const questId = String(rest[0] ?? '').trim();
+        const objectiveId = String(rest[1] ?? '').trim();
+        await ensureQuestsLoaded();
+        if (objectiveAction !== 'complete' || !questId || !objectiveId) {
+          throw new Error('Use: objective complete <questId> <objectiveId>.');
+        }
+
+        if (!getPlayerQuestState(player.id, questId)) {
+          startQuest(player.id, questId);
+        }
+        completeObjective(player.id, questId, objectiveId);
+        const state = advanceQuest(player.id, questId);
+        const rewards = state.status === 'completed' ? applyQuestRewards(player.id, questId) : { applied: false, rewards: [] };
+        handleRuntimeInventoryChanged();
+        return {
+          ok: true,
+          lines: [
+            `Objective completed: ${objectiveId}.`,
+            `Quest status: ${state.status}.`,
+            ...(rewards.applied ? [`Rewards: ${rewards.rewards.join(', ') || 'none'}.`] : []),
+          ],
+        };
+      }
+
+      if (head === 'questitem') {
+        const questItemId = String(rest[0] ?? '').trim();
+        const quantity = Math.max(1, Math.abs(parseConsoleInteger(rest[1] ?? '1', 'Quantity')));
+        const applied = adjustIdArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY, questItemId, action === 'remove' ? -quantity : quantity);
+        handleRuntimeInventoryChanged();
+        return { ok: true, lines: [`${applied >= 0 ? 'Added' : 'Removed'} ${Math.abs(applied)} x ${questItemId}.`] };
+      }
+
+      if (head === 'material' || head === 'resource') {
+        const itemId = String(rest[0] ?? '').trim();
+        const quantity = Math.max(1, Math.abs(parseConsoleInteger(rest[1] ?? '1', 'Quantity')));
+        const storageKey = head === 'material' ? PLAYER_MATERIALS_STORAGE_KEY : PLAYER_RESOURCES_STORAGE_KEY;
+        const applied = adjustCountRecordStorage(storageKey, itemId, action === 'remove' ? -quantity : quantity);
+        handleRuntimeInventoryChanged();
+        return { ok: true, lines: [`${applied >= 0 ? 'Added' : 'Removed'} ${Math.abs(applied)} ${head} x ${itemId}.`] };
+      }
+
+      if (head === 'flag') {
+        if (action === 'list') {
+          const flags = readJsonRecord(PLAYER_FLAGS_STORAGE_KEY);
+          const lines = Object.entries(flags)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, value]) => `${key} = ${JSON.stringify(value)}`);
+          return { ok: true, lines: formatGodmodeListLines('Flags', lines) };
+        }
+
+        if (action === 'get') {
+          const key = String(rest[0] ?? '').trim();
+          if (!key) {
+            throw new Error('Use: flag get <key>.');
+          }
+          const flags = readJsonRecord(PLAYER_FLAGS_STORAGE_KEY);
+          if (!(key in flags)) {
+            return { ok: true, lines: [`Flag not set: ${key}.`] };
+          }
+          return { ok: true, lines: [`${key} = ${JSON.stringify(flags[key])}`] };
+        }
+
+        const key = String(rest[0] ?? '').trim();
+        if (!key) {
+          throw new Error('Use: flag get <key> | flag list | flag set <key> <value> | flag delete <key>.');
+        }
+
+        const flags = readJsonRecord(PLAYER_FLAGS_STORAGE_KEY);
+        if (action === 'delete' || action === 'remove') {
+          delete flags[key];
+          writeJsonRecord(PLAYER_FLAGS_STORAGE_KEY, flags);
+          return { ok: true, lines: [`Flag removed: ${key}.`] };
+        }
+
+        const value = parseLooseConsoleValue(rest.slice(1).join(' '));
+        flags[key] = value;
+        writeJsonRecord(PLAYER_FLAGS_STORAGE_KEY, flags);
+        return { ok: true, lines: [`Flag set: ${key} = ${JSON.stringify(value)}.`] };
+      }
+
+      if (head === 'unlock') {
+        const scope = action;
+        const targetId = String(rest[0] ?? '').trim();
+        if (scope === 'all') {
+          const targetScope = String(rest[0] ?? '').trim().toLowerCase();
+          if (targetScope === 'locations') {
+            const locations = await locationService.getLocations();
+            writeStringArrayStorage(PLAYER_UNLOCKED_LOCATIONS_STORAGE_KEY, locations.map((location) => location.id));
+            return { ok: true, lines: [`Unlocked all locations (${locations.length}).`] };
+          }
+          if (targetScope === 'dialogues') {
+            await ensureDialoguesLoaded();
+            const dialogues = getAllDialogues();
+            writeStringArrayStorage(PLAYER_UNLOCKED_DIALOGUES_STORAGE_KEY, dialogues.map((dialogue) => dialogue.id));
+            return { ok: true, lines: [`Unlocked all dialogues (${dialogues.length}).`] };
+          }
+          if (targetScope === 'shops') {
+            writeStringArrayStorage(PLAYER_UNLOCKED_SHOPS_STORAGE_KEY, runtimeAdminMerchants.map((merchant) => merchant.id));
+            return { ok: true, lines: [`Unlocked all shops (${runtimeAdminMerchants.length}).`] };
+          }
+          throw new Error('Use: unlock all locations|dialogues|shops.');
+        }
+        const storageKey = scope === 'location'
+          ? PLAYER_UNLOCKED_LOCATIONS_STORAGE_KEY
+          : scope === 'dialogue'
+            ? PLAYER_UNLOCKED_DIALOGUES_STORAGE_KEY
+            : scope === 'shop'
+              ? PLAYER_UNLOCKED_SHOPS_STORAGE_KEY
+              : null;
+        if (!storageKey || !targetId) {
+          throw new Error('Use: unlock location|dialogue|shop <id>.');
+        }
+        const current = readStringArrayStorage(storageKey);
+        if (!current.includes(targetId)) {
+          writeStringArrayStorage(storageKey, [...current, targetId]);
+        }
+        return { ok: true, lines: [`Unlocked ${scope}: ${targetId}.`] };
+      }
+
+      if (head === 'clear') {
+        const scope = action;
+        if (scope === 'questitems') {
+          writeStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY, []);
+          handleRuntimeInventoryChanged();
+          return { ok: true, lines: ['Cleared all quest items from runtime storage.'] };
+        }
+        if (scope === 'materials') {
+          writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, {});
+          handleRuntimeInventoryChanged();
+          return { ok: true, lines: ['Cleared all materials from runtime storage.'] };
+        }
+        if (scope === 'resources') {
+          writeStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY, {});
+          handleRuntimeInventoryChanged();
+          return { ok: true, lines: ['Cleared all resources from runtime storage.'] };
+        }
+        if (scope === 'flags') {
+          writeJsonRecord(PLAYER_FLAGS_STORAGE_KEY, {});
+          return { ok: true, lines: ['Cleared all player flags.'] };
+        }
+        if (scope === 'runtimeitems') {
+          writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
+          writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
+          handleRuntimeInventoryChanged();
+          return { ok: true, lines: ['Cleared runtime item overlay and runtime gold overlay.'] };
+        }
+        if (scope === 'allruntime') {
+          writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
+          writeStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY, []);
+          writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, {});
+          writeStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY, {});
+          writeJsonRecord(PLAYER_FLAGS_STORAGE_KEY, {});
+          writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
+          handleRuntimeInventoryChanged();
+          return { ok: true, lines: ['Cleared runtime items, quest items, materials, resources, flags and runtime gold overlay.'] };
+        }
+        throw new Error('Use: clear questitems|materials|resources|flags|runtimeitems|allruntime.');
+      }
+
+      if (head === 'sync' && action === 'runtime') {
+        const player = requireCharacter();
+        const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+        const runtimeItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+        const itemCounts = countIdEntries(runtimeItems);
+        let hub: ArenaHubState | null = null;
+
+        if (runtimeGold > 0) {
+          hub = await syncRuntimeGoldIntoBackend(player, inventory.gold + runtimeGold);
+        }
+
+        for (const [itemId, quantity] of itemCounts.entries()) {
+          hub = await applyHubAndRefresh(await adjustDevInventoryItem(player.id, { itemId, quantityDelta: quantity }));
+        }
+
+        if (runtimeItems.length > 0) {
+          writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
+        }
+
+        handleRuntimeInventoryChanged();
+        return {
+          ok: true,
+          lines: [
+            `Synced runtime overlay into backend inventory.`,
+            `Gold merged: ${runtimeGold}.`,
+            `Items merged: ${runtimeItems.length}.`,
+            ...(hub ? [`Current gold: ${hub.inventory.gold}.`] : []),
+          ],
+        };
+      }
+
+      throw new Error(`Unknown GODMODE command: ${tokens.join(' ')}`);
+    } catch (error) {
+      return {
+        ok: false,
+        lines: [(error as Error).message || 'Unknown GODMODE error.'],
+      };
+    }
+  }, [
+    character,
+    characterSkills.length,
+    changeCharacterOverlayFocus,
+    handleRuntimeInventoryChanged,
+    inventory.gold,
+    isGodmodeAccount,
+    login,
+    onNavigate,
+    openArenaOverlay,
+    openCombat,
+    openEquipmentOverlay,
+    openMerchantOverlay,
+    openSkillsOverlay,
+    refreshActiveCharacterHub,
+    refreshCharacterSkills,
+    resolveArenaNpcItem,
+    runtimeAdminItems,
+    runtimeAdminMerchants,
+    runtimeAdminSkills,
+    runtimeMerchants,
+    selectedBattleMapId,
+    selectedMerchantId,
+  ]);
+
   function adjustPendingStat(stat: PrimaryStat, delta: number): void {
     const current = pendingStatAllocation[stat] ?? 0;
     const nextValue = current + delta;
@@ -2352,6 +3680,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                     <div className="hud-actions setup-actions-row">
                       <button onClick={onRegister} disabled={!login.trim() || !password.trim()}>Register</button>
                       <button onClick={onLogin} disabled={!login.trim() || !password.trim()}>Login</button>
+                      <button type="button" className="godmode-login-button" onClick={() => void onUseGodmodeAccount()}>GODMODE</button>
                     </div>
                   </section>
 
@@ -2547,7 +3876,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       <main className="shell game-shell world-shell game-main">
         <WorldMapScreen
           character={character}
-          inventory={inventory}
+          inventory={worldInventory}
           equipment={equipment}
           playerAvatarUrl={playerAvatarUrl}
           battleStats={{
@@ -2575,6 +3904,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onOpenMerchant={openMerchantOverlay}
           onOpenSkills={openSkillsOverlay}
           onGrantSkill={handleGrantCharacterSkill}
+          onRuntimeInventoryChanged={handleRuntimeInventoryChanged}
           onStartCombat={openCombat}
           onStartBattleMap={(battleMapId) => {
             openArenaSetup(battleMapId);
@@ -2585,12 +3915,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
           resolveItemImage={resolveItemImage}
           resolveMerchantImage={resolveMerchantImage}
+          devTravelRequest={godmodeTravelRequest}
         />
 
         {overlayPanel === 'character' && character ? (
           <InventoryPanel
             character={character}
-            inventory={inventory}
+            inventory={worldInventory}
             equipment={equipment}
             learnedSkills={characterSkills}
             availableSkills={runtimeAdminSkills}
@@ -3015,6 +4346,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           </div>
         ) : null}
       </main>
+
+      <GodmodeConsole
+        enabled={isGodmodeAccount}
+        accountLogin={login || null}
+        characterName={character?.name ?? null}
+        tutorialPath={GODMODE_TUTORIAL_PATH}
+        onExecute={executeGodmodeCommand}
+      />
     </div>
   );
 }

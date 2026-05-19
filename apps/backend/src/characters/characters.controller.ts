@@ -41,6 +41,14 @@ export class CharactersController {
     return this.charactersService.updateCharacter(id, payload);
   }
 
+  @Patch(':id/dev-state')
+  patchDevState(
+    @Param('id') id: string,
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.charactersService.applyDevStatePatch(id, payload);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.charactersService.deleteCharacter(id);

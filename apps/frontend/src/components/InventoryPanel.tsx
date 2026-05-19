@@ -3,7 +3,9 @@ import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock 
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
-import type { AdminItem } from '../services/content/models';
+import type { AdminItem, Material } from '../services/content/models';
+import { materialsService } from '../services/content/materialsService';
+import { getQuestById, getQuestItemById } from '../services/questRepository';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { resolveTrainerSkillCandidates, type TrainerSkillCandidate } from './training/trainerSkillResolver';
 import { canUseSkillOutsideCombat, getSkillDetailFacts, getSkillSummaryLines } from './skillDisplay';
@@ -14,8 +16,41 @@ import {
   getRaceSilhouetteFallback,
 } from '../utils/raceSilhouette';
 import { findEquippedCoreSlot, resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
+import {
+  normalizePlayerInventory,
+  PLAYER_MATERIAL_IDS_STORAGE_KEY,
+  PLAYER_MATERIALS_STORAGE_KEY,
+  PLAYER_QUEST_ITEMS_STORAGE_KEY,
+  PLAYER_RESOURCE_IDS_STORAGE_KEY,
+  PLAYER_RESOURCES_STORAGE_KEY,
+  readStringArrayStorage,
+  readStringNumberRecordStorage,
+} from '../utils/playerInventory';
+import type { QuestItemDefinition } from '../types/quest';
 
 export type CharacterPageFocus = 'character' | 'equipment' | 'inventory' | 'stats' | 'skills';
+type InventoryTab = 'items' | 'questItems' | 'resources';
+
+interface QuestInventoryEntry {
+  id: string;
+  quantity: number;
+  definition: QuestItemDefinition | null;
+  name: string;
+  description: string;
+  imageUrl?: string;
+  linkedQuestTitle?: string | null;
+}
+
+interface ResourceInventoryEntry {
+  id: string;
+  quantity: number;
+  item: ItemDefinition | null;
+  adminItem: AdminItem | null;
+  material: Material | null;
+  name: string;
+  description: string;
+  imageUrl?: string;
+}
 
 interface InventoryPanelProps {
   character: ArenaCharacter;
@@ -204,9 +239,7 @@ const INVENTORY_FILTER_LABELS = {
   weapon: 'Оружие',
   armor: 'Броня',
   consumable: 'Расходники',
-  quest: 'Квестовые',
-  material: 'Материалы',
-} satisfies Record<'all' | 'weapon' | 'armor' | 'consumable' | 'quest' | 'material', string>;
+} satisfies Record<'all' | 'weapon' | 'armor' | 'consumable', string>;
 
 const INVENTORY_SORT_LABELS = {
   name: 'имени',
@@ -242,6 +275,27 @@ const FOCUS_SECTION_COLUMN: Record<CharacterPageFocus, 'left' | 'center' | 'righ
   stats: 'right',
   skills: 'right',
 };
+
+function countIds(ids: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const id of ids) {
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function mergeCountMaps(...maps: Array<Map<string, number>>): Map<string, number> {
+  const merged = new Map<string, number>();
+  for (const source of maps) {
+    for (const [id, quantity] of source.entries()) {
+      if (quantity <= 0) {
+        continue;
+      }
+      merged.set(id, (merged.get(id) ?? 0) + quantity);
+    }
+  }
+  return merged;
+}
 
 export function canEquipItemInSlot(item: ItemDefinition, slotId: EquipmentSlotId): boolean {
   switch (slotId) {
@@ -322,8 +376,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   // Collapsible modules for character overview page (set of collapsed module keys)
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(() => new Set(['stats', 'combat', 'breakdown', 'progression', 'skills']));
   // Inventory sorting/filter
+  const [inventoryTab, setInventoryTab] = useState<InventoryTab>('items');
   const [inventorySort, setInventorySort] = useState<'name' | 'type' | 'rarity' | 'price' | 'damage' | 'defense'>('type');
-  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'consumable' | 'quest' | 'material'>('all');
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'weapon' | 'armor' | 'consumable'>('all');
   // Skills page: selected skill + selected loadout slot
   const [selectedLearnedSkillId, setSelectedLearnedSkillId] = useState<string | null>(null);
   const [selectedLoadoutSlotIndex, setSelectedLoadoutSlotIndex] = useState<number | null>(null);
@@ -337,10 +392,31 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [learningSkillId, setLearningSkillId] = useState<string | null>(null);
   const [usingSkillId, setUsingSkillId] = useState<string | null>(null);
   const [trainerPopupSkillId, setTrainerPopupSkillId] = useState<string | null>(null);
+  const [materialById, setMaterialById] = useState<Map<string, Material>>(() => new Map());
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
   const rightColumnRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void materialsService.getAll()
+      .then((entries) => {
+        if (cancelled) {
+          return;
+        }
+        setMaterialById(new Map(entries.map((entry) => [entry.id, entry])));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMaterialById(new Map());
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const previewStats = useMemo<StatBlock>(() => {
     const next = { ...character.activeStats };
@@ -362,6 +438,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const derivedPreview = useMemo(() => calculateDerivedStats(previewStats, equipment), [equipment, previewStats]);
   const levelProgress = useMemo(() => getLevelProgress(character.level, character.exp), [character.exp, character.level]);
   const expToNextLevel = Math.max(0, levelProgress.next - character.exp);
+  const normalizedPlayerInventory = useMemo(() => normalizePlayerInventory(inventory as unknown), [inventory]);
+  const questItemIdsFromStorage = readStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY);
+  const materialIdsFromStorage = readStringArrayStorage(PLAYER_MATERIAL_IDS_STORAGE_KEY);
+  const resourceIdsFromStorage = readStringArrayStorage(PLAYER_RESOURCE_IDS_STORAGE_KEY);
+  const materialQuantitiesFromStorage = readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY);
+  const resourceQuantitiesFromStorage = readStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY);
 
   const inventoryEntries = useMemo(
     () => inventory.items
@@ -377,9 +459,109 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     [inventory.items, resolveItemById],
   );
 
+  const backpackEntries = useMemo(
+    () => inventoryEntries.filter((entry) => {
+      const adminItem = resolveAdminItemById ? resolveAdminItemById(entry.item.id) : null;
+      return adminItem?.type !== 'quest' && adminItem?.type !== 'material';
+    }),
+    [inventoryEntries, resolveAdminItemById],
+  );
+
+  const questItemEntries = useMemo<QuestInventoryEntry[]>(() => {
+    const mergedQuestCounts = mergeCountMaps(
+      countIds(normalizedPlayerInventory.questItemIds),
+      countIds(questItemIdsFromStorage),
+    );
+
+    return Array.from(mergedQuestCounts.entries())
+      .map(([id, quantity]) => {
+        const definition = getQuestItemById(id);
+        const linkedQuestTitle = definition?.linkedQuestId ? getQuestById(definition.linkedQuestId)?.title ?? definition.linkedQuestId : null;
+        return {
+          id,
+          quantity,
+          definition,
+          name: definition?.name?.trim() || id,
+          description: definition?.description?.trim() || 'Описание квестового предмета пока не заполнено.',
+          imageUrl: definition?.iconUrl?.trim() || definition?.imageUrl?.trim() || undefined,
+          linkedQuestTitle,
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'));
+  }, [normalizedPlayerInventory.questItemIds, questItemIdsFromStorage]);
+
+  const resourceEntries = useMemo<ResourceInventoryEntry[]>(() => {
+    const mergedResourceCounts = mergeCountMaps(
+      countIds(normalizedPlayerInventory.materialIds),
+      countIds(normalizedPlayerInventory.resourceIds),
+      countIds(materialIdsFromStorage),
+      countIds(resourceIdsFromStorage),
+      new Map(Object.entries(normalizedPlayerInventory.materials)),
+      new Map(Object.entries(normalizedPlayerInventory.resources)),
+      new Map(Object.entries(materialQuantitiesFromStorage)),
+      new Map(Object.entries(resourceQuantitiesFromStorage)),
+    );
+
+    const fallbackMaterialEntries = inventoryEntries
+      .filter((entry) => (resolveAdminItemById ? resolveAdminItemById(entry.item.id)?.type === 'material' : false))
+      .map((entry) => [entry.item.id, entry.quantity] as const);
+
+    for (const [id, quantity] of fallbackMaterialEntries) {
+      if (!mergedResourceCounts.has(id)) {
+        mergedResourceCounts.set(id, quantity);
+      }
+    }
+
+    return Array.from(mergedResourceCounts.entries())
+      .filter(([, quantity]) => quantity > 0)
+      .map(([id, quantity]) => {
+        const item = resolveItemById ? resolveItemById(id) : getItemById(id);
+        const adminItem = resolveAdminItemById ? resolveAdminItemById(id) : null;
+        const material = materialById.get(id) ?? null;
+        return {
+          id,
+          quantity,
+          item,
+          adminItem,
+          material,
+          name: item?.name ?? material?.name ?? id,
+          description: adminItem?.gameplayDescription?.trim()
+            || item?.description
+            || material?.gameplayDescription?.trim()
+            || 'Описание ресурса пока не заполнено.',
+          imageUrl: resolveItemImage?.(item) || material?.imagePath || undefined,
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'));
+  }, [
+    inventoryEntries,
+    materialById,
+    materialIdsFromStorage,
+    materialQuantitiesFromStorage,
+    normalizedPlayerInventory.materialIds,
+    normalizedPlayerInventory.materials,
+    normalizedPlayerInventory.resourceIds,
+    normalizedPlayerInventory.resources,
+    resourceIdsFromStorage,
+    resourceQuantitiesFromStorage,
+    resolveAdminItemById,
+    resolveItemById,
+    resolveItemImage,
+  ]);
+
   const inventoryByItemId = useMemo(
-    () => new Map(inventoryEntries.map((entry) => [entry.item.id, entry])),
-    [inventoryEntries],
+    () => new Map(backpackEntries.map((entry) => [entry.item.id, entry])),
+    [backpackEntries],
+  );
+
+  const questItemEntryById = useMemo(
+    () => new Map(questItemEntries.map((entry) => [entry.id, entry])),
+    [questItemEntries],
+  );
+
+  const resourceEntryById = useMemo(
+    () => new Map(resourceEntries.map((entry) => [entry.id, entry])),
+    [resourceEntries],
   );
 
   const actionSlotsBySlot = useMemo(
@@ -390,6 +572,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedInventoryEntry = useMemo(
     () => (selectedItemId ? inventoryByItemId.get(selectedItemId) ?? null : null),
     [inventoryByItemId, selectedItemId],
+  );
+
+  const selectedQuestItemEntry = useMemo(
+    () => (selectedItemId ? questItemEntryById.get(selectedItemId) ?? null : null),
+    [questItemEntryById, selectedItemId],
+  );
+
+  const selectedResourceEntry = useMemo(
+    () => (selectedItemId ? resourceEntryById.get(selectedItemId) ?? null : null),
+    [resourceEntryById, selectedItemId],
   );
 
   const selectedItem = useMemo(
@@ -671,22 +863,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       armorComparison,
     };
   };
-
-  useEffect(() => {
-    if (!selectedItemId && inventoryEntries.length > 0) {
-      setSelectedItemId(inventoryEntries[0].item.id);
-      return;
-    }
-
-    if (
-      selectedItemId
-      && !inventoryEntries.some((entry) => entry.item.id === selectedItemId)
-      && !equippedItemIds.has(selectedItemId)
-    ) {
-      setSelectedItemId(inventoryEntries[0]?.item.id ?? null);
-      setItemDetailOpen(false);
-    }
-  }, [equippedItemIds, inventoryEntries, selectedItemId]);
 
   const selectedComparison = useMemo(() => getComparisonForItem(selectedItem), [selectedItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById]);
   const comparisonSlotId = selectedComparison.slotId;
@@ -1042,7 +1218,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   // Sorted/filtered inventory entries
   const sortedFilteredInventory = useMemo(() => {
-    let entries = [...inventoryEntries];
+    let entries = [...backpackEntries];
     if (inventoryFilter !== 'all') {
       entries = entries.filter((entry) => {
         const type = entry.item.itemType;
@@ -1077,7 +1253,36 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       }
     });
     return entries;
-  }, [inventoryEntries, inventoryFilter, inventorySort, resolveAdminItemById]);
+  }, [backpackEntries, inventoryFilter, inventorySort, resolveAdminItemById]);
+
+  const activeInventoryTabIds = useMemo(() => {
+    if (inventoryTab === 'questItems') {
+      return questItemEntries.map((entry) => entry.id);
+    }
+    if (inventoryTab === 'resources') {
+      return resourceEntries.map((entry) => entry.id);
+    }
+    return Array.from(new Set([
+      ...sortedFilteredInventory.map((entry) => entry.item.id),
+      ...Array.from(equippedItemIds),
+    ]));
+  }, [equippedItemIds, inventoryTab, questItemEntries, resourceEntries, sortedFilteredInventory]);
+
+  useEffect(() => {
+    if (!selectedItemId && activeInventoryTabIds.length > 0) {
+      setSelectedItemId(activeInventoryTabIds[0]);
+      return;
+    }
+
+    if (selectedItemId && !activeInventoryTabIds.includes(selectedItemId)) {
+      setSelectedItemId(activeInventoryTabIds[0] ?? null);
+      setItemDetailOpen(false);
+    }
+  }, [activeInventoryTabIds, selectedItemId]);
+
+  useEffect(() => {
+    setItemDetailOpen(false);
+  }, [inventoryTab]);
 
   const STAT_EXPLANATIONS = STAT_HINTS;
 
@@ -1848,8 +2053,111 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     );
   }
 
+  function renderInventoryTabButtons() {
+    return (
+      <div className="character-inventory-tabs" role="tablist" aria-label="Категории инвентаря">
+        <button type="button" className={inventoryTab === 'items' ? 'is-active' : ''} onClick={() => setInventoryTab('items')}>
+          Рюкзак
+        </button>
+        <button type="button" className={inventoryTab === 'questItems' ? 'is-active' : ''} onClick={() => setInventoryTab('questItems')}>
+          Квестовые вещи
+        </button>
+        <button type="button" className={inventoryTab === 'resources' ? 'is-active' : ''} onClick={() => setInventoryTab('resources')}>
+          Ресурсы
+        </button>
+      </div>
+    );
+  }
+
+  function renderSpecialInventoryCards(
+    entries: Array<{ id: string; quantity: number; name: string; imageUrl?: string }>,
+  ) {
+    return (
+      <div className="character-inventory-grid">
+        {entries.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={`character-item-card ${selectedItemId === entry.id ? 'is-active' : ''}`}
+            onClick={() => {
+              setHoverPreview(null);
+              setSelectedItemId(entry.id);
+            }}
+          >
+            <span
+              className="character-item-icon"
+              style={entry.imageUrl
+                ? {
+                    backgroundImage: `url("${entry.imageUrl}")`,
+                    backgroundSize: 'contain',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center',
+                  }
+                : undefined}
+            />
+            <span className="character-item-name">{entry.name}</span>
+            <span className="character-item-qty">x{entry.quantity}</span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderQuestItemDetails() {
+    return (
+      <section className="character-item-detail-card">
+        <h3>Квестовая вещь</h3>
+        {selectedQuestItemEntry ? (
+          <>
+            <strong>{selectedQuestItemEntry.name}</strong>
+            <p className="muted">ID: {selectedQuestItemEntry.id}</p>
+            <p className="muted">Редкость: Квестовый предмет</p>
+            <p>{selectedQuestItemEntry.description}</p>
+            {selectedQuestItemEntry.linkedQuestTitle ? (
+              <p className="muted">Связанный квест: {selectedQuestItemEntry.linkedQuestTitle}</p>
+            ) : null}
+          </>
+        ) : (
+          <p className="muted">Выберите квестовый предмет, чтобы посмотреть детали.</p>
+        )}
+      </section>
+    );
+  }
+
+  function renderResourceDetails() {
+    return (
+      <section className="character-item-detail-card">
+        <h3>Ресурс</h3>
+        {selectedResourceEntry ? (
+          <>
+            <strong>{selectedResourceEntry.name}</strong>
+            <p className="muted">ID: {selectedResourceEntry.id}</p>
+            <p className="muted">Количество: {selectedResourceEntry.quantity}</p>
+            <p className="muted">
+              Категория: {selectedResourceEntry.material?.category ?? selectedResourceEntry.adminItem?.type ?? selectedResourceEntry.item?.itemType ?? 'resource'}
+            </p>
+            <p>{selectedResourceEntry.description}</p>
+            <p className="muted">Используется в крафте и рецептах, не экипируется.</p>
+          </>
+        ) : (
+          <p className="muted">Выберите ресурс, чтобы посмотреть детали.</p>
+        )}
+      </section>
+    );
+  }
+
+  function renderActiveInventoryDetails() {
+    if (inventoryTab === 'questItems') {
+      return renderQuestItemDetails();
+    }
+    if (inventoryTab === 'resources') {
+      return renderResourceDetails();
+    }
+    return renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true);
+  }
+
   function renderCharacterOverview() {
-    const overviewInventory = inventoryEntries.slice(0, 12);
+    const overviewInventory = backpackEntries.slice(0, 12);
 
     return (
       <>
@@ -1950,6 +2258,30 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderInventoryPage() {
+    const inventoryTitle = inventoryTab === 'questItems'
+      ? 'Квестовые вещи'
+      : inventoryTab === 'resources'
+        ? 'Ресурсы'
+        : 'Рюкзак';
+
+    const inventoryDescription = inventoryTab === 'questItems'
+      ? 'Здесь лежат сюжетные и квестовые предметы. Их нельзя экипировать или продать.'
+      : inventoryTab === 'resources'
+        ? 'Материалы, руды, травы и другие ресурсы для крафта и профессий.'
+        : 'Обычные предметы, экипировка и расходники.';
+
+    const activeTabContent = inventoryTab === 'questItems'
+      ? (questItemEntries.length > 0
+        ? renderSpecialInventoryCards(questItemEntries)
+        : <p className="muted">Квестовых вещей нет.</p>)
+      : inventoryTab === 'resources'
+        ? (resourceEntries.length > 0
+          ? renderSpecialInventoryCards(resourceEntries)
+          : <p className="muted">Ресурсов нет.</p>)
+        : (sortedFilteredInventory.length > 0
+          ? renderInventoryCards(sortedFilteredInventory)
+          : <p className="muted">Рюкзак пуст.</p>);
+
     return (
       <>
         {renderPageHeader()}
@@ -1964,33 +2296,39 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <section className="character-backpack-card">
                 <div className="character-backpack-head">
                   <div>
-                    <h3>Рюкзак</h3>
+                    <h3>{inventoryTitle}</h3>
                     <p className="gold">Золото: {inventory.gold}</p>
+                    <p className="muted">{inventoryDescription}</p>
                   </div>
                   <div className="character-inventory-controls">
-                    <label>
-                      Сортировка
-                      <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
-                        {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>По {label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Фильтр
-                      <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
-                        {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>{label}</option>
-                        ))}
-                      </select>
-                    </label>
+                    {inventoryTab === 'items' ? (
+                      <>
+                        <label>
+                          Сортировка
+                          <select value={inventorySort} onChange={(event) => setInventorySort(event.target.value as typeof inventorySort)}>
+                            {Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>По {label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Фильтр
+                          <select value={inventoryFilter} onChange={(event) => setInventoryFilter(event.target.value as typeof inventoryFilter)}>
+                            {Object.entries(INVENTORY_FILTER_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 </div>
+                {renderInventoryTabButtons()}
                 <div className="character-inventory-grid-wrap">
-                  {renderInventoryCards(sortedFilteredInventory)}
+                  {activeTabContent}
                 </div>
               </section>
-              {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true)}
+              {renderActiveInventoryDetails()}
             </div>
           </div>
           {renderHoverPreviewCard()}

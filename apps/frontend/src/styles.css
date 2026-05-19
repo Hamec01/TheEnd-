@@ -2586,27 +2586,26 @@ h3 {
 }
 
 .admin-location-catalog {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
-  align-items: stretch;
-  max-height: none;
-  overflow-x: auto;
-  overflow-y: hidden;
+  min-height: 0;
+  overflow: auto;
   padding: 0 4px 4px 0;
+  align-content: start;
   scrollbar-gutter: stable;
 }
 
 .admin-location-card {
   display: grid;
-  gap: 6px;
-  padding: 6px;
-  flex: 0 0 116px;
-  width: 116px;
-  min-height: 146px;
-  align-content: start;
-  justify-items: center;
-  text-align: center;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 10px 12px;
+  width: 100%;
+  min-height: 96px;
+  align-content: center;
+  justify-items: start;
+  text-align: left;
   border: 1px solid rgba(181, 144, 86, 0.24);
   background: rgba(23, 18, 12, 0.88);
 }
@@ -2619,14 +2618,26 @@ h3 {
 .admin-location-card strong,
 .admin-location-card span,
 .admin-location-card small {
+  grid-column: 2;
   width: 100%;
   overflow-wrap: anywhere;
+}
+
+.admin-location-card strong {
+  font-size: 0.96rem;
+  line-height: 1.2;
 }
 
 .admin-location-card small {
   color: var(--text-muted);
   font-family: Consolas, "Courier New", monospace;
   font-size: 0.72rem;
+}
+
+.admin-location-card .admin-location-thumb {
+  grid-column: 1;
+  grid-row: 1 / span 4;
+  align-self: start;
 }
 
 .admin-location-thumb {
@@ -2664,12 +2675,10 @@ h3 {
 
 .admin-location-page {
   display: grid;
-  grid-template-rows: min-content minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
   gap: 12px;
-  height: calc(100vh - 110px);
-  min-height: 0;
-  max-height: calc(100vh - 110px);
-  overflow: hidden;
+  min-height: calc(100vh - 110px);
+  align-items: start;
 }
 
 .admin-location-browser,
@@ -2680,33 +2689,39 @@ h3 {
 
 .admin-location-browser {
   display: grid;
-  grid-template-rows: auto auto auto;
-  gap: 8px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
   align-content: start;
   align-self: start;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 124px);
 }
 
 .admin-location-list-tools {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-location-list-tools > :nth-child(1),
+.admin-location-list-tools > :nth-child(2),
+.admin-location-list-tools > :nth-child(7) {
+  grid-column: 1 / -1;
 }
 
 .admin-location-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
 }
 
 .admin-location-editor-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 10px;
-}
-
-.admin-location-editor-panel > :nth-child(3) {
-  min-height: 0;
-  overflow: auto;
-  padding-right: 6px;
-  scrollbar-gutter: stable;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  min-height: calc(100vh - 124px);
 }
 
 .admin-location-header-card {
@@ -2722,34 +2737,42 @@ h3 {
 
 .admin-location-tabbar {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 4px;
-  scrollbar-gutter: stable;
 }
 
 .admin-location-tabbar button {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 
 .admin-location-editor-body {
+  display: grid;
+  gap: 12px;
   min-height: 0;
   overflow: auto;
   padding-right: 6px;
   padding-bottom: 14px;
+  align-content: start;
   scrollbar-gutter: stable;
 }
 
 .admin-location-main-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px 14px;
   align-items: start;
+}
+
+.admin-location-main-grid .full-width {
+  grid-column: 1 / -1;
 }
 
 .admin-location-main-grid .admin-checkbox {
   align-self: end;
+}
+
+.admin-location-editor-actions {
+  padding-top: 8px;
+  border-top: 1px solid rgba(166, 132, 82, 0.18);
 }
 
 .admin-location-areas-list {
@@ -2782,8 +2805,8 @@ h3 {
 
 .location-area-workbench {
   display: grid;
-  grid-template-rows: minmax(340px, 440px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-rows: minmax(460px, 62vh) minmax(320px, 1fr);
+  gap: 14px;
   min-height: 0;
 }
 
@@ -2796,10 +2819,11 @@ h3 {
 
 .location-area-lower {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 14px;
   min-height: 0;
   max-height: none;
+  align-items: start;
 }
 
 .location-area-sidebar,
@@ -2819,6 +2843,10 @@ h3 {
   scrollbar-gutter: stable;
 }
 
+.location-area-detail .admin-location-main-grid {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
 @media (max-width: 1400px) {
   .admin-location-list-tools {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2831,6 +2859,16 @@ h3 {
 }
 
 @media (max-width: 1180px) {
+  .admin-location-page {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .admin-location-browser {
+    position: static;
+    max-height: none;
+  }
+
   .admin-location-main-grid,
   .location-area-detail .admin-location-main-grid {
     grid-template-columns: 1fr;
@@ -8096,6 +8134,19 @@ body:has(.page.page--scroll) {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.character-inventory-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.character-inventory-tabs button.is-active {
+  border-color: rgba(221, 185, 120, 0.75);
+  box-shadow: 0 0 0 1px rgba(221, 185, 120, 0.3);
 }
 
 .character-inventory-grid-wrap {
@@ -10463,7 +10514,7 @@ body:has(.page.page--scroll) {
   }
 
   .admin-location-page {
-    max-height: none;
+    min-height: 0;
   }
 
   .admin-location-catalog {
@@ -10900,4 +10951,133 @@ body:has(.page.page--scroll) {
 
 .battle-map-editor-marker-trigger {
   color: #f3a6ff;
+}
+
+.godmode-login-button {
+  background: linear-gradient(180deg, #9a2424 0%, #5a0f0f 100%);
+  border-color: #d6a15a;
+  color: #fff4d6;
+}
+
+.godmode-console-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  min-width: 112px;
+  background: linear-gradient(180deg, #8d1f1f 0%, #521111 100%);
+  border: 1px solid rgba(214, 161, 90, 0.9);
+  border-radius: 999px;
+  color: #fff1d2;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.godmode-console-overlay {
+  position: fixed;
+  inset: auto 18px 72px auto;
+  z-index: 95;
+}
+
+.godmode-console {
+  width: min(720px, calc(100vw - 36px));
+  min-height: 320px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(214, 161, 90, 0.75);
+  background: linear-gradient(180deg, rgba(22, 12, 8, 0.97) 0%, rgba(10, 10, 12, 0.97) 100%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.godmode-console__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.godmode-console__header strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+}
+
+.godmode-console__hint {
+  margin: 0;
+  color: rgba(255, 232, 190, 0.72);
+  font-size: 0.85rem;
+}
+
+.godmode-console__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.godmode-console__history {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(214, 161, 90, 0.18);
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 0.9rem;
+}
+
+.godmode-console__line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+.godmode-console__line + .godmode-console__line {
+  margin-top: 6px;
+}
+
+.godmode-console__line--command {
+  color: #f9d89d;
+}
+
+.godmode-console__line--success {
+  color: #c2f5b4;
+}
+
+.godmode-console__line--error {
+  color: #ff8b8b;
+}
+
+.godmode-console__line--info {
+  color: #a8d7ff;
+}
+
+.godmode-console__form {
+  display: flex;
+  gap: 10px;
+}
+
+.godmode-console__form input {
+  flex: 1;
+  min-width: 0;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+@media (max-width: 720px) {
+  .godmode-console-overlay {
+    inset: auto 10px 70px 10px;
+  }
+
+  .godmode-console {
+    width: auto;
+    min-height: 260px;
+    max-height: 64vh;
+  }
+
+  .godmode-console__header {
+    flex-direction: column;
+  }
 }

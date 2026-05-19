@@ -437,6 +437,61 @@ export async function saveCharacterQuestState(
   return res.json();
 }
 
+export async function updateCharacterResources(
+  characterId: string,
+  payload: Partial<Pick<CharacterResourceState, 'currentHp' | 'currentMp' | 'currentStamina' | 'hpRegenPerTurn'>>,
+): Promise<CharacterResourceState> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/resources`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function patchDevCharacterState(
+  characterId: string,
+  payload: Record<string, unknown>,
+): Promise<ArenaHubState> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/dev-state`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return getArenaHubState(characterId);
+}
+
+export async function adjustDevInventoryItem(
+  characterId: string,
+  payload: { itemId: string; quantityDelta: number },
+): Promise<ArenaHubState> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/inventory/dev`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function revokeCharacterSkill(characterId: string, skillId: string): Promise<{ characterId: string; skillId: string; removed: true }> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}/skills/${encodeURIComponent(skillId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 async function readErrorMessage(res: Response): Promise<string> {
   const raw = await res.text();
 
