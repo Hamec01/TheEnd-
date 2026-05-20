@@ -91,6 +91,7 @@ export interface NpcDefinition {
   canFight: boolean;
   canTalk: boolean;
   canTrade: boolean;
+  worldSimTrader?: boolean;
   canTrain: boolean;
   canGiveQuests: boolean;
   canBeKilled: boolean;

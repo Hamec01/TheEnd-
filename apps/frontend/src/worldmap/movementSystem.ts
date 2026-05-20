@@ -89,3 +89,56 @@ export function tickPlayerMovement(
     reachedTarget: false,
   };
 }
+
+export function tickPlayerDirectionalMovement(
+  player: MapPlayer,
+  axisX: number,
+  axisY: number,
+  canMoveTo?: MovementValidator,
+  getSpeedMultiplier?: MovementSpeedMultiplierResolver,
+): MovementTickResult {
+  const distance = Math.hypot(axisX, axisY);
+  if (distance <= 0.0001) {
+    return {
+      player: {
+        ...player,
+        targetX: null,
+        targetY: null,
+      },
+      state: 'idle',
+      reachedTarget: false,
+    };
+  }
+
+  const normalizedX = axisX / distance;
+  const normalizedY = axisY / distance;
+  const multiplierRaw = getSpeedMultiplier ? getSpeedMultiplier(player.x, player.y) : 1;
+  const speedMultiplier = Number.isFinite(multiplierRaw) ? Math.max(0.15, Math.min(2, multiplierRaw)) : 1;
+  const step = player.speed * speedMultiplier;
+  const nextX = clamp01(player.x + normalizedX * step);
+  const nextY = clamp01(player.y + normalizedY * step);
+
+  if (canMoveTo && !canMoveTo(nextX, nextY)) {
+    return {
+      player: {
+        ...player,
+        targetX: null,
+        targetY: null,
+      },
+      state: 'idle',
+      reachedTarget: false,
+    };
+  }
+
+  return {
+    player: {
+      ...player,
+      x: nextX,
+      y: nextY,
+      targetX: null,
+      targetY: null,
+    },
+    state: 'moving',
+    reachedTarget: false,
+  };
+}

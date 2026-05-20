@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from '@nestjs/common';
-import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, WorldMapContent } from './content.types';
+import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, StoredImage, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
 import { buildItemPreview, buildItemSetPreview, buildRuneComplexPreview } from './admin-preview.builder';
 import type { ItemPreviewQueryBody, ItemPreviewResponse, ItemSetPreviewResponse, RuneComplexPreviewResponse } from './admin-preview.types';
+
+type StoredImageUploadBody = Partial<StoredImage> & { dataUrl?: string };
 
 @Controller(['content', 'api/content'])
 export class ContentController {
@@ -73,6 +75,18 @@ export class ContentController {
   async saveWorldMap(@Body() payload: WorldMapContent): Promise<WorldMapContent> {
     await this.contentService.ensureInitialized();
     return this.contentService.saveWorldMap(payload);
+  }
+
+  @Post('images/upload')
+  async uploadImage(@Body() payload: StoredImageUploadBody): Promise<StoredImage> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.createStoredImageAsset(payload);
+  }
+
+  @Put('images/:id/upload')
+  async replaceImage(@Param('id') id: string, @Body() payload: StoredImageUploadBody): Promise<StoredImage> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.replaceStoredImageAsset(id, payload);
   }
 
   // ---------------------------------------------------------------------------

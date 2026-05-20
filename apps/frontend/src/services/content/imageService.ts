@@ -1,7 +1,6 @@
 import type { StoredImage } from './models';
-import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
+import { deleteContentEntry, getContentCollection, getContentEntry, replaceContentImage, uploadContentImage } from './contentApi';
 import { IMAGE_PRESETS, type ImagePresetId } from './imagePresets';
-import { nowIso, uid } from './storage';
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -55,25 +54,6 @@ async function resizeDataUrl(dataUrl: string, width: number, height: number): Pr
   return canvas.toDataURL('image/png');
 }
 
-async function createStoredImage(
-  fileName: string,
-  mimeType: string,
-  dataUrl: string,
-  width: number,
-  height: number,
-): Promise<StoredImage> {
-  return {
-    id: uid('img'),
-    name: fileName,
-    mimeType,
-    width,
-    height,
-    dataUrl,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-}
-
 export const imageService = {
   async getAll(): Promise<StoredImage[]> {
     return getContentCollection<StoredImage>('images');
@@ -86,21 +66,25 @@ export const imageService = {
   async upload(file: File): Promise<StoredImage> {
     const dataUrl = await fileToDataUrl(file);
     const image = await loadImage(dataUrl);
-    const next = await createStoredImage(file.name, file.type || 'image/png', dataUrl, image.width, image.height);
-    return createContentEntry<StoredImage>('images', next);
+    return uploadContentImage({
+      name: file.name,
+      mimeType: file.type || 'image/png',
+      width: image.width,
+      height: image.height,
+      dataUrl,
+    });
   },
 
   async uploadResized(file: File, width: number, height: number, options?: { name?: string }): Promise<StoredImage> {
     const originalDataUrl = await fileToDataUrl(file);
     const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
-    const next = await createStoredImage(
-      options?.name?.trim() || file.name,
-      'image/png',
-      resizedDataUrl,
+    return uploadContentImage({
+      name: options?.name?.trim() || file.name,
+      mimeType: 'image/png',
       width,
       height,
-    );
-    return createContentEntry<StoredImage>('images', next);
+      dataUrl: resizedDataUrl,
+    });
   },
 
   async uploadPreset(file: File, presetId: ImagePresetId, options?: { name?: string }): Promise<StoredImage> {
@@ -114,14 +98,13 @@ export const imageService = {
       throw new Error(`Image not found: ${imageId}`);
     }
     const dataUrl = await resizeDataUrl(found.dataUrl, width, height);
-    const next: StoredImage = {
-      ...found,
+    return replaceContentImage(imageId, {
+      name: found.name,
+      mimeType: 'image/png',
       dataUrl,
       width,
       height,
-      updatedAt: nowIso(),
-    };
-    return updateContentEntry<StoredImage>('images', imageId, next);
+    });
   },
 
   async delete(imageId: string): Promise<void> {

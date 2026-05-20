@@ -3,7 +3,8 @@ import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock 
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
-import type { AdminItem, Material } from '../services/content/models';
+import type { AdminItem, ItemSet, Material } from '../services/content/models';
+import { itemSetsService } from '../services/content/itemSetsService';
 import { materialsService } from '../services/content/materialsService';
 import { getQuestById, getQuestItemById } from '../services/questRepository';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
@@ -17,6 +18,11 @@ import {
 } from '../utils/raceSilhouette';
 import { findEquippedCoreSlot, resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
 import {
+  getEquippedItemSetSummaries,
+  getItemSetSummaryForItem,
+  type EquippedItemSetSummary,
+} from '../utils/itemSetBonuses';
+import {
   normalizePlayerInventory,
   PLAYER_MATERIAL_IDS_STORAGE_KEY,
   PLAYER_MATERIALS_STORAGE_KEY,
@@ -27,9 +33,36 @@ import {
   readStringNumberRecordStorage,
 } from '../utils/playerInventory';
 import type { QuestItemDefinition } from '../types/quest';
+import {
+  loadMovementControlScheme,
+  saveMovementControlScheme,
+  type MovementControlScheme,
+} from '../worldmap/playerMovementSettings';
 
 export type CharacterPageFocus = 'character' | 'equipment' | 'inventory' | 'stats' | 'skills';
 type InventoryTab = 'items' | 'questItems' | 'resources';
+type CharacterModalKind = 'combat' | 'messages' | null;
+
+interface PlayerCombatHistory {
+  wins: number;
+  losses: number;
+  draws?: number;
+  lastBattles: Array<{
+    id: string;
+    result: 'win' | 'loss' | 'draw';
+    enemyName?: string;
+    date: string;
+  }>;
+}
+
+interface PlayerMessage {
+  id: string;
+  from: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+}
 
 interface QuestInventoryEntry {
   id: string;
@@ -393,6 +426,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [usingSkillId, setUsingSkillId] = useState<string | null>(null);
   const [trainerPopupSkillId, setTrainerPopupSkillId] = useState<string | null>(null);
   const [materialById, setMaterialById] = useState<Map<string, Material>>(() => new Map());
+  const [itemSets, setItemSets] = useState<ItemSet[]>([]);
+  const [activeCharacterModal, setActiveCharacterModal] = useState<CharacterModalKind>(null);
+  const [movementControlScheme, setMovementControlScheme] = useState<MovementControlScheme>(() => loadMovementControlScheme());
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -417,6 +453,48 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void itemSetsService.getAll()
+      .then((entries) => {
+        if (!cancelled) {
+          setItemSets(entries.filter((entry) => entry.isEnabled !== false));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setItemSets([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (focusSection !== 'skills') {
+      setSelectedLearnedSkillId(null);
+    }
+  }, [focusSection]);
+
+  useEffect(() => {
+    if (!activeCharacterModal) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveCharacterModal(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeCharacterModal]);
 
   const previewStats = useMemo<StatBlock>(() => {
     const next = { ...character.activeStats };
@@ -888,6 +966,27 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedLoreDescription = selectedAdminItem?.loreDescription?.trim() || '';
   const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedItem?.requiredStats as Record<string, number> | undefined));
   const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedItem?.bonuses as Record<string, number> | undefined));
+  const equippedSetSummaries = useMemo(
+    () => getEquippedItemSetSummaries({
+      equipment,
+      itemSets,
+      resolveAdminItemById,
+    }),
+    [equipment, itemSets, resolveAdminItemById],
+  );
+  const activeSetSummaries = useMemo(
+    () => equippedSetSummaries.filter((summary) => summary.activeBonuses.length > 0),
+    [equippedSetSummaries],
+  );
+  const selectedItemSetSummary = useMemo(
+    () => getItemSetSummaryForItem(selectedItem?.id, equippedSetSummaries, itemSets, selectedAdminItem),
+    [equippedSetSummaries, itemSets, selectedAdminItem, selectedItem?.id],
+  );
+  const combatHistory = useMemo<PlayerCombatHistory>(
+    () => ({ wins: 0, losses: 0, draws: 0, lastBattles: [] }),
+    [],
+  );
+  const playerMessages = useMemo<PlayerMessage[]>(() => [], []);
 
   useEffect(() => {
     setSilhouetteBroken(false);
@@ -1216,6 +1315,27 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [trainerPopupSkillId]);
 
+  useEffect(() => {
+    const handleControlSchemeChanged = (event: Event) => {
+      if (event instanceof StorageEvent) {
+        setMovementControlScheme(loadMovementControlScheme());
+        return;
+      }
+
+      const nextValue = (event as CustomEvent<MovementControlScheme>).detail;
+      if (nextValue === 'arrows' || nextValue === 'wasd') {
+        setMovementControlScheme(nextValue);
+      }
+    };
+
+    window.addEventListener('storage', handleControlSchemeChanged);
+    window.addEventListener('theend:worldMapControlSchemeChanged', handleControlSchemeChanged as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleControlSchemeChanged);
+      window.removeEventListener('theend:worldMapControlSchemeChanged', handleControlSchemeChanged as EventListener);
+    };
+  }, []);
+
   // Sorted/filtered inventory entries
   const sortedFilteredInventory = useMemo(() => {
     let entries = [...backpackEntries];
@@ -1435,6 +1555,198 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     );
   }
 
+  function renderCharacterUtilityButtons() {
+    return (
+      <div className="character-utility-actions">
+        <button type="button" onClick={() => setActiveCharacterModal('combat')}>
+          Combat Status
+        </button>
+        <button type="button" onClick={() => setActiveCharacterModal('messages')}>
+          Message
+        </button>
+      </div>
+    );
+  }
+
+  function renderSetBonusRows(summary: EquippedItemSetSummary) {
+    if (summary.bonuses.length === 0) {
+      return <p className="muted">Бонусы сета пока не описаны.</p>;
+    }
+
+    return (
+      <div className="character-set-bonus-list">
+        {summary.bonuses.map((bonus) => (
+          <article
+            key={`${summary.setId}-${bonus.requiredPieces}`}
+            className={`character-set-bonus-row ${bonus.isActive ? 'is-active' : summary.state === 'near' ? 'is-near' : 'is-inactive'}`}
+          >
+            <strong>{bonus.isActive ? '✓' : '○'} {bonus.requiredPieces} частей</strong>
+            {bonus.description ? <p>{bonus.description}</p> : null}
+            {bonus.lines.length > 0 ? (
+              <ul>
+                {bonus.lines.map((line) => (
+                  <li key={`${summary.setId}-${bonus.requiredPieces}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Эффекты не указаны.</p>
+            )}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
+  function renderSetSummary(summary: EquippedItemSetSummary) {
+    return (
+      <article key={summary.setId} className={`character-set-summary is-${summary.state}`}>
+        <div className="character-set-summary-head">
+          <strong>{summary.setName}</strong>
+          <span>{summary.equippedPieces}/{summary.totalPieces || summary.equippedPieces}</span>
+        </div>
+        {renderSetBonusRows(summary)}
+      </article>
+    );
+  }
+
+  function renderSetBonusesCard() {
+    return (
+      <section className="character-set-bonuses-card">
+        <h3>Активные бонусы сетов</h3>
+        {activeSetSummaries.length > 0 ? (
+          equippedSetSummaries.map((summary) => renderSetSummary(summary))
+        ) : equippedSetSummaries.length > 0 ? (
+          <>
+            <p className="muted">Активных бонусов пока нет. Почти собранные сеты подсвечены жёлтым.</p>
+            {equippedSetSummaries.map((summary) => renderSetSummary(summary))}
+          </>
+        ) : (
+          <p className="muted">Активных бонусов сетов пока нет.</p>
+        )}
+      </section>
+    );
+  }
+
+  function renderSelectedItemSetDetails() {
+    if (!selectedItemSetSummary || !selectedItem) {
+      return null;
+    }
+
+    return (
+      <section className="character-selected-set-card">
+        <div className="character-set-summary-head">
+          <strong>Сет: {selectedItemSetSummary.setName}</strong>
+          <span>Надето: {selectedItemSetSummary.equippedPieces}/{selectedItemSetSummary.totalPieces || selectedItemSetSummary.equippedPieces}</span>
+        </div>
+        {renderSetBonusRows(selectedItemSetSummary)}
+      </section>
+    );
+  }
+
+  function renderCharacterModal() {
+    if (!activeCharacterModal) {
+      return null;
+    }
+
+    const combatRows = [
+      ['HP', `${character.currentHp}/${character.maxHp}`],
+      ['Mana', `${character.currentMp}/${character.maxMp}`],
+      ['Stamina', `${character.currentStamina}/${character.maxStamina}`],
+      ['Defense', derivedPreview.totalDefense],
+      ['Min Damage', derivedPreview.minDamage],
+      ['Max Damage', derivedPreview.maxDamage],
+      ['Crit', `${derivedPreview.critChance}%`],
+      ['Initiative', derivedPreview.initiative],
+      ['Hit Chance', `${derivedPreview.hitChance}%`],
+      ['Dodge / Evasion', `${derivedPreview.evasion}%`],
+      ['Block', `${derivedPreview.blockChance}%`],
+      ['Physical Resistance', derivedPreview.physicalResistance],
+      ['Magic Resistance', derivedPreview.magicResistance],
+    ];
+
+    return (
+      <div
+        className="character-side-modal-backdrop"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            setActiveCharacterModal(null);
+          }
+        }}
+      >
+        <section
+          className="character-side-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={activeCharacterModal === 'combat' ? 'Боевой статус' : 'Сообщения'}
+        >
+          <div className="character-side-modal-head">
+            <h3>{activeCharacterModal === 'combat' ? 'Боевой статус' : 'Сообщения'}</h3>
+            <button type="button" onClick={() => setActiveCharacterModal(null)} aria-label="Закрыть">×</button>
+          </div>
+          {activeCharacterModal === 'combat' ? (
+            <div className="character-side-modal-body">
+              <section className="character-modal-grid">
+                {combatRows.map(([label, value]) => (
+                  <p key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </p>
+                ))}
+              </section>
+              {renderSetBonusesCard()}
+              <section className="character-modal-section">
+                <h4>Выбранные боевые навыки</h4>
+                {skillsDraftSlots.some((slot) => slot.skillId) ? (
+                  <div className="character-modal-pills">
+                    {skillsDraftSlots.filter((slot) => slot.skillId).map((slot) => {
+                      const skill = availableSkills.find((entry) => entry.id === slot.skillId);
+                      return <span key={slot.slotIndex}>{skill?.name ?? slot.skillId}</span>;
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted">Боевые навыки пока не назначены.</p>
+                )}
+              </section>
+              <section className="character-modal-section">
+                <h4>Боевой рекорд</h4>
+                <p><span>Победы</span><strong>{combatHistory.wins}</strong></p>
+                <p><span>Поражения</span><strong>{combatHistory.losses}</strong></p>
+                <p><span>Ничьи</span><strong>{combatHistory.draws ?? 0}</strong></p>
+                {combatHistory.lastBattles.length > 0 ? (
+                  combatHistory.lastBattles.slice(0, 5).map((battle) => (
+                    <p key={battle.id} className="muted">{battle.date}: {battle.result}{battle.enemyName ? ` vs ${battle.enemyName}` : ''}</p>
+                  ))
+                ) : (
+                  <p className="muted">История боёв пока пуста.</p>
+                )}
+              </section>
+            </div>
+          ) : (
+            <div className="character-side-modal-body">
+              <div className="character-message-tabs">
+                <button type="button" className="is-active">Входящие</button>
+                <button type="button">Системные</button>
+                <button type="button">Квестовые</button>
+              </div>
+              {playerMessages.length > 0 ? (
+                playerMessages.map((message) => (
+                  <article key={message.id} className={`character-message-card ${message.isRead ? '' : 'is-unread'}`}>
+                    <strong>{message.title}</strong>
+                    <p className="muted">От: {message.from} · {message.createdAt}</p>
+                    <p>{message.body}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="muted">Личные сообщения пока недоступны.</p>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
   /** The full-detail item popup used by Inventory and Equipment pages */
   function renderItemPopup() {
     if (!itemDetailOpen || !selectedItem) return null;
@@ -1494,6 +1806,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <p className="muted">
                 Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}
               </p>
+              {renderSelectedItemSetDetails()}
               <div className="character-item-actions">
                 {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
                   <button type="button" onClick={() => void useSelectedItem()}>
@@ -1910,6 +2223,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             ) : null}
             <p className="muted">Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}</p>
             <p className="muted">Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}</p>
+            {renderSelectedItemSetDetails()}
             <div className="character-item-inline-compare-head">
               <span>Сравнение со слотом</span>
               <strong>{comparisonCurrentItem?.name ?? 'Слот пуст'}</strong>
@@ -2185,6 +2499,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 <p><span>Опыт</span><strong>{character.exp}</strong></p>
                 <p><span>До уровня</span><strong>{expToNextLevel}</strong></p>
               </div>
+              {renderCharacterUtilityButtons()}
             </section>
 
             <div className="character-overview-paperdoll">
@@ -2247,6 +2562,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   ) : <p className="muted">Навыки ещё не изучены.</p>
                 ) : null}
               </section>
+              {renderSetBonusesCard()}
               {renderSelectedItemDetails('Текущий предмет', 'Выберите предмет в рюкзаке или на силуэте, чтобы сразу увидеть сравнение.', true, true)}
             </div>
           </div>
@@ -2394,6 +2710,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   <p><span>Нагр. выносл.</span><strong>{derivedPreview.staminaLoad}</strong></p>
                 </div>
               </section>
+              {renderSetBonusesCard()}
 
               <section className="character-meta-card">
                 <h3>Прогресс</h3>
@@ -2516,7 +2833,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                             }
                             setSelectedLearnedSkillId(entry.skillId);
                           }}
-                          onMouseEnter={() => setSelectedLearnedSkillId(entry.skillId)}
                         >
                           <span className="character-skill-icon">
                             {(() => {
@@ -2646,9 +2962,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               </div>
 
               {/* RIGHT: skill detail */}
-              <section className="inner-card skills-detail-section">
-                <h3 style={{ marginTop: 0 }}>Детали навыка</h3>
-                {skillsSelectedDef ? (
+              {skillsSelectedDef ? (
+                <section className="inner-card skills-detail-section">
+                  <h3 style={{ marginTop: 0 }}>Детали навыка</h3>
                   <>
                     <div className="skills-detail-head">
                       <span className="character-skill-icon skills-detail-icon">
@@ -2697,10 +3013,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                       </p>
                     )}
                   </>
-                ) : (
-                  <p className="muted">Выберите навык, чтобы посмотреть детали.</p>
-                )}
-              </section>
+                </section>
+              ) : null}
             </div>
           </div>
         </div>
@@ -2710,7 +3024,58 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderEquipmentPage() {
-    return renderInventoryPage();
+    return (
+      <>
+        {renderPageHeader()}
+        <div className="inventory-panel-body inventory-panel-body--stats">
+          <div className="character-stats-layout">
+            <section className="character-stats-card">
+              <h3>Настройки управления</h3>
+              <p className="muted">Выберите, какими кнопками ходить по мировой карте. Мышь остаётся доступной всегда.</p>
+              <div className="character-stats-list">
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">Стрелки</span>
+                  <input
+                    type="radio"
+                    name="movement-control-scheme"
+                    checked={movementControlScheme === 'arrows'}
+                    onChange={() => {
+                      setMovementControlScheme('arrows');
+                      saveMovementControlScheme('arrows');
+                      onStatus('Теперь персонаж ходит по карте стрелками.');
+                    }}
+                  />
+                </label>
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">WASD</span>
+                  <input
+                    type="radio"
+                    name="movement-control-scheme"
+                    checked={movementControlScheme === 'wasd'}
+                    onChange={() => {
+                      setMovementControlScheme('wasd');
+                      saveMovementControlScheme('wasd');
+                      onStatus('Теперь персонаж ходит по карте кнопками WASD.');
+                    }}
+                  />
+                </label>
+              </div>
+            </section>
+            <section className="character-meta-card">
+              <h3>Подсказки</h3>
+              <div className="character-overview-combat-summary">
+                <p><span>Ходьба</span><strong>{movementControlScheme === 'wasd' ? 'WASD' : 'Стрелки'}</strong></p>
+                <p><span>Спринт</span><strong>Shift</strong></p>
+                <p><span>Базовая скорость</span><strong>0.0001</strong></p>
+                <p><span>Ловкость</span><strong>+0.00001 за 1 пункт</strong></p>
+                <p><span>Бонус рывка</span><strong>+45%</strong></p>
+              </div>
+              <p className="muted">Выносливость тратится при любом движении по мировой карте. Рывок с Shift ускоряет персонажа на 45%, но расходует выносливость на 20% сильнее обычного шага. Если выносливость падает до нуля, персонаж должен остановиться и дождаться полного восстановления.</p>
+            </section>
+          </div>
+        </div>
+      </>
+    );
   }
 
   function renderCombinedCharacterPage() {
@@ -2743,6 +3108,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   <p><span>Золото</span><strong>{inventory.gold}</strong></p>
                   <p><span>Опыт</span><strong>{character.exp} / {levelProgress.next}</strong></p>
                 </div>
+                {renderCharacterUtilityButtons()}
               </section>
 
               {/* Base stats with allocation */}
@@ -2788,6 +3154,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   <p><span>Маг. сопр.</span><strong>{derivedPreview.magicResistance}</strong></p>
                 </div>
               </section>
+              {renderSetBonusesCard()}
             </div>
 
             {/* ── CENTER: Paper Doll ───────────────────────────────────── */}
@@ -2896,6 +3263,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         {focusSection === 'skills' && renderSkillsPage()}
         {focusSection === 'equipment' && renderEquipmentPage()}
       </section>
+      {renderCharacterModal()}
     </div>
   );
 };

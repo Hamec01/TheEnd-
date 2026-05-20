@@ -28,6 +28,7 @@ export async function importMaterialsFromJsonEntries(entries: unknown[]): Promis
     category: 'other',
     region: '',
     rarity: 'common',
+    averageMarketPrice: 0,
     properties: [],
     gameplayDescription: '',
     loreDescription: '',

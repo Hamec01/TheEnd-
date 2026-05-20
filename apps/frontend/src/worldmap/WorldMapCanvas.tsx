@@ -9,10 +9,12 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import '../styles.css';
-import { tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
+import { tickPlayerDirectionalMovement, tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
 import { detectCurrentZone, detectHoverZone, isInsideZone, pickRuntimeClickTarget } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
+import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
+import ActiveWorldEntitiesLayer from './components/ActiveWorldEntitiesLayer';
 import { EDITOR_DRAFT_ALPHA, EDITOR_FILL_ALPHA, EDITOR_STROKE_ALPHA, INVALID_DRAFT_COLOR, withAlpha } from './zoneColors';
 import {
   getDefaultBlocksClick,
@@ -31,6 +33,7 @@ import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type Wor
 import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
 import type { QuestMarkerDefinition } from '../types/quest';
 import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
+import type { MovementControlScheme } from './playerMovementSettings';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
@@ -135,6 +138,7 @@ interface WorldMapCanvasProps {
   mode: 'play' | 'editor';
   gameplayPaused?: boolean;
   playerStartPosition?: { x: number; y: number };
+  playerAvatarUrl?: string | null;
   zones?: WorldMapZone[];
   selectedZoneId?: string | null;
   selectedTool?: ZoneEditorTool;
@@ -169,6 +173,11 @@ interface WorldMapCanvasProps {
   onPlayerPosition?: (x: number, y: number) => void;
   onPlayerState?: (state: 'moving' | 'idle' | 'in_zone' | 'in_city') => void;
   onRuntimeZoneInteract?: (zone: WorldMapZone, point: { x: number; y: number }) => void;
+  playerTargetPosition?: { x: number; y: number } | null;
+  movementLocked?: boolean;
+  controlScheme?: MovementControlScheme;
+  playerSpeed?: number;
+  sprintActive?: boolean;
   playQuestMarkers?: QuestMarkerDefinition[];
   playNpcMarkers?: Array<{
     id: string;
@@ -181,6 +190,7 @@ interface WorldMapCanvasProps {
   }>;
   activeEditorLayer?: MapEditorLayer;
   layerVisibility?: LayerVisibilityState;
+  onWorldEntityClick?: (entity: WorldSimulationSnapshot['activeEntities'][number]) => void;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -323,6 +333,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     mode,
     gameplayPaused = false,
     playerStartPosition,
+    playerAvatarUrl = null,
     zones = WORLD_MAP_ZONES,
     selectedZoneId = null,
     selectedTool = 'select',
@@ -357,9 +368,15 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onPlayerPosition,
     onPlayerState,
     onRuntimeZoneInteract,
+    playerTargetPosition = null,
+    movementLocked = false,
+    controlScheme = 'arrows',
+    playerSpeed,
+    sprintActive = false,
     playQuestMarkers = [],
     playNpcMarkers = [],
     activeEditorLayer = 'zones',
+    onWorldEntityClick,
     layerVisibility = {
       areas: 'visible',
       locations: 'visible',
@@ -375,6 +392,12 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   const prevZoneRef = useRef<WorldMapZone | null>(null);
   const playerStateRef = useRef<PlayerWorldState>('idle');
   const pendingCityEntryRef = useRef<string | null>(null);
+  const movementKeysRef = useRef({
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  });
   const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
@@ -411,6 +434,28 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   };
 
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
+
+  const resolveCanMoveTo = useCallback((x: number, y: number) => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    if (!cell) {
+      return true;
+    }
+
+    return !isBlockedRegionType(cell.regionType);
+  }, [paintedCellMap]);
+
+  const resolveSpeedMultiplier = useCallback((x: number, y: number) => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    if (!cell) {
+      return 1;
+    }
+
+    return getRegionMoveSpeedMultiplier(cell.regionType);
+  }, [paintedCellMap]);
   const createLayerDraftBase = (tool: ZoneEditorTool): ZoneEditorDraft => {
     const type = getDefaultTypeForLayer(activeEditorLayer);
     const layerDefault = createEmptyZoneDraft(tool);
@@ -574,45 +619,49 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     const animate = () => {
       setPlayer((prev) => {
-        if (gameplayPaused) {
+        if (gameplayPaused || movementLocked) {
           playerStateRef.current = 'idle';
-          return prev;
+          if (prev.targetX === null && prev.targetY === null) {
+            return prev;
+          }
+          return {
+            ...prev,
+            targetX: null,
+            targetY: null,
+          };
         }
 
-        const tick = tickPlayerMovement(prev, 0.0012, (x, y) => {
-          const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
-          const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
-          const cell = paintedCellMap.get(`${cellX}:${cellY}`);
-          if (!cell) {
-            return true;
-          }
-
-          return !isBlockedRegionType(cell.regionType);
-        }, (x, y) => {
-          const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
-          const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
-          const cell = paintedCellMap.get(`${cellX}:${cellY}`);
-          if (!cell) {
-            return 1;
-          }
-
-          return getRegionMoveSpeedMultiplier(cell.regionType);
-        });
+        const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
+        const inputY = (movementKeysRef.current.down ? 1 : 0) - (movementKeysRef.current.up ? 1 : 0);
+        const effectiveSpeed = (playerSpeed ?? prev.speed) * (sprintActive ? 1.45 : 1);
+        const nextPlayer = prev.speed === effectiveSpeed ? prev : { ...prev, speed: effectiveSpeed };
+        const tick = (inputX !== 0 || inputY !== 0)
+          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveTo, resolveSpeedMultiplier)
+          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveTo, resolveSpeedMultiplier);
         const enteredZone = detectCurrentZone(zones as Zone[], tick.player.x, tick.player.y) as WorldMapZone | null;
         playerStateRef.current = tick.state;
         setCurrentZone(enteredZone);
 
-        return {
-          ...tick.player,
-          speed: prev.speed,
-        };
+        return tick.player;
       });
       frameId = window.requestAnimationFrame(animate);
     };
 
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [gameplayPaused, mode, paintedCellMap, zones]);
+  }, [gameplayPaused, mode, movementLocked, playerSpeed, resolveCanMoveTo, resolveSpeedMultiplier, sprintActive, zones]);
+
+  useEffect(() => {
+    if (mode !== 'play') {
+      return;
+    }
+
+    setPlayer((prev) => (
+      prev.speed === (playerSpeed ?? runtimeSettings.playerSpeed)
+        ? prev
+        : { ...prev, speed: playerSpeed ?? runtimeSettings.playerSpeed }
+    ));
+  }, [mode, playerSpeed, runtimeSettings.playerSpeed]);
 
   // Separate effect to handle callbacks when player position or zone changes
   useEffect(() => {
@@ -696,6 +745,28 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     pendingCityEntryRef.current = null;
     onOpenLocation?.(pendingCityId);
   }, [currentZone, mode, onOpenLocation, player.targetX, player.targetY, player.x, player.y]);
+
+  useEffect(() => {
+    if (mode !== 'play' || !playerTargetPosition || movementLocked) {
+      return;
+    }
+
+    pendingCityEntryRef.current = null;
+    setPlayer((prev) => {
+      const nextTargetX = Math.max(0, Math.min(1, playerTargetPosition.x));
+      const nextTargetY = Math.max(0, Math.min(1, playerTargetPosition.y));
+      const sameTarget = prev.targetX !== null
+        && prev.targetY !== null
+        && Math.abs(prev.targetX - nextTargetX) < 0.0005
+        && Math.abs(prev.targetY - nextTargetY) < 0.0005;
+
+      if (sameTarget) {
+        return prev;
+      }
+
+      return setPlayerTarget(prev, nextTargetX, nextTargetY);
+    });
+  }, [mode, movementLocked, playerTargetPosition?.x, playerTargetPosition?.y]);
 
   useEffect(() => {
     if (mode !== 'editor') {
@@ -813,6 +884,77 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     selectedZoneId,
     worldImage,
   ]);
+
+  useEffect(() => {
+    if (mode !== 'play') {
+      return undefined;
+    }
+
+    const matchesMovementKey = (key: string) => {
+      const normalized = key.toLowerCase();
+      if (controlScheme === 'wasd') {
+        if (normalized === 'w') return 'up';
+        if (normalized === 's') return 'down';
+        if (normalized === 'a') return 'left';
+        if (normalized === 'd') return 'right';
+        return null;
+      }
+
+      if (key === 'ArrowUp') return 'up';
+      if (key === 'ArrowDown') return 'down';
+      if (key === 'ArrowLeft') return 'left';
+      if (key === 'ArrowRight') return 'right';
+      return null;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (movementLocked || isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      const direction = matchesMovementKey(event.key);
+      if (!direction) {
+        return;
+      }
+
+      event.preventDefault();
+      movementKeysRef.current[direction] = true;
+      pendingCityEntryRef.current = null;
+      setPlayer((prev) => ({
+        ...prev,
+        targetX: null,
+        targetY: null,
+      }));
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const direction = matchesMovementKey(event.key);
+      if (!direction) {
+        return;
+      }
+
+      event.preventDefault();
+      movementKeysRef.current[direction] = false;
+    };
+
+    const handleBlur = () => {
+      movementKeysRef.current = {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+      };
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [controlScheme, mode, movementLocked]);
 
   function updateZones(nextZones: WorldMapZone[], nextSelectedZoneId: string | null = selectedZoneId) {
     onZonesChange?.(nextZones);
@@ -1036,7 +1178,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
-    if (gameplayPaused) {
+    if (gameplayPaused || movementLocked) {
       return;
     }
 
@@ -1397,16 +1539,18 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         ctx.fillText(npc.name || npc.id, npcX + 10, npcY + 3);
       }
 
-      const playerRadius = Math.max(5, canvas.width * 0.0075);
-      const playerX = ((player.x - camera.left) / camera.width) * canvas.width;
-      const playerY = ((player.y - camera.top) / camera.height) * canvas.height;
-      ctx.beginPath();
-      ctx.fillStyle = '#f8e8b0';
-      ctx.arc(playerX, playerY, playerRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#ffd55a';
-      ctx.lineWidth = 1.8;
-      ctx.stroke();
+      if (!playerAvatarUrl) {
+        const playerRadius = Math.max(5, canvas.width * 0.0075);
+        const playerX = ((player.x - camera.left) / camera.width) * canvas.width;
+        const playerY = ((player.y - camera.top) / camera.height) * canvas.height;
+        ctx.beginPath();
+        ctx.fillStyle = '#f8e8b0';
+        ctx.arc(playerX, playerY, playerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffd55a';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
       return;
     }
 
@@ -1579,6 +1723,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     playNpcMarkers,
     playQuestMarkers,
     player,
+    playerAvatarUrl,
     regions,
     selectedZone,
     worldImage,
@@ -1592,6 +1737,19 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   function distanceLabel(a: [number, number], b: [number, number]): string {
     return `d=${Math.hypot(a[0] - b[0], a[1] - b[1]).toFixed(4)}`;
   }
+
+  const playPlayerAvatarStyle = mode === 'play' && playerAvatarUrl
+    ? (() => {
+      const camera = getPlayCamera();
+      return {
+        left: `${((player.x - camera.left) / camera.width) * 100}%`,
+        top: `${((player.y - camera.top) / camera.height) * 100}%`,
+        backgroundImage: `url("${playerAvatarUrl}")`,
+      };
+    })()
+    : null;
+
+  const playCamera = mode === 'play' ? getPlayCamera() : null;
 
   return (
     <section className={`wm-map card ${mode === 'editor' ? 'is-editor' : ''}`}>
@@ -1623,6 +1781,21 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
               : 'pointer',
           }}
         />
+
+        {playPlayerAvatarStyle ? (
+          <span
+            className="wm-play-player-avatar-marker"
+            style={playPlayerAvatarStyle}
+            title="Игрок"
+          />
+        ) : null}
+
+        {mode === 'play' && playCamera && onWorldEntityClick ? (
+          <ActiveWorldEntitiesLayer
+            camera={playCamera}
+            onEntityClick={onWorldEntityClick}
+          />
+        ) : null}
 
         {tooltip && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone)) ? (
           <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>

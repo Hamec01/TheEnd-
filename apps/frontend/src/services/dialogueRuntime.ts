@@ -36,6 +36,7 @@ export type DialogueRuntimeIntent =
   | { type: 'OPEN_SHOP'; merchantId?: string | null }
   | { type: 'START_COMBAT' }
   | { type: 'OPEN_TRAINING'; skillId?: string | null; trainerNpcId?: string | null }
+  | { type: 'HEAL_PLAYER_FULL'; costGold?: number }
   | { type: 'GRANT_SKILL'; skillId: string }
   | { type: 'QUEST_STARTED'; questId: string }
   | { type: 'QUEST_ADVANCED'; questId: string }
@@ -331,6 +332,17 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
           return false;
         }
         break;
+      case 'player_stat_min': {
+        const statKey = String(condition.key ?? value ?? '').trim();
+        const expected = Number(condition.value ?? value ?? 0);
+        if (!statKey || !Number.isFinite(expected)) {
+          return false;
+        }
+        if (Number(player.stats?.[statKey] ?? 0) < expected) {
+          return false;
+        }
+        break;
+      }
       case 'faction_reputation':
       case 'kingdom_reputation': {
         const rep = readRecord(PLAYER_REP_KEY);
@@ -474,16 +486,122 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'unlockDialogue';
     case 'open_dialogue':
       return 'openDialogue';
+    case 'heal_player_full':
+    case 'full_heal':
+    case 'fullHeal':
+      return 'healPlayerFull';
+    case 'restore_hp':
+      return 'restoreHp';
     default:
       return type;
   }
 }
 
+function getActionGoldCost(action: DialogueAction): number {
+  const raw = typeof action.costGold === 'number' ? action.costGold : action.amount;
+  const value = Number(raw ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function isFullHealingAction(action: DialogueAction): boolean {
+  if (action.type === 'healPlayerFull') {
+    return true;
+  }
+
+  if (action.type === 'restoreHp' || action.type === 'heal') {
+    const mode = String(action.mode ?? action.value ?? '').trim().toLowerCase();
+    return mode === 'full' || mode === 'max' || mode === 'all';
+  }
+
+  return false;
+}
+
 function normalizeActions(actions: DialogueAction[]): DialogueAction[] {
-  return actions.map((action) => ({
+  const normalized = actions.map((action) => ({
     ...action,
     type: normalizeActionType(action.type),
   }));
+
+  const skippedTakeGoldIndexes = new Set<number>();
+  for (let index = 0; index < normalized.length; index += 1) {
+    const action = normalized[index]!;
+    if (!isFullHealingAction(action)) {
+      continue;
+    }
+
+    const previous = normalized[index - 1];
+    if (previous?.type !== 'takeGold') {
+      continue;
+    }
+
+    const explicitCost = getActionGoldCost(action);
+    const previousCost = getActionGoldCost(previous);
+    if (previousCost <= 0) {
+      continue;
+    }
+
+    if (explicitCost === 0 || explicitCost === previousCost) {
+      normalized[index] = {
+        ...action,
+        costGold: explicitCost > 0 ? explicitCost : previousCost,
+      };
+      skippedTakeGoldIndexes.add(index - 1);
+    }
+  }
+
+  return normalized.filter((_, index) => !skippedTakeGoldIndexes.has(index));
+}
+
+function isFullHealChoiceText(text: string | undefined): boolean {
+  const normalized = String(text ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    (normalized.includes('леч') && (normalized.includes('полн') || normalized.includes('здоров')))
+    || normalized.includes('full heal')
+    || normalized.includes('restore hp')
+  );
+}
+
+function getChoiceExplicitActions(choice: DialogueChoice): DialogueAction[] {
+  const actions = [
+    ...(choice.actions ?? []),
+    ...(choice.effects ?? []),
+  ];
+
+  if (!isFullHealChoiceText(choice.text)) {
+    return actions;
+  }
+
+  const hasHealingAction = actions.some((action) => isFullHealingAction({
+    ...action,
+    type: normalizeActionType(action.type),
+  }));
+  if (hasHealingAction) {
+    return actions;
+  }
+
+  const takeGoldIndex = actions.findIndex((action) => normalizeActionType(action.type) === 'takeGold');
+  if (takeGoldIndex < 0) {
+    return actions;
+  }
+
+  return actions.flatMap((action, index) => {
+    if (index !== takeGoldIndex) {
+      return [action];
+    }
+
+    return [
+      action,
+      {
+        id: `${choice.id}__fullHealFallback`,
+        type: 'healPlayerFull',
+        costGold: getActionGoldCost(action),
+      } satisfies DialogueAction,
+    ];
+  });
 }
 
 function choiceShorthandToActions(choice: DialogueChoice): DialogueAction[] {
@@ -644,6 +762,16 @@ export function executeDialogueActions(
         writeNumber(PLAYER_GOLD_KEY, Math.max(0, readNumber(PLAYER_GOLD_KEY, 0) - Math.max(0, action.amount ?? 0)));
         logs.push(`Gold removed: ${action.amount ?? 0}`);
         break;
+      case 'healPlayerFull':
+      case 'restoreHp':
+      case 'heal':
+        if (!isFullHealingAction(action)) {
+          logs.push(`Unhandled action: ${action.type}`);
+          break;
+        }
+        intents.push({ type: 'HEAL_PLAYER_FULL', costGold: getActionGoldCost(action) });
+        logs.push(`Healing service requested: full (${getActionGoldCost(action)})`);
+        break;
       case 'addReputation': {
         const rep = readRecord(PLAYER_REP_KEY);
         const key = action.factionId ?? action.kingdomId ?? 'global';
@@ -748,7 +876,7 @@ export function chooseDialogueOption(
     npcId,
     [
       ...(node.actions ?? []),
-      ...(choice.actions ?? []),
+      ...getChoiceExplicitActions(choice),
       ...choiceShorthandToActions(choice),
     ],
   );

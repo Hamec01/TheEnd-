@@ -1053,6 +1053,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [activeTrainerNpcName, setActiveTrainerNpcName] = useState<string | null>(null);
   const [activeTrainerSkillIds, setActiveTrainerSkillIds] = useState<unknown>(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const travelStaminaSyncTimeoutRef = useRef<number | null>(null);
 
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -1234,6 +1235,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     () => (selectedMerchant ? getRuntimeMerchantItems(selectedMerchant.id, runtimeAdminMerchants, runtimeAdminItems) : []),
     [runtimeAdminItems, runtimeAdminMerchants, selectedMerchant],
   );
+  const selectedMerchantAllowedSellItemIds = useMemo(() => {
+    if (!selectedAdminMerchant?.materialTradingEnabled) {
+      return undefined;
+    }
+
+    return (selectedAdminMerchant.materialTrades ?? [])
+      .filter((entry) => entry.isEnabled && entry.buys)
+      .map((entry) => `mat_${entry.materialId.replace(/[^a-zA-Z0-9_]/g, '_')}`);
+  }, [selectedAdminMerchant]);
   const selectedMerchantItem = useMemo<ItemDefinition | null>(
     () => merchantItems.find((item) => item.id === selectedMerchantItemId) ?? merchantItems[0] ?? null,
     [merchantItems, selectedMerchantItemId],
@@ -1857,6 +1867,30 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setRuntimeInventoryRevision((current) => current + 1);
   }, []);
 
+  const applyFullHealingService = useCallback(async (options?: { costGold?: number }) => {
+    if (!character) {
+      throw new Error('Create or load a character first.');
+    }
+
+    const costGold = Math.max(0, Math.floor(Number(options?.costGold ?? 0)));
+    const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+    const currentTotalGold = Math.max(0, inventory.gold + runtimeGold);
+
+    if (currentTotalGold < costGold) {
+      throw new Error('Недостаточно золота.');
+    }
+
+    await updateCharacterResources(character.id, {
+      currentHp: character.maxHp,
+    });
+
+    const nextGold = currentTotalGold - costGold;
+    writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
+    const hub = await patchDevCharacterState(character.id, { gold: nextGold });
+    applyHubState(hub);
+    handleRuntimeInventoryChanged();
+  }, [character, handleRuntimeInventoryChanged, inventory.gold]);
+
   const refreshActiveCharacterHub = useCallback(async () => {
     if (!character) {
       return null;
@@ -2231,6 +2265,41 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setActiveTrainerSkillIds(null);
     setStatus('Открыта страница персонажа.');
   }
+
+  const handleTravelStaminaChange = useCallback((nextStamina: number) => {
+    if (!character) {
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(character.maxStamina, Math.round(nextStamina)));
+    setCharacter((current) => {
+      if (!current || current.currentStamina === clamped) {
+        return current;
+      }
+
+      return {
+        ...current,
+        currentStamina: clamped,
+      };
+    });
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (travelStaminaSyncTimeoutRef.current !== null) {
+      window.clearTimeout(travelStaminaSyncTimeoutRef.current);
+    }
+
+    travelStaminaSyncTimeoutRef.current = window.setTimeout(() => {
+      void updateCharacterResources(character.id, {
+        currentStamina: clamped,
+      }).catch((error) => {
+        console.warn('Failed to sync travel stamina:', error);
+      });
+      travelStaminaSyncTimeoutRef.current = null;
+    }, 250);
+  }, [character]);
 
   function openEquipmentOverlay(): void {
     onNavigate?.('/equipment');
@@ -3904,7 +3973,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onOpenMerchant={openMerchantOverlay}
           onOpenSkills={openSkillsOverlay}
           onGrantSkill={handleGrantCharacterSkill}
+          onApplyHealingService={applyFullHealingService}
           onRuntimeInventoryChanged={handleRuntimeInventoryChanged}
+          onTravelStaminaChange={handleTravelStaminaChange}
           onStartCombat={openCombat}
           onStartBattleMap={(battleMapId) => {
             openArenaSetup(battleMapId);
@@ -4202,6 +4273,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             inventory={inventory}
             equipment={equipment}
             merchantItems={merchantItems}
+            allowedSellItemIds={selectedMerchantAllowedSellItemIds}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
             resolveItemImage={resolveItemImage}

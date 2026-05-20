@@ -20,13 +20,14 @@ import { CitiesPage } from './pages/CitiesPage';
 import { BackupPage } from './pages/BackupPage';
 import { ItemSetsPage } from './pages/ItemSetsPage';
 import { LocationsPage } from './pages/LocationsPage';
+import { WorldSimulationAdmin } from './pages/WorldSimulationAdmin';
 
 interface AdminAppProps {
   currentPath: string;
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
@@ -47,6 +48,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     || path === '/admin/cities'
     || path === '/admin/locations'
     || path === '/admin/backup'
+    || path === '/admin/world-sim'
   ) {
     return path;
   }
@@ -93,6 +95,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Локации';
       case '/admin/backup':
         return 'Backup / Content Tools';
+      case '/admin/world-sim':
+        return '🌍 Живой мир';
       default:
         return 'Обзор';
     }
@@ -165,6 +169,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/backup':
       page = <BackupPage />;
+      break;
+    case '/admin/world-sim':
+      page = <WorldSimulationAdmin />;
       break;
     default:
       page = <DashboardPage />;

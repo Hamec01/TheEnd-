@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { QuestMarkerDefinition } from '../types/quest';
+import type { MapDiscoveryMarker } from './worldMapExploration';
 
 const MINI_MAP_ZOOM = 2.5;
 
@@ -13,6 +14,7 @@ interface MiniMapWidgetProps {
   playerPosition: { x: number; y: number };
   questMarkers?: QuestMarkerDefinition[];
   trackedMarkerId?: string | null;
+  discoveryMarkers?: MapDiscoveryMarker[];
   onOpenViewer: () => void;
 }
 
@@ -22,6 +24,7 @@ export function MiniMapWidget({
   playerPosition,
   questMarkers = [],
   trackedMarkerId = null,
+  discoveryMarkers = [],
   onOpenViewer,
 }: MiniMapWidgetProps) {
   const [activeImagePath, setActiveImagePath] = useState(mapImagePath);
@@ -82,6 +85,17 @@ export function MiniMapWidget({
             }}
           />
         ) : null}
+        {discoveryMarkers.map((marker) => (
+          <span
+            key={marker.id}
+            className={`wm-mini-map-discovery-marker is-${marker.entityType}`}
+            style={{
+              left: `${marker.x * 100}%`,
+              top: `${marker.y * 100}%`,
+            }}
+            title={marker.title}
+          />
+        ))}
         <span
           className="wm-mini-map-player-marker"
           style={{

@@ -3,6 +3,7 @@ import type { Material } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { extractRawMaterialsFromImportJson, importMaterialsFromJsonEntries, materialsService, validateMaterial } from '../../services/content/materialsService';
+import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { uid } from '../../services/content/storage';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
@@ -25,6 +26,7 @@ function emptyMaterial(): Material {
     category: 'other',
     region: '',
     rarity: 'common',
+    averageMarketPrice: 0,
     properties: [],
     gameplayDescription: '',
     loreDescription: '',
@@ -37,6 +39,7 @@ function emptyMaterial(): Material {
 
 export function MaterialsPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [images, setImages] = useState<Awaited<ReturnType<typeof loadRuntimeImages>>>([]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Material>(emptyMaterial());
@@ -55,6 +58,7 @@ export function MaterialsPage() {
 
   useEffect(() => {
     void refresh();
+    void loadRuntimeImages().then(setImages).catch(() => setImages([]));
   }, []);
 
   function exportJson() {
@@ -170,7 +174,7 @@ export function MaterialsPage() {
         name: draft.name,
         type: 'material',
         rarity: draft.rarity,
-        price: 1,
+        price: Math.max(1, Math.round(draft.averageMarketPrice || 1)),
         stackable: true,
         maxStack: 999,
         gameplayDescription: draft.gameplayDescription || `Материал: ${draft.name}`,
@@ -237,6 +241,10 @@ export function MaterialsPage() {
           <label>
             <AdminFieldLabel label="Регион" hint="Где этот материал обычно добывается: регион, биом или территория." />
             <input value={draft.region} onChange={(event) => setDraft((current) => ({ ...current, region: event.target.value }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Средняя рыночная цена" hint="Базовая средняя цена материала для торговли и связанного item." />
+            <input type="number" min="0" value={draft.averageMarketPrice ?? 0} onChange={(event) => setDraft((current) => ({ ...current, averageMarketPrice: Number(event.target.value) || 0 }))} />
           </label>
           <label>
             <AdminFieldLabel label="Свойства" hint="Список ключевых свойств через запятую: например 'гибкий, жаростойкий, редкий'." />
@@ -309,22 +317,25 @@ export function MaterialsPage() {
         </div>
 
         <div className="admin-items-icons-grid">
-          {visibleMaterials.map((material) => (
-            <button
-              key={material.id}
-              className={`admin-item-icon-card ${selectedId === material.id ? 'is-active' : ''}`}
-              onClick={() => { setSelectedId(material.id); setDraft(material); }}
-              title={`${material.name} (${material.id})`}
-            >
-              <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMaterialCardAccent(material)}`}>
-                {(material.name.trim() || material.category).charAt(0).toUpperCase()}
-              </div>
-              <strong>{material.name || '(без названия)'}</strong>
-              <span>{material.id || 'ID ещё не задан'}</span>
-              <span>{translateMaterialCategory(material.category)} | {translateRarity(material.rarity)}</span>
-              <span>{translateEnabledState(material.isEnabled)}</span>
-            </button>
-          ))}
+          {visibleMaterials.map((material) => {
+              const image = resolveStoredImageSource(material.imagePath, images);
+              return (
+                <button
+                  key={material.id}
+                  className={`admin-item-icon-card ${selectedId === material.id ? 'is-active' : ''}`}
+                  onClick={() => { setSelectedId(material.id); setDraft(material); }}
+                  title={`${material.name} (${material.id})`}
+                >
+                  <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMaterialCardAccent(material)}`}>
+                    {image ? <img src={image} alt={material.name} /> : (material.name.trim() || material.category).charAt(0).toUpperCase()}
+                  </div>
+                  <strong>{material.name || '(без названия)'}</strong>
+                  <span>{material.id || 'ID ещё не задан'}</span>
+                  <span>{translateMaterialCategory(material.category)} | {translateRarity(material.rarity)}</span>
+                  <span>{translateEnabledState(material.isEnabled)}</span>
+                </button>
+              );
+            })}
         </div>
       </section>
     </div>

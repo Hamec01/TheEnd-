@@ -1,0 +1,201 @@
+{
+  "archetypes": [
+    {
+      "id": "merchant_luminor_trader",
+      "name": "Торговец Люминора",
+      "kind": "merchant",
+      "npcTemplateId": "npc_luminor_rikar",
+      "worldSpriteId": "trader_world_sprite",
+      "portraitId": "human_01.png",
+      "economyProfile": {
+        "homeCity": "luminor",
+        "targetCities": ["arklein", "crystallis"],
+        "goodsCategories": ["spices", "cloth"],
+        "buyBias": 0.8,
+        "sellBias": 1.3
+      },
+      "escorts": {
+        "npcTemplateId": "npc_guard_01",
+        "count": 2
+      },
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "merchant_arklein_trader",
+      "name": "Торговец Архлейна",
+      "kind": "merchant",
+      "npcTemplateId": "npc_arklein_kirk",
+      "worldSpriteId": "trader_world_sprite",
+      "portraitId": "dwarf_01.png",
+      "economyProfile": {
+        "homeCity": "arklein",
+        "targetCities": ["luminor", "crystallis"],
+        "goodsCategories": ["weapons", "materials"],
+        "buyBias": 0.75,
+        "sellBias": 1.4
+      },
+      "escorts": {
+        "npcTemplateId": "npc_guard_01",
+        "count": 3
+      },
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "merchant_crystallis_trader",
+      "name": "Торговец Кристаллиса",
+      "kind": "merchant",
+      "npcTemplateId": "npc_crystallis_ellian",
+      "worldSpriteId": "trader_world_sprite",
+      "portraitId": "high_elf_01.png",
+      "economyProfile": {
+        "homeCity": "crystallis",
+        "targetCities": ["luminor", "arklein"],
+        "goodsCategories": ["spices", "cloth", "weapons"],
+        "buyBias": 0.85,
+        "sellBias": 1.25
+      },
+      "escorts": {
+        "npcTemplateId": "npc_guard_01",
+        "count": 2
+      },
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ],
+  "routes": [
+    {
+      "id": "route_luminor_arklein",
+      "name": "Люминор → Архлейн",
+      "waypoints": [
+        {
+          "zoneId": "city_luminor",
+          "cityId": "luminor",
+          "stopDurationMin": 60,
+          "stopDurationMax": 180
+        },
+        {
+          "zoneId": "zone_forest_middle",
+          "stopDurationMin": 15,
+          "stopDurationMax": 30
+        },
+        {
+          "zoneId": "city_arklein",
+          "cityId": "arklein",
+          "stopDurationMin": 120,
+          "stopDurationMax": 240
+        }
+      ],
+      "travelTimingDevMinutes": 10,
+      "travelTimingReleaseHours": 6,
+      "dangerLevel": 3,
+      "restChance": 0.25,
+      "allowedArchetypes": ["merchant_luminor_trader"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "route_arklein_crystallis",
+      "name": "Архлейн → Кристаллис",
+      "waypoints": [
+        {
+          "zoneId": "city_arklein",
+          "cityId": "arklein",
+          "stopDurationMin": 60,
+          "stopDurationMax": 180
+        },
+        {
+          "zoneId": "zone_mountain_pass",
+          "stopDurationMin": 20,
+          "stopDurationMax": 40
+        },
+        {
+          "zoneId": "city_crystallis",
+          "cityId": "crystallis",
+          "stopDurationMin": 90,
+          "stopDurationMax": 200
+        }
+      ],
+      "travelTimingDevMinutes": 12,
+      "travelTimingReleaseHours": 8,
+      "dangerLevel": 5,
+      "restChance": 0.35,
+      "allowedArchetypes": ["merchant_arklein_trader"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "route_crystallis_luminor",
+      "name": "Кристаллис → Люминор",
+      "waypoints": [
+        {
+          "zoneId": "city_crystallis",
+          "cityId": "crystallis",
+          "stopDurationMin": 90,
+          "stopDurationMax": 200
+        },
+        {
+          "zoneId": "zone_plains",
+          "stopDurationMin": 15,
+          "stopDurationMax": 30
+        },
+        {
+          "zoneId": "city_luminor",
+          "cityId": "luminor",
+          "stopDurationMin": 60,
+          "stopDurationMax": 180
+        }
+      ],
+      "travelTimingDevMinutes": 11,
+      "travelTimingReleaseHours": 7,
+      "dangerLevel": 2,
+      "restChance": 0.2,
+      "allowedArchetypes": ["merchant_crystallis_trader"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ],
+  "spawnRules": [
+    {
+      "id": "spawn_merchants_daily",
+      "name": "Ежедневные торговцы",
+      "spawnType": "time_based",
+      "spawnTimeDevMinutes": 5,
+      "spawnTimeReleaseHours": 24,
+      "archetypeIds": ["merchant_luminor_trader", "merchant_arklein_trader", "merchant_crystallis_trader"],
+      "minGroupSize": 1,
+      "maxGroupSize": 2,
+      "spawnWeight": 0.7,
+      "cooldownDev": 10,
+      "cooldownRelease": 24,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "spawn_merchants_demand",
+      "name": "Торговцы при спросе",
+      "spawnType": "economy_based",
+      "archetypeIds": ["merchant_luminor_trader"],
+      "minGroupSize": 1,
+      "maxGroupSize": 1,
+      "spawnWeight": 0.5,
+      "conditions": {
+        "priceCategory": "spices",
+        "minPrice": 150
+      },
+      "cooldownDev": 30,
+      "cooldownRelease": 4,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ]
+}

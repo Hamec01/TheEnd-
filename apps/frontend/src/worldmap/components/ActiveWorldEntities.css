@@ -1,0 +1,247 @@
+.active-world-entities-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.world-entity {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  transform: translate(-24px, -24px);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.18s ease-out;
+  user-select: none;
+  will-change: left, top, transform;
+}
+
+.world-entity:hover {
+  transform: translate(-24px, -24px) scale(1.12);
+  z-index: 25;
+}
+
+.world-entity.traveling {
+  opacity: 0.94;
+  animation: drift 3.2s infinite ease-in-out;
+}
+
+.world-entity.resting,
+.world-entity.in_city {
+  opacity: 0.82;
+}
+
+.world-entity.in_combat {
+  opacity: 1;
+  animation: combat-flash 0.5s infinite;
+}
+
+.world-entity.dead {
+  opacity: 0.4;
+  filter: grayscale(100%);
+}
+
+.world-entity.frozen {
+  opacity: 0.5;
+  filter: blur(2px);
+}
+
+.world-entity.respawning {
+  animation: respawn 1s infinite;
+}
+
+.world-entity.hostile {
+  filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.85));
+}
+
+.world-entity.friendly {
+  filter: drop-shadow(0 0 6px rgba(100, 200, 100, 0.65));
+}
+
+.entity-sprite {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.world-entity.sprite-trader_world_sprite {
+  width: 120px;
+  height: 72px;
+  transform: translate(-60px, -36px);
+}
+
+.world-entity.sprite-trader_world_sprite:hover {
+  transform: translate(-60px, -36px) scale(1.08);
+}
+
+.world-entity.sprite-trader_world_sprite.traveling {
+  animation-name: drift-trader;
+}
+
+.entity-portrait-marker {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background-size: cover;
+  background-position: center;
+  border: 2px solid #d8b15a;
+  box-shadow: 0 0 10px rgba(255, 214, 120, 0.8);
+  background-color: rgba(22, 18, 14, 0.96);
+}
+
+.is-portrait-marker {
+  width: 42px;
+  height: 42px;
+  transform: translate(-21px, -21px);
+}
+
+.is-portrait-marker:hover {
+  transform: translate(-21px, -21px) scale(1.14);
+}
+
+.hostile-indicator,
+.quest-indicator,
+.group-count-indicator {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 30;
+}
+
+.hostile-indicator {
+  top: -8px;
+  right: -8px;
+  background-color: #ff4444;
+  color: white;
+  animation: pulse 1s infinite;
+}
+
+.quest-indicator {
+  top: -8px;
+  left: -8px;
+  background-color: #ffff00;
+  color: #333;
+  font-size: 14px;
+  animation: bob 2s infinite ease-in-out;
+}
+
+.group-count-indicator {
+  bottom: -8px;
+  right: -10px;
+  background: linear-gradient(180deg, #f5d18d 0%, #b7853b 100%);
+  color: #2d1a0e;
+  border: 1px solid rgba(42, 23, 11, 0.65);
+}
+
+.entity-portrait-hover {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 96px;
+  height: 96px;
+  background: rgba(0, 0, 0, 0.92);
+  border: 2px solid #ffcc00;
+  border-radius: 4px;
+  padding: 4px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1000;
+  transition: opacity 0.25s ease-out;
+}
+
+.world-entity:hover .entity-portrait-hover {
+  opacity: 1;
+}
+
+.entity-portrait-hover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate(-24px, -24px);
+  }
+  50% {
+    transform: translate(-24px, -23px);
+  }
+}
+
+@keyframes drift-trader {
+  0%,
+  100% {
+    transform: translate(-60px, -36px);
+  }
+  50% {
+    transform: translate(-60px, -35px);
+  }
+}
+
+.is-portrait-marker.traveling {
+  animation-name: drift-portrait;
+}
+
+@keyframes drift-portrait {
+  0%,
+  100% {
+    transform: translate(-21px, -21px);
+  }
+  50% {
+    transform: translate(-21px, -20px);
+  }
+}
+
+@keyframes combat-flash {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.8));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px rgba(255, 50, 50, 1));
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes respawn {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}

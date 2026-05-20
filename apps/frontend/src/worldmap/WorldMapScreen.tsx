@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from "react";
 import type {
   Equipment,
   InventoryState,
@@ -114,7 +114,11 @@ import {
   getAvailableQuestInteractionChoices,
   runQuestInteractionEffects,
 } from "../services/questInteractionRuntime";
-import { checkMarkerRequirements } from "../utils/questMarkerVisibility";
+import {
+  checkMarkerRequirements,
+  getQuestMarkerObjectiveId,
+  getTrackedQuestMarker,
+} from "../utils/questMarkerVisibility";
 import type {
   PlayerQuestState,
   QuestDefinition,
@@ -142,13 +146,28 @@ import {
   markLocationAutoTriggerTriggered,
 } from "../services/locationAutoTriggerStore";
 import {
+  addDiscoveredMapEntity,
   getExplorationCellKeyFromPosition,
   loadDiscoveredCells,
+  loadMapDiscoveryState,
+  type MapDiscoveryEntityType,
+  type MapDiscoveryMarker,
+  type PlayerMapDiscoveryState,
   revealCellsAroundPosition,
   saveDiscoveredCells,
+  saveMapDiscoveryState,
 } from "./worldMapExploration";
 import type { NpcDefinition } from "../types/npc";
 import type { LocationArea, WorldLocation } from "../types/location";
+import type { WorldSimulationSnapshot } from "../types/world-simulation.types";
+import {
+  loadMovementControlScheme,
+  PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT,
+  type MovementControlScheme,
+} from "./playerMovementSettings";
+import { useWorldSnapshot } from "../services/useWorldSimulation";
+
+const WORLD_ENTITY_INTERACTION_DISTANCE = 0.018;
 
 type LocationView = "map" | "city" | "location";
 type ActiveWorldModal =
@@ -191,6 +210,12 @@ const POPUP_HIDE_DELAY_MS = 3000;
 const POPUP_FADE_DURATION_MS = 450;
 const PLAY_WORLD_MAP_IMAGE_PATH = "/map/main_world_map.webp";
 const LABELED_WORLD_MAP_IMAGE_PATH = "/map/world_mini_map.webp";
+const MIN_CITY_ZOOM = 1;
+const MAX_CITY_ZOOM = 1.4;
+const WORLD_MAP_BASE_TRAVEL_SPEED = 0.0001;
+const WORLD_MAP_DEXTERITY_SPEED_STEP = 0.00001;
+const WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER = 1;
+const WORLD_MAP_SPRINT_STAMINA_COST_MULTIPLIER = 1.2;
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -681,8 +706,10 @@ interface WorldMapScreenProps {
   onOpenMerchant: (merchantId?: string) => void;
   onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string) => void;
   onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
+  onApplyHealingService?: (options: { costGold?: number }) => Promise<void>;
   onRuntimeInventoryChanged?: () => void;
   onStatus: (text: string) => void;
+  onTravelStaminaChange?: (nextStamina: number) => void;
   cityMerchants?: AdminMerchant[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (
@@ -734,8 +761,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onOpenMerchant,
     onOpenSkills,
     onGrantSkill,
+    onApplyHealingService,
     onRuntimeInventoryChanged,
     onStatus,
+    onTravelStaminaChange,
     cityMerchants = [],
     resolveItemById,
     resolveItemImage,
@@ -798,6 +827,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [discoveredWorldMapCells, setDiscoveredWorldMapCells] = useState<string[]>(() =>
     loadDiscoveredCells(character.id),
   );
+  const [mapDiscoveryState, setMapDiscoveryState] = useState<PlayerMapDiscoveryState>(() =>
+    loadMapDiscoveryState(character.id),
+  );
+  const [cityZoom, setCityZoom] = useState(MIN_CITY_ZOOM);
+  const [cityPan, setCityPan] = useState({ x: 0, y: 0 });
   const [playSpawnPosition, setPlaySpawnPosition] = useState(() =>
     loadPlayerPosition(character.id),
   );
@@ -816,6 +850,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [miniMapVisible, setMiniMapVisible] = useState(() =>
     loadUiBoolean(UI_MINI_MAP_VISIBLE_KEY, true),
   );
+  const [movementControlScheme, setMovementControlScheme] = useState<MovementControlScheme>(() =>
+    loadMovementControlScheme(),
+  );
+  const [shiftPressed, setShiftPressed] = useState(false);
   const [eventOverlayMessages, setEventOverlayMessages] = useState<
     Array<ChatMessage & { isFading: boolean }>
   >([]);
@@ -851,6 +889,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState("");
   const [selectedNpcForInteractionId, setSelectedNpcForInteractionId] =
     useState<string | null>(null);
+  const [selectedWorldEntity, setSelectedWorldEntity] =
+    useState<WorldSimulationSnapshot["activeEntities"][number] | null>(null);
+  const [pendingWorldEntityInteractionId, setPendingWorldEntityInteractionId] =
+    useState<string | null>(null);
+  const [travelExhausted, setTravelExhausted] = useState(false);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
   const [questJournalOpen, setQuestJournalOpen] = useState(false);
@@ -888,9 +931,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeInteraction, setActiveInteraction] = useState<QuestInteractionDefinition | null>(null);
   const [activeInteractionChoices, setActiveInteractionChoices] = useState<QuestInteractionChoice[]>([]);
   const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
+  const { snapshot: worldSnapshot } = useWorldSnapshot();
   const dialoguePlayer = useMemo(
-    () => ({ id: character.id, level: character.level, race: character.race }),
-    [character.id, character.level, character.race],
+    () => ({
+      id: character.id,
+      level: character.level,
+      race: character.race,
+      stats: Object.fromEntries(
+        Object.entries(character.activeStats ?? {}).map(([key, value]) => [key, Number(value ?? 0)]),
+      ),
+    }),
+    [character.activeStats, character.id, character.level, character.race],
   );
   const refreshPlayerQuestStates = useCallback(() => {
     setPlayerQuestStates(
@@ -921,6 +972,146 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [selectedCityLocationId, setSelectedCityLocationId] = useState<
     string | null
   >(null);
+
+  const travelMoveSpeed = useMemo(() => {
+    const dexterity = Number(character.activeStats?.dexterity ?? 0);
+    return WORLD_MAP_BASE_TRAVEL_SPEED + Math.max(0, dexterity) * WORLD_MAP_DEXTERITY_SPEED_STEP;
+  }, [character.activeStats?.dexterity]);
+
+  const staminaRegenPerSecond = useMemo(
+    () => Math.max(10, Math.floor(character.maxStamina * 0.1)),
+    [character.maxStamina],
+  );
+
+  const walkStaminaCostPerSecond = useMemo(
+    () => Math.max(1, Math.floor(staminaRegenPerSecond * WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER)),
+    [staminaRegenPerSecond],
+  );
+
+  const sprintStaminaCostPerSecond = useMemo(
+    () => Math.max(walkStaminaCostPerSecond + 1, Math.ceil(walkStaminaCostPerSecond * WORLD_MAP_SPRINT_STAMINA_COST_MULTIPLIER)),
+    [walkStaminaCostPerSecond],
+  );
+
+  const canTravelOnWorldMap = worldMapMode === "play"
+    && locationView === "map"
+    && !travelExhausted;
+
+  const sprintActive = canTravelOnWorldMap
+    && playerState === "moving"
+    && shiftPressed
+    && battleStats.stamina > 0;
+
+  useEffect(() => {
+    const currentStamina = Math.max(0, Math.floor(battleStats.stamina));
+    const maxStamina = Math.max(0, character.maxStamina);
+
+    if (!travelExhausted && currentStamina <= 0) {
+      setTravelExhausted(true);
+      onStatus("Вы вымотались. Нужно остановиться и дождаться полного восстановления выносливости.");
+      return;
+    }
+
+    if (travelExhausted && currentStamina >= maxStamina && maxStamina > 0) {
+      setTravelExhausted(false);
+      onStatus("Выносливость восстановлена. Можно снова идти.");
+    }
+  }, [battleStats.stamina, character.maxStamina, onStatus, travelExhausted]);
+
+  useEffect(() => {
+    const handleControlSchemeChanged = (event: Event) => {
+      if (event instanceof StorageEvent) {
+        setMovementControlScheme(loadMovementControlScheme());
+        return;
+      }
+
+      const nextValue = (event as CustomEvent<MovementControlScheme>).detail;
+      if (nextValue === "arrows" || nextValue === "wasd") {
+        setMovementControlScheme(nextValue);
+      }
+    };
+
+    window.addEventListener("storage", handleControlSchemeChanged);
+    window.addEventListener(PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT, handleControlSchemeChanged as EventListener);
+    return () => {
+      window.removeEventListener("storage", handleControlSchemeChanged);
+      window.removeEventListener(PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT, handleControlSchemeChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        setShiftPressed(true);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        setShiftPressed(false);
+      }
+    };
+
+    const handleBlur = () => setShiftPressed(false);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!onTravelStaminaChange) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      const currentStamina = Math.max(0, Math.floor(battleStats.stamina));
+      const maxStamina = Math.max(0, character.maxStamina);
+
+      if (travelExhausted) {
+        if (currentStamina < maxStamina) {
+          const nextStamina = Math.min(maxStamina, currentStamina + staminaRegenPerSecond);
+          if (nextStamina !== currentStamina) {
+            onTravelStaminaChange(nextStamina);
+          }
+        }
+        return;
+      }
+
+      if (playerState === "moving") {
+        const drain = sprintActive ? sprintStaminaCostPerSecond : walkStaminaCostPerSecond;
+        const nextStamina = Math.max(0, currentStamina - drain);
+        if (nextStamina !== currentStamina) {
+          onTravelStaminaChange(nextStamina);
+        }
+        return;
+      }
+
+      if (currentStamina < maxStamina) {
+        const nextStamina = Math.min(maxStamina, currentStamina + staminaRegenPerSecond);
+        if (nextStamina !== currentStamina) {
+          onTravelStaminaChange(nextStamina);
+        }
+      }
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [
+    battleStats.stamina,
+    character.maxStamina,
+    onTravelStaminaChange,
+    playerState,
+    sprintActive,
+    sprintStaminaCostPerSecond,
+    staminaRegenPerSecond,
+    travelExhausted,
+    walkStaminaCostPerSecond,
+  ]);
 
   const nextSystemChatIdRef = useRef(0);
   const [zones, setZones] = useState<WorldMapZone[]>(() =>
@@ -955,6 +1146,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [markerPickMode, setMarkerPickMode] = useState(false);
   const [history, setHistory] =
     useState<ZoneEditorHistoryState>(createEmptyHistory());
+  const cityDragRef = useRef<{
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
 
   const selectedLocationName = currentZone?.name ?? "\u041f\u0443\u0441\u0442\u043e\u0448\u0438";
   const passiveProbePoint = useMemo(() => {
@@ -1098,55 +1295,39 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     questDefinitions,
     questMarkers,
   ]);
-  const trackedQuestMarkerId = useMemo(() => {
-    if (trackedQuestId) {
-      const tracked = playQuestMarkers.find((entry) => {
-        if ((entry.linkedQuestId ?? "").trim() !== trackedQuestId) {
-          return false;
-        }
+  const trackedQuestMarker = useMemo(
+    () => getTrackedQuestMarker({
+      questMarkers: playQuestMarkers,
+      trackedQuestId,
+      trackedObjectiveId,
+      questStates: playerQuestStates,
+      questDefinitions,
+    }),
+    [playQuestMarkers, playerQuestStates, questDefinitions, trackedObjectiveId, trackedQuestId],
+  );
+  const trackedQuestMarkerId = trackedQuestMarker?.id ?? null;
 
-        if (!trackedObjectiveId) {
-          return true;
-        }
-
-        const markerObjectiveId = String(
-          entry.linkedObjectiveId ?? entry.objectiveId ?? "",
-        ).trim();
-        return markerObjectiveId === trackedObjectiveId;
-      }) ?? null;
-
-      if (tracked) {
-        return tracked.id;
-      }
+  useEffect(() => {
+    if (!trackedQuestId) {
+      return;
     }
 
-    const activeState = playerQuestStates.find((entry) => entry.status === "active") ?? null;
-    if (!activeState) {
-      return null;
+    const state = playerQuestStates.find((entry) => entry.questId === trackedQuestId) ?? null;
+    if (!state || state.status === "completed" || state.status === "failed" || state.status === "abandoned") {
+      setTrackedQuestId(null);
+      setTrackedObjectiveId(null);
+      return;
     }
 
-    const marker = playQuestMarkers.find((entry) => {
-      const questMatches = (entry.linkedQuestId ?? "").trim() === activeState.questId;
-      if (!questMatches) {
-        return false;
-      }
+    if (!trackedQuestMarker) {
+      return;
+    }
 
-      if (entry.linkedStepId && activeState.currentStepId && entry.linkedStepId !== activeState.currentStepId) {
-        return false;
-      }
-
-      const markerObjectiveId = String(
-        entry.linkedObjectiveId ?? entry.objectiveId ?? "",
-      ).trim();
-      if (markerObjectiveId && activeState.completedObjectiveIds.includes(markerObjectiveId)) {
-        return false;
-      }
-
-      return true;
-    }) ?? null;
-
-    return marker?.id ?? null;
-  }, [playQuestMarkers, playerQuestStates, trackedObjectiveId, trackedQuestId]);
+    const nextObjectiveId = getQuestMarkerObjectiveId(trackedQuestMarker);
+    if (nextObjectiveId && nextObjectiveId !== trackedObjectiveId) {
+      setTrackedObjectiveId(nextObjectiveId);
+    }
+  }, [playerQuestStates, trackedObjectiveId, trackedQuestId, trackedQuestMarker]);
   const playNpcMarkers = useMemo(() => {
     // NPC interactions stay available, but map labels/markers are intentionally hidden.
     return [] as Array<{
@@ -1282,6 +1463,111 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return isLinkedLocationVisibleToPlayer(linkedLocation);
     });
   }, [contentSnapshot, zones]);
+  const mapDiscoveryMarkers = useMemo<MapDiscoveryMarker[]>(() => {
+    const cityIds = new Set(mapDiscoveryState.discoveredCityIds);
+    const locationIds = new Set(mapDiscoveryState.discoveredLocationIds);
+    const zoneIds = new Set(mapDiscoveryState.discoveredZoneIds);
+    const markers: MapDiscoveryMarker[] = [];
+
+    const findCityZone = (city: City): WorldMapZone | null => {
+      const worldZoneId = city.worldZoneId?.trim();
+      if (worldZoneId) {
+        const direct = zones.find((zone) => zone.id === worldZoneId) ?? null;
+        if (direct) {
+          return direct;
+        }
+      }
+
+      return zones.find((zone) => (
+        zone.type === "city" &&
+        (
+          zone.cityId === city.id ||
+          zone.id === city.id ||
+          normalizeCitySceneId(zone.targetScene) === city.id
+        )
+      )) ?? null;
+    };
+
+    for (const city of contentSnapshot?.cities ?? validationCities) {
+      if (!cityIds.has(city.id)) {
+        continue;
+      }
+
+      const zone = findCityZone(city);
+      if (!zone || zone.isVisibleToPlayer === false) {
+        continue;
+      }
+
+      const [x, y] = getZoneCenter(zone);
+      markers.push({
+        id: `city:${city.id}`,
+        entityId: city.id,
+        entityType: "city",
+        title: city.name,
+        x,
+        y,
+        icon: "city",
+        discovered: true,
+      });
+    }
+
+    for (const location of contentSnapshot?.locations ?? []) {
+      const discoveredByFlag = location.isDiscovered === true || location.requiresDiscovery === false;
+      if (!locationIds.has(location.id) && !discoveredByFlag) {
+        continue;
+      }
+      if (!isLinkedLocationVisibleToPlayer(location)) {
+        continue;
+      }
+
+      const zone = zones.find((entry) => (
+        entry.type === "location" &&
+        (
+          entry.linkedLocationId === location.id ||
+          entry.linkedLocation === location.id ||
+          entry.id === location.id
+        )
+      )) ?? null;
+      if (!zone || zone.isVisibleToPlayer === false) {
+        continue;
+      }
+
+      const [x, y] = getZoneCenter(zone);
+      markers.push({
+        id: `location:${location.id}`,
+        entityId: location.id,
+        entityType: "location",
+        title: location.name,
+        x,
+        y,
+        icon: location.subtype,
+        discovered: true,
+      });
+    }
+
+    for (const zone of zones) {
+      if (!zoneIds.has(zone.id) || zone.type === "city" || zone.type === "location" || zone.isVisibleToPlayer === false) {
+        continue;
+      }
+      if (zone.type !== "landmark" && zone.type !== "settlement" && zone.type !== "safe" && zone.type !== "rest") {
+        continue;
+      }
+
+      const [x, y] = getZoneCenter(zone);
+      markers.push({
+        id: `zone:${zone.id}`,
+        entityId: zone.id,
+        entityType: "zone",
+        title: zone.name,
+        x,
+        y,
+        icon: zone.type,
+        discovered: true,
+      });
+    }
+
+    return markers;
+  }, [contentSnapshot?.cities, contentSnapshot?.locations, mapDiscoveryState, validationCities, zones]);
   const worldMapValidationIssues = useMemo(
     () =>
       validateWorldMapContent({
@@ -1862,6 +2148,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setTrackedQuestId(tracked.questId);
     setTrackedObjectiveId(tracked.objectiveId);
     setDiscoveredWorldMapCells(loadDiscoveredCells(character.id));
+    setMapDiscoveryState(loadMapDiscoveryState(character.id));
     lastRevealedCellRef.current = null;
   }, [character.id]);
 
@@ -1882,6 +2169,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   useEffect(() => {
     saveDiscoveredCells(character.id, discoveredWorldMapCells);
   }, [character.id, discoveredWorldMapCells]);
+
+  useEffect(() => {
+    saveMapDiscoveryState(character.id, mapDiscoveryState);
+  }, [character.id, mapDiscoveryState]);
 
   useEffect(() => {
     if (worldMapMode !== "play") {
@@ -2332,6 +2623,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setHoverZone(zone);
   }, []);
 
+  const discoverMapEntity = useCallback((entityType: MapDiscoveryEntityType, entityId: string | null | undefined) => {
+    const normalizedId = String(entityId ?? "").trim();
+    if (!normalizedId) {
+      return;
+    }
+
+    setMapDiscoveryState((current) => addDiscoveredMapEntity(current, entityType, normalizedId));
+  }, []);
+
   const rememberCurrentMapPosition = useCallback(() => {
     setPlaySpawnPosition((current) => {
       if (current.x === playerPosition.x && current.y === playerPosition.y) {
@@ -2341,6 +2641,32 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return playerPosition;
     });
   }, [playerPosition]);
+
+  useEffect(() => {
+    if (activeCityId) {
+      discoverMapEntity("city", activeCityId);
+    }
+  }, [activeCityId, discoverMapEntity]);
+
+  useEffect(() => {
+    if (activeLocationId) {
+      discoverMapEntity("location", activeLocationId);
+    }
+  }, [activeLocationId, discoverMapEntity]);
+
+  useEffect(() => {
+    if (!currentZone) {
+      return;
+    }
+
+    discoverMapEntity("zone", currentZone.id);
+    if (currentZone.type === "city") {
+      discoverMapEntity("city", currentZone.cityId ?? currentZone.id);
+    }
+    if (currentZone.type === "location") {
+      discoverMapEntity("location", currentZone.linkedLocationId ?? currentZone.linkedLocation ?? currentZone.id);
+    }
+  }, [currentZone, discoverMapEntity]);
 
   const handleOpenLocationMemoized = useCallback(
     (locationId: string) => {
@@ -2360,6 +2686,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onStatus("Вы пока не можете войти сюда.");
           return;
         }
+        discoverMapEntity("location", linkedLocation.id);
         if (locationHasLocalMap(linkedLocation)) {
           rememberCurrentMapPosition();
           setActiveLocationId(linkedLocation.id);
@@ -2399,7 +2726,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setPlayerState("in_city");
       onStatus(`\u0412\u044b \u0432\u043e\u0448\u043b\u0438 \u0432 ${zone?.name ?? "\u0433\u043e\u0440\u043e\u0434"}.`);
     },
-    [contentSnapshot, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
+    [contentSnapshot, discoverMapEntity, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
   );
 
   const handleZoneEnterMemoized = useCallback(
@@ -3520,6 +3847,122 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     });
   }, [activeCity?.id, openNpcDialogue, selectedNpcForInteraction]);
 
+  const interactWithWorldEntity = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
+    const npcId = entity.npcTemplateId?.trim();
+    const merchantId = entity.merchantId?.trim();
+
+    if (npcId) {
+      const npc = npcById.get(npcId) ?? null;
+      openNpcDialogue(npcId, {
+        cityId: npc?.cityId ?? activeCity?.id,
+        locationId: npc?.cityLocationId ?? npc?.locationId,
+      });
+      return;
+    }
+
+    if (merchantId) {
+      onOpenMerchant(merchantId);
+      return;
+    }
+
+    if (entity.sourceType === 'merchant' && entity.sourceId?.trim()) {
+      onOpenMerchant(entity.sourceId.trim());
+      return;
+    }
+
+    onStatus(`У сущности ${entity.id} не задан NPC или merchant source.`);
+  }, [activeCity?.id, npcById, onOpenMerchant, onStatus, openNpcDialogue]);
+
+  const pendingWorldEntityInteraction = useMemo(() => {
+    if (!pendingWorldEntityInteractionId) {
+      return null;
+    }
+
+    return worldSnapshot?.activeEntities.find((entity) => entity.id === pendingWorldEntityInteractionId)
+      ?? (selectedWorldEntity?.id === pendingWorldEntityInteractionId ? selectedWorldEntity : null);
+  }, [pendingWorldEntityInteractionId, selectedWorldEntity, worldSnapshot?.activeEntities]);
+
+  const worldEntityApproachTarget = useMemo(() => {
+    if (!pendingWorldEntityInteraction) {
+      return null;
+    }
+
+    return {
+      x: pendingWorldEntityInteraction.coordinates.x,
+      y: pendingWorldEntityInteraction.coordinates.y,
+    };
+  }, [pendingWorldEntityInteraction]);
+
+  const isWithinWorldEntityInteractionRange = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
+    return Math.hypot(
+      playerPosition.x - entity.coordinates.x,
+      playerPosition.y - entity.coordinates.y,
+    ) <= WORLD_ENTITY_INTERACTION_DISTANCE;
+  }, [playerPosition.x, playerPosition.y]);
+
+  const handleWorldEntityClick = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
+    const liveEntity = worldSnapshot?.activeEntities.find((entry) => entry.id === entity.id) ?? entity;
+    setSelectedWorldEntity(liveEntity);
+
+    setPendingWorldEntityInteractionId(liveEntity.id);
+  }, [worldSnapshot?.activeEntities]);
+
+  useEffect(() => {
+    if (!pendingWorldEntityInteractionId) {
+      return;
+    }
+
+    if (!pendingWorldEntityInteraction) {
+      if (worldSnapshot) {
+        setPendingWorldEntityInteractionId(null);
+      }
+      return;
+    }
+
+    if (!isWithinWorldEntityInteractionRange(pendingWorldEntityInteraction)) {
+      return;
+    }
+
+    setSelectedWorldEntity(pendingWorldEntityInteraction);
+    setPendingWorldEntityInteractionId(null);
+    interactWithWorldEntity(pendingWorldEntityInteraction);
+  }, [
+    interactWithWorldEntity,
+    isWithinWorldEntityInteractionRange,
+    pendingWorldEntityInteraction,
+    pendingWorldEntityInteractionId,
+    worldSnapshot,
+  ]);
+
+  const buildWorldEntityCombatEnemies = useCallback((
+    npc: NpcDefinition,
+    memberCount: number,
+  ): CustomArenaNpcPayload[] => {
+    const combat = npc.combat;
+    const normalizedCount = Math.max(1, Math.min(4, memberCount));
+    return Array.from({ length: normalizedCount }, (_, index) => {
+      const variation = index === 0 ? 1 : Math.max(0.82, 0.96 - index * 0.06);
+      return {
+        name: normalizedCount > 1 ? `${npc.name} ${index + 1}` : npc.name,
+        race: (npc.race ?? "human") as CustomArenaNpcPayload["race"],
+        stats: {
+          hp: Math.max(60, Math.round((combat?.hp ?? 120) * variation)),
+          mp: 0,
+          stamina: Math.max(40, Math.round((combat?.stamina ?? 90) * variation)),
+          strength: Math.max(6, Math.round((combat?.strength ?? 10) * variation)),
+          constitution: Math.max(6, Math.round((combat?.endurance ?? 10) * variation)),
+          dexterity: Math.max(6, Math.round((combat?.agility ?? 10) * variation)),
+          intelligence: Math.max(4, Math.round((combat?.intellect ?? 6) * variation)),
+          luck: Math.max(4, Math.round((combat?.luck ?? 6) * variation)),
+          perception: Math.max(4, Math.round((combat?.perception ?? 6) * variation)),
+          willpower: Math.max(4, Math.round((combat?.wisdom ?? 6) * variation)),
+        },
+        equipment: {},
+        avatarUrl: npc.portraitUrl ?? npc.combatImageUrl ?? npc.iconUrl ?? undefined,
+      };
+    });
+  }, []);
+
   const handleNpcTrade = useCallback(() => {
     if (!selectedNpcForInteraction?.traderId) {
       onStatus("\u0423 NPC \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d trader profile.");
@@ -3738,6 +4181,22 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
       let modalClosed = false;
       for (const intent of result.intents ?? []) {
+        if (intent.type === "HEAL_PLAYER_FULL") {
+          if (!onApplyHealingService) {
+            onStatus("\u041b\u0435\u0447\u0435\u043d\u0438\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e.");
+            continue;
+          }
+
+          await onApplyHealingService({ costGold: intent.costGold ?? 0 });
+          const healEntry: ChatMessage = {
+            id: `sys-heal-${Date.now()}-${nextSystemChatIdRef.current++}`,
+            text: "\u0412\u044b \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b\u0438 \u0437\u0434\u043e\u0440\u043e\u0432\u044c\u0435.",
+            type: "system",
+          };
+          setSystemChat((prev) => [...prev, healEntry].slice(-12));
+          onStatus("\u0417\u0434\u043e\u0440\u043e\u0432\u044c\u0435 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043e.");
+          continue;
+        }
         if (intent.type === "OPEN_SHOP") {
           const npc = npcs.find((entry) => entry.id === dialogueNpcId) ?? null;
           const traderId = npc?.traderId?.trim() || intent.merchantId?.trim();
@@ -3752,9 +4211,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           break;
         }
         if (intent.type === "START_COMBAT") {
+          const encounterNpc = dialogueNpcId
+            ? npcs.find((entry) => entry.id === dialogueNpcId) ?? null
+            : null;
+          const customEnemies = selectedWorldEntity?.isHostile && encounterNpc
+            ? buildWorldEntityCombatEnemies(encounterNpc, selectedWorldEntity.memberCount)
+            : undefined;
           dialogueRunner.closeDialogue();
           setActiveWorldModal(null);
-          void onStartCombat();
+          void onStartCombat(undefined, customEnemies && customEnemies.length > 0 ? { customEnemies } : undefined);
           modalClosed = true;
           break;
         }
@@ -3834,7 +4299,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch (error) {
       onStatus((error as Error).message);
     }
-  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onGrantSkill, onOpenMerchant, onRuntimeInventoryChanged, onStartCombat, onStatus, openTrainingForNpc, questDefinitions, resolveItemById, selectedNpcForInteraction]);
+  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onApplyHealingService, onGrantSkill, onOpenMerchant, onRuntimeInventoryChanged, onStartCombat, onStatus, openTrainingForNpc, questDefinitions, resolveItemById, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
@@ -4439,6 +4904,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onStatus("Вы пока не можете войти сюда.");
         return;
       }
+      discoverMapEntity("location", linkedLocation.id);
       if (locationHasLocalMap(linkedLocation)) {
         rememberCurrentMapPosition();
         setActiveLocationId(linkedLocation.id);
@@ -4490,6 +4956,54 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setPlayerState(currentZone ? "in_zone" : "idle");
   }
 
+  function resetCityTransform() {
+    cityDragRef.current = null;
+    setCityZoom(MIN_CITY_ZOOM);
+    setCityPan({ x: 0, y: 0 });
+  }
+
+  function handleCityWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    setCityZoom((current) => Math.max(MIN_CITY_ZOOM, Math.min(MAX_CITY_ZOOM, current * factor)));
+  }
+
+  function handleCityPanStart(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 && event.button !== 1) {
+      return;
+    }
+
+    event.preventDefault();
+    cityDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: cityPan.x,
+      panY: cityPan.y,
+    };
+  }
+
+  function handleCityPanMove(event: ReactMouseEvent<HTMLDivElement>) {
+    const drag = cityDragRef.current;
+    if (!drag) {
+      return;
+    }
+
+    event.preventDefault();
+    const limit = 180 * cityZoom;
+    setCityPan({
+      x: Math.max(-limit, Math.min(limit, drag.panX + event.clientX - drag.startX)),
+      y: Math.max(-limit, Math.min(limit, drag.panY + event.clientY - drag.startY)),
+    });
+  }
+
+  function handleCityPanEnd() {
+    cityDragRef.current = null;
+  }
+
+  useEffect(() => {
+    resetCityTransform();
+  }, [activeCityId, activeLocationId, locationView]);
+
   function handleSendChat() {
     const text = chatDraft.trim();
     if (!text) {
@@ -4539,6 +5053,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
 
   function handleCityLocation(location: CityLocation) {
+    discoverMapEntity("location", location.id);
     setSelectedCityLocationId(location.id);
     setNpcQuestSceneModal(null);
     setActiveWorldModal({
@@ -5783,6 +6298,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 mode="play"
                 gameplayPaused={worldMapViewerOpen}
                 playerStartPosition={playSpawnPosition}
+                playerAvatarUrl={playerAvatarUrl}
                 zones={playVisibleZones}
                 regions={regions}
                 playQuestMarkers={playQuestMarkers}
@@ -5793,6 +6309,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 onRuntimeZoneInteract={handleRuntimeZoneInteract}
                 onPlayerPosition={handlePlayerPosition}
                 onPlayerState={handlePlayerState}
+                playerTargetPosition={worldEntityApproachTarget}
+                movementLocked={worldMapMode === "play" && locationView === "map" && travelExhausted}
+                onWorldEntityClick={handleWorldEntityClick}
+                controlScheme={movementControlScheme}
+                playerSpeed={travelMoveSpeed}
+                sprintActive={sprintActive}
               />
               {miniMapVisible ? (
                 <MiniMapWidget
@@ -5801,66 +6323,85 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   playerPosition={playerPosition}
                   questMarkers={playQuestMarkers}
                   trackedMarkerId={trackedQuestMarkerId}
+                  discoveryMarkers={mapDiscoveryMarkers}
                   onOpenViewer={() => setWorldMapViewerOpen(true)}
                 />
               ) : null}
             </div>
           ) : locationView === "city" ? (
             <section className="wm-map card">
+              <div className="wm-city-view-controls">
+                <button type="button" onClick={() => setCityZoom((current) => Math.min(MAX_CITY_ZOOM, current + 0.08))}>+</button>
+                <button type="button" onClick={() => setCityZoom((current) => Math.max(MIN_CITY_ZOOM, current - 0.08))}>-</button>
+                <button type="button" onClick={resetCityTransform}>
+                  {"\u0412 \u0446\u0435\u043d\u0442\u0440"}
+                </button>
+              </div>
               <div
                 className="wm-map-surface wm-city-surface"
-                style={{
-                  backgroundImage: activeCityBackgroundUrl
-                    ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeCityBackgroundUrl}')`
-                    : "linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))",
-                }}
+                onWheel={handleCityWheel}
+                onMouseDown={handleCityPanStart}
+                onMouseMove={handleCityPanMove}
+                onMouseUp={handleCityPanEnd}
+                onMouseLeave={handleCityPanEnd}
+                onDoubleClick={resetCityTransform}
               >
-                <div className="wm-map-title">
-                  {activeCity?.name ?? selectedLocationName}
-                </div>
-                <div className="wm-city-hotspots">
-                  {visibleCityLocations.map((location) => {
-                    const locationMerchant = location.shopIds?.[0]
-                    ? (merchantById.get(location.shopIds[0]) ?? null)
-                      : null;
-                    const merchantImage =
-                      locationMerchant && resolveMerchantImage
-                        ? resolveMerchantImage(locationMerchant)
-                        : undefined;
-                    return (
-                      <button
-                        key={location.id}
-                        type="button"
-                        className={`city-location-hotspot city-location-hotspot-${location.shapeType}`}
-                        style={getLocationPercent(location)}
-                        onClick={() => handleCityLocation(location)}
-                      >
-                        <span className="city-location-hotspot-title">
-                          {location.name}
-                        </span>
-                        {locationMerchant ? (
-                          <span className="city-location-hotspot-merchant">
-                            {merchantImage ? (
-                              <img
-                                className="city-location-hotspot-thumb"
-                                src={merchantImage}
-                                alt={locationMerchant.name}
-                              />
-                            ) : null}
-                            <span className="city-location-hotspot-merchant-name">
-                              {locationMerchant.name}
-                            </span>
+                <div
+                  className="city-map-transform-layer"
+                  style={{
+                    transform: `translate(${cityPan.x}px, ${cityPan.y}px) scale(${cityZoom})`,
+                    backgroundImage: activeCityBackgroundUrl
+                      ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeCityBackgroundUrl}')`
+                      : "linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))",
+                  }}
+                >
+                  <div className="wm-map-title">
+                    {activeCity?.name ?? selectedLocationName}
+                  </div>
+                  <div className="wm-city-hotspots">
+                    {visibleCityLocations.map((location) => {
+                      const locationMerchant = location.shopIds?.[0]
+                      ? (merchantById.get(location.shopIds[0]) ?? null)
+                        : null;
+                      const merchantImage =
+                        locationMerchant && resolveMerchantImage
+                          ? resolveMerchantImage(locationMerchant)
+                          : undefined;
+                      return (
+                        <button
+                          key={location.id}
+                          type="button"
+                          className={`city-location-hotspot city-location-hotspot-${location.shapeType}`}
+                          style={getLocationPercent(location)}
+                          onClick={() => handleCityLocation(location)}
+                        >
+                          <span className="city-location-hotspot-title">
+                            {location.name}
                           </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                  {activeCity && visibleCityLocations.length === 0 ? (
-                    <div className="wm-city-empty-note">
-                      {"\u0412 \u044d\u0442\u043e\u043c \u0433\u043e\u0440\u043e\u0434\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0435\u0432 \u0438\u0437 \u0430\u0434\u043c\u0438\u043d\u043a\u0438. \u041f\u0440\u0438\u0432\u044f\u0436\u0438\u0442\u0435"}
-                      {"\u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0430 \u043a cityId \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044e \u0433\u043e\u0440\u043e\u0434\u0430."}
-                    </div>
-                  ) : null}
+                          {locationMerchant ? (
+                            <span className="city-location-hotspot-merchant">
+                              {merchantImage ? (
+                                <img
+                                  className="city-location-hotspot-thumb"
+                                  src={merchantImage}
+                                  alt={locationMerchant.name}
+                                />
+                              ) : null}
+                              <span className="city-location-hotspot-merchant-name">
+                                {locationMerchant.name}
+                              </span>
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                    {activeCity && visibleCityLocations.length === 0 ? (
+                      <div className="wm-city-empty-note">
+                        {"\u0412 \u044d\u0442\u043e\u043c \u0433\u043e\u0440\u043e\u0434\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0435\u0432 \u0438\u0437 \u0430\u0434\u043c\u0438\u043d\u043a\u0438. \u041f\u0440\u0438\u0432\u044f\u0436\u0438\u0442\u0435"}
+                        {"\u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0430 \u043a cityId \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044e \u0433\u043e\u0440\u043e\u0434\u0430."}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
               <footer className="wm-map-legend">
@@ -6215,7 +6756,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           mapImagePath={LABELED_WORLD_MAP_IMAGE_PATH}
           fallbackMapImagePath={PLAY_WORLD_MAP_IMAGE_PATH}
           playerPosition={playerPosition}
+          playerAvatarUrl={playerAvatarUrl}
           discoveredCells={discoveredWorldMapCells}
+          discoveryMarkers={mapDiscoveryMarkers}
           questMarkers={playQuestMarkers}
           playerQuestStates={playerQuestStates}
           trackedMarkerId={trackedQuestMarkerId}

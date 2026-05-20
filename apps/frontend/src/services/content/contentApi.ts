@@ -25,6 +25,7 @@ import { ensureLegacyContentMigrated } from './legacyContentMigration';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api';
 const ALLOW_CONTENT_IMPORT = String(import.meta.env.VITE_ALLOW_CONTENT_IMPORT ?? '').trim().toLowerCase() === 'true';
 const API_TIMEOUT_MS = 10_000;
+const IMAGE_UPLOAD_TIMEOUT_MS = 120_000;
 
 export type ContentCollectionName =
   | 'items'
@@ -168,9 +169,9 @@ async function readErrorMessage(res: Response): Promise<string> {
   return raw || `${res.status} ${res.statusText}`;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(path: string, init?: RequestInit, options?: { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), options?.timeoutMs ?? API_TIMEOUT_MS);
   let res: Response;
 
   try {
@@ -304,12 +305,32 @@ export async function createContentEntry<T>(collection: ContentCollectionName, p
   return entry;
 }
 
+export async function uploadContentImage(payload: Partial<StoredImage> & { dataUrl: string }): Promise<StoredImage> {
+  await ensureContentBackendReady();
+  const entry = await requestJson<StoredImage>('/content/images/upload', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });
+  notifyContentSync('content');
+  return entry;
+}
+
 export async function updateContentEntry<T>(collection: ContentCollectionName, id: string, payload: Partial<T>): Promise<T> {
   await ensureContentBackendReady();
   const entry = await requestJson<T>(`/content/${collection}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+  notifyContentSync('content');
+  return entry;
+}
+
+export async function replaceContentImage(id: string, payload: Partial<StoredImage> & { dataUrl: string }): Promise<StoredImage> {
+  await ensureContentBackendReady();
+  const entry = await requestJson<StoredImage>(`/content/images/${encodeURIComponent(id)}/upload`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });
   notifyContentSync('content');
   return entry;
 }

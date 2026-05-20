@@ -11,6 +11,7 @@ interface MerchantPanelProps {
   inventory: InventoryState;
   equipment: Equipment;
   merchantItems?: ItemDefinition[];
+  allowedSellItemIds?: string[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
@@ -27,6 +28,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   inventory,
   equipment,
   merchantItems: merchantItemsOverride,
+  allowedSellItemIds,
   resolveItemById,
   resolveAdminItemById,
   resolveItemImage,
@@ -46,11 +48,33 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
     () => merchantItemsOverride ?? getMerchantItems(merchant.id),
     [merchant.id, merchantItemsOverride],
   );
+  const isMaterialItem = useMemo(
+    () => (item: ItemDefinition) => {
+      const adminItem = resolveAdminItemById?.(item.id);
+      if (adminItem?.type === 'material') {
+        return true;
+      }
+      return item.id.startsWith('mat_');
+    },
+    [resolveAdminItemById],
+  );
+  const merchantMaterialItems = useMemo(
+    () => merchantItems.filter((item) => isMaterialItem(item)),
+    [isMaterialItem, merchantItems],
+  );
+  const merchantRegularItems = useMemo(
+    () => merchantItems.filter((item) => !isMaterialItem(item)),
+    [isMaterialItem, merchantItems],
+  );
   const inventoryItems = useMemo(
-    () => inventory.items
-      .map((entry) => (resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId)))
-      .filter(Boolean) as ItemDefinition[],
-    [inventory.items, resolveItemById],
+    () => {
+      const allowedSet = allowedSellItemIds && allowedSellItemIds.length > 0 ? new Set(allowedSellItemIds) : null;
+      return inventory.items
+        .filter((entry) => !allowedSet || allowedSet.has(entry.itemId))
+        .map((entry) => (resolveItemById ? resolveItemById(entry.itemId) : getItemById(entry.itemId)))
+        .filter(Boolean) as ItemDefinition[];
+    },
+    [allowedSellItemIds, inventory.items, resolveItemById],
   );
   const selectedAdminItem = useMemo(
     () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
@@ -180,17 +204,35 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
         </div>
 
         {mode === 'buy' ? (
-          <InventoryGrid
-            title={`Товары: ${merchant.name}`}
-            items={merchantItems}
-            columns={5}
-            resolveItemImage={resolveItemImage}
-            onItemClick={(item) => {
-              if (!item) return;
-              setSelectedItem(item);
-              setTradeModalOpen(true);
-            }}
-          />
+          <>
+            {merchantRegularItems.length > 0 ? (
+              <InventoryGrid
+                title={`Товары: ${merchant.name}`}
+                items={merchantRegularItems}
+                columns={5}
+                resolveItemImage={resolveItemImage}
+                onItemClick={(item) => {
+                  if (!item) return;
+                  setSelectedItem(item);
+                  setTradeModalOpen(true);
+                }}
+              />
+            ) : null}
+
+            {merchantMaterialItems.length > 0 ? (
+              <InventoryGrid
+                title="Материалы"
+                items={merchantMaterialItems}
+                columns={5}
+                resolveItemImage={resolveItemImage}
+                onItemClick={(item) => {
+                  if (!item) return;
+                  setSelectedItem(item);
+                  setTradeModalOpen(true);
+                }}
+              />
+            ) : null}
+          </>
         ) : (
           <InventoryGrid
             title="Ваши предметы на продажу"

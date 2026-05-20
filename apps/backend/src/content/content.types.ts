@@ -222,6 +222,13 @@ export interface MerchantItem {
   isEnabled: boolean;
 }
 
+export interface MerchantMaterialTrade {
+  materialId: string;
+  buys: boolean;
+  sells: boolean;
+  isEnabled: boolean;
+}
+
 export interface AdminMerchant {
   id: string;
   name: string;
@@ -235,6 +242,9 @@ export interface AdminMerchant {
   description?: string;
   portraitPath?: string;
   priceMultiplier: number;
+  worldSimTrader?: boolean;
+  materialTradingEnabled?: boolean;
+  materialTrades?: MerchantMaterialTrade[];
   isEnabled: boolean;
   items: MerchantItem[];
   createdAt: string;
@@ -250,6 +260,7 @@ export interface Material {
   region: string;
   rarity: ItemRarity;
   properties: string[];
+  averageMarketPrice?: number;
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
@@ -311,6 +322,18 @@ export interface NpcDefinition {
   kind: string;
   race: string;
   description?: string;
+  cityId?: string;
+  locationId?: string;
+  currentCityId?: string;
+  homeCityId?: string;
+  cityLocationId?: string;
+  canTrade?: boolean;
+  traderId?: string;
+  dialogueId?: string;
+  portraitUrl?: string;
+  fullImageUrl?: string;
+  iconUrl?: string;
+  worldSimTrader?: boolean;
   mapBindings?: unknown[];
   dialogues?: unknown[];
   questBindings?: unknown[];

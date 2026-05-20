@@ -14,6 +14,7 @@
     "lint": "npm run check:no-frontend-src-js && eslint apps/frontend/src",
     "check:no-frontend-src-js": "node scripts/check-no-frontend-src-js.mjs",
     "typecheck": "npm run typecheck --workspaces",
+    "content:images:materialize": "node scripts/migrate-content-images-to-assets.mjs",
     "content:validate": "npm run content:validate --workspace @theend/backend",
     "prepare": "npx husky"
   },

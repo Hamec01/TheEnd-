@@ -1,0 +1,413 @@
+/* World Simulation Admin */
+
+.world-simulation-admin {
+  padding: 20px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 8px;
+  color: #fff;
+}
+
+.world-simulation-admin h2 {
+  margin: 0 0 20px 0;
+  font-size: 24px;
+  text-align: center;
+  background: linear-gradient(90deg, #00d4ff, #0099ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Табы */
+
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #0f3460;
+  flex-wrap: wrap;
+}
+
+.admin-tabs button {
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.admin-tabs button:hover {
+  color: #00d4ff;
+}
+
+.admin-tabs button.active {
+  color: #00d4ff;
+  border-bottom-color: #00d4ff;
+}
+
+/* Контент вкладки */
+
+.admin-tab-content {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 20px;
+  border-radius: 8px;
+  min-height: 400px;
+}
+
+/* Кнопки */
+
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: #00d4ff;
+  color: #000;
+}
+
+.btn-primary:hover {
+  background: #00a8cc;
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: #0f3460;
+  color: #00d4ff;
+  border: 1px solid #00d4ff;
+}
+
+.btn-secondary:hover {
+  background: #00d4ff;
+  color: #000;
+}
+
+.btn-success {
+  background: #2ecc71;
+  color: #000;
+}
+
+.btn-success:hover {
+  background: #27ae60;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-warning {
+  background: #f39c12;
+  color: #fff;
+}
+
+.btn-warning:hover {
+  background: #d68910;
+}
+
+.btn-cancel {
+  background: #555;
+  color: #fff;
+}
+
+.btn-cancel:hover {
+  background: #777;
+}
+
+/* Форма редактирования */
+
+.edit-form {
+  background: rgba(0, 100, 150, 0.2);
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #00d4ff;
+}
+
+.edit-form h3 {
+  margin-top: 0;
+  color: #00d4ff;
+}
+
+.edit-form label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.edit-form input,
+.edit-form select,
+.edit-form textarea {
+  width: 100%;
+  max-width: 400px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #00d4ff;
+  border-radius: 4px;
+  color: #fff;
+  font-family: monospace;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.edit-form input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-form input::placeholder {
+  color: #888;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* Список */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.list-item {
+  background: rgba(0, 150, 200, 0.1);
+  border: 1px solid #00d4ff;
+  border-radius: 4px;
+  padding: 12px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.list-item:hover {
+  background: rgba(0, 150, 200, 0.2);
+  border-color: #00a8cc;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.item-header strong {
+  color: #00d4ff;
+  font-size: 16px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  background: #00d4ff;
+  color: #000;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.badge.disabled {
+  background: #888;
+  color: #ddd;
+}
+
+.item-details {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.item-details small {
+  color: #aaa;
+  font-size: 12px;
+}
+
+/* Монитор */
+
+.monitor-tab {
+  max-height: 800px;
+  overflow-y: auto;
+}
+
+.monitor-controls {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.monitor-controls p {
+  margin: 0;
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+.monitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.monitor-item {
+  background: rgba(0, 150, 200, 0.08);
+  border: 1px solid #00d4ff;
+  border-radius: 4px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.monitor-item:hover {
+  background: rgba(0, 150, 200, 0.15);
+}
+
+.monitor-item.selected {
+  background: rgba(0, 150, 200, 0.25);
+  border-color: #00a8cc;
+}
+
+.monitor-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.monitor-item-header strong {
+  color: #00d4ff;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.traveling {
+  background: #3498db;
+  color: #fff;
+}
+
+.status-badge.resting {
+  background: #2ecc71;
+  color: #fff;
+}
+
+.status-badge.in_city {
+  background: #f39c12;
+  color: #fff;
+}
+
+.status-badge.in_combat {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.status-badge.dead {
+  background: #95a5a6;
+  color: #fff;
+}
+
+.status-badge.frozen {
+  background: #3498db;
+  color: #fff;
+  opacity: 0.6;
+}
+
+.monitor-item-details {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.monitor-item-details small {
+  color: #aaa;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.monitor-item-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.monitor-item-actions .btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+/* Scrollbar */
+
+.list::-webkit-scrollbar,
+.monitor-tab::-webkit-scrollbar {
+  width: 8px;
+}
+
+.list::-webkit-scrollbar-track,
+.monitor-tab::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.list::-webkit-scrollbar-thumb,
+.monitor-tab::-webkit-scrollbar-thumb {
+  background: #00d4ff;
+  border-radius: 4px;
+}
+
+.list::-webkit-scrollbar-thumb:hover,
+.monitor-tab::-webkit-scrollbar-thumb:hover {
+  background: #00a8cc;
+}
+
+/* Responsive */
+
+@media (max-width: 768px) {
+  .world-simulation-admin {
+    padding: 12px;
+  }
+
+  .admin-tabs {
+    flex-wrap: wrap;
+  }
+
+  .admin-tabs button {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .badge {
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}

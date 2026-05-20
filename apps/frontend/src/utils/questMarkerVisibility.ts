@@ -1,4 +1,4 @@
-import type { QuestMarkerDefinition } from '../types/quest';
+import type { PlayerQuestState, QuestDefinition, QuestMarkerDefinition, QuestObjective, QuestStep } from '../types/quest';
 import { evaluateRequirements } from '../services/questInteractionRuntime';
 import { getPlayerQuestState } from '../services/questRuntime';
 import type { QuestRuntimePlayer } from '../services/questRuntime';
@@ -78,4 +78,116 @@ export function isQuestMarkerVisible(
 
   // Legacy fallback: respect visibleToPlayer flag
   return marker.visibleToPlayer === true;
+}
+
+type QuestStatesInput =
+  | PlayerQuestState[]
+  | Map<string, PlayerQuestState>
+  | Record<string, PlayerQuestState | undefined>;
+
+function getQuestState(questStates: QuestStatesInput, questId: string): PlayerQuestState | null {
+  if (Array.isArray(questStates)) {
+    return questStates.find((state) => state.questId === questId) ?? null;
+  }
+
+  if (questStates instanceof Map) {
+    return questStates.get(questId) ?? null;
+  }
+
+  return questStates[questId] ?? null;
+}
+
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function getCurrentStep(quest: QuestDefinition | null, state: PlayerQuestState): QuestStep | null {
+  const steps = asArray(quest?.steps);
+  if (steps.length === 0) {
+    return null;
+  }
+
+  if (state.currentStepId) {
+    return steps.find((step) => step.id === state.currentStepId) ?? steps[0] ?? null;
+  }
+
+  return steps.find((step) => !state.completedStepIds.includes(step.id)) ?? steps[0] ?? null;
+}
+
+function getFirstIncompleteObjective(step: QuestStep | null, state: PlayerQuestState): QuestObjective | null {
+  const objectives = asArray(step?.objectives);
+  if (objectives.length === 0) {
+    return null;
+  }
+
+  return objectives.find((objective) => (
+    !objective.isOptional && !state.completedObjectiveIds.includes(objective.id)
+  )) ?? objectives.find((objective) => !state.completedObjectiveIds.includes(objective.id))
+    ?? null;
+}
+
+export function getQuestMarkerQuestId(marker: QuestMarkerDefinition): string {
+  const legacyQuestId = (marker as QuestMarkerDefinition & { questId?: unknown }).questId;
+  return String(marker.linkedQuestId ?? legacyQuestId ?? '').trim();
+}
+
+export function getQuestMarkerObjectiveId(marker: QuestMarkerDefinition): string {
+  return String(marker.linkedObjectiveId ?? marker.objectiveId ?? '').trim();
+}
+
+export function isMarkerForFirstIncompleteObjective(
+  marker: QuestMarkerDefinition,
+  state: PlayerQuestState,
+  quest?: QuestDefinition | null,
+): boolean {
+  if (marker.linkedStepId && state.currentStepId && marker.linkedStepId !== state.currentStepId) {
+    return false;
+  }
+
+  const markerObjectiveId = getQuestMarkerObjectiveId(marker);
+  if (markerObjectiveId && state.completedObjectiveIds.includes(markerObjectiveId)) {
+    return false;
+  }
+
+  const firstObjective = getFirstIncompleteObjective(getCurrentStep(quest ?? null, state), state);
+  if (!firstObjective) {
+    return markerObjectiveId.length === 0;
+  }
+
+  return markerObjectiveId === firstObjective.id;
+}
+
+export function getTrackedQuestMarker(params: {
+  questMarkers: QuestMarkerDefinition[];
+  trackedQuestId?: string | null;
+  trackedObjectiveId?: string | null;
+  questStates: QuestStatesInput;
+  questDefinitions?: QuestDefinition[];
+}): QuestMarkerDefinition | null {
+  const trackedQuestId = params.trackedQuestId?.trim();
+  if (!trackedQuestId) {
+    return null;
+  }
+
+  const questState = getQuestState(params.questStates, trackedQuestId);
+  if (!questState) {
+    return null;
+  }
+
+  if (questState.status === 'completed' || questState.status === 'failed' || questState.status === 'abandoned') {
+    return null;
+  }
+
+  const quest = params.questDefinitions?.find((entry) => entry.id === trackedQuestId) ?? null;
+  const questMarkers = params.questMarkers.filter((marker) => getQuestMarkerQuestId(marker) === trackedQuestId);
+  const trackedObjectiveId = params.trackedObjectiveId?.trim();
+
+  if (trackedObjectiveId && !questState.completedObjectiveIds.includes(trackedObjectiveId)) {
+    const exact = questMarkers.find((marker) => getQuestMarkerObjectiveId(marker) === trackedObjectiveId) ?? null;
+    if (exact) {
+      return exact;
+    }
+  }
+
+  return questMarkers.find((marker) => isMarkerForFirstIncompleteObjective(marker, questState, quest)) ?? null;
 }

@@ -9,9 +9,10 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SkillsModule } from './skills/skills.module';
 import { PvpModule } from './pvp/pvp.module';
 import { BlacksmithModule } from './blacksmith/blacksmith.module';
+import { WorldSimulationModule } from './worldsim/world-simulation.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, CharactersModule, ContentModule, ArenaModule, CombatModule, SkillsModule, PvpModule, BlacksmithModule],
+  imports: [PrismaModule, AuthModule, CharactersModule, ContentModule, ArenaModule, CombatModule, SkillsModule, PvpModule, BlacksmithModule, WorldSimulationModule],
   controllers: [HealthController],
 })
 export class AppModule {}

@@ -62,12 +62,14 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
   );
 
   useEffect(() => {
-    const isKnown = selectedSkillId && learnedSkills.some((entry) => entry.skillId === selectedSkillId);
-    const isTrainerAvailable = selectedSkillId && trainerAvailable.some((entry) => entry.skill?.id === selectedSkillId);
-    if (isKnown || isTrainerAvailable) {
+    if (!selectedSkillId) {
       return;
     }
-    setSelectedSkillId(learnedSkills[0]?.skillId ?? trainerAvailable[0]?.skillId ?? null);
+    const isKnown = learnedSkills.some((entry) => entry.skillId === selectedSkillId);
+    const isTrainerAvailable = trainerAvailable.some((entry) => entry.skill?.id === selectedSkillId);
+    if (!isKnown && !isTrainerAvailable) {
+      setSelectedSkillId(null);
+    }
   }, [learnedSkills, selectedSkillId, trainerAvailable]);
 
   const learnedSkillDetails = useMemo(
@@ -146,7 +148,6 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
                       type="button"
                       className={`character-skill-card ${selectedSkillId === entry.skillId ? 'is-active' : ''}`}
                       onClick={() => setSelectedSkillId(entry.skillId)}
-                      onMouseEnter={() => setSelectedSkillId(entry.skillId)}
                     >
                       <span className="character-skill-icon">
                         {iconSrc ? <img src={iconSrc} alt="" /> : name.slice(0, 2).toUpperCase()}
@@ -325,7 +326,8 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
         </div>
 
         {/* Right: skill details */}
-        <section className="inner-card skills-detail-section">
+        {selectedDefinition ? (
+          <section className="inner-card skills-detail-section">
           <h3 style={{ marginTop: 0 }}>Детали навыка</h3>
           {selectedDefinition ? (
             <>
@@ -348,7 +350,8 @@ export function CharacterSkillsPage(props: CharacterSkillsPageProps) {
           ) : (
             <p className="muted">Выберите навык, чтобы посмотреть детали.</p>
           )}
-        </section>
+          </section>
+        ) : null}
       </div>
 
       {/* Bottom: loadout — full-width row */}

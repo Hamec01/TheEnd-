@@ -3,8 +3,9 @@ import './load-env';
 
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { json, urlencoded } from 'express';
+import { json, static as serveStatic, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { ensureContentAssetsDir, getContentAssetsPublicPrefix } from './content/content-assets';
 import { DatabaseUnavailableFilter } from './prisma/database-unavailable.filter';
 
 async function bootstrap(): Promise<void> {
@@ -14,6 +15,10 @@ async function bootstrap(): Promise<void> {
   app.enableCors({ origin: corsOrigin || true, credentials: true });
   app.use(json({ limit: '1gb' }));
   app.use(urlencoded({ extended: true, limit: '1gb' }));
+  const contentAssetsDir = ensureContentAssetsDir();
+  const contentAssetsPrefix = getContentAssetsPublicPrefix();
+  app.use(contentAssetsPrefix, serveStatic(contentAssetsDir, { maxAge: '7d' }));
+  app.use(`/api${contentAssetsPrefix}`, serveStatic(contentAssetsDir, { maxAge: '7d' }));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

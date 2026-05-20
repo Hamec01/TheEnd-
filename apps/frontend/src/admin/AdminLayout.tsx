@@ -10,7 +10,11 @@ interface AdminLayoutProps {
 const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: string }> }> = [
   {
     title: 'General',
-    links: [{ path: '/admin', label: 'Overview' }, { path: '/admin/backup', label: 'Backup' }],
+    links: [
+      { path: '/admin', label: 'Overview' },
+      { path: '/admin/backup', label: 'Backup' },
+      { path: '/admin/world-sim', label: '🌍 Живой мир' },
+    ],
   },
   {
     title: 'Content',
@@ -36,6 +40,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin/locations', label: 'ЛОКАЦИИ' },
       { path: '/admin/zone-editor', label: 'Zone Editor' },
       { path: '/admin/battle-maps', label: 'Battle Maps' },
+      { path: '/admin/world-sim', label: '🌍 Живой мир' },
     ],
   },
 ];

@@ -74,6 +74,7 @@ function emptyNpc(): NpcDefinition {
     canFight: false,
     canTalk: true,
     canTrade: false,
+    worldSimTrader: false,
     canTrain: false,
     canGiveQuests: false,
     canBeKilled: false,
@@ -463,13 +464,13 @@ export function NpcsPage() {
       id: dialogueId,
       title: `Dialogue for ${draft.name || npcId}`,
       npcId,
-      status: 'draft',
+      status: 'active',
       startNodeId: 'start',
       nodes: [{
         id: 'start',
         speaker: 'npc',
-        text: '',
-        choices: [],
+        text: draft.canTrade && draft.traderId ? 'Приветствую. Хочешь взглянуть на мои товары?' : 'Приветствую. Чем могу помочь?',
+        choices: draft.canTrade && draft.traderId ? [{ id: 'open_shop', text: 'Покажи товары', endsDialogue: true, actions: [{ id: 'open_shop', type: 'openShop', merchantId: draft.traderId }] }] : [],
       }],
       createdAt: now,
       updatedAt: now,
@@ -481,6 +482,109 @@ export function NpcsPage() {
       dialogues: [...draft.dialogues, { dialogueId, priority: draft.dialogues.length + 1 }],
     });
     setStatusText(`Создан диалог: ${dialogueId}`);
+  }
+
+  async function createTraderProfileForNpc() {
+    const npcId = draft.id.trim();
+    if (!npcId) {
+      setStatusText('Сначала сохраните NPC, затем создайте trader profile.');
+      return;
+    }
+
+    if (draft.traderId?.trim()) {
+      patch({ canTrade: true, worldSimTrader: true, kind: draft.kind === 'civilian' ? 'trader' : draft.kind });
+      setStatusText(`Trader profile уже привязан: ${draft.traderId}`);
+      return;
+    }
+
+    const merchantId = `merchant_${npcId}`;
+    const created = await merchantsService.create({
+      id: merchantId,
+      name: draft.name || npcId,
+      city: draft.currentCityId || draft.cityId || draft.homeCityId || 'world',
+      location: draft.cityLocationId || draft.locationId || '',
+      cityId: draft.currentCityId || draft.cityId || draft.homeCityId || undefined,
+      cityLocationId: draft.cityLocationId || draft.locationId || undefined,
+      type: 'general',
+      description: `Trader profile for NPC ${npcId}`,
+      portraitPath: draft.portraitUrl || '',
+      priceMultiplier: 1,
+      worldSimTrader: true,
+      materialTradingEnabled: false,
+      materialTrades: [],
+      isEnabled: true,
+      items: [],
+    });
+
+    const merchants = await merchantsService.getAll();
+    setTraderOptions(merchants.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      city: entry.city,
+      enabled: entry.isEnabled,
+      assortment: entry.items.length,
+    })));
+    patch({ canTrade: true, traderId: created.id, worldSimTrader: true, kind: draft.kind === 'civilian' ? 'trader' : draft.kind });
+    setStatusText(`Создан trader profile: ${created.id}`);
+  }
+
+  async function createWorldSimArchetypeForNpc() {
+    const npcId = (selectedId || draft.id || '').trim();
+    if (!npcId) {
+      setStatusText('Сначала сохраните NPC, потом создайте world-sim archetype.');
+      return;
+    }
+
+    const npcName = (draft.name || npcId).trim();
+    const archetypeId = `ws_npc_${npcId}`;
+    const isMerchantNpc = Boolean(draft.worldSimTrader || draft.canTrade || draft.traderId);
+    const isQuestNpc = Array.isArray(draft.questBindings) && draft.questBindings.length > 0;
+    const kind = isMerchantNpc
+      ? 'merchant'
+      : draft.defaultDisposition === 'hostile' || draft.defaultDisposition === 'aggressive_on_sight'
+        ? 'bandit'
+        : isQuestNpc
+          ? 'quest_giver'
+        : draft.canFight
+          ? 'guard'
+          : 'wanderer';
+
+    try {
+      const existingResponse = await fetch('/api/world-simulation/archetypes');
+      const existing = existingResponse.ok ? await existingResponse.json() : [];
+      if (Array.isArray(existing) && existing.some((entry: any) => entry.id === archetypeId)) {
+        setStatusText(`World-sim archetype уже существует: ${archetypeId}`);
+        return;
+      }
+
+      const payload = {
+        id: archetypeId,
+        name: isMerchantNpc ? `Караван ${npcName}` : npcName,
+        kind,
+        sourceType: 'npc',
+        sourceId: npcId,
+        npcTemplateId: npcId,
+        worldSpriteId: kind === 'merchant' ? 'trader_world_sprite' : kind === 'bandit' ? 'camp_world_sprite' : 'camp_world_sprite_2',
+        portraitId: draft.portraitUrl || 'unknown',
+        isEnabled: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const response = await fetch('/api/world-simulation/archetypes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setStatusText(`Создан world-sim archetype: ${archetypeId}. Чтобы он появился в мире, добавьте его в маршрут и spawn rule.`);
+    } catch (error) {
+      setStatusText(`Не удалось создать world-sim archetype: ${(error as Error).message}`);
+    }
   }
 
   return (
@@ -713,6 +817,7 @@ export function NpcsPage() {
           <section className="card admin-item-preview">
             <div className="admin-form-grid">
               <label className="zone-editor-checkbox"><input type="checkbox" checked={draft.canTrade} onChange={(event) => patch({ canTrade: event.target.checked })} /><AdminFieldLabel label="Can trade" hint="Разрешить торговлю через trader profile." /></label>
+              <label className="zone-editor-checkbox"><input type="checkbox" checked={Boolean(draft.worldSimTrader)} onChange={(event) => patch({ worldSimTrader: event.target.checked })} /><AdminFieldLabel label="World-sim trader" hint="Разрешить выбирать этого NPC в архетипах живого мира." /></label>
               <label>
                 <AdminFieldLabel label="Trader profile" hint="Связь с существующим торговцем. NPC не дублирует систему торговцев." />
                 <select value={draft.traderId ?? ''} onChange={(event) => patch({ traderId: event.target.value || undefined })}>
@@ -720,6 +825,12 @@ export function NpcsPage() {
                   {traderOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.city})</option>)}
                 </select>
               </label>
+            </div>
+
+            <div className="admin-actions-row">
+              <button type="button" onClick={() => { void createTraderProfileForNpc(); }}>Создать trader profile для NPC</button>
+              <button type="button" onClick={() => { void createDialogueForNpc(); }}>Создать диалог для NPC</button>
+              <button type="button" onClick={() => { void createWorldSimArchetypeForNpc(); }}>Создать world-sim archetype</button>
             </div>
 
             {linkedTraderSummary ? (
@@ -800,6 +911,7 @@ export function NpcsPage() {
 
         <div className="admin-actions-row">
           <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'СОХРАНИТЬ' : 'СОЗДАТЬ')}</button>
+          <button onClick={() => { void createWorldSimArchetypeForNpc(); }}>WORLD-SIM ARCHETYPE</button>
           <button disabled={!selectedId} onClick={duplicateSelected}>ДУБЛИРОВАТЬ</button>
           <button disabled={!selectedId} onClick={disableSelected}>ОТКЛЮЧИТЬ</button>
           <button disabled={!selectedId} onClick={removeSelected}>УДАЛИТЬ</button>

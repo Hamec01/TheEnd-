@@ -76,7 +76,7 @@ export function TopStatusBar(props: TopStatusBarProps) {
         <button onClick={onMap}>Карта (M)</button>
         <button onClick={onToggleMiniMap}>{miniMapVisible ? 'Миникарта: ВКЛ' : 'Миникарта: ВЫКЛ'}</button>
         <button onClick={onQuests}>Журнал</button>
-        <button onClick={onEquipment}>Экипировка</button>
+        <button onClick={onEquipment}>Настройки</button>
         <button onClick={onClan}>Клан</button>
         <button onClick={onExit}>Выход</button>
       </nav>

@@ -16,10 +16,12 @@ import {
   type StatBlock,
 } from '@theend/rpg-domain';
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
+import { isEmbeddedDataUrl, writeStoredImageAsset } from './content-assets';
 import type {
   AdminItem,
   AdminMerchant,
@@ -91,6 +93,7 @@ const CONTENT_BACKUP_SCHEMA_VERSION = 2;
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type InputJsonValue = JsonValue;
+type StoredImageAssetPayload = Partial<StoredImage> & { dataUrl?: string };
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -1045,9 +1048,43 @@ function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
     kind: String(input.kind ?? 'civilian').trim() || 'civilian',
     race: String(input.race ?? 'human').trim() || 'human',
     description: input.description ? String(input.description).trim() : undefined,
+    cityId: input.cityId ? String(input.cityId).trim() : undefined,
+    locationId: input.locationId ? String(input.locationId).trim() : undefined,
+    currentCityId: input.currentCityId ? String(input.currentCityId).trim() : undefined,
+    homeCityId: input.homeCityId ? String(input.homeCityId).trim() : undefined,
+    cityLocationId: input.cityLocationId ? String(input.cityLocationId).trim() : undefined,
+    canTrade: input.canTrade === true,
+    traderId: input.traderId ? String(input.traderId).trim() : undefined,
+    dialogueId: input.dialogueId ? String(input.dialogueId).trim() : undefined,
+    portraitUrl: input.portraitUrl ? String(input.portraitUrl).trim() : undefined,
+    fullImageUrl: input.fullImageUrl ? String(input.fullImageUrl).trim() : undefined,
+    iconUrl: input.iconUrl ? String(input.iconUrl).trim() : undefined,
+    worldSimTrader: input.worldSimTrader === true,
     mapBindings: Array.isArray(input.mapBindings) ? clone(input.mapBindings) : [],
     dialogues: Array.isArray(input.dialogues) ? clone(input.dialogues) : [],
     questBindings: Array.isArray(input.questBindings) ? clone(input.questBindings) : [],
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeMaterialInput(input: Material): Material {
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    category: input.category,
+    region: String(input.region ?? '').trim(),
+    rarity: input.rarity,
+    properties: Array.isArray(input.properties) ? input.properties.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [],
+    averageMarketPrice: typeof input.averageMarketPrice === 'number' && Number.isFinite(input.averageMarketPrice)
+      ? Math.max(0, Math.round(input.averageMarketPrice))
+      : undefined,
+    gameplayDescription: String(input.gameplayDescription ?? '').trim(),
+    loreDescription: String(input.loreDescription ?? '').trim(),
+    imagePath: input.imagePath?.trim() || undefined,
+    isEnabled: input.isEnabled !== false,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
   };
@@ -1322,6 +1359,18 @@ function normalizeMerchantInput(input: AdminMerchant): AdminMerchant {
     description: input.description?.trim() || undefined,
     portraitPath: input.portraitPath?.trim() || undefined,
     priceMultiplier: normalizePositiveMultiplier(input.priceMultiplier, 1),
+    worldSimTrader: input.worldSimTrader === true,
+    materialTradingEnabled: input.materialTradingEnabled === true,
+    materialTrades: Array.isArray(input.materialTrades)
+      ? input.materialTrades
+        .map((entry) => ({
+          materialId: String(entry.materialId ?? '').trim(),
+          buys: entry.buys !== false,
+          sells: entry.sells !== false,
+          isEnabled: entry.isEnabled !== false,
+        }))
+        .filter((entry) => Boolean(entry.materialId))
+      : [],
     isEnabled: input.isEnabled !== false,
     items: Array.isArray(input.items) ? input.items.map(normalizeMerchantItem).filter((entry) => entry.itemId) : [],
     createdAt: input.createdAt || nowIso(),
@@ -1727,6 +1776,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
   private dbCache: ContentDatabase | null = null;
   private initPromise: Promise<void> | null = null;
   private extraContent: Record<string, unknown> = {};
+  private imageAssetsMaterialized = 0;
   private writeQueue: Promise<ContentDatabase> = Promise.resolve(createEmptyDatabase());
   private autosaveTimer: NodeJS.Timeout | null = null;
 
@@ -1808,8 +1858,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       const raw = store.value && typeof store.value === 'object'
         ? (store.value as Partial<ContentDatabase>)
         : {};
+      const materializedBefore = this.imageAssetsMaterialized;
       this.dbCache = this.normalizeDatabase(raw);
-    this.logger.log('Content storage initialized from postgres.');
+      if (this.imageAssetsMaterialized > materializedBefore) {
+        await this.persist(this.dbCache);
+      }
+      this.logger.log('Content storage initialized from postgres.');
       return;
     }
 
@@ -1832,7 +1886,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     try {
       const raw = JSON.parse(readFileSync(this.runtimeFile, 'utf8')) as unknown;
       this.extraContent = extractExtraContent(raw);
-      return this.normalizeDatabase(contentFromMaybeEnvelope(raw));
+      const materializedBefore = this.imageAssetsMaterialized;
+      const normalized = this.normalizeDatabase(contentFromMaybeEnvelope(raw));
+      if (this.imageAssetsMaterialized > materializedBefore) {
+        this.logger.log(`Materialized ${this.imageAssetsMaterialized - materializedBefore} embedded image(s) into Resurse/assets/upload.`);
+        this.persistToFile(normalized);
+        return this.ensureCache();
+      }
+      return normalized;
     } catch {
       const fallback = this.loadTemplateDatabase() ?? createEmptyDatabase();
       this.persistToFile(fallback);
@@ -2138,6 +2199,48 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private materializeStoredImageAsset(image: StoredImage): StoredImage {
+    const next = clone(image);
+    if (!isEmbeddedDataUrl(next.dataUrl)) {
+      return next;
+    }
+
+    try {
+      const asset = writeStoredImageAsset({
+        id: next.id,
+        name: next.name,
+        mimeType: next.mimeType,
+        dataUrl: next.dataUrl,
+      });
+      this.imageAssetsMaterialized += 1;
+      return {
+        ...next,
+        mimeType: asset.mimeType || next.mimeType,
+        dataUrl: asset.publicUrl,
+        updatedAt: nowIso(),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown image asset error';
+      this.logger.warn(`Failed to store image asset '${next.id}', keeping embedded image data: ${message}`);
+      return next;
+    }
+  }
+
+  private normalizeStoredImageInput(input: StoredImage): StoredImage {
+    const timestamp = nowIso();
+    const image: StoredImage = {
+      id: String(input.id ?? '').trim(),
+      name: String(input.name ?? 'image').trim() || 'image',
+      mimeType: String(input.mimeType ?? 'image/png').trim() || 'image/png',
+      width: Number.isFinite(Number(input.width)) ? Number(input.width) : 0,
+      height: Number.isFinite(Number(input.height)) ? Number(input.height) : 0,
+      dataUrl: String(input.dataUrl ?? '').trim(),
+      createdAt: String(input.createdAt ?? '').trim() || timestamp,
+      updatedAt: String(input.updatedAt ?? '').trim() || timestamp,
+    };
+    return this.materializeStoredImageAsset(image);
+  }
+
   private normalizeDatabase(raw: Partial<ContentDatabase>): ContentDatabase {
     return {
       version: CONTENT_DB_VERSION,
@@ -2148,7 +2251,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       locations: sanitizeIdObjectArray<WorldLocation>(raw.locations).map((location) => normalizeLocationInput(location)).filter((location) => Boolean(location.id)),
       materials: clone(sanitizeIdObjectArray<Material>(raw.materials)),
       lootTables: clone(sanitizeIdObjectArray<LootTable>(raw.lootTables)),
-      images: clone(sanitizeIdObjectArray<StoredImage>(raw.images)),
+      images: sanitizeIdObjectArray<StoredImage>(raw.images).map((image) => this.normalizeStoredImageInput(image)),
       dialogues: sanitizeIdObjectArray<DialogueDefinition>(raw.dialogues).map((entry) => normalizeDialogueInput(entry)).filter((d) => Boolean(d.id)),
       npcs: sanitizeIdObjectArray<NpcDefinition>(raw.npcs).map((entry) => normalizeNpcInput(entry)).filter((n) => Boolean(n.id)),
       quests: sanitizeIdObjectArray<QuestDefinition>(raw.quests).map((entry) => normalizeQuestInput(entry)).filter((q) => Boolean(q.id)),
@@ -2434,8 +2537,11 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    if (db.images.length > 0) {
-      warnings.push(`This backup includes ${db.images.length} embedded image record(s). Large JSON files may take a moment to import/export.`);
+    const embeddedImageCount = db.images.filter((image) => isEmbeddedDataUrl(image.dataUrl)).length;
+    if (embeddedImageCount > 0) {
+      warnings.push(`This backup still includes ${embeddedImageCount} embedded image record(s). They will be moved to Resurse/assets/upload on the next load/import.`);
+    } else if (db.images.length > 0) {
+      warnings.push(`This backup contains ${db.images.length} image reference(s). Copy Resurse/assets/upload together with the JSON when moving PCs.`);
     } else {
       warnings.push('This backup contains image references only. Make sure the assets folder/zip is also copied.');
     }
@@ -2612,6 +2718,66 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     return collection.find((entry) => entry.id === id) ?? null;
   }
 
+  private writeUploadedStoredImageAsset(id: string, payload: StoredImageAssetPayload, existing?: StoredImage): StoredImage {
+    const dataUrl = String(payload.dataUrl ?? '').trim();
+    if (!isEmbeddedDataUrl(dataUrl)) {
+      throw new BadRequestException('Image upload payload must include an image dataUrl.');
+    }
+
+    try {
+      const timestamp = nowIso();
+      const asset = writeStoredImageAsset({
+        id,
+        name: payload.name ?? existing?.name ?? 'image',
+        mimeType: payload.mimeType ?? existing?.mimeType ?? 'image/png',
+        dataUrl,
+      });
+
+      return {
+        id,
+        name: String(payload.name ?? existing?.name ?? 'image').trim() || 'image',
+        mimeType: asset.mimeType || String(payload.mimeType ?? existing?.mimeType ?? 'image/png').trim() || 'image/png',
+        width: Number.isFinite(Number(payload.width ?? existing?.width)) ? Number(payload.width ?? existing?.width) : 0,
+        height: Number.isFinite(Number(payload.height ?? existing?.height)) ? Number(payload.height ?? existing?.height) : 0,
+        dataUrl: asset.publicUrl,
+        createdAt: existing?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown image asset error';
+      throw new BadRequestException(`Failed to store uploaded image '${id}': ${message}`);
+    }
+  }
+
+  async createStoredImageAsset(payload: StoredImageAssetPayload): Promise<StoredImage> {
+    const db = this.ensureLoaded();
+    const id = String(payload.id ?? `img_${Date.now()}_${randomUUID().slice(0, 8)}`).trim();
+    if (!id) {
+      throw new BadRequestException('Missing id for image upload.');
+    }
+    if (db.images.some((image) => image.id === id)) {
+      throw new BadRequestException(`Duplicate images id: ${id}`);
+    }
+
+    const next = this.writeUploadedStoredImageAsset(id, payload);
+    db.images = [...db.images, next];
+    await this.persist(db);
+    return clone(next);
+  }
+
+  async replaceStoredImageAsset(id: string, payload: StoredImageAssetPayload): Promise<StoredImage> {
+    const db = this.ensureLoaded();
+    const current = db.images.find((image) => image.id === id);
+    if (!current) {
+      throw new NotFoundException(`images entry not found: ${id}`);
+    }
+
+    const next = this.writeUploadedStoredImageAsset(id, payload, current);
+    db.images = db.images.map((image) => image.id === id ? next : image);
+    await this.persist(db);
+    return clone(next);
+  }
+
   async createCollectionEntry<K extends ContentCollectionName>(name: K | string, payload: ContentCollectionMap[K]): Promise<ContentCollectionMap[K]> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
@@ -2631,10 +2797,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeSkillInput(payload as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'materials') {
+      nextEntry = normalizeMaterialInput(payload as ContentCollectionMap['materials']) as ContentCollectionMap[K];
     } else if (collectionName === 'cities') {
       nextEntry = normalizeCityInput(payload as ContentCollectionMap['cities']) as ContentCollectionMap[K];
     } else if (collectionName === 'locations') {
       nextEntry = normalizeLocationInput(payload as ContentCollectionMap['locations']) as ContentCollectionMap[K];
+    } else if (collectionName === 'images') {
+      nextEntry = this.normalizeStoredImageInput(payload as unknown as StoredImage) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       nextEntry = normalizeDialogueInput(payload as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -2677,10 +2847,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeSkillInput(mergedBase as ContentCollectionMap['skills']) as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
+    } else if (collectionName === 'materials') {
+      merged = normalizeMaterialInput(mergedBase as ContentCollectionMap['materials']) as ContentCollectionMap[K];
     } else if (collectionName === 'cities') {
       merged = normalizeCityInput(mergedBase as ContentCollectionMap['cities']) as ContentCollectionMap[K];
     } else if (collectionName === 'locations') {
       merged = normalizeLocationInput(mergedBase as ContentCollectionMap['locations']) as ContentCollectionMap[K];
+    } else if (collectionName === 'images') {
+      merged = this.normalizeStoredImageInput(mergedBase as unknown as StoredImage) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'dialogues') {
       merged = normalizeDialogueInput(mergedBase as unknown as DialogueDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'npcs') {
@@ -2748,13 +2922,15 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       db.cities = mergeById(db.cities, normalizedCities);
     }
     if (Array.isArray(payload.materials) && payload.materials.length > 0) {
-      db.materials = mergeById(db.materials, payload.materials as Material[]);
+      const normalizedMaterials = payload.materials.map((material) => normalizeMaterialInput(material as Material));
+      db.materials = mergeById(db.materials, normalizedMaterials);
     }
     if (Array.isArray(payload.lootTables) && payload.lootTables.length > 0) {
       db.lootTables = mergeById(db.lootTables, payload.lootTables as any[]);
     }
     if (Array.isArray(payload.images) && payload.images.length > 0) {
-      db.images = mergeById(db.images, payload.images as StoredImage[]);
+      const normalizedImages = (payload.images as StoredImage[]).map((image) => this.normalizeStoredImageInput(image));
+      db.images = mergeById(db.images, normalizedImages);
     }
     if (Array.isArray(payload.dialogues) && payload.dialogues.length > 0) {
       const normalized = payload.dialogues.map((entry) => normalizeDialogueInput(entry as DialogueDefinition));

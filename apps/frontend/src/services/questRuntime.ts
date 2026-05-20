@@ -34,6 +34,7 @@ export interface QuestRuntimePlayer {
   classId?: string;
   professionId?: string;
   gold?: number;
+  stats?: Record<string, number | undefined>;
   flags?: Record<string, unknown>;
   completedQuestIds?: string[];
   activeQuestIds?: string[];

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
-import type { AdminItem, AdminMerchant, MerchantType, StoredImage } from '../../services/content/models';
+import type { AdminItem, AdminMerchant, Material, MerchantType, StoredImage } from '../../services/content/models';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
+import { materialsService } from '../../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { extractRawMerchantsFromImportJson, importMerchantsFromJsonEntries, merchantsService, validateMerchant } from '../../services/content/merchantsService';
 import { cityService } from '../../services/cityRepository';
@@ -30,6 +31,9 @@ function emptyMerchant(): AdminMerchant {
     description: '',
     portraitPath: '',
     priceMultiplier: 1,
+    worldSimTrader: false,
+    materialTradingEnabled: false,
+    materialTrades: [],
     isEnabled: true,
     items: [],
     createdAt: now,
@@ -43,23 +47,27 @@ export function MerchantsPage() {
   const [images, setImages] = useState<StoredImage[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [query, setQuery] = useState('');
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminMerchant>(emptyMerchant());
   const [itemSearch, setItemSearch] = useState('');
+  const [materialSearch, setMaterialSearch] = useState('');
   const [status, setStatus] = useState('Готово');
   const [isImporting, setIsImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh(nextSelectedId: string | null = selectedId) {
-    const [allMerchants, allItems, allImages] = await Promise.all([
+    const [allMerchants, allItems, allImages, allMaterials] = await Promise.all([
       merchantsService.getAll(),
       itemsService.getAll(),
       loadRuntimeImages().catch(() => []),
+      materialsService.getAll(),
     ]);
 
     setMerchants(allMerchants);
     setItems(allItems.filter((item) => item.isEnabled));
     setImages(allImages);
+    setMaterials(allMaterials.filter((material) => material.isEnabled));
 
     if (!nextSelectedId) {
       return;
@@ -145,9 +153,20 @@ export function MerchantsPage() {
     [draft.items],
   );
 
+  const selectedMaterialIds = useMemo(
+    () => new Set((draft.materialTrades ?? []).filter((entry) => entry.isEnabled).map((entry) => entry.materialId)),
+    [draft.materialTrades],
+  );
+
+  const generatedMaterialItemIds = useMemo(
+    () => new Set(materials.map((material) => getMaterialItemId(material.id))),
+    [materials],
+  );
+
   const visibleItems = useMemo(() => {
     const normalizedQuery = itemSearch.trim().toLowerCase();
     return items
+      .filter((item) => !generatedMaterialItemIds.has(item.id))
       .filter((item) => !normalizedQuery || item.id.toLowerCase().includes(normalizedQuery) || item.name.toLowerCase().includes(normalizedQuery))
       .sort((left, right) => {
         const leftSelected = selectedItemIds.has(left.id);
@@ -157,14 +176,29 @@ export function MerchantsPage() {
         }
         return left.name.localeCompare(right.name, 'ru', { sensitivity: 'base' });
       });
-  }, [itemSearch, items, selectedItemIds]);
+  }, [generatedMaterialItemIds, itemSearch, items, selectedItemIds]);
 
   const assignedItems = useMemo(
     () => draft.items
+      .filter((entry) => !generatedMaterialItemIds.has(entry.itemId))
       .map((entry) => ({ binding: entry, item: items.find((candidate) => candidate.id === entry.itemId) ?? null }))
       .sort((left, right) => (left.item?.name || left.binding.itemId).localeCompare(right.item?.name || right.binding.itemId, 'ru', { sensitivity: 'base' })),
-    [draft.items, items],
+    [draft.items, generatedMaterialItemIds, items],
   );
+
+  const visibleMaterials = useMemo(() => {
+    const normalizedQuery = materialSearch.trim().toLowerCase();
+    return materials
+      .filter((material) => !normalizedQuery || material.id.toLowerCase().includes(normalizedQuery) || material.name.toLowerCase().includes(normalizedQuery))
+      .sort((left, right) => {
+        const leftSelected = selectedMaterialIds.has(left.id);
+        const rightSelected = selectedMaterialIds.has(right.id);
+        if (leftSelected !== rightSelected) {
+          return leftSelected ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name, 'ru', { sensitivity: 'base' });
+      });
+  }, [materialSearch, materials, selectedMaterialIds]);
 
   const selectedMerchant = useMemo(
     () => (selectedId ? merchants.find((entry) => entry.id === selectedId) ?? null : null),
@@ -197,6 +231,10 @@ export function MerchantsPage() {
     setDraft((current) => ({ ...current, ...next }));
   }
 
+  function getMaterialItemId(materialId: string) {
+    return `mat_${materialId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+  }
+
   function toggleItem(itemId: string) {
     setDraft((current) => {
       const exists = current.items.some((entry) => entry.itemId === itemId);
@@ -218,12 +256,79 @@ export function MerchantsPage() {
     }));
   }
 
+  function toggleMaterial(materialId: string) {
+    setDraft((current) => {
+      const existing = (current.materialTrades ?? []).find((entry) => entry.materialId === materialId);
+      if (existing) {
+        return {
+          ...current,
+          materialTrades: (current.materialTrades ?? []).map((entry) => entry.materialId === materialId ? { ...entry, isEnabled: !entry.isEnabled } : entry),
+        };
+      }
+
+      return {
+        ...current,
+        materialTrades: [...(current.materialTrades ?? []), { materialId, buys: true, sells: true, isEnabled: true }],
+      };
+    });
+  }
+
+  function patchMaterialTrade(materialId: string, patchData: { buys?: boolean; sells?: boolean; isEnabled?: boolean }) {
+    setDraft((current) => ({
+      ...current,
+      materialTrades: (current.materialTrades ?? []).map((entry) => entry.materialId === materialId ? { ...entry, ...patchData } : entry),
+    }));
+  }
+
   async function createOrUpdate() {
+    const nextItems = [...draft.items];
+    const nextMaterialTrades = (draft.materialTrades ?? []).filter((entry) => entry.isEnabled && (entry.buys || entry.sells));
+    const generatedMaterialItemIds = new Set(materials.map((material) => getMaterialItemId(material.id)));
+    const selectedSellMaterialItemIds = new Set(nextMaterialTrades.filter((entry) => entry.sells).map((entry) => getMaterialItemId(entry.materialId)));
+
+    for (const trade of nextMaterialTrades) {
+      const material = materials.find((entry) => entry.id === trade.materialId);
+      if (!material) {
+        continue;
+      }
+
+      const itemId = getMaterialItemId(material.id);
+      const existingItem = items.find((entry) => entry.id === itemId);
+      if (!existingItem) {
+        await itemsService.create({
+          id: itemId,
+          name: material.name,
+          type: 'material',
+          rarity: material.rarity,
+          price: Math.max(1, Math.round(material.averageMarketPrice || 1)),
+          stackable: true,
+          maxStack: 999,
+          gameplayDescription: material.gameplayDescription || `Материал: ${material.name}`,
+          loreDescription: material.loreDescription || material.gameplayDescription || '',
+          imagePath: material.imagePath,
+          isEnabled: true,
+        });
+      }
+
+      if (trade.sells && !nextItems.some((entry) => entry.itemId === itemId)) {
+        nextItems.push({ itemId, stock: 25, infiniteStock: false, isEnabled: true });
+      }
+    }
+
+    const normalizedManagedItems = nextItems.filter((entry) => {
+      if (!generatedMaterialItemIds.has(entry.itemId)) {
+        return true;
+      }
+      return selectedSellMaterialItemIds.has(entry.itemId);
+    });
+
     const id = draft.id.trim() || uid('merchant');
     const normalized: AdminMerchant = {
       ...draft,
       id,
       priceMultiplier: Number.isFinite(draft.priceMultiplier) ? draft.priceMultiplier : 1,
+      materialTrades: nextMaterialTrades,
+      items: normalizedManagedItems,
       updatedAt: new Date().toISOString(),
     };
     const errors = validateMerchant(normalized);
@@ -280,6 +385,54 @@ export function MerchantsPage() {
     setDraft(emptyMerchant());
     await refresh();
     setStatus(`Торговец удалён: ${selectedId}`);
+  }
+
+  async function createWorldSimArchetypeForMerchant() {
+    const merchantId = (selectedId || draft.id || '').trim();
+    if (!merchantId) {
+      setStatus('Сначала сохраните торговца, потом создайте world-sim archetype.');
+      return;
+    }
+
+    const merchantName = (draft.name || merchantId).trim();
+    const archetypeId = `ws_merchant_${merchantId}`;
+
+    try {
+      const existingResponse = await fetch('/api/world-simulation/archetypes');
+      const existing = existingResponse.ok ? await existingResponse.json() : [];
+      if (Array.isArray(existing) && existing.some((entry: any) => entry.id === archetypeId)) {
+        setStatus(`World-sim archetype уже существует: ${archetypeId}`);
+        return;
+      }
+
+      const payload = {
+        id: archetypeId,
+        name: `Караван ${merchantName}`,
+        kind: 'merchant',
+        sourceType: 'merchant',
+        sourceId: merchantId,
+        merchantId,
+        worldSpriteId: 'trader_world_sprite',
+        portraitId: draft.portraitPath || 'unknown',
+        isEnabled: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const response = await fetch('/api/world-simulation/archetypes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setStatus(`Создан world-sim archetype: ${archetypeId}. Чтобы он появился в мире, добавьте его в маршрут и spawn rule.`);
+    } catch (error) {
+      setStatus(`Не удалось создать world-sim archetype: ${(error as Error).message}`);
+    }
   }
 
   return (
@@ -350,6 +503,14 @@ export function MerchantsPage() {
             <input type="checkbox" checked={draft.isEnabled} onChange={(event) => patch({ isEnabled: event.target.checked })} />
             <AdminFieldLabel label="Включён" hint="Отключённый торговец сохраняется в базе, но не используется в игре." />
           </label>
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={Boolean(draft.worldSimTrader)} onChange={(event) => patch({ worldSimTrader: event.target.checked })} />
+            <AdminFieldLabel label="World-sim trader" hint="Разрешить выбирать этого торговца в архетипах живого мира." />
+          </label>
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={Boolean(draft.materialTradingEnabled)} onChange={(event) => patch({ materialTradingEnabled: event.target.checked })} />
+            <AdminFieldLabel label="Торговля материалами" hint="Открывает выбор материалов, которыми торговец торгует." />
+          </label>
         </div>
 
         {draft.cityId && !selectedCity ? <p className="muted">Выбранный город не найден.</p> : null}
@@ -370,6 +531,13 @@ export function MerchantsPage() {
           label="Портрет торговца"
           hint="Портрет NPC, который будет показан в интерфейсе торговли."
         />
+
+        <div className="admin-actions-row">
+          <button onClick={() => { void createOrUpdate(); }}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button onClick={() => { void createWorldSimArchetypeForMerchant(); }}>Создать world-sim archetype</button>
+          <button disabled={!selectedId} onClick={() => { void disableSelected(); }}>Отключить</button>
+          <button disabled={!selectedId} onClick={() => { void deleteSelected(); }}>Удалить</button>
+        </div>
 
         <h4 title="Список предметов, которые торговец может продавать игроку.">Ассортимент торговца</h4>
         <input placeholder="Поиск предметов для добавления" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} />
@@ -405,35 +573,69 @@ export function MerchantsPage() {
           )}
         </div>
 
-        <div className="admin-linked-grid merchant-item-pick">
-          {visibleItems.map((item) => {
-            const assigned = selectedItemIds.has(item.id);
-            const image = resolveStoredImageSource(item.imagePath, images);
+        {draft.materialTradingEnabled ? (
+          <div className="card">
+            <h4>Торговля материалами</h4>
+            <input placeholder="Поиск материалов" value={materialSearch} onChange={(event) => setMaterialSearch(event.target.value)} />
+            <p className="muted">Выбери материалы, которые торговец может покупать или продавать. Для продажи автоматически используется связанный item материала.</p>
+            <div className="admin-linked-grid merchant-item-pick">
+              {visibleMaterials.map((material) => {
+                const trade = (draft.materialTrades ?? []).find((entry) => entry.materialId === material.id);
+                const assigned = Boolean(trade?.isEnabled);
+                const image = resolveStoredImageSource(material.imagePath, images);
+                return (
+                  <div key={material.id} className={`admin-linked-card ${assigned ? 'is-active' : ''}`}>
+                    <button type="button" onClick={() => toggleMaterial(material.id)} title={assigned ? 'Убрать материал' : 'Добавить материал'}>
+                      <div className="admin-linked-thumb">
+                        {image ? <img src={image} alt={material.name} /> : material.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <strong>{material.name}</strong>
+                      <small>{material.id}</small>
+                      <span>Цена: {Math.round(material.averageMarketPrice || 0)}</span>
+                      <span>{assigned ? 'Выбран' : 'Не выбран'}</span>
+                    </button>
+                    {assigned ? (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <label className="zone-editor-checkbox"><input type="checkbox" checked={trade?.sells ?? false} onChange={(event) => patchMaterialTrade(material.id, { sells: event.target.checked })} />Продажа</label>
+                        <label className="zone-editor-checkbox"><input type="checkbox" checked={trade?.buys ?? false} onChange={(event) => patchMaterialTrade(material.id, { buys: event.target.checked })} />Покупка</label>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`admin-linked-card ${assigned ? 'is-active' : ''}`}
-                onClick={() => toggleItem(item.id)}
-                title={assigned ? 'Убрать у торговца' : 'Добавить торговцу'}
-              >
-                <div className="admin-linked-thumb">
-                  {image ? <img src={image} alt={item.name} /> : getItemThumbLabel(item)}
-                </div>
-                <strong>{item.name}</strong>
-                <small>{item.id}</small>
-                <span>{translateItemType(item.type)}</span>
-                <span>{assigned ? 'Выбран' : 'Не выбран'}</span>
-              </button>
-            );
-          })}
-        </div>
+        <div className="card merchant-assortment-section">
+          <div className="merchant-assortment-section-head">
+            <h4>Обычные товары</h4>
+            <p className="muted">Экипировка, зелья и прочие предметы без материалов.</p>
+          </div>
+          <div className="admin-linked-grid merchant-item-pick">
+            {visibleItems.map((item) => {
+              const assigned = selectedItemIds.has(item.id);
+              const image = resolveStoredImageSource(item.imagePath, images);
 
-        <div className="admin-actions-row">
-          <button onClick={() => { void createOrUpdate(); }}>{selectedId ? 'Сохранить' : 'Создать'}</button>
-          <button disabled={!selectedId} onClick={() => { void disableSelected(); }}>Отключить</button>
-          <button disabled={!selectedId} onClick={() => { void deleteSelected(); }}>Удалить</button>
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`admin-linked-card ${assigned ? 'is-active' : ''}`}
+                  onClick={() => toggleItem(item.id)}
+                  title={assigned ? 'Убрать у торговца' : 'Добавить торговцу'}
+                >
+                  <div className="admin-linked-thumb">
+                    {image ? <img src={image} alt={item.name} /> : getItemThumbLabel(item)}
+                  </div>
+                  <strong>{item.name}</strong>
+                  <small>{item.id}</small>
+                  <span>{translateItemType(item.type)}</span>
+                  <span>{assigned ? 'Выбран' : 'Не выбран'}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <p className="muted">{status}</p>

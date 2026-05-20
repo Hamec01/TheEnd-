@@ -638,6 +638,201 @@
       ],
       "createdAt": "2026-04-26T09:17:38.452Z",
       "updatedAt": "2026-04-27T08:08:10.822Z"
+    },
+    {
+      "id": "merchant_arklein_mirel",
+      "name": "Мирель с арклейнского тракта",
+      "city": "Арклейн",
+      "location": "Южные ворота",
+      "type": "general",
+      "description": "Путевая торговка из Арклейна. Возит ткань, дорожную одежду и припасы между Арклейном, Гранкором и Брейнхольдом.",
+      "portraitPath": "unknown",
+      "worldSimTrader": true,
+      "priceMultiplier": 1,
+      "isEnabled": true,
+      "items": [
+        {
+          "itemId": "arm_chest_cloth_01",
+          "stock": 15,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_legs_cloth_01",
+          "stock": 14,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_head_cloth_01",
+          "stock": 12,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_chest_leather_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1.05,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_feet_leather_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "acc_belt_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "starter_healing_potion_01",
+          "stock": 18,
+          "infiniteStock": true,
+          "priceMultiplier": 1.15,
+          "isEnabled": true
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "merchant_grankor_drogan",
+      "name": "Дроган из Гранкора",
+      "city": "Гран'кор",
+      "location": "Кузнечный двор",
+      "type": "blacksmith",
+      "description": "Караванщик-оружейник из Гранкора. Возит клинки, копья и щиты по трем городам торгового круга.",
+      "portraitPath": "unknown",
+      "worldSimTrader": true,
+      "priceMultiplier": 1.05,
+      "isEnabled": true,
+      "items": [
+        {
+          "itemId": "training_sword_wood_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "wpn_axe_wood_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "wpn_spear_wood_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "wpn_spear_iron_01",
+          "stock": 5,
+          "infiniteStock": false,
+          "priceMultiplier": 1.1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "wpn_bow_wood_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "shd_wood_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "starter_sword_01",
+          "stock": 5,
+          "infiniteStock": false,
+          "priceMultiplier": 1.2,
+          "isEnabled": true
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "merchant_brainhold_selene",
+      "name": "Селена из Брейнхольда",
+      "city": "Брейнхольд",
+      "location": "Северный торг",
+      "type": "rare_goods",
+      "description": "Эльфийская хозяйка каравана из Брейнхольда. Привозит кожаное снаряжение, пояса и лечебные припасы.",
+      "portraitPath": "unknown",
+      "worldSimTrader": true,
+      "priceMultiplier": 1.08,
+      "isEnabled": true,
+      "items": [
+        {
+          "itemId": "starter_leather_armor_01",
+          "stock": 5,
+          "infiniteStock": false,
+          "priceMultiplier": 1.2,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_chest_leather_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1.1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_hands_leather_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_feet_leather_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "arm_head_cloth_01",
+          "stock": 8,
+          "infiniteStock": false,
+          "priceMultiplier": 1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "acc_belt_01",
+          "stock": 10,
+          "infiniteStock": false,
+          "priceMultiplier": 1.1,
+          "isEnabled": true
+        },
+        {
+          "itemId": "starter_healing_potion_01",
+          "stock": 12,
+          "infiniteStock": true,
+          "priceMultiplier": 1.2,
+          "isEnabled": true
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
     }
   ],
   "materials": [],
@@ -1048,6 +1243,322 @@
       ],
       "createdAt": "2026-04-28T10:41:43.030Z",
       "updatedAt": "2026-04-28T10:41:43.030Z"
+    },
+    {
+      "id": "dlg_arklein_mirel_intro",
+      "title": "Мирель — приветствие",
+      "npcId": "npc_arklein_mirel",
+      "status": "active",
+      "description": "Караванщица Арклейна. Открывает лавку с дорожной одеждой и припасами.",
+      "startNodeId": "n_intro",
+      "nodes": [
+        {
+          "id": "n_intro",
+          "speaker": "npc",
+          "text": "Доброго пути. Я Мирель, держу караванный круг между Арклейном, Гранкором и Брейнхольдом. Нужны припасы в дорогу?",
+          "choices": [
+            {
+              "id": "c_shop",
+              "text": "Покажи товары.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop",
+                  "type": "openShop",
+                  "merchantId": "merchant_arklein_mirel"
+                }
+              ]
+            },
+            {
+              "id": "c_route",
+              "text": "Где тебя можно встретить?",
+              "nextNodeId": "n_route"
+            },
+            {
+              "id": "c_bye",
+              "text": "В другой раз.",
+              "endsDialogue": true
+            }
+          ]
+        },
+        {
+          "id": "n_route",
+          "speaker": "npc",
+          "text": "Сегодня я здесь, завтра уже в Гранкоре, а затем ухожу в Брейнхольд. Пока дороги держатся, мой караван ходит по кругу.",
+          "choices": [
+            {
+              "id": "c_shop2",
+              "text": "Тогда посмотрю, что везёшь.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop2",
+                  "type": "openShop",
+                  "merchantId": "merchant_arklein_mirel"
+                }
+              ]
+            },
+            {
+              "id": "c_bye2",
+              "text": "Удачной дороги.",
+              "endsDialogue": true
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "dlg_grankor_drogan_intro",
+      "title": "Дроган — приветствие",
+      "npcId": "npc_grankor_drogan",
+      "status": "active",
+      "description": "Караванщик-оружейник из Гранкора. Открывает торговлю оружием и щитами.",
+      "startNodeId": "n_intro",
+      "nodes": [
+        {
+          "id": "n_intro",
+          "speaker": "npc",
+          "text": "Сталь, древки и щиты. Я Дроган, и у меня есть то, что переживёт дорогу до любого из трёх городов.",
+          "choices": [
+            {
+              "id": "c_shop",
+              "text": "Покажи оружие.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop",
+                  "type": "openShop",
+                  "merchantId": "merchant_grankor_drogan"
+                }
+              ]
+            },
+            {
+              "id": "c_route",
+              "text": "Почему ты всё время в пути?",
+              "nextNodeId": "n_route"
+            },
+            {
+              "id": "c_bye",
+              "text": "Пока.",
+              "endsDialogue": true
+            }
+          ]
+        },
+        {
+          "id": "n_route",
+          "speaker": "npc",
+          "text": "Гранкор кует, Арклейн покупает, а Брейнхольд любит хороший металл не меньше прочих. Пока спрос жив, мой караван не стоит.",
+          "choices": [
+            {
+              "id": "c_shop2",
+              "text": "Ладно, показывай товар.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop2",
+                  "type": "openShop",
+                  "merchantId": "merchant_grankor_drogan"
+                }
+              ]
+            },
+            {
+              "id": "c_bye2",
+              "text": "Береги караван.",
+              "endsDialogue": true
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "dlg_brainhold_selene_intro",
+      "title": "Селена — приветствие",
+      "npcId": "npc_brainhold_selene",
+      "status": "active",
+      "description": "Караванщица Брейнхольда. Открывает торговлю бронёй, ремнями и дорожными припасами.",
+      "startNodeId": "n_intro",
+      "nodes": [
+        {
+          "id": "n_intro",
+          "speaker": "npc",
+          "text": "Рада встрече. Я Селена из Брейнхольда. В моём караване всё для долгой дороги: кожа, ремни и то, что удержит тебя на ногах.",
+          "choices": [
+            {
+              "id": "c_shop",
+              "text": "Покажи снаряжение.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop",
+                  "type": "openShop",
+                  "merchantId": "merchant_brainhold_selene"
+                }
+              ]
+            },
+            {
+              "id": "c_route",
+              "text": "Ты тоже ходишь по торговому кругу?",
+              "nextNodeId": "n_route"
+            },
+            {
+              "id": "c_bye",
+              "text": "Спасибо, не сейчас.",
+              "endsDialogue": true
+            }
+          ]
+        },
+        {
+          "id": "n_route",
+          "speaker": "npc",
+          "text": "Да. Из Брейнхольда я иду в Арклейн, затем в Гранкор и только после этого снова возвращаюсь домой. Три города держат караван живым.",
+          "choices": [
+            {
+              "id": "c_shop2",
+              "text": "Тогда дай посмотреть товар.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_open_shop2",
+                  "type": "openShop",
+                  "merchantId": "merchant_brainhold_selene"
+                }
+              ]
+            },
+            {
+              "id": "c_bye2",
+              "text": "Пусть путь будет лёгким.",
+              "endsDialogue": true
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "dlg_bandit_raider_roadside",
+      "title": "Разбойники на дороге",
+      "npcId": "npc_bandit_raider",
+      "status": "active",
+      "description": "Дорожный разбойник сначала пытается выжать золото, а уже потом лезет в драку.",
+      "startNodeId": "n_intro",
+      "nodes": [
+        {
+          "id": "n_intro",
+          "speaker": "npc",
+          "text": "Главарь шагает навстречу, лениво крутя нож в пальцах. \"Дорога сегодня платная. Оставь кошель, и мы забудем, что виделись.\"",
+          "choices": [
+            {
+              "id": "c_pay",
+              "text": "Ладно. Забирай золото и дай пройти.",
+              "conditions": [
+                {
+                  "id": "cond_gold_40",
+                  "type": "gold_at_least",
+                  "value": 40
+                }
+              ],
+              "nextNodeId": "n_paid"
+            },
+            {
+              "id": "c_bluff",
+              "text": "Ты слишком долго смотришь мне за плечо. За нами уже идут дозорные, и ты это понимаешь.",
+              "conditions": [
+                {
+                  "id": "cond_perception_20",
+                  "type": "player_stat_min",
+                  "key": "perception",
+                  "value": 20
+                }
+              ],
+              "nextNodeId": "n_bluff_success"
+            },
+            {
+              "id": "c_refuse",
+              "text": "Попробуй взять сам.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_start_combat",
+                  "type": "startCombat"
+                }
+              ]
+            },
+            {
+              "id": "c_stall",
+              "text": "Мне нужно подумать.",
+              "nextNodeId": "n_pressure"
+            }
+          ]
+        },
+        {
+          "id": "n_paid",
+          "speaker": "npc",
+          "text": "Главарь пересчитывает монеты на ладони и усмехается. \"Вот так бы сразу. Проходи, пока мои люди не передумали.\"",
+          "actions": [
+            {
+              "id": "a_take_gold_40",
+              "type": "takeGold",
+              "amount": 40
+            }
+          ],
+          "choices": [
+            {
+              "id": "c_paid_leave",
+              "text": "Я ухожу.",
+              "endsDialogue": true
+            }
+          ]
+        },
+        {
+          "id": "n_bluff_success",
+          "speaker": "npc",
+          "text": "Главарь щурится, быстро оглядывает дорогу и отступает на полшага. \"Проваливай. Сегодня мы ищем добычу попроще.\"",
+          "choices": [
+            {
+              "id": "c_bluff_leave",
+              "text": "Разумный выбор.",
+              "endsDialogue": true
+            }
+          ]
+        },
+        {
+          "id": "n_pressure",
+          "speaker": "npc",
+          "text": "\"Думать будешь потом. Или платишь сейчас, или мы забираем всё с твоего трупа.\" Несколько силуэтов сдвигаются у тебя за спиной.",
+          "choices": [
+            {
+              "id": "c_pressure_pay",
+              "text": "Хорошо. Бери и исчезни.",
+              "conditions": [
+                {
+                  "id": "cond_gold_40_repeat",
+                  "type": "gold_at_least",
+                  "value": 40
+                }
+              ],
+              "nextNodeId": "n_paid"
+            },
+            {
+              "id": "c_pressure_fight",
+              "text": "Хватит болтовни.",
+              "endsDialogue": true,
+              "actions": [
+                {
+                  "id": "a_start_combat_repeat",
+                  "type": "startCombat"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-05-20T15:05:00.000Z",
+      "updatedAt": "2026-05-20T15:05:00.000Z"
     }
   ],
   "npcs": [
@@ -1061,9 +1572,9 @@
       "cityId": "arklein",
       "locationId": "ash_market",
       "description": "Торговец с Пепельного рынка. Продает базовые товары и выдает стартовые поручения.",
-      "portraitUrl": "/assets/placeholders/npc_merchant.png",
-      "fullImageUrl": "/assets/placeholders/npc_merchant.png",
-      "iconUrl": "/assets/placeholders/npc_merchant.png",
+      "portraitUrl": "unknown",
+      "fullImageUrl": "unknown",
+      "iconUrl": "unknown",
       "mapBindings": [
         {
           "id": "npc_map_1777370473046_oocz9sn7",
@@ -1102,7 +1613,7 @@
         "questItemIds": []
       },
       "createdAt": "2026-04-28T10:01:13.046Z",
-      "updatedAt": "2026-04-28T10:01:13.046Z"
+      "updatedAt": "2026-05-20T10:49:56.057Z"
     },
     {
       "id": "npc_young_archer_trainer",
@@ -1113,7 +1624,7 @@
       "race": "forest_elf",
       "cityId": "arklein",
       "description": "Обучает профессии лучника и связанным навыкам.",
-      "portraitUrl": "/assets/placeholders/unknown_portrait.png",
+      "portraitUrl": "unknown",
       "defaultDisposition": "friendly",
       "isUnique": true,
       "canRespawn": false,
@@ -1157,7 +1668,7 @@
         }
       ],
       "createdAt": "2026-04-28T10:01:13.046Z",
-      "updatedAt": "2026-04-28T10:01:13.046Z"
+      "updatedAt": "2026-05-20T10:49:56.058Z"
     },
     {
       "id": "npc_artalon_border_guard",
@@ -1168,7 +1679,7 @@
       "race": "human",
       "kingdomId": "artalon",
       "description": "Следит за порядком на границе Арталона.",
-      "portraitUrl": "/assets/placeholders/unknown_portrait.png",
+      "portraitUrl": "unknown",
       "defaultDisposition": "neutral",
       "isUnique": true,
       "canRespawn": true,
@@ -1217,7 +1728,7 @@
         }
       ],
       "createdAt": "2026-04-28T10:01:13.046Z",
-      "updatedAt": "2026-04-28T10:01:13.046Z"
+      "updatedAt": "2026-05-20T10:49:56.058Z"
     },
     {
       "id": "npc_mist_spirit",
@@ -1227,7 +1738,7 @@
       "kind": "story_character",
       "race": "spirit",
       "description": "Таинственная сущность, появляющаяся при определенных условиях.",
-      "portraitUrl": "/assets/placeholders/unknown_portrait.png",
+      "portraitUrl": "unknown",
       "defaultDisposition": "hidden",
       "isUnique": true,
       "canRespawn": true,
@@ -1267,25 +1778,25 @@
         }
       ],
       "createdAt": "2026-04-28T10:01:13.046Z",
-      "updatedAt": "2026-04-28T10:01:13.046Z"
+      "updatedAt": "2026-05-20T10:49:56.058Z"
     },
     {
       "id": "npc_bandit_raider",
-      "name": "Bandit Raider",
-      "title": "Налетчик",
-      "status": "draft",
+      "name": "Главарь дорожной шайки",
+      "title": "Разбойничий главарь",
+      "status": "active",
       "kind": "enemy",
       "race": "human",
-      "description": "Опасный разбойник, нападающий при встрече.",
-      "portraitUrl": "/assets/placeholders/enemy_bandit.png",
-      "combatImageUrl": "/assets/placeholders/enemy_bandit.png",
-      "iconUrl": "/assets/placeholders/enemy_bandit.png",
+      "description": "Хищный дорожный разбойник, который сначала пытается выбить выкуп, а потом кидается в драку.",
+      "portraitUrl": "/sprites/actor/bandit_01.png",
+      "combatImageUrl": "/sprites/actor/bandit_01.png",
+      "iconUrl": "/sprites/actor/bandit_01.png",
       "defaultDisposition": "aggressive_on_sight",
       "isUnique": false,
       "canRespawn": true,
       "respawnSeconds": 90,
       "canFight": true,
-      "canTalk": false,
+      "canTalk": true,
       "canTrade": false,
       "canTrain": false,
       "canGiveQuests": false,
@@ -1300,17 +1811,17 @@
         }
       ],
       "combat": {
-        "level": 4,
+        "level": 8,
         "role": "assassin",
-        "hp": 210,
-        "stamina": 130,
-        "strength": 14,
-        "agility": 16,
-        "endurance": 11,
+        "hp": 180,
+        "stamina": 110,
+        "strength": 12,
+        "agility": 14,
+        "endurance": 10,
         "physicalArmor": 7,
         "magicResist": 2,
-        "damageMin": 12,
-        "damageMax": 21,
+        "damageMin": 10,
+        "damageMax": 18,
         "lootTableId": "loot_bandit_basic",
         "skillIds": []
       },
@@ -1321,7 +1832,12 @@
         "goldMin": 5,
         "goldMax": 25
       },
-      "dialogues": [],
+      "dialogues": [
+        {
+          "dialogueId": "dlg_bandit_raider_roadside",
+          "priority": 1
+        }
+      ],
       "questBindings": [
         {
           "questId": "q_oath_border",
@@ -1329,7 +1845,7 @@
         }
       ],
       "createdAt": "2026-04-28T10:01:13.046Z",
-      "updatedAt": "2026-04-28T10:01:13.046Z"
+      "updatedAt": "2026-05-20T15:05:00.000Z"
     },
     {
       "id": "npc_sever_ex_soldier",
@@ -1359,7 +1875,7 @@
       "dialogues": [],
       "questBindings": [],
       "createdAt": "2026-04-28T11:11:38.348Z",
-      "updatedAt": "2026-04-28T11:29:46.434Z",
+      "updatedAt": "2026-05-20T10:49:56.058Z",
       "title": "Бывший военный",
       "gender": "male",
       "age": "59",
@@ -1386,7 +1902,127 @@
         "quest_arklein_first_step"
       ],
       "createdAt": "2026-04-28T19:46:07.999Z",
-      "updatedAt": "2026-04-28T19:46:07.999Z"
+      "updatedAt": "2026-05-20T10:49:56.058Z"
+    },
+    {
+      "id": "npc_arklein_mirel",
+      "name": "Мирель",
+      "title": "Караванщица Арклейна",
+      "status": "active",
+      "kind": "trader",
+      "race": "human",
+      "cityId": "arklein",
+      "locationId": "city_arklein",
+      "description": "Держит караванный круг от Арклейна до Гранкора и Брейнхольда. Привозит ткань, одежду и дорожные припасы.",
+      "portraitUrl": "unknown",
+      "fullImageUrl": "unknown",
+      "iconUrl": "unknown",
+      "mapBindings": [],
+      "defaultDisposition": "friendly",
+      "isUnique": true,
+      "canRespawn": false,
+      "canFight": false,
+      "canTalk": true,
+      "canTrade": true,
+      "worldSimTrader": true,
+      "canTrain": false,
+      "canGiveQuests": false,
+      "canBeKilled": false,
+      "traderId": "merchant_arklein_mirel",
+      "dialogues": [
+        {
+          "dialogueId": "dlg_arklein_mirel_intro",
+          "priority": 1
+        }
+      ],
+      "questBindings": [],
+      "inventory": {
+        "itemIds": [],
+        "questItemIds": []
+      },
+      "worldSimArchetypeId": "caravan_arklein_mirel",
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "npc_grankor_drogan",
+      "name": "Дроган",
+      "title": "Караванщик Гранкора",
+      "status": "active",
+      "kind": "trader",
+      "race": "orc",
+      "cityId": "city_grankor",
+      "locationId": "city_grankor",
+      "description": "Ведёт оружейный караван из Гранкора по трём городам. Продаёт копья, щиты и походное оружие.",
+      "portraitUrl": "unknown",
+      "fullImageUrl": "unknown",
+      "iconUrl": "unknown",
+      "mapBindings": [],
+      "defaultDisposition": "friendly",
+      "isUnique": true,
+      "canRespawn": false,
+      "canFight": false,
+      "canTalk": true,
+      "canTrade": true,
+      "worldSimTrader": true,
+      "canTrain": false,
+      "canGiveQuests": false,
+      "canBeKilled": false,
+      "traderId": "merchant_grankor_drogan",
+      "dialogues": [
+        {
+          "dialogueId": "dlg_grankor_drogan_intro",
+          "priority": 1
+        }
+      ],
+      "questBindings": [],
+      "inventory": {
+        "itemIds": [],
+        "questItemIds": []
+      },
+      "worldSimArchetypeId": "caravan_grankor_drogan",
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
+    },
+    {
+      "id": "npc_brainhold_selene",
+      "name": "Селена",
+      "title": "Караванщица Брейнхольда",
+      "status": "active",
+      "kind": "trader",
+      "race": "high_elf",
+      "cityId": "brainhold",
+      "locationId": "city_brainhold",
+      "description": "Ходит с караваном из Брейнхольда в Арклейн и Гранкор. Везёт кожаное снаряжение и лечебные припасы.",
+      "portraitUrl": "unknown",
+      "fullImageUrl": "unknown",
+      "iconUrl": "unknown",
+      "mapBindings": [],
+      "defaultDisposition": "friendly",
+      "isUnique": true,
+      "canRespawn": false,
+      "canFight": false,
+      "canTalk": true,
+      "canTrade": true,
+      "worldSimTrader": true,
+      "canTrain": false,
+      "canGiveQuests": false,
+      "canBeKilled": false,
+      "traderId": "merchant_brainhold_selene",
+      "dialogues": [
+        {
+          "dialogueId": "dlg_brainhold_selene_intro",
+          "priority": 1
+        }
+      ],
+      "questBindings": [],
+      "inventory": {
+        "itemIds": [],
+        "questItemIds": []
+      },
+      "worldSimArchetypeId": "caravan_brainhold_selene",
+      "createdAt": "2026-05-20T12:20:00.000Z",
+      "updatedAt": "2026-05-20T12:20:00.000Z"
     }
   ],
   "quests": [
@@ -1858,6 +2494,54 @@
         "allowPvP": false,
         "createdAt": 1777405567999,
         "updatedAt": 1777405567999
+      },
+      {
+        "id": "city_grankor",
+        "name": "Гран'кор",
+        "type": "city",
+        "shape": "circle",
+        "description": "Гранкор — величайший подземный город гномов Гранкор был основан ещё до Второй войны, когда гномьи кланы бежали в глубины гор после раскола народов Аталиона. Здесь они нашли жилы Соларита, Пирраксита и Кваррилита, а позже превратили недра горы в неприступную подземную крепость.",
+        "dangerLevel": 1,
+        "isDiscovered": true,
+        "isVisibleToPlayer": true,
+        "editorLayer": "locations",
+        "interactionMode": "enter",
+        "playerClickable": true,
+        "blocksClick": true,
+        "passiveEffects": false,
+        "color": "#d6b35f",
+        "randomQuestPoolIds": [],
+        "cityId": "city_grankor",
+        "createdAt": 1778766650890,
+        "updatedAt": 1778766984268,
+        "x": 0.49022740848714863,
+        "y": 0.5348170917727751,
+        "radius": 0.010745595821789243
+      },
+      {
+        "id": "city_brainhold",
+        "name": "Брейнхольд",
+        "type": "city",
+        "shape": "circle",
+        "region": "teramor",
+        "faction": "terimia",
+        "description": "Мрачная столица Теримии, город-крепость короля Дреймонда Чёрного Льва",
+        "dangerLevel": 1,
+        "isDiscovered": true,
+        "isVisibleToPlayer": true,
+        "editorLayer": "locations",
+        "interactionMode": "enter",
+        "playerClickable": true,
+        "blocksClick": true,
+        "passiveEffects": false,
+        "color": "#d6b35f",
+        "randomQuestPoolIds": [],
+        "cityId": "brainhold",
+        "createdAt": 1778770624064,
+        "updatedAt": 1778770728524,
+        "x": 0.4046855308326686,
+        "y": 0.5114249001360573,
+        "radius": 0.006763159208974329
       }
     ],
     "regions": [],

@@ -1,0 +1,193 @@
+{
+  "archetypes": [
+    {
+      "id": "bandit_mountain_gang",
+      "name": "Банда горных разбойников",
+      "kind": "bandit",
+      "npcTemplateId": "npc_bandit_01",
+      "worldSpriteId": "camp_world_sprite",
+      "portraitId": "bandit_01.png",
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "bandit_forest_gang",
+      "name": "Лесные разбойники",
+      "kind": "bandit",
+      "npcTemplateId": "npc_bandit_02",
+      "worldSpriteId": "camp_world_sprite_2",
+      "portraitId": "bandit_02.png",
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "bandit_plains_gang",
+      "name": "Степные разбойники",
+      "kind": "bandit",
+      "npcTemplateId": "npc_bandit_03",
+      "worldSpriteId": "camp_world_sprite",
+      "portraitId": "bandit_03.png",
+      "isEnabled": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ],
+  "routes": [
+    {
+      "id": "route_bandit_mountain_patrol",
+      "name": "Горный патруль разбойников",
+      "waypoints": [
+        {
+          "zoneId": "zone_mountain_pass",
+          "stopDurationMin": 30,
+          "stopDurationMax": 60
+        },
+        {
+          "zoneId": "zone_mountain_north",
+          "stopDurationMin": 20,
+          "stopDurationMax": 45
+        },
+        {
+          "zoneId": "zone_mountain_pass",
+          "stopDurationMin": 30,
+          "stopDurationMax": 60
+        }
+      ],
+      "travelTimingDevMinutes": 8,
+      "travelTimingReleaseHours": 5,
+      "dangerLevel": 7,
+      "restChance": 0.4,
+      "allowedArchetypes": ["bandit_mountain_gang"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "route_bandit_forest_patrol",
+      "name": "Лесной патруль разбойников",
+      "waypoints": [
+        {
+          "zoneId": "zone_forest_north",
+          "stopDurationMin": 25,
+          "stopDurationMax": 50
+        },
+        {
+          "zoneId": "zone_forest_middle",
+          "stopDurationMin": 20,
+          "stopDurationMax": 45
+        },
+        {
+          "zoneId": "zone_forest_south",
+          "stopDurationMin": 25,
+          "stopDurationMax": 50
+        }
+      ],
+      "travelTimingDevMinutes": 9,
+      "travelTimingReleaseHours": 5,
+      "dangerLevel": 6,
+      "restChance": 0.35,
+      "allowedArchetypes": ["bandit_forest_gang"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "route_bandit_plains_patrol",
+      "name": "Степной патруль разбойников",
+      "waypoints": [
+        {
+          "zoneId": "zone_plains",
+          "stopDurationMin": 20,
+          "stopDurationMax": 40
+        },
+        {
+          "zoneId": "zone_plains_east",
+          "stopDurationMin": 15,
+          "stopDurationMax": 35
+        },
+        {
+          "zoneId": "zone_plains",
+          "stopDurationMin": 20,
+          "stopDurationMax": 40
+        }
+      ],
+      "travelTimingDevMinutes": 7,
+      "travelTimingReleaseHours": 4,
+      "dangerLevel": 5,
+      "restChance": 0.3,
+      "allowedArchetypes": ["bandit_plains_gang"],
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ],
+  "spawnRules": [
+    {
+      "id": "spawn_bandits_mountains",
+      "name": "Бандиты в горах",
+      "spawnType": "time_based",
+      "spawnTimeDevMinutes": 15,
+      "spawnTimeReleaseHours": 12,
+      "archetypeIds": ["bandit_mountain_gang"],
+      "minGroupSize": 2,
+      "maxGroupSize": 4,
+      "spawnWeight": 0.6,
+      "cooldownDev": 20,
+      "cooldownRelease": 12,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "spawn_bandits_forest",
+      "name": "Бандиты в лесу",
+      "spawnType": "time_based",
+      "spawnTimeDevMinutes": 12,
+      "spawnTimeReleaseHours": 10,
+      "archetypeIds": ["bandit_forest_gang"],
+      "minGroupSize": 2,
+      "maxGroupSize": 3,
+      "spawnWeight": 0.65,
+      "cooldownDev": 18,
+      "cooldownRelease": 10,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "spawn_bandits_plains",
+      "name": "Бандиты на степи",
+      "spawnType": "time_based",
+      "spawnTimeDevMinutes": 10,
+      "spawnTimeReleaseHours": 8,
+      "archetypeIds": ["bandit_plains_gang"],
+      "minGroupSize": 1,
+      "maxGroupSize": 3,
+      "spawnWeight": 0.55,
+      "cooldownDev": 15,
+      "cooldownRelease": 8,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    },
+    {
+      "id": "spawn_bandits_on_shortage",
+      "name": "Бандиты при нехватке товара",
+      "spawnType": "economy_based",
+      "archetypeIds": ["bandit_mountain_gang", "bandit_forest_gang"],
+      "minGroupSize": 2,
+      "maxGroupSize": 3,
+      "spawnWeight": 0.4,
+      "conditions": {
+        "supplyDeficit": true
+      },
+      "cooldownDev": 40,
+      "cooldownRelease": 6,
+      "isActive": true,
+      "createdAt": "2026-05-20T00:00:00Z",
+      "updatedAt": "2026-05-20T00:00:00Z"
+    }
+  ]
+}

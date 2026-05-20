@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { PlayerQuestState } from '../types/quest';
-import { WORLD_MAP_EXPLORATION_GRID_SIZE, getExplorationCellKeyFromPosition } from './worldMapExploration';
+import { WORLD_MAP_EXPLORATION_GRID_SIZE, type MapDiscoveryMarker } from './worldMapExploration';
 
 interface WorldMapViewerProps {
   isOpen: boolean;
   mapImagePath: string;
   fallbackMapImagePath?: string;
   playerPosition: { x: number; y: number };
+  playerAvatarUrl?: string | null;
   discoveredCells?: string[];
+  discoveryMarkers?: MapDiscoveryMarker[];
   questMarkers?: QuestMarkerDefinition[];
   playerQuestStates?: PlayerQuestState[];
   trackedMarkerId?: string | null;
@@ -26,12 +28,11 @@ export function WorldMapViewer({
   mapImagePath,
   fallbackMapImagePath,
   playerPosition,
+  playerAvatarUrl = null,
   discoveredCells = [],
+  discoveryMarkers = [],
   questMarkers = [],
-  playerQuestStates = [],
   trackedMarkerId = null,
-  trackedQuestId = null,
-  trackedObjectiveId = null,
   onClose,
 }: WorldMapViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -62,66 +63,10 @@ export function WorldMapViewer({
     return cells;
   }, [discoveredSet]);
 
-  const questStateByQuestId = useMemo(() => {
-    const map = new Map<string, PlayerQuestState>();
-    for (const state of playerQuestStates) {
-      if (!state?.questId) {
-        continue;
-      }
-      map.set(state.questId, state);
-    }
-    return map;
-  }, [playerQuestStates]);
-
-  const visibleViewerMarkers = useMemo(() => {
-    return questMarkers
-      .filter((marker) => marker.mapId === 'worldmap-main')
-      .filter((marker) => marker.showOnMiniMap !== false)
-      .filter((marker) => {
-        const linkedQuestId = (marker.linkedQuestId ?? '').trim();
-        const state = linkedQuestId ? questStateByQuestId.get(linkedQuestId) ?? null : null;
-        if (state && (state.status === 'completed' || state.status === 'failed')) {
-          return false;
-        }
-
-        const markerObjectiveId = String(marker.linkedObjectiveId ?? marker.objectiveId ?? '').trim();
-        if (state && markerObjectiveId && state.completedObjectiveIds.includes(markerObjectiveId)) {
-          return false;
-        }
-
-        const visibility = marker.miniMapVisibility ?? 'always';
-        if (visibility === 'hidden') {
-          return false;
-        }
-
-        const isDiscovered = discoveredSet.has(getExplorationCellKeyFromPosition(marker.x, marker.y));
-        if (visibility === 'discoveredOnly' && !isDiscovered) {
-          return false;
-        }
-
-        if (visibility === 'selectedQuestOnly') {
-          if (!trackedQuestId) {
-            return false;
-          }
-
-          const markerQuestId = (marker.linkedQuestId ?? '').trim();
-          if (markerQuestId !== trackedQuestId) {
-            return false;
-          }
-
-          if (trackedObjectiveId) {
-            const markerObjectiveId = String(
-              marker.linkedObjectiveId ?? marker.objectiveId ?? '',
-            ).trim();
-            if (markerObjectiveId && markerObjectiveId !== trackedObjectiveId) {
-              return false;
-            }
-          }
-        }
-
-        return true;
-      });
-  }, [discoveredSet, questMarkers, questStateByQuestId, trackedObjectiveId, trackedQuestId]);
+  const trackedMarker = useMemo(
+    () => questMarkers.find((marker) => marker.id === trackedMarkerId && marker.mapId === 'worldmap-main') ?? null,
+    [questMarkers, trackedMarkerId],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -325,17 +270,27 @@ export function WorldMapViewer({
             />
             {imageLoaded ? (
               <>
-                {visibleViewerMarkers.map((marker) => (
-                    <span
-                      key={marker.id}
-                      className={`wm-viewer-marker ${trackedMarkerId === marker.id ? 'is-tracked' : ''}`}
-                      style={{
-                        left: `${marker.x * 100}%`,
-                        top: `${marker.y * 100}%`,
-                      }}
-                      title={marker.title || marker.id}
-                    />
-                  ))}
+                {discoveryMarkers.map((marker) => (
+                  <span
+                    key={marker.id}
+                    className={`wm-viewer-discovery-marker is-${marker.entityType}`}
+                    style={{
+                      left: `${marker.x * 100}%`,
+                      top: `${marker.y * 100}%`,
+                    }}
+                    title={marker.title}
+                  />
+                ))}
+                {trackedMarker ? (
+                  <span
+                    className="wm-viewer-marker is-tracked"
+                    style={{
+                      left: `${trackedMarker.x * 100}%`,
+                      top: `${trackedMarker.y * 100}%`,
+                    }}
+                    title={trackedMarker.title || trackedMarker.id}
+                  />
+                ) : null}
                 {hiddenFogCells.map((cell) => (
                   <span
                     key={cell.key}
@@ -349,10 +304,11 @@ export function WorldMapViewer({
                   />
                 ))}
                 <span
-                  className="wm-viewer-player-marker"
+                  className={playerAvatarUrl ? "wm-viewer-player-avatar-marker" : "wm-viewer-player-marker"}
                   style={{
                     left: `${playerPosition.x * 100}%`,
                     top: `${playerPosition.y * 100}%`,
+                    ...(playerAvatarUrl ? { backgroundImage: `url("${playerAvatarUrl}")` } : {}),
                   }}
                   title="Игрок"
                 />

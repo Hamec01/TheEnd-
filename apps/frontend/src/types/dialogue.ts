@@ -92,6 +92,7 @@ export interface DialogueCondition {
     | 'faction_reputation'
     | 'kingdom_reputation'
     | 'gold_at_least'
+    | 'player_stat_min'
     | 'npc_disposition'
     | 'time_of_day'
     | 'global_flag'
@@ -155,9 +156,17 @@ export interface DialogueAction {
     | 'open_dialogue'
     | 'openTraining'
     | 'open_training'
+    | 'healPlayerFull'
+    | 'heal_player_full'
+    | 'fullHeal'
+    | 'full_heal'
+    | 'restoreHp'
+    | 'restore_hp'
+    | 'heal'
     | 'setNpcDisposition'
     | 'setGlobalFlag';
   npcId?: string;
+  merchantId?: string;
   trainerNpcId?: string;
   questId?: string;
   objectiveId?: string;
@@ -170,6 +179,8 @@ export interface DialogueAction {
   key?: string;
   value?: string | number | boolean;
   amount?: number;
+  mode?: string;
+  costGold?: number;
 }
 
 export interface DialogueValidationWorldData {
