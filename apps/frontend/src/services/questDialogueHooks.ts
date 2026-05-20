@@ -11,6 +11,7 @@ import {
   type QuestRuntimePlayer,
 } from './questRuntime';
 import { getQuestById } from './questRepository';
+import { playerHasProfessionCompat } from './professionCompat';
 
 export type DialogueQuestActionType =
   | 'startQuest'
@@ -69,7 +70,7 @@ export function checkDialogueQuestCondition(player: QuestRuntimePlayer, conditio
     return false;
   }
 
-  if (condition.requiredProfessionId && player.professionId !== condition.requiredProfessionId) {
+  if (condition.requiredProfessionId && !playerHasProfessionCompat(player, condition.requiredProfessionId)) {
     return false;
   }
 

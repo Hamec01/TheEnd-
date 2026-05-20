@@ -5,6 +5,7 @@ import type {
   ItemDefinition,
   StatBlock,
 } from "@theend/rpg-domain";
+import { PROFESSION_DEFINITIONS } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
 import type { CustomArenaNpcPayload, NearbyPvpPlayer } from "../api";
 import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
@@ -110,6 +111,10 @@ import {
   type QuestRuntimePlayer,
 } from "../services/questRuntime";
 import {
+  getAllCompatibleProfessionIds,
+  getLegacyProfessionIdFromProfessions,
+} from "../services/professionCompat";
+import {
   findMatchingQuestInteractions,
   getAvailableQuestInteractionChoices,
   runQuestInteractionEffects,
@@ -167,7 +172,7 @@ import {
 } from "./playerMovementSettings";
 import { useWorldSnapshot } from "../services/useWorldSimulation";
 
-const WORLD_ENTITY_INTERACTION_DISTANCE = 0.018;
+const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 
 type LocationView = "map" | "city" | "location";
 type ActiveWorldModal =
@@ -694,6 +699,7 @@ interface WorldMapScreenProps {
   chatLines: string[];
   onOpenStats: () => void;
   onOpenInventory: () => void;
+  onOpenProfessions: () => void;
   onOpenCharacter: () => void;
   onOpenEquipment: () => void;
   onOpenClan: () => void;
@@ -752,6 +758,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     chatLines,
     onOpenStats,
     onOpenInventory,
+    onOpenProfessions,
     onOpenCharacter,
     onOpenEquipment,
     onOpenClan,
@@ -893,6 +900,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<WorldSimulationSnapshot["activeEntities"][number] | null>(null);
   const [pendingWorldEntityInteractionId, setPendingWorldEntityInteractionId] =
     useState<string | null>(null);
+  const [engagedWorldEntityId, setEngagedWorldEntityId] = useState<string | null>(null);
+  const [engagedWorldEntityAnchor, setEngagedWorldEntityAnchor] = useState<{ x: number; y: number } | null>(null);
   const [travelExhausted, setTravelExhausted] = useState(false);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
@@ -932,16 +941,32 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeInteractionChoices, setActiveInteractionChoices] = useState<QuestInteractionChoice[]>([]);
   const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
   const { snapshot: worldSnapshot } = useWorldSnapshot();
+  const questRuntimeProfessionCompat = useMemo(
+    () => ({
+      professions: character.professions,
+      // TODO professions-v2: remove legacy professionId after all content/runtime checks use professions array.
+      professionId: getLegacyProfessionIdFromProfessions(character.professions),
+    }),
+    [character.professions],
+  );
+  const compatibleProfessionIds = useMemo(
+    () => {
+      const ids = new Set<string>([...getAllCompatibleProfessionIds(), ...PROFESSION_DEFINITIONS.map((entry) => entry.id)]);
+      return Array.from(ids);
+    },
+    [],
+  );
   const dialoguePlayer = useMemo(
     () => ({
       id: character.id,
       level: character.level,
       race: character.race,
+      ...questRuntimeProfessionCompat,
       stats: Object.fromEntries(
         Object.entries(character.activeStats ?? {}).map(([key, value]) => [key, Number(value ?? 0)]),
       ),
     }),
-    [character.activeStats, character.id, character.level, character.race],
+    [character.activeStats, character.id, character.level, character.race, questRuntimeProfessionCompat],
   );
   const refreshPlayerQuestStates = useCallback(() => {
     setPlayerQuestStates(
@@ -1004,19 +1029,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   useEffect(() => {
     const currentStamina = Math.max(0, Math.floor(battleStats.stamina));
-    const maxStamina = Math.max(0, character.maxStamina);
+    const staminaToResumeTravel = Math.max(1, walkStaminaCostPerSecond);
 
     if (!travelExhausted && currentStamina <= 0) {
       setTravelExhausted(true);
-      onStatus("Вы вымотались. Нужно остановиться и дождаться полного восстановления выносливости.");
+      onStatus("Вы вымотались. Нужно остановиться и дождаться, пока выносливости снова хватит на шаг.");
       return;
     }
 
-    if (travelExhausted && currentStamina >= maxStamina && maxStamina > 0) {
+    if (travelExhausted && currentStamina >= staminaToResumeTravel) {
       setTravelExhausted(false);
-      onStatus("Выносливость восстановлена. Можно снова идти.");
+      onStatus("Выносливости достаточно для ходьбы. Можно снова идти.");
     }
-  }, [battleStats.stamina, character.maxStamina, onStatus, travelExhausted]);
+  }, [battleStats.stamina, onStatus, travelExhausted, walkStaminaCostPerSecond]);
 
   useEffect(() => {
     const handleControlSchemeChanged = (event: Event) => {
@@ -1241,6 +1266,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         id: character.id,
         level: character.level,
         race: character.race,
+        ...questRuntimeProfessionCompat,
         activeQuestIds: playerQuestStates.filter((entry) => entry.status === "active").map((entry) => entry.questId),
         completedQuestIds: playerQuestStates.filter((entry) => entry.status === "completed").map((entry) => entry.questId),
         itemIds: inventory.items.filter((entry) => entry.quantity > 0).map((entry) => entry.itemId),
@@ -1292,6 +1318,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     character.race,
     inventory.items,
     playerQuestStates,
+    questRuntimeProfessionCompat,
     questDefinitions,
     questMarkers,
   ]);
@@ -1579,7 +1606,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         lootTables: validationSnapshot?.lootTables as unknown[] | undefined,
         battleMaps: validationSnapshot?.battleMaps as unknown[] | undefined,
         items: validationSnapshot?.items as unknown[] | undefined,
-        professionIds: validationSnapshot?.skills?.map((skill) => skill.id),
+        professionIds: compatibleProfessionIds,
       }),
     [
       npcs,
@@ -1589,7 +1616,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       validationSnapshot?.battleMaps,
       validationSnapshot?.items,
       validationSnapshot?.lootTables,
-      validationSnapshot?.skills,
+      compatibleProfessionIds,
       zones,
     ],
   );
@@ -2226,8 +2253,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [questMarkers, queueEditorSave, regions, worldMapMode, zones]);
 
   useEffect(() => {
-    if (skipNextSettingsPersistRef.current) {
-      skipNextSettingsPersistRef.current = false;
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -2752,6 +2778,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         id: character.id,
         level: character.level,
         race: character.race,
+        ...questRuntimeProfessionCompat,
         itemIds: inventory.items
           .filter((item) => item.quantity > 0)
           .map((item) => item.itemId),
@@ -2876,6 +2903,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             id: character.id,
             level: character.level,
             race: character.race,
+            ...questRuntimeProfessionCompat,
           },
           zone.id,
           questPool,
@@ -2916,6 +2944,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onStatus,
       playerQuestStates,
       questInteractions,
+      questRuntimeProfessionCompat,
       appendQuestRuntimeLogsToSystemChat,
       applyCompletedQuestRewardsToChat,
       worldMapMode,
@@ -3010,6 +3039,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       level: character.level,
       race: character.race,
       classId: undefined,
+      ...questRuntimeProfessionCompat,
       itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
     };
 
@@ -3066,6 +3096,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     playerPosition.x,
     playerPosition.y,
     questInteractions,
+    questRuntimeProfessionCompat,
     zones,
     worldMapMode,
   ]);
@@ -3883,7 +3914,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [pendingWorldEntityInteractionId, selectedWorldEntity, worldSnapshot?.activeEntities]);
 
   const worldEntityApproachTarget = useMemo(() => {
-    if (!pendingWorldEntityInteraction) {
+    if (!pendingWorldEntityInteraction || engagedWorldEntityId) {
       return null;
     }
 
@@ -3891,7 +3922,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       x: pendingWorldEntityInteraction.coordinates.x,
       y: pendingWorldEntityInteraction.coordinates.y,
     };
-  }, [pendingWorldEntityInteraction]);
+  }, [engagedWorldEntityId, pendingWorldEntityInteraction]);
 
   const isWithinWorldEntityInteractionRange = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     return Math.hypot(
@@ -3902,10 +3933,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const handleWorldEntityClick = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     const liveEntity = worldSnapshot?.activeEntities.find((entry) => entry.id === entity.id) ?? entity;
-    setSelectedWorldEntity(liveEntity);
+    if (engagedWorldEntityId && engagedWorldEntityId !== liveEntity.id) {
+      return;
+    }
 
+    setSelectedWorldEntity(liveEntity);
+    setEngagedWorldEntityAnchor(null);
     setPendingWorldEntityInteractionId(liveEntity.id);
-  }, [worldSnapshot?.activeEntities]);
+  }, [engagedWorldEntityId, worldSnapshot?.activeEntities]);
 
   useEffect(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -3924,6 +3959,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     setSelectedWorldEntity(pendingWorldEntityInteraction);
+    setEngagedWorldEntityId(pendingWorldEntityInteraction.id);
+    setEngagedWorldEntityAnchor({
+      x: pendingWorldEntityInteraction.coordinates.x,
+      y: pendingWorldEntityInteraction.coordinates.y,
+    });
     setPendingWorldEntityInteractionId(null);
     interactWithWorldEntity(pendingWorldEntityInteraction);
   }, [
@@ -3932,6 +3972,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     pendingWorldEntityInteraction,
     pendingWorldEntityInteractionId,
     worldSnapshot,
+  ]);
+
+  useEffect(() => {
+    if (!engagedWorldEntityId) {
+      return;
+    }
+
+    const hasOpenInteractionUi = dialogueRunner.state.isOpen
+      || npcQuestSceneModal !== null
+      || activeWorldModal !== null;
+
+    if (hasOpenInteractionUi) {
+      return;
+    }
+
+    setEngagedWorldEntityId(null);
+    setEngagedWorldEntityAnchor(null);
+  }, [
+    activeWorldModal,
+    dialogueRunner.state.isOpen,
+    engagedWorldEntityId,
+    npcQuestSceneModal,
   ]);
 
   const buildWorldEntityCombatEnemies = useCallback((
@@ -5575,6 +5637,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         id: character.id,
         level: character.level,
         race: character.race,
+        ...questRuntimeProfessionCompat,
         itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
       };
 
@@ -6229,6 +6292,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         meatValue={Math.max(0, character.activeStats.hp - 160)}
         herbValue={Math.max(0, character.activeStats.perception + 2)}
         onStats={onOpenStats}
+        onProfessions={onOpenProfessions}
         onSkills={onOpenSkills}
         onInventory={onOpenInventory}
         onCharacter={onOpenCharacter}
@@ -6310,8 +6374,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 onPlayerPosition={handlePlayerPosition}
                 onPlayerState={handlePlayerState}
                 playerTargetPosition={worldEntityApproachTarget}
-                movementLocked={worldMapMode === "play" && locationView === "map" && travelExhausted}
+                movementLocked={
+                  worldMapMode === "play"
+                  && locationView === "map"
+                  && (travelExhausted || Boolean(engagedWorldEntityId))
+                }
                 onWorldEntityClick={handleWorldEntityClick}
+                lockedWorldEntityId={engagedWorldEntityId}
+                lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
                 controlScheme={movementControlScheme}
                 playerSpeed={travelMoveSpeed}
                 sprintActive={sprintActive}
@@ -6330,13 +6400,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             </div>
           ) : locationView === "city" ? (
             <section className="wm-map card">
-              <div className="wm-city-view-controls">
-                <button type="button" onClick={() => setCityZoom((current) => Math.min(MAX_CITY_ZOOM, current + 0.08))}>+</button>
-                <button type="button" onClick={() => setCityZoom((current) => Math.max(MIN_CITY_ZOOM, current - 0.08))}>-</button>
-                <button type="button" onClick={resetCityTransform}>
-                  {"\u0412 \u0446\u0435\u043d\u0442\u0440"}
-                </button>
-              </div>
               <div
                 className="wm-map-surface wm-city-surface"
                 onWheel={handleCityWheel}

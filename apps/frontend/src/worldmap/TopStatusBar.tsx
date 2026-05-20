@@ -14,6 +14,7 @@ interface TopStatusBarProps {
   onStats: () => void;
   onSkills: () => void;
   onInventory: () => void;
+  onProfessions: () => void;
   onCharacter: () => void;
   onEquipment: () => void;
   onQuests: () => void;
@@ -39,6 +40,7 @@ export function TopStatusBar(props: TopStatusBarProps) {
     onStats,
     onSkills,
     onInventory,
+    onProfessions,
     onCharacter,
     onEquipment,
     onQuests,
@@ -71,6 +73,7 @@ export function TopStatusBar(props: TopStatusBarProps) {
       <nav className="wm-nav">
         <button onClick={onStats}>Статы</button>
         <button onClick={onInventory}>Инвентарь</button>
+        <button onClick={onProfessions}>Профессии</button>
         <button onClick={onSkills}>Навыки</button>
         <button onClick={onCharacter}>Персонаж</button>
         <button onClick={onMap}>Карта (M)</button>

@@ -1,4 +1,10 @@
-import type { Equipment, InventoryState, Race, StatBlock } from '@theend/rpg-domain';
+import type {
+  Equipment,
+  InventoryState,
+  PlayerProfessionsState,
+  Race,
+  StatBlock,
+} from '@theend/rpg-domain';
 
 export interface ArenaCharacter {
   id: string;
@@ -16,6 +22,7 @@ export interface ArenaCharacter {
   currentStamina: number;
   maxStamina: number;
   hpRegenPerTurn?: number;
+  professions?: PlayerProfessionsState;
 }
 
 export interface ArenaPlayerState {

@@ -8,6 +8,7 @@ import {
   saveRandomZoneCooldown,
 } from './questRepository';
 import { validateQuest } from './questValidator';
+import type { PlayerProfessionsState } from '@theend/rpg-domain';
 import type {
   PlayerQuestState,
   QuestCondition,
@@ -22,6 +23,7 @@ import { getAllDialogues } from './dialogueRepository';
 import { getAllNpcs } from './npcRepository';
 import { getQuestItems } from './questRepository';
 import { ITEMS } from '@theend/rpg-domain';
+import { playerHasProfessionCompat } from './professionCompat';
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
@@ -33,6 +35,7 @@ export interface QuestRuntimePlayer {
   race?: string;
   classId?: string;
   professionId?: string;
+  professions?: PlayerProfessionsState;
   gold?: number;
   stats?: Record<string, number | undefined>;
   flags?: Record<string, unknown>;
@@ -250,7 +253,7 @@ function evaluateConditionsDetailed(
         }
         break;
       case 'player_profession':
-        if (typeof value === 'string' && player.professionId !== value) {
+        if (typeof value === 'string' && !playerHasProfessionCompat(player, value)) {
           return false;
         }
         break;

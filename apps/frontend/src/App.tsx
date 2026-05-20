@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AdminSkillDefinition,
   EMPTY_EQUIPMENT,
+  normalizePlayerProfessionsState,
   ITEMS,
   RACE_DEFINITIONS,
   TeamSide,
@@ -60,6 +61,7 @@ import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/GodmodeConsole';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
+import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
 import {
@@ -111,6 +113,11 @@ import {
   writeStringArrayStorage,
   writeStringNumberRecordStorage,
 } from './utils/playerInventory';
+import {
+  loadPlayerProfessionsState,
+  mergePlayerProfessionsState,
+  savePlayerProfessionsState,
+} from './services/playerProfessions';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -167,7 +174,7 @@ interface CharacterCreationProfile {
 
 type Phase = 'setup' | 'hub';
 type SetupStep = 'account' | 'character';
-type OverlayPanel = 'character' | 'stats' | 'inventory' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
+type OverlayPanel = 'character' | 'stats' | 'inventory' | 'professions' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
 type ArenaSetupMode = '1v1' | '1v3' | '1v10' | 'random';
 type MerchantMode = 'buy' | 'sell';
 type EquipmentSlot = keyof Equipment;
@@ -1701,6 +1708,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [character?.id, playerAvatarUrl]);
 
   useEffect(() => {
+    if (!character?.id) {
+      return;
+    }
+
+    savePlayerProfessionsState(character.id, normalizePlayerProfessionsState(character.professions));
+  }, [character?.id, character?.professions]);
+
+  useEffect(() => {
     if (phase !== 'hub') {
       return;
     }
@@ -1851,7 +1866,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   ]);
 
   function applyHubState(hub: HubStatePayload): void {
-    setCharacter(hub.character);
+    const normalizedHubProfessions = normalizePlayerProfessionsState(hub.character.professions);
+    const storedProfessions = loadPlayerProfessionsState(hub.character.id);
+    const mergedProfessions = mergePlayerProfessionsState(normalizedHubProfessions, storedProfessions);
+
+    setCharacter({
+      ...hub.character,
+      professions: mergedProfessions,
+    });
+    savePlayerProfessionsState(hub.character.id, mergedProfessions);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
     setActionSlots(hub.actionSlots ?? createEmptyActionSlots());
@@ -1865,6 +1888,21 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const handleRuntimeInventoryChanged = useCallback(() => {
     setRuntimeInventoryRevision((current) => current + 1);
+  }, []);
+
+  const handlePlayerProfessionsChange = useCallback((nextState: ArenaCharacter['professions']) => {
+    const normalized = normalizePlayerProfessionsState(nextState);
+    setCharacter((current) => {
+      if (!current) {
+        return current;
+      }
+
+      savePlayerProfessionsState(current.id, normalized);
+      return {
+        ...current,
+        professions: normalized,
+      };
+    });
   }, []);
 
   const applyFullHealingService = useCallback(async (options?: { costGold?: number }) => {
@@ -3966,6 +4004,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             setOverlayPanel('character');
             setStatus('Открыт инвентарь.');
           }}
+          onOpenProfessions={() => {
+            setOverlayPanel('professions');
+            setStatus('Открыт список профессий.');
+          }}
           onOpenCharacter={openCharacterOverlay}
           onOpenEquipment={openEquipmentOverlay}
           onOpenClan={() => setOverlayPanel('clan')}
@@ -4070,6 +4112,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
               </button>
             </section>
           </div>
+        ) : null}
+
+        {overlayPanel === 'professions' && character ? (
+          <PlayerProfessionsPanel
+            professionsState={normalizePlayerProfessionsState(character.professions)}
+            onClose={() => setOverlayPanel(null)}
+            onStatus={setStatus}
+            onChange={handlePlayerProfessionsChange}
+          />
         ) : null}
 
         {overlayPanel === 'arena' ? (

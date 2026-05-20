@@ -16,6 +16,7 @@ import {
   type QuestRuntimePlayer,
 } from './questRuntime';
 import { getQuestById } from './questRepository';
+import { playerHasProfessionCompat } from './professionCompat';
 import type { DialogueAction, DialogueChoice, DialogueCondition, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
 
@@ -204,7 +205,7 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         }
         break;
       case 'player_profession':
-        if (typeof value === 'string' && player.professionId !== value) {
+        if (typeof value === 'string' && !playerHasProfessionCompat(player, value)) {
           return false;
         }
         break;

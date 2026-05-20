@@ -67,3 +67,29 @@
 2. Поднять PostgreSQL и применить Prisma migrations для backend.
 3. Запустить backend и frontend workspace-скриптами.
 4. Для проверки типов использовать workspace typecheck команды.
+
+## Admin Panel Performance Investigation
+
+The admin panel currently feels slow mainly because of a few cumulative bottlenecks:
+
+- `apps/frontend/src/admin/AdminApp.tsx` statically imports many admin pages, so the initial admin bundle becomes very large.
+- `apps/frontend/src/services/content/contentApi.ts` routes almost every collection read through `ensureContentBackendReady()`, which first performs a full content snapshot/bootstrap step.
+- `apps/frontend/src/services/content/legacyContentMigration.ts` can still read and compare large legacy localStorage datasets before normal admin work begins.
+- `apps/frontend/src/services/content/models.ts` stores images as full `dataUrl` strings, and `apps/frontend/src/services/content/imageService.ts` returns all images with their payloads in one go.
+- Several heavy pages load too many collections at once with `Promise.all(...)`, especially `LocationsPage`, `NpcsPage`, `DialoguesPage`, and `ItemsPage`.
+- Image-heavy pages such as `ImagesPage` then render many decoded previews immediately, which blocks the main thread further.
+
+### Highest-impact fixes
+
+1. Remove the full snapshot/bootstrap requirement from normal collection reads.
+2. Split image metadata from image payload so admin lists do not load all `dataUrl` content up front.
+3. Lazy-load admin routes instead of statically importing every page into the initial admin bundle.
+4. Load secondary collections only when the active tab actually needs them.
+5. Virtualize long image/card lists or lazy-render previews as they scroll into view.
+
+### Practical priority order
+
+- Very high impact: `contentApi` bootstrap path and image payload strategy.
+- High impact: route-level code splitting in `AdminApp`.
+- Medium impact: page-by-page lazy data loading.
+- Medium impact: virtualization and deferred preview rendering.

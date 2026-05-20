@@ -38,6 +38,7 @@ __exportStar(require("./items"), exports);
 __exportStar(require("./merchants"), exports);
 __exportStar(require("./inventory"), exports);
 __exportStar(require("./equipment"), exports);
+__exportStar(require("./professions"), exports);
 __exportStar(require("./shop"), exports);
 __exportStar(require("./battle-map"), exports);
 __exportStar(require("./progression"), exports);

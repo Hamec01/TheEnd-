@@ -43,6 +43,12 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin/world-sim', label: '🌍 Живой мир' },
     ],
   },
+  {
+    title: 'Карьера',
+    links: [
+      { path: '/admin/professions', label: 'Профессии' },
+    ],
+  },
 ];
 
 export function AdminLayout({ title, currentPath, onNavigate, onLogout, isEditorRoute = false, children }: AdminLayoutProps) {

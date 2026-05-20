@@ -191,6 +191,8 @@ interface WorldMapCanvasProps {
   activeEditorLayer?: MapEditorLayer;
   layerVisibility?: LayerVisibilityState;
   onWorldEntityClick?: (entity: WorldSimulationSnapshot['activeEntities'][number]) => void;
+  lockedWorldEntityId?: string | null;
+  lockedWorldEntityCoordinates?: { x: number; y: number } | null;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -385,6 +387,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       zones: 'visible',
       passability: 'visible',
     },
+    lockedWorldEntityId = null,
+    lockedWorldEntityCoordinates = null,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -890,6 +894,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return undefined;
     }
 
+    const resolveNonMovingState = (): 'idle' | 'in_zone' | 'in_city' => {
+      if (currentZone?.type === 'city') {
+        return 'in_city';
+      }
+      if (currentZone) {
+        return 'in_zone';
+      }
+      return 'idle';
+    };
+
     const matchesMovementKey = (key: string) => {
       const normalized = key.toLowerCase();
       if (controlScheme === 'wasd') {
@@ -935,6 +949,15 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       event.preventDefault();
       movementKeysRef.current[direction] = false;
+
+      const anyMovementKeyStillPressed = movementKeysRef.current.up
+        || movementKeysRef.current.down
+        || movementKeysRef.current.left
+        || movementKeysRef.current.right;
+      if (!anyMovementKeyStillPressed) {
+        playerStateRef.current = 'idle';
+        onPlayerState?.(resolveNonMovingState());
+      }
     };
 
     const handleBlur = () => {
@@ -944,6 +967,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         left: false,
         right: false,
       };
+      playerStateRef.current = 'idle';
+      onPlayerState?.(resolveNonMovingState());
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -954,7 +979,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [controlScheme, mode, movementLocked]);
+  }, [controlScheme, currentZone, mode, movementLocked, onPlayerState]);
 
   function updateZones(nextZones: WorldMapZone[], nextSelectedZoneId: string | null = selectedZoneId) {
     onZonesChange?.(nextZones);
@@ -1794,6 +1819,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           <ActiveWorldEntitiesLayer
             camera={playCamera}
             onEntityClick={onWorldEntityClick}
+            lockedEntity={
+              lockedWorldEntityId && lockedWorldEntityCoordinates
+                ? {
+                  id: lockedWorldEntityId,
+                  coordinates: lockedWorldEntityCoordinates,
+                }
+                : null
+            }
           />
         ) : null}
 

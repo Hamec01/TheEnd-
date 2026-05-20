@@ -11,6 +11,7 @@ import type {
   DistanceBand,
   TargetZone,
   TeamSide,
+  PlayerProfessionsState,
   CombatCommand,
   CombatPlanErrorCode,
   CombatPlanWarning,
@@ -66,6 +67,7 @@ export interface ArenaHubState {
     currentStamina: number;
     maxStamina: number;
     hpRegenPerTurn?: number;
+    professions?: PlayerProfessionsState;
   };
   inventory: InventoryState;
   equipment: Equipment;

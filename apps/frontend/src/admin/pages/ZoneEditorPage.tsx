@@ -68,6 +68,7 @@ export function ZoneEditorPage() {
         chatLines={chatLines}
         onOpenStats={() => setStatus('Admin editor mode: stats panel disabled.')}
         onOpenInventory={() => setStatus('Admin editor mode: inventory panel disabled.')}
+        onOpenProfessions={() => setStatus('Admin editor mode: professions panel disabled.')}
         onOpenCharacter={() => setStatus('Admin editor mode: character panel disabled.')}
         onOpenEquipment={() => setStatus('Admin editor mode: equipment panel disabled.')}
         onOpenClan={() => setStatus('Admin editor mode: clan panel disabled.')}

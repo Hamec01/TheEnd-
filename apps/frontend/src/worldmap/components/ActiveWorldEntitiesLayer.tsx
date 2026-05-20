@@ -22,9 +22,11 @@ function isPortraitMarker(entity: ActiveEntity): boolean {
 export function ActiveWorldEntitiesLayer({
   camera,
   onEntityClick,
+  lockedEntity,
 }: {
   camera: { left: number; top: number; width: number; height: number };
   onEntityClick: (entity: ActiveEntity) => void;
+  lockedEntity?: { id: string; coordinates: { x: number; y: number } } | null;
 }) {
   const { snapshot, loading } = useWorldSnapshot();
   const [runtimeImages, setRuntimeImages] = useState<any[]>([]);
@@ -186,8 +188,12 @@ export function ActiveWorldEntitiesLayer({
   return (
     <div className="active-world-entities-layer">
       {displayEntities.map((entity) => {
-        const screenX = (entity.renderedCoordinates.x - camera.left) / camera.width;
-        const screenY = (entity.renderedCoordinates.y - camera.top) / camera.height;
+        const renderCoordinates = lockedEntity?.id === entity.id
+          ? lockedEntity.coordinates
+          : entity.renderedCoordinates;
+
+        const screenX = (renderCoordinates.x - camera.left) / camera.width;
+        const screenY = (renderCoordinates.y - camera.top) / camera.height;
         if (screenX < -0.05 || screenX > 1.05 || screenY < -0.05 || screenY > 1.05) {
           return null;
         }

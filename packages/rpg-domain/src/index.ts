@@ -21,6 +21,7 @@ export * from './items';
 export * from './merchants';
 export * from './inventory';
 export * from './equipment';
+export * from './professions';
 export * from './shop';
 export * from './battle-map';
 export * from './progression';
