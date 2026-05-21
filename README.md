@@ -1,95 +1,98 @@
 # TheEnd RPG
 
-Базовый монорепозиторий для браузерной онлайн-RPG:
+Монорепозиторий браузерной online-RPG с фокусом на:
+- тактический бой и серверный резолв;
+- квестовый и диалоговый runtime;
+- профессии (в первую очередь Горняк) и миниигры;
+- живой мир и экономические сценарии (торговые караваны, спавн-сущности, маршруты).
+
+## Технологический стек
 
 - Frontend: React + TypeScript + Vite
 - Backend: NestJS + TypeScript + Prisma + PostgreSQL
-- Общий домен: расовые правила, статы, расчёты боевых параметров
+- Shared domain: `packages/rpg-domain` (статы, профессии, боевые и прогрессионные контракты)
 
-Проект развивается как тактическая online-RPG с акцентом на позиционирование, очередность действий и честный серверный резолв боя.
-Клиент отвечает за планирование и визуализацию, а backend является источником истины для валидации команд, списания ресурсов и применения эффектов.
+## Структура репозитория
 
-## Структура
+- `apps/frontend` — клиент, world map, battle UI, админка контента
+- `apps/backend` — API, контент-сервис, игровые runtime-эндпойнты
+- `packages/rpg-domain` — общий домен для frontend/backend
+- `docs` — гайды, handoff-документы, runtime-отчеты
 
-- `apps/frontend` — UI: регистрация, создание персонажа, профильные экраны
-- `apps/backend` — API: аккаунты, персонажи, игровые правила
-- `packages/rpg-domain` — общие типы и расчёты (используются и на frontend, и на backend)
+## Текущий статус
 
-## Этап 1
+Проект находится в активной разработке и уже имеет рабочие вертикальные срезы: персонаж -> бой -> квесты/диалоги -> профессия Горняк -> world map runtime.
 
-- Регистрация аккаунта
-- Создание персонажа с выбором расы
-- Распределение 5 стартовых очков
-- Сохранение в PostgreSQL
-- Подготовка combat-ready snapshot
+### Что уже реализовано
 
-## Что уже реализовано
+#### Базовый игровой контур
+- Регистрация/вход и создание персонажа
+- Стартовые статы, прогрессия и состояние персонажа
+- Инвентарь/экипировка/навыки и связанный UI
 
-- Базовый PvE контур боя и старт/завершение combat-сессий
-- Контракт боевого плана в общем домене:
-	- команды раунда (CombatCommand)
-	- план раунда (CombatTurnPlan)
-	- нормализация и серверная валидация команд
-- Единый реестр стоимости действий (AP/STA/MP/HP) в packages/rpg-domain
-- Backend API для очереди команд:
-	- validate-plan
-	- submit-plan
-	- ready / cancel-ready
-	- undo / clear
-- Пошаговый резолв раунда на backend:
-	- snapshot планов на момент старта резолва
-	- инициатива и порядок выполнения
-	- revalidation перед каждой командой
-	- command_failed без обрыва всего раунда
-- Обновленные правила для срыва команд:
-	- повторная проверка target/range/line-of-sight/ресурсов/состояний актора
-	- при revalidation fail ресурсы не списываются
-- Friendly fire (P0) для area/cell эффектов:
-	- эффект применяется ко всем сущностям в зоне
-	- сервер считает affected targets в момент выполнения, а не при планировании
-	- events содержат friendlyFire и relationToCaster
-- Улучшенный battle UI:
-	- локальная очередь действий и подсказки по рискам
-	- warning для friendly fire
-	- предупреждение при нажатии Готово для опасного плана
+#### Тактический бой
+- Turn plan контракт (`CombatCommand`, `CombatTurnPlan`) в общем домене
+- Серверная валидация/перевалидация команд и резолв по инициативе
+- API управления планом раунда (`validate-plan`, `submit-plan`, `ready`, `undo`, `clear`)
+- Friendly fire и корректная обработка `command_failed` без падения всего раунда
 
-## Этап 2 (в процессе)
+#### Квесты и диалоги
+- Runtime-контур квестов: старт, прогресс шагов/целей, завершение/провал, награды
+- Диалоговый runtime с поддержкой квестовых action/condition сценариев
+- Совместимость с legacy-форматами квестовых действий в диалогах
+- Поддержка `objective_completed` / `objective_not_completed` в диалоговых условиях
 
-- Turn-based combat core
-- Расширение area/cell эффектов (line/cone/hazard/trap-trigger)
-- Более детальная логика AI с оценкой friendly fire риска
-- Полноценные эффекты статусов, резисты и иммунитеты
-- Дополнительные визуализации и UX подтверждения в боевом планировщике
+#### Профессии и миниигры
+- Модель профессий в домене: уровни, XP, очки навыков, ветки, изученные навыки
+- Полноценный контур профессии Горняк:
+  - шахты/глубины/таблицы блоков/опасностей/добычи;
+  - runtime добычи с рисками, временной сумкой и финализацией результата;
+  - always-available безопасный выход из шахты;
+  - перенос добычи/золота/XP только после подтверждения результата.
+- Панель профессий игрока + админ-редакторы навыков и веток
+
+#### Инструменты QA и контент-админка
+- GODMODE-консоль для быстрых проверок состояния персонажа и контента
+- Команды для QA по профессиям/шахтам, квестам, телепорту, торговцам и бою
+- Расширенная админка контента (NPC, диалоги, квесты, торговцы, майнинг-настройки)
+
+## Над чем ведется работа
+
+### 1) Симуляция живого мира и торговли
+- Интеграция world simulation в основной геймплейный цикл
+- Доработка маршрутов/спавн-правил для торговых сущностей
+- Связка торговых событий мира с экономикой игрока и world map слоем
+
+### 2) Квестовый слой
+- Расширение поддерживаемых action/effect сценариев
+- Углубление связки `quest interactions` с локациями/маркерами
+- Дополнительные проверки консистентности квестовых предметов и состояний
+
+### 3) Профессии
+- Расширение дерева профессий и эффектов (кроме Горняка)
+- Унификация миниигровых паттернов для будущих профессий
+- Улучшение UX обучения навыков, ветвления и дебага прогрессии
+
+### 4) Производительность админки
+- Снижение веса initial bundle админки
+- Ленивая загрузка тяжелых разделов и изображений
+- Оптимизация чтения контента без лишнего bootstrap-пути
 
 ## Локальный запуск
 
-1. Установить зависимости в корне репозитория.
-2. Поднять PostgreSQL и применить Prisma migrations для backend.
-3. Запустить backend и frontend workspace-скриптами.
-4. Для проверки типов использовать workspace typecheck команды.
+1. Установить зависимости в корне: `npm install`
+2. Поднять PostgreSQL для backend
+3. Применить миграции Prisma (в backend workspace)
+4. Запустить проект:
+   - frontend: `npm run dev:frontend`
+   - backend: `npm run dev:backend`
+5. Проверки:
+   - typecheck: `npm run typecheck`
+   - frontend tests: `npm run test --workspace @theend/frontend`
 
-## Admin Panel Performance Investigation
+## Полезные документы
 
-The admin panel currently feels slow mainly because of a few cumulative bottlenecks:
-
-- `apps/frontend/src/admin/AdminApp.tsx` statically imports many admin pages, so the initial admin bundle becomes very large.
-- `apps/frontend/src/services/content/contentApi.ts` routes almost every collection read through `ensureContentBackendReady()`, which first performs a full content snapshot/bootstrap step.
-- `apps/frontend/src/services/content/legacyContentMigration.ts` can still read and compare large legacy localStorage datasets before normal admin work begins.
-- `apps/frontend/src/services/content/models.ts` stores images as full `dataUrl` strings, and `apps/frontend/src/services/content/imageService.ts` returns all images with their payloads in one go.
-- Several heavy pages load too many collections at once with `Promise.all(...)`, especially `LocationsPage`, `NpcsPage`, `DialoguesPage`, and `ItemsPage`.
-- Image-heavy pages such as `ImagesPage` then render many decoded previews immediately, which blocks the main thread further.
-
-### Highest-impact fixes
-
-1. Remove the full snapshot/bootstrap requirement from normal collection reads.
-2. Split image metadata from image payload so admin lists do not load all `dataUrl` content up front.
-3. Lazy-load admin routes instead of statically importing every page into the initial admin bundle.
-4. Load secondary collections only when the active tab actually needs them.
-5. Virtualize long image/card lists or lazy-render previews as they scroll into view.
-
-### Practical priority order
-
-- Very high impact: `contentApi` bootstrap path and image payload strategy.
-- High impact: route-level code splitting in `AdminApp`.
-- Medium impact: page-by-page lazy data loading.
-- Medium impact: virtualization and deferred preview rendering.
+- `docs/PROFESSIONS_AND_MINING_TUTORIAL_RU.md` — полный гайд по профессиям и Горняку
+- `docs/GODMODE_CONSOLE_TUTORIAL.md` — команды dev-консоли для QA
+- `docs/THEEND_RUNTIME_JSON_GUIDE.md` — что реально работает в runtime-командах
+- `docs/LIVING_WORLD_INTEGRATION.md` — интеграция симуляции живого мира
