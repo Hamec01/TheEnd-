@@ -196,6 +196,56 @@ list skills fire
 
 ---
 
+### Профессии
+
+```txt
+profession list
+profession unlock mining
+profession remove mining
+
+profession xp add mining 100
+profession xp set mining 0
+profession level set mining 5
+profession points add mining 10
+profession points set mining 99
+
+profession skill learn mining mining_strong_swing
+profession skill reset mining
+
+profession branch choose mining mining_branch_deep_delver
+profession branch reset mining
+```
+
+Что это даёт:
+
+- `unlock` открывает профессию в профиле персонажа
+- `xp add` / `xp set` помогают быстро проверить рост уровня и начисление skill points
+- `level set` и `points set` позволяют собрать нужный тестовый билд за 1 шаг
+- `skill learn` и `branch choose` повторяют основные действия панели профессий
+- `skill reset` и `branch reset` очищают состояние для повторного прогона
+
+---
+
+### Горняк и шахты
+
+```txt
+mine open mine_teramor_old_iron
+mine close
+mine finish escaped
+mine finish retreated
+mine finish failed
+mine finish dead
+```
+
+Что важно:
+
+- кнопка `Выйти из шахты` теперь доступна всегда, пока забег активен
+- старый блок типа `exit` считается устаревшим и больше не нужен для выхода
+- `mine close` имитирует безопасный выход через кнопку выхода
+- `mine finish ...` быстро переводит забег в нужный итог для QA
+
+---
+
 ### Квесты
 
 ```txt
@@ -678,6 +728,56 @@ skill remove skill_firebolt
 list skills
 list skills fire
 ```
+
+---
+
+### Professions
+
+```txt
+profession list
+profession unlock mining
+profession remove mining
+
+profession xp add mining 100
+profession xp set mining 0
+profession level set mining 5
+profession points add mining 10
+profession points set mining 99
+
+profession skill learn mining mining_strong_swing
+profession skill reset mining
+
+profession branch choose mining mining_branch_deep_delver
+profession branch reset mining
+```
+
+This is the fastest way to test profession progression:
+
+- `unlock` opens the profession in the character profile
+- `xp add` / `xp set` help verify level growth and skill point gain
+- `level set` and `points set` let you build a test setup in one step
+- `skill learn` and `branch choose` mirror the profession UI actions
+- `skill reset` and `branch reset` clear the test state for another pass
+
+---
+
+### Mining / mine runs
+
+```txt
+mine open mine_teramor_old_iron
+mine close
+mine finish escaped
+mine finish retreated
+mine finish failed
+mine finish dead
+```
+
+Notes:
+
+- the `Выйти из шахты` button is always available while a run is active
+- legacy `exit` blocks are deprecated and no longer required for leaving a mine
+- `mine close` simulates a safe exit through the UI button
+- `mine finish ...` is a fast QA shortcut for terminal mine states
 
 ---
 

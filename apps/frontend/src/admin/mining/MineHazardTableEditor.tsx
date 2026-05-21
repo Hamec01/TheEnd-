@@ -1,246 +1,203 @@
-import React, { useState } from 'react';
-import { MineHazardTable } from '../../types/mining';
+import { useEffect, useState } from 'react';
+import type { MineHazardTable } from '../../types/mining';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import {
+  loadMineHazardTablesFromStorage,
+  loadMineHazardsFromStorage,
+  saveMineHazardTablesToStorage,
+} from '../../services/miningRepository';
+import { AdminFieldLabel } from '../adminUi';
 
 interface MineHazardTableEditorProps {
-  hazards?: Array<{ id: string; name: string }>;
   onSave?: (tables: MineHazardTable[]) => void;
 }
 
-export function MineHazardTableEditor({ hazards = [], onSave }: MineHazardTableEditorProps) {
+function emptyTable(): MineHazardTable {
+  return {
+    id: '',
+    name: '',
+    entries: [],
+  };
+}
+
+export function MineHazardTableEditor({ onSave }: MineHazardTableEditorProps) {
   const [tables, setTables] = useState<MineHazardTable[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<MineHazardTable>>({});
-  const [newFormOpen, setNewFormOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<MineHazardTable>(emptyTable());
+  const [status, setStatus] = useState('Готово');
+  const hazards = loadMineHazardsFromStorage();
 
-  const handleEdit = (table: MineHazardTable) => {
-    setEditingId(table.id);
-    setEditForm({ ...table });
-  };
-
-  const handleSaveEdit = () => {
-    if (editingId && editForm.id && editForm.name && editForm.entries) {
-      setTables(tables.map(t => t.id === editingId ? { ...t, ...editForm } : t));
-      setEditingId(null);
-      setEditForm({});
+  useEffect(() => {
+    const loaded = loadMineHazardTablesFromStorage();
+    setTables(loaded);
+    if (loaded.length > 0) {
+      setSelectedId(loaded[0]!.id);
+      setDraft(loaded[0]!);
     }
-  };
+  }, []);
 
-  const handleDelete = (id: string) => {
-    if (confirm('Удалить эту таблицу?')) {
-      setTables(tables.filter(t => t.id !== id));
+  function persist(next: MineHazardTable[], nextStatus: string) {
+    setTables(next);
+    saveMineHazardTablesToStorage(next);
+    onSave?.(next);
+    setStatus(nextStatus);
+  }
+
+  function startNew() {
+    setSelectedId(null);
+    setDraft(emptyTable());
+  }
+
+  function selectTable(id: string) {
+    const found = tables.find((entry) => entry.id === id);
+    if (!found) {
+      return;
     }
-  };
+    setSelectedId(id);
+    setDraft(found);
+  }
 
-  const handleNewTable = () => {
-    if (editForm.id && editForm.name) {
-      const newTable: MineHazardTable = {
-        id: editForm.id,
-        name: editForm.name,
-        entries: editForm.entries || [],
-      };
-      setTables([...tables, newTable]);
-      setEditForm({});
-      setNewFormOpen(false);
+  function patchEntry(index: number, patch: Partial<MineHazardTable['entries'][number]>) {
+    setDraft((current) => ({
+      ...current,
+      entries: current.entries.map((entry, entryIndex) => (entryIndex === index ? { ...entry, ...patch } : entry)),
+    }));
+  }
+
+  function addEntry() {
+    setDraft((current) => ({
+      ...current,
+      entries: [...current.entries, { hazardId: hazards[0]?.id ?? '', weight: 1, minDepth: 1, maxDepth: 3 }],
+    }));
+  }
+
+  function removeEntry(index: number) {
+    setDraft((current) => ({ ...current, entries: current.entries.filter((_, entryIndex) => entryIndex !== index) }));
+  }
+
+  function saveDraft() {
+    const normalized: MineHazardTable = {
+      ...draft,
+      id: draft.id.trim(),
+      name: draft.name.trim(),
+      entries: draft.entries
+        .map((entry) => ({
+          hazardId: entry.hazardId.trim(),
+          weight: Math.max(1, Math.floor(Number(entry.weight || 1))),
+          minDepth: entry.minDepth ? Math.max(1, Math.floor(Number(entry.minDepth))) : undefined,
+          maxDepth: entry.maxDepth ? Math.max(1, Math.floor(Number(entry.maxDepth))) : undefined,
+        }))
+        .filter((entry) => Boolean(entry.hazardId)),
+    };
+    if (!normalized.id || !normalized.name) {
+      setStatus('Заполните id и название таблицы опасностей.');
+      return;
     }
-  };
 
-  const handleAddEntry = () => {
-    const newEntries = [...(editForm.entries || [])];
-    newEntries.push({ hazardId: '', weight: 1, minDepth: 1, maxDepth: 10 });
-    setEditForm({ ...editForm, entries: newEntries });
-  };
+    if (selectedId) {
+      if (selectedId !== normalized.id && tables.some((entry) => entry.id === normalized.id)) {
+        setStatus(`Таблица опасностей с id ${normalized.id} уже существует.`);
+        return;
+      }
+      const next = tables.filter((entry) => entry.id !== selectedId).concat([normalized]);
+      setSelectedId(normalized.id);
+      persist(next, `Таблица опасностей сохранена: ${normalized.name}`);
+      return;
+    }
 
-  const handleUpdateEntry = (idx: number, field: string, value: unknown) => {
-    const newEntries = [...(editForm.entries || [])];
-    newEntries[idx] = { ...newEntries[idx], [field]: value };
-    setEditForm({ ...editForm, entries: newEntries });
-  };
+    if (tables.some((entry) => entry.id === normalized.id)) {
+      setStatus(`Таблица опасностей с id ${normalized.id} уже существует.`);
+      return;
+    }
+    const next = [...tables, normalized];
+    setSelectedId(normalized.id);
+    persist(next, `Таблица опасностей создана: ${normalized.name}`);
+  }
 
-  const handleRemoveEntry = (idx: number) => {
-    const newEntries = [...(editForm.entries || [])];
-    newEntries.splice(idx, 1);
-    setEditForm({ ...editForm, entries: newEntries });
-  };
+  function deleteSelected() {
+    if (!selectedId) {
+      return;
+    }
+    if (!window.confirm(`Удалить таблицу опасностей ${selectedId}?`)) {
+      return;
+    }
+    const next = tables.filter((entry) => entry.id !== selectedId);
+    persist(next, `Таблица опасностей удалена: ${selectedId}`);
+    startNew();
+  }
 
   return (
-    <div className="hazard-table-editor">
-      <div className="editor-controls">
-        <button onClick={() => setNewFormOpen(!newFormOpen)} className="btn-primary">
-          {newFormOpen ? 'Отмена' : '⚠️ Добавить таблицу опасностей'}
-        </button>
-      </div>
-
-      {newFormOpen && (
-        <div className="editor-form card">
-          <h3>Новая таблица опасностей</h3>
-          <input
-            type="text"
-            placeholder="ID таблицы"
-            value={editForm.id || ''}
-            onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="Название таблицы"
-            value={editForm.name || ''}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-          />
-          <button onClick={handleNewTable} className="btn-primary">Сохранить</button>
+    <div className="admin-two-col">
+      <section className="admin-list-panel">
+        <div className="admin-list-tools">
+          <button onClick={startNew}>Новая таблица</button>
+          <button onClick={() => {
+            downloadCollectionJson({ filePrefix: 'theend_mine_hazard_tables', collectionKey: 'mineHazardTables', entries: tables });
+            setStatus(`Экспортировано таблиц опасностей: ${tables.length}`);
+          }}
+          >
+            Экспорт JSON
+          </button>
         </div>
-      )}
+        <div className="admin-scroll-list">
+          {tables.map((table) => (
+            <button key={table.id} className={selectedId === table.id ? 'is-active' : ''} onClick={() => selectTable(table.id)}>
+              <strong>{table.name}</strong>
+              <span>{table.id} | entries {table.entries.length}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <div className="editor-list">
-        {tables.map((table) => (
-          <div key={table.id} className="editor-item card">
-            {editingId === table.id ? (
-              <div className="editor-form">
-                <h4>Редактирование: {editForm.name}</h4>
-                <input
-                  type="text"
-                  value={editForm.name || ''}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                />
-                
-                <div className="entries-section">
-                  <h5>Записи</h5>
-                  {editForm.entries?.map((entry, idx) => (
-                    <div key={idx} className="entry-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <select
-                        value={entry.hazardId || ''}
-                        onChange={(e) => handleUpdateEntry(idx, 'hazardId', e.target.value)}
-                      >
-                        <option value="">Выберите опасность</option>
-                        {hazards.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                      </select>
-                      <input
-                        type="number"
-                        placeholder="Вес"
-                        value={entry.weight || 1}
-                        onChange={(e) => handleUpdateEntry(idx, 'weight', parseInt(e.target.value))}
-                      />
-                      <input
-                        type="number"
-                        placeholder="Мин глубина"
-                        value={entry.minDepth || 1}
-                        onChange={(e) => handleUpdateEntry(idx, 'minDepth', parseInt(e.target.value))}
-                      />
-                      <input
-                        type="number"
-                        placeholder="Макс глубина"
-                        value={entry.maxDepth || 10}
-                        onChange={(e) => handleUpdateEntry(idx, 'maxDepth', parseInt(e.target.value))}
-                      />
-                      <button onClick={() => handleRemoveEntry(idx)} className="btn-danger">❌</button>
-                    </div>
-                  ))}
-                  <button onClick={handleAddEntry} className="btn-secondary">+ Добавить запись</button>
-                </div>
+      <section className="admin-form-panel">
+        <div className="admin-form-grid">
+          <label>
+            <AdminFieldLabel label="ID" />
+            <input value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Название" />
+            <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+        </div>
 
-                <div className="form-actions">
-                  <button onClick={handleSaveEdit} className="btn-primary">Сохранить</button>
-                  <button onClick={() => setEditingId(null)} className="btn-secondary">Отмена</button>
-                </div>
-              </div>
-            ) : (
-              <div className="editor-content">
-                <h4>⚠️ {table.name}</h4>
-                <p className="muted">{table.id}</p>
-                <div className="meta">
-                  <span>Записей: {table.entries?.length || 0}</span>
-                </div>
-                <div className="item-actions">
-                  <button onClick={() => handleEdit(table)} className="btn-secondary">✏️</button>
-                  <button onClick={() => handleDelete(table.id)} className="btn-danger">🗑️</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+        <h4>Записи таблицы</h4>
+        <div className="admin-scroll-list merchant-item-pick">
+          {draft.entries.map((entry, index) => (
+            <div key={`${entry.hazardId}-${index}`} className="merchant-item-row is-active">
+              <button onClick={() => removeEntry(index)}>Убрать</button>
+              <label>
+                <AdminFieldLabel label="Опасность" />
+                <select value={entry.hazardId} onChange={(event) => patchEntry(index, { hazardId: event.target.value })}>
+                  <option value="">Выберите опасность</option>
+                  {hazards.map((hazard) => <option key={hazard.id} value={hazard.id}>{hazard.name}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Вес" />
+                <input type="number" min={1} value={entry.weight} onChange={(event) => patchEntry(index, { weight: Number(event.target.value) || 1 })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="Min depth" />
+                <input type="number" min={1} value={entry.minDepth ?? ''} onChange={(event) => patchEntry(index, { minDepth: event.target.value ? Number(event.target.value) : undefined })} />
+              </label>
+              <label>
+                <AdminFieldLabel label="Max depth" />
+                <input type="number" min={1} value={entry.maxDepth ?? ''} onChange={(event) => patchEntry(index, { maxDepth: event.target.value ? Number(event.target.value) : undefined })} />
+              </label>
+            </div>
+          ))}
+        </div>
+        <div className="admin-actions-row">
+          <button onClick={addEntry}>Добавить запись</button>
+        </div>
 
-      <style>{`
-        .hazard-table-editor {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .editor-controls {
-          display: flex;
-          gap: 0.5rem;
-        }
-        .editor-form {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          padding: 1rem;
-          background: #f5f5f5;
-        }
-        .editor-form input,
-        .editor-form textarea,
-        .editor-form select {
-          padding: 0.5rem;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-        }
-        .entries-section {
-          margin: 1rem 0;
-          padding: 1rem;
-          background: #fff;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-        }
-        .entries-section h5 {
-          margin: 0 0 0.5rem 0;
-        }
-        .editor-list {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .editor-item {
-          padding: 1rem;
-        }
-        .editor-content h4 {
-          margin: 0 0 0.5rem 0;
-        }
-        .meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 1rem;
-          margin-top: 0.5rem;
-          font-size: 0.9rem;
-          color: #666;
-        }
-        .item-actions {
-          display: flex;
-          gap: 0.5rem;
-          margin-top: 1rem;
-        }
-        .btn-primary, .btn-secondary, .btn-danger {
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9rem;
-        }
-        .btn-primary {
-          background: #007bff;
-          color: white;
-        }
-        .btn-secondary {
-          background: #6c757d;
-          color: white;
-        }
-        .btn-danger {
-          background: #dc3545;
-          color: white;
-        }
-        .form-actions {
-          display: flex;
-          gap: 0.5rem;
-          margin-top: 1rem;
-        }
-      `}</style>
+        <div className="admin-actions-row">
+          <button onClick={saveDraft}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button disabled={!selectedId} onClick={deleteSelected}>Удалить</button>
+        </div>
+        <p className="muted">{status}</p>
+      </section>
     </div>
   );
 }

@@ -1,281 +1,226 @@
-import React, { useState } from 'react';
-import { MineHazard } from '../../types/mining';
+import { useEffect, useState } from 'react';
+import type { MineHazard, MineHazardType } from '../../types/mining';
+import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { loadMineHazardsFromStorage, saveMineHazardsToStorage } from '../../services/miningRepository';
+import { MINING_HAZARD_TYPES } from '../../services/miningSkillValidation';
+import { AdminFieldLabel } from '../adminUi';
+
+const HAZARD_TYPES: MineHazardType[] = MINING_HAZARD_TYPES;
 
 interface MineHazardEditorProps {
   onSave?: (hazards: MineHazard[]) => void;
 }
 
-type HazardType = 'trap' | 'collapse' | 'gas' | 'flood' | 'creature' | 'curse';
-
-const HAZARD_TYPES: HazardType[] = ['trap', 'collapse', 'gas', 'flood', 'creature', 'curse'];
-const HAZARD_ICONS: Record<HazardType, string> = {
-  'trap': '🪤',
-  'collapse': '💥',
-  'gas': '☁️',
-  'flood': '🌊',
-  'creature': '👹',
-  'curse': '🔮',
-};
+function emptyHazard(): MineHazard {
+  return {
+    id: '',
+    name: '',
+    type: 'minor_collapse',
+    description: '',
+    hpDamageMin: 0,
+    hpDamageMax: 0,
+    staminaDamageMin: 0,
+    staminaDamageMax: 0,
+    lootLossChance: 0,
+    lootLossPercent: 0,
+    statusEffectIds: [],
+    canBeReducedByConstitution: true,
+    canBeDodgedByDexterity: false,
+    isDeadly: false,
+    isEnabled: true,
+  };
+}
 
 export function MineHazardEditor({ onSave }: MineHazardEditorProps) {
   const [hazards, setHazards] = useState<MineHazard[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<MineHazard>>({});
-  const [newFormOpen, setNewFormOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<MineHazard>(emptyHazard());
+  const [status, setStatus] = useState('Готово');
 
-  const handleEdit = (hazard: MineHazard) => {
-    setEditingId(hazard.id);
-    setEditForm({ ...hazard });
-  };
-
-  const handleSaveEdit = () => {
-    if (editingId && editForm.id && editForm.name) {
-      setHazards(hazards.map(h => h.id === editingId ? { ...h, ...editForm } : h));
-      setEditingId(null);
-      setEditForm({});
+  useEffect(() => {
+    const loaded = loadMineHazardsFromStorage();
+    setHazards(loaded);
+    if (loaded.length > 0) {
+      setSelectedId(loaded[0]!.id);
+      setDraft(loaded[0]!);
     }
-  };
+  }, []);
 
-  const handleDelete = (id: string) => {
-    if (confirm('Удалить эту опасность?')) {
-      setHazards(hazards.filter(h => h.id !== id));
-    }
-  };
+  function persist(next: MineHazard[], nextStatus: string) {
+    setHazards(next);
+    saveMineHazardsToStorage(next);
+    onSave?.(next);
+    setStatus(nextStatus);
+  }
 
-  const handleNewHazard = () => {
-    if (editForm.id && editForm.name && editForm.type) {
-      const newHazard: MineHazard = {
-        id: editForm.id,
-        name: editForm.name,
-        type: editForm.type,
-        description: editForm.description || '',
-        hpDamageMin: editForm.hpDamageMin || 0,
-        hpDamageMax: editForm.hpDamageMax || 10,
-        staminaDamageMin: editForm.staminaDamageMin || 0,
-        staminaDamageMax: editForm.staminaDamageMax || 5,
-        lootLossChance: editForm.lootLossChance || 0,
-        statusEffectIds: editForm.statusEffectIds || [],
-        canBeReducedBySkill: editForm.canBeReducedBySkill ?? true,
-        isDeadly: editForm.isDeadly ?? false,
-      };
-      setHazards([...hazards, newHazard]);
-      setEditForm({});
-      setNewFormOpen(false);
+  function startNew() {
+    setSelectedId(null);
+    setDraft(emptyHazard());
+  }
+
+  function selectHazard(id: string) {
+    const found = hazards.find((entry) => entry.id === id);
+    if (!found) {
+      return;
     }
-  };
+    setSelectedId(id);
+    setDraft(found);
+  }
+
+  function saveDraft() {
+    const normalized: MineHazard = {
+      ...draft,
+      id: draft.id.trim(),
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      statusEffectIds: (draft.statusEffectIds ?? []).map((entry) => entry.trim()).filter(Boolean),
+      hpDamageMin: Math.max(0, Math.floor(Number(draft.hpDamageMin || 0))),
+      hpDamageMax: Math.max(0, Math.floor(Number(draft.hpDamageMax || 0))),
+      staminaDamageMin: Math.max(0, Math.floor(Number(draft.staminaDamageMin || 0))),
+      staminaDamageMax: Math.max(0, Math.floor(Number(draft.staminaDamageMax || 0))),
+      lootLossChance: Math.max(0, Number(draft.lootLossChance || 0)),
+      lootLossPercent: Math.max(0, Number(draft.lootLossPercent || 0)),
+    };
+    if (!normalized.id || !normalized.name || !normalized.description) {
+      setStatus('Заполните id, название и описание опасности.');
+      return;
+    }
+
+    if (selectedId) {
+      if (selectedId !== normalized.id && hazards.some((entry) => entry.id === normalized.id)) {
+        setStatus(`Опасность с id ${normalized.id} уже существует.`);
+        return;
+      }
+      const next = hazards.filter((entry) => entry.id !== selectedId).concat([normalized]);
+      setSelectedId(normalized.id);
+      persist(next, `Опасность сохранена: ${normalized.name}`);
+      return;
+    }
+
+    if (hazards.some((entry) => entry.id === normalized.id)) {
+      setStatus(`Опасность с id ${normalized.id} уже существует.`);
+      return;
+    }
+    const next = [...hazards, normalized];
+    setSelectedId(normalized.id);
+    persist(next, `Опасность создана: ${normalized.name}`);
+  }
+
+  function deleteSelected() {
+    if (!selectedId) {
+      return;
+    }
+    if (!window.confirm(`Удалить опасность ${selectedId}?`)) {
+      return;
+    }
+    const next = hazards.filter((entry) => entry.id !== selectedId);
+    persist(next, `Опасность удалена: ${selectedId}`);
+    startNew();
+  }
 
   return (
-    <div className="hazard-editor">
-      <div className="editor-controls">
-        <button onClick={() => setNewFormOpen(!newFormOpen)} className="btn-primary">
-          {newFormOpen ? 'Отмена' : '⚠️ Добавить опасность'}
-        </button>
-      </div>
-
-      {newFormOpen && (
-        <div className="editor-form card">
-          <h3>Новая опасность</h3>
-          <input
-            type="text"
-            placeholder="ID"
-            value={editForm.id || ''}
-            onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="Название"
-            value={editForm.name || ''}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-          />
-          <select
-            value={editForm.type || ''}
-            onChange={(e) => setEditForm({ ...editForm, type: e.target.value as HazardType })}
+    <div className="admin-two-col">
+      <section className="admin-list-panel">
+        <div className="admin-list-tools">
+          <button onClick={startNew}>Новая опасность</button>
+          <button onClick={() => {
+            downloadCollectionJson({ filePrefix: 'theend_mine_hazards', collectionKey: 'mineHazards', entries: hazards });
+            setStatus(`Экспортировано опасностей: ${hazards.length}`);
+          }}
           >
-            <option value="">Выберите тип</option>
-            {HAZARD_TYPES.map(t => <option key={t} value={t}>{HAZARD_ICONS[t]} {t}</option>)}
-          </select>
-          <textarea
-            placeholder="Описание"
-            value={editForm.description || ''}
-            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            <input
-              type="number"
-              placeholder="Мин урон HP"
-              value={editForm.hpDamageMin || 0}
-              onChange={(e) => setEditForm({ ...editForm, hpDamageMin: parseInt(e.target.value) })}
-            />
-            <input
-              type="number"
-              placeholder="Макс урон HP"
-              value={editForm.hpDamageMax || 10}
-              onChange={(e) => setEditForm({ ...editForm, hpDamageMax: parseInt(e.target.value) })}
-            />
-            <input
-              type="number"
-              placeholder="Мин урон стамина"
-              value={editForm.staminaDamageMin || 0}
-              onChange={(e) => setEditForm({ ...editForm, staminaDamageMin: parseInt(e.target.value) })}
-            />
-            <input
-              type="number"
-              placeholder="Макс урон стамина"
-              value={editForm.staminaDamageMax || 5}
-              onChange={(e) => setEditForm({ ...editForm, staminaDamageMax: parseInt(e.target.value) })}
-            />
-          </div>
-          <input
-            type="number"
-            placeholder="Шанс потерь лута (0-100%)"
-            value={editForm.lootLossChance || 0}
-            onChange={(e) => setEditForm({ ...editForm, lootLossChance: Math.min(100, Math.max(0, parseInt(e.target.value))) })}
-          />
-          <label>
-            <input
-              type="checkbox"
-              checked={editForm.canBeReducedBySkill ?? true}
-              onChange={(e) => setEditForm({ ...editForm, canBeReducedBySkill: e.target.checked })}
-            />
-            Может быть ослаблена скилом
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={editForm.isDeadly ?? false}
-              onChange={(e) => setEditForm({ ...editForm, isDeadly: e.target.checked })}
-            />
-            Смертельная
-          </label>
-          <button onClick={handleNewHazard} className="btn-primary">Сохранить</button>
+            Экспорт JSON
+          </button>
         </div>
-      )}
+        <div className="admin-scroll-list">
+          {hazards.map((hazard) => (
+            <button key={hazard.id} className={selectedId === hazard.id ? 'is-active' : ''} onClick={() => selectHazard(hazard.id)}>
+              <strong>{hazard.name}</strong>
+              <span>{hazard.id} | {hazard.type}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <div className="editor-list">
-        {hazards.map((hazard) => (
-          <div key={hazard.id} className="editor-item card">
-            {editingId === hazard.id ? (
-              <div className="editor-form">
-                <input
-                  type="text"
-                  value={editForm.name || ''}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                />
-                <textarea
-                  value={editForm.description || ''}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                />
-                <input
-                  type="number"
-                  value={editForm.hpDamageMin || 0}
-                  onChange={(e) => setEditForm({ ...editForm, hpDamageMin: parseInt(e.target.value) })}
-                />
-                <input
-                  type="number"
-                  value={editForm.hpDamageMax || 10}
-                  onChange={(e) => setEditForm({ ...editForm, hpDamageMax: parseInt(e.target.value) })}
-                />
-                <div className="form-actions">
-                  <button onClick={handleSaveEdit} className="btn-primary">Сохранить</button>
-                  <button onClick={() => setEditingId(null)} className="btn-secondary">Отмена</button>
-                </div>
-              </div>
-            ) : (
-              <div className="editor-content">
-                <h4>{HAZARD_ICONS[hazard.type]} {hazard.name}</h4>
-                <p className="muted">{hazard.id}</p>
-                <p>{hazard.description}</p>
-                <div className="meta">
-                  <span>Тип: {hazard.type}</span>
-                  <span>HP: {hazard.hpDamageMin}-{hazard.hpDamageMax}</span>
-                  <span>Стамина: {hazard.staminaDamageMin}-{hazard.staminaDamageMax}</span>
-                  {hazard.lootLossChance > 0 && <span>Потери лута: {hazard.lootLossChance}%</span>}
-                  {hazard.canBeReducedBySkill && <span>🎯 Ослабляемо</span>}
-                  {hazard.isDeadly && <span>☠️ Смертельно</span>}
-                </div>
-                <div className="item-actions">
-                  <button onClick={() => handleEdit(hazard)} className="btn-secondary">✏️</button>
-                  <button onClick={() => handleDelete(hazard.id)} className="btn-danger">🗑️</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      <section className="admin-form-panel">
+        <div className="admin-form-grid">
+          <label>
+            <AdminFieldLabel label="ID" />
+            <input value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Название" />
+            <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Тип" />
+            <select value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as MineHazardType }))}>
+              {HAZARD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </label>
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={draft.isEnabled} onChange={(event) => setDraft((current) => ({ ...current, isEnabled: event.target.checked }))} />
+            <AdminFieldLabel label="Включена" />
+          </label>
+        </div>
 
-      <style>{`
-        .hazard-editor {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .editor-controls {
-          display: flex;
-          gap: 0.5rem;
-        }
-        .editor-form {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          padding: 1rem;
-          background: #f5f5f5;
-        }
-        .editor-form input,
-        .editor-form textarea,
-        .editor-form select {
-          padding: 0.5rem;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-        }
-        .editor-list {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .editor-item {
-          padding: 1rem;
-        }
-        .editor-content h4 {
-          margin: 0 0 0.5rem 0;
-        }
-        .meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 1rem;
-          margin-top: 0.5rem;
-          font-size: 0.9rem;
-          color: #666;
-        }
-        .item-actions {
-          display: flex;
-          gap: 0.5rem;
-          margin-top: 1rem;
-        }
-        .btn-primary, .btn-secondary, .btn-danger {
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9rem;
-        }
-        .btn-primary {
-          background: #007bff;
-          color: white;
-        }
-        .btn-secondary {
-          background: #6c757d;
-          color: white;
-        }
-        .btn-danger {
-          background: #dc3545;
-          color: white;
-        }
-        .form-actions {
-          display: flex;
-          gap: 0.5rem;
-          margin-top: 1rem;
-        }
-      `}</style>
+        <label>
+          <AdminFieldLabel label="Описание" />
+          <textarea value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} rows={3} />
+        </label>
+
+        <div className="admin-form-grid">
+          <label>
+            <AdminFieldLabel label="HP min" />
+            <input type="number" min={0} value={draft.hpDamageMin} onChange={(event) => setDraft((current) => ({ ...current, hpDamageMin: Number(event.target.value) || 0 }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="HP max" />
+            <input type="number" min={0} value={draft.hpDamageMax} onChange={(event) => setDraft((current) => ({ ...current, hpDamageMax: Number(event.target.value) || 0 }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Stamina min" />
+            <input type="number" min={0} value={draft.staminaDamageMin} onChange={(event) => setDraft((current) => ({ ...current, staminaDamageMin: Number(event.target.value) || 0 }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Stamina max" />
+            <input type="number" min={0} value={draft.staminaDamageMax} onChange={(event) => setDraft((current) => ({ ...current, staminaDamageMax: Number(event.target.value) || 0 }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Шанс потери добычи" />
+            <input type="number" min={0} max={1} step="0.01" value={draft.lootLossChance} onChange={(event) => setDraft((current) => ({ ...current, lootLossChance: Number(event.target.value) || 0 }))} />
+          </label>
+          <label>
+            <AdminFieldLabel label="Процент потери добычи" />
+            <input type="number" min={0} max={1} step="0.01" value={draft.lootLossPercent} onChange={(event) => setDraft((current) => ({ ...current, lootLossPercent: Number(event.target.value) || 0 }))} />
+          </label>
+        </div>
+
+        <label>
+          <AdminFieldLabel label="Status effects" hint="Через запятую." />
+          <input value={(draft.statusEffectIds ?? []).join(', ')} onChange={(event) => setDraft((current) => ({ ...current, statusEffectIds: event.target.value.split(',') }))} />
+        </label>
+
+        <div className="admin-form-grid">
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={draft.canBeReducedByConstitution} onChange={(event) => setDraft((current) => ({ ...current, canBeReducedByConstitution: event.target.checked }))} />
+            <AdminFieldLabel label="Снижается телосложением" />
+          </label>
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={draft.canBeDodgedByDexterity} onChange={(event) => setDraft((current) => ({ ...current, canBeDodgedByDexterity: event.target.checked }))} />
+            <AdminFieldLabel label="Можно увернуться ловкостью" />
+          </label>
+          <label className="zone-editor-checkbox">
+            <input type="checkbox" checked={draft.isDeadly} onChange={(event) => setDraft((current) => ({ ...current, isDeadly: event.target.checked }))} />
+            <AdminFieldLabel label="Смертельная" />
+          </label>
+        </div>
+
+        <div className="admin-actions-row">
+          <button onClick={saveDraft}>{selectedId ? 'Сохранить' : 'Создать'}</button>
+          <button disabled={!selectedId} onClick={deleteSelected}>Удалить</button>
+        </div>
+        <p className="muted">{status}</p>
+      </section>
     </div>
   );
 }

@@ -110,7 +110,7 @@ export interface DialogueCondition {
 }
 
 export interface DialogueAction {
-  id: string;
+  id?: string;
   type:
     | 'startQuest'
     | 'start_quest'
@@ -156,6 +156,8 @@ export interface DialogueAction {
     | 'open_dialogue'
     | 'openTraining'
     | 'open_training'
+    | 'openMine'
+    | 'open_mine'
     | 'healPlayerFull'
     | 'heal_player_full'
     | 'fullHeal'
@@ -181,6 +183,12 @@ export interface DialogueAction {
   amount?: number;
   mode?: string;
   costGold?: number;
+  mineId?: string;
+  action?: string;
+  payload?: {
+    mineId?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface DialogueValidationWorldData {

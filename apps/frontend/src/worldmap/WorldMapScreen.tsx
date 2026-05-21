@@ -5,7 +5,7 @@ import type {
   ItemDefinition,
   StatBlock,
 } from "@theend/rpg-domain";
-import { PROFESSION_DEFINITIONS } from "@theend/rpg-domain";
+import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
 import type { CustomArenaNpcPayload, NearbyPvpPlayer } from "../api";
 import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
@@ -113,7 +113,23 @@ import {
 import {
   getAllCompatibleProfessionIds,
   getLegacyProfessionIdFromProfessions,
+  playerHasProfessionCompat,
 } from "../services/professionCompat";
+import { findMineById, findMineDepthById, loadMinesFromStorage } from "../services/miningRepository";
+import {
+  closeMineRun,
+  descendMineRun,
+  ensureMiningPlaceholderItems,
+  escapeMineRun,
+  getMineRunAwardXp,
+  hitMineBlock,
+  forceMineRunOutcome,
+  resolveMiningSkillEffects,
+  startMineRun,
+  toPublicMineRun,
+  retreatMineRun,
+} from "../services/miningRuntime";
+import { MiningScreen } from "./MiningScreen";
 import {
   findMatchingQuestInteractions,
   getAvailableQuestInteractionChoices,
@@ -164,6 +180,7 @@ import {
 } from "./worldMapExploration";
 import type { NpcDefinition } from "../types/npc";
 import type { LocationArea, WorldLocation } from "../types/location";
+import type { ActiveMiningEffect, InternalMineRunState } from "../types/mining";
 import type { WorldSimulationSnapshot } from "../types/world-simulation.types";
 import {
   loadMovementControlScheme,
@@ -171,6 +188,14 @@ import {
   type MovementControlScheme,
 } from "./playerMovementSettings";
 import { useWorldSnapshot } from "../services/useWorldSimulation";
+import {
+  PLAYER_GOLD_STORAGE_KEY,
+  PLAYER_ITEMS_STORAGE_KEY,
+  readNumberStorage,
+  readStringArrayStorage,
+  writeNumberStorage,
+  writeStringArrayStorage,
+} from "../utils/playerInventory";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 
@@ -716,6 +741,7 @@ interface WorldMapScreenProps {
   onRuntimeInventoryChanged?: () => void;
   onStatus: (text: string) => void;
   onTravelStaminaChange?: (nextStamina: number) => void;
+  onPlayerProfessionsChange?: (next: ArenaCharacter["professions"]) => void;
   cityMerchants?: AdminMerchant[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (
@@ -726,8 +752,10 @@ interface WorldMapScreenProps {
   ) => string | undefined;
   playerAvatarUrl?: string;
   devTravelRequest?: {
-    mode: 'world' | 'city' | 'location';
+    mode: 'world' | 'city' | 'location' | 'mine';
     targetId?: string | null;
+    mineAction?: 'open' | 'close' | 'finish';
+    mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
     token: number;
   } | null;
   initialMode?: WorldMapMode;
@@ -772,6 +800,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onRuntimeInventoryChanged,
     onStatus,
     onTravelStaminaChange,
+    onPlayerProfessionsChange,
     cityMerchants = [],
     resolveItemById,
     resolveItemImage,
@@ -905,6 +934,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [travelExhausted, setTravelExhausted] = useState(false);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
+  const [activeMineRun, setActiveMineRun] = useState<InternalMineRunState | null>(null);
+  const [activeMineEffects, setActiveMineEffects] = useState<ActiveMiningEffect[] | null>(null);
+  const [activeMineLoading, setActiveMineLoading] = useState(false);
   const [questJournalOpen, setQuestJournalOpen] = useState(false);
   const [pvpBrowserOpen, setPvpBrowserOpen] = useState(false);
   const [pvpPlayers, setPvpPlayers] = useState<NearbyPvpPlayer[]>([]);
@@ -1963,86 +1995,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       cancelled = true;
     };
   }, [activeLocation?.id, activeLocation?.currentState, (activeLocation?.stateVariants ?? []).length, activeLocation?.defaultImageId, activeLocation?.defaultImagePath]);
-
-  useEffect(() => {
-    if (!devTravelRequest || worldMapMode === "editor") {
-      return;
-    }
-
-    const targetId = String(devTravelRequest.targetId ?? "").trim();
-
-    if (devTravelRequest.mode === "world") {
-      setActiveCityId(null);
-      setActiveLocationId(null);
-      setActiveWorldModal(null);
-      setLocationView("map");
-      setSelectedCityLocationId(null);
-      setContextMode(currentZone ? "location" : "empty");
-      setPlayerState(currentZone ? "in_zone" : "idle");
-      onStatus("GODMODE: returned to world map.");
-      return;
-    }
-
-    if (devTravelRequest.mode === "city") {
-      if (!targetId) {
-        onStatus("GODMODE: city id is required.");
-        return;
-      }
-      void cityService
-        .getCityById(targetId)
-        .then((city) => {
-          if (!city) {
-            onStatus(`GODMODE: city not found: ${targetId}`);
-            return;
-          }
-          setActiveCityId(city.id);
-          setActiveLocationId(null);
-          setActiveWorldModal(null);
-          setLocationView("city");
-          setSelectedCityLocationId(null);
-          setContextMode("location");
-          setPlayerState("in_city");
-          onStatus(`GODMODE: teleported to city ${city.name}.`);
-        })
-        .catch((error) => {
-          onStatus(`GODMODE city teleport error: ${(error as Error).message}`);
-        });
-      return;
-    }
-
-    if (devTravelRequest.mode === "location") {
-      if (!targetId) {
-        onStatus("GODMODE: location id is required.");
-        return;
-      }
-      const linkedLocation = contentSnapshot?.locations.find((entry) => entry.id === targetId) ?? null;
-      if (!linkedLocation) {
-        onStatus(`GODMODE: location not found: ${targetId}`);
-        return;
-      }
-      if (locationHasLocalMap(linkedLocation)) {
-        setActiveLocationId(linkedLocation.id);
-        setActiveCityId(null);
-        setActiveWorldModal(null);
-        setLocationView("location");
-        setContextMode("location");
-        setPlayerState("in_zone");
-        onStatus(`GODMODE: teleported to ${linkedLocation.name}.`);
-        return;
-      }
-
-      setActiveLocationId(null);
-      setActiveCityId(null);
-      setActiveWorldModal({
-        type: "location",
-        locationId: linkedLocation.id,
-      });
-      setLocationView("map");
-      setContextMode("location");
-      setPlayerState("in_zone");
-      onStatus(`GODMODE: opened location ${linkedLocation.name}.`);
-    }
-  }, [contentSnapshot, currentZone, devTravelRequest, onStatus, worldMapMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3981,7 +3933,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     const hasOpenInteractionUi = dialogueRunner.state.isOpen
       || npcQuestSceneModal !== null
-      || activeWorldModal !== null;
+      || activeWorldModal !== null
+      || activeMineRun !== null;
 
     if (hasOpenInteractionUi) {
       return;
@@ -3991,6 +3944,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setEngagedWorldEntityAnchor(null);
   }, [
     activeWorldModal,
+    activeMineRun,
     dialogueRunner.state.isOpen,
     engagedWorldEntityId,
     npcQuestSceneModal,
@@ -4112,6 +4066,335 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const setDialogueLogs = useCallback((updater: (prev: string[]) => string[]) => {
     void updater;
   }, []);
+
+  const closeMine = useCallback(() => {
+    setActiveMineRun(null);
+    setActiveMineEffects(null);
+  }, []);
+
+  const addItemsToPlayerInventory = useCallback((loot: Array<{ itemId: string; quantity: number }>) => {
+    if (loot.length === 0) {
+      return;
+    }
+    const currentItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+    const nextItems = [...currentItems];
+    for (const stack of loot) {
+      const resolvedName = resolveItemById?.(stack.itemId)?.name ?? null;
+      if (!resolvedName) {
+        onStatus(`Неизвестная добыча: ${stack.itemId}`);
+        continue;
+      }
+      const amount = Math.max(0, Math.floor(Number(stack.quantity ?? 0)));
+      for (let index = 0; index < amount; index += 1) {
+        nextItems.push(stack.itemId);
+      }
+    }
+    writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, nextItems);
+  }, [onStatus, resolveItemById]);
+
+  const addGoldToPlayerInventory = useCallback((goldAmount: number) => {
+    const normalized = Math.max(0, Math.floor(Number(goldAmount ?? 0)));
+    if (normalized <= 0) {
+      return;
+    }
+    const currentGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)));
+    writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, currentGold + normalized);
+  }, []);
+
+  const resolveMineItemName = useCallback((itemId: string) => {
+    const item = resolveItemById?.(itemId);
+    return item?.name ?? itemId;
+  }, [resolveItemById]);
+
+  const finishMineRun = useCallback((nextRun: InternalMineRunState) => {
+    setActiveMineRun(nextRun);
+    if (nextRun.status === 'escaped') {
+      onStatus('Вы выбрались из шахты. Подтвердите результат, чтобы перенести добычу.');
+      return;
+    }
+    if (nextRun.status === 'retreated') {
+      onStatus('Вы отступили и потеряли часть добычи. Подтвердите результат.');
+      return;
+    }
+    if (nextRun.status === 'failed' || nextRun.status === 'dead') {
+      onStatus(nextRun.status === 'dead'
+        ? 'Вы потеряли сознание в шахте. Подтвердите результат.'
+        : 'Забег в шахте провален. Подтвердите результат.');
+    }
+  }, [onStatus]);
+
+  const finalizeMineRunResult = useCallback(() => {
+    if (!activeMineRun || activeMineRun.status === 'active') {
+      return;
+    }
+
+    const awardedLoot = activeMineRun.awardedLoot ?? activeMineRun.temporaryLoot;
+    const awardedGold = Math.max(0, Math.floor(activeMineRun.awardedGold ?? activeMineRun.temporaryGold ?? 0));
+    const xpAward = getMineRunAwardXp(activeMineRun);
+
+    addItemsToPlayerInventory(awardedLoot);
+    addGoldToPlayerInventory(awardedGold);
+
+    const currentProfessions = normalizePlayerProfessionsState(character.professions);
+    const nextProfessions = addProfessionXp(currentProfessions, 'mining', xpAward);
+    const levelBefore = currentProfessions.professions.find((entry) => entry.professionId === 'mining')?.level ?? 0;
+    const levelAfter = nextProfessions.professions.find((entry) => entry.professionId === 'mining')?.level ?? 0;
+    if (onPlayerProfessionsChange && nextProfessions !== currentProfessions) {
+      onPlayerProfessionsChange(nextProfessions);
+    }
+
+    onRuntimeInventoryChanged?.();
+    onStatus(`Итог шахты: добыча перенесена, золото +${awardedGold}, опыт Горняка +${xpAward}.`);
+    if (levelAfter > levelBefore) {
+      onStatus('Горняк повысил уровень!');
+    }
+
+    setActiveMineRun(null);
+    setActiveMineEffects(null);
+  }, [
+    activeMineRun,
+    addGoldToPlayerInventory,
+    addItemsToPlayerInventory,
+    character.professions,
+    onPlayerProfessionsChange,
+    onRuntimeInventoryChanged,
+    onStatus,
+  ]);
+
+  const openMine = useCallback(async (mineId: string) => {
+    const normalizedMineId = String(mineId ?? '').trim();
+    if (!normalizedMineId) {
+      onStatus('Шахта не найдена: (пустой mineId)');
+      return;
+    }
+
+    const miningState = getPlayerProfession(questRuntimeProfessionCompat.professions ?? { professions: [] }, 'mining');
+    setActiveMineLoading(true);
+    try {
+      await ensureMiningPlaceholderItems();
+      const effects = await resolveMiningSkillEffects(miningState);
+      const run = startMineRun({
+        mineId: normalizedMineId,
+        playerHp: battleStats.hp,
+        playerStamina: battleStats.stamina,
+        effects,
+      });
+      setActiveMineEffects(effects);
+      setActiveMineRun(run);
+    } catch (error) {
+      onStatus((error as Error).message);
+    } finally {
+      setActiveMineLoading(false);
+    }
+  }, [battleStats.hp, battleStats.stamina, onStatus, questRuntimeProfessionCompat.professions]);
+
+  const resolveMineOpenError = useCallback((mineId: string): string | null => {
+    const hasMiningProfession = playerHasProfessionCompat(questRuntimeProfessionCompat, 'mining');
+    if (!hasMiningProfession) {
+      return 'Вы не знаете профессию Горняк.';
+    }
+
+    const normalizedMineId = String(mineId ?? '').trim();
+    if (!normalizedMineId) {
+      return 'Шахта не найдена: (пустой mineId)';
+    }
+
+    const mines = loadMinesFromStorage();
+    if (mines.length === 0) {
+      return null;
+    }
+
+    const mine = findMineById(normalizedMineId);
+    if (!mine) {
+      return `Шахта не найдена: ${normalizedMineId}`;
+    }
+
+    const miningState = getPlayerProfession(questRuntimeProfessionCompat.professions ?? { professions: [] }, 'mining');
+    const miningLevel = Number(miningState?.level ?? 0);
+    if (Number.isFinite(Number(mine.requiredMiningLevel)) && miningLevel < Number(mine.requiredMiningLevel)) {
+      return 'Ваш уровень Горняка слишком низкий.';
+    }
+
+    return null;
+  }, [questRuntimeProfessionCompat]);
+
+  useEffect(() => {
+    if (!devTravelRequest || worldMapMode === 'editor') {
+      return;
+    }
+
+    const targetId = String(devTravelRequest.targetId ?? '').trim();
+
+    if (devTravelRequest.mode === 'mine') {
+      if (devTravelRequest.mineAction === 'open') {
+        if (!targetId) {
+          onStatus('GODMODE: mine id is required.');
+          return;
+        }
+        const mineError = resolveMineOpenError(targetId);
+        if (mineError) {
+          onStatus(mineError);
+          return;
+        }
+        openMine(targetId);
+        onStatus(`GODMODE: opened mine ${targetId}.`);
+        return;
+      }
+
+      if (devTravelRequest.mineAction === 'close') {
+        if (!activeMineRun) {
+          closeMine();
+          onStatus('GODMODE: closed mine view.');
+          return;
+        }
+        finishMineRun(closeMineRun(activeMineRun, activeMineEffects ?? []));
+        onStatus('GODMODE: mine closed as retreat.');
+        return;
+      }
+
+      if (devTravelRequest.mineAction === 'finish') {
+        if (!activeMineRun || !devTravelRequest.mineResult) {
+          onStatus('GODMODE: no active mine run to finish.');
+          return;
+        }
+        const nextRun = forceMineRunOutcome(activeMineRun, devTravelRequest.mineResult, activeMineEffects ?? []);
+        if (nextRun.status === 'active') {
+          onStatus('GODMODE: mine run is still active.');
+          return;
+        }
+        finishMineRun(nextRun);
+        onStatus(`GODMODE: mine finished as ${devTravelRequest.mineResult}.`);
+        return;
+      }
+
+      onStatus('GODMODE: unknown mine action.');
+      return;
+    }
+
+    if (devTravelRequest.mode === 'world') {
+      setActiveCityId(null);
+      setActiveLocationId(null);
+      setActiveWorldModal(null);
+      setLocationView('map');
+      setSelectedCityLocationId(null);
+      setContextMode(currentZone ? 'location' : 'empty');
+      setPlayerState(currentZone ? 'in_zone' : 'idle');
+      onStatus('GODMODE: returned to world map.');
+      return;
+    }
+
+    if (devTravelRequest.mode === 'city') {
+      if (!targetId) {
+        onStatus('GODMODE: city id is required.');
+        return;
+      }
+      void cityService
+        .getCityById(targetId)
+        .then((city) => {
+          if (!city) {
+            onStatus(`GODMODE: city not found: ${targetId}`);
+            return;
+          }
+          setActiveCityId(city.id);
+          setActiveLocationId(null);
+          setActiveWorldModal(null);
+          setLocationView('city');
+          setSelectedCityLocationId(null);
+          setContextMode('location');
+          setPlayerState('in_city');
+          onStatus(`GODMODE: teleported to city ${city.name}.`);
+        })
+        .catch((error) => {
+          onStatus(`GODMODE city teleport error: ${(error as Error).message}`);
+        });
+      return;
+    }
+
+    if (devTravelRequest.mode === 'location') {
+      if (!targetId) {
+        onStatus('GODMODE: location id is required.');
+        return;
+      }
+      const linkedLocation = contentSnapshot?.locations.find((entry) => entry.id === targetId) ?? null;
+      if (!linkedLocation) {
+        onStatus(`GODMODE: location not found: ${targetId}`);
+        return;
+      }
+      if (locationHasLocalMap(linkedLocation)) {
+        setActiveLocationId(linkedLocation.id);
+        setActiveCityId(null);
+        setActiveWorldModal(null);
+        setLocationView('location');
+        setContextMode('location');
+        setPlayerState('in_zone');
+        onStatus(`GODMODE: teleported to ${linkedLocation.name}.`);
+        return;
+      }
+
+      setActiveLocationId(null);
+      setActiveCityId(null);
+      setActiveWorldModal({
+        type: 'location',
+        locationId: linkedLocation.id,
+      });
+      setLocationView('map');
+      setContextMode('location');
+      setPlayerState('in_zone');
+      onStatus(`GODMODE: opened location ${linkedLocation.name}.`);
+    }
+  }, [activeMineEffects, activeMineRun, closeMine, contentSnapshot, currentZone, devTravelRequest, finishMineRun, onStatus, openMine, resolveMineOpenError, worldMapMode]);
+
+  const handleMineHitBlock = useCallback((blockIndex: number) => {
+    if (!activeMineRun || !activeMineEffects) {
+      return;
+    }
+    const result = hitMineBlock(activeMineRun, blockIndex, activeMineEffects);
+    if (!result.changed) {
+      return;
+    }
+    finishMineRun(result.run);
+  }, [activeMineEffects, activeMineRun, finishMineRun, onStatus]);
+
+  const handleMineEscape = useCallback(() => {
+    if (!activeMineRun) {
+      return;
+    }
+    const nextRun = escapeMineRun(activeMineRun, activeMineEffects ?? []);
+    finishMineRun(nextRun);
+  }, [activeMineEffects, activeMineRun, finishMineRun]);
+
+  const handleMineRetreat = useCallback(() => {
+    if (!activeMineRun) {
+      return;
+    }
+    const nextRun = retreatMineRun(activeMineRun, activeMineEffects ?? []);
+    finishMineRun(nextRun);
+  }, [activeMineEffects, activeMineRun, finishMineRun]);
+
+  const handleMineDescend = useCallback(() => {
+    if (!activeMineRun || !activeMineEffects) {
+      return;
+    }
+    const nextRun = descendMineRun(activeMineRun, activeMineEffects);
+    setActiveMineRun(nextRun);
+  }, [activeMineEffects, activeMineRun]);
+
+  const handleMineClose = useCallback(() => {
+    if (!activeMineRun) {
+      setActiveMineRun(null);
+      setActiveMineEffects(null);
+      return;
+    }
+    if (activeMineRun.status === 'active') {
+      const confirmed = window.confirm('Активная шахта будет засчитана как отступление. Продолжить?');
+      if (!confirmed) {
+        return;
+      }
+      finishMineRun(closeMineRun(activeMineRun, activeMineEffects ?? []));
+      return;
+    }
+    onStatus('Сначала подтвердите результат шахты.');
+  }, [activeMineEffects, activeMineRun, finishMineRun]);
 
   const handleSelectDialogueChoice = useCallback(
     async (choiceId: string) => {
@@ -4297,6 +4580,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           modalClosed = true;
           break;
         }
+        if (intent.type === 'OPEN_MINE') {
+          const mineId = String(intent.mineId ?? '').trim();
+          const mineError = resolveMineOpenError(mineId);
+          if (mineError) {
+            onStatus(mineError);
+            continue;
+          }
+
+          dialogueRunner.closeDialogue();
+          setActiveWorldModal(null);
+          openMine(mineId);
+          onStatus(`Открыта шахта: ${mineId}`);
+          modalClosed = true;
+          break;
+        }
         if (intent.type === "GRANT_SKILL") {
           if (!onGrantSkill) {
             onStatus("Навык не может быть выдан: отсутствует обработчик onGrantSkill.");
@@ -4338,7 +4636,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
 
       const modalIntents = result.intents.filter((intent) => (
-        intent.type === 'OPEN_SHOP' || intent.type === 'START_COMBAT' || intent.type === 'OPEN_TRAINING'
+        intent.type === 'OPEN_SHOP' || intent.type === 'START_COMBAT' || intent.type === 'OPEN_TRAINING' || intent.type === 'OPEN_MINE'
       ));
       const primaryModalIntent = modalIntents[0];
       if (primaryModalIntent?.type === 'OPEN_SHOP') {
@@ -4352,6 +4650,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           || '';
         const trainerNpc = npcs.find((entry) => entry.id === resolvedTrainerId) ?? null;
         openTrainingForNpc(trainerNpc);
+      } else if (primaryModalIntent?.type === 'OPEN_MINE') {
+        const mineError = resolveMineOpenError(primaryModalIntent.mineId);
+        if (mineError) {
+          onStatus(mineError);
+        } else {
+          openMine(primaryModalIntent.mineId);
+        }
       }
 
       if (modalIntents.length > 1) {
@@ -4361,11 +4666,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch (error) {
       onStatus((error as Error).message);
     }
-  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onApplyHealingService, onGrantSkill, onOpenMerchant, onRuntimeInventoryChanged, onStartCombat, onStatus, openTrainingForNpc, questDefinitions, resolveItemById, selectedNpcForInteraction]);
+  }, [activeDialogue, activeDialogueNode, character.id, dialogueRunner, onApplyHealingService, onGrantSkill, onOpenMerchant, onRuntimeInventoryChanged, onStartCombat, onStatus, openMine, openTrainingForNpc, questDefinitions, resolveItemById, resolveMineOpenError, selectedNpcForInteraction]);
 
   function setMode(mode: WorldMapMode) {
     if (mode !== "play") {
       rememberCurrentMapPosition();
+      closeMine();
     }
     if (mode !== "play") {
       setWorldMapViewerOpen(false);
@@ -5674,7 +5980,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       description = modalLocation?.description;
       buttons = <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>;
     }
-
     return (
       <div
         style={{
@@ -6278,6 +6583,62 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     );
   })();
 
+  const miningModalElement = (() => {
+    if (!activeMineRun && !activeMineLoading) {
+      return null;
+    }
+
+    if (activeMineLoading || !activeMineRun) {
+      return (
+        <div className="battle-overlay" role="dialog" aria-modal="true">
+          <section className="card battle-window wm-modal">
+            <div className="battle-window-head">
+              <h2>Горняк / Горянка</h2>
+              <button onClick={closeMine}>×</button>
+            </div>
+            <p className="muted">Подготавливаем шахту...</p>
+          </section>
+        </div>
+      );
+    }
+
+    const mine = findMineById(activeMineRun.mineId);
+    const depth = findMineDepthById(activeMineRun.currentDepthId);
+    const miningProfession = getPlayerProfession(questRuntimeProfessionCompat.professions ?? { professions: [] }, 'mining');
+
+    if (!mine || !depth) {
+      return (
+        <div className="battle-overlay" role="dialog" aria-modal="true">
+          <section className="card battle-window wm-modal">
+            <div className="battle-window-head">
+              <h2>Горняк / Горянка</h2>
+              <button onClick={closeMine}>×</button>
+            </div>
+            <p className="muted">Шахта или глубина не найдены.</p>
+          </section>
+        </div>
+      );
+    }
+
+    return (
+      <MiningScreen
+        mine={mine}
+        depth={depth}
+        run={toPublicMineRun(activeMineRun)}
+        miningLevel={miningProfession?.level ?? 1}
+        pickaxeName="Безымянная кирка"
+        emergencyEscapeAvailable={Boolean(activeMineEffects?.some((effect) => effect.type === 'mine_once_per_run_escape') && !activeMineRun.usedEmergencyEscape)}
+        resolveItemName={resolveMineItemName}
+        onHitBlock={handleMineHitBlock}
+        onEscape={handleMineEscape}
+        onRetreat={handleMineRetreat}
+        onDescend={handleMineDescend}
+        onFinalize={finalizeMineRunResult}
+        onClose={handleMineClose}
+      />
+    );
+  })();
+
   const playLayout = (
     <>
       <TopStatusBar
@@ -6615,6 +6976,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
         {activeWorldModalElement}
         {dialogueModalElement}
+        {miningModalElement}
         {pvpBrowserElement}
         {randomEventModalElement}
         {npcQuestSceneModalElement}

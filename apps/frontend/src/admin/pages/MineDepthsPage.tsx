@@ -1,7 +1,5 @@
 import { MineDepthEditor } from '../mining/MineDepthEditor';
 
 export function MineDepthsPage() {
-  return <MineDepthEditor mines={[
-    { id: 'mine_example', name: 'Пример шахты' },
-  ]} />;
+  return <MineDepthEditor />;
 }

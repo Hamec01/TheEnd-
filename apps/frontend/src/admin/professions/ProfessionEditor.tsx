@@ -216,7 +216,7 @@ export function ProfessionEditor({ onSave }: ProfessionEditorProps) {
           flex-direction: column;
           gap: 0.5rem;
           padding: 1rem;
-          background: #f5f5f5;
+          background: rgba(26, 22, 17, 0.92);
         }
         .editor-form input,
         .editor-form textarea,

@@ -3,6 +3,10 @@ import {
   type AdminSkillDefinition,
   EMPTY_EQUIPMENT,
   normalizePlayerProfessionsState,
+  PROFESSION_DEFINITIONS,
+  addProfessionXp,
+  getPlayerProfession,
+  unlockProfession,
   ITEMS,
   RACE_DEFINITIONS,
   TeamSide,
@@ -14,6 +18,7 @@ import {
   type ArenaBattleState,
   type Equipment,
   type InventoryState,
+  type PlayerProfessionsState,
   type PrimaryStat,
   Race,
   type StatBlock,
@@ -89,6 +94,8 @@ import { cityService } from './services/cityRepository';
 import { itemSetsService } from './services/content/itemSetsService';
 import { materialsService } from './services/content/materialsService';
 import { ensureDialoguesLoaded, getAllDialogues } from './services/dialogueRepository';
+import { loadProfessionBranchesFromStorage } from './services/professionBranchRepository';
+import { loadProfessionSkillsFromStorage } from './services/professionSkillRepository';
 import { locationService } from './services/locationRepository';
 import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npcRepository';
 import { deletePlayerQuestState, ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests, getQuestById } from './services/questRepository';
@@ -515,6 +522,9 @@ function getGodmodeHelpLines(): string[] {
     'gold add <amount> | gold set <amount>',
     'xp add <amount> | xp set <amount>',
     'level set <value> | points add <value> | points set <value>',
+    'profession list | profession unlock <professionId> | profession remove <professionId>',
+    'profession xp add|set <professionId> <value> | profession level set <professionId> <value> | profession points add|set <professionId> <value>',
+    'profession skill learn|reset <professionId> [skillId] | profession branch choose|reset <professionId> [branchId]',
     'stat set <hp|mp|stamina|strength|constitution|dexterity|intelligence|luck|perception|willpower> <value>',
     'stat add <stat> <delta>',
     'resource full | resource set <hp|mp|stamina|regen> <value>',
@@ -526,6 +536,7 @@ function getGodmodeHelpLines(): string[] {
     'questitem add|remove <questItemId> [qty]',
     'material add|remove <materialId> [qty] | resource add|remove <resourceId> [qty]',
     'teleport world | teleport city <cityId> | teleport location <locationId>',
+    'mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead',
     'panel open inventory|character|stats|skills|equipment|merchant|arena|map | panel close',
     'merchant open <merchantId> | merchant list [filter]',
     'battle map <battleMapId> | battle start [enemyCount] [battleMapId] | battle npc <npcId[,npcId2]> [battleMapId]',
@@ -964,8 +975,10 @@ interface AppProps {
 }
 
 type GodmodeTravelRequest = {
-  mode: 'world' | 'city' | 'location';
+  mode: 'world' | 'city' | 'location' | 'mine';
   targetId?: string | null;
+  mineAction?: 'open' | 'close' | 'finish';
+  mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
   token: number;
 };
 
@@ -2753,6 +2766,30 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       });
     };
 
+    const queueMineRequest = (
+      mineAction: NonNullable<GodmodeTravelRequest['mineAction']>,
+      mineId?: string | null,
+      mineResult?: GodmodeTravelRequest['mineResult'],
+    ): void => {
+      onNavigate?.('/map');
+      setOverlayPanel(null);
+      setGodmodeTravelRequest({
+        mode: 'mine',
+        targetId: mineId ?? null,
+        mineAction,
+        mineResult,
+        token: Date.now(),
+      });
+    };
+
+    const saveProfessionState = async (
+      player: ArenaCharacter,
+      nextProfessions: PlayerProfessionsState,
+    ): Promise<ArenaHubState> => {
+      const hub = await patchDevCharacterState(player.id, { professions: nextProfessions });
+      return applyHubAndRefresh(hub);
+    };
+
     try {
       if (head === 'help') {
         return { ok: true, lines: getGodmodeHelpLines() };
@@ -3038,6 +3075,323 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         const hub = await applyHubAndRefresh(await patchDevCharacterState(player.id, { freePoints: Math.max(0, nextFreePoints) }));
         setStatus(`GODMODE free points updated: ${hub.character.freePoints}`);
         return { ok: true, lines: [`Free points set to ${hub.character.freePoints}.`] };
+      }
+
+      if (head === 'profession' || head === 'prof') {
+        const player = requireCharacter();
+        const professionScope = action;
+        const professionId = String(rest[1] ?? rest[0] ?? 'mining').trim().toLowerCase();
+        const professionDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === professionId) ?? null;
+        const currentProfessions = normalizePlayerProfessionsState(player.professions);
+
+        const writeProfessions = async (nextProfessions: PlayerProfessionsState): Promise<ArenaHubState> => {
+          const hub = await saveProfessionState(player, nextProfessions);
+          setStatus(`GODMODE profession updated: ${professionId}`);
+          return hub;
+        };
+
+        if (professionScope === 'list') {
+          const skillDefinitions = loadProfessionSkillsFromStorage();
+          const branchDefinitions = loadProfessionBranchesFromStorage();
+          const lines = PROFESSION_DEFINITIONS
+            .slice()
+            .sort((left, right) => left.id.localeCompare(right.id))
+            .map((definition) => {
+              const state = getPlayerProfession(currentProfessions, definition.id);
+              const branchCount = branchDefinitions.filter((entry) => entry.professionId === definition.id && entry.isEnabled).length;
+              const skillCount = skillDefinitions.filter((entry) => entry.professionId === definition.id && entry.isEnabled).length;
+              return `${definition.id} — ${definition.name} [${definition.category}] ${state ? `unlocked L${state.level} XP ${state.xp}/${state.xpToNextLevel} points ${state.skillPoints}` : 'locked'} skills=${skillCount} branches=${branchCount}`;
+            });
+          return { ok: true, lines: formatGodmodeListLines('Professions', lines) };
+        }
+
+        if (professionScope === 'unlock') {
+          if (!professionDefinition) {
+            throw new Error(`Unknown profession: ${professionId}`);
+          }
+          const next = unlockProfession(currentProfessions, professionDefinition.id);
+          const hub = await writeProfessions(next);
+          return { ok: true, lines: [`Unlocked profession ${professionDefinition.name}.`, `Learned professions: ${hub.character.professions?.professions.length ?? 0}.`] };
+        }
+
+        if (professionScope === 'remove') {
+          const next = {
+            professions: currentProfessions.professions.filter((entry) => entry.professionId !== professionId),
+          };
+          const hub = await writeProfessions(next);
+          return { ok: true, lines: [`Removed profession ${professionId}.`, `Learned professions: ${hub.character.professions?.professions.length ?? 0}.`] };
+        }
+
+        if (professionScope === 'xp') {
+          const xpMode = String(rest[0] ?? '').trim().toLowerCase();
+          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
+          const amount = parseConsoleInteger(rest[2], 'XP');
+          const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
+          if (!targetDefinition) {
+            throw new Error(`Unknown profession: ${targetId}`);
+          }
+
+          if (xpMode === 'add') {
+            const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+            const next = addProfessionXp(unlocked, targetDefinition.id, amount);
+            const hub = await writeProfessions(next);
+            return { ok: true, lines: [`Added ${amount} XP to ${targetDefinition.name}.`, `Current XP: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.xp ?? 0}.`] };
+          }
+
+          if (xpMode === 'set') {
+            const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+            const nextProfessions = {
+              professions: unlocked.professions.map((entry) => (
+                entry.professionId === targetDefinition.id
+                  ? {
+                      ...entry,
+                      xp: Math.max(0, amount),
+                      xpToNextLevel: Math.max(1, entry.level * 100),
+                    }
+                  : entry
+              )),
+            };
+            const hub = await writeProfessions(nextProfessions);
+            return { ok: true, lines: [`XP set to ${Math.max(0, amount)} for ${targetDefinition.name}.`, `Level remains ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.level ?? 1}.`] };
+          }
+
+          throw new Error('Use: profession xp add <professionId> <value> OR profession xp set <professionId> <value>.');
+        }
+
+        if (professionScope === 'level') {
+          if (String(rest[0] ?? '').trim().toLowerCase() !== 'set') {
+            throw new Error('Use: profession level set <professionId> <value>.');
+          }
+          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
+          const value = parseConsoleInteger(rest[2], 'Level');
+          const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
+          if (!targetDefinition) {
+            throw new Error(`Unknown profession: ${targetId}`);
+          }
+          const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+          const nextProfessions = {
+            professions: unlocked.professions.map((entry) => (
+              entry.professionId === targetDefinition.id
+                ? {
+                    ...entry,
+                    level: Math.max(1, value),
+                    xp: 0,
+                    xpToNextLevel: Math.max(1, Math.max(1, value) * 100),
+                  }
+                : entry
+            )),
+          };
+          const hub = await writeProfessions(nextProfessions);
+          return { ok: true, lines: [`Level set to ${Math.max(1, value)} for ${targetDefinition.name}.`, `Skill points: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.skillPoints ?? 0}.`] };
+        }
+
+        if (professionScope === 'points') {
+          const pointsMode = String(rest[0] ?? '').trim().toLowerCase();
+          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
+          const amount = parseConsoleInteger(rest[2], 'Points');
+          const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
+          if (!targetDefinition) {
+            throw new Error(`Unknown profession: ${targetId}`);
+          }
+          const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+          const nextProfessions = {
+            professions: unlocked.professions.map((entry) => (
+              entry.professionId === targetDefinition.id
+                ? {
+                    ...entry,
+                    skillPoints: Math.max(0, pointsMode === 'set' ? amount : entry.skillPoints + amount),
+                  }
+                : entry
+            )),
+          };
+          const hub = await writeProfessions(nextProfessions);
+          return { ok: true, lines: [`Skill points ${pointsMode === 'set' ? 'set' : 'changed'} for ${targetDefinition.name}.`, `Current points: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.skillPoints ?? 0}.`] };
+        }
+
+        if (professionScope === 'skill') {
+          const skillMode = String(rest[0] ?? '').trim().toLowerCase();
+          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
+          const skillId = String(rest[2] ?? '').trim();
+          const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
+          if (!targetDefinition) {
+            throw new Error(`Unknown profession: ${targetId}`);
+          }
+
+          if (skillMode === 'reset') {
+            const nextProfessions = {
+              professions: currentProfessions.professions.map((entry) => (
+                entry.professionId === targetDefinition.id
+                  ? { ...entry, learnedSkillIds: [] }
+                  : entry
+              )),
+            };
+            const hub = await writeProfessions(nextProfessions);
+            return { ok: true, lines: [`Cleared learned skills for ${targetDefinition.name}.`, `Current skills: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.learnedSkillIds.length ?? 0}.`] };
+          }
+
+          if (skillMode !== 'learn') {
+            throw new Error('Use: profession skill learn <professionId> <skillId> OR profession skill reset <professionId>.');
+          }
+          if (!skillId) {
+            throw new Error('Skill ID is required.');
+          }
+
+          const skill = loadProfessionSkillsFromStorage().find((entry) => entry.id === skillId && entry.professionId === targetDefinition.id && entry.isEnabled) ?? null;
+          if (!skill) {
+            throw new Error(`Skill not found: ${skillId}`);
+          }
+
+          const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+          const professionState = getPlayerProfession(unlocked, targetDefinition.id);
+          if (!professionState) {
+            throw new Error(`Profession not unlocked: ${targetDefinition.name}.`);
+          }
+
+          if (professionState.learnedSkillIds.includes(skill.id)) {
+            return { ok: true, lines: [`Skill already learned: ${skill.id}.`] };
+          }
+          if (professionState.level < skill.requiredLevel) {
+            throw new Error(`Required level for ${skill.id}: ${skill.requiredLevel}.`);
+          }
+          if (professionState.skillPoints < skill.skillPointCost) {
+            throw new Error(`Not enough skill points for ${skill.id}.`);
+          }
+
+          if (skill.branchId) {
+            const branch = loadProfessionBranchesFromStorage().find((entry) => entry.id === skill.branchId && entry.professionId === targetDefinition.id && entry.isEnabled) ?? null;
+            if (!branch) {
+              throw new Error(`Branch not found: ${skill.branchId}`);
+            }
+            const missingRequiredBranchId = (skill.requiredBranchIds ?? []).find((requiredBranchId) => !(professionState.selectedBranchIds ?? []).includes(requiredBranchId));
+            if (missingRequiredBranchId) {
+              throw new Error(`Required branch for ${skill.id}: ${missingRequiredBranchId}.`);
+            }
+            if (!(professionState.selectedBranchIds ?? []).includes(branch.id)) {
+              throw new Error(`Select branch ${branch.name} first.`);
+            }
+            const missingBranchRequirement = (branch.requiredSkillIds ?? []).find((requiredId) => !professionState.learnedSkillIds.includes(requiredId));
+            if (missingBranchRequirement) {
+              throw new Error(`Branch ${branch.name} requires skill ${missingBranchRequirement}.`);
+            }
+          }
+          const nextProfessions = {
+            professions: unlocked.professions.map((entry) => (
+              entry.professionId === targetDefinition.id
+                ? {
+                    ...entry,
+                    skillPoints: Math.max(0, entry.skillPoints - skill.skillPointCost),
+                    learnedSkillIds: Array.from(new Set([...(entry.learnedSkillIds ?? []), skill.id])),
+                  }
+                : entry
+            )),
+          };
+          const hub = await writeProfessions(nextProfessions);
+          return { ok: true, lines: [`Learned skill ${skill.id}.`, `Remaining points: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.skillPoints ?? 0}.`] };
+        }
+
+        if (professionScope === 'branch') {
+          const branchMode = String(rest[0] ?? '').trim().toLowerCase();
+          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
+          const branchId = String(rest[2] ?? '').trim();
+          const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
+          if (!targetDefinition) {
+            throw new Error(`Unknown profession: ${targetId}`);
+          }
+
+          if (branchMode === 'reset') {
+            const nextProfessions = {
+              professions: currentProfessions.professions.map((entry) => (
+                entry.professionId === targetDefinition.id
+                  ? { ...entry, selectedBranchIds: [] }
+                  : entry
+              )),
+            };
+            const hub = await writeProfessions(nextProfessions);
+            return { ok: true, lines: [`Cleared selected branches for ${targetDefinition.name}.`, `Current branches: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.selectedBranchIds.length ?? 0}.`] };
+          }
+
+          if (branchMode !== 'choose') {
+            throw new Error('Use: profession branch choose <professionId> <branchId> OR profession branch reset <professionId>.');
+          }
+          if (!branchId) {
+            throw new Error('Branch ID is required.');
+          }
+
+          const branch = loadProfessionBranchesFromStorage().find((entry) => entry.id === branchId && entry.professionId === targetDefinition.id && entry.isEnabled) ?? null;
+          if (!branch) {
+            throw new Error(`Branch not found: ${branchId}`);
+          }
+
+          const unlocked = unlockProfession(currentProfessions, targetDefinition.id);
+          const professionState = getPlayerProfession(unlocked, targetDefinition.id);
+          if (!professionState) {
+            throw new Error(`Profession not unlocked: ${targetDefinition.name}.`);
+          }
+          const missingBranchRequirement = (branch.requiredSkillIds ?? []).find((requiredId) => !professionState.learnedSkillIds.includes(requiredId));
+          if (missingBranchRequirement) {
+            throw new Error(`Branch ${branch.name} requires skill ${missingBranchRequirement}.`);
+          }
+          const missingRequiredBranchId = (branch.requiredBranchIds ?? []).find((requiredBranchId) => !(professionState.selectedBranchIds ?? []).includes(requiredBranchId));
+          if (missingRequiredBranchId) {
+            throw new Error(`Branch ${branch.name} requires branch ${missingRequiredBranchId}.`);
+          }
+          const lockedByBranchId = (branch.locksBranchIds ?? []).find((lockedBranchId) => (professionState.selectedBranchIds ?? []).includes(lockedBranchId));
+          if (lockedByBranchId) {
+            throw new Error(`Branch ${branch.name} is locked by ${lockedByBranchId}.`);
+          }
+          const nextProfessions = {
+            professions: unlocked.professions.map((entry) => {
+              if (entry.professionId !== targetDefinition.id) {
+                return entry;
+              }
+              const nextBranchIds = new Set(entry.selectedBranchIds ?? []);
+              if (branch.exclusiveGroupId) {
+                for (const selectedBranchId of Array.from(nextBranchIds)) {
+                  const selectedBranch = loadProfessionBranchesFromStorage().find((candidate) => candidate.id === selectedBranchId && candidate.professionId === targetDefinition.id && candidate.isEnabled) ?? null;
+                  if (selectedBranch?.exclusiveGroupId === branch.exclusiveGroupId) {
+                    nextBranchIds.delete(selectedBranchId);
+                  }
+                }
+              }
+              nextBranchIds.add(branch.id);
+              return {
+                ...entry,
+                selectedBranchIds: Array.from(nextBranchIds),
+              };
+            }),
+          };
+          const hub = await writeProfessions(nextProfessions);
+          return { ok: true, lines: [`Selected branch ${branch.name}.`, `Current branches: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.selectedBranchIds.join(', ') || 'none'}.`] };
+        }
+
+        throw new Error('Use: profession list | profession unlock/remove <professionId> | profession xp add|set <professionId> <value> | profession level set <professionId> <value> | profession points add|set <professionId> <value> | profession skill learn|reset <professionId> [skillId] | profession branch choose|reset <professionId> [branchId].');
+      }
+
+      if (head === 'mine') {
+        if (action === 'open') {
+          const mineId = String(rest[0] ?? '').trim();
+          if (!mineId) {
+            throw new Error('Use: mine open <mineId>.');
+          }
+          queueMineRequest('open', mineId);
+          return { ok: true, lines: [`Mine open request queued: ${mineId}.`] };
+        }
+
+        if (action === 'close') {
+          queueMineRequest('close');
+          return { ok: true, lines: ['Mine close request queued.'] };
+        }
+
+        if (action === 'finish') {
+          const result = String(rest[0] ?? '').trim().toLowerCase() as GodmodeTravelRequest['mineResult'];
+          if (!result || !['escaped', 'retreated', 'failed', 'dead'].includes(result)) {
+            throw new Error('Use: mine finish escaped|retreated|failed|dead.');
+          }
+          queueMineRequest('finish', null, result);
+          return { ok: true, lines: [`Mine finish request queued: ${result}.`] };
+        }
+
+        throw new Error('Use: mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead.');
       }
 
       if (head === 'stat') {
@@ -4018,6 +4372,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onApplyHealingService={applyFullHealingService}
           onRuntimeInventoryChanged={handleRuntimeInventoryChanged}
           onTravelStaminaChange={handleTravelStaminaChange}
+          onPlayerProfessionsChange={handlePlayerProfessionsChange}
           onStartCombat={openCombat}
           onStartBattleMap={(battleMapId) => {
             openArenaSetup(battleMapId);

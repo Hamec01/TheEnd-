@@ -19,7 +19,7 @@ import { imageService } from '../../services/content/imageService';
 import { itemsService } from '../../services/content/itemsService';
 import { skillsService } from '../../services/content/skillsService';
 import { validateDialogue } from '../../services/dialogueValidator';
-import type { DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
+import type { DialogueAction, DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
 import type { StoredImage } from '../../services/content/models';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
@@ -73,6 +73,10 @@ export function DialoguesPage() {
   const [isImporting, setIsImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const [nodesJson, setNodesJson] = useState('[]');
+  const [mineActionNodeId, setMineActionNodeId] = useState('');
+  const [mineActionChoiceId, setMineActionChoiceId] = useState('');
+  const [mineActionMineId, setMineActionMineId] = useState('');
+  const [mineActionUsePayload, setMineActionUsePayload] = useState(false);
 
   const [npcIds, setNpcIds] = useState<string[]>([]);
   const [questIds, setQuestIds] = useState<string[]>([]);
@@ -133,6 +137,28 @@ export function DialoguesPage() {
   useEffect(() => {
     setNodesJson(JSON.stringify(draft.nodes, null, 2));
   }, [draft]);
+
+  const parsedNodes = useMemo(
+    () => parseJsonArray<DialogueNode>(nodesJson, draft.nodes),
+    [draft.nodes, nodesJson],
+  );
+
+  const mineActionChoices = useMemo(() => {
+    const node = parsedNodes.find((entry) => entry.id === mineActionNodeId) ?? null;
+    return node?.choices ?? [];
+  }, [mineActionNodeId, parsedNodes]);
+
+  useEffect(() => {
+    if (!parsedNodes.some((entry) => entry.id === mineActionNodeId)) {
+      setMineActionNodeId(parsedNodes[0]?.id ?? '');
+    }
+  }, [mineActionNodeId, parsedNodes]);
+
+  useEffect(() => {
+    if (!mineActionChoices.some((entry) => entry.id === mineActionChoiceId)) {
+      setMineActionChoiceId(mineActionChoices[0]?.id ?? '');
+    }
+  }, [mineActionChoiceId, mineActionChoices]);
 
   const worldData = useMemo<DialogueValidationWorldData>(() => ({
     npcIds,
@@ -298,6 +324,101 @@ export function DialoguesPage() {
     });
   }
 
+  function addOpenMineActionToChoice() {
+    const mineId = mineActionMineId.trim();
+    if (!mineActionNodeId || !mineActionChoiceId || !mineId) {
+      setStatusText('Для open_mine укажите node, choice и mineId.');
+      return;
+    }
+
+    const nextNodes = parsedNodes.map((node) => {
+      if (node.id !== mineActionNodeId) {
+        return node;
+      }
+
+      return {
+        ...node,
+        choices: node.choices.map((choice) => {
+          if (choice.id !== mineActionChoiceId) {
+            return choice;
+          }
+
+          const actionId = `open_mine_${Math.random().toString(36).slice(2, 8)}`;
+          const openMineAction: DialogueAction = mineActionUsePayload
+            ? { id: actionId, type: 'open_mine', payload: { mineId } }
+            : { id: actionId, type: 'open_mine', mineId };
+
+          return {
+            ...choice,
+            effects: [...(choice.effects ?? []), openMineAction],
+          };
+        }),
+      };
+    });
+
+    setNodesJson(JSON.stringify(nextNodes, null, 2));
+    patch({ nodes: nextNodes });
+    setStatusText(`Добавлен action open_mine в choice: ${mineActionChoiceId}`);
+  }
+
+  function applyMineDialogueTemplate() {
+    const mineId = mineActionMineId.trim() || 'mine_teramor_mineral';
+    const nextNodes: DialogueNode[] = [
+      {
+        id: 'start',
+        speaker: 'system',
+        text: 'Перед вами старая минеральная шахта. Из глубины тянет холодом, а на камнях видны следы старых кирок.',
+        choices: [
+          {
+            id: 'choice_enter_mine',
+            text: 'Войти в шахту',
+            effects: [
+              {
+                id: 'open_mine_entry',
+                type: 'open_mine',
+                mineId,
+              },
+            ],
+          },
+          {
+            id: 'choice_inspect',
+            text: 'Осмотреть вход',
+            nextNodeId: 'inspect',
+          },
+          {
+            id: 'choice_leave',
+            text: 'Уйти',
+            endsDialogue: true,
+          },
+        ],
+      },
+      {
+        id: 'inspect',
+        speaker: 'system',
+        text: 'Деревянные подпорки почернели от времени. На стене виден знак старой артели горняков.',
+        choices: [
+          {
+            id: 'choice_back',
+            text: 'Назад',
+            nextNodeId: 'start',
+          },
+        ],
+      },
+    ];
+
+    setNodesJson(JSON.stringify(nextNodes, null, 2));
+    patch({
+      id: draft.id.trim() || 'dialogue_mineral_mine_entrance',
+      title: draft.title.trim() || 'Вход в минеральную шахту',
+      startNodeId: 'start',
+      nodes: nextNodes,
+    });
+    setMineActionNodeId('start');
+    setMineActionChoiceId('choice_enter_mine');
+    setMineActionMineId(mineId);
+    setStatusText('Применен шаблон диалога входа в шахту.');
+  }
+
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
@@ -377,8 +498,44 @@ export function DialoguesPage() {
           </h4>
           <div className="admin-actions-row">
             <button type="button" onClick={addNode}>Добавить ноду</button>
+            <button type="button" onClick={applyMineDialogueTemplate}>Шаблон: Вход в шахту</button>
           </div>
           <textarea rows={20} value={nodesJson} onChange={(event) => setNodesJson(event.target.value)} onBlur={() => patch({ nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes) })} />
+          <div className="admin-form-grid" style={{ marginTop: 12 }}>
+            <label>
+              <AdminFieldLabel label="Открыть шахту" hint="Добавить action/effect open_mine в choice." />
+              <select value={mineActionNodeId} onChange={(event) => setMineActionNodeId(event.target.value)}>
+                <option value="">Выберите ноду</option>
+                {parsedNodes.map((node) => <option key={node.id} value={node.id}>{node.id}</option>)}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="Choice" hint="Выберите choice внутри ноды." />
+              <select value={mineActionChoiceId} onChange={(event) => setMineActionChoiceId(event.target.value)}>
+                <option value="">Выберите choice</option>
+                {mineActionChoices.map((choice) => <option key={choice.id} value={choice.id}>{choice.text || choice.id}</option>)}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="mineId" hint="ID шахты из раздела: Профессии → Горняк → Шахты" />
+              <input
+                placeholder="mine_teramor_mineral"
+                value={mineActionMineId}
+                onChange={(event) => setMineActionMineId(event.target.value)}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={mineActionUsePayload}
+                onChange={(event) => setMineActionUsePayload(event.target.checked)}
+              />
+              Использовать payload.mineId
+            </label>
+          </div>
+          <div className="admin-actions-row" style={{ marginTop: 8 }}>
+            <button type="button" onClick={addOpenMineActionToChoice}>Открыть шахту</button>
+          </div>
         </section>
 
         <section className="card admin-item-preview">

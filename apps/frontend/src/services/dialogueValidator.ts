@@ -58,6 +58,8 @@ function normalizeActionType(type: string): string {
       return 'openShop';
     case 'start_combat':
       return 'startCombat';
+    case 'open_mine':
+      return 'openMine';
     case 'unlock_location':
       return 'unlockLocation';
     case 'unlock_dialogue':
@@ -142,7 +144,16 @@ export function validateDialogue(
       }
 
       for (const action of choice.actions ?? []) {
-        const actionType = normalizeActionType(action.type);
+        const payload = action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)
+          ? action.payload
+          : undefined;
+        const rawType = typeof action.type === 'string'
+          ? action.type
+          : (typeof action.action === 'string' ? action.action : '');
+        const actionType = normalizeActionType(rawType);
+        const mineId = typeof action.mineId === 'string'
+          ? action.mineId
+          : (typeof payload?.mineId === 'string' ? payload.mineId : '');
         if (!hasId(worldData.questIds, action.questId)) {
           errors.push(`Action '${action.id}' has missing quest '${action.questId}'.`);
         }
@@ -173,6 +184,26 @@ export function validateDialogue(
         }
         if (actionType === 'completeStep' && !action.questId) {
           warnings.push(`Action '${action.id}' completeStep is missing questId.`);
+        }
+        if (actionType === 'openMine' && !String(mineId ?? '').trim()) {
+          warnings.push(`Action '${action.id ?? '(no id)'}' openMine is missing mineId.`);
+        }
+      }
+
+      for (const effect of choice.effects ?? []) {
+        const payload = effect.payload && typeof effect.payload === 'object' && !Array.isArray(effect.payload)
+          ? effect.payload
+          : undefined;
+        const rawType = typeof effect.type === 'string'
+          ? effect.type
+          : (typeof effect.action === 'string' ? effect.action : '');
+        const effectType = normalizeActionType(rawType);
+        const mineId = typeof effect.mineId === 'string'
+          ? effect.mineId
+          : (typeof payload?.mineId === 'string' ? payload.mineId : '');
+
+        if (effectType === 'openMine' && !String(mineId ?? '').trim()) {
+          warnings.push(`Effect '${effect.id ?? '(no id)'}' openMine is missing mineId.`);
         }
       }
 

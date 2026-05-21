@@ -36,6 +36,7 @@ export type DialogueRuntimeEvent =
 export type DialogueRuntimeIntent =
   | { type: 'OPEN_SHOP'; merchantId?: string | null }
   | { type: 'START_COMBAT' }
+  | { type: 'OPEN_MINE'; mineId: string }
   | { type: 'OPEN_TRAINING'; skillId?: string | null; trainerNpcId?: string | null }
   | { type: 'HEAL_PLAYER_FULL'; costGold?: number }
   | { type: 'GRANT_SKILL'; skillId: string }
@@ -481,6 +482,8 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'startCombat';
     case 'open_training':
       return 'openTraining';
+    case 'open_mine':
+      return 'openMine';
     case 'unlock_location':
       return 'unlockLocation';
     case 'unlock_dialogue':
@@ -518,10 +521,25 @@ function isFullHealingAction(action: DialogueAction): boolean {
 }
 
 function normalizeActions(actions: DialogueAction[]): DialogueAction[] {
-  const normalized = actions.map((action) => ({
-    ...action,
-    type: normalizeActionType(action.type),
-  }));
+  const normalized = actions.map((action, index) => {
+    const payload = action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)
+      ? action.payload
+      : undefined;
+    const rawType = typeof action.type === 'string'
+      ? action.type
+      : (typeof action.action === 'string' ? action.action : '');
+    const mineId = typeof action.mineId === 'string'
+      ? action.mineId
+      : (typeof payload?.mineId === 'string' ? payload.mineId : undefined);
+
+    return {
+      ...(payload as Record<string, unknown> | undefined),
+      ...action,
+      id: action.id ?? `dialogue_action_${index}`,
+      type: normalizeActionType(rawType as DialogueAction['type']),
+      ...(mineId ? { mineId } : {}),
+    } as DialogueAction;
+  });
 
   const skippedTakeGoldIndexes = new Set<number>();
   for (let index = 0; index < normalized.length; index += 1) {
@@ -814,6 +832,16 @@ export function executeDialogueActions(
           events.push({ type: 'trainSkill', npcId: resolvedTrainerNpcId, skillId: action.skillId ?? null });
         }
         break;
+      case 'openMine': {
+        const mineId = String(action.mineId ?? '').trim();
+        if (!mineId) {
+          logs.push('openMine skipped: missing mineId.');
+          break;
+        }
+        intents.push({ type: 'OPEN_MINE', mineId });
+        logs.push(`Mine open requested: ${mineId}`);
+        break;
+      }
       case 'trainSkill':
         if (action.skillId) {
           const skillId = String(action.skillId).trim();

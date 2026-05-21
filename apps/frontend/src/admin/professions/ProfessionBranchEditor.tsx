@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { ProfessionBranch } from '../../types/profession';
+import {
+  loadProfessionBranchesFromStorage,
+  saveProfessionBranchesToStorage,
+} from '../../services/professionBranchRepository';
 
 interface ProfessionBranchEditorProps {
   professions?: Array<{ id: string; name: string }>;
@@ -8,13 +12,31 @@ interface ProfessionBranchEditorProps {
 }
 
 export function ProfessionBranchEditor({ professions = [], filterByProfession, onSave }: ProfessionBranchEditorProps) {
-  const [branches, setBranches] = useState<ProfessionBranch[]>([]);
+  const [branches, setBranches] = useState<ProfessionBranch[]>(() => loadProfessionBranchesFromStorage());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProfessionBranch>>({});
   const [newFormOpen, setNewFormOpen] = useState(false);
   const [filterProfession, setFilterProfession] = useState<string>(filterByProfession || '');
 
   const filteredBranches = (filterByProfession || filterProfession) ? branches.filter(b => b.professionId === (filterByProfession || filterProfession)) : branches;
+
+  const branchWarnings = filteredBranches
+    .filter((branch) => {
+      const name = String(branch.name ?? '').toLowerCase();
+      const isChoiceLike = name.includes('глубинник')
+        || name.includes('старатель')
+        || name.includes('искатель')
+        || name.includes('покоритель')
+        || name.includes('проходчик');
+      return isChoiceLike && !String(branch.exclusiveGroupId ?? '').trim();
+    })
+    .map((branch) => `Ветка ${branch.name} (${branch.id}) выглядит как choice-ветка, но у нее нет exclusiveGroupId.`);
+
+  const persist = (next: ProfessionBranch[]) => {
+    const saved = saveProfessionBranchesToStorage(next);
+    setBranches(saved);
+    onSave?.(saved);
+  };
 
   const handleEdit = (branch: ProfessionBranch) => {
     setEditingId(branch.id);
@@ -23,7 +45,20 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
 
   const handleSaveEdit = () => {
     if (editingId && editForm.id && editForm.name && editForm.professionId) {
-      setBranches(branches.map(b => b.id === editingId ? { ...b, ...editForm } : b));
+      const next = branches.map(b => b.id === editingId ? {
+        ...b,
+        ...editForm,
+        requiredSkillIds: Array.isArray(editForm.requiredSkillIds)
+          ? editForm.requiredSkillIds.map((id) => String(id).trim()).filter(Boolean)
+          : undefined,
+        requiredBranchIds: Array.isArray(editForm.requiredBranchIds)
+          ? editForm.requiredBranchIds.map((id) => String(id).trim()).filter(Boolean)
+          : undefined,
+        locksBranchIds: Array.isArray(editForm.locksBranchIds)
+          ? editForm.locksBranchIds.map((id) => String(id).trim()).filter(Boolean)
+          : undefined,
+      } : b);
+      persist(next);
       setEditingId(null);
       setEditForm({});
     }
@@ -31,7 +66,7 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
 
   const handleDelete = (id: string) => {
     if (confirm('Удалить эту ветку?')) {
-      setBranches(branches.filter(b => b.id !== id));
+      persist(branches.filter(b => b.id !== id));
     }
   };
 
@@ -45,10 +80,12 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
         description: editForm.description || '',
         exclusiveGroupId: editForm.exclusiveGroupId,
         requiredSkillIds: editForm.requiredSkillIds || [],
+        requiredBranchIds: editForm.requiredBranchIds || [],
+        locksBranchIds: editForm.locksBranchIds || [],
         isFinalBranch: editForm.isFinalBranch ?? false,
         isEnabled: editForm.isEnabled ?? true,
       };
-      setBranches([...branches, newBranch]);
+      persist([...branches, newBranch]);
       setEditForm({});
       setNewFormOpen(false);
     }
@@ -110,6 +147,33 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
             value={editForm.exclusiveGroupId || ''}
             onChange={(e) => setEditForm({ ...editForm, exclusiveGroupId: e.target.value })}
           />
+          <input
+            type="text"
+            placeholder="Required skill IDs (через запятую)"
+            value={(editForm.requiredSkillIds ?? []).join(', ')}
+            onChange={(e) => setEditForm({
+              ...editForm,
+              requiredSkillIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+            })}
+          />
+          <input
+            type="text"
+            placeholder="Required branch IDs (через запятую)"
+            value={(editForm.requiredBranchIds ?? []).join(', ')}
+            onChange={(e) => setEditForm({
+              ...editForm,
+              requiredBranchIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+            })}
+          />
+          <input
+            type="text"
+            placeholder="Locks branch IDs (через запятую)"
+            value={(editForm.locksBranchIds ?? []).join(', ')}
+            onChange={(e) => setEditForm({
+              ...editForm,
+              locksBranchIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+            })}
+          />
           <label>
             <input
               type="checkbox"
@@ -131,6 +195,14 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
       )}
 
       <div className="editor-list">
+        {branchWarnings.length > 0 ? (
+          <div className="card" style={{ background: 'rgba(57, 30, 20, 0.72)', border: '1px solid rgba(215, 166, 114, 0.42)' }}>
+            <strong>Предупреждения валидации</strong>
+            <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+              {branchWarnings.map((warning, index) => <p key={`${warning}-${index}`} className="muted" style={{ margin: 0 }}>{warning}</p>)}
+            </div>
+          </div>
+        ) : null}
         {filteredBranches.map((branch) => (
           <div key={branch.id} className="editor-item card">
             {editingId === branch.id ? (
@@ -148,6 +220,30 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
                   type="text"
                   value={editForm.exclusiveGroupId || ''}
                   onChange={(e) => setEditForm({ ...editForm, exclusiveGroupId: e.target.value })}
+                />
+                <input
+                  type="text"
+                  value={(editForm.requiredSkillIds ?? []).join(', ')}
+                  onChange={(e) => setEditForm({
+                    ...editForm,
+                    requiredSkillIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+                  })}
+                />
+                <input
+                  type="text"
+                  value={(editForm.requiredBranchIds ?? []).join(', ')}
+                  onChange={(e) => setEditForm({
+                    ...editForm,
+                    requiredBranchIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+                  })}
+                />
+                <input
+                  type="text"
+                  value={(editForm.locksBranchIds ?? []).join(', ')}
+                  onChange={(e) => setEditForm({
+                    ...editForm,
+                    locksBranchIds: e.target.value.split(',').map((id) => id.trim()).filter(Boolean),
+                  })}
                 />
                 <label>
                   <input
@@ -169,6 +265,7 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
                 <p>{branch.description}</p>
                 <div className="meta">
                   {branch.exclusiveGroupId && <span>Группа: {branch.exclusiveGroupId}</span>}
+                  {(branch.requiredSkillIds ?? []).length > 0 && <span>Требует: {branch.requiredSkillIds?.join(', ')}</span>}
                   {branch.isFinalBranch && <span>🎯 Финальная</span>}
                   <span>{branch.isEnabled ? '✅' : '❌'}</span>
                 </div>
@@ -203,7 +300,7 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
           flex-direction: column;
           gap: 0.5rem;
           padding: 1rem;
-          background: #f5f5f5;
+          background: rgba(26, 22, 17, 0.92);
         }
         .editor-form input,
         .editor-form textarea,

@@ -3,7 +3,7 @@ import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
-import { AdminFieldLabel } from '../adminUi';
+import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from '../adminVisuals';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import { ensureDialoguesLoaded, getAllDialogues, saveDialogue } from '../../services/dialogueRepository';
@@ -113,6 +113,7 @@ export function NpcsPage() {
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isBulkImageUploading, setBulkImageUploading] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const [dialogueIds, setDialogueIds] = useState<string[]>([]);
@@ -300,6 +301,37 @@ export function NpcsPage() {
 
   function patch(next: Partial<NpcDefinition>) {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
+  }
+
+  async function handleUploadAllNpcImages(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    setBulkImageUploading(true);
+    try {
+      const baseName = draft.id.trim() || 'npc';
+      const [portrait, fullImage, combatImage, icon] = await Promise.all([
+        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-portrait` }),
+        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-full` }),
+        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-combat` }),
+        imageService.uploadPreset(file, 'item-icon', { name: `${baseName}-icon` }),
+      ]);
+
+      patch({
+        portraitUrl: portrait.id,
+        fullImageUrl: fullImage.id,
+        combatImageUrl: combatImage.id,
+        iconUrl: icon.id,
+      });
+      setStatusText(`Загружены все варианты изображений для NPC: ${baseName}.`);
+    } catch (error) {
+      setStatusText(translateAdminErrorMessage((error as Error).message));
+    } finally {
+      setBulkImageUploading(false);
+    }
   }
 
   function repairSelectedNpc() {
@@ -659,6 +691,39 @@ export function NpcsPage() {
 
         {activeTab === 'images' ? (
           <>
+            <section className="card admin-inline-image-field">
+              <div className="admin-inline-image-field-head">
+                <AdminFieldLabel
+                  label="Пакетная загрузка изображений NPC"
+                  hint="Один файл автоматически обновит главный портрет NPC, полноразмерное изображение, боевой портрет и иконку."
+                />
+                <span className="muted">384x384px + 128x128px</span>
+              </div>
+
+              <div className="admin-inline-image-field-body">
+                <label className="admin-inline-image-upload">
+                  <span>{isBulkImageUploading ? 'Загрузка...' : 'Загрузить файл для всех изображений'}</span>
+                  <input type="file" accept="image/*" onChange={handleUploadAllNpcImages} disabled={isBulkImageUploading} />
+                </label>
+
+                <button
+                  type="button"
+                  disabled={isBulkImageUploading || (!draft.portraitUrl && !draft.fullImageUrl && !draft.combatImageUrl && !draft.iconUrl)}
+                  onClick={() => patch({
+                    portraitUrl: undefined,
+                    fullImageUrl: undefined,
+                    combatImageUrl: undefined,
+                    iconUrl: undefined,
+                  })}
+                >
+                  Очистить все
+                </button>
+              </div>
+
+              <p className="muted">
+                Система автоматически подготовит изображения под нужные размеры интерфейса. При необходимости любой слот можно заменить вручную ниже.
+              </p>
+            </section>
             <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-portrait`} label="Портрет NPC" hint="Главный портрет персонажа." />
             <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-full`} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
             <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-combat`} label="Боевой портрет" hint="Изображение для боя." />

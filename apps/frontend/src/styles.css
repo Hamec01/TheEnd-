@@ -3185,6 +3185,27 @@ h3 {
   background: rgba(210, 170, 102, 0.08);
 }
 
+.mine-block-entry-list {
+  min-height: 340px;
+  max-height: 500px;
+  padding-right: 8px;
+}
+
+.mine-block-entry-row {
+  grid-template-columns: auto repeat(5, minmax(140px, 1fr));
+  gap: 8px 10px;
+  align-items: start;
+}
+
+.mine-block-entry-row label {
+  min-width: 0;
+}
+
+.mine-block-entry-row input,
+.mine-block-entry-row select {
+  width: 100%;
+}
+
 .image-list {
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 }
@@ -3220,6 +3241,15 @@ h3 {
   }
 
   .merchant-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mine-block-entry-list {
+    min-height: 280px;
+    max-height: 420px;
+  }
+
+  .mine-block-entry-row {
     grid-template-columns: 1fr;
   }
 

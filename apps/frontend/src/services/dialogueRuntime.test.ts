@@ -42,4 +42,28 @@ describe('dialogueRuntime training intents', () => {
     const r4 = executeDialogueActions('p', 'npc_dialogue', [{ id: 'a', type: 'openTraining' } as any]);
     expect(r4.intents.find((i) => i.type === 'OPEN_TRAINING')?.trainerNpcId).toBe('npc_dialogue');
   });
+
+  it('emits OPEN_MINE for open_mine action with mineId', () => {
+    const result = executeDialogueActions(
+      'player_test',
+      'npc_test',
+      [{ id: 'a1', type: 'open_mine', mineId: 'mine_teramor_mineral' } as any],
+    );
+    expect(result.intents.find((intent) => intent.type === 'OPEN_MINE')).toEqual({
+      type: 'OPEN_MINE',
+      mineId: 'mine_teramor_mineral',
+    });
+  });
+
+  it('emits OPEN_MINE for legacy action format', () => {
+    const result = executeDialogueActions(
+      'player_test',
+      'npc_test',
+      [{ action: 'open_mine', payload: { mineId: 'mine_legacy' } } as any],
+    );
+    expect(result.intents.find((intent) => intent.type === 'OPEN_MINE')).toEqual({
+      type: 'OPEN_MINE',
+      mineId: 'mine_legacy',
+    });
+  });
 });
