@@ -263,6 +263,26 @@ function serializeQuestMarker(marker: QuestMarkerDefinition): QuestMarkerExportJ
   return output;
 }
 
+function normalizeAudioCue(value: unknown): WorldMapZone['music'] | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const input = value as Record<string, unknown>;
+  const assetId = typeof input.assetId === 'string' ? input.assetId.trim() : '';
+  const url = typeof input.url === 'string' ? input.url.trim() : '';
+  if (!assetId && !url) {
+    return undefined;
+  }
+  return {
+    assetId: assetId || undefined,
+    url: url || undefined,
+    volume: isFiniteNumber(input.volume) ? Math.max(0, Math.min(1, input.volume)) : undefined,
+    loop: typeof input.loop === 'boolean' ? input.loop : undefined,
+    fadeInMs: isFiniteNumber(input.fadeInMs) ? Math.max(0, Math.round(input.fadeInMs)) : undefined,
+    fadeOutMs: isFiniteNumber(input.fadeOutMs) ? Math.max(0, Math.round(input.fadeOutMs)) : undefined,
+  };
+}
+
 export function normalizeZone(input: unknown): WorldMapZone | null {
   if (!input || typeof input !== 'object') {
     return null;
@@ -351,6 +371,8 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
         : typeof zone.linkedLocation === 'string'
           ? zone.linkedLocation
           : undefined,
+    music: normalizeAudioCue(zone.music),
+    ambientSound: normalizeAudioCue(zone.ambientSound),
     createdAt: isFiniteNumber(zone.createdAt) ? zone.createdAt : Date.now(),
     updatedAt: isFiniteNumber(zone.updatedAt) ? zone.updatedAt : Date.now(),
   };

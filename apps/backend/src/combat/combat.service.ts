@@ -69,6 +69,7 @@ import {
   type ArenaCombatEquipmentModifiers,
   type BattlefieldTile,
   type Equipment,
+  type ExitZone,
   type Race,
   type StatBlock,
 } from '@theend/rpg-domain';
@@ -2910,6 +2911,10 @@ export class CombatService {
               type: 'attack_bump',
               actorId: actor.id,
               targetId: target.id,
+              hitEffectId: isCrit ? 'hit_blunt' : 'hit_slash',
+              impactEffectId: 'impact_blood',
+              damage,
+              critical: isCrit,
             },
           );
 
@@ -3112,6 +3117,8 @@ export class CombatService {
           data: { targets: targets.map((target) => target.id) },
         });
 
+        const skillVisuals = skillDef.visuals ?? {};
+
         for (const target of targets) {
           const execution = this.skillRuntime.resolveSkillExecution(skillDef, actor, target, skillLevel);
 
@@ -3146,12 +3153,36 @@ export class CombatService {
                 id: randomUUID(),
                 roundNumber: state.roundNumber,
                 stepIndex,
+                type: command.target.kind === 'entity' ? 'projectile' : 'damage_number',
+                actorId: actor.id,
+                targetId: dmgTarget.id,
+                skillId,
+                visualEffectId: skillVisuals.visualEffectId,
+                castEffectId: skillVisuals.castEffectId,
+                projectileEffectId: skillVisuals.projectileEffectId,
+                impactEffectId: skillVisuals.impactEffectId,
+                hitEffectId: skillVisuals.hitEffectId,
+                value: damage,
+                damage,
+              },
+            );
+
+            if (command.target.kind === 'entity') {
+              state.recentAnimationEvents = [...(state.recentAnimationEvents ?? []), {
+                id: randomUUID(),
+                roundNumber: state.roundNumber,
+                stepIndex,
                 type: 'damage_number',
                 actorId: actor.id,
                 targetId: dmgTarget.id,
+                skillId,
+                visualEffectId: skillVisuals.visualEffectId,
+                impactEffectId: skillVisuals.impactEffectId,
+                hitEffectId: skillVisuals.hitEffectId,
                 value: damage,
-              },
-            );
+                damage,
+              }];
+            }
 
             if (!dmgTarget.isAlive) {
               await this.processActorDeath({
@@ -3202,6 +3233,9 @@ export class CombatService {
                 type: 'heal_number',
                 actorId: actor.id,
                 targetId: healTarget.id,
+                skillId,
+                visualEffectId: skillVisuals.visualEffectId,
+                impactEffectId: skillVisuals.impactEffectId,
                 value: restored,
               },
             );
@@ -4797,6 +4831,7 @@ export class CombatService {
       entities: [player, ...enemies],
       battlefieldTiles,
       battlefieldTraps: this.buildBattlefieldTraps(battleMap),
+      exitZones: battleMap?.exitZones as ExitZone[] | undefined,
     });
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
     state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;

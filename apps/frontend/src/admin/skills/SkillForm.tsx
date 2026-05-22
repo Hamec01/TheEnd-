@@ -12,8 +12,9 @@ import { SkillLevelEditor } from './SkillLevelEditor';
 import { SkillPreview } from './SkillPreview';
 import { SkillRequirementsEditor } from './SkillRequirementsEditor';
 import { clampLevel, formatCommaList, formatEnumLabel, parseCommaList, SKILL_CAST_TYPES, SKILL_TARGET_TYPES, SKILL_TYPES, syncLevels } from './skillAdminUtils';
+import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 
-type SkillTab = 'basic' | 'levels' | 'costs' | 'effects' | 'target' | 'requirements' | 'acquisition' | 'classes' | 'races' | 'runes' | 'shamanism' | 'risks' | 'preview';
+type SkillTab = 'basic' | 'levels' | 'costs' | 'effects' | 'visuals' | 'target' | 'requirements' | 'acquisition' | 'classes' | 'races' | 'runes' | 'shamanism' | 'risks' | 'preview';
 
 interface SkillFormProps {
   draft: AdminSkillDefinition;
@@ -36,6 +37,7 @@ const TABS: Array<{ id: SkillTab; label: string }> = [
   { id: 'levels', label: 'Уровни' },
   { id: 'costs', label: 'Стоимость' },
   { id: 'effects', label: 'Урон и эффекты' },
+  { id: 'visuals', label: 'VFX' },
   { id: 'target', label: 'Цель и каст' },
   { id: 'requirements', label: 'Требования' },
   { id: 'acquisition', label: 'Получение' },
@@ -55,6 +57,10 @@ export function SkillForm(props: SkillFormProps) {
     onChange({ ...draft, ...patchValue });
   }
 
+  function patchVisuals(patchValue: NonNullable<AdminSkillDefinition['visuals']>) {
+    patch({ visuals: { ...(draft.visuals ?? {}), ...patchValue } });
+  }
+
   function patchRequirements(next: SkillRequirementConfig) {
     patch({ requirements: next });
   }
@@ -64,6 +70,10 @@ export function SkillForm(props: SkillFormProps) {
   }
 
   const translatedStatus = useMemo(() => translateAdminErrorMessage(status), [status]);
+
+  function renderEffectOptions() {
+    return BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>);
+  }
 
   return (
     <section className="admin-form-panel admin-skill-form-panel">
@@ -284,6 +294,57 @@ export function SkillForm(props: SkillFormProps) {
             onTransformationsChange={(next) => patch({ transformations: next })}
             onStatus={() => undefined}
           />
+        ) : null}
+
+        {activeTab === 'visuals' ? (
+          <div className="admin-page-grid">
+            <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Visual effect ID" hint="General renderer preset. Empty means default." />
+                <input list="battle-effect-ids" value={draft.visuals?.visualEffectId ?? ''} onChange={(event) => patchVisuals({ visualEffectId: event.target.value || undefined })} placeholder="hit_slash" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Cast effect ID" hint="Effect played at cast start." />
+                <input list="battle-effect-ids" value={draft.visuals?.castEffectId ?? ''} onChange={(event) => patchVisuals({ castEffectId: event.target.value || undefined })} placeholder="hit_blunt" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Projectile effect ID" hint="projectile_arrow, projectile_fire, projectile_ice." />
+                <input list="battle-effect-ids" value={draft.visuals?.projectileEffectId ?? ''} onChange={(event) => patchVisuals({ projectileEffectId: event.target.value || undefined })} placeholder="projectile_arrow" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Impact effect ID" hint="impact_blood, impact_fire, impact_ice." />
+                <input list="battle-effect-ids" value={draft.visuals?.impactEffectId ?? ''} onChange={(event) => patchVisuals({ impactEffectId: event.target.value || undefined })} placeholder="impact_blood" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Hit effect ID" hint="hit_slash or hit_blunt." />
+                <input list="battle-effect-ids" value={draft.visuals?.hitEffectId ?? ''} onChange={(event) => patchVisuals({ hitEffectId: event.target.value || undefined })} placeholder="hit_slash" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Camera shake" hint="Camera shake preset for readable impact." />
+                <select
+                  value={draft.visuals?.cameraShakePreset ?? 'none'}
+                  onChange={(event) => patchVisuals({ cameraShakePreset: event.target.value as NonNullable<AdminSkillDefinition['visuals']>['cameraShakePreset'] })}
+                >
+                  <option value="none">none</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="heavy">heavy</option>
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Cast sound ID" hint="Future audio asset id for cast." />
+                <input value={draft.visuals?.castSoundId ?? ''} onChange={(event) => patchVisuals({ castSoundId: event.target.value || undefined })} placeholder="sfx_cast_01" />
+              </label>
+              <label>
+                <AdminFieldLabel label="Impact sound ID" hint="Future audio asset id for impact." />
+                <input value={draft.visuals?.impactSoundId ?? ''} onChange={(event) => patchVisuals({ impactSoundId: event.target.value || undefined })} placeholder="sfx_impact_01" />
+              </label>
+            </div>
+            <datalist id="battle-effect-ids">
+              {renderEffectOptions()}
+            </datalist>
+            <SkillJsonField label="Visual JSON" hint="SkillVisualConfig. Optional fields only; old skills work with defaults." value={draft.visuals ?? {}} onChange={(next) => patch({ visuals: next })} onStatus={() => undefined} rows={10} />
+          </div>
         ) : null}
 
         {activeTab === 'target' ? (

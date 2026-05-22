@@ -4143,6 +4143,12 @@ h3 {
   padding: 2px 4px;
 }
 
+.battle-window-head .secondary-button {
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 0.76rem;
+}
+
 /* Fullscreen tactical battle mode */
 .battle-fullscreen-root {
   position: fixed;
@@ -4254,6 +4260,53 @@ h3 {
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   height: 100%;
+}
+
+.phaser-battle-renderer {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.phaser-battle-host {
+  position: relative;
+  width: 100%;
+  height: min(52vh, 520px);
+  min-height: 320px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(166, 132, 82, 0.45);
+  background: #120e09;
+}
+
+.battle-fullscreen-root .phaser-battle-host {
+  height: 100%;
+  min-height: 260px;
+}
+
+.phaser-battle-host canvas {
+  display: block;
+}
+
+.wm-map-phaser .wm-map-phaser-surface {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.wm-map-phaser .wm-map-phaser-surface canvas {
+  display: block;
+}
+
+.wm-renderer-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 12;
+  border: 1px solid rgba(242, 210, 143, 0.5);
+  background: rgba(22, 16, 12, 0.78);
+  color: #f8edd8;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .tactical-board-container {

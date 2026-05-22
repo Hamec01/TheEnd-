@@ -1,4 +1,4 @@
-import type { AdminSkillDefinition, BattleMapDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { ActorBattleVisualConfig, AdminSkillDefinition, BattleMapDefinition, PrimaryStat } from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -199,6 +199,7 @@ export interface AdminItem {
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
+  battleVisuals?: ActorBattleVisualConfig;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -309,6 +310,8 @@ export interface DialogueDefinition {
   status: 'draft' | 'active' | 'disabled';
   description?: string;
   startNodeId: string;
+  introVoiceAssetId?: string;
+  introMusicAssetId?: string;
   nodes: unknown[];
   createdAt: string;
   updatedAt: string;
@@ -333,6 +336,12 @@ export interface NpcDefinition {
   portraitUrl?: string;
   fullImageUrl?: string;
   iconUrl?: string;
+  battleSpriteAssetId?: string;
+  deathEffectId?: string;
+  hitEffectPreset?: string;
+  dialogueStartVoiceAssetId?: string;
+  dialogueStartLine?: string;
+  voiceProfileId?: string;
   worldSimTrader?: boolean;
   mapBindings?: unknown[];
   dialogues?: unknown[];
@@ -642,6 +651,8 @@ export interface WorldMapZone {
   passiveEffects?: boolean;
   color?: string;
   parentAreaId?: string;
+  music?: AudioCueConfig;
+  ambientSound?: AudioCueConfig;
   createdAt: number;
   updatedAt: number;
 }
@@ -718,6 +729,16 @@ export interface CityRacePopulation {
   role?: string;
 }
 
+export interface AudioCueConfig {
+  assetId?: string;
+  url?: string;
+  volume?: number;
+  loop?: boolean;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  subtitle?: string;
+}
+
 export interface CityLocation {
   id: string;
   cityId: string;
@@ -737,6 +758,8 @@ export interface CityLocation {
   markerIcon?: string;
   linkedBattleMapId?: string;
   encounter?: CityLocationEncounterConfig;
+  music?: AudioCueConfig;
+  ambientSound?: AudioCueConfig;
 }
 
 export interface City {
@@ -769,6 +792,8 @@ export interface City {
   backgroundImageId?: string;
   backgroundImageUrl?: string;
   thumbnailImageId?: string;
+  music?: AudioCueConfig;
+  ambientSound?: AudioCueConfig;
   locations: CityLocation[];
   connectedCityIds?: string[];
   connectedZoneIds?: string[];

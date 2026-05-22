@@ -1,4 +1,5 @@
 import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { ActorBattleVisualConfig } from '@theend/rpg-domain';
 import type { DialogueDefinition } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
 import type {
@@ -199,6 +200,7 @@ export interface AdminItem {
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
+  battleVisuals?: ActorBattleVisualConfig;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

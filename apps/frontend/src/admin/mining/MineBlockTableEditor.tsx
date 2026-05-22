@@ -10,6 +10,7 @@ import {
 } from '../../services/miningRepository';
 import { MINING_BLOCK_PAYLOAD_TYPES, MINING_BLOCK_TYPES } from '../../services/miningSkillValidation';
 import { AdminFieldLabel } from '../adminUi';
+import { fixMojibake } from '../../utils/fixMojibake';
 
 const BLOCK_TYPES: MineBlockType[] = MINING_BLOCK_TYPES;
 
@@ -39,7 +40,7 @@ function emptyPayload(): MineBlockPayload {
 }
 
 function emptyTable(defaultMineId = ''): MineBlockTable {
-  return {
+  const table: MineBlockTable = {
     id: '',
     name: '',
     mineId: defaultMineId || undefined,
@@ -51,6 +52,14 @@ function emptyTable(defaultMineId = ''): MineBlockTable {
       { type: 'hazard', weight: 10, hazardTableId: '', label: 'Опасность' },
       { type: 'passage', weight: 4, label: 'Проход' },
     ],
+  };
+  return {
+    ...table,
+    entries: table.entries.map((entry) => ({
+      ...entry,
+      label: fixMojibake(entry.label),
+      description: fixMojibake(entry.description),
+    })),
   };
 }
 

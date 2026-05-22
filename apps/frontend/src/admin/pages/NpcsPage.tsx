@@ -37,6 +37,7 @@ import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type Ad
 import { NpcGroupList } from '../components/NpcGroupList';
 import { groupNpcsByKey, getGroupingLabel, type GroupingKey } from '../utils/npcGrouping';
 import { AdminSectionErrorBoundary } from '../components/AdminSectionErrorBoundary';
+import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const GROUPING_OPTIONS: GroupingKey[] = ['kingdom', 'faction', 'city', 'kind', 'type', 'status', 'race'];
@@ -831,6 +832,12 @@ export function NpcsPage() {
             <label><AdminFieldLabel label="Magic Resist" hint="Сопротивление магии." /><input type="number" value={draft.combat?.magicResist ?? ''} onChange={(event) => patch({ combat: { ...(draft.combat ?? { level: 1, role: 'none', hp: 100, skillIds: [] }), magicResist: event.target.value ? Number(event.target.value) : undefined } })} /></label>
             <label><AdminFieldLabel label="Weapon Item ID" hint="ID оружия NPC." /><input value={draft.combat?.weaponItemId ?? ''} onChange={(event) => patch({ combat: { ...(draft.combat ?? { level: 1, role: 'none', hp: 100, skillIds: [] }), weaponItemId: event.target.value || undefined } })} /></label>
             <label><AdminFieldLabel label="Loot Table ID" hint="Таблица лута NPC." /><input value={draft.combat?.lootTableId ?? ''} onChange={(event) => patch({ combat: { ...(draft.combat ?? { level: 1, role: 'none', hp: 100, skillIds: [] }), lootTableId: event.target.value || undefined } })} /></label>
+            <label><AdminFieldLabel label="Battle sprite asset ID" hint="Phaser asset id for the combat token. Empty falls back to combat portrait." /><input value={draft.battleSpriteAssetId ?? ''} onChange={(event) => patch({ battleSpriteAssetId: event.target.value || undefined })} placeholder="npc_guard_sprite" /></label>
+            <label><AdminFieldLabel label="Death effect ID" hint="Effect registry id used when this NPC dies." /><input list="npc-battle-effect-ids" value={draft.deathEffectId ?? ''} onChange={(event) => patch({ deathEffectId: event.target.value || undefined })} placeholder="death_fade" /></label>
+            <label><AdminFieldLabel label="Hit effect preset" hint="Default impact effect for this NPC." /><input list="npc-battle-effect-ids" value={draft.hitEffectPreset ?? ''} onChange={(event) => patch({ hitEffectPreset: event.target.value || undefined })} placeholder="hit_blunt" /></label>
+            <datalist id="npc-battle-effect-ids">
+              {BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
+            </datalist>
           </div>
         ) : null}
 
@@ -909,6 +916,11 @@ export function NpcsPage() {
         {activeTab === 'dialogues' ? (
           <section className="card admin-item-preview">
             <h4>Dialogue bindings</h4>
+            <div className="admin-form-grid">
+              <label><AdminFieldLabel label="Dialogue start voice asset ID" hint="Audio asset id for the first voice line when this NPC opens dialogue." /><input value={draft.dialogueStartVoiceAssetId ?? ''} onChange={(event) => patch({ dialogueStartVoiceAssetId: event.target.value || undefined })} placeholder="vo_guard_intro_01" /></label>
+              <label><AdminFieldLabel label="Dialogue start line" hint="Optional one-line bark/subtitle used before the dialogue UI opens." /><input value={draft.dialogueStartLine ?? ''} onChange={(event) => patch({ dialogueStartLine: event.target.value || undefined })} placeholder="State your business." /></label>
+              <label><AdminFieldLabel label="Voice profile ID" hint="Shared voice profile key for future TTS/voice selection." /><input value={draft.voiceProfileId ?? ''} onChange={(event) => patch({ voiceProfileId: event.target.value || undefined })} placeholder="voice_gruff_male_01" /></label>
+            </div>
             <div className="admin-actions-row">
               <button type="button" onClick={createDialogueForNpc}>Создать диалог для NPC</button>
             </div>

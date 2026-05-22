@@ -654,6 +654,7 @@ describe('arena battle round resolver', () => {
       perception: 7,
       willpower: 4,
       position: 1,
+      attackRange: 10,
     });
 
     const enemy = createArenaCombatEntity({
@@ -897,8 +898,8 @@ describe('arena battle round resolver', () => {
       maxHp: 40,
       currentMp: 0,
       maxMp: 0,
-      currentStamina: 25,
-      maxStamina: 25,
+      currentStamina: 35,
+      maxStamina: 35,
       strength: 8,
       constitution: 6,
       dexterity: 5,

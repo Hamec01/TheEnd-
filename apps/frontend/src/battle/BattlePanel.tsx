@@ -33,6 +33,8 @@ import { CombatLogPanel } from './CombatLogPanel';
 import { FighterCard } from './FighterCard';
 import { InspectPanel } from './InspectPanel';
 import { buildCombatContextActions, buildSelectedSourceHint } from './combatContextActions';
+import type { BattleRendererKind } from './battleRendererSettings';
+import { PhaserBattleRenderer } from './renderers/PhaserBattleRenderer';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,10 @@ interface BattlePanelProps {
     cellSizePx?: number;
     gridOffsetX?: number;
     gridOffsetY?: number;
+    logicalColumns?: number;
+    logicalRows?: number;
+    showEditorGrid?: boolean;
+    gridOpacity?: number;
   };
   selectedSkillId: string | null;
   availableSkills: Array<{ skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
@@ -61,6 +67,8 @@ interface BattlePanelProps {
   resolveSkillIcon?: (skill: AdminSkillDefinition | null | undefined) => string | undefined;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   playerEquipment?: Equipment;
+  battleRenderer?: BattleRendererKind;
+  onBattleRendererChange?: (next: BattleRendererKind) => void;
 }
 
 /** What the player has currently selected to do next */
@@ -248,6 +256,8 @@ export function BattlePanel({
   resolveSkillIcon,
   resolveAdminItemById,
   playerEquipment,
+  battleRenderer = 'react',
+  onBattleRendererChange,
 }: BattlePanelProps) {
   // ── Core entity refs ────────────────────────────────────────────────────
   const player = useMemo(
@@ -1059,6 +1069,7 @@ export function BattlePanel({
     : isPlayerTurn
       ? `Ваш ход — AP: ${currentTurnAp} / 3`
       : `Ход: ${activeActor?.name ?? '...'}` ;
+  const BattleRenderer = battleRenderer === 'phaser' ? PhaserBattleRenderer : BattleField;
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -1088,6 +1099,14 @@ export function BattlePanel({
             )}
           </div>
           <div className="battle-header-right">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => onBattleRendererChange?.(battleRenderer === 'phaser' ? 'react' : 'phaser')}
+              title="Switch battle renderer"
+            >
+              Renderer: {battleRenderer}
+            </button>
             <button type="button" onClick={() => onClose?.()} aria-label="Закрыть бой">✕</button>
           </div>
         </div>
@@ -1284,7 +1303,7 @@ export function BattlePanel({
                 />
               ) : null}
 
-              <BattleField
+              <BattleRenderer
                 entities={state.entities}
                 battlefieldTiles={state.battlefieldTiles}
                 battleMapWidth={state.battleMapWidth}

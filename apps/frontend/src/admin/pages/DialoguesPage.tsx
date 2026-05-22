@@ -211,6 +211,8 @@ export function DialoguesPage() {
       id: draft.id.trim() || `dlg_${Math.random().toString(36).slice(2, 8)}`,
       title: draft.title.trim(),
       startNodeId: draft.startNodeId.trim(),
+      introVoiceAssetId: draft.introVoiceAssetId?.trim() || undefined,
+      introMusicAssetId: draft.introMusicAssetId?.trim() || undefined,
       nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes),
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
@@ -480,6 +482,8 @@ export function DialoguesPage() {
           <label><AdminFieldLabel label="NPC" hint="Привязка диалога к NPC." /><select value={draft.npcId ?? ''} onChange={(event) => patch({ npcId: event.target.value || undefined })}><option value="">Не задано</option>{npcIds.map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label>
           <label><AdminFieldLabel label="Status" hint="Статус публикации диалога." /><select value={draft.status} onChange={(event) => patch({ status: event.target.value as DialogueDefinition['status'] })}><option value="draft">Draft</option><option value="active">Active</option><option value="disabled">Disabled</option></select></label>
           <label><AdminFieldLabel label="Start Node ID" hint="Стартовая нода диалога." /><input value={draft.startNodeId} onChange={(event) => patch({ startNodeId: event.target.value })} /></label>
+          <label><AdminFieldLabel label="Intro voice asset ID" hint="Optional voice asset played when the dialogue starts." /><input value={draft.introVoiceAssetId ?? ''} onChange={(event) => patch({ introVoiceAssetId: event.target.value || undefined })} placeholder="vo_dialogue_intro_01" /></label>
+          <label><AdminFieldLabel label="Intro music asset ID" hint="Optional music cue for this dialogue scene." /><input value={draft.introMusicAssetId ?? ''} onChange={(event) => patch({ introMusicAssetId: event.target.value || undefined })} placeholder="music_dialogue_tension" /></label>
         </div>
 
         <label>

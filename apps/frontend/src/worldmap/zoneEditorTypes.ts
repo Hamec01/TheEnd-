@@ -55,6 +55,15 @@ export interface PaintedRegionCell {
   regionType: RegionType;
 }
 
+export interface WorldAudioCue {
+  assetId?: string;
+  url?: string;
+  volume?: number;
+  loop?: boolean;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+}
+
 export interface WorldMapZone {
   id: string;
   name: string;
@@ -99,6 +108,8 @@ export interface WorldMapZone {
   cityId?: string;
   linkedLocationId?: string;
   linkedLocation?: string;
+  music?: WorldAudioCue;
+  ambientSound?: WorldAudioCue;
   createdAt: number;
   updatedAt: number;
 }
@@ -146,6 +157,10 @@ export interface ZoneEditorDraft {
   kingdomId: string;
   cityId: string;
   linkedLocationId: string;
+  musicAssetId: string;
+  musicUrl: string;
+  ambientSoundAssetId: string;
+  ambientSoundUrl: string;
   createdAt: number;
   updatedAt: number;
   selectedPointIndex: number | null;
@@ -227,6 +242,10 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     kingdomId: '',
     cityId: '',
     linkedLocationId: '',
+    musicAssetId: '',
+    musicUrl: '',
+    ambientSoundAssetId: '',
+    ambientSoundUrl: '',
     createdAt: now,
     updatedAt: now,
     selectedPointIndex: null,
@@ -281,6 +300,10 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     kingdomId: zone.kingdomId ?? '',
     cityId: zone.cityId ?? '',
     linkedLocationId: zone.linkedLocationId ?? zone.linkedLocation ?? '',
+    musicAssetId: zone.music?.assetId ?? '',
+    musicUrl: zone.music?.url ?? '',
+    ambientSoundAssetId: zone.ambientSound?.assetId ?? '',
+    ambientSoundUrl: zone.ambientSound?.url ?? '',
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
     selectedPointIndex: null,
@@ -352,6 +375,20 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     kingdomId: draft.kingdomId.trim() || undefined,
     cityId: draft.cityId.trim() || undefined,
     linkedLocationId: draft.linkedLocationId.trim() || undefined,
+    music: draft.musicAssetId.trim() || draft.musicUrl.trim()
+      ? {
+        assetId: draft.musicAssetId.trim() || undefined,
+        url: draft.musicUrl.trim() || undefined,
+        loop: true,
+      }
+      : undefined,
+    ambientSound: draft.ambientSoundAssetId.trim() || draft.ambientSoundUrl.trim()
+      ? {
+        assetId: draft.ambientSoundAssetId.trim() || undefined,
+        url: draft.ambientSoundUrl.trim() || undefined,
+        loop: true,
+      }
+      : undefined,
     createdAt: existingCreatedAt ?? draft.createdAt ?? now,
     updatedAt: now,
   };

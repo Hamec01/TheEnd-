@@ -2,7 +2,10 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsEnum,
+  IsArray,
+  IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
@@ -349,6 +352,37 @@ export class RuntimeBattleMapDto {
   @IsString()
   imageUrl?: string;
 
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  cellSizePx?: number;
+
+  @IsOptional()
+  @IsInt()
+  gridOffsetX?: number;
+
+  @IsOptional()
+  @IsInt()
+  gridOffsetY?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  logicalColumns?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  logicalRows?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  showEditorGrid?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  gridOpacity?: number;
+
   @IsInt()
   @Min(12)
   width!: number;
@@ -392,6 +426,10 @@ export class RuntimeBattleMapDto {
   @ValidateNested({ each: true })
   @Type(() => RuntimeBattleMapTriggerDto)
   triggers?: RuntimeBattleMapTriggerDto[];
+
+  @IsOptional()
+  @IsArray()
+  exitZones?: unknown[];
 }
 
 export class CustomCombatNpcDto {

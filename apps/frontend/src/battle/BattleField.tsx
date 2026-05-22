@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CombatContextAction, ClickedCombatTarget, SelectedCombatSource } from './combatContextActions';
 
-interface BattleFieldProps {
+export interface BattleFieldProps {
   entities: ArenaCombatEntity[];
   battlefieldTiles: BattlefieldTile[];
   battleMapWidth: number;
@@ -33,6 +33,8 @@ interface BattleFieldProps {
     gridOffsetY?: number;
     showEditorGrid?: boolean;
     gridOpacity?: number;
+    logicalColumns?: number;
+    logicalRows?: number;
   };
   distance: DistanceBand;
   selectedTargetId: string | null;

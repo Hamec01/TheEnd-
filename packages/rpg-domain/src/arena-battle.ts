@@ -729,6 +729,7 @@ export function createInitialBattleState(params: {
   battleMapHeight?: number;
   viewportWidth?: number;
   viewportHeight?: number;
+  exitZones?: ExitZone[];
 }): ArenaBattleState {
   const battleMapWidth = Math.max(1, params.battleMapWidth ?? BATTLEFIELD_GRID_SIZE);
   const battleMapHeight = Math.max(1, params.battleMapHeight ?? BATTLEFIELD_GRID_SIZE);
@@ -749,6 +750,7 @@ export function createInitialBattleState(params: {
     submittedPlans: {},
     recentCombatEvents: [],
     recentAnimationEvents: [],
+    exitZones: params.exitZones ?? [],
     isFinished: false,
   };
 

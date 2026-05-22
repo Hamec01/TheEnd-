@@ -78,6 +78,12 @@ export interface NpcDefinition {
   fullImageUrl?: string;
   combatImageUrl?: string;
   iconUrl?: string;
+  battleSpriteAssetId?: string;
+  deathEffectId?: string;
+  hitEffectPreset?: string;
+  dialogueStartVoiceAssetId?: string;
+  dialogueStartLine?: string;
+  voiceProfileId?: string;
 
   mapBindings: NpcMapBinding[];
 

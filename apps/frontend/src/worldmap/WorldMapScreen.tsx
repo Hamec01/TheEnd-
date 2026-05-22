@@ -12,6 +12,8 @@ import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
 import { TopStatusBar } from "./TopStatusBar";
 import { PlayerQuickPanel } from "./PlayerQuickPanel";
 import { WorldMapCanvas, type WorldMapCanvasHandle } from "./WorldMapCanvas";
+import { PhaserWorldMapCanvas } from "./PhaserWorldMapCanvas";
+import { readWorldRendererSetting, writeWorldRendererSetting, type WorldRendererKind } from "./worldRendererSettings";
 import { WorldMapViewer } from "./WorldMapViewer";
 import { MiniMapWidget } from "./MiniMapWidget";
 import { ZoneEditorPanel } from "./ZoneEditorPanel";
@@ -886,6 +888,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [miniMapVisible, setMiniMapVisible] = useState(() =>
     loadUiBoolean(UI_MINI_MAP_VISIBLE_KEY, true),
   );
+  const [worldRenderer, setWorldRenderer] = useState<WorldRendererKind>(() =>
+    readWorldRendererSetting(),
+  );
   const [movementControlScheme, setMovementControlScheme] = useState<MovementControlScheme>(() =>
     loadMovementControlScheme(),
   );
@@ -1095,6 +1100,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       window.removeEventListener(PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT, handleControlSchemeChanged as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    writeWorldRendererSetting(worldRenderer);
+  }, [worldRenderer]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -6719,34 +6728,72 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         <div className="wm-main-column">
           {locationView === "map" ? (
             <div className="wm-play-map-wrap">
-              <WorldMapCanvas
-                mode="play"
-                gameplayPaused={worldMapViewerOpen}
-                playerStartPosition={playSpawnPosition}
-                playerAvatarUrl={playerAvatarUrl}
-                zones={playVisibleZones}
-                regions={regions}
-                playQuestMarkers={playQuestMarkers}
-                playNpcMarkers={playNpcMarkers}
-                onOpenLocation={handleOpenLocation}
-                onEnterZone={handleZoneEnterMemoized}
-                onHoverZone={handleHoverZone}
-                onRuntimeZoneInteract={handleRuntimeZoneInteract}
-                onPlayerPosition={handlePlayerPosition}
-                onPlayerState={handlePlayerState}
-                playerTargetPosition={worldEntityApproachTarget}
-                movementLocked={
-                  worldMapMode === "play"
-                  && locationView === "map"
-                  && (travelExhausted || Boolean(engagedWorldEntityId))
-                }
-                onWorldEntityClick={handleWorldEntityClick}
-                lockedWorldEntityId={engagedWorldEntityId}
-                lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
-                controlScheme={movementControlScheme}
-                playerSpeed={travelMoveSpeed}
-                sprintActive={sprintActive}
-              />
+              <button
+                type="button"
+                className="wm-renderer-toggle"
+                onClick={() => setWorldRenderer((current) => current === "phaser" ? "canvas" : "phaser")}
+              >
+                World renderer: {worldRenderer}
+              </button>
+              {worldRenderer === "phaser" ? (
+                <PhaserWorldMapCanvas
+                  ref={canvasRef}
+                  gameplayPaused={worldMapViewerOpen}
+                  playerStartPosition={playSpawnPosition}
+                  playerAvatarUrl={playerAvatarUrl}
+                  zones={playVisibleZones}
+                  regions={regions}
+                  playQuestMarkers={playQuestMarkers}
+                  playNpcMarkers={playNpcMarkers}
+                  onOpenLocation={handleOpenLocation}
+                  onEnterZone={handleZoneEnterMemoized}
+                  onHoverZone={handleHoverZone}
+                  onRuntimeZoneInteract={handleRuntimeZoneInteract}
+                  onPlayerPosition={handlePlayerPosition}
+                  onPlayerState={handlePlayerState}
+                  playerTargetPosition={worldEntityApproachTarget}
+                  movementLocked={
+                    worldMapMode === "play"
+                    && locationView === "map"
+                    && (travelExhausted || Boolean(engagedWorldEntityId))
+                  }
+                  onWorldEntityClick={handleWorldEntityClick}
+                  lockedWorldEntityId={engagedWorldEntityId}
+                  lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
+                  controlScheme={movementControlScheme}
+                  playerSpeed={travelMoveSpeed}
+                  sprintActive={sprintActive}
+                />
+              ) : (
+                <WorldMapCanvas
+                  mode="play"
+                  gameplayPaused={worldMapViewerOpen}
+                  playerStartPosition={playSpawnPosition}
+                  playerAvatarUrl={playerAvatarUrl}
+                  zones={playVisibleZones}
+                  regions={regions}
+                  playQuestMarkers={playQuestMarkers}
+                  playNpcMarkers={playNpcMarkers}
+                  onOpenLocation={handleOpenLocation}
+                  onEnterZone={handleZoneEnterMemoized}
+                  onHoverZone={handleHoverZone}
+                  onRuntimeZoneInteract={handleRuntimeZoneInteract}
+                  onPlayerPosition={handlePlayerPosition}
+                  onPlayerState={handlePlayerState}
+                  playerTargetPosition={worldEntityApproachTarget}
+                  movementLocked={
+                    worldMapMode === "play"
+                    && locationView === "map"
+                    && (travelExhausted || Boolean(engagedWorldEntityId))
+                  }
+                  onWorldEntityClick={handleWorldEntityClick}
+                  lockedWorldEntityId={engagedWorldEntityId}
+                  lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
+                  controlScheme={movementControlScheme}
+                  playerSpeed={travelMoveSpeed}
+                  sprintActive={sprintActive}
+                />
+              )}
               {miniMapVisible ? (
                 <MiniMapWidget
                   mapImagePath={LABELED_WORLD_MAP_IMAGE_PATH}

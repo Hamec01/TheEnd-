@@ -386,6 +386,8 @@ function normalizeCityInput(input: City): City {
     backgroundImageId: input.backgroundImageId?.trim() || undefined,
     backgroundImageUrl: input.backgroundImageUrl?.trim() || undefined,
     thumbnailImageId: input.thumbnailImageId?.trim() || undefined,
+    music: normalizeAudioCueInput(input.music),
+    ambientSound: normalizeAudioCueInput(input.ambientSound),
     locations: Array.isArray(input.locations)
       ? input.locations
         .map((location) => ({
@@ -395,6 +397,8 @@ function normalizeCityInput(input: City): City {
           name: String(location.name ?? '').trim(),
           description: location.description?.trim() || undefined,
           imageId: location.imageId?.trim() || undefined,
+          music: normalizeAudioCueInput(location.music),
+          ambientSound: normalizeAudioCueInput(location.ambientSound),
           npcIds: Array.isArray(location.npcIds) ? location.npcIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
           autoTriggers: Array.isArray((location as any).autoTriggers)
             ? (location as any).autoTriggers
@@ -876,6 +880,13 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
     defaultRuneComplexId: input.defaultRuneComplexId?.trim() || undefined,
     setId: input.setId?.trim() || undefined,
     tags: normalizeOptionalStringList(input.tags),
+    battleVisuals: input.battleVisuals
+      ? {
+        battleSpriteAssetId: input.battleVisuals.battleSpriteAssetId?.trim() || undefined,
+        deathEffectId: input.battleVisuals.deathEffectId?.trim() || undefined,
+        hitEffectPreset: input.battleVisuals.hitEffectPreset?.trim() || undefined,
+      }
+      : undefined,
     damageMin: input.type === 'weapon' ? (damageMin ?? damageMax) : damageMin,
     damageMax: input.type === 'weapon' ? (damageMax ?? damageMin) : damageMax,
     attackRange,
@@ -1021,6 +1032,34 @@ function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition 
   return normalized;
 }
 
+function normalizeAudioCueInput<T extends { assetId?: string; url?: string; volume?: number; loop?: boolean; fadeInMs?: number; fadeOutMs?: number; subtitle?: string }>(
+  input: T | undefined,
+): T | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+  const assetId = input.assetId ? String(input.assetId).trim() : '';
+  const url = input.url ? String(input.url).trim() : '';
+  if (!assetId && !url) {
+    return undefined;
+  }
+  return {
+    assetId: assetId || undefined,
+    url: url || undefined,
+    volume: typeof input.volume === 'number' && Number.isFinite(input.volume)
+      ? Math.max(0, Math.min(1, input.volume))
+      : undefined,
+    loop: typeof input.loop === 'boolean' ? input.loop : undefined,
+    fadeInMs: typeof input.fadeInMs === 'number' && Number.isFinite(input.fadeInMs)
+      ? Math.max(0, Math.round(input.fadeInMs))
+      : undefined,
+    fadeOutMs: typeof input.fadeOutMs === 'number' && Number.isFinite(input.fadeOutMs)
+      ? Math.max(0, Math.round(input.fadeOutMs))
+      : undefined,
+    subtitle: input.subtitle ? String(input.subtitle).trim() : undefined,
+  } as T;
+}
+
 function normalizeDialogueInput(input: DialogueDefinition): DialogueDefinition {
   const now = nowIso();
   return {
@@ -1031,6 +1070,8 @@ function normalizeDialogueInput(input: DialogueDefinition): DialogueDefinition {
     status: input.status === 'active' || input.status === 'disabled' ? input.status : 'draft',
     description: input.description ? String(input.description).trim() : undefined,
     startNodeId: String(input.startNodeId ?? 'start').trim() || 'start',
+    introVoiceAssetId: input.introVoiceAssetId ? String(input.introVoiceAssetId).trim() : undefined,
+    introMusicAssetId: input.introMusicAssetId ? String(input.introMusicAssetId).trim() : undefined,
     nodes: Array.isArray(input.nodes) ? clone(input.nodes) : [],
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
@@ -1059,6 +1100,12 @@ function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
     portraitUrl: input.portraitUrl ? String(input.portraitUrl).trim() : undefined,
     fullImageUrl: input.fullImageUrl ? String(input.fullImageUrl).trim() : undefined,
     iconUrl: input.iconUrl ? String(input.iconUrl).trim() : undefined,
+    battleSpriteAssetId: input.battleSpriteAssetId ? String(input.battleSpriteAssetId).trim() : undefined,
+    deathEffectId: input.deathEffectId ? String(input.deathEffectId).trim() : undefined,
+    hitEffectPreset: input.hitEffectPreset ? String(input.hitEffectPreset).trim() : undefined,
+    dialogueStartVoiceAssetId: input.dialogueStartVoiceAssetId ? String(input.dialogueStartVoiceAssetId).trim() : undefined,
+    dialogueStartLine: input.dialogueStartLine ? String(input.dialogueStartLine).trim() : undefined,
+    voiceProfileId: input.voiceProfileId ? String(input.voiceProfileId).trim() : undefined,
     worldSimTrader: input.worldSimTrader === true,
     mapBindings: Array.isArray(input.mapBindings) ? clone(input.mapBindings) : [],
     dialogues: Array.isArray(input.dialogues) ? clone(input.dialogues) : [],

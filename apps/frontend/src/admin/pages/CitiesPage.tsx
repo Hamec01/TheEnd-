@@ -72,7 +72,7 @@ export function CitiesPage() {
   const [draft, setDraft] = useState<City | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<'main' | 'lore' | 'population' | 'rule' | 'gameplay' | 'locations' | 'images'>('main');
+  const [tab, setTab] = useState<'main' | 'lore' | 'population' | 'rule' | 'gameplay' | 'locations' | 'images' | 'audio'>('main');
   const [tool, setTool] = useState<'select' | 'circle' | 'rectangle' | 'polygon' | 'delete'>('select');
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -547,7 +547,7 @@ export function CitiesPage() {
           ) : (
             <>
               <div className="city-tabs">
-                {(['main', 'lore', 'population', 'rule', 'gameplay', 'locations', 'images'] as const).map((entry) => (
+                {(['main', 'lore', 'population', 'rule', 'gameplay', 'locations', 'images', 'audio'] as const).map((entry) => (
                   <button key={entry} type="button" className={tab === entry ? 'is-active' : ''} onClick={() => setTab(entry)}>
                     {entry}
                   </button>
@@ -669,6 +669,10 @@ export function CitiesPage() {
                         <label>NPC IDs<input value={joinCsv(selectedLocation.npcIds)} onChange={(e) => patchSelectedLocation({ npcIds: splitCsv(e.target.value) })} /></label>
                         <label>Quest IDs<input value={joinCsv(selectedLocation.questIds)} onChange={(e) => patchSelectedLocation({ questIds: splitCsv(e.target.value) })} /></label>
                         <label>Shop IDs<input value={joinCsv(selectedLocation.shopIds)} onChange={(e) => patchSelectedLocation({ shopIds: splitCsv(e.target.value) })} /></label>
+                        <label>Location Music Asset ID<input value={selectedLocation.music?.assetId ?? ''} onChange={(e) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="music_tavern_low" /></label>
+                        <label>Location Music URL<input value={selectedLocation.music?.url ?? ''} onChange={(e) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/cities/tavern.ogg" /></label>
+                        <label>Location Ambient Asset ID<input value={selectedLocation.ambientSound?.assetId ?? ''} onChange={(e) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="amb_market_crowd" /></label>
+                        <label>Location Ambient URL<input value={selectedLocation.ambientSound?.url ?? ''} onChange={(e) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/ambience/market.ogg" /></label>
                         <label>
                           Auto Triggers (JSON) <AdminHelpTooltip section="cities" field="autoTriggers" />
                           <textarea
@@ -720,6 +724,18 @@ export function CitiesPage() {
                     <label>Thumbnail Image ID / URL<input value={draft.thumbnailImageId ?? ''} onChange={(e) => patchCity({ thumbnailImageId: e.target.value })} /></label>
                     {resolvedBackgroundUrl ? <img className="city-background-preview" src={resolvedBackgroundUrl} alt={`${draft.name} background preview`} /> : null}
                     <p className="muted">Uploads are saved through Admin Images. Manual URL remains available as fallback.</p>
+                  </div>
+                )}
+
+                {tab === 'audio' && (
+                  <div className="city-form-grid">
+                    <label>City Music Asset ID<input value={draft.music?.assetId ?? ''} onChange={(e) => patchCity({ music: { ...(draft.music ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="music_city_arklein" /></label>
+                    <label>City Music URL<input value={draft.music?.url ?? ''} onChange={(e) => patchCity({ music: { ...(draft.music ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/cities/arklein-theme.ogg" /></label>
+                    <label>Music Volume<input type="number" min={0} max={1} step={0.05} value={draft.music?.volume ?? ''} onChange={(e) => patchCity({ music: { ...(draft.music ?? {}), volume: e.target.value ? Number(e.target.value) : undefined, loop: true } })} /></label>
+                    <label>Ambient Asset ID<input value={draft.ambientSound?.assetId ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="amb_city_crowd" /></label>
+                    <label>Ambient URL<input value={draft.ambientSound?.url ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/ambience/city-crowd.ogg" /></label>
+                    <label>Ambient Volume<input type="number" min={0} max={1} step={0.05} value={draft.ambientSound?.volume ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), volume: e.target.value ? Number(e.target.value) : undefined, loop: true } })} /></label>
+                    <p className="muted">These fields are metadata for the runtime audio layer: city theme, ambience, and location overrides stay optional for old content.</p>
                   </div>
                 )}
               </div>

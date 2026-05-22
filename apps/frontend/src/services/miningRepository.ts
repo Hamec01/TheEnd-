@@ -360,9 +360,9 @@ function defaultMiningContent(): MiningContentBundle {
     mines: [
       {
         id: 'mine_teramor_old_iron',
-        name: 'Ð¡Ñ‚Ð°Ñ€Ð°Ñ ÑˆÐ°Ñ…Ñ‚Ð° Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€Ð°',
-        description: 'Ð¡Ñ‚Ð°Ñ€Ð°Ñ ÑˆÐ°Ñ…Ñ‚Ð° Ð² Ð·ÐµÐ¼Ð»ÑÑ… Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€Ð°. Ð—Ð´ÐµÑÑŒ Ð¼Ð¾Ð¶Ð½Ð¾ Ð½Ð°Ð¹Ñ‚Ð¸ ÐºÐ°Ð¼ÐµÐ½ÑŒ, Ð¶ÐµÐ»ÐµÐ·Ð¾, Ð·Ð¾Ð»Ð¾Ñ‚Ð¾ Ð¸ Ñ€ÐµÐ´ÐºÐ¸Ðµ Ð·ÐµÐ¿Ñ‚Ð¸Ñ€Ð¸Ñ‚Ð¾Ð²Ñ‹Ðµ ÑÐ»ÐµÐ´Ñ‹.',
-        shortDescription: 'Ð¡Ñ‚Ð°Ñ€Ñ‹Ðµ ÑˆÑ‚Ñ€ÐµÐºÐ¸ Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€Ð° Ñ Ð¶ÐµÐ»ÐµÐ·Ð¾Ð¼ Ð¸ Ñ€ÐµÐ´ÐºÐ¸Ð¼Ð¸ ÑÐ»ÐµÐ´Ð°Ð¼Ð¸ Ð·ÐµÐ¿Ñ‚Ð¸Ñ€Ð¸Ñ‚Ð°.',
+        name: 'Старая шахта Терамора',
+        description: 'Старая шахта в землях Терамора. Здесь можно найти камень, железо, золото и редкие зептиритовые следы.',
+        shortDescription: 'Старые штреки Терамора с железом и редкими следами зептирита.',
         requiredProfessionId: 'mining',
         requiredMiningLevel: 1,
         dangerLevel: 'low',
@@ -374,12 +374,12 @@ function defaultMiningContent(): MiningContentBundle {
           'mine_teramor_old_iron_depth_3',
         ],
         knownResources: [
-          'ÐšÐ°Ð¼ÐµÐ½ÑŒ',
-          'Ð–ÐµÐ»ÐµÐ·Ð½Ð°Ñ Ñ€ÑƒÐ´Ð°',
-          'Ð—Ð¾Ð»Ð¾Ñ‚Ð¾',
-          'Ð—ÐµÐ¿Ñ‚Ð¸Ñ€Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ»ÐµÐ´',
+          'Камень',
+          'Железная руда',
+          'Золото',
+          'Зептиритовый след',
         ],
-        entryText: 'Ð¥Ð¾Ð»Ð¾Ð´Ð½Ñ‹Ð¹ Ð²Ð¾Ð·Ð´ÑƒÑ… Ð¿Ð°Ñ…Ð½ÐµÑ‚ ÑÑ‹Ñ€Ð¾ÑÑ‚ÑŒÑŽ Ð¸ Ð¿Ñ‹Ð»ÑŒÑŽ. Ð—Ð° Ñ€Ð¶Ð°Ð²Ð¾Ð¹ Ñ€ÐµÑˆÑ‘Ñ‚ÐºÐ¾Ð¹ Ð½Ð°Ñ‡Ð¸Ð½Ð°ÐµÑ‚ÑÑ ÑÑ‚Ð°Ñ€Ð°Ñ Ñ‚ÐµÑ€Ð°Ð¼Ð¾Ñ€ÑÐºÐ°Ñ Ð²Ñ‹Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ°.',
+        entryText: 'Холодный воздух пахнет сыростью и пылью. За ржавой решеткой начинается старая тераморская выработка.',
         isEnabled: true,
         createdAt,
         updatedAt: createdAt,
@@ -390,8 +390,8 @@ function defaultMiningContent(): MiningContentBundle {
         id: 'mine_teramor_old_iron_depth_1',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 1,
-        name: 'Ð’ÐµÑ€Ñ…Ð½Ð¸Ðµ ÑˆÑ‚Ñ€ÐµÐºÐ¸',
-        description: 'Ð¡Ñ‚Ð°Ñ€Ñ‹Ðµ Ð¿Ñ€Ð¾Ñ…Ð¾Ð´Ñ‹ Ñ ÑƒÑÑ‚Ð¾Ð¹Ñ‡Ð¸Ð²Ñ‹Ð¼Ð¸ ÑÑ‚ÐµÐ½Ð°Ð¼Ð¸ Ð¸ Ð¼ÐµÐ»ÐºÐ¸Ð¼Ð¸ Ð¶Ð¸Ð»Ð°Ð¼Ð¸ Ð¶ÐµÐ»ÐµÐ·Ð°.',
+        name: 'Верхние штреки',
+        description: 'Старые проходы с устойчивыми стенами и мелкими жилами железа.',
         rows: 4,
         columns: 6,
         baseHits: 13,
@@ -413,8 +413,8 @@ function defaultMiningContent(): MiningContentBundle {
         id: 'mine_teramor_old_iron_depth_2',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 2,
-        name: 'Ð¡Ñ€ÐµÐ´Ð½Ð¸Ðµ Ð¶Ð¸Ð»Ñ‹',
-        description: 'Ð’Ð¾Ð·Ð´ÑƒÑ… Ñ‚ÑÐ¶ÐµÐ»ÐµÐµ, Ð° Ð¿Ð¾Ñ€Ð¾Ð´Ð° Ð±Ð¾Ð³Ð°Ñ‡Ðµ Ð¸ Ð·Ð»ÐµÐµ.',
+        name: 'Средние жилы',
+        description: 'Воздух тяжелее, а порода богаче и злее.',
         rows: 4,
         columns: 4,
         baseHits: 10,
@@ -436,8 +436,8 @@ function defaultMiningContent(): MiningContentBundle {
         id: 'mine_teramor_old_iron_depth_3',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 3,
-        name: 'Ð“Ð»ÑƒÐ±Ð¾ÐºÐ¸Ð¹ ÐºÐ°Ñ€Ð¼Ð°Ð½',
-        description: 'Ð¢ÑƒÑ‚ ÑƒÐ¶Ðµ ÑÐ»Ñ‹ÑˆÐ½Ð¾, ÐºÐ°Ðº Ð³Ð¾Ñ€Ð° Ð¶Ð¸Ð²Ñ‘Ñ‚ ÑÐ²Ð¾ÐµÐ¹ Ð¶Ð¸Ð·Ð½ÑŒÑŽ.',
+        name: 'Глубокий карман',
+        description: 'Тут уже слышно, как гора живет своей жизнью.',
         rows: 3,
         columns: 4,
         baseHits: 7,
@@ -459,44 +459,44 @@ function defaultMiningContent(): MiningContentBundle {
     blockTables: [
       {
         id: 'mine_blocks_teramor_depth_1',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ I',
+        name: 'Терамор I',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 1,
         entries: [
-          { type: 'empty', weight: 18, label: 'ÐŸÑƒÑÑ‚Ð°Ñ Ð¿Ð¾Ñ€Ð¾Ð´Ð°' },
-          { type: 'stone', weight: 26, label: 'ÐšÐ°Ð¼ÐµÐ½ÑŒ', lootTableId: 'mine_loot_teramor_depth_1' },
-          { type: 'ore', weight: 28, label: 'Ð–ÐµÐ»ÐµÐ·Ð½Ð°Ñ Ð¶Ð¸Ð»Ð°', lootTableId: 'mine_loot_teramor_depth_1' },
-          { type: 'gold', weight: 8, label: 'Ð—Ð¾Ð»Ð¾Ñ‚Ð¾Ð¹ ÑÐ»ÐµÐ´', lootTableId: 'mine_loot_teramor_depth_1' },
-          { type: 'crystal', weight: 4, label: 'ÐšÑ€Ð¸ÑÑ‚Ð°Ð»Ð»', lootTableId: 'mine_loot_teramor_depth_1' },
-          { type: 'hazard', weight: 8, label: 'ÐžÐ¿Ð°ÑÐ½Ð°Ñ Ñ‚Ñ€ÐµÑ‰Ð¸Ð½Ð°', hazardTableId: 'mine_hazards_teramor_common' },
-          { type: 'passage', weight: 4, label: 'Ð£Ð·ÐºÐ¸Ð¹ Ð¿Ñ€Ð¾Ñ…Ð¾Ð´' },
-          { type: 'exit', weight: 4, label: 'Ð’Ñ‹Ñ…Ð¾Ð´' },
+          { type: 'empty', weight: 18, label: 'Пустая порода' },
+          { type: 'stone', weight: 26, label: 'Камень', lootTableId: 'mine_loot_teramor_depth_1' },
+          { type: 'ore', weight: 28, label: 'Железная жила', lootTableId: 'mine_loot_teramor_depth_1' },
+          { type: 'gold', weight: 8, label: 'Золотой след', lootTableId: 'mine_loot_teramor_depth_1' },
+          { type: 'crystal', weight: 4, label: 'Кристалл', lootTableId: 'mine_loot_teramor_depth_1' },
+          { type: 'hazard', weight: 8, label: 'Опасная трещина', hazardTableId: 'mine_hazards_teramor_common' },
+          { type: 'passage', weight: 4, label: 'Узкий проход' },
+          { type: 'exit', weight: 4, label: 'Выход' },
         ],
         createdAt,
         updatedAt: createdAt,
       },
       {
         id: 'mine_blocks_teramor_depth_2',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ II',
+        name: 'Терамор II',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 2,
         entries: [
-          { type: 'empty', weight: 12, label: 'ÐŸÑƒÑÑ‚Ð¾Ñ‚Ð°' },
-          { type: 'stone', weight: 20, label: 'ÐšÐ°Ð¼ÐµÐ½ÑŒ', lootTableId: 'mine_loot_teramor_depth_2' },
-          { type: 'ore', weight: 26, label: 'Ð–Ð¸Ð»Ð° Ð¶ÐµÐ»ÐµÐ·Ð°', lootTableId: 'mine_loot_teramor_depth_2' },
-          { type: 'rich_ore', weight: 10, label: 'Ð‘Ð¾Ð³Ð°Ñ‚Ð°Ñ Ð¶Ð¸Ð»Ð°', lootTableId: 'mine_loot_teramor_depth_2' },
-          { type: 'gold', weight: 10, label: 'Ð—Ð¾Ð»Ð¾Ñ‚Ð¾', lootTableId: 'mine_loot_teramor_depth_2' },
-          { type: 'crystal', weight: 6, label: 'ÐšÑ€Ð¸ÑÑ‚Ð°Ð»Ð»', lootTableId: 'mine_loot_teramor_depth_2' },
-          { type: 'hazard', weight: 10, label: 'ÐžÐ¿Ð°ÑÐ½Ð¾ÑÑ‚ÑŒ', hazardTableId: 'mine_hazards_teramor_deep' },
-          { type: 'passage', weight: 3, label: 'Ð¡Ð¿ÑƒÑÐº Ð½Ð¸Ð¶Ðµ' },
-          { type: 'exit', weight: 3, label: 'Ð’Ñ‹Ñ…Ð¾Ð´' },
+          { type: 'empty', weight: 12, label: 'Пустота' },
+          { type: 'stone', weight: 20, label: 'Камень', lootTableId: 'mine_loot_teramor_depth_2' },
+          { type: 'ore', weight: 26, label: 'Жила железа', lootTableId: 'mine_loot_teramor_depth_2' },
+          { type: 'rich_ore', weight: 10, label: 'Богатая жила', lootTableId: 'mine_loot_teramor_depth_2' },
+          { type: 'gold', weight: 10, label: 'Золото', lootTableId: 'mine_loot_teramor_depth_2' },
+          { type: 'crystal', weight: 6, label: 'Кристалл', lootTableId: 'mine_loot_teramor_depth_2' },
+          { type: 'hazard', weight: 10, label: 'Опасность', hazardTableId: 'mine_hazards_teramor_deep' },
+          { type: 'passage', weight: 3, label: 'Спуск ниже' },
+          { type: 'exit', weight: 3, label: 'Выход' },
         ],
         createdAt,
         updatedAt: createdAt,
       },
       {
         id: 'mine_blocks_teramor_depth_3',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ III',
+        name: 'Терамор III',
         mineId: 'mine_teramor_old_iron',
         depthLevel: 3,
         entries: [
@@ -518,9 +518,9 @@ function defaultMiningContent(): MiningContentBundle {
     hazards: [
       {
         id: 'hazard_minor_collapse',
-        name: 'ÐœÐ°Ð»Ñ‹Ð¹ Ð¾Ð±Ð²Ð°Ð»',
+        name: 'Малый обвал',
         type: 'minor_collapse',
-        description: 'ÐÐµÑÐºÐ¾Ð»ÑŒÐºÐ¾ ÐºÐ°Ð¼Ð½ÐµÐ¹ ÑÑ€Ñ‹Ð²Ð°ÑŽÑ‚ÑÑ ÑÐ²ÐµÑ€Ñ…Ñƒ Ð¸ Ð±Ð¾Ð»ÑŒÐ½Ð¾ Ð±ÑŒÑŽÑ‚ Ð¿Ð¾ Ð¿Ð»ÐµÑ‡Ð°Ð¼.',
+        description: 'Несколько камней срываются сверху и больно бьют по плечам.',
         hpDamageMin: 2,
         hpDamageMax: 6,
         staminaDamageMin: 1,
@@ -536,9 +536,9 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'hazard_medium_collapse',
-        name: 'Ð¡Ñ€ÐµÐ´Ð½Ð¸Ð¹ Ð¾Ð±Ð²Ð°Ð»',
+        name: 'Средний обвал',
         type: 'medium_collapse',
-        description: 'ÐŸÐ¾Ñ€Ð¾Ð´Ð° Ñ‚Ñ€ÐµÑ‰Ð¸Ñ‚ Ð¸ Ð¾ÑÑ‹Ð¿Ð°ÐµÑ‚ÑÑ Ð·Ð°Ð¼ÐµÑ‚Ð½Ð¾ ÑÐ¸Ð»ÑŒÐ½ÐµÐµ.',
+        description: 'Порода трещит и осыпается заметно сильнее.',
         hpDamageMin: 5,
         hpDamageMax: 12,
         staminaDamageMin: 2,
@@ -554,9 +554,9 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'hazard_mine_dust',
-        name: 'Ð¨Ð°Ñ…Ñ‚Ð½Ð°Ñ Ð¿Ñ‹Ð»ÑŒ',
+        name: 'Шахтная пыль',
         type: 'dust',
-        description: 'Ð¢ÑÐ¶Ñ‘Ð»Ð°Ñ Ð¿Ñ‹Ð»ÑŒ Ð·Ð°Ð±Ð¸Ð²Ð°ÐµÑ‚ Ð»Ñ‘Ð³ÐºÐ¸Ðµ Ð¸ ÑÐ±Ð¸Ð²Ð°ÐµÑ‚ Ð´Ñ‹Ñ…Ð°Ð½Ð¸Ðµ.',
+        description: 'Тяжелая пыль забивает легкие и сбивает дыхание.',
         hpDamageMin: 0,
         hpDamageMax: 3,
         staminaDamageMin: 3,
@@ -572,9 +572,9 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'hazard_gas_pocket',
-        name: 'Ð“Ð°Ð·Ð¾Ð²Ñ‹Ð¹ ÐºÐ°Ñ€Ð¼Ð°Ð½',
+        name: 'Газовый карман',
         type: 'gas',
-        description: 'Ð˜Ð· Ñ‰ÐµÐ»Ð¸ Ð²Ñ‹Ñ€Ñ‹Ð²Ð°ÐµÑ‚ÑÑ ÑƒÐ´ÑƒÑˆÐ»Ð¸Ð²Ñ‹Ð¹ Ð³Ð°Ð·.',
+        description: 'Из щели вырывается удушливый газ.',
         hpDamageMin: 4,
         hpDamageMax: 10,
         staminaDamageMin: 4,
@@ -736,7 +736,7 @@ function defaultMiningContent(): MiningContentBundle {
     hazardTables: [
       {
         id: 'mine_hazards_teramor_common',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€: Ð¾Ð±Ñ‹Ñ‡Ð½Ñ‹Ðµ Ð¾Ð¿Ð°ÑÐ½Ð¾ÑÑ‚Ð¸',
+        name: 'Терамор: обычные опасности',
         entries: [
           { hazardId: 'hazard_minor_collapse', weight: 6, minDepth: 1, maxDepth: 3 },
           { hazardId: 'hazard_mine_dust', weight: 4, minDepth: 1, maxDepth: 3 },
@@ -747,7 +747,7 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'mine_hazards_teramor_deep',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€: Ð³Ð»ÑƒÐ±Ð¾ÐºÐ¸Ðµ Ð¾Ð¿Ð°ÑÐ½Ð¾ÑÑ‚Ð¸',
+        name: 'Терамор: глубокие опасности',
         entries: [
           { hazardId: 'hazard_minor_collapse', weight: 4, minDepth: 1, maxDepth: 3 },
           { hazardId: 'hazard_medium_collapse', weight: 5, minDepth: 2, maxDepth: 3 },
@@ -769,7 +769,7 @@ function defaultMiningContent(): MiningContentBundle {
     lootTables: [
       {
         id: 'mine_loot_teramor_depth_1',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ I',
+        name: 'Терамор I',
         entries: [
           { itemId: 'item_raw_stone', weight: 40, minQuantity: 1, maxQuantity: 2 },
           { itemId: 'item_iron_ore', weight: 35, minQuantity: 1, maxQuantity: 2 },
@@ -782,7 +782,7 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'mine_loot_teramor_depth_2',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ II',
+        name: 'Терамор II',
         entries: [
           { itemId: 'item_raw_stone', weight: 28, minQuantity: 1, maxQuantity: 3 },
           { itemId: 'item_iron_ore', weight: 34, minQuantity: 1, maxQuantity: 3 },
@@ -795,7 +795,7 @@ function defaultMiningContent(): MiningContentBundle {
       },
       {
         id: 'mine_loot_teramor_depth_3',
-        name: 'Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€ III',
+        name: 'Терамор III',
         entries: [
           { itemId: 'item_raw_stone', weight: 20, minQuantity: 1, maxQuantity: 2 },
           { itemId: 'item_iron_ore', weight: 26, minQuantity: 2, maxQuantity: 4 },
@@ -814,7 +814,7 @@ function ensureSeeded(): void {
   if (typeof window === 'undefined') {
     return;
   }
-  const defaults = defaultMiningContent();
+  const defaults = normalizeMiningBundle(defaultMiningContent());
   writeArray(MINING_STORAGE_KEYS.mines, mergeById(readArray<MineDefinition>(MINING_STORAGE_KEYS.mines), defaults.mines));
   writeArray(MINING_STORAGE_KEYS.depths, mergeById(readArray<MineDepth>(MINING_STORAGE_KEYS.depths), defaults.depths));
   writeArray(MINING_STORAGE_KEYS.blockTables, mergeById(readArray<MineBlockTable>(MINING_STORAGE_KEYS.blockTables), defaults.blockTables));
@@ -822,6 +822,17 @@ function ensureSeeded(): void {
   writeArray(MINING_STORAGE_KEYS.hazardTables, mergeById(readArray<MineHazardTable>(MINING_STORAGE_KEYS.hazardTables), defaults.hazardTables));
   writeArray(MINING_STORAGE_KEYS.lootTables, mergeById(readArray<MineLootTable>(MINING_STORAGE_KEYS.lootTables), defaults.lootTables));
   window.localStorage.setItem(MINING_STORAGE_KEYS.seeded, 'true');
+}
+
+function normalizeMiningBundle(bundle: MiningContentBundle): MiningContentBundle {
+  return {
+    mines: bundle.mines.map(normalizeMine).filter((entry): entry is MineDefinition => Boolean(entry)),
+    depths: bundle.depths.map(normalizeDepth).filter((entry): entry is MineDepth => Boolean(entry)),
+    blockTables: bundle.blockTables.map(normalizeBlockTable).filter((entry): entry is MineBlockTable => Boolean(entry)),
+    hazards: bundle.hazards.map(normalizeHazard).filter((entry): entry is MineHazard => Boolean(entry)),
+    hazardTables: bundle.hazardTables.map(normalizeHazardTable).filter((entry): entry is MineHazardTable => Boolean(entry)),
+    lootTables: bundle.lootTables.map(normalizeLootTable).filter((entry): entry is MineLootTable => Boolean(entry)),
+  };
 }
 
 export function loadMinesFromStorage(): MineDefinition[] {
@@ -928,7 +939,7 @@ export function getMiningContentSnapshot(): MiningContentBundle {
 }
 
 export function resetMiningContentToDefaults(): MiningContentBundle {
-  const defaults = defaultMiningContent();
+  const defaults = normalizeMiningBundle(defaultMiningContent());
   saveMinesToStorage(defaults.mines);
   saveMineDepthsToStorage(defaults.depths);
   saveMineBlockTablesToStorage(defaults.blockTables);

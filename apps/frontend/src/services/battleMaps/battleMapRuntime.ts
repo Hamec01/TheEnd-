@@ -24,6 +24,13 @@ export function toRuntimeBattleMapPayload(map: BattleMapDefinition): RuntimeBatt
     name: map.name,
     description: map.description,
     imageUrl: map.imageUrl,
+    cellSizePx: map.cellSizePx,
+    gridOffsetX: map.gridOffsetX,
+    gridOffsetY: map.gridOffsetY,
+    logicalColumns: map.logicalColumns,
+    logicalRows: map.logicalRows,
+    showEditorGrid: map.showEditorGrid,
+    gridOpacity: map.gridOpacity,
     width: map.width,
     height: map.height,
     viewportWidth: map.viewportWidth,
@@ -102,5 +109,6 @@ export function toRuntimeBattleMapPayload(map: BattleMapDefinition): RuntimeBatt
       enabled: trigger.enabled,
       description: trigger.description,
     })),
+    exitZones: map.exitZones,
   };
 }

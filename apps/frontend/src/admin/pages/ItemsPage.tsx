@@ -30,6 +30,7 @@ import { ItemEffectEditor } from '../components/ItemEffectEditor';
 import type { ItemEffectJson } from '../itemEffectConstants';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
+import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -192,6 +193,10 @@ export function ItemsPage(props: ItemsPageProps = {}) {
     setAugmentSlotsText(toPrettyJson(item.augmentSlots, '[]'));
     setSlotUpgradeRulesText(toPrettyJson(item.slotUpgradeRules, '{}'));
     setTagsText((item.tags ?? []).join(', '));
+  }
+
+  function patchBattleVisuals(patchValue: NonNullable<AdminItem['battleVisuals']>) {
+    patch({ battleVisuals: { ...(draft.battleVisuals ?? {}), ...patchValue } });
   }
 
   async function refresh() {
@@ -920,6 +925,27 @@ export function ItemsPage(props: ItemsPageProps = {}) {
           label="Картинка предмета"
           hint="Загружает иконку предмета и автоматически подгоняет её под единый квадратный размер для магазина, инвентаря и слотов."
         />
+
+        <section className="card">
+          <h4>Battle visuals (Phaser)</h4>
+          <div className="admin-form-grid">
+            <label>
+              <AdminFieldLabel label="Battle sprite asset ID" hint="Asset id for Phaser battle token. Empty uses portrait/icon fallback." />
+              <input value={draft.battleVisuals?.battleSpriteAssetId ?? ''} onChange={(event) => patchBattleVisuals({ battleSpriteAssetId: event.target.value || undefined })} placeholder="actor_sword_01" />
+            </label>
+            <label>
+              <AdminFieldLabel label="Death effect ID" hint="Effect registry id for item-related actor death visuals." />
+              <input list="item-battle-effect-ids" value={draft.battleVisuals?.deathEffectId ?? ''} onChange={(event) => patchBattleVisuals({ deathEffectId: event.target.value || undefined })} placeholder="death_fade" />
+            </label>
+            <label>
+              <AdminFieldLabel label="Hit effect preset" hint="Effect registry id for this weapon or item impact." />
+              <input list="item-battle-effect-ids" value={draft.battleVisuals?.hitEffectPreset ?? ''} onChange={(event) => patchBattleVisuals({ hitEffectPreset: event.target.value || undefined })} placeholder="hit_slash" />
+            </label>
+          </div>
+          <datalist id="item-battle-effect-ids">
+            {BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
+          </datalist>
+        </section>
 
         <div className="admin-stat-grid">
           <h4 title="Минимальные характеристики, которые нужны, чтобы экипировать или использовать предмет.">Требования</h4>

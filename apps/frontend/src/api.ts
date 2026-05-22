@@ -255,6 +255,13 @@ export interface RuntimeBattleMapPayload {
   name: string;
   description?: string;
   imageUrl?: string;
+  cellSizePx?: number;
+  gridOffsetX?: number;
+  gridOffsetY?: number;
+  logicalColumns?: number;
+  logicalRows?: number;
+  showEditorGrid?: boolean;
+  gridOpacity?: number;
   width: number;
   height: number;
   viewportWidth: number;
@@ -265,6 +272,7 @@ export interface RuntimeBattleMapPayload {
   traps: RuntimeBattleMapTrapPayload[];
   npcs?: RuntimeBattleMapPlacedNpcPayload[];
   triggers?: RuntimeBattleMapTriggerPayload[];
+  exitZones?: import('@theend/rpg-domain').ExitZone[];
 }
 
 export async function registerAccount(payload: RegisterRequest): Promise<RegisterResponse> {

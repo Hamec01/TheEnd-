@@ -221,6 +221,17 @@ export interface CombatAnimationEvent {
   to?: { x: number; y: number };
   movementType?: 'walk' | 'dash' | 'disengage';
   value?: number;
+  skillId?: string;
+  visualEffectId?: string;
+  castEffectId?: string;
+  projectileEffectId?: string;
+  impactEffectId?: string;
+  hitEffectId?: string;
+  statusApplied?: string[];
+  statusRemoved?: string[];
+  persistentVfx?: string[];
+  damage?: number;
+  critical?: boolean;
 }
 
 export interface CombatInitiativeContext {

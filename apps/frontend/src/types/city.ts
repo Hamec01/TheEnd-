@@ -63,6 +63,16 @@ export interface CityRacePopulation {
   role?: string;
 }
 
+export interface AudioCueConfig {
+  assetId?: string;
+  url?: string;
+  volume?: number;
+  loop?: boolean;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  subtitle?: string;
+}
+
 export interface CityLocation {
   id: string;
   cityId: string;
@@ -82,6 +92,8 @@ export interface CityLocation {
   markerIcon?: string;
   linkedBattleMapId?: string;
   encounter?: CityLocationEncounterConfig;
+  music?: AudioCueConfig;
+  ambientSound?: AudioCueConfig;
 }
 
 export interface City {
@@ -123,6 +135,8 @@ export interface City {
   backgroundImageId?: string;
   backgroundImageUrl?: string;
   thumbnailImageId?: string;
+  music?: AudioCueConfig;
+  ambientSound?: AudioCueConfig;
 
   locations: CityLocation[];
 

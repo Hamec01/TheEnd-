@@ -24,6 +24,7 @@ export * from './equipment';
 export * from './professions';
 export * from './shop';
 export * from './battle-map';
+export * from './visual-effects';
 export * from './progression';
 export { TargetZone } from './arena-battle';
 export * from './escape-helpers';

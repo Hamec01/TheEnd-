@@ -134,7 +134,7 @@ export interface WorldMapCanvasHandle {
   focusPoint: (point: [number, number] | null) => void;
 }
 
-interface WorldMapCanvasProps {
+export interface WorldMapCanvasProps {
   mode: 'play' | 'editor';
   gameplayPaused?: boolean;
   playerStartPosition?: { x: number; y: number };

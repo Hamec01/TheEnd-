@@ -5,6 +5,8 @@ export interface DialogueDefinition {
   status: 'draft' | 'active' | 'disabled';
   description?: string;
   startNodeId: string;
+  introVoiceAssetId?: string;
+  introMusicAssetId?: string;
   nodes: DialogueNode[];
   createdAt: string;
   updatedAt: string;
@@ -16,6 +18,8 @@ export interface DialogueNode {
   text: string;
   portraitUrl?: string;
   imageUrl?: string;
+  voiceAssetId?: string;
+  soundAssetId?: string;
   choices: DialogueChoice[];
   conditions?: DialogueCondition[];
   actions?: DialogueAction[];

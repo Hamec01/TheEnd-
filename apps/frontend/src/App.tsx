@@ -62,6 +62,7 @@ import {
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
+import { readBattleRendererSetting, writeBattleRendererSetting, type BattleRendererKind } from './battle/battleRendererSettings';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/GodmodeConsole';
@@ -1101,6 +1102,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const [playerAvatarUrl, setPlayerAvatarUrl] = useState<string>('');
   const [selectedBattleMapId, setSelectedBattleMapId] = useState<string>(() => DEFAULT_BATTLE_MAP_ID);
+  const [battleRenderer, setBattleRenderer] = useState<BattleRendererKind>(() => readBattleRendererSetting());
   const [pendingArenaBattleMapId, setPendingArenaBattleMapId] = useState<string | null>(null);
 
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
@@ -1683,6 +1685,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   useEffect(() => {
     window.localStorage.setItem(SELECTED_BATTLE_MAP_STORAGE_KEY, selectedBattleMapId);
   }, [selectedBattleMapId]);
+
+  useEffect(() => {
+    writeBattleRendererSetting(battleRenderer);
+  }, [battleRenderer]);
 
   useEffect(() => {
     if (phase !== 'hub' || !character || !combatState) {
@@ -4760,7 +4766,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                   cellSizePx: activeCombatBattleMap.cellSizePx,
                   gridOffsetX: activeCombatBattleMap.gridOffsetX,
                   gridOffsetY: activeCombatBattleMap.gridOffsetY,
+                  logicalColumns: activeCombatBattleMap.logicalColumns,
+                  logicalRows: activeCombatBattleMap.logicalRows,
+                  showEditorGrid: activeCombatBattleMap.showEditorGrid,
+                  gridOpacity: activeCombatBattleMap.gridOpacity,
                 }}
+                battleRenderer={battleRenderer}
+                onBattleRendererChange={setBattleRenderer}
                 selectedSkillId={selectedCombatSkillId}
                 availableSkills={battleSkillOptions}
                 onSkillChange={setSelectedCombatSkillId}

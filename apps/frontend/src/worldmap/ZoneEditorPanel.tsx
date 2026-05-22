@@ -957,6 +957,42 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>Faction</span>
           <input disabled={!draft} value={draft?.faction ?? ''} onChange={(event) => updateDraft({ faction: event.target.value })} />
         </label>
+        <label>
+          <span>Music asset ID</span>
+          <input
+            disabled={!draft}
+            placeholder="music_kingdom_argos"
+            value={draft?.musicAssetId ?? ''}
+            onChange={(event) => updateDraft({ musicAssetId: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Music URL</span>
+          <input
+            disabled={!draft}
+            placeholder="/audio/world/argos-theme.ogg"
+            value={draft?.musicUrl ?? ''}
+            onChange={(event) => updateDraft({ musicUrl: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Ambient asset ID</span>
+          <input
+            disabled={!draft}
+            placeholder="amb_forest_wind"
+            value={draft?.ambientSoundAssetId ?? ''}
+            onChange={(event) => updateDraft({ ambientSoundAssetId: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Ambient URL</span>
+          <input
+            disabled={!draft}
+            placeholder="/audio/ambience/forest.ogg"
+            value={draft?.ambientSoundUrl ?? ''}
+            onChange={(event) => updateDraft({ ambientSoundUrl: event.target.value })}
+          />
+        </label>
         {draft?.type === 'location' ? (
           <>
             <label>

@@ -21,6 +21,7 @@ import type {
   SummonControlType,
   SummonType,
 } from './skill.enums';
+import type { SkillVisualConfig } from '../visual-effects';
 
 export interface AreaFalloffConfig {
   enabled: boolean;
@@ -270,6 +271,7 @@ export interface SkillDefinition {
   type: SkillType;
   subtypes: SkillSubtype[];
   iconUrl?: string;
+  visuals?: SkillVisualConfig;
   shortDescription: string;
   gameplayDescription: string;
   loreDescription?: string;
