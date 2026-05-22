@@ -328,7 +328,15 @@ function normalizeCommandPayload(command) {
     const payload = command.payload ?? {};
     switch (command.type) {
         case 'skill_cast':
-            return payload.skillId ? { skillId: payload.skillId, targetZone: payload.targetZone } : undefined;
+            return payload.skillId
+                ? {
+                    skillId: payload.skillId,
+                    ...(typeof payload.skillRange === 'number' && Number.isFinite(payload.skillRange)
+                        ? { skillRange: Math.max(0, Math.floor(payload.skillRange)) }
+                        : {}),
+                    targetZone: payload.targetZone,
+                }
+                : undefined;
         case 'item_use':
             return {
                 ...(payload.itemId ? { itemId: payload.itemId } : {}),
@@ -668,7 +676,10 @@ function revalidateCombatCommandBeforeExecute(params) {
             }
         }
         if (params.command.type === 'skill_cast') {
-            const maxRange = Math.max(1, Number.isFinite(actor.attackRange) ? Math.floor(actor.attackRange ?? 1) : 6);
+            const explicitSkillRange = params.command.payload?.skillRange;
+            const maxRange = typeof explicitSkillRange === 'number' && Number.isFinite(explicitSkillRange)
+                ? Math.max(1, Math.floor(explicitSkillRange))
+                : Math.max(1, Number.isFinite(actor.attackRange) ? Math.floor(actor.attackRange ?? 1) : 6);
             if (distance > maxRange) {
                 return {
                     ok: false,

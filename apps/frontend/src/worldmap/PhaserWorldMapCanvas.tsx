@@ -1,15 +1,19 @@
 import Phaser from 'phaser';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { useWorldSnapshot } from '../services/useWorldSimulation';
 import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
 import { getZoneCenter } from './zoneGeometry';
 import { getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, REGION_GRID_SIZE } from './regionPaintSystem';
-import { setPlayerTarget, tickPlayerDirectionalMovement, tickPlayerMovement, type MapPlayer } from './movementSystem';
-import { detectCurrentZone, detectHoverZone, isInsideZone, pickRuntimeClickTarget } from './zoneSystem';
+import { type MapPlayer } from './movementSystem';
+import { detectHoverZone, pickRuntimeClickTarget } from './zoneSystem';
 import { getDefaultPlayerClickable } from './zoneTaxonomy';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
 import type { WorldMapCanvasHandle, WorldMapCanvasProps } from './WorldMapCanvas';
+import { resolveWorldClickInteraction, resolveWorldHoverZone } from './worldInteractionCommands';
+import { resolveWorldEntityMarkerLayout } from './worldEntityScreenHitTesting';
+import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
+import type { RenderedWorldEntity, WorldSceneSnapshot } from './worldSceneTypes';
+import { useWorldRuntimeController } from './useWorldRuntimeController';
 import type { WorldMapZone } from './zoneEditorTypes';
 import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
 
@@ -37,12 +41,15 @@ type PhaserWorldMapCanvasProps = Pick<
   | 'onPlayerPosition'
   | 'onPlayerState'
   | 'playerTargetPosition'
+  | 'playerTargetLocationId'
   | 'movementLocked'
   | 'controlScheme'
   | 'playerSpeed'
   | 'sprintActive'
   | 'playQuestMarkers'
   | 'playNpcMarkers'
+  | 'sceneSnapshot'
+  | 'onSceneCommand'
   | 'onWorldEntityClick'
   | 'lockedWorldEntityId'
   | 'lockedWorldEntityCoordinates'
@@ -67,6 +74,7 @@ interface WorldRendererSnapshot {
   playQuestMarkers: NonNullable<WorldMapCanvasProps['playQuestMarkers']>;
   playNpcMarkers: NonNullable<WorldMapCanvasProps['playNpcMarkers']>;
   activeEntities: ActiveEntity[];
+  renderedActiveEntities: RenderedWorldEntity[];
   lockedWorldEntityId?: string | null;
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
 }
@@ -102,8 +110,12 @@ class PhaserWorldMapScene extends Phaser.Scene {
   private bg?: Phaser.GameObjects.Image;
   private mapGraphics?: Phaser.GameObjects.Graphics;
   private markerGraphics?: Phaser.GameObjects.Graphics;
+  private entityLayer?: Phaser.GameObjects.Container;
   private playerToken?: Phaser.GameObjects.Container;
   private labelLayer?: Phaser.GameObjects.Container;
+  private dynamicTextureKeys = new Map<string, string>();
+  private pendingTextureKeys = new Set<string>();
+  private nextDynamicTextureId = 0;
 
   constructor() {
     super({ key: 'PhaserWorldMapScene' });
@@ -120,6 +132,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     this.bg = this.add.image(0, 0, 'world-map-main').setOrigin(0);
     this.mapGraphics = this.add.graphics();
     this.markerGraphics = this.add.graphics();
+    this.entityLayer = this.add.container(0, 0);
     this.labelLayer = this.add.container(0, 0);
     this.renderSnapshot();
   }
@@ -133,7 +146,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
 
   private renderSnapshot() {
     const snapshot = this.snapshot;
-    if (!snapshot || !this.bg || !this.mapGraphics || !this.markerGraphics || !this.labelLayer) {
+    if (!snapshot || !this.bg || !this.mapGraphics || !this.markerGraphics || !this.entityLayer || !this.labelLayer) {
       return;
     }
 
@@ -145,19 +158,27 @@ class PhaserWorldMapScene extends Phaser.Scene {
     const source = texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
     const sourceWidth = source?.width ?? width;
     const sourceHeight = source?.height ?? height;
+    const cropX = snapshot.camera.left * sourceWidth;
+    const cropY = snapshot.camera.top * sourceHeight;
+    const cropWidth = Math.max(1, snapshot.camera.width * sourceWidth);
+    const cropHeight = Math.max(1, snapshot.camera.height * sourceHeight);
+
+    // Match the React canvas drawImage crop by transforming the full map texture.
+    // Phaser setCrop keeps the source offset in object space, which made the map
+    // appear as a tiny tile at the player's position instead of filling the view.
     this.bg
-      .setPosition(0, 0)
-      .setCrop(
-        snapshot.camera.left * sourceWidth,
-        snapshot.camera.top * sourceHeight,
-        snapshot.camera.width * sourceWidth,
-        snapshot.camera.height * sourceHeight,
-      )
-      .setDisplaySize(width, height);
+      .setCrop()
+      .setScale(width / cropWidth, height / cropHeight)
+      .setPosition(-cropX * (width / cropWidth), -cropY * (height / cropHeight));
 
     this.mapGraphics.clear();
     this.markerGraphics.clear();
+    this.entityLayer.removeAll(true);
     this.labelLayer.removeAll(true);
+    if (this.playerToken) {
+      this.playerToken.destroy(true);
+      this.playerToken = undefined;
+    }
 
     this.drawKingdomBorders(snapshot);
     this.drawHoverZone(snapshot);
@@ -195,15 +216,73 @@ class PhaserWorldMapScene extends Phaser.Scene {
   }
 
   private drawKingdomBorders(snapshot: WorldRendererSnapshot) {
-    const zones = snapshot.zones.filter((zone) => zone.type === 'kingdom_area' && zone.isVisibleToPlayer);
+    const zones = resolveVisibleWorldOverlayZones(snapshot.zones, 'kingdom_area');
     if (zones.length === 0 || !this.mapGraphics) {
       return;
     }
     this.mapGraphics.lineStyle(2, 0xd2aa66, 0.55);
     for (const zone of zones) {
-      if (this.drawZonePath(this.mapGraphics, zone, snapshot)) {
+      this.drawDashedZoneOutline(zone, snapshot, 10, 8);
+    }
+  }
+
+  private drawDashedZoneOutline(zone: WorldMapZone, snapshot: WorldRendererSnapshot, dashPx: number, gapPx: number) {
+    if (!this.mapGraphics) {
+      return;
+    }
+
+    if (zone.shape === 'circle') {
+      const center = normalizedToScreen({ x: zone.x ?? 0, y: zone.y ?? 0 }, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
+      const radius = (zone.radius ?? 0.03) * snapshot.widthPx / snapshot.camera.width;
+      const fullStep = (dashPx + gapPx) / Math.max(radius, 1);
+      const dashStep = dashPx / Math.max(radius, 1);
+      for (let angle = 0; angle < Math.PI * 2; angle += fullStep) {
+        this.mapGraphics.beginPath();
+        this.mapGraphics.arc(center.x, center.y, radius, angle, Math.min(angle + dashStep, Math.PI * 2));
         this.mapGraphics.strokePath();
       }
+      return;
+    }
+
+    const points = zone.points ?? [];
+    if (points.length === 0) {
+      return;
+    }
+
+    const screenPoints = points.map(([x, y]) => normalizedToScreen({ x, y }, snapshot.camera, snapshot.widthPx, snapshot.heightPx));
+    for (let index = 0; index < screenPoints.length; index += 1) {
+      const start = screenPoints[index];
+      const end = screenPoints[(index + 1) % screenPoints.length];
+      this.drawDashedScreenLine(start, end, dashPx, gapPx);
+    }
+  }
+
+  private drawDashedScreenLine(start: { x: number; y: number }, end: { x: number; y: number }, dashPx: number, gapPx: number) {
+    if (!this.mapGraphics) {
+      return;
+    }
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0.01) {
+      return;
+    }
+
+    const step = dashPx + gapPx;
+    const ux = dx / length;
+    const uy = dy / length;
+
+    for (let offset = 0; offset < length; offset += step) {
+      const from = offset;
+      const to = Math.min(offset + dashPx, length);
+      const line = new Phaser.Geom.Line(
+        start.x + ux * from,
+        start.y + uy * from,
+        start.x + ux * to,
+        start.y + uy * to,
+      );
+      this.mapGraphics.strokeLineShape(line);
     }
   }
 
@@ -233,7 +312,9 @@ class PhaserWorldMapScene extends Phaser.Scene {
       this.markerGraphics.lineStyle(1, 0x2b2016, 1);
       this.markerGraphics.fillTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
       this.markerGraphics.strokeTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
-      this.addLabel(marker.title || marker.id, point.x + 10, point.y - 6);
+      if (this.shouldRenderWorldLabels(snapshot)) {
+        this.addLabel(marker.title || marker.id, point.x + 10, point.y - 6);
+      }
     }
   }
 
@@ -252,42 +333,157 @@ class PhaserWorldMapScene extends Phaser.Scene {
         this.markerGraphics.fillStyle(0xf1d28a, 1);
         this.markerGraphics.fillCircle(point.x + 7, point.y - 6, 3.5);
       }
-      this.addLabel(npc.name || npc.id, point.x + 10, point.y + 3);
+      if (this.shouldRenderWorldLabels(snapshot)) {
+        this.addLabel(npc.name || npc.id, point.x + 10, point.y + 3);
+      }
     }
   }
 
   private drawActiveEntities(snapshot: WorldRendererSnapshot) {
-    if (!this.markerGraphics || !this.labelLayer) {
+    if (!this.markerGraphics || !this.labelLayer || !this.entityLayer) {
       return;
     }
-    for (const entity of snapshot.activeEntities) {
+    for (const entity of snapshot.renderedActiveEntities) {
       const coordinates = snapshot.lockedWorldEntityId === entity.id && snapshot.lockedWorldEntityCoordinates
         ? snapshot.lockedWorldEntityCoordinates
         : entity.coordinates;
       const point = normalizedToScreen(coordinates, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
       if (point.x < -24 || point.y < -24 || point.x > snapshot.widthPx + 24 || point.y > snapshot.heightPx + 24) continue;
-      this.markerGraphics.fillStyle(entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc, 0.95);
-      this.markerGraphics.lineStyle(2, 0x120e09, 0.9);
-      this.markerGraphics.fillCircle(point.x, point.y, 9);
-      this.markerGraphics.strokeCircle(point.x, point.y, 9);
+
+      if (!this.drawActiveEntityVisual(entity, point.x, point.y)) {
+        this.markerGraphics.fillStyle(entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc, 0.95);
+        this.markerGraphics.lineStyle(2, 0x120e09, 0.9);
+        this.markerGraphics.fillCircle(point.x, point.y, 9);
+        this.markerGraphics.strokeCircle(point.x, point.y, 9);
+      }
+
       if (entity.memberCount > 1) {
-        this.addLabel(String(entity.memberCount), point.x - 3, point.y + 3, '#1a120c');
+        this.drawMarkerBadge(String(entity.memberCount), point.x + 10, point.y + 10, 0xf5d18d, 0x2d1a0e);
       }
       if (entity.isHostile) {
-        this.addLabel('!', point.x + 9, point.y - 10, '#ffd1c9');
+        this.drawMarkerBadge('!', point.x + 12, point.y - 12, 0xff4444, 0xffffff);
+      }
+      if (entity.hasQuest) {
+        this.drawMarkerBadge('?', point.x - 12, point.y - 12, 0xffff00, 0x333333);
       }
     }
   }
 
+  private drawActiveEntityVisual(entity: RenderedWorldEntity, x: number, y: number): boolean {
+    if (!this.entityLayer) {
+      return false;
+    }
+
+    const imageSrc = entity.imageSrc;
+    if (!imageSrc) {
+      return false;
+    }
+
+    const textureKey = this.ensureDynamicTexture(imageSrc);
+    if (!textureKey || !this.textures.exists(textureKey)) {
+      return false;
+    }
+
+    const container = this.add.container(x, y);
+    const layout = resolveWorldEntityMarkerLayout(entity);
+
+    if (layout.clipShape === 'circle') {
+      const ring = this.add.circle(0, 0, (layout.widthPx / 2) + 1, 0x1a120c, 0.96).setStrokeStyle(2, 0xd8b15a, 1);
+      container.add(ring);
+    }
+
+    const image = this.add.image(0, 0, textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
+
+    if (layout.clipShape === 'circle') {
+      const maskShape = this.add.circle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2, 0xffffff, 1);
+      maskShape.setVisible(false);
+      image.setMask(maskShape.createGeometryMask());
+      container.add(maskShape);
+    }
+
+    container.add(image);
+
+    if (entity.isHostile) {
+      container.setAlpha(0.96);
+    }
+
+    container.setDepth(20);
+
+    this.entityLayer.add(container);
+    return true;
+  }
+
+  private ensureDynamicTexture(imageSrc: string): string | null {
+    const existingKey = this.dynamicTextureKeys.get(imageSrc);
+    if (existingKey) {
+      return existingKey;
+    }
+
+    const textureKey = `world-entity-${this.nextDynamicTextureId += 1}`;
+    this.dynamicTextureKeys.set(imageSrc, textureKey);
+
+    if (this.pendingTextureKeys.has(textureKey) || this.textures.exists(textureKey)) {
+      return textureKey;
+    }
+
+    this.pendingTextureKeys.add(textureKey);
+    this.load.image(textureKey, imageSrc);
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      this.pendingTextureKeys.delete(textureKey);
+      this.renderSnapshot();
+    });
+
+    if (!this.load.isLoading()) {
+      this.load.start();
+    }
+
+    return textureKey;
+  }
+
   private drawPlayer(snapshot: WorldRendererSnapshot) {
     const point = normalizedToScreen({ x: snapshot.player.x, y: snapshot.player.y }, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
-    if (!this.playerToken) {
-      this.playerToken = this.add.container(point.x, point.y);
+    this.playerToken = this.add.container(point.x, point.y);
+
+    const avatarSrc = snapshot.playerAvatarUrl?.trim();
+    const avatarTextureKey = avatarSrc ? this.ensureDynamicTexture(avatarSrc) : null;
+    if (avatarTextureKey && this.textures.exists(avatarTextureKey)) {
+      const glow = this.add.circle(0, 0, 17, 0xffd55a, 0.18);
+      const ringShadow = this.add.circle(0, 0, 19, 0x2f200d, 0.92);
+      const ring = this.add.circle(0, 0, 17, 0x1e160d, 0.92).setStrokeStyle(2, 0xd8b15a, 1);
+      const avatar = this.add.image(0, 0, avatarTextureKey).setDisplaySize(34, 34);
+      const maskShape = this.add.circle(0, 0, 15, 0xffffff, 1);
+      maskShape.setVisible(false);
+      avatar.setMask(maskShape.createGeometryMask());
+      this.playerToken.add([glow, ringShadow, ring, maskShape, avatar]);
+    } else {
       const glow = this.add.circle(0, 0, 14, 0xffd55a, 0.22);
       const token = this.add.circle(0, 0, 8, 0xf8e8b0, 1).setStrokeStyle(2, 0xffd55a, 1);
       this.playerToken.add([glow, token]);
     }
-    this.playerToken.setPosition(point.x, point.y);
+
+    this.playerToken.setDepth(25);
+  }
+
+  private shouldRenderWorldLabels(snapshot: WorldRendererSnapshot): boolean {
+    return snapshot.camera.width <= 0.105;
+  }
+
+  private drawMarkerBadge(text: string, x: number, y: number, backgroundColor: number, textColor: number) {
+    if (!this.entityLayer) {
+      return;
+    }
+
+    const badge = this.add.container(x, y);
+    const circle = this.add.circle(0, 0, 10, backgroundColor, 1).setStrokeStyle(1, 0x2b2016, 0.8);
+    const label = this.add.text(0, 0, text, {
+      color: `#${textColor.toString(16).padStart(6, '0')}`,
+      fontFamily: 'Georgia, serif',
+      fontSize: text === '?' ? '14px' : '12px',
+      fontStyle: '700',
+    }).setOrigin(0.5, 0.5);
+    badge.add([circle, label]);
+    badge.setDepth(30);
+    this.entityLayer.add(badge);
   }
 
   private addLabel(text: string, x: number, y: number, color = '#f8edd8') {
@@ -319,12 +515,15 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     onPlayerPosition,
     onPlayerState,
     playerTargetPosition = null,
+    playerTargetLocationId = null,
     movementLocked = false,
     controlScheme = 'arrows',
     playerSpeed,
     sprintActive = false,
     playQuestMarkers = [],
     playNpcMarkers = [],
+    sceneSnapshot = null,
+    onSceneCommand,
     onWorldEntityClick,
     lockedWorldEntityId = null,
     lockedWorldEntityCoordinates = null,
@@ -333,23 +532,18 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<PhaserWorldMapScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const movementKeysRef = useRef({ up: false, down: false, left: false, right: false });
-  const playerStateRef = useRef<PlayerWorldState>('idle');
-  const prevZoneRef = useRef<WorldMapZone | null>(null);
-  const pendingCityEntryRef = useRef<string | null>(null);
   const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
-  const { snapshot: worldSnapshot } = useWorldSnapshot();
 
   const [size, setSize] = useState({ width: 1200, height: 780 });
-  const [player, setPlayer] = useState<MapPlayer>(() => ({
+  const initialPlayer = useMemo<MapPlayer>(() => ({
     ...PLAY_PLAYER_BASE,
     speed: runtimeSettings.playerSpeed,
     x: clamp01(playerStartPosition?.x ?? PLAY_PLAYER_BASE.x),
     y: clamp01(playerStartPosition?.y ?? PLAY_PLAYER_BASE.y),
-  }));
+  }), [playerStartPosition?.x, playerStartPosition?.y, runtimeSettings.playerSpeed]);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
-  const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
+  const [cameraFocusPoint, setCameraFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; zone: WorldMapZone } | null>(null);
 
   const resolveCanMoveTo = useCallback((x: number, y: number) => {
@@ -365,24 +559,64 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     const cell = paintedCellMap.get(`${cellX}:${cellY}`);
     return cell ? getRegionMoveSpeedMultiplier(cell.regionType) : 1;
   }, [paintedCellMap]);
+  const { player, currentZone, moveToPoint } = useWorldRuntimeController({
+    enabled: true,
+    initialPlayer,
+    playerStartPosition,
+    defaultPlayerSpeed: runtimeSettings.playerSpeed,
+    playerSpeed,
+    gameplayPaused,
+    movementLocked,
+    controlScheme,
+    sprintActive,
+    zones,
+    resolveCanMoveTo,
+    resolveSpeedMultiplier,
+    playerTargetPosition,
+    playerTargetLocationId,
+    onPlayerPosition,
+    onPlayerState,
+    onEnterZone,
+    onOpenLocation,
+  });
 
   const camera = useMemo<WorldCamera>(() => {
     const width = 1 / runtimeSettings.playZoom;
     const height = 1 / runtimeSettings.playZoom;
+    const cameraTarget = cameraFocusPoint ?? { x: player.x, y: player.y };
     return {
       width,
       height,
-      left: Math.max(0, Math.min(1 - width, player.x - width / 2)),
-      top: Math.max(0, Math.min(1 - height, player.y - height / 2)),
+      left: Math.max(0, Math.min(1 - width, cameraTarget.x - width / 2)),
+      top: Math.max(0, Math.min(1 - height, cameraTarget.y - height / 2)),
     };
-  }, [player.x, player.y, runtimeSettings.playZoom]);
+  }, [cameraFocusPoint, player.x, player.y, runtimeSettings.playZoom]);
 
   useImperativeHandle(ref, () => ({
-    resetView() {},
-    fitToScreen() {},
-    focusZone() {},
-    focusPoint() {},
-  }), []);
+    resetView() {
+      setCameraFocusPoint(null);
+    },
+    fitToScreen() {
+      setCameraFocusPoint(null);
+    },
+    focusZone(zoneId) {
+      if (!zoneId) {
+        setCameraFocusPoint(null);
+        return;
+      }
+
+      const zone = zones.find((entry) => entry.id === zoneId) ?? null;
+      if (!zone) {
+        return;
+      }
+
+      const [x, y] = getZoneCenter(zone);
+      setCameraFocusPoint({ x, y });
+    },
+    focusPoint(point) {
+      setCameraFocusPoint(point ? { x: point[0], y: point[1] } : null);
+    },
+  }), [zones]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -421,124 +655,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
   }, []);
 
   useEffect(() => {
-    if (!playerStartPosition) return;
-    setPlayer((prev) => ({
-      ...prev,
-      x: clamp01(playerStartPosition.x),
-      y: clamp01(playerStartPosition.y),
-      targetX: null,
-      targetY: null,
-    }));
-  }, [playerStartPosition?.x, playerStartPosition?.y]);
-
-  useEffect(() => {
-    setPlayer((prev) => (prev.speed === (playerSpeed ?? runtimeSettings.playerSpeed) ? prev : { ...prev, speed: playerSpeed ?? runtimeSettings.playerSpeed }));
-  }, [playerSpeed, runtimeSettings.playerSpeed]);
-
-  useEffect(() => {
-    if (!playerTargetPosition || movementLocked) return;
-    pendingCityEntryRef.current = null;
-    setPlayer((prev) => setPlayerTarget(prev, playerTargetPosition.x, playerTargetPosition.y));
-  }, [movementLocked, playerTargetPosition?.x, playerTargetPosition?.y]);
-
-  useEffect(() => {
-    let frameId = 0;
-    const animate = () => {
-      setPlayer((prev) => {
-        if (gameplayPaused || movementLocked) {
-          playerStateRef.current = 'idle';
-          return prev.targetX === null && prev.targetY === null ? prev : { ...prev, targetX: null, targetY: null };
-        }
-        const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
-        const inputY = (movementKeysRef.current.down ? 1 : 0) - (movementKeysRef.current.up ? 1 : 0);
-        const effectiveSpeed = (playerSpeed ?? prev.speed) * (sprintActive ? 1.45 : 1);
-        const nextPlayer = prev.speed === effectiveSpeed ? prev : { ...prev, speed: effectiveSpeed };
-        const tick = (inputX !== 0 || inputY !== 0)
-          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveTo, resolveSpeedMultiplier)
-          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveTo, resolveSpeedMultiplier);
-        const enteredZone = detectCurrentZone(zones as Zone[], tick.player.x, tick.player.y) as WorldMapZone | null;
-        playerStateRef.current = tick.state;
-        setCurrentZone(enteredZone);
-        return tick.player;
-      });
-      frameId = window.requestAnimationFrame(animate);
-    };
-    frameId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [gameplayPaused, movementLocked, playerSpeed, resolveCanMoveTo, resolveSpeedMultiplier, sprintActive, zones]);
-
-  useEffect(() => {
-    onPlayerPosition?.(player.x, player.y);
-  }, [onPlayerPosition, player.x, player.y]);
-
-  useEffect(() => {
-    let state: PlayerWorldState = 'idle';
-    if (playerStateRef.current === 'moving') state = 'moving';
-    else if (currentZone?.type === 'city') state = 'in_city';
-    else if (currentZone) state = 'in_zone';
-    onPlayerState?.(state);
-  }, [currentZone, onPlayerState, player.x, player.y]);
-
-  useEffect(() => {
-    if (currentZone?.id !== prevZoneRef.current?.id) {
-      prevZoneRef.current = currentZone;
-      onEnterZone?.(currentZone as Zone | null);
-    }
-  }, [currentZone, onEnterZone]);
-
-  useEffect(() => {
-    const pendingCityId = pendingCityEntryRef.current;
-    if (!pendingCityId || currentZone?.id !== pendingCityId || player.targetX !== null || player.targetY !== null) return;
-    if (!currentZone || !isInsideZone(currentZone, player.x, player.y, 0)) return;
-    pendingCityEntryRef.current = null;
-    onOpenLocation?.(pendingCityId);
-  }, [currentZone, onOpenLocation, player.targetX, player.targetY, player.x, player.y]);
-
-  useEffect(() => {
-    const matchesMovementKey = (key: string) => {
-      const normalized = key.toLowerCase();
-      if (controlScheme === 'wasd') {
-        if (normalized === 'w') return 'up';
-        if (normalized === 's') return 'down';
-        if (normalized === 'a') return 'left';
-        if (normalized === 'd') return 'right';
-        return null;
-      }
-      if (key === 'ArrowUp') return 'up';
-      if (key === 'ArrowDown') return 'down';
-      if (key === 'ArrowLeft') return 'left';
-      if (key === 'ArrowRight') return 'right';
-      return null;
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (movementLocked || isTextEditingTarget(event.target)) return;
-      const direction = matchesMovementKey(event.key);
-      if (!direction) return;
-      event.preventDefault();
-      movementKeysRef.current[direction] = true;
-      pendingCityEntryRef.current = null;
-      setPlayer((prev) => ({ ...prev, targetX: null, targetY: null }));
-    };
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const direction = matchesMovementKey(event.key);
-      if (!direction) return;
-      event.preventDefault();
-      movementKeysRef.current[direction] = false;
-    };
-    const handleBlur = () => {
-      movementKeysRef.current = { up: false, down: false, left: false, right: false };
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [controlScheme, movementLocked]);
-
-  useEffect(() => {
+    const activeEntities = sceneSnapshot?.activeEntities ?? [];
+    const renderedActiveEntities = sceneSnapshot?.renderedActiveEntities ?? [];
     sceneRef.current?.setSnapshot({
       widthPx: size.width,
       heightPx: size.height,
@@ -550,11 +668,12 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       currentZoneId: currentZone?.id ?? null,
       playQuestMarkers,
       playNpcMarkers,
-      activeEntities: worldSnapshot?.activeEntities ?? [],
+      activeEntities,
+      renderedActiveEntities,
       lockedWorldEntityId,
       lockedWorldEntityCoordinates,
     });
-  }, [camera, currentZone?.id, hoverZone?.id, lockedWorldEntityCoordinates, lockedWorldEntityId, playNpcMarkers, playQuestMarkers, player, props.playerAvatarUrl, size.height, size.width, worldSnapshot?.activeEntities, zones]);
+  }, [camera, currentZone?.id, hoverZone?.id, lockedWorldEntityCoordinates, lockedWorldEntityId, playNpcMarkers, playQuestMarkers, player, props.playerAvatarUrl, sceneSnapshot?.activeEntities, sceneSnapshot?.renderedActiveEntities, size.height, size.width, zones]);
 
   function screenToNormalized(clientX: number, clientY: number): { x: number; y: number; localX: number; localY: number } {
     const rect = hostRef.current?.getBoundingClientRect();
@@ -571,42 +690,58 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (gameplayPaused || movementLocked || event.button !== 0) return;
+    setCameraFocusPoint(null);
     const point = screenToNormalized(event.clientX, event.clientY);
-    const activeEntity = (worldSnapshot?.activeEntities ?? []).find((entity) => {
-      const coordinates = lockedWorldEntityId === entity.id && lockedWorldEntityCoordinates ? lockedWorldEntityCoordinates : entity.coordinates;
-      return Math.hypot(coordinates.x - point.x, coordinates.y - point.y) <= 0.018;
+    const resolution = resolveWorldClickInteraction({
+      point: { x: point.x, y: point.y },
+      screenPointPx: { x: point.localX, y: point.localY },
+      viewportPx: { width: size.width, height: size.height },
+      camera,
+      zones,
+      activeEntities: sceneSnapshot?.activeEntities ?? [],
+      renderedEntities: sceneSnapshot?.renderedActiveEntities ?? [],
+      lockedWorldEntityId,
+      lockedWorldEntityCoordinates,
     });
-    if (activeEntity && onWorldEntityClick) {
+    if (resolution.clickedEntity) {
       event.preventDefault();
       event.stopPropagation();
-      onWorldEntityClick(activeEntity);
+      if (onSceneCommand) {
+        onSceneCommand({ type: 'interact_world_entity', entityId: resolution.clickedEntity.id });
+      } else {
+        onWorldEntityClick?.(resolution.clickedEntity);
+      }
       return;
     }
-    const clickedZone = pickRuntimeClickTarget(zones as Zone[], point.x, point.y) as WorldMapZone | null;
-    if (clickedZone) {
-      onRuntimeZoneInteract?.(clickedZone, { x: point.x, y: point.y });
+
+    if (resolution.clickedZone) {
+      if (onSceneCommand) {
+        onSceneCommand({ type: 'interact_zone', zoneId: resolution.clickedZone.id, point: { x: point.x, y: point.y } });
+      } else {
+        onRuntimeZoneInteract?.(resolution.clickedZone, { x: point.x, y: point.y });
+      }
     }
-    if (clickedZone?.type === 'city' || clickedZone?.type === 'location') {
-      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
-      pendingCityEntryRef.current = clickedZone.id;
-      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
+
+    const moveCommand = resolution.commands.find((command) => command.type === 'move_to_point');
+    if (moveCommand) {
+      onSceneCommand?.(moveCommand);
+    }
+
+    if (resolution.moveTarget && !onSceneCommand) {
+      moveToPoint(resolution.moveTarget.point, resolution.moveTarget.pendingLocationId);
       return;
     }
-    if (clickedZone) {
-      pendingCityEntryRef.current = null;
-      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
-      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
-      return;
-    }
-    pendingCityEntryRef.current = null;
-    setPlayer((prev) => setPlayerTarget(prev, point.x, point.y));
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const point = screenToNormalized(event.clientX, event.clientY);
-    const hovered = detectHoverZone(zones as Zone[], point.x, point.y) as WorldMapZone | null;
+    const hovered = resolveWorldHoverZone(zones, { x: point.x, y: point.y });
     setHoverZone(hovered);
-    onHoverZone?.(hovered as Zone | null);
+    if (onSceneCommand) {
+      onSceneCommand({ type: 'hover_point', point: { x: point.x, y: point.y } });
+    } else {
+      onHoverZone?.(hovered as Zone | null);
+    }
     setTooltip(hovered && shouldShowPlayModeHoverTooltip(hovered) ? { x: point.localX, y: point.localY, zone: hovered } : null);
   }
 
@@ -620,7 +755,11 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
         onPointerLeave={() => {
           setTooltip(null);
           setHoverZone(null);
-          onHoverZone?.(null);
+          if (onSceneCommand) {
+            onSceneCommand({ type: 'hover_point', point: null });
+          } else {
+            onHoverZone?.(null);
+          }
         }}
       >
         <div className="wm-map-title">Сольеймар: Мир</div>

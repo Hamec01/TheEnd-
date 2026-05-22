@@ -41,6 +41,7 @@ __exportStar(require("./equipment"), exports);
 __exportStar(require("./professions"), exports);
 __exportStar(require("./shop"), exports);
 __exportStar(require("./battle-map"), exports);
+__exportStar(require("./visual-effects"), exports);
 __exportStar(require("./progression"), exports);
 var arena_battle_1 = require("./arena-battle");
 Object.defineProperty(exports, "TargetZone", { enumerable: true, get: function () { return arena_battle_1.TargetZone; } });

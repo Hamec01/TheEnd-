@@ -584,7 +584,7 @@ function isFullHealChoiceText(text: string | undefined): boolean {
   );
 }
 
-function getChoiceExplicitActions(choice: DialogueChoice): DialogueAction[] {
+export function getChoiceExplicitActions(choice: DialogueChoice): DialogueAction[] {
   const actions = [
     ...(choice.actions ?? []),
     ...(choice.effects ?? []),
@@ -623,7 +623,7 @@ function getChoiceExplicitActions(choice: DialogueChoice): DialogueAction[] {
   });
 }
 
-function choiceShorthandToActions(choice: DialogueChoice): DialogueAction[] {
+export function choiceShorthandToActions(choice: DialogueChoice): DialogueAction[] {
   const shorthand: DialogueAction[] = [];
   if (choice.giveQuest) {
     shorthand.push({ id: `${choice.id}__giveQuest`, type: 'startQuest', questId: choice.giveQuest });

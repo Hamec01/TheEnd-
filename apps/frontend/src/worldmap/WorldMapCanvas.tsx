@@ -9,8 +9,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import '../styles.css';
-import { tickPlayerDirectionalMovement, tickPlayerMovement, setPlayerTarget, type MapPlayer } from './movementSystem';
-import { detectCurrentZone, detectHoverZone, isInsideZone, pickRuntimeClickTarget } from './zoneSystem';
+import { type MapPlayer } from './movementSystem';
+import { detectHoverZone, pickRuntimeClickTarget } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
 import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
@@ -34,6 +34,10 @@ import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionP
 import type { QuestMarkerDefinition } from '../types/quest';
 import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
 import type { MovementControlScheme } from './playerMovementSettings';
+import type { WorldSceneCommand, WorldSceneSnapshot } from './worldSceneTypes';
+import { resolveWorldClickInteraction } from './worldInteractionCommands';
+import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
+import { useWorldRuntimeController } from './useWorldRuntimeController';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
@@ -171,9 +175,10 @@ export interface WorldMapCanvasProps {
   markerPickMode?: boolean;
   onPickMarkerPoint?: (point: [number, number]) => void;
   onPlayerPosition?: (x: number, y: number) => void;
-  onPlayerState?: (state: 'moving' | 'idle' | 'in_zone' | 'in_city') => void;
+  onPlayerState?: (state: PlayerWorldState) => void;
   onRuntimeZoneInteract?: (zone: WorldMapZone, point: { x: number; y: number }) => void;
   playerTargetPosition?: { x: number; y: number } | null;
+  playerTargetLocationId?: string | null;
   movementLocked?: boolean;
   controlScheme?: MovementControlScheme;
   playerSpeed?: number;
@@ -188,6 +193,8 @@ export interface WorldMapCanvasProps {
     isHostile?: boolean;
     hasQuest?: boolean;
   }>;
+  sceneSnapshot?: WorldSceneSnapshot | null;
+  onSceneCommand?: (command: WorldSceneCommand) => void;
   activeEditorLayer?: MapEditorLayer;
   layerVisibility?: LayerVisibilityState;
   onWorldEntityClick?: (entity: WorldSimulationSnapshot['activeEntities'][number]) => void;
@@ -371,12 +378,15 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     onPlayerState,
     onRuntimeZoneInteract,
     playerTargetPosition = null,
+    playerTargetLocationId = null,
     movementLocked = false,
     controlScheme = 'arrows',
     playerSpeed,
     sprintActive = false,
     playQuestMarkers = [],
     playNpcMarkers = [],
+    sceneSnapshot = null,
+    onSceneCommand,
     activeEditorLayer = 'zones',
     onWorldEntityClick,
     layerVisibility = {
@@ -393,26 +403,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const prevZoneRef = useRef<WorldMapZone | null>(null);
-  const playerStateRef = useRef<PlayerWorldState>('idle');
-  const pendingCityEntryRef = useRef<string | null>(null);
-  const movementKeysRef = useRef({
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  });
   const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
-  const [player, setPlayer] = useState<MapPlayer>(() => ({
+  const initialPlayer = useMemo<MapPlayer>(() => ({
     ...PLAY_PLAYER_BASE,
     speed: runtimeSettings.playerSpeed,
     x: clamp(playerStartPosition?.x ?? PLAY_PLAYER_BASE.x, 0, 1),
     y: clamp(playerStartPosition?.y ?? PLAY_PLAYER_BASE.y, 0, 1),
-  }));
+  }), [playerStartPosition?.x, playerStartPosition?.y, runtimeSettings.playerSpeed]);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
-  const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorPoint, setCursorPoint] = useState<[number, number] | null>(null);
@@ -460,6 +460,26 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     return getRegionMoveSpeedMultiplier(cell.regionType);
   }, [paintedCellMap]);
+  const { player, currentZone, moveToPoint } = useWorldRuntimeController({
+    enabled: mode === 'play',
+    initialPlayer,
+    playerStartPosition,
+    defaultPlayerSpeed: runtimeSettings.playerSpeed,
+    playerSpeed,
+    gameplayPaused,
+    movementLocked,
+    controlScheme,
+    sprintActive,
+    zones,
+    resolveCanMoveTo,
+    resolveSpeedMultiplier,
+    playerTargetPosition,
+    playerTargetLocationId,
+    onPlayerPosition,
+    onPlayerState,
+    onEnterZone,
+    onOpenLocation,
+  });
   const createLayerDraftBase = (tool: ZoneEditorTool): ZoneEditorDraft => {
     const type = getDefaultTypeForLayer(activeEditorLayer);
     const layerDefault = createEmptyZoneDraft(tool);
@@ -615,164 +635,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   }, [canvasSize.height, canvasSize.width, didInitialFit, mode, onSettingsChange, settings, worldImage]);
 
   useEffect(() => {
-    if (mode !== 'play') {
-      return undefined;
-    }
-
-    let frameId = 0;
-
-    const animate = () => {
-      setPlayer((prev) => {
-        if (gameplayPaused || movementLocked) {
-          playerStateRef.current = 'idle';
-          if (prev.targetX === null && prev.targetY === null) {
-            return prev;
-          }
-          return {
-            ...prev,
-            targetX: null,
-            targetY: null,
-          };
-        }
-
-        const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
-        const inputY = (movementKeysRef.current.down ? 1 : 0) - (movementKeysRef.current.up ? 1 : 0);
-        const effectiveSpeed = (playerSpeed ?? prev.speed) * (sprintActive ? 1.45 : 1);
-        const nextPlayer = prev.speed === effectiveSpeed ? prev : { ...prev, speed: effectiveSpeed };
-        const tick = (inputX !== 0 || inputY !== 0)
-          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveTo, resolveSpeedMultiplier)
-          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveTo, resolveSpeedMultiplier);
-        const enteredZone = detectCurrentZone(zones as Zone[], tick.player.x, tick.player.y) as WorldMapZone | null;
-        playerStateRef.current = tick.state;
-        setCurrentZone(enteredZone);
-
-        return tick.player;
-      });
-      frameId = window.requestAnimationFrame(animate);
-    };
-
-    frameId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [gameplayPaused, mode, movementLocked, playerSpeed, resolveCanMoveTo, resolveSpeedMultiplier, sprintActive, zones]);
-
-  useEffect(() => {
-    if (mode !== 'play') {
-      return;
-    }
-
-    setPlayer((prev) => (
-      prev.speed === (playerSpeed ?? runtimeSettings.playerSpeed)
-        ? prev
-        : { ...prev, speed: playerSpeed ?? runtimeSettings.playerSpeed }
-    ));
-  }, [mode, playerSpeed, runtimeSettings.playerSpeed]);
-
-  // Separate effect to handle callbacks when player position or zone changes
-  useEffect(() => {
-    if (mode !== 'play') {
-      return;
-    }
-
-    onPlayerPosition?.(player.x, player.y);
-  }, [mode, player.x, player.y, onPlayerPosition]);
-
-  // Separate effect to handle player state callbacks - combines movement state with zone state
-  useEffect(() => {
-    if (mode !== 'play') {
-      return;
-    }
-
-    let state: PlayerWorldState = 'idle';
-    
-    // Priority: moving > in_city > in_zone > idle
-    if (playerStateRef.current === 'moving') {
-      state = 'moving';
-    } else if (currentZone?.type === 'city') {
-      state = 'in_city';
-    } else if (currentZone) {
-      state = 'in_zone';
-    } else {
-      state = 'idle';
-    }
-
-    onPlayerState?.(state);
-  }, [mode, currentZone, player.x, player.y, onPlayerState]);
-
-  useEffect(() => {
-    if (mode !== 'play' || !playerStartPosition) {
-      return;
-    }
-
-    setPlayer((prev) => ({
-      ...prev,
-      x: clamp(playerStartPosition.x, 0, 1),
-      y: clamp(playerStartPosition.y, 0, 1),
-      targetX: null,
-      targetY: null,
-    }));
-  }, [mode, playerStartPosition?.x, playerStartPosition?.y]);
-
-  useEffect(() => {
-    if (mode !== 'play') {
-      return;
-    }
-    
-    // Only call onEnterZone if zone actually changed
-    if (currentZone?.id !== prevZoneRef.current?.id) {
-      prevZoneRef.current = currentZone;
-      onEnterZone?.(currentZone as Zone | null);
-    }
-  }, [currentZone, mode, onEnterZone]);
-
-  useEffect(() => {
-    if (mode !== 'play') {
-      return;
-    }
-
-    const pendingCityId = pendingCityEntryRef.current;
-    if (!pendingCityId) {
-      return;
-    }
-
-    if (currentZone?.id !== pendingCityId) {
-      return;
-    }
-
-    if (player.targetX !== null || player.targetY !== null) {
-      return;
-    }
-
-    if (!currentZone || !isInsideZone(currentZone, player.x, player.y, 0)) {
-      return;
-    }
-
-    pendingCityEntryRef.current = null;
-    onOpenLocation?.(pendingCityId);
-  }, [currentZone, mode, onOpenLocation, player.targetX, player.targetY, player.x, player.y]);
-
-  useEffect(() => {
-    if (mode !== 'play' || !playerTargetPosition || movementLocked) {
-      return;
-    }
-
-    pendingCityEntryRef.current = null;
-    setPlayer((prev) => {
-      const nextTargetX = Math.max(0, Math.min(1, playerTargetPosition.x));
-      const nextTargetY = Math.max(0, Math.min(1, playerTargetPosition.y));
-      const sameTarget = prev.targetX !== null
-        && prev.targetY !== null
-        && Math.abs(prev.targetX - nextTargetX) < 0.0005
-        && Math.abs(prev.targetY - nextTargetY) < 0.0005;
-
-      if (sameTarget) {
-        return prev;
-      }
-
-      return setPlayerTarget(prev, nextTargetX, nextTargetY);
-    });
-  }, [mode, movementLocked, playerTargetPosition?.x, playerTargetPosition?.y]);
-
-  useEffect(() => {
     if (mode !== 'editor') {
       return undefined;
     }
@@ -888,98 +750,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     selectedZoneId,
     worldImage,
   ]);
-
-  useEffect(() => {
-    if (mode !== 'play') {
-      return undefined;
-    }
-
-    const resolveNonMovingState = (): 'idle' | 'in_zone' | 'in_city' => {
-      if (currentZone?.type === 'city') {
-        return 'in_city';
-      }
-      if (currentZone) {
-        return 'in_zone';
-      }
-      return 'idle';
-    };
-
-    const matchesMovementKey = (key: string) => {
-      const normalized = key.toLowerCase();
-      if (controlScheme === 'wasd') {
-        if (normalized === 'w') return 'up';
-        if (normalized === 's') return 'down';
-        if (normalized === 'a') return 'left';
-        if (normalized === 'd') return 'right';
-        return null;
-      }
-
-      if (key === 'ArrowUp') return 'up';
-      if (key === 'ArrowDown') return 'down';
-      if (key === 'ArrowLeft') return 'left';
-      if (key === 'ArrowRight') return 'right';
-      return null;
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (movementLocked || isTextEditingTarget(event.target)) {
-        return;
-      }
-
-      const direction = matchesMovementKey(event.key);
-      if (!direction) {
-        return;
-      }
-
-      event.preventDefault();
-      movementKeysRef.current[direction] = true;
-      pendingCityEntryRef.current = null;
-      setPlayer((prev) => ({
-        ...prev,
-        targetX: null,
-        targetY: null,
-      }));
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const direction = matchesMovementKey(event.key);
-      if (!direction) {
-        return;
-      }
-
-      event.preventDefault();
-      movementKeysRef.current[direction] = false;
-
-      const anyMovementKeyStillPressed = movementKeysRef.current.up
-        || movementKeysRef.current.down
-        || movementKeysRef.current.left
-        || movementKeysRef.current.right;
-      if (!anyMovementKeyStillPressed) {
-        playerStateRef.current = 'idle';
-        onPlayerState?.(resolveNonMovingState());
-      }
-    };
-
-    const handleBlur = () => {
-      movementKeysRef.current = {
-        up: false,
-        down: false,
-        left: false,
-        right: false,
-      };
-      playerStateRef.current = 'idle';
-      onPlayerState?.(resolveNonMovingState());
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [controlScheme, currentZone, mode, movementLocked, onPlayerState]);
 
   function updateZones(nextZones: WorldMapZone[], nextSelectedZoneId: string | null = selectedZoneId) {
     onZonesChange?.(nextZones);
@@ -1214,27 +984,45 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     const [x, y] = getNormalizedPoint(event);
-    const clickedZone = pickRuntimeClickTarget(zones as Zone[], x, y) as WorldMapZone | null;
-    if (clickedZone) {
-      onRuntimeZoneInteract?.(clickedZone, { x, y });
-    }
+    const [canvasX, canvasY] = getCanvasPoint(event);
+    const camera = getPlayCamera();
+    const resolution = resolveWorldClickInteraction({
+      point: { x, y },
+      screenPointPx: { x: canvasX, y: canvasY },
+      viewportPx: { width: canvasSize.width, height: canvasSize.height },
+      camera,
+      zones,
+      activeEntities: sceneSnapshot?.activeEntities ?? [],
+      renderedEntities: sceneSnapshot?.renderedActiveEntities ?? [],
+      lockedWorldEntityId,
+      lockedWorldEntityCoordinates,
+    });
 
-    if (clickedZone?.type === 'city' || clickedZone?.type === 'location') {
-      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
-      pendingCityEntryRef.current = clickedZone.id;
-      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
+    if (resolution.clickedEntity) {
+      if (onSceneCommand) {
+        onSceneCommand({ type: 'interact_world_entity', entityId: resolution.clickedEntity.id });
+      } else {
+        onWorldEntityClick?.(resolution.clickedEntity);
+      }
       return;
     }
 
-    if (clickedZone) {
-      pendingCityEntryRef.current = null;
-      const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedZone);
-      setPlayer((prev) => setPlayerTarget(prev, zoneCenterX, zoneCenterY));
-      return;
+    if (resolution.clickedZone) {
+      if (onSceneCommand) {
+        onSceneCommand({ type: 'interact_zone', zoneId: resolution.clickedZone.id, point: { x, y } });
+      } else {
+        onRuntimeZoneInteract?.(resolution.clickedZone, { x, y });
+      }
     }
 
-    pendingCityEntryRef.current = null;
-    setPlayer((prev) => setPlayerTarget(prev, x, y));
+    const moveCommand = resolution.commands.find((command) => command.type === 'move_to_point');
+    if (moveCommand) {
+      onSceneCommand?.(moveCommand);
+    }
+
+    if (resolution.moveTarget && !onSceneCommand) {
+      moveToPoint(resolution.moveTarget.point, resolution.moveTarget.pendingLocationId);
+    }
   }
 
   function handleMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
@@ -1251,7 +1039,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     if (mode === 'play') {
       const hovered = detectHoverZone(zones as Zone[], point[0], point[1]) as WorldMapZone | null;
       setHoverZone(hovered);
-      onHoverZone?.(hovered as Zone | null);
+      if (onSceneCommand) {
+        onSceneCommand({ type: 'hover_point', point: { x: point[0], y: point[1] } });
+      } else {
+        onHoverZone?.(hovered as Zone | null);
+      }
       if (!hovered || !shouldShowPlayModeHoverTooltip(hovered)) {
         setTooltip(null);
         return;
@@ -1374,7 +1166,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     setTooltip(null);
     setContextMenu(null);
     setCursorPoint(null);
-    onHoverZone?.(null);
+    if (onSceneCommand) {
+      onSceneCommand({ type: 'hover_point', point: null });
+    } else {
+      onHoverZone?.(null);
+    }
     onMouseCoordinatesChange?.({ x: null, y: null });
   }
 
@@ -1450,7 +1246,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         canvas.height,
       );
 
-      const kingdomBorders = zones.filter((zone) => zone.type === 'kingdom_area' && Boolean(zone.isVisibleToPlayer));
+      const kingdomBorders = resolveVisibleWorldOverlayZones(zones, 'kingdom_area');
       if (kingdomBorders.length > 0) {
         ctx.save();
         ctx.strokeStyle = 'rgba(210, 170, 102, 0.55)';
@@ -1818,7 +1614,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         {mode === 'play' && playCamera && onWorldEntityClick ? (
           <ActiveWorldEntitiesLayer
             camera={playCamera}
-            onEntityClick={onWorldEntityClick}
+            worldSnapshot={sceneSnapshot?.worldSnapshot ?? null}
+            renderedEntities={sceneSnapshot?.renderedActiveEntities ?? []}
             lockedEntity={
               lockedWorldEntityId && lockedWorldEntityCoordinates
                 ? {

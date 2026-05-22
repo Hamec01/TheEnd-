@@ -78,27 +78,93 @@ function hasRestoreEffect(adminItem: unknown): boolean {
 }
 
 function getSkillTargetType(def: AdminSkillDefinition | null | undefined): string {
+  return normalizeSkillTargetConfig(def).targetType;
+}
+
+type NormalizedSkillTargetType = 'self' | 'entity' | 'cell';
+
+type NormalizedItemTargetType = 'entity' | 'cell';
+
+type NormalizedSkillTargetConfig = {
+  targetType: NormalizedSkillTargetType;
+  canTargetSelf: boolean;
+  canTargetAllies: boolean;
+  canTargetEnemies: boolean;
+  range: number | null;
+};
+
+export function normalizeSkillTargetConfig(def: AdminSkillDefinition | null | undefined): NormalizedSkillTargetConfig {
   const raw = toRecord(def as unknown);
   const target = raw ? toRecord(raw.target) : null;
-  return String(target?.targetType ?? '').toLowerCase();
+
+  const rawTargetType = String(
+    target?.targetType
+    ?? raw?.targetType
+    ?? '',
+  ).trim().toLowerCase();
+
+  const targetType: NormalizedSkillTargetType = rawTargetType === 'self' || rawTargetType === 'cell'
+    ? rawTargetType
+    : 'entity';
+
+  const explicitSelf = target?.canTargetSelf ?? raw?.canTargetSelf;
+  const explicitAllies = target?.canTargetAllies ?? raw?.canTargetAllies;
+  const explicitEnemies = target?.canTargetEnemies ?? raw?.canTargetEnemies;
+
+  const canTargetSelf = typeof explicitSelf === 'boolean'
+    ? explicitSelf
+    : targetType === 'self';
+  const canTargetAllies = typeof explicitAllies === 'boolean'
+    ? explicitAllies
+    : targetType !== 'cell' && targetType !== 'self';
+  const canTargetEnemies = typeof explicitEnemies === 'boolean'
+    ? explicitEnemies
+    : targetType !== 'self';
+
+  const rawRange = target?.range ?? raw?.range;
+  const range = typeof rawRange === 'number' && Number.isFinite(rawRange)
+    ? Math.max(0, Math.floor(rawRange))
+    : null;
+
+  return {
+    targetType,
+    canTargetSelf,
+    canTargetAllies,
+    canTargetEnemies,
+    range,
+  };
+}
+
+export function normalizeItemTargetConfig(adminItem: unknown): { targetType: NormalizedItemTargetType } {
+  const wantsCell = isCellTargetItem(adminItem) || isLikelyBomb(adminItem) || isLikelyTrap(adminItem);
+  if (wantsCell) {
+    return { targetType: 'cell' };
+  }
+  if (hasRestoreEffect(adminItem)) {
+    return { targetType: 'entity' };
+  }
+  return { targetType: 'entity' };
 }
 
 function canSkillTarget(def: AdminSkillDefinition | null | undefined, target: ClickedCombatTarget, actor: ArenaCombatEntity, state: ArenaBattleState): { ok: boolean; reason?: string } {
-  const raw = toRecord(def as unknown);
-  const targetCfg = raw ? toRecord(raw.target) : null;
-  if (!targetCfg) return { ok: true };
+  const targetCfg = normalizeSkillTargetConfig(def);
 
-  const canSelf = Boolean(targetCfg.canTargetSelf ?? false);
-  const canAllies = Boolean(targetCfg.canTargetAllies ?? false);
-  const canEnemies = Boolean(targetCfg.canTargetEnemies ?? false);
-  const range = typeof targetCfg.range === 'number' && Number.isFinite(targetCfg.range) ? Math.max(0, Math.floor(targetCfg.range)) : null;
+  if (targetCfg.targetType === 'self' && target.kind !== 'self') {
+    return { ok: false, reason: 'Навык применяется только на себя' };
+  }
+  if (targetCfg.targetType === 'cell' && target.kind !== 'cell') {
+    return { ok: false, reason: 'Навык требует выбор клетки' };
+  }
+  if (targetCfg.targetType === 'entity' && target.kind === 'cell') {
+    return { ok: false, reason: 'Навык требует выбор цели' };
+  }
 
   const actorPos = { battlefieldX: actor.battlefieldX ?? 0, battlefieldY: actor.battlefieldY ?? 0 };
   const resolveEntity = (id: string) => state.entities.find((e) => e.id === id) ?? null;
 
   if (target.kind === 'self') {
     if (target.actorId !== actor.id) return { ok: false, reason: 'Нельзя применить на эту цель' };
-    if (!canSelf) return { ok: false, reason: 'Нельзя применить на себя' };
+    if (!targetCfg.canTargetSelf) return { ok: false, reason: 'Нельзя применить на себя' };
     return { ok: true };
   }
 
@@ -107,20 +173,20 @@ function canSkillTarget(def: AdminSkillDefinition | null | undefined, target: Cl
     if (!entity || !entity.isAlive) return { ok: false, reason: 'Цель недоступна' };
     const isEnemy = entity.team === TeamSide.Right;
     const isAlly = entity.team === TeamSide.Left;
-    if (isEnemy && !canEnemies) return { ok: false, reason: 'Нельзя применить на врага' };
-    if (isAlly && !canAllies && entity.id !== actor.id) return { ok: false, reason: 'Нельзя применить на союзника' };
-    if (entity.id === actor.id && !canSelf) return { ok: false, reason: 'Нельзя применить на себя' };
-    if (range != null) {
+    if (isEnemy && !targetCfg.canTargetEnemies) return { ok: false, reason: 'Нельзя применить на врага' };
+    if (isAlly && !targetCfg.canTargetAllies && entity.id !== actor.id) return { ok: false, reason: 'Нельзя применить на союзника' };
+    if (entity.id === actor.id && !targetCfg.canTargetSelf) return { ok: false, reason: 'Нельзя применить на себя' };
+    if (targetCfg.range != null) {
       const dist = getBattlefieldDistance(actorPos as any, entity as any);
-      if (dist > range) return { ok: false, reason: 'Цель вне дистанции' };
+      if (dist > targetCfg.range) return { ok: false, reason: 'Цель вне дистанции' };
     }
     return { ok: true };
   }
 
   if (target.kind === 'cell') {
-    if (range != null) {
+    if (targetCfg.range != null) {
       const dist = Math.abs((actor.battlefieldX ?? 0) - target.x) + Math.abs((actor.battlefieldY ?? 0) - target.y);
-      if (dist > range) return { ok: false, reason: 'Цель вне дистанции' };
+      if (dist > targetCfg.range) return { ok: false, reason: 'Цель вне дистанции' };
     }
     return { ok: true };
   }
@@ -158,6 +224,8 @@ export function buildCombatContextActions(params: {
 
   if (selectedSource.kind === 'skill') {
     const def = selectedSkill?.definition;
+    const targetCfg = normalizeSkillTargetConfig(def);
+    const commandSkillId = selectedSkill?.definition?.id ?? selectedSource.skillId;
     const labelBase = selectedSkill?.label ?? selectedSource.skillId;
     const check = canSkillTarget(def, clickedTarget, activeActor, battleState);
     const targetType = getSkillTargetType(def);
@@ -167,6 +235,30 @@ export function buildCombatContextActions(params: {
         ? `Применить ${labelBase} на себя`
         : `Применить ${labelBase}`;
     if (!check.ok) {
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        const actorPos = { x: activeActor.battlefieldX ?? 0, y: activeActor.battlefieldY ?? 0 };
+        const targetEntity = clickedTarget.kind === 'entity'
+          ? battleState.entities.find((entity) => entity.id === clickedTarget.entityId) ?? null
+          : null;
+        const targetPos = clickedTarget.kind === 'cell'
+          ? { x: clickedTarget.x, y: clickedTarget.y }
+          : targetEntity
+            ? { x: targetEntity.battlefieldX ?? 0, y: targetEntity.battlefieldY ?? 0 }
+            : actorPos;
+        const computedDistance = Math.abs(actorPos.x - targetPos.x) + Math.abs(actorPos.y - targetPos.y);
+        console.debug('[combat][skill-target-disabled]', {
+          skillId: selectedSource.skillId,
+          skillName: selectedSkill?.definition?.name ?? labelBase,
+          selectedSource,
+          clickedTarget,
+          parsedTargetConfig: normalizeSkillTargetConfig(def),
+          actorPosition: actorPos,
+          targetPosition: targetPos,
+          computedDistance,
+          disabledReason: check.reason ?? 'Нельзя применить на эту цель',
+          targetType,
+        });
+      }
       addDisabled('skill_cast', label, check.reason ?? 'Нельзя применить на эту цель');
       return actions;
     }
@@ -184,7 +276,11 @@ export function buildCombatContextActions(params: {
         type: 'skill_cast',
         target,
         sourceSlotId: selectedSource.slotId,
-        payload: { skillId: selectedSource.skillId, targetZone: TargetZone.Chest },
+        payload: {
+          skillId: commandSkillId,
+          ...(targetCfg.range != null ? { skillRange: targetCfg.range } : {}),
+          targetZone: TargetZone.Chest,
+        },
       }),
     });
     return actions;
@@ -194,7 +290,7 @@ export function buildCombatContextActions(params: {
     const adminItem = resolveAdminItemById?.(selectedSource.itemId) ?? null;
     const itemName = String(toRecord(adminItem)?.name ?? selectedSource.itemId);
 
-    const wantsCell = isCellTargetItem(adminItem) || isLikelyBomb(adminItem) || isLikelyTrap(adminItem);
+    const wantsCell = normalizeItemTargetConfig(adminItem).targetType === 'cell';
     const isBomb = isLikelyBomb(adminItem);
     const isTrap = isLikelyTrap(adminItem);
     const isRestore = hasRestoreEffect(adminItem);

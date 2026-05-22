@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { executeDialogueActions } from './dialogueRuntime';
+import { executeDialogueActions, getChoiceExplicitActions } from './dialogueRuntime';
 
 describe('dialogueRuntime training intents', () => {
   it('emits OPEN_TRAINING for openTraining action', () => {
@@ -64,6 +64,31 @@ describe('dialogueRuntime training intents', () => {
     expect(result.intents.find((intent) => intent.type === 'OPEN_MINE')).toEqual({
       type: 'OPEN_MINE',
       mineId: 'mine_legacy',
+    });
+  });
+
+  it('injects full-heal intent for a payment choice that only declares takeGold', () => {
+    const resolvedActions = getChoiceExplicitActions({
+      id: 'choice_pay_full_heal',
+      text: 'Заплатить 75 золота за полное лечение.',
+      actions: [
+        {
+          id: 'act_take_gold_full_heal',
+          type: 'takeGold',
+          amount: 75,
+        },
+      ],
+    } as any);
+
+    const result = executeDialogueActions(
+      'player_test',
+      'npc_arklein_church_healer',
+      resolvedActions,
+    );
+
+    expect(result.intents).toContainEqual({
+      type: 'HEAL_PLAYER_FULL',
+      costGold: 75,
     });
   });
 });

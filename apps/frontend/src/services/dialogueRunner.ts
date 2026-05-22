@@ -5,9 +5,11 @@ import { handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
 import { getDialogueById, getDialoguesByNpc } from './dialogueRepository';
 import { getNpcById } from './npcRepository';
 import {
+  choiceShorthandToActions,
   evaluateDialogueConditions,
   executeDialogueActions,
   getAvailableChoices,
+  getChoiceExplicitActions,
   getStartNode,
   type DialogueRuntimeEvent,
   type DialogueRuntimeIntent,
@@ -385,8 +387,8 @@ export function useDialogueRunner(params: {
 
     const executed = executeDialogueActions(params.player.id, npcId ?? 'system', [
       ...(currentNode.actions ?? []),
-      ...(choice.actions ?? []),
-      ...effectActions.filter((effect) => !(effect.type === 'start_quest' && typeof effect.questId === 'string' && questIdsToStart.has(effect.questId.trim()))),
+      ...getChoiceExplicitActions(choice),
+      ...choiceShorthandToActions(choice),
       ...derivedActions,
     ], params.player);
 

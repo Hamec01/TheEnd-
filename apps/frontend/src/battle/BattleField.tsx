@@ -4,7 +4,6 @@ import {
   DistanceBand,
   MovementType,
   TeamSide,
-  getBattlefieldTilePlacements,
   getCombatStatusDefinition,
   type AdminSkillDefinition,
   type ArenaCombatEntity,
@@ -14,6 +13,8 @@ import {
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CombatContextAction, ClickedCombatTarget, SelectedCombatSource } from './combatContextActions';
+import type { BattlePlaybackPhase } from './playback/buildBattlePlaybackTimeline';
+import { createBattleInteractionAdapter } from './battleInteractionAdapter';
 
 export interface BattleFieldProps {
   entities: ArenaCombatEntity[];
@@ -61,6 +62,7 @@ export interface BattleFieldProps {
   onStatusMessage?: (text: string) => void;
   availableSkills?: Array<{ slotId: string; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
   selfTargetSkills?: Array<{ slotId: string; slotIndex: number; skillId: string; level: number; label: string; definition: AdminSkillDefinition }>;
+  resolveAdminItemById?: (itemId: string) => unknown | null;
   inventoryItems?: Array<{ id: string; name: string; description: string; icon: string; itemType: string; quantity: number; disabled?: boolean; disabledReason?: string | null; effectSummary?: string | null; costSummary?: string | null }>;
   selectedSkillId?: string | null;
   playerVisualState?: 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
@@ -70,6 +72,8 @@ export interface BattleFieldProps {
   lastLog?: CombatLogEntry | null;
   recentLogs?: CombatLogEntry[];
   animationEvents?: CombatAnimationEvent[];
+  isPlaybackActive?: boolean;
+  playbackPhases?: BattlePlaybackPhase[];
 }
 
 interface ContextMenu {
@@ -114,92 +118,6 @@ interface TileState {
 const MIN_CAMERA_ZOOM = 0.5;
 const MAX_CAMERA_ZOOM = 3;
 
-function classifyCombatStyle(entity: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
-  if (entity.combatStyleHint) {
-    return entity.combatStyleHint;
-  }
-  if (typeof entity.attackRange === 'number' && entity.attackRange > 1) {
-    return 'RANGED';
-  }
-  if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) {
-    return 'MAGIC';
-  }
-  if (entity.dexterity > entity.strength) {
-    return 'RANGED';
-  }
-  return 'MELEE';
-}
-
-function getMaxAttackRange(entity: ArenaCombatEntity, style: 'MELEE' | 'RANGED' | 'MAGIC'): number {
-  if (style === 'MELEE') {
-    return 1;
-  }
-  const raw = typeof entity.attackRange === 'number' && Number.isFinite(entity.attackRange)
-    ? Math.floor(entity.attackRange)
-    : undefined;
-  if (style === 'MAGIC') {
-    return Math.max(2, raw ?? 5);
-  }
-  return Math.max(2, raw ?? 6);
-}
-
-function isBlockingTile(type: BattlefieldTileType): boolean {
-  return type === BattlefieldTileType.Blocked || type === BattlefieldTileType.HighCover || type === BattlefieldTileType.Summon;
-}
-
-function bresenhamLine(
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): Array<{ x: number; y: number }> {
-  const points: Array<{ x: number; y: number }> = [];
-  const dx = Math.abs(x1 - x0);
-  const dy = Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx - dy;
-
-  let x = x0;
-  let y = y0;
-  while (true) {
-    points.push({ x, y });
-    if (x === x1 && y === y1) {
-      break;
-    }
-
-    const e2 = 2 * err;
-    if (e2 > -dy) {
-      err -= dy;
-      x += sx;
-    }
-    if (e2 < dx) {
-      err += dx;
-      y += sy;
-    }
-  }
-
-  return points;
-}
-
-function hasLineOfSightOnTiles(
-  fromX: number,
-  fromY: number,
-  toX: number,
-  toY: number,
-  tileTypeByKey: Map<string, BattlefieldTileType>,
-): boolean {
-  const points = bresenhamLine(fromX, fromY, toX, toY);
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const point = points[i];
-    const tileType = tileTypeByKey.get(`${point.x}:${point.y}`) ?? BattlefieldTileType.Empty;
-    if (isBlockingTile(tileType)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export function BattleField({
   entities,
   battlefieldTiles,
@@ -240,6 +158,7 @@ export function BattleField({
   onStatusMessage,
   availableSkills = [],
   selfTargetSkills = [],
+  resolveAdminItemById,
   inventoryItems = [],
   selectedSkillId = null,
   animationEvents = [],
@@ -283,29 +202,29 @@ export function BattleField({
   const [tokenImpactUntilMs, setTokenImpactUntilMs] = useState<Record<string, number>>({});
   const [animationNowMs, setAnimationNowMs] = useState<number>(Date.now());
 
-  const entitiesForRender = useMemo(() => {
-    if (!visualPositions || Object.keys(visualPositions).length === 0) {
-      return entities;
-    }
-    return entities.map((entity) => {
-      const pos = visualPositions[entity.id];
-      if (!pos) return entity;
-      return { ...entity, battlefieldX: pos.x, battlefieldY: pos.y };
-    });
-  }, [entities, visualPositions]);
+  const interaction = useMemo(() => createBattleInteractionAdapter({
+    entities,
+    battlefieldTiles,
+    battleMapWidth,
+    battleMapHeight,
+    distance,
+    playerId,
+    selectedTargetId,
+    selectedSource,
+    movementType,
+    selectedMoveTile,
+    visualPositions,
+    availableSkills,
+    resolveAdminItemById,
+  }), [availableSkills, battleMapHeight, battleMapWidth, battlefieldTiles, distance, entities, movementType, playerId, resolveAdminItemById, selectedMoveTile, selectedSource, selectedTargetId, visualPositions]);
 
-  const placements = useMemo(
-    () => getBattlefieldTilePlacements(entitiesForRender, distance, battleMapWidth, battleMapHeight),
-    [battleMapHeight, battleMapWidth, distance, entitiesForRender],
-  );
-  const entityById = useMemo(() => new Map(entitiesForRender.map((entity) => [entity.id, entity])), [entitiesForRender]);
-  const placementByTile = useMemo(() => new Map(placements.map((placement) => [`${placement.x}:${placement.y}`, placement])), [placements]);
-  const tileTypeByKey = useMemo(() => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile.type])), [battlefieldTiles]);
-
-  const player = entities.find((entity) => entity.id === playerId);
-  const selectedEnemy = entities.find((entity) => entity.id === selectedTargetId) ?? entities.find((entity) => entity.team === TeamSide.Right && entity.isAlive);
-  const playerPlacement = placements.find((p) => p.entityId === playerId);
-  const playerStyle = player ? classifyCombatStyle(player) : 'MELEE';
+  const entitiesForRender = interaction.entitiesForRender;
+  const placements = interaction.placements;
+  const entityById = interaction.entityById;
+  const placementByTile = interaction.placementByTile;
+  const player = interaction.player;
+  const selectedEnemy = interaction.selectedEnemy;
+  const playerPlacement = interaction.playerPlacement;
 
   useEffect(() => {
     const logsToProcess = recentLogs.length > 0 ? recentLogs : lastLog ? [lastLog] : [];
@@ -504,130 +423,24 @@ export function BattleField({
     };
   }, [battleMapHeight, battleMapWidth, cameraCenter?.x, cameraCenter?.y, cameraZoom, playerPlacement?.x, playerPlacement?.y, viewportHeight, viewportWidth]);
 
-  const adjacentMeleeEnemies = useMemo(() => {
-    if (!playerPlacement) {
-      return [] as ArenaCombatEntity[];
-    }
-
-    return entities.filter((entity) =>
-      entity.isAlive
-      && entity.team === TeamSide.Right
-      && classifyCombatStyle(entity) === 'MELEE'
-      && Math.abs((entity.battlefieldX ?? 0) - playerPlacement.x) + Math.abs((entity.battlefieldY ?? 0) - playerPlacement.y) <= 1,
-    );
-  }, [entities, playerPlacement]);
-
-  const MAX_MOVE_RANGE = 3; // Dash can reach up to 3 cells
-
-  const movablePositions = useMemo(() => {
-    if (!playerPlacement) {
-      return new Map<string, { triggersOpportunity: boolean; dist: number }>();
-    }
-
-    const result = new Map<string, { triggersOpportunity: boolean; dist: number }>();
-    const visited = new Set<string>();
-    const queue: Array<{ x: number; y: number; dist: number }> = [{ x: playerPlacement.x, y: playerPlacement.y, dist: 0 }];
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const key = `${current.x}:${current.y}`;
-      if (visited.has(key) || current.dist > MAX_MOVE_RANGE) {
-        continue;
-      }
-
-      visited.add(key);
-      if (current.dist > 0 && !placementByTile.has(key) && !isBlockingTile(tileTypeByKey.get(key) ?? BattlefieldTileType.Empty)) {
-        const triggersOpportunity = movementType !== MovementType.Disengage
-          && adjacentMeleeEnemies.some((enemy) => Math.abs((enemy.battlefieldX ?? 0) - current.x) + Math.abs((enemy.battlefieldY ?? 0) - current.y) > 1);
-        result.set(key, { triggersOpportunity, dist: current.dist });
-      }
-
-      if (current.dist < MAX_MOVE_RANGE) {
-        for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
-          const nx = current.x + dx;
-          const ny = current.y + dy;
-          const nextKey = `${nx}:${ny}`;
-          if (nx < 0 || nx >= battleMapWidth || ny < 0 || ny >= battleMapHeight) {
-            continue;
-          }
-          if (placementByTile.has(nextKey) || isBlockingTile(tileTypeByKey.get(nextKey) ?? BattlefieldTileType.Empty)) {
-            continue;
-          }
-          queue.push({ x: nx, y: ny, dist: current.dist + 1 });
-        }
-      }
-    }
-
-    return result;
-  }, [adjacentMeleeEnemies, movementType, placementByTile, playerPlacement, tileTypeByKey]);
-
-
-  const attackablePositions = useMemo(() => {
-    if (!player || !selectedEnemy || selectedTargetId === playerId) {
-      return new Set<string>();
-    }
-
-    const playerPlacement = placements.find((p) => p.entityId === playerId);
-    const enemyPlacement = placements.find((p) => p.entityId === selectedEnemy.id);
-    if (!enemyPlacement || !playerPlacement) {
-      return new Set<string>();
-    }
-
-    const maxRange = getMaxAttackRange(player, playerStyle);
-    const positions = new Set<string>();
-    for (let x = 0; x < battleMapWidth; x += 1) {
-      for (let y = 0; y < battleMapHeight; y += 1) {
-        const dist = Math.abs(x - enemyPlacement.x) + Math.abs(y - enemyPlacement.y);
-        if (playerStyle === 'MELEE' && dist <= 1) {
-          positions.add(`${x}:${y}`);
-        }
-        if (playerStyle === 'RANGED' && dist <= maxRange) {
-          if (hasLineOfSightOnTiles(x, y, enemyPlacement.x, enemyPlacement.y, tileTypeByKey)) {
-            positions.add(`${x}:${y}`);
-          }
-        }
-        if (playerStyle === 'MAGIC' && dist <= maxRange) {
-          if (hasLineOfSightOnTiles(x, y, enemyPlacement.x, enemyPlacement.y, tileTypeByKey)) {
-            positions.add(`${x}:${y}`);
-          }
-        }
-      }
-    }
-    return positions;
-  }, [battleMapHeight, battleMapWidth, player, playerId, playerStyle, placements, selectedEnemy, selectedTargetId, tileTypeByKey]);
-
-  const threatPositions = useMemo(() => {
-    const set = new Set<string>();
-    for (const placement of placements) {
-      const entity = entityById.get(placement.entityId);
-      if (!entity || !entity.isAlive || entity.team !== TeamSide.Right || classifyCombatStyle(entity) !== 'MELEE') {
-        continue;
-      }
-      for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
-        const nx = placement.x + dx;
-        const ny = placement.y + dy;
-        if (nx >= 0 && nx < battleMapWidth && ny >= 0 && ny < battleMapHeight) {
-          set.add(`${nx}:${ny}`);
-        }
-      }
-    }
-    return set;
-  }, [battleMapHeight, battleMapWidth, entityById, placements]);
+  const adjacentMeleeEnemies = interaction.adjacentMeleeEnemies;
+  const movablePositions = interaction.movableCells;
+  const attackablePositions = interaction.targetableCells;
+  const threatPositions = interaction.threatenedCells;
 
   const getTileState = (x: number, y: number): TileState => {
     const key = `${x}:${y}`;
     const placement = placementByTile.get(key);
-    const tileType = tileTypeByKey.get(key) ?? BattlefieldTileType.Empty;
     const moveInfo = movablePositions.get(key);
     return {
       isMovable: Boolean(moveInfo),
-      moveType: moveInfo ? (moveInfo.dist <= 1 ? 'step' : 'dash') : null,
+      moveType: moveInfo ? (moveInfo.movementType === MovementType.Step ? 'step' : 'dash') : null,
       isAttackable: attackablePositions.has(key),
       isThreat: threatPositions.has(key),
-      isBlocked: isBlockingTile(tileType),
+      isBlocked: interaction.getTileMovementBlocked(x, y),
       isOccupied: Boolean(placement),
       isSelected: selectedMoveTile?.x === x && selectedMoveTile?.y === y,
-      triggersOpportunity: moveInfo?.triggersOpportunity ?? false,
+      triggersOpportunity: moveInfo?.willTriggerOpportunity ?? false,
     };
   };
 
@@ -636,26 +449,13 @@ export function BattleField({
   };
 
   const isEnemyInRange = (x: number, y: number): boolean => {
-    if (!playerPlacement || !player) {
-      return false;
-    }
-
-    const dist = Math.abs(playerPlacement.x - x) + Math.abs(playerPlacement.y - y);
-    if (playerStyle === 'MELEE') {
-      return dist <= 1;
-    }
-    if (playerStyle === 'RANGED') {
-      const maxRange = getMaxAttackRange(player, playerStyle);
-      return dist <= maxRange && hasLineOfSightOnTiles(playerPlacement.x, playerPlacement.y, x, y, tileTypeByKey);
-    }
-    const maxRange = getMaxAttackRange(player, playerStyle);
-    return dist <= maxRange && hasLineOfSightOnTiles(playerPlacement.x, playerPlacement.y, x, y, tileTypeByKey);
+    return interaction.isEntityInAttackRange(x, y);
   };
 
   const planMoveTo = useCallback((x: number, y: number, immediate = false) => {
     const moveInfo = movablePositions.get(`${x}:${y}`);
-    const inferredType: MovementType = (moveInfo?.dist ?? 1) <= 1 ? MovementType.Step : MovementType.Dash;
-    const tile = { x, y, movementType: inferredType, willTriggerOpportunity: moveInfo?.triggersOpportunity ?? false };
+    const inferredType: MovementType = moveInfo?.movementType ?? MovementType.Step;
+    const tile = { x, y, movementType: inferredType, willTriggerOpportunity: moveInfo?.willTriggerOpportunity ?? false };
     if (tile.willTriggerOpportunity) {
       onStatusMessage?.('This movement will trigger a free strike. Right-click to Disengage instead.');
     }
@@ -694,18 +494,7 @@ export function BattleField({
   }, [movablePositions, planMoveTo, playerPlacement, selectedMoveTile?.x, selectedMoveTile?.y]);
 
   const getMoveCloserTile = (enemyX: number, enemyY: number): { x: number; y: number; movementType: MovementType; willTriggerOpportunity: boolean } | null => {
-    const candidates = [...movablePositions.entries()]
-      .map(([key, info]) => {
-        const [x, y] = key.split(':').map(Number);
-        const enemyDist = Math.abs(enemyX - x) + Math.abs(enemyY - y);
-        return { x, y, enemyDist, ...info };
-      })
-      .sort((a, b) => a.enemyDist - b.enemyDist);
-
-    const best = candidates[0];
-    return best
-      ? { x: best.x, y: best.y, movementType: best.dist <= 1 ? MovementType.Step : MovementType.Dash, willTriggerOpportunity: best.triggersOpportunity }
-      : null;
+    return interaction.getMoveCloserTile(enemyX, enemyY);
   };
 
   const openContextMenu = (clientX: number, clientY: number, type: 'enemy' | 'cell' | 'self', tileX?: number, tileY?: number, targetId?: string) => {
@@ -837,7 +626,7 @@ export function BattleField({
         x: contextMenu.tileX,
         y: contextMenu.tileY,
         movementType: inferredType,
-        willTriggerOpportunity: action !== 'disengage' && (moveInfo?.triggersOpportunity ?? false),
+        willTriggerOpportunity: action !== 'disengage' && (moveInfo?.willTriggerOpportunity ?? false),
       });
       closeContextMenu();
       return;
@@ -1085,9 +874,8 @@ export function BattleField({
                         openContextMenu(e.clientX, e.clientY, 'enemy', x, y, entityInfo.id);
                       }
                     } else {
-                      const tileType = tileTypeByKey.get(`${x}:${y}`) ?? BattlefieldTileType.Empty;
-                      const isWalkable = !isBlockingTile(tileType);
-                      if (isWalkable) {
+                      const target = interaction.resolveClickedTarget(x, y);
+                      if (target.kind === 'cell') {
                       openContextMenu(e.clientX, e.clientY, 'cell', x, y);
                       } else {
                         onCancelSelection?.();
@@ -1210,12 +998,12 @@ export function BattleField({
                       <button
                         key={skill.slotId}
                         type="button"
-                        className={selectedSkillId === skill.skillId ? 'is-active' : ''}
+                        className={selectedSkillId === skill.skillId || selectedSkillId === skill.definition.id ? 'is-active' : ''}
                         onClick={() => {
                           if (contextMenu.targetId) {
                             onTargetSelect?.(contextMenu.targetId);
                           }
-                          onQuickSkill?.(skill.skillId, contextMenu.targetId);
+                          onQuickSkill?.(skill.definition.id, contextMenu.targetId);
                           closeContextMenu();
                         }}
                       >
@@ -1244,7 +1032,7 @@ export function BattleField({
               const cellInfo = contextMenu.tileX !== undefined && contextMenu.tileY !== undefined
                 ? movablePositions.get(`${contextMenu.tileX}:${contextMenu.tileY}`)
                 : undefined;
-              const isDash = (cellInfo?.dist ?? 1) > 1;
+              const isDash = cellInfo?.movementType === MovementType.Dash;
               const canDisengage = adjacentMeleeEnemies.length > 0 && !isDash;
               return (
                 <>

@@ -942,7 +942,7 @@ export class CombatService {
     const currentIndex = typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex)
       ? Math.max(0, Math.floor(state.turnIndex))
       : 0;
-    const next = this.findNextActiveActorIndex(session, currentIndex);
+    let next = this.findNextActiveActorIndex(session, currentIndex);
     if (!next) {
       this.refreshBattleResult(state);
       if (state.isFinished) {
@@ -953,7 +953,45 @@ export class CombatService {
     }
 
     if (next.wrapped) {
+      await this.applyPeriodicDamagePhase(session, 'turn_end', HARD_MAX_COMMANDS_PER_ROUND, 0);
+      this.tickAllCombatStatusesEndOfRound(session, HARD_MAX_COMMANDS_PER_ROUND, 0);
+
+      for (const effect of session.activeEffects) {
+        effect.remainingRounds = Math.max(0, effect.remainingRounds - 1);
+      }
+      session.activeEffects = session.activeEffects.filter((item) => item.remainingRounds > 0);
+
+      for (const cd of session.skillCooldowns) {
+        if (!cd.oncePerCombat) {
+          cd.remainingRounds = Math.max(0, cd.remainingRounds - 1);
+        }
+      }
+      session.skillCooldowns = session.skillCooldowns.filter((cd) => cd.remainingRounds > 0 || cd.oncePerCombat);
+
+      for (const debuff of session.enemyTempoBreaks) {
+        debuff.remainingRounds = Math.max(0, debuff.remainingRounds - 1);
+      }
+      session.enemyTempoBreaks = session.enemyTempoBreaks.filter((item) => item.remainingRounds > 0);
+
+      this.applyEndOfRoundRegeneration(state);
+      this.refreshBattleResult(state);
+      if (state.isFinished) {
+        state.phase = 'finished';
+        state.roundPhase = undefined;
+        this.assignActiveTurnState(session, null);
+        return;
+      }
+
       state.roundNumber += 1;
+      next = this.findNextActiveActorIndex(session, currentIndex);
+      if (!next) {
+        this.refreshBattleResult(state);
+        if (state.isFinished) {
+          state.phase = 'finished';
+        }
+        this.assignActiveTurnState(session, null);
+        return;
+      }
     }
 
     state.turnIndex = next.index;
@@ -1032,8 +1070,6 @@ export class CombatService {
     const limits = this.getCombatRoundLimitsForActor(aiActor);
     const aiPlan = this.buildNpcAiPlan(session, aiActor);
     const commands = (aiPlan.commands ?? []).slice(0, limits.maxCommands);
-    state.recentCombatEvents = [];
-    state.recentAnimationEvents = [];
 
     for (const rawCommand of commands) {
       if (state.activeActorId !== aiActor.id || state.phase !== 'acting' || state.isFinished) {
@@ -1042,7 +1078,7 @@ export class CombatService {
 
       let command: CombatCommand;
       try {
-        command = normalizeCombatCommand({ rawCommand, actor: aiActor, battleState: state });
+        command = this.normalizeAuthoritativeCombatCommand({ rawCommand, actor: aiActor, battleState: state });
       } catch {
         break;
       }
@@ -1197,7 +1233,7 @@ export class CombatService {
     rawCommand: CombatCommand;
     currentCommands: CombatCommand[];
   }): { command: CombatCommand; validation: CombatPlanValidationResult } {
-    const trusted = normalizeCombatCommand({
+    const trusted = this.normalizeAuthoritativeCombatCommand({
       rawCommand: params.rawCommand,
       actor: params.actor,
       battleState: params.session.state,
@@ -1224,6 +1260,41 @@ export class CombatService {
     }
 
     return { command: trusted, validation };
+  }
+
+  private normalizeAuthoritativeCombatCommand(params: {
+    rawCommand: CombatCommand;
+    actor: ArenaCombatEntity;
+    battleState: ArenaBattleState;
+  }): CombatCommand {
+    const normalized = normalizeCombatCommand({
+      rawCommand: params.rawCommand,
+      actor: params.actor,
+      battleState: params.battleState,
+    });
+
+    if (normalized.type !== 'skill_cast') {
+      return normalized;
+    }
+
+    const skillId = typeof normalized.payload?.skillId === 'string' ? normalized.payload.skillId.trim() : '';
+    if (!skillId) {
+      return normalized;
+    }
+
+    const skillDef = this.skillRuntime.getSkillDefinition(skillId);
+    if (!skillDef) {
+      return normalized;
+    }
+
+    return {
+      ...normalized,
+      payload: {
+        ...(normalized.payload ?? {}),
+        skillId,
+        skillRange: Math.max(0, Math.floor(skillDef.target?.range ?? normalized.payload?.skillRange ?? 0)),
+      },
+    };
   }
 
   private toLegacyArenaAction(command: CombatCommand, actorId: string, defaultTargetId: string): ArenaCombatAction {
@@ -1349,7 +1420,7 @@ export class CombatService {
         type: fallbackType,
         target: fallbackTarget,
       });
-      const normalized = normalizeCombatCommand({ rawCommand: fallbackCommand, actor, battleState: session.state });
+      const normalized = this.normalizeAuthoritativeCombatCommand({ rawCommand: fallbackCommand, actor, battleState: session.state });
       plan.commands = [normalized];
     }
 
@@ -1801,7 +1872,7 @@ export class CombatService {
       type: canGuard ? 'guard' : 'wait',
       target: { kind: 'self' },
     });
-    const normalized = normalizeCombatCommand({ rawCommand: fallback, actor, battleState: state });
+    const normalized = this.normalizeAuthoritativeCombatCommand({ rawCommand: fallback, actor, battleState: state });
     return {
       battleId: state.combatId,
       roundNumber: state.roundNumber,
@@ -2270,7 +2341,7 @@ export class CombatService {
       type: actor.currentStamina >= guardStaminaCost ? 'guard' : 'wait',
       target: { kind: 'self' },
     });
-    const trusted = normalizeCombatCommand({ rawCommand: fallback, actor, battleState: session.state });
+    const trusted = this.normalizeAuthoritativeCombatCommand({ rawCommand: fallback, actor, battleState: session.state });
     const fallbackPlan: CombatTurnPlan = {
       battleId: session.state.combatId,
       roundNumber: session.state.roundNumber,
@@ -2355,10 +2426,15 @@ export class CombatService {
       if (target) {
         const currentDistance = getBattlefieldDistance(params.actor, target);
         const dynamicActor = params.actor as { minAttackRange?: number; minimumAttackRange?: number };
+        const explicitSkillRange = params.command.type === 'skill_cast' ? params.command.payload?.skillRange : undefined;
         data.currentDistance = currentDistance;
         data.previousDistance = currentDistance;
-        data.requiredRange = Math.max(1, Math.floor(params.actor.attackRange ?? 1));
-        data.minimumRange = Math.max(1, Math.floor(dynamicActor.minAttackRange ?? dynamicActor.minimumAttackRange ?? 1));
+        data.requiredRange = params.command.type === 'skill_cast' && typeof explicitSkillRange === 'number' && Number.isFinite(explicitSkillRange)
+          ? Math.max(1, Math.floor(explicitSkillRange))
+          : Math.max(1, Math.floor(params.actor.attackRange ?? 1));
+        data.minimumRange = params.command.type === 'skill_cast'
+          ? 1
+          : Math.max(1, Math.floor(dynamicActor.minAttackRange ?? dynamicActor.minimumAttackRange ?? 1));
       }
     }
 
@@ -3118,6 +3194,24 @@ export class CombatService {
         });
 
         const skillVisuals = skillDef.visuals ?? {};
+        state.recentAnimationEvents = [...(state.recentAnimationEvents ?? []), {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex,
+          type: 'skill_cast',
+          actorId: actor.id,
+          targetId: targets[0]?.id,
+          skillId,
+          visualEffectId: skillVisuals.visualEffectId,
+          castEffectId: skillVisuals.castEffectId,
+          projectileEffectId: skillVisuals.projectileEffectId,
+          impactEffectId: skillVisuals.impactEffectId,
+          hitEffectId: skillVisuals.hitEffectId,
+          cameraShakePreset: skillVisuals.cameraShakePreset,
+          cameraShake: skillVisuals.cameraShakePreset,
+          castSoundId: skillVisuals.castSoundId,
+          impactSoundId: skillVisuals.impactSoundId,
+        }];
 
         for (const target of targets) {
           const execution = this.skillRuntime.resolveSkillExecution(skillDef, actor, target, skillLevel);
@@ -3162,6 +3256,10 @@ export class CombatService {
                 projectileEffectId: skillVisuals.projectileEffectId,
                 impactEffectId: skillVisuals.impactEffectId,
                 hitEffectId: skillVisuals.hitEffectId,
+                cameraShakePreset: skillVisuals.cameraShakePreset,
+                cameraShake: skillVisuals.cameraShakePreset,
+                castSoundId: skillVisuals.castSoundId,
+                impactSoundId: skillVisuals.impactSoundId,
                 value: damage,
                 damage,
               },
@@ -3179,6 +3277,9 @@ export class CombatService {
                 visualEffectId: skillVisuals.visualEffectId,
                 impactEffectId: skillVisuals.impactEffectId,
                 hitEffectId: skillVisuals.hitEffectId,
+                cameraShakePreset: skillVisuals.cameraShakePreset,
+                cameraShake: skillVisuals.cameraShakePreset,
+                impactSoundId: skillVisuals.impactSoundId,
                 value: damage,
                 damage,
               }];
@@ -3236,6 +3337,9 @@ export class CombatService {
                 skillId,
                 visualEffectId: skillVisuals.visualEffectId,
                 impactEffectId: skillVisuals.impactEffectId,
+                cameraShakePreset: skillVisuals.cameraShakePreset,
+                cameraShake: skillVisuals.cameraShakePreset,
+                impactSoundId: skillVisuals.impactSoundId,
                 value: restored,
               },
             );
@@ -4933,7 +5037,7 @@ export class CombatService {
 
     let command: CombatCommand;
     try {
-      command = normalizeCombatCommand({
+      command = this.normalizeAuthoritativeCombatCommand({
         rawCommand: payload.command,
         actor,
         battleState: session.state,
@@ -5257,7 +5361,7 @@ export class CombatService {
     const normalizedCommands: CombatCommand[] = [];
     for (const rawCommand of payload.commands ?? []) {
       try {
-        normalizedCommands.push(normalizeCombatCommand({ rawCommand, actor, battleState: session.state }));
+        normalizedCommands.push(this.normalizeAuthoritativeCombatCommand({ rawCommand, actor, battleState: session.state }));
       } catch {
         return { ok: false, errors: ['UNKNOWN_COMMAND'] };
       }

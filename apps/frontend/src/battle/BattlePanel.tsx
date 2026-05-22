@@ -32,9 +32,11 @@ import { BattleField } from './BattleField';
 import { CombatLogPanel } from './CombatLogPanel';
 import { FighterCard } from './FighterCard';
 import { InspectPanel } from './InspectPanel';
-import { buildCombatContextActions, buildSelectedSourceHint } from './combatContextActions';
+import { buildCombatContextActions, buildSelectedSourceHint, normalizeSkillTargetConfig } from './combatContextActions';
+import { resolveBattleSkillEntry, resolveBattleSkillId } from './resolveBattleSkillEntry';
 import type { BattleRendererKind } from './battleRendererSettings';
 import { PhaserBattleRenderer } from './renderers/PhaserBattleRenderer';
+import { buildBattlePlaybackTimeline, type BattlePlaybackPhase } from './playback/buildBattlePlaybackTimeline';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -313,6 +315,7 @@ export function BattlePanel({
     statusText: string | null;
     activeActorId: string | null;
     animationEvents: CombatAnimationEvent[];
+    phases: BattlePlaybackPhase[];
     recentLogs: CombatLogEntry[];
     lastLog: CombatLogEntry | null;
     visualPositions: Record<string, { x: number; y: number }>;
@@ -321,6 +324,7 @@ export function BattlePanel({
     statusText: null,
     activeActorId: null,
     animationEvents: [],
+    phases: [],
     recentLogs: [],
     lastLog: null,
     visualPositions: {},
@@ -332,7 +336,7 @@ export function BattlePanel({
   // ── Derived ─────────────────────────────────────────────────────────────
   const playerStyle = useMemo(() => (player ? classifyCombatStyle(player) : 'MELEE'), [player]);
   const selectedSkill = useMemo(
-    () => availableSkills.find((s) => s.skillId === selectedSkillId) ?? null,
+    () => resolveBattleSkillEntry(availableSkills, selectedSkillId),
     [availableSkills, selectedSkillId],
   );
 
@@ -476,7 +480,7 @@ export function BattlePanel({
     }
 
     if (slot.kind === 'skill') {
-      const skill = availableSkills.find((entry) => entry.skillId === slot.refId || entry.definition.id === slot.refId)?.definition ?? null;
+      const skill = resolveBattleSkillEntry(availableSkills, slot.refId)?.definition ?? null;
       return skill?.name ?? slot.refId;
     }
 
@@ -537,12 +541,35 @@ export function BattlePanel({
           statusText: 'Выполняется действие...',
           activeActorId: null,
           animationEvents: [],
+          phases: [],
           recentLogs: [],
           lastLog: null,
           visualPositions: {},
         });
 
         const finalState = result.battleState;
+        if (battleRenderer === 'phaser') {
+          const phases = buildBattlePlaybackTimeline({
+            combatEvents: events,
+            recentAnimationEvents: finalState.recentAnimationEvents ?? [],
+            previousBattleState: state,
+            finalBattleState: finalState,
+          });
+          const totalDurationMs = phases.reduce((sum, phase) => sum + phase.durationMs, 0);
+
+          setPlayback({
+            isPlaying: true,
+            statusText: 'Выполняется действие...',
+            activeActorId: null,
+            animationEvents: [],
+            phases,
+            recentLogs: [],
+            lastLog: null,
+            visualPositions: {},
+          });
+
+          await sleep(Math.max(120, totalDurationMs + 50));
+        } else {
         const entityById = new Map(finalState.entities.map((e) => [e.id, e]));
         const movedActorIds = new Set<string>();
         const setTurnStatus = (actorId: string | null) => {
@@ -595,34 +622,55 @@ export function BattlePanel({
               const cells = Math.max(1, Math.abs(to.x - from.x) + Math.abs(to.y - from.y));
               const duration = Math.max(450, Math.min(1200, 400 * cells));
 
-              // Render at `from` first to avoid any one-frame snap to destination.
-              setPlayback((prev) => ({
-                ...prev,
-                visualPositions: { ...prev.visualPositions, [moveActorId]: { x: from.x, y: from.y } },
-              }));
-              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              if (battleRenderer === 'react') {
+                // React renderer consumes visualPositions directly.
+                setPlayback((prev) => ({
+                  ...prev,
+                  visualPositions: { ...prev.visualPositions, [moveActorId]: { x: from.x, y: from.y } },
+                }));
+                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
-              // Then move to `to` (keeping override) and add a move_token animation hint for smooth interpolation.
-              setPlayback((prev) => ({
-                ...prev,
-                visualPositions: { ...prev.visualPositions, [moveActorId]: { x: to.x, y: to.y } },
-                animationEvents: [
-                  ...prev.animationEvents,
-                  {
-                    id: `pb_move_${event.id}`,
-                    roundNumber: event.roundNumber,
-                    stepIndex: event.stepIndex,
-                    type: 'move_token',
-                    actorId: moveActorId,
-                    from,
-                    to,
-                    movementType: typeof data.movementType === 'string'
-                      ? String(data.movementType) as 'walk' | 'dash' | 'disengage'
-                      : undefined,
-                  },
-                ],
-              }));
-              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+                setPlayback((prev) => ({
+                  ...prev,
+                  visualPositions: { ...prev.visualPositions, [moveActorId]: { x: to.x, y: to.y } },
+                  animationEvents: [
+                    ...prev.animationEvents,
+                    {
+                      id: `pb_move_${event.id}`,
+                      roundNumber: event.roundNumber,
+                      stepIndex: event.stepIndex,
+                      type: 'move_token',
+                      actorId: moveActorId,
+                      from,
+                      to,
+                      movementType: typeof data.movementType === 'string'
+                        ? String(data.movementType) as 'walk' | 'dash' | 'disengage'
+                        : undefined,
+                    },
+                  ],
+                }));
+                await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              } else {
+                // Phaser renderer owns tween interpolation from move_token.
+                setPlayback((prev) => ({
+                  ...prev,
+                  animationEvents: [
+                    ...prev.animationEvents,
+                    {
+                      id: `pb_move_${event.id}`,
+                      roundNumber: event.roundNumber,
+                      stepIndex: event.stepIndex,
+                      type: 'move_token',
+                      actorId: moveActorId,
+                      from,
+                      to,
+                      movementType: typeof data.movementType === 'string'
+                        ? String(data.movementType) as 'walk' | 'dash' | 'disengage'
+                        : undefined,
+                    },
+                  ],
+                }));
+              }
               await sleep(duration);
             } else {
               await sleep(150);
@@ -692,6 +740,25 @@ export function BattlePanel({
 
         // Safety net: if any actor position changed in finalState without a movement event, warn and animate reconciliation.
         const baselineById = new Map(state.entities.map((e) => [e.id, e]));
+        const moveTokens = (finalState.recentAnimationEvents ?? []).filter(
+          (entry): entry is CombatAnimationEvent & { type: 'move_token' } => entry.type === 'move_token',
+        );
+        for (const token of moveTokens) {
+          if (!token.actorId || !token.from || !token.to) {
+            continue;
+          }
+          const before = baselineById.get(token.actorId);
+          if (!before) {
+            continue;
+          }
+          const beforeX = before.battlefieldX ?? 0;
+          const beforeY = before.battlefieldY ?? 0;
+          const sameFrom = token.from.x === beforeX && token.from.y === beforeY;
+          if (sameFrom) {
+            movedActorIds.add(token.actorId);
+          }
+        }
+
         const missingMoves: Array<{ actorId: string; from: { x: number; y: number }; to: { x: number; y: number } }> = [];
         for (const entity of finalState.entities) {
           const before = baselineById.get(entity.id);
@@ -707,38 +774,71 @@ export function BattlePanel({
           if (import.meta.env.DEV) {
             for (const entry of missingMoves) {
               // eslint-disable-next-line no-console
-              console.warn('Actor position changed without movement event', entry.actorId, entry.from, entry.to);
+              console.warn('Actor position changed without movement event', {
+                actorId: entry.actorId,
+                from: entry.from,
+                to: entry.to,
+                recentAnimationEvents: finalState.recentAnimationEvents ?? [],
+                moveTokenEvents: moveTokens.map((token) => ({
+                  actorId: token.actorId,
+                  from: token.from,
+                  to: token.to,
+                  movementType: token.movementType,
+                  roundNumber: token.roundNumber,
+                  stepIndex: token.stepIndex,
+                })),
+              });
             }
           }
           for (const entry of missingMoves) {
-            setPlayback((prev) => ({
-              ...prev,
-              visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.from.x, y: entry.from.y } },
-            }));
-            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-            setPlayback((prev) => ({
-              ...prev,
-              visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.to.x, y: entry.to.y } },
-              animationEvents: [
-                ...prev.animationEvents,
-                {
-                  id: `pb_reconcile_${entry.actorId}_${Date.now()}`,
-                  roundNumber: finalState.roundNumber,
-                  stepIndex: -1,
-                  type: 'move_token',
-                  actorId: entry.actorId,
-                  from: entry.from,
-                  to: entry.to,
-                  movementType: 'walk',
-                },
-              ],
-            }));
-            await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+            if (battleRenderer === 'react') {
+              setPlayback((prev) => ({
+                ...prev,
+                visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.from.x, y: entry.from.y } },
+              }));
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+              setPlayback((prev) => ({
+                ...prev,
+                visualPositions: { ...prev.visualPositions, [entry.actorId]: { x: entry.to.x, y: entry.to.y } },
+                animationEvents: [
+                  ...prev.animationEvents,
+                  {
+                    id: `pb_reconcile_${entry.actorId}_${Date.now()}`,
+                    roundNumber: finalState.roundNumber,
+                    stepIndex: -1,
+                    type: 'move_token',
+                    actorId: entry.actorId,
+                    from: entry.from,
+                    to: entry.to,
+                    movementType: 'walk',
+                  },
+                ],
+              }));
+              await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+            } else {
+              setPlayback((prev) => ({
+                ...prev,
+                animationEvents: [
+                  ...prev.animationEvents,
+                  {
+                    id: `pb_reconcile_${entry.actorId}_${Date.now()}`,
+                    roundNumber: finalState.roundNumber,
+                    stepIndex: -1,
+                    type: 'move_token',
+                    actorId: entry.actorId,
+                    from: entry.from,
+                    to: entry.to,
+                    movementType: 'walk',
+                  },
+                ],
+              }));
+            }
             await sleep(450);
           }
         }
 
         // Keep playback locked until final authoritative state is applied below.
+        }
       }
 
       // Apply final authoritative state after playback finishes.
@@ -751,6 +851,7 @@ export function BattlePanel({
           statusText: null,
           activeActorId: null,
           animationEvents: [],
+          phases: [],
           recentLogs: [],
           lastLog: null,
           visualPositions: {},
@@ -779,6 +880,7 @@ export function BattlePanel({
     playerId,
     state.isFinished,
     state.roundNumber,
+    battleRenderer,
   ]);
 
   // End turn (wait — 0 AP, 0 stamina)
@@ -819,7 +921,12 @@ export function BattlePanel({
     if (!player) return;
 
     if (!forceBasicAttack && selectedSource.kind === 'skill') {
-      const cooldownRemaining = skillCooldowns.get(selectedSource.skillId) ?? 0;
+      const activeSkill = selectedSkill?.skillId === selectedSource.skillId || selectedSkill?.definition.id === selectedSource.skillId
+        ? selectedSkill
+        : resolveBattleSkillEntry(availableSkills, selectedSource.skillId);
+      const commandSkillId = activeSkill?.definition.id ?? selectedSource.skillId;
+      const skillRange = activeSkill ? normalizeSkillTargetConfig(activeSkill.definition).range : null;
+      const cooldownRemaining = skillCooldowns.get(commandSkillId) ?? skillCooldowns.get(selectedSource.skillId) ?? 0;
       if (cooldownRemaining > 0) {
         onStatus(`Навык на перезарядке: ${cooldownRemaining} ход.`);
         return;
@@ -828,7 +935,11 @@ export function BattlePanel({
         type: 'skill_cast',
         target: { kind: 'entity', entityId },
         sourceSlotId: selectedSource.slotId,
-        payload: { skillId: selectedSource.skillId, targetZone: TargetZone.Chest },
+        payload: {
+          skillId: commandSkillId,
+          ...(skillRange != null ? { skillRange } : {}),
+          targetZone: TargetZone.Chest,
+        },
       }));
       onSkillChange(null);
       return;
@@ -875,7 +986,7 @@ export function BattlePanel({
       target: { kind: 'entity', entityId },
       payload: { targetZone: TargetZone.Chest },
     }));
-  }, [executeAction, executeItemUseCommand, onSkillChange, onStatus, player, resolveAdminItemById, selectedSource, skillCooldowns, state.entities]);
+  }, [availableSkills, executeAction, executeItemUseCommand, onSkillChange, onStatus, player, resolveAdminItemById, selectedSkill, selectedSource, skillCooldowns, state.entities]);
 
   const quickUseSelectedSlotItemAt = useCallback((target: { kind: 'entity'; entityId: string } | { kind: 'cell'; x: number; y: number }) => {
     if (!isPlayerTurn || state.isFinished) {
@@ -1006,9 +1117,11 @@ export function BattlePanel({
         if (!slot?.kind || !slot.refId) return;
         e.preventDefault();
         if (slot.kind === 'skill') {
-          setSelectedSource({ kind: 'skill', slotId, skillId: slot.refId });
-          onSkillChange(slot.refId);
-          onStatus(`Навык ${slot.refId} выбран. Кликните цель.`);
+          const resolvedSkill = resolveBattleSkillEntry(availableSkills, slot.refId);
+          const canonicalSkillId = resolvedSkill?.definition.id ?? slot.refId;
+          setSelectedSource({ kind: 'skill', slotId, skillId: canonicalSkillId });
+          onSkillChange(canonicalSkillId);
+          onStatus(`Навык ${resolvedSkill?.definition.name ?? slot.refId} выбран. Кликните цель.`);
         } else if (slot.kind === 'weapon') {
           setSelectedSource({ kind: 'weapon', slotId, weaponItemId: slot.refId, weaponInstanceId: slot.weaponInstanceId ?? undefined });
           onStatus(`Оружие выбрано. Кликните цель.`);
@@ -1150,10 +1263,12 @@ export function BattlePanel({
                 {actionSlots.map((slot) => {
                   const isSelected = selectedSource.kind !== 'none' && 'slotId' in selectedSource && selectedSource.slotId === slot.slotId;
                   const skillOption = slot.kind === 'skill' && slot.refId
-                    ? availableSkills.find((entry) => entry.skillId === slot.refId || entry.definition.id === slot.refId) ?? null
+                    ? resolveBattleSkillEntry(availableSkills, slot.refId)
                     : null;
                   const skillDef = skillOption?.definition ?? null;
-                  const skillCooldownRemaining = slot.kind === 'skill' && slot.refId ? skillCooldowns.get(slot.refId) ?? 0 : 0;
+                  const skillCooldownRemaining = slot.kind === 'skill'
+                    ? skillCooldowns.get(skillOption?.skillId ?? slot.refId ?? '') ?? 0
+                    : 0;
                   const isOnCooldown = skillCooldownRemaining > 0;
                   const resolvedItem = slot.kind !== 'skill' && slot.refId && resolveItemById ? resolveItemById(slot.refId) : null;
                   const adminItem = (slot.kind === 'item' || slot.kind === 'weapon') && slot.refId && resolveAdminItemById
@@ -1194,8 +1309,9 @@ export function BattlePanel({
                           return;
                         }
                         if (slot.kind === 'skill') {
-                          setSelectedSource({ kind: 'skill', slotId: slot.slotId, skillId: slot.refId });
-                          onSkillChange(slot.refId);
+                          const canonicalSkillId = skillOption?.definition.id ?? slot.refId;
+                          setSelectedSource({ kind: 'skill', slotId: slot.slotId, skillId: canonicalSkillId });
+                          onSkillChange(canonicalSkillId);
                           onStatus(`Навык выбран. Кликните цель.`);
                         } else if (slotIsWeapon) {
                           if (isEquipped) {
@@ -1310,7 +1426,7 @@ export function BattlePanel({
                 battleMapHeight={state.battleMapHeight}
                 viewportWidth={state.viewportWidth}
                 viewportHeight={state.viewportHeight}
-                visualPositions={playback.isPlaying ? playback.visualPositions : undefined}
+                visualPositions={playback.isPlaying && battleRenderer === 'react' ? playback.visualPositions : undefined}
                 selectedSource={selectedContextSource}
                 buildContextActions={(clickedTarget) => {
                   if (!player) return [];
@@ -1325,6 +1441,7 @@ export function BattlePanel({
                     resolveAdminItemById,
                   });
                 }}
+                resolveAdminItemById={resolveAdminItemById}
                 onExecuteContextCommand={(command) => { void executeAction(command); }}
                 mapImageUrl={mapImageUrl}
                 mapCalibration={mapCalibration}
@@ -1336,7 +1453,9 @@ export function BattlePanel({
                 selectedMoveTile={selectedMoveTile}
                 lastLog={lastLog}
                 recentLogs={recentLogs}
-                animationEvents={playback.isPlaying ? playback.animationEvents : (state.recentAnimationEvents ?? [])}
+                animationEvents={playback.isPlaying ? (battleRenderer === 'phaser' ? [] : playback.animationEvents) : (state.recentAnimationEvents ?? [])}
+                isPlaybackActive={playback.isPlaying}
+                playbackPhases={battleRenderer === 'phaser' && playback.isPlaying ? playback.phases : undefined}
                 selectedSkillId={selectedSkillId}
                 playerVisualState={feedback.playerVisualState}
                 enemyVisualState={feedback.enemyVisualState}
@@ -1357,6 +1476,36 @@ export function BattlePanel({
                   if (!isPlayerTurn) return;
                   setSelectedTargetId(targetId);
                   void executeHeavyAttack(targetId);
+                }}
+                onQuickSkill={(skillId, targetId) => {
+                  if (playback.isPlaying) return;
+                  if (!isPlayerTurn || state.isFinished) {
+                    return;
+                  }
+
+                  const skillEntry = resolveBattleSkillEntry(availableSkills, skillId);
+                  if (!skillEntry) {
+                    onStatus('Навык не найден в быстрых слотах.');
+                    return;
+                  }
+
+                  const sourceSlot = actionSlots.find((slot) => slot.kind === 'skill' && (slot.refId === skillId || slot.refId === skillEntry.definition.id)) ?? undefined;
+                  const commandSkillId = skillEntry.definition.id;
+                  const skillRange = normalizeSkillTargetConfig(skillEntry.definition).range;
+                  const entityTargetId = targetId ?? player.id;
+                  setSelectedTargetId(entityTargetId);
+                  void executeAction(createCombatCommandFromType({
+                    type: 'skill_cast',
+                    target: entityTargetId === player.id
+                      ? { kind: 'self' }
+                      : { kind: 'entity', entityId: entityTargetId },
+                    sourceSlotId: sourceSlot?.slotId,
+                    payload: {
+                      skillId: commandSkillId,
+                      ...(skillRange != null ? { skillRange } : {}),
+                      targetZone: TargetZone.Chest,
+                    },
+                  }));
                 }}
                 onQuickWait={() => { if (!playback.isPlaying && isPlayerTurn) void endTurn(); }}
                 onQuickGuard={() => { if (!playback.isPlaying && isPlayerTurn) void executeGuard('guard'); }}

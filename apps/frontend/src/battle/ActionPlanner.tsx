@@ -94,7 +94,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
 
   const estimatedCost = getEstimatedTotalCost(props.actionType, props.movementType, props.guardMode);
   const selectedSkill = useMemo(
-    () => props.availableSkills.find((skill) => skill.skillId === props.selectedSkillId) ?? null,
+    () => props.availableSkills.find((skill) => skill.skillId === props.selectedSkillId || skill.definition.id === props.selectedSkillId) ?? null,
     [props.availableSkills, props.selectedSkillId],
   );
   const resourceSummary = useMemo(
@@ -200,7 +200,7 @@ export function ActionPlanner(props: ActionPlannerProps) {
           >
             <option value="">Basic attack</option>
             {skillOptions.map((skill) => (
-              <option key={skill.skillId} value={skill.skillId}>{skill.label} (lvl {skill.level})</option>
+              <option key={skill.skillId} value={skill.definition.id}>{skill.label} (lvl {skill.level})</option>
             ))}
           </select>
         </div>
@@ -244,9 +244,9 @@ export function ActionPlanner(props: ActionPlannerProps) {
               <button
                 key={skill.skillId}
                 type="button"
-                className={`skill-icon-item ${props.selectedSkillId === skill.skillId ? 'is-active' : ''}`}
+                className={`skill-icon-item ${props.selectedSkillId === skill.skillId || props.selectedSkillId === skill.definition.id ? 'is-active' : ''}`}
                 onClick={() => {
-                  props.onSkillChange(skill.skillId);
+                  props.onSkillChange(skill.definition.id);
                   props.onActionTypeChange(ActionType.Attack);
                 }}
                 title={skill.label}

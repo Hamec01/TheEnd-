@@ -1,90 +1,39 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { getContentSnapshot, type ContentSnapshot } from '../../services/content/contentApi';
-import { useWorldSnapshot } from '../../services/useWorldSimulation';
 import type { WorldSimulationSnapshot } from '../../types/world-simulation.types';
-import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import type { RenderedWorldEntity } from '../worldSceneTypes';
 import './ActiveWorldEntities.css';
 
 type ActiveEntity = WorldSimulationSnapshot['activeEntities'][number];
-type DisplayEntity = ActiveEntity & { renderedCoordinates: { x: number; y: number } };
+type DisplayEntity = RenderedWorldEntity & { renderedCoordinates: { x: number; y: number } };
 
 const SNAPSHOT_BLEND_DURATION_MS = 900;
 
-function isMeaningfulPortraitId(value?: string): boolean {
-  const normalized = value?.trim().toLowerCase();
-  return Boolean(normalized && normalized !== 'unknown' && normalized !== 'none' && normalized !== 'null');
-}
-
-function isPortraitMarker(entity: ActiveEntity): boolean {
-  return entity.kind !== 'merchant' && isMeaningfulPortraitId(entity.portraitId);
-}
-
 export function ActiveWorldEntitiesLayer({
   camera,
-  onEntityClick,
+  worldSnapshot,
+  renderedEntities,
   lockedEntity,
 }: {
   camera: { left: number; top: number; width: number; height: number };
-  onEntityClick: (entity: ActiveEntity) => void;
+  worldSnapshot: WorldSimulationSnapshot | null;
+  renderedEntities: RenderedWorldEntity[];
   lockedEntity?: { id: string; coordinates: { x: number; y: number } } | null;
 }) {
-  const { snapshot, loading } = useWorldSnapshot();
-  const [runtimeImages, setRuntimeImages] = useState<any[]>([]);
-  const [contentSnapshot, setContentSnapshot] = useState<ContentSnapshot | null>(null);
   const [displayEntities, setDisplayEntities] = useState<DisplayEntity[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const displayEntitiesRef = useRef<DisplayEntity[]>([]);
 
-  useEffect(() => {
-    let mounted = true;
-    loadRuntimeImages()
-      .then((images) => {
-        if (mounted) {
-          setRuntimeImages(images);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setRuntimeImages([]);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    getContentSnapshot()
-      .then((content) => {
-        if (mounted) {
-          setContentSnapshot(content);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setContentSnapshot(null);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const visibleEntities = useMemo(
-    () => (snapshot?.activeEntities ?? []) as ActiveEntity[],
-    [snapshot],
+    () => renderedEntities,
+    [renderedEntities],
   );
-
-  const npcById = useMemo(() => {
-    const entries = new Map<string, ContentSnapshot['npcs'][number]>();
-    for (const npc of contentSnapshot?.npcs ?? []) {
-      entries.set(npc.id, npc);
+  const rawEntityById = useMemo(() => {
+    const entries = new Map<string, ActiveEntity>();
+    for (const entity of worldSnapshot?.activeEntities ?? []) {
+      entries.set(entity.id, entity);
     }
     return entries;
-  }, [contentSnapshot?.npcs]);
+  }, [worldSnapshot?.activeEntities]);
 
   useEffect(() => {
     displayEntitiesRef.current = displayEntities;
@@ -140,48 +89,7 @@ export function ActiveWorldEntitiesLayer({
     };
   }, [visibleEntities]);
 
-  const resolveEntitySpriteSource = (spriteId: string) => {
-    const runtimeSprite = resolveStoredImageSource(spriteId, runtimeImages);
-    if (runtimeSprite) {
-      return runtimeSprite;
-    }
-    return spriteId.startsWith('/') ? spriteId : `/sprites/world/${spriteId}.png`;
-  };
-
-  const resolveEntityPortraitSource = (portraitId?: string, npcTemplateId?: string) => {
-    if (isMeaningfulPortraitId(portraitId)) {
-      const runtimePortrait = resolveStoredImageSource(portraitId, runtimeImages);
-      if (runtimePortrait) {
-        return runtimePortrait;
-      }
-      if (portraitId?.startsWith('/')) {
-        return portraitId;
-      }
-      if (portraitId?.startsWith('http://') || portraitId?.startsWith('https://') || portraitId?.startsWith('data:')) {
-        return portraitId;
-      }
-      const withExtension = portraitId?.includes('.') ? portraitId : `${portraitId}.png`;
-      return `/sprites/actor/${withExtension}`;
-    }
-
-    const npc = npcTemplateId ? npcById.get(npcTemplateId) : undefined;
-    const npcPortrait = npc
-      ? resolveStoredImageSource(npc.fullImageUrl, runtimeImages)
-        ?? resolveStoredImageSource(npc.portraitUrl, runtimeImages)
-        ?? resolveStoredImageSource(npc.iconUrl, runtimeImages)
-        ?? npc.fullImageUrl?.trim()
-        ?? npc.portraitUrl?.trim()
-        ?? npc.iconUrl?.trim()
-      : undefined;
-
-    if (!npcPortrait) {
-      return undefined;
-    }
-
-    return npcPortrait;
-  };
-
-  if (loading) {
+  if (!worldSnapshot) {
     return null;
   }
 
@@ -198,9 +106,13 @@ export function ActiveWorldEntitiesLayer({
           return null;
         }
 
-        const portraitSrc = resolveEntityPortraitSource(entity.portraitId, entity.npcTemplateId);
-        const portraitMarker = entity.kind !== 'merchant' && Boolean(portraitSrc);
-        const spriteSrc = resolveEntitySpriteSource(entity.spriteId);
+        const portraitSrc = entity.portraitSrc;
+        const portraitMarker = entity.renderMode === 'portrait' && Boolean(portraitSrc);
+        const spriteSrc = entity.spriteSrc;
+        const rawEntity = rawEntityById.get(entity.id);
+        if (!rawEntity) {
+          return null;
+        }
 
         return (
           <div
@@ -210,27 +122,24 @@ export function ActiveWorldEntitiesLayer({
               left: `${screenX * 100}%`,
               top: `${screenY * 100}%`,
             }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onEntityClick(entity);
-            }}
-            title={`${entity.archetypeId} (${entity.state})`}
+            title={entity.title}
           >
             {portraitMarker && portraitSrc ? (
               <div
                 className="entity-portrait-marker"
                 style={{ backgroundImage: `url(${portraitSrc})` }}
               />
-            ) : (
+            ) : spriteSrc ? (
               <img
                 src={spriteSrc}
-                alt={entity.archetypeId}
+                alt={entity.label}
                 className="entity-sprite"
                 onError={(event) => {
                   event.currentTarget.style.display = 'none';
                 }}
               />
+            ) : (
+              <div className="entity-portrait-marker" />
             )}
 
             {portraitSrc ? (

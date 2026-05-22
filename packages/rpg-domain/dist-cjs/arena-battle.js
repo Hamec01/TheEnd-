@@ -417,6 +417,7 @@ function createInitialBattleState(params) {
         submittedPlans: {},
         recentCombatEvents: [],
         recentAnimationEvents: [],
+        exitZones: params.exitZones ?? [],
         isFinished: false,
     };
     syncBattlefieldPositions(state.entities, state.distance, battleMapWidth, battleMapHeight);

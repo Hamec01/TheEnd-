@@ -14,40 +14,114 @@ interface WorldMapZoneOption {
   type?: string;
 }
 
+interface WorldSnapshotStoreState {
+  snapshot: WorldSimulationSnapshot | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 1000;
+
+const worldSnapshotStore: {
+  state: WorldSnapshotStoreState;
+  listeners: Set<(state: WorldSnapshotStoreState) => void>;
+  intervalId: ReturnType<typeof setInterval> | null;
+  inFlight: Promise<void> | null;
+} = {
+  state: {
+    snapshot: null,
+    loading: true,
+    error: null,
+  },
+  listeners: new Set(),
+  intervalId: null,
+  inFlight: null,
+};
+
+function emitWorldSnapshotStore() {
+  for (const listener of worldSnapshotStore.listeners) {
+    listener(worldSnapshotStore.state);
+  }
+}
+
+async function refreshWorldSnapshotStore() {
+  if (worldSnapshotStore.inFlight) {
+    return worldSnapshotStore.inFlight;
+  }
+
+  const request = (async () => {
+    try {
+      const response = await fetch('/api/world-simulation/snapshot');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      worldSnapshotStore.state = {
+        snapshot: data,
+        loading: false,
+        error: null,
+      };
+    } catch (err) {
+      worldSnapshotStore.state = {
+        ...worldSnapshotStore.state,
+        loading: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      };
+    } finally {
+      worldSnapshotStore.inFlight = null;
+      emitWorldSnapshotStore();
+    }
+  })();
+
+  worldSnapshotStore.inFlight = request;
+  return request;
+}
+
+function startWorldSnapshotPolling() {
+  if (worldSnapshotStore.intervalId) {
+    return;
+  }
+
+  void refreshWorldSnapshotStore();
+  worldSnapshotStore.intervalId = setInterval(() => {
+    void refreshWorldSnapshotStore();
+  }, WORLD_SNAPSHOT_POLL_INTERVAL_MS);
+}
+
+function stopWorldSnapshotPolling() {
+  if (!worldSnapshotStore.intervalId) {
+    return;
+  }
+
+  clearInterval(worldSnapshotStore.intervalId);
+  worldSnapshotStore.intervalId = null;
+}
+
 /**
  * Хук для получения снимка мира (активные сущности, цены, события).
  */
 export function useWorldSnapshot() {
-  const [snapshot, setSnapshot] = useState<WorldSimulationSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<WorldSnapshotStoreState>(worldSnapshotStore.state);
 
   useEffect(() => {
-    const fetchSnapshot = async () => {
-      try {
-        const response = await fetch('/api/world-simulation/snapshot');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setSnapshot(data);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
+    const listener = (nextState: WorldSnapshotStoreState) => {
+      setState(nextState);
     };
 
-    fetchSnapshot();
+    worldSnapshotStore.listeners.add(listener);
+    setState(worldSnapshotStore.state);
+    startWorldSnapshotPolling();
 
-    // Для видимого движения world-sim держим обновление частым.
-    const interval = setInterval(fetchSnapshot, 1000);
-
-    return () => clearInterval(interval);
+    return () => {
+      worldSnapshotStore.listeners.delete(listener);
+      if (worldSnapshotStore.listeners.size === 0) {
+        stopWorldSnapshotPolling();
+      }
+    };
   }, []);
 
-  return { snapshot, loading, error };
+  return state;
 }
 
 /**

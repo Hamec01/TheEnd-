@@ -1939,14 +1939,38 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     await updateCharacterResources(character.id, {
       currentHp: character.maxHp,
+      currentMp: character.maxMp,
+      currentStamina: character.maxStamina,
     });
 
     const nextGold = currentTotalGold - costGold;
     writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
-    const hub = await patchDevCharacterState(character.id, { gold: nextGold });
+    const hub = costGold > 0
+      ? await patchDevCharacterState(character.id, { gold: nextGold })
+      : await getArenaHubState(character.id);
     applyHubState(hub);
+    if (playerCombatId) {
+      setCombatState((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          entities: prev.entities.map((entity) => (
+            entity.id === playerCombatId
+              ? {
+                ...entity,
+                currentHp: hub.character.currentHp,
+                currentMp: hub.character.currentMp,
+                currentStamina: hub.character.currentStamina,
+              }
+              : entity
+          )),
+        };
+      });
+    }
     handleRuntimeInventoryChanged();
-  }, [character, handleRuntimeInventoryChanged, inventory.gold]);
+  }, [character, handleRuntimeInventoryChanged, inventory.gold, playerCombatId]);
 
   const refreshActiveCharacterHub = useCallback(async () => {
     if (!character) {
@@ -2458,7 +2482,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [actionSlots, characterSkills, runtimeAdminSkills]);
 
   useEffect(() => {
-    if (selectedCombatSkillId && battleSkillOptions.some((entry) => entry.skillId === selectedCombatSkillId)) {
+    if (selectedCombatSkillId && battleSkillOptions.some((entry) => entry.skillId === selectedCombatSkillId || entry.definition.id === selectedCombatSkillId)) {
       return;
     }
     setSelectedCombatSkillId(null);
@@ -4347,9 +4371,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           equipment={equipment}
           playerAvatarUrl={playerAvatarUrl}
           battleStats={{
-            hp: battlePlayer?.currentHp ?? character.currentHp,
-            mp: battlePlayer?.currentMp ?? character.currentMp,
-            stamina: battlePlayer?.currentStamina ?? character.currentStamina,
+            hp: isBattleWindowOpen ? (battlePlayer?.currentHp ?? character.currentHp) : character.currentHp,
+            mp: isBattleWindowOpen ? (battlePlayer?.currentMp ?? character.currentMp) : character.currentMp,
+            stamina: isBattleWindowOpen ? (battlePlayer?.currentStamina ?? character.currentStamina) : character.currentStamina,
           }}
           chatLines={chatLines}
           onOpenStats={() => {

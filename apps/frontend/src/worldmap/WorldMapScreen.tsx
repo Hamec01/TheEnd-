@@ -81,7 +81,7 @@ import type {
 } from "./types";
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
 import { getZoneCenter, moveZone } from "./zoneGeometry";
-import { getPassiveZonesAtPoint } from "./zoneSystem";
+import { detectHoverZone, getPassiveZonesAtPoint } from "./zoneSystem";
 import {
   canEnterLinkedLocation,
   getLocationActiveState,
@@ -190,6 +190,8 @@ import {
   type MovementControlScheme,
 } from "./playerMovementSettings";
 import { useWorldSnapshot } from "../services/useWorldSimulation";
+import { buildWorldSceneSnapshot } from "./worldSceneAdapter";
+import { resolveRenderedWorldEntities } from "./worldEntityVisualResolver";
 import {
   PLAYER_GOLD_STORAGE_KEY,
   PLAYER_ITEMS_STORAGE_KEY,
@@ -198,6 +200,7 @@ import {
   writeNumberStorage,
   writeStringArrayStorage,
 } from "../utils/playerInventory";
+import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 
@@ -852,6 +855,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [lastRuntimeClickPoint, setLastRuntimeClickPoint] = useState<
     { x: number; y: number } | null
   >(null);
+  const [playMovementTarget, setPlayMovementTarget] = useState<{
+    point: { x: number; y: number };
+    pendingLocationId: string | null;
+  } | null>(null);
   const [playerPosition, setPlayerPosition] = useState(() =>
     loadPlayerPosition(character.id),
   );
@@ -977,7 +984,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeInteraction, setActiveInteraction] = useState<QuestInteractionDefinition | null>(null);
   const [activeInteractionChoices, setActiveInteractionChoices] = useState<QuestInteractionChoice[]>([]);
   const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
-  const { snapshot: worldSnapshot } = useWorldSnapshot();
+  const { snapshot: worldSnapshot, loading: worldSnapshotLoading, error: worldSnapshotError } = useWorldSnapshot();
+  const playMovementLocked = worldMapMode === "play"
+    && locationView === "map"
+    && (travelExhausted || Boolean(engagedWorldEntityId));
+  const playMovementLockReason = worldMapViewerOpen
+    ? "viewer_open"
+    : travelExhausted
+      ? "travel_exhausted"
+      : engagedWorldEntityId
+        ? "world_entity_engaged"
+        : null;
   const questRuntimeProfessionCompat = useMemo(
     () => ({
       professions: character.professions,
@@ -2600,6 +2617,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   // Memoize callbacks to prevent infinite loops in animation frames
   const handlePlayerPosition = useCallback((x: number, y: number) => {
     setPlayerPosition({ x, y });
+    setPlaySpawnPosition((current) => {
+      if (Math.abs(current.x - x) < 0.0005 && Math.abs(current.y - y) < 0.0005) {
+        return current;
+      }
+
+      return { x, y };
+    });
   }, []);
 
   const handlePlayerState = useCallback((state: PlayerWorldState) => {
@@ -3884,6 +3908,77 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       y: pendingWorldEntityInteraction.coordinates.y,
     };
   }, [engagedWorldEntityId, pendingWorldEntityInteraction]);
+  const sharedWorldMovementTarget = worldEntityApproachTarget ?? playMovementTarget?.point ?? null;
+  const sharedWorldMovementTargetLocationId = worldEntityApproachTarget
+    ? null
+    : playMovementTarget?.pendingLocationId ?? null;
+  const renderedActiveEntities = useMemo(
+    () => resolveRenderedWorldEntities(
+      worldSnapshot?.activeEntities ?? [],
+      runtimeImages,
+      contentSnapshot?.npcs ?? [],
+    ),
+    [contentSnapshot?.npcs, runtimeImages, worldSnapshot?.activeEntities],
+  );
+  const playWorldSceneSnapshot = useMemo<WorldSceneSnapshot>(
+    () => buildWorldSceneSnapshot({
+      playerPosition,
+      playerState,
+      playerAvatarUrl: playerAvatarUrl ?? null,
+      movementTarget: sharedWorldMovementTarget,
+      movementLocked: playMovementLocked,
+      movementLockReason: playMovementLockReason,
+      controlScheme: movementControlScheme,
+      zones: playVisibleZones,
+      currentZoneId: currentZone?.id ?? null,
+      hoverZoneId: hoverZone?.id ?? null,
+      questMarkers: playQuestMarkers,
+      npcMarkers: playNpcMarkers,
+      worldSnapshot,
+      renderedActiveEntities,
+      lockedWorldEntityId: engagedWorldEntityId,
+      lockedWorldEntityCoordinates: engagedWorldEntityAnchor,
+      discoveryMarkers: mapDiscoveryMarkers,
+    }),
+    [
+      currentZone?.id,
+      engagedWorldEntityAnchor,
+      engagedWorldEntityId,
+      hoverZone?.id,
+      mapDiscoveryMarkers,
+      movementControlScheme,
+      playMovementLocked,
+      playMovementLockReason,
+      playNpcMarkers,
+      playQuestMarkers,
+      playVisibleZones,
+      playerAvatarUrl,
+      playerPosition,
+      playerState,
+      playMovementTarget?.pendingLocationId,
+      renderedActiveEntities,
+      sharedWorldMovementTarget,
+      worldSnapshot,
+    ],
+  );
+  const worldParityDebugLine = useMemo(() => {
+    const position = `${playWorldSceneSnapshot.player.position.x.toFixed(3)},${playWorldSceneSnapshot.player.position.y.toFixed(3)}`;
+    return `Parity ${worldRenderer} pos=${position} current=${playWorldSceneSnapshot.currentZoneId ?? '-'} hover=${playWorldSceneSnapshot.hoverZoneId ?? '-'} active=${playWorldSceneSnapshot.activeEntities.length} pending=${pendingWorldEntityInteractionId ?? '-'} locked=${engagedWorldEntityId ?? '-'}`;
+  }, [engagedWorldEntityId, pendingWorldEntityInteractionId, playWorldSceneSnapshot.activeEntities.length, playWorldSceneSnapshot.currentZoneId, playWorldSceneSnapshot.hoverZoneId, playWorldSceneSnapshot.player.position.x, playWorldSceneSnapshot.player.position.y, worldRenderer]);
+  const lastWorldParityLogRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    if (lastWorldParityLogRef.current === worldParityDebugLine) {
+      return;
+    }
+
+    lastWorldParityLogRef.current = worldParityDebugLine;
+    console.info(`[world-parity] ${worldParityDebugLine}`);
+  }, [worldParityDebugLine]);
 
   const isWithinWorldEntityInteractionRange = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     return Math.hypot(
@@ -3898,10 +3993,87 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    setPlayMovementTarget(null);
     setSelectedWorldEntity(liveEntity);
     setEngagedWorldEntityAnchor(null);
     setPendingWorldEntityInteractionId(liveEntity.id);
   }, [engagedWorldEntityId, worldSnapshot?.activeEntities]);
+  const handleWorldSceneCommand = useCallback((command: WorldSceneCommand) => {
+    switch (command.type) {
+      case 'hover_point': {
+        if (!command.point) {
+          handleHoverZone(null);
+          return;
+        }
+
+        const hoveredZone = detectHoverZone(
+          playVisibleZones as Zone[],
+          command.point.x,
+          command.point.y,
+        ) as WorldMapZone | null;
+        handleHoverZone(hoveredZone);
+        return;
+      }
+      case 'interact_zone': {
+        const zone = playVisibleZones.find((entry) => entry.id === command.zoneId) ?? null;
+        if (zone) {
+          handleRuntimeZoneInteract(zone, command.point);
+        }
+        return;
+      }
+      case 'interact_world_entity': {
+        const entity = worldSnapshot?.activeEntities.find((entry) => entry.id === command.entityId) ?? null;
+        if (entity) {
+          handleWorldEntityClick(entity);
+        }
+        return;
+      }
+      case 'move_to_point': {
+        setLastRuntimeClickPoint(command.point);
+        setPlayMovementTarget({
+          point: command.point,
+          pendingLocationId: command.pendingLocationId ?? null,
+        });
+        return;
+      }
+      case 'inspect_current_zone': {
+        handleInspectCurrentZone();
+        return;
+      }
+      case 'focus_zone': {
+        canvasRef.current?.focusZone(command.zoneId);
+        return;
+      }
+      case 'focus_point': {
+        canvasRef.current?.focusPoint(command.point ? [command.point.x, command.point.y] : null);
+        return;
+      }
+      case 'move_directional':
+      case 'stop_movement':
+      default:
+        return;
+    }
+  }, [handleHoverZone, handleInspectCurrentZone, handleRuntimeZoneInteract, handleWorldEntityClick, playVisibleZones, worldSnapshot?.activeEntities]);
+
+  useEffect(() => {
+    if (!playMovementTarget || playerState === 'moving') {
+      return;
+    }
+
+    if (Math.hypot(playerPosition.x - playMovementTarget.point.x, playerPosition.y - playMovementTarget.point.y) > 0.003) {
+      return;
+    }
+
+    setPlayMovementTarget(null);
+  }, [playMovementTarget, playerPosition.x, playerPosition.y, playerState]);
+
+  useEffect(() => {
+    if (locationView === 'map') {
+      return;
+    }
+
+    setPlayMovementTarget(null);
+  }, [locationView]);
 
   useEffect(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -6735,9 +6907,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               >
                 World renderer: {worldRenderer}
               </button>
+              <div className="wm-map-dev-status" style={{ marginTop: 8, fontSize: 12, color: worldSnapshotError ? '#ff9a9a' : '#d8c29a' }}>
+                {worldSnapshotError
+                  ? `World snapshot unavailable: ${worldSnapshotError}`
+                  : worldSnapshotLoading
+                    ? 'World snapshot: loading...'
+                    : `World snapshot OK, activeEntities: ${worldSnapshot?.activeEntities.length ?? 0}`}
+              </div>
+              <div className="wm-map-dev-status" style={{ marginTop: 4, fontSize: 12, color: '#d8c29a', fontFamily: 'Consolas, monospace' }}>
+                {worldParityDebugLine}
+              </div>
               {worldRenderer === "phaser" ? (
                 <PhaserWorldMapCanvas
                   ref={canvasRef}
+                  sceneSnapshot={playWorldSceneSnapshot}
+                  onSceneCommand={handleWorldSceneCommand}
                   gameplayPaused={worldMapViewerOpen}
                   playerStartPosition={playSpawnPosition}
                   playerAvatarUrl={playerAvatarUrl}
@@ -6751,12 +6935,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   onRuntimeZoneInteract={handleRuntimeZoneInteract}
                   onPlayerPosition={handlePlayerPosition}
                   onPlayerState={handlePlayerState}
-                  playerTargetPosition={worldEntityApproachTarget}
-                  movementLocked={
-                    worldMapMode === "play"
-                    && locationView === "map"
-                    && (travelExhausted || Boolean(engagedWorldEntityId))
-                  }
+                  playerTargetPosition={sharedWorldMovementTarget}
+                  playerTargetLocationId={sharedWorldMovementTargetLocationId}
+                  movementLocked={playMovementLocked}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
@@ -6767,6 +6948,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               ) : (
                 <WorldMapCanvas
                   mode="play"
+                  sceneSnapshot={playWorldSceneSnapshot}
+                  onSceneCommand={handleWorldSceneCommand}
                   gameplayPaused={worldMapViewerOpen}
                   playerStartPosition={playSpawnPosition}
                   playerAvatarUrl={playerAvatarUrl}
@@ -6780,12 +6963,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   onRuntimeZoneInteract={handleRuntimeZoneInteract}
                   onPlayerPosition={handlePlayerPosition}
                   onPlayerState={handlePlayerState}
-                  playerTargetPosition={worldEntityApproachTarget}
-                  movementLocked={
-                    worldMapMode === "play"
-                    && locationView === "map"
-                    && (travelExhausted || Boolean(engagedWorldEntityId))
-                  }
+                  playerTargetPosition={sharedWorldMovementTarget}
+                  playerTargetLocationId={sharedWorldMovementTargetLocationId}
+                  movementLocked={playMovementLocked}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}

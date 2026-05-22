@@ -10,8 +10,8 @@
   width: 48px;
   height: 48px;
   transform: translate(-24px, -24px);
-  cursor: pointer;
-  pointer-events: auto;
+  cursor: default;
+  pointer-events: none;
   transition: transform 0.18s ease-out;
   user-select: none;
   will-change: left, top, transform;
