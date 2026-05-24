@@ -47,6 +47,7 @@ interface BattlePanelProps {
   inventory: InventoryState;
   actionSlots: CharacterActionSlot[];
   mapImageUrl?: string;
+  mapMusicUrl?: string;
   mapCalibration?: {
     cellSizePx?: number;
     gridOffsetX?: number;
@@ -127,6 +128,15 @@ function formatActionError(errorCode: string, message: string): string {
     ACTOR_DEAD: 'Персонаж мёртв.',
   };
   return map[errorCode] ?? message;
+}
+
+function isDirectAudioSource(value: string | undefined): value is string {
+  if (!value) return false;
+  const source = value.trim();
+  return source.startsWith('/')
+    || source.startsWith('http://')
+    || source.startsWith('https://')
+    || source.startsWith('data:audio/');
 }
 
 function isCellTargetItem(item: AdminItem | null): boolean {
@@ -244,6 +254,7 @@ export function BattlePanel({
   inventory,
   actionSlots,
   mapImageUrl,
+  mapMusicUrl,
   mapCalibration,
   selectedSkillId,
   availableSkills,
@@ -258,9 +269,10 @@ export function BattlePanel({
   resolveSkillIcon,
   resolveAdminItemById,
   playerEquipment,
-  battleRenderer = 'react',
+  battleRenderer = 'phaser',
   onBattleRendererChange,
 }: BattlePanelProps) {
+  const battleMusicAudioRef = useRef<HTMLAudioElement | null>(null);
   // ── Core entity refs ────────────────────────────────────────────────────
   const player = useMemo(
     () => state.entities.find((e) => e.id === playerId) ?? null,
@@ -296,6 +308,34 @@ export function BattlePanel({
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!isDirectAudioSource(mapMusicUrl)) {
+      if (battleMusicAudioRef.current) {
+        battleMusicAudioRef.current.pause();
+        battleMusicAudioRef.current.removeAttribute('src');
+      }
+      return;
+    }
+
+    const audio = battleMusicAudioRef.current ?? new Audio();
+    battleMusicAudioRef.current = audio;
+    audio.loop = true;
+    audio.preload = 'auto';
+    audio.volume = 0.34;
+
+    if (audio.src !== mapMusicUrl) {
+      audio.src = mapMusicUrl;
+    }
+
+    void audio.play().catch(() => {
+      // Ignore autoplay restrictions; next user interaction will allow playback.
+    });
+
+    return () => {
+      audio.pause();
+    };
+  }, [mapMusicUrl]);
+
   const remainingSeconds = useMemo(() => {
     if (!state.turnDeadlineAt || !isPlayerTurn) return null;
     const deadline = Date.parse(state.turnDeadlineAt);
@@ -312,6 +352,7 @@ export function BattlePanel({
   const [guardMode, setGuardMode] = useState<'guard' | 'strong_guard'>('guard');
   const [playback, setPlayback] = useState<{
     isPlaying: boolean;
+    runId: number;
     statusText: string | null;
     activeActorId: string | null;
     animationEvents: CombatAnimationEvent[];
@@ -321,6 +362,7 @@ export function BattlePanel({
     visualPositions: Record<string, { x: number; y: number }>;
   }>({
     isPlaying: false,
+    runId: 0,
     statusText: null,
     activeActorId: null,
     animationEvents: [],
@@ -332,6 +374,23 @@ export function BattlePanel({
   const isSubmittingRef = useRef(false);
   const lastFailureEventIdRef = useRef<string | null>(null);
   const pendingFinalStateRef = useRef<ArenaBattleState | null>(null);
+  const playbackRunCounterRef = useRef(0);
+  const playbackCompletionRef = useRef<{ runId: number; resolve: () => void } | null>(null);
+
+  const waitForPlaybackCompletion = useCallback((runId: number) => {
+    return new Promise<void>((resolve) => {
+      playbackCompletionRef.current = { runId, resolve };
+    });
+  }, []);
+
+  const handlePlaybackComplete = useCallback((runId: number) => {
+    if (playbackCompletionRef.current?.runId !== runId) {
+      return;
+    }
+    const resolver = playbackCompletionRef.current.resolve;
+    playbackCompletionRef.current = null;
+    resolver();
+  }, []);
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const playerStyle = useMemo(() => (player ? classifyCombatStyle(player) : 'MELEE'), [player]);
@@ -538,6 +597,7 @@ export function BattlePanel({
       if (events.length > 0) {
         setPlayback({
           isPlaying: true,
+          runId: 0,
           statusText: 'Выполняется действие...',
           activeActorId: null,
           animationEvents: [],
@@ -556,9 +616,11 @@ export function BattlePanel({
             finalBattleState: finalState,
           });
           const totalDurationMs = phases.reduce((sum, phase) => sum + phase.durationMs, 0);
+          const playbackRunId = ++playbackRunCounterRef.current;
 
           setPlayback({
             isPlaying: true,
+            runId: playbackRunId,
             statusText: 'Выполняется действие...',
             activeActorId: null,
             animationEvents: [],
@@ -568,10 +630,24 @@ export function BattlePanel({
             visualPositions: {},
           });
 
-          await sleep(Math.max(120, totalDurationMs + 50));
+          if (phases.length > 0) {
+            await Promise.race([
+              waitForPlaybackCompletion(playbackRunId),
+              new Promise<void>((resolve) => {
+                window.setTimeout(resolve, Math.max(1800, totalDurationMs + 1400));
+              }),
+            ]);
+            if (playbackCompletionRef.current?.runId === playbackRunId) {
+              playbackCompletionRef.current = null;
+            }
+          }
         } else {
         const entityById = new Map(finalState.entities.map((e) => [e.id, e]));
         const movedActorIds = new Set<string>();
+        const REACT_EVENT_GAP_MS = 220;
+        const sleepWithCadence = async (durationMs: number) => {
+          await sleep(Math.max(REACT_EVENT_GAP_MS, durationMs));
+        };
         const setTurnStatus = (actorId: string | null) => {
           const entity = actorId ? entityById.get(actorId) : undefined;
           const isEnemy = entity?.team === TeamSide.Right;
@@ -589,26 +665,26 @@ export function BattlePanel({
             setTurnStatus(event.actorId ?? null);
             const actorId = event.actorId ?? null;
             const actorFinal = actorId ? entityById.get(actorId) : undefined;
-            const delay = actorFinal?.team === TeamSide.Right ? 600 : actorId === playerId ? 400 : 400;
-            await sleep(delay);
+            const delay = actorFinal?.team === TeamSide.Right ? 760 : actorId === playerId ? 560 : 560;
+            await sleepWithCadence(delay);
             continue;
           }
 
           if (event.type === 'turn_ended') {
-            await sleep(300);
+            await sleepWithCadence(420);
             continue;
           }
 
           if (event.type === 'command_started') {
             setPlayback((prev) => ({ ...prev, statusText: prev.statusText ?? 'Выполняется действие...' }));
-            await sleep(250);
+            await sleepWithCadence(360);
             continue;
           }
 
           if (event.type === 'command_failed') {
             if (event.message) onStatus(event.message);
             setPlayback((prev) => ({ ...prev, statusText: 'Ошибка действия' }));
-            await sleep(500);
+            await sleepWithCadence(620);
             continue;
           }
 
@@ -620,7 +696,7 @@ export function BattlePanel({
               const moveActorId = event.actorId;
               movedActorIds.add(moveActorId);
               const cells = Math.max(1, Math.abs(to.x - from.x) + Math.abs(to.y - from.y));
-              const duration = Math.max(450, Math.min(1200, 400 * cells));
+              const duration = Math.max(560, Math.min(1450, 470 * cells));
 
               if (battleRenderer === 'react') {
                 // React renderer consumes visualPositions directly.
@@ -671,9 +747,9 @@ export function BattlePanel({
                   ],
                 }));
               }
-              await sleep(duration);
+              await sleepWithCadence(duration + 80);
             } else {
-              await sleep(150);
+              await sleepWithCadence(260);
             }
             continue;
           }
@@ -688,7 +764,7 @@ export function BattlePanel({
               targetId: event.targetId,
             };
             setPlayback((prev) => ({ ...prev, animationEvents: [...prev.animationEvents, bump] }));
-            await sleep(220);
+            await sleepWithCadence(360);
             continue;
           }
 
@@ -709,7 +785,7 @@ export function BattlePanel({
                 recentLogs: [...prev.recentLogs.slice(-7), log],
               }));
             }
-            await sleep(700);
+            await sleepWithCadence(860);
             continue;
           }
 
@@ -727,7 +803,7 @@ export function BattlePanel({
                 recentLogs: [...prev.recentLogs.slice(-7), log],
               }));
             }
-            await sleep(350);
+            await sleepWithCadence(460);
             continue;
           }
 
@@ -735,7 +811,7 @@ export function BattlePanel({
           if (event.message) {
             onStatus(event.message);
           }
-          await sleep(150);
+          await sleepWithCadence(240);
         }
 
         // Safety net: if any actor position changed in finalState without a movement event, warn and animate reconciliation.
@@ -833,7 +909,7 @@ export function BattlePanel({
                 ],
               }));
             }
-            await sleep(450);
+            await sleepWithCadence(560);
           }
         }
 
@@ -848,6 +924,7 @@ export function BattlePanel({
         onStateChange(final);
         setPlayback({
           isPlaying: false,
+          runId: 0,
           statusText: null,
           activeActorId: null,
           animationEvents: [],
@@ -881,6 +958,7 @@ export function BattlePanel({
     state.isFinished,
     state.roundNumber,
     battleRenderer,
+    waitForPlaybackCompletion,
   ]);
 
   // End turn (wait — 0 AP, 0 stamina)
@@ -1426,6 +1504,9 @@ export function BattlePanel({
                 battleMapHeight={state.battleMapHeight}
                 viewportWidth={state.viewportWidth}
                 viewportHeight={state.viewportHeight}
+                battlefieldTraps={state.battlefieldTraps}
+                exitZones={state.exitZones}
+                lootContainers={state.lootContainers}
                 visualPositions={playback.isPlaying && battleRenderer === 'react' ? playback.visualPositions : undefined}
                 selectedSource={selectedContextSource}
                 buildContextActions={(clickedTarget) => {
@@ -1456,6 +1537,8 @@ export function BattlePanel({
                 animationEvents={playback.isPlaying ? (battleRenderer === 'phaser' ? [] : playback.animationEvents) : (state.recentAnimationEvents ?? [])}
                 isPlaybackActive={playback.isPlaying}
                 playbackPhases={battleRenderer === 'phaser' && playback.isPlaying ? playback.phases : undefined}
+                playbackRunId={battleRenderer === 'phaser' && playback.isPlaying ? playback.runId : undefined}
+                onPlaybackComplete={battleRenderer === 'phaser' ? handlePlaybackComplete : undefined}
                 selectedSkillId={selectedSkillId}
                 playerVisualState={feedback.playerVisualState}
                 enemyVisualState={feedback.enemyVisualState}

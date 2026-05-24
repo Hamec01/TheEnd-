@@ -1,14 +1,163 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { existsSync, readFileSync, readdirSync } from 'fs';
+import { basename, extname, join } from 'path';
 import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, StoredImage, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
+import { resolveContentAssetsDir } from './content-assets';
 import { buildItemPreview, buildItemSetPreview, buildRuneComplexPreview } from './admin-preview.builder';
 import type { ItemPreviewQueryBody, ItemPreviewResponse, ItemSetPreviewResponse, RuneComplexPreviewResponse } from './admin-preview.types';
 
-type StoredImageUploadBody = Partial<StoredImage> & { dataUrl?: string };
+type StoredImageUploadBody = Partial<StoredImage> & { folder?: string; dataUrl?: string };
+type StoredAudioUploadBody = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  folder?: string;
+  dataUrl?: string;
+};
 
 @Controller(['content', 'api/content'])
 export class ContentController {
   constructor(private readonly contentService: ContentService) {}
+
+  private readonly imageMimeByExt: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+  };
+
+  private readonly audioMimeByExt: Record<string, string> = {
+    '.ogg': 'audio/ogg',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4',
+    '.webm': 'audio/webm',
+  };
+
+  private sanitizeAssetId(value: string): string {
+    const normalized = String(value ?? '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .normalize('NFKD')
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[-.]+|[-.]+$/g, '')
+      .slice(0, 80);
+    return normalized;
+  }
+
+  private decodeImageDataUrl(dataUrl: string): { mimeType: string; bytes: Buffer } | null {
+    const normalized = String(dataUrl ?? '').trim();
+    const match = normalized.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      return null;
+    }
+    const mimeType = match[1] || 'image/png';
+    const encoded = match[2] || '';
+    try {
+      return {
+        mimeType,
+        bytes: Buffer.from(encoded, 'base64'),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveImageFromPublicAssetPath(value: string): { mimeType: string; bytes: Buffer } | null {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const pathLike = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    if (!pathLike.startsWith('/assets/upload/')) {
+      return null;
+    }
+
+    const prefix = '/assets/upload/';
+    const relativePath = pathLike.startsWith(prefix) ? pathLike.slice(prefix.length) : '';
+    if (!relativePath || relativePath.includes('..')) {
+      return null;
+    }
+
+    const absolutePath = join(resolveContentAssetsDir(), ...relativePath.split('/'));
+    if (!existsSync(absolutePath)) {
+      return null;
+    }
+
+    const ext = extname(relativePath).toLowerCase();
+    const mimeType = this.imageMimeByExt[ext] ?? 'application/octet-stream';
+    return {
+      mimeType,
+      bytes: readFileSync(absolutePath),
+    };
+  }
+
+  private collectAssetFiles(dir: string, relativePrefix = ''): string[] {
+    if (!existsSync(dir)) {
+      return [];
+    }
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const files: string[] = [];
+    for (const entry of entries) {
+      const entryRelative = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+      const absolute = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...this.collectAssetFiles(absolute, entryRelative));
+      } else if (entry.isFile()) {
+        files.push(entryRelative);
+      }
+    }
+    return files;
+  }
+
+  private resolveAudioAssetById(assetId: string): { mimeType: string; bytes: Buffer } | null {
+    const normalizedId = this.sanitizeAssetId(assetId);
+    if (!normalizedId) {
+      return null;
+    }
+
+    const assetsDir = resolveContentAssetsDir();
+    if (!existsSync(assetsDir)) {
+      return null;
+    }
+
+    const files = this.collectAssetFiles(assetsDir);
+
+    const exact = files.find((file) => {
+      const fileName = basename(file);
+      const ext = extname(fileName).toLowerCase();
+      if (!this.audioMimeByExt[ext]) {
+        return false;
+      }
+      return fileName === `${normalizedId}${ext}`;
+    });
+
+    const prefixed = files.find((file) => {
+      const fileName = basename(file);
+      const ext = extname(fileName).toLowerCase();
+      if (!this.audioMimeByExt[ext]) {
+        return false;
+      }
+      return fileName.startsWith(`${normalizedId}-`);
+    });
+
+    const fileName = exact ?? prefixed;
+    if (!fileName) {
+      return null;
+    }
+
+    const absolutePath = join(assetsDir, ...fileName.split('/'));
+    const ext = extname(fileName).toLowerCase();
+    return {
+      mimeType: this.audioMimeByExt[ext] ?? 'application/octet-stream',
+      bytes: readFileSync(absolutePath),
+    };
+  }
 
   @Get('snapshot')
   async getSnapshot(): Promise<ContentDatabase> {
@@ -87,6 +236,43 @@ export class ContentController {
   async replaceImage(@Param('id') id: string, @Body() payload: StoredImageUploadBody): Promise<StoredImage> {
     await this.contentService.ensureInitialized();
     return this.contentService.replaceStoredImageAsset(id, payload);
+  }
+
+  @Get('images/:id/raw')
+  async getImageRaw(@Param('id') id: string, @Res() response: Response): Promise<void> {
+    await this.contentService.ensureInitialized();
+    const image = await this.contentService.getCollectionEntry('images', id) as StoredImage | null;
+    if (!image) {
+      throw new NotFoundException(`Image '${id}' not found`);
+    }
+
+    const decoded = this.decodeImageDataUrl(image.dataUrl) ?? this.resolveImageFromPublicAssetPath(image.dataUrl);
+    if (!decoded) {
+      throw new NotFoundException(`Image '${id}' has invalid data URL`);
+    }
+
+    response.setHeader('Content-Type', decoded.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=300');
+    response.send(decoded.bytes);
+  }
+
+  @Post('assets/audio/upload')
+  async uploadAudio(@Body() payload: StoredAudioUploadBody): Promise<{ assetId: string; publicUrl: string; mimeType: string }> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.uploadAudioAsset(payload);
+  }
+
+  @Get('assets/audio/:id/raw')
+  async getAudioRaw(@Param('id') id: string, @Res() response: Response): Promise<void> {
+    await this.contentService.ensureInitialized();
+    const resolved = this.resolveAudioAssetById(id);
+    if (!resolved) {
+      throw new NotFoundException(`Audio asset '${id}' not found`);
+    }
+
+    response.setHeader('Content-Type', resolved.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=300');
+    response.send(resolved.bytes);
   }
 
   // ---------------------------------------------------------------------------

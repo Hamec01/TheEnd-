@@ -1,4 +1,5 @@
 import {
+  BattlefieldTileType,
   DistanceBand,
   MovementType,
   TeamSide,
@@ -6,6 +7,7 @@ import {
   type ArenaCombatEntity,
   type BattlefieldTile,
   type CombatAnimationEvent,
+  type VisualFxDefinition,
 } from '@theend/rpg-domain';
 import Phaser from 'phaser';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,8 +15,13 @@ import type { BattleFieldProps } from '../BattleField';
 import { createBattleInteractionAdapter, getEntitiesForBattleRender } from '../battleInteractionAdapter';
 import { createBattleGridAdapter, type BattleGridViewport } from '../gridCoordinateAdapter';
 import { getBattleEffect, inferEffectIdForAnimation, type CameraShakePreset } from '../../phaser/effects/battleEffectRegistry';
+import { PhaserVisualFxPlayer } from '../../phaser/effects/PhaserVisualFxPlayer';
 import type { CombatContextAction, ClickedCombatTarget } from '../combatContextActions';
 import { getMovementTweenDurationMs, type BattlePlaybackPhase } from '../playback/buildBattlePlaybackTimeline';
+import { normalizeActorVisualSource, pickDeterministicBanditPortrait, resolveActorPortraitWithFallback } from '../../phaser/assets/actorVisualResolver';
+import { resolveCircularPortraitLayout } from '../../phaser/assets/circularPortraitLayout';
+import { resolvePhaserAsset } from '../../phaser/assets/phaserAssetRegistry';
+import { visualFxService } from '../../services/content/visualFxService';
 
 const IS_DEV = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
 
@@ -25,15 +32,43 @@ interface RendererSnapshot extends PhaserBattleRendererProps {
   heightPx: number;
   viewport: BattleGridViewport;
   sceneCellSize: number;
+  visualFxDefinitions: VisualFxDefinition[];
+}
+
+function isBanditLike(entity: ArenaCombatEntity): boolean {
+  const id = entity.id.toLowerCase();
+  const name = entity.name.toLowerCase();
+  return entity.team === TeamSide.Right
+    || id.includes('bandit')
+    || name.includes('bandit')
+    || name.includes('бандит')
+    || name.includes('разбой');
 }
 
 function getRacePortrait(entity: ArenaCombatEntity, playerId: string, playerAvatarUrl?: string): string {
-  if (entity.avatarUrl) return entity.avatarUrl;
-  if (entity.id === playerId && playerAvatarUrl) return playerAvatarUrl;
+  const explicitAvatar = normalizeActorVisualSource(entity.avatarUrl);
+  if (explicitAvatar) return explicitAvatar;
+
+  if (entity.id === playerId) {
+    const playerAvatar = normalizeActorVisualSource(playerAvatarUrl);
+    if (playerAvatar) {
+      return playerAvatar;
+    }
+  }
+
+  const banditLike = isBanditLike(entity);
   const raceKey = String(entity.race).toLowerCase();
-  if (raceKey.includes('dwarf')) return '/art/races/dwarf.png';
-  if (raceKey.includes('elf')) return '/art/races/elf.png';
-  return '/art/races/human.png';
+  const raceFallback = raceKey.includes('dwarf')
+    ? '/art/races/dwarf.png'
+    : raceKey.includes('elf')
+      ? '/art/races/elf.png'
+      : '/art/races/human.png';
+
+  return resolveActorPortraitWithFallback(undefined, {
+    entityId: entity.id,
+    isBanditLike: banditLike,
+    fallback: raceFallback,
+  });
 }
 
 function buildViewport(props: BattleFieldProps): BattleGridViewport {
@@ -56,20 +91,132 @@ class PhaserBattleScene extends Phaser.Scene {
   private snapshot: RendererSnapshot | null = null;
   private gridGraphics?: Phaser.GameObjects.Graphics;
   private fxGraphics?: Phaser.GameObjects.Graphics;
+  private visualFxPlayer?: PhaserVisualFxPlayer;
   private bg?: Phaser.GameObjects.Image;
   private tokenById = new Map<string, Phaser.GameObjects.Container>();
   private statusVfxByEntity = new Map<string, Map<string, Phaser.GameObjects.GameObject[]>>();
   private particleTextureKey = '__battle_fx_dot';
   private processedEvents = new Set<string>();
   private loadedImages = new Set<string>();
+  private tokenPortraitKeyById = new Map<string, string>();
   private movingTokenIds = new Set<string>();
   private activeMoveTweenByActor = new Map<string, Phaser.Tweens.Tween>();
   private actorVisualCells = new Map<string, { x: number; y: number }>();
-  private moveQueueByActor = new Map<string, Array<{ actorId: string; from: { x: number; y: number }; to: { x: number; y: number }; movementType?: CombatAnimationEvent['movementType'] }>>();
   private playedMoveTokenKeys = new Set<string>();
   private tokenPositionInitialized = new Set<string>();
+  private dynamicAudioKeyBySource = new Map<string, string>();
+  private pendingDynamicAudioKeys = new Set<string>();
+  private failedDynamicAudioSources = new Set<string>();
+  private nextDynamicAudioId = 0;
   private lastPlaybackSignature = '';
   private playbackRunId = 0;
+
+  private addCircularPortrait(
+    token: Phaser.GameObjects.Container,
+    imageKey: string,
+    size: number,
+  ) {
+    const existingImage = token.getByName('portraitImage') as Phaser.GameObjects.Image | null;
+    const existingMask = token.getByName('portraitMask') as Phaser.GameObjects.Arc | null;
+    const frame = this.textures.getFrame(imageKey);
+    const layout = resolveCircularPortraitLayout({
+      existingTextureKey: existingImage?.texture?.key,
+      nextTextureKey: imageKey,
+      sourceWidth: frame?.width ?? size,
+      sourceHeight: frame?.height ?? size,
+      size,
+    });
+
+    if (layout.reuseExisting) {
+      return;
+    }
+
+    existingImage?.destroy();
+    existingMask?.destroy();
+
+    const image = this.add.image(0, -1, imageKey).setDisplaySize(layout.displayWidth, layout.displayHeight).setName('portraitImage');
+    const maskShape = this.add.circle(0, -1, layout.maskRadius, 0xffffff, 1).setName('portraitMask');
+    maskShape.setVisible(false);
+    image.setMask(maskShape.createGeometryMask());
+
+    token.addAt(maskShape, 1);
+    token.addAt(image, 2);
+
+    const label = token.getByName('portraitLabel') as Phaser.GameObjects.Text | null;
+    label?.setVisible(false);
+  }
+
+  private isDirectAudioSource(value: string): boolean {
+    return value.startsWith('/')
+      || value.startsWith('http://')
+      || value.startsWith('https://')
+      || value.startsWith('data:audio/');
+  }
+
+  private playLoadedSound(soundKey: string, volume: number) {
+    try {
+      const targetVolume = Math.max(0, Math.min(1, volume));
+      const sound = this.sound.add(soundKey, { volume: 0 });
+      const started = sound.play();
+      if (!started) {
+        sound.destroy();
+        return;
+      }
+
+      sound.once(Phaser.Sound.Events.COMPLETE, () => {
+        sound.destroy();
+      });
+
+      this.tweens.add({
+        targets: sound,
+        volume: targetVolume,
+        duration: 90,
+        ease: 'Sine.easeOut',
+      });
+    } catch {
+      // Keep playback non-blocking when audio decode is not ready yet.
+    }
+  }
+
+  private playDynamicAudioSource(source: string, volume: number) {
+    if (this.failedDynamicAudioSources.has(source)) {
+      return;
+    }
+
+    const existingKey = this.dynamicAudioKeyBySource.get(source);
+    if (existingKey && this.cache.audio.exists(existingKey)) {
+      this.playLoadedSound(existingKey, volume);
+      return;
+    }
+
+    const key = existingKey ?? `battle-audio-${this.nextDynamicAudioId += 1}`;
+    if (!existingKey) {
+      this.dynamicAudioKeyBySource.set(source, key);
+    }
+
+    if (this.pendingDynamicAudioKeys.has(key)) {
+      return;
+    }
+
+    this.pendingDynamicAudioKeys.add(key);
+    this.load.audio(key, source);
+    this.load.once(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      if (file.key === key) {
+        this.failedDynamicAudioSources.add(source);
+        this.pendingDynamicAudioKeys.delete(key);
+      }
+    });
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      this.pendingDynamicAudioKeys.delete(key);
+      if (this.cache.audio.exists(key)) {
+        this.playLoadedSound(key, volume);
+      }
+    });
+
+    if (!this.load.isLoading()) {
+      this.load.start();
+    }
+  }
 
   private getAudioSettings(): { muted: boolean; volume: number } {
     if (typeof window === 'undefined') {
@@ -98,15 +245,20 @@ class PhaserBattleScene extends Phaser.Scene {
     this.cameras.main.shake(duration, intensity);
   }
 
-  private playSoundSafe(soundId?: string) {
-    if (!soundId) {
+  private playSoundSafe(soundId?: string, volumeMultiplier?: number) {
+    const normalizedSoundId = String(soundId ?? '').trim();
+    if (!normalizedSoundId) {
       return;
     }
     if (!this.sys.isActive()) {
       return;
     }
     const settings = this.getAudioSettings();
-    if (settings.muted || settings.volume <= 0) {
+    const normalizedMultiplier = Number.isFinite(volumeMultiplier)
+      ? Math.max(0, Math.min(1, Number(volumeMultiplier)))
+      : 1;
+    const finalVolume = Math.max(0, Math.min(1, settings.volume * normalizedMultiplier));
+    if (settings.muted || finalVolume <= 0) {
       return;
     }
     try {
@@ -115,10 +267,29 @@ class PhaserBattleScene extends Phaser.Scene {
       if (contextState === 'closed') {
         return;
       }
-      if (!this.cache.audio.exists(soundId)) {
+
+      if (this.cache.audio.exists(normalizedSoundId)) {
+        this.playLoadedSound(normalizedSoundId, finalVolume);
         return;
       }
-      this.sound.play(soundId, { volume: settings.volume });
+
+      if (this.isDirectAudioSource(normalizedSoundId)) {
+        this.playDynamicAudioSource(normalizedSoundId, finalVolume);
+        return;
+      }
+
+      const bundledAsset = resolvePhaserAsset(normalizedSoundId);
+      if (bundledAsset.kind === 'audio' && bundledAsset.url && bundledAsset.url !== normalizedSoundId) {
+        if (bundledAsset.optional) {
+          return;
+        }
+        this.playDynamicAudioSource(bundledAsset.url, finalVolume);
+        return;
+      }
+
+      // Treat custom ids as content audio assets and resolve them through backend raw endpoint.
+      const resolvedAssetSource = `/api/content/assets/audio/${encodeURIComponent(normalizedSoundId)}/raw`;
+      this.playDynamicAudioSource(resolvedAssetSource, finalVolume);
     } catch {
       // Asset may be missing or not yet decoded; keep playback non-blocking.
     }
@@ -130,19 +301,20 @@ class PhaserBattleScene extends Phaser.Scene {
 
   setSnapshot(snapshot: RendererSnapshot) {
     this.snapshot = snapshot;
+    this.visualFxPlayer?.setRegistry(snapshot.visualFxDefinitions);
     if (this.gridGraphics) {
       this.renderSnapshot();
     }
   }
 
-  startPlaybackTimeline(phases: BattlePlaybackPhase[]) {
-    const signature = phases.map((phase) => phase.id).join('|');
+  startPlaybackTimeline(phases: BattlePlaybackPhase[], externalRunId: number, onComplete?: (runId: number) => void) {
+    const signature = `${externalRunId}:${phases.map((phase) => phase.id).join('|')}`;
     if (!signature || signature === this.lastPlaybackSignature) {
       return;
     }
     this.lastPlaybackSignature = signature;
-    const runId = ++this.playbackRunId;
-    void this.runPlaybackTimeline(phases, runId);
+    const internalRunId = ++this.playbackRunId;
+    void this.runPlaybackTimeline(phases, internalRunId, externalRunId, onComplete);
   }
 
   clearPlaybackTimeline() {
@@ -153,6 +325,10 @@ class PhaserBattleScene extends Phaser.Scene {
   create() {
     this.input.mouse?.disableContextMenu();
     this.ensureProceduralParticleTexture();
+    this.visualFxPlayer = new PhaserVisualFxPlayer(this);
+    if (this.snapshot) {
+      this.visualFxPlayer.setRegistry(this.snapshot.visualFxDefinitions);
+    }
     this.gridGraphics = this.add.graphics();
     this.fxGraphics = this.add.graphics();
     this.renderSnapshot();
@@ -200,6 +376,31 @@ class PhaserBattleScene extends Phaser.Scene {
     const placementsByState = getBattlefieldTilePlacements(entitiesByState, snapshot.distance, snapshot.battleMapWidth, snapshot.battleMapHeight);
     const renderPlacementById = new Map(placementsForRender.map((placement) => [placement.entityId, placement]));
     const statePlacementById = new Map(placementsByState.map((placement) => [placement.entityId, placement]));
+    const trapById = new Map((snapshot.battlefieldTraps ?? []).map((trap) => [trap.id, trap]));
+    const visibleTrapByCell = new Set<string>();
+    for (const tile of snapshot.battlefieldTiles) {
+      if (!tile.trapId) {
+        continue;
+      }
+      const trap = trapById.get(tile.trapId);
+      if (!trap || trap.isActive === false) {
+        continue;
+      }
+      visibleTrapByCell.add(`${tile.x}:${tile.y}`);
+    }
+    const exitZoneByCell = new Map<string, { id: string; team?: 'player' | 'enemy' | 'any' }>();
+    for (const zone of snapshot.exitZones ?? []) {
+      for (const cell of zone.cells ?? []) {
+        exitZoneByCell.set(`${cell.x}:${cell.y}`, { id: zone.id, team: zone.team });
+      }
+    }
+    const lootByCell = new Set<string>();
+    for (const container of snapshot.lootContainers ?? []) {
+      if (container.claimed) {
+        continue;
+      }
+      lootByCell.add(`${container.x}:${container.y}`);
+    }
 
     for (let row = 0; row < snapshot.viewport.height; row += 1) {
       for (let col = 0; col < snapshot.viewport.width; col += 1) {
@@ -207,6 +408,7 @@ class PhaserBattleScene extends Phaser.Scene {
         const y = snapshot.viewport.offsetY + row;
         const topLeft = adapter.cellToScreen(x, y);
         const key = `${x}:${y}`;
+        const tile = interaction.tileByKey.get(key);
         const isSelected = snapshot.selectedMoveTile?.x === x && snapshot.selectedMoveTile?.y === y;
         const isBlocked = interaction.getTileMovementBlocked(x, y);
         const fill = isBlocked
@@ -223,10 +425,51 @@ class PhaserBattleScene extends Phaser.Scene {
         this.gridGraphics.fillRect(topLeft.x, topLeft.y, adapter.cellSize, adapter.cellSize);
         this.gridGraphics.lineStyle(1, 0xf4ddb0, 0.18);
         this.gridGraphics.strokeRect(topLeft.x, topLeft.y, adapter.cellSize, adapter.cellSize);
+
+        const tileType = tile?.type;
+        if (tileType === BattlefieldTileType.HighCover || tileType === BattlefieldTileType.LowCover) {
+          this.gridGraphics.fillStyle(0x8dc8ff, tileType === BattlefieldTileType.HighCover ? 0.55 : 0.35);
+          this.gridGraphics.fillRect(topLeft.x + 4, topLeft.y + 4, Math.max(4, adapter.cellSize * 0.3), Math.max(4, adapter.cellSize * 0.18));
+        } else if (tileType === BattlefieldTileType.Hazard) {
+          this.gridGraphics.lineStyle(2, 0xff9a52, 0.8);
+          this.gridGraphics.strokeRect(topLeft.x + 4, topLeft.y + 4, Math.max(6, adapter.cellSize - 8), Math.max(6, adapter.cellSize - 8));
+        } else if (tileType === BattlefieldTileType.Summon) {
+          this.gridGraphics.fillStyle(0xc1a7ff, 0.7);
+          this.gridGraphics.fillCircle(topLeft.x + adapter.cellSize * 0.5, topLeft.y + adapter.cellSize * 0.25, Math.max(3, adapter.cellSize * 0.1));
+        }
+
+        if (visibleTrapByCell.has(key)) {
+          this.gridGraphics.fillStyle(0xff7a7a, 0.85);
+          this.gridGraphics.beginPath();
+          this.gridGraphics.moveTo(topLeft.x + adapter.cellSize * 0.5, topLeft.y + adapter.cellSize * 0.2);
+          this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.74, topLeft.y + adapter.cellSize * 0.58);
+          this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.26, topLeft.y + adapter.cellSize * 0.58);
+          this.gridGraphics.closePath();
+          this.gridGraphics.fillPath();
+        }
+
+        const exitZone = exitZoneByCell.get(key);
+        if (exitZone) {
+          const exitColor = exitZone.team === 'enemy' ? 0xff6767 : exitZone.team === 'player' ? 0x66e2ff : 0xa5f7ff;
+          this.gridGraphics.lineStyle(2, exitColor, 0.85);
+          this.gridGraphics.strokeRect(topLeft.x + 2, topLeft.y + 2, Math.max(4, adapter.cellSize - 4), Math.max(4, adapter.cellSize - 4));
+        }
+
+        if (lootByCell.has(key)) {
+          this.gridGraphics.fillStyle(0xf6d47b, 0.9);
+          this.gridGraphics.beginPath();
+          this.gridGraphics.moveTo(topLeft.x + adapter.cellSize * 0.5, topLeft.y + adapter.cellSize * 0.15);
+          this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.74, topLeft.y + adapter.cellSize * 0.42);
+          this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.5, topLeft.y + adapter.cellSize * 0.69);
+          this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.26, topLeft.y + adapter.cellSize * 0.42);
+          this.gridGraphics.closePath();
+          this.gridGraphics.fillPath();
+        }
       }
     }
 
-    const aliveIds = new Set(entitiesByState.map((entity) => entity.id));
+    const aliveEntities = entitiesByState.filter((entity) => entity.isAlive);
+    const aliveIds = new Set(aliveEntities.map((entity) => entity.id));
     for (const [id, token] of this.tokenById) {
       if (!aliveIds.has(id)) {
         this.activeMoveTweenByActor.get(id)?.stop();
@@ -234,14 +477,14 @@ class PhaserBattleScene extends Phaser.Scene {
         this.removeStatusVfx(id);
         token.destroy(true);
         this.tokenById.delete(id);
+        this.tokenPortraitKeyById.delete(id);
         this.movingTokenIds.delete(id);
         this.actorVisualCells.delete(id);
-        this.moveQueueByActor.delete(id);
         this.tokenPositionInitialized.delete(id);
       }
     }
 
-    for (const entity of entitiesByState) {
+    for (const entity of aliveEntities) {
       const statePlacement = statePlacementById.get(entity.id);
       const renderPlacement = renderPlacementById.get(entity.id);
       if (!statePlacement && !renderPlacement) continue;
@@ -288,7 +531,7 @@ class PhaserBattleScene extends Phaser.Scene {
         }
       }
       token.setDepth(entity.id === snapshot.playerId ? 20 : 18);
-      token.setAlpha(entity.isAlive ? 1 : 0.42);
+      token.setAlpha(1);
       token.setScale(entity.id === snapshot.selectedTargetId || entity.id === snapshot.playerId ? 1.08 : 1);
       this.drawTokenStatus(token, entity, snapshot);
     }
@@ -296,9 +539,14 @@ class PhaserBattleScene extends Phaser.Scene {
     this.processAnimationEvents(snapshot.animationEvents ?? []);
   }
 
-  private async runPlaybackTimeline(phases: BattlePlaybackPhase[], runId: number) {
+  private async runPlaybackTimeline(
+    phases: BattlePlaybackPhase[],
+    internalRunId: number,
+    externalRunId: number,
+    onComplete?: (runId: number) => void,
+  ) {
     for (const phase of phases) {
-      if (runId !== this.playbackRunId) {
+      if (internalRunId !== this.playbackRunId) {
         return;
       }
 
@@ -324,7 +572,7 @@ class PhaserBattleScene extends Phaser.Scene {
             parallel: true,
           });
         }
-        await this.playMovementPhase(phase, runId);
+        await this.playMovementPhase(phase, internalRunId);
         continue;
       }
 
@@ -334,6 +582,10 @@ class PhaserBattleScene extends Phaser.Scene {
       await new Promise<void>((resolve) => {
         this.time.delayedCall(phase.durationMs, () => resolve());
       });
+    }
+
+    if (internalRunId === this.playbackRunId) {
+      onComplete?.(externalRunId);
     }
   }
 
@@ -378,7 +630,11 @@ class PhaserBattleScene extends Phaser.Scene {
         x: to.x,
         y: to.y,
         duration,
-        ease: event.movementType === 'dash' ? 'Cubic.easeOut' : 'Sine.easeInOut',
+        ease: event.movementType === 'dash'
+          ? 'Cubic.easeOut'
+          : event.movementType === 'disengage'
+            ? 'Sine.easeInOut'
+            : 'Sine.easeInOut',
         onComplete: () => {
           this.actorVisualCells.set(event.actorId!, { x: event.to!.x, y: event.to!.y });
           this.movingTokenIds.delete(event.actorId!);
@@ -421,7 +677,57 @@ class PhaserBattleScene extends Phaser.Scene {
 
   private ensureToken(entity: ArenaCombatEntity, snapshot: RendererSnapshot): Phaser.GameObjects.Container {
     const existing = this.tokenById.get(entity.id);
+    const portrait = getRacePortrait(entity, snapshot.playerId, snapshot.playerAvatarUrl);
+    const imageKey = `actor:${portrait}`;
+    const fallbackPortrait = isBanditLike(entity)
+      ? pickDeterministicBanditPortrait(entity.id)
+      : '/sprites/actor/human_01.png';
+    const fallbackImageKey = `actor:${fallbackPortrait}`;
+
+    const ensureLoadedPortrait = (targetToken: Phaser.GameObjects.Container, key: string, source: string, size: number) => {
+      if (this.textures.exists(key)) {
+        this.addCircularPortrait(targetToken, key, size);
+        this.tokenPortraitKeyById.set(entity.id, key);
+        return;
+      }
+
+      if (!this.loadedImages.has(key)) {
+        this.loadedImages.add(key);
+
+        const onFileError = (file: Phaser.Loader.File) => {
+          if (file.key !== key) {
+            return;
+          }
+          if (!this.loadedImages.has(fallbackImageKey)) {
+            this.loadedImages.add(fallbackImageKey);
+            this.load.image(fallbackImageKey, fallbackPortrait);
+          }
+        };
+
+        this.load.once(Phaser.Loader.Events.FILE_LOAD_ERROR, onFileError);
+        this.load.image(key, source);
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          const sceneToken = this.tokenById.get(entity.id);
+          if (!sceneToken) return;
+          if (this.textures.exists(key)) {
+            this.addCircularPortrait(sceneToken, key, size);
+            this.tokenPortraitKeyById.set(entity.id, key);
+          } else if (this.textures.exists(fallbackImageKey)) {
+            this.addCircularPortrait(sceneToken, fallbackImageKey, size);
+            this.tokenPortraitKeyById.set(entity.id, fallbackImageKey);
+          }
+          this.renderSnapshot();
+        });
+        this.load.start();
+      }
+    };
+
     if (existing) {
+      const size = Math.max(24, Math.floor(snapshot.sceneCellSize * 0.72));
+      const currentPortraitKey = this.tokenPortraitKeyById.get(entity.id);
+      if (currentPortraitKey !== imageKey || !existing.getByName('portraitImage')) {
+        ensureLoadedPortrait(existing, imageKey, portrait, size);
+      }
       return existing;
     }
 
@@ -435,7 +741,7 @@ class PhaserBattleScene extends Phaser.Scene {
       fontFamily: 'Georgia, serif',
       fontSize: `${Math.max(10, Math.floor(size * 0.28))}px`,
       fontStyle: '700',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setName('portraitLabel');
     const hpBack = this.add.rectangle(0, size * 0.48, size * 0.9, 4, 0x1b1612, 0.9);
     const hpFill = this.add.rectangle(-size * 0.45, size * 0.48, size * 0.9, 4, 0x5de082, 1).setOrigin(0, 0.5);
     hpFill.setName('hpFill');
@@ -444,19 +750,7 @@ class PhaserBattleScene extends Phaser.Scene {
     this.tokenById.set(entity.id, token);
     this.tokenPositionInitialized.delete(entity.id);
 
-    const portrait = getRacePortrait(entity, snapshot.playerId, snapshot.playerAvatarUrl);
-    const imageKey = `actor:${portrait}`;
-    if (!this.textures.exists(imageKey) && !this.loadedImages.has(imageKey)) {
-      this.loadedImages.add(imageKey);
-      this.load.image(imageKey, portrait);
-      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-        const sceneToken = this.tokenById.get(entity.id);
-        if (!sceneToken || !this.textures.exists(imageKey)) return;
-        const image = this.add.image(0, -1, imageKey).setDisplaySize(size * 0.82, size * 0.82);
-        sceneToken.addAt(image, 1);
-      });
-      this.load.start();
-    }
+    ensureLoadedPortrait(token, imageKey, portrait, size);
 
     return token;
   }
@@ -493,7 +787,6 @@ class PhaserBattleScene extends Phaser.Scene {
     if (!this.snapshot) return;
     for (const event of events) {
       if (event.type === 'move_token') {
-        this.enqueueMoveToken(event);
         continue;
       }
 
@@ -517,95 +810,6 @@ class PhaserBattleScene extends Phaser.Scene {
     return `${event.roundNumber}:${event.stepIndex}:move_token:${event.actorId ?? ''}`;
   }
 
-  private enqueueMoveToken(event: CombatAnimationEvent) {
-    if (!event.actorId || !event.from || !event.to) {
-      return;
-    }
-
-    const key = this.getMoveTokenKey(event);
-    if (this.playedMoveTokenKeys.has(key)) {
-      return;
-    }
-    this.playedMoveTokenKeys.add(key);
-    if (this.playedMoveTokenKeys.size > 2000) {
-      this.playedMoveTokenKeys = new Set([...this.playedMoveTokenKeys].slice(-1200));
-    }
-
-    const queue = this.moveQueueByActor.get(event.actorId) ?? [];
-    queue.push({
-      actorId: event.actorId,
-      from: { x: event.from.x, y: event.from.y },
-      to: { x: event.to.x, y: event.to.y },
-      movementType: event.movementType,
-    });
-    this.moveQueueByActor.set(event.actorId, queue);
-    this.consumeMoveQueue(event.actorId);
-  }
-
-  private consumeMoveQueue(actorId: string) {
-    if (this.movingTokenIds.has(actorId)) {
-      return;
-    }
-
-    const queue = this.moveQueueByActor.get(actorId);
-    if (!queue || queue.length === 0) {
-      return;
-    }
-
-    const token = this.tokenById.get(actorId);
-    const adapter = this.getAdapter();
-    const snapshot = this.snapshot;
-    const next = queue.shift()!;
-
-    if (!token || !adapter || !snapshot) {
-      this.actorVisualCells.set(actorId, { x: next.to.x, y: next.to.y });
-      this.consumeMoveQueue(actorId);
-      return;
-    }
-
-    const from = adapter.getCellCenter(next.from.x, next.from.y);
-    const to = adapter.getCellCenter(next.to.x, next.to.y);
-    const entity = snapshot.entities.find((entry) => entry.id === actorId) ?? null;
-
-    if (IS_DEV) {
-      const rendererPositionBefore = {
-        x: token.x,
-        y: token.y,
-        cell: adapter.screenToCell(token.x, token.y),
-      };
-      // eslint-disable-next-line no-console
-      console.debug('[PhaserBattle] move_token', {
-        actorId,
-        from: next.from,
-        to: next.to,
-        movementType: next.movementType,
-        isTweenAlreadyActive: this.movingTokenIds.has(actorId),
-        rendererPositionBefore,
-        entityPosition: entity ? { x: entity.battlefieldX ?? 0, y: entity.battlefieldY ?? 0 } : null,
-      });
-    }
-
-    this.movingTokenIds.add(actorId);
-    this.actorVisualCells.set(actorId, { x: next.from.x, y: next.from.y });
-    token.setPosition(from.x, from.y);
-    this.tokenPositionInitialized.add(actorId);
-    this.activeMoveTweenByActor.get(actorId)?.stop();
-    const tween = this.tweens.add({
-      targets: token,
-      x: to.x,
-      y: to.y,
-      duration: next.movementType === 'dash' ? 210 : 320,
-      ease: 'Sine.easeInOut',
-      onComplete: () => {
-        this.actorVisualCells.set(actorId, { x: next.to.x, y: next.to.y });
-        this.movingTokenIds.delete(actorId);
-        this.activeMoveTweenByActor.delete(actorId);
-        this.consumeMoveQueue(actorId);
-      },
-    });
-    this.activeMoveTweenByActor.set(actorId, tween);
-  }
-
   private playMeleeSlashEffect(params: {
     fromX: number;
     fromY: number;
@@ -613,6 +817,14 @@ class PhaserBattleScene extends Phaser.Scene {
     toY: number;
     effectId?: string;
   }) {
+    if (this.visualFxPlayer?.playFxById(params.effectId, {
+      x: (params.fromX + params.toX) / 2,
+      y: (params.fromY + params.toY) / 2,
+      rotation: Phaser.Math.Angle.Between(params.fromX, params.fromY, params.toX, params.toY),
+    })) {
+      return;
+    }
+
     const effect = getBattleEffect(params.effectId, 'default_melee_hit');
     const slash = this.add.graphics().setDepth(46);
     const length = Phaser.Math.Distance.Between(params.fromX, params.fromY, params.toX, params.toY);
@@ -642,6 +854,10 @@ class PhaserBattleScene extends Phaser.Scene {
   }
 
   private playImpactEffect(x: number, y: number, effectId?: string) {
+    if (this.visualFxPlayer?.playFxById(effectId, { x, y })) {
+      return;
+    }
+
     const effect = getBattleEffect(effectId, 'default_impact');
     const ring = this.add.circle(x, y, effect.radius ?? 9, effect.color, 0.28).setDepth(44);
     ring.setStrokeStyle(2, effect.secondaryColor ?? 0xffffff, 0.7);
@@ -733,6 +949,17 @@ class PhaserBattleScene extends Phaser.Scene {
     impactEffectId?: string;
     onImpact?: () => void;
   }) {
+    if (this.visualFxPlayer?.playProjectileById(params.projectileEffectId, {
+      from: params.from,
+      to: params.to,
+      onImpact: () => {
+        this.playImpactEffect(params.to.x, params.to.y, params.impactEffectId);
+        params.onImpact?.();
+      },
+    })) {
+      return;
+    }
+
     const projectileEffect = getBattleEffect(params.projectileEffectId, 'arrow_projectile');
     const projectile = this.add.circle(params.from.x, params.from.y, projectileEffect.radius ?? 4, projectileEffect.color, 1).setDepth(40);
     projectile.setStrokeStyle(1, projectileEffect.secondaryColor ?? 0xffffff, 0.9);
@@ -895,6 +1122,13 @@ class PhaserBattleScene extends Phaser.Scene {
     const inferred = getBattleEffect(event.hitEffectId ?? event.impactEffectId ?? event.visualEffectId, inferEffectIdForAnimation(event));
 
     if (event.type === 'skill_cast' && actorToken) {
+      const registeredCastFx = this.visualFxPlayer?.getFx(event.castEffectId ?? event.visualEffectId);
+      if (registeredCastFx && this.visualFxPlayer?.playFxAt(registeredCastFx, { x: actorToken.x, y: actorToken.y })) {
+        this.playSoundSafe(event.castSoundId ?? registeredCastFx.audio?.defaultSoundId, registeredCastFx.audio?.volume);
+        this.applyCameraShake(event.cameraShake ?? event.cameraShakePreset ?? registeredCastFx.camera?.shakePreset);
+        return;
+      }
+
       const castFx = getBattleEffect(event.castEffectId ?? event.visualEffectId, 'default_melee_hit');
       this.playMeleeSlashEffect({
         fromX: actorToken.x,
@@ -943,20 +1177,43 @@ class PhaserBattleScene extends Phaser.Scene {
       return;
     }
 
-    if (event.type === 'projectile' && event.from && event.to) {
-      const from = adapter.getProjectileStart(event.from.x, event.from.y);
-      const to = adapter.getProjectileEnd(event.to.x, event.to.y);
-      const effect = getBattleEffect(event.projectileEffectId ?? event.visualEffectId, 'arrow_projectile');
-      this.playSoundSafe(event.castSoundId ?? effect.soundId);
+    if (event.type === 'projectile') {
+      const projectileFxId = event.projectileEffectId ?? event.visualEffectId;
+      const impactFxId = event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId;
+      const from = event.from
+        ? adapter.getProjectileStart(event.from.x, event.from.y)
+        : actorToken
+          ? { x: actorToken.x, y: actorToken.y }
+          : undefined;
+      const to = event.to
+        ? adapter.getProjectileEnd(event.to.x, event.to.y)
+        : targetToken
+          ? { x: targetToken.x, y: targetToken.y }
+          : undefined;
+
+      if (!from || !to) {
+        return;
+      }
+
+      const effect = getBattleEffect(projectileFxId, 'arrow_projectile');
+      const registeredProjectileFx = this.visualFxPlayer?.getFx(projectileFxId);
+      this.playSoundSafe(
+        event.castSoundId ?? registeredProjectileFx?.audio?.defaultSoundId ?? effect.soundId,
+        registeredProjectileFx?.audio?.volume,
+      );
       this.playProjectileEffect({
         from,
         to,
-        projectileEffectId: effect.id,
-        impactEffectId: event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId,
+        projectileEffectId: projectileFxId,
+        impactEffectId: impactFxId,
         onImpact: () => {
-          const impact = getBattleEffect(event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId, 'default_impact');
-          this.playSoundSafe(event.impactSoundId ?? impact.soundId);
-          this.applyCameraShake(event.cameraShake ?? event.cameraShakePreset ?? impact.cameraShake);
+          const impact = getBattleEffect(impactFxId, 'default_impact');
+          const registeredImpactFx = this.visualFxPlayer?.getFx(impactFxId);
+          this.playSoundSafe(
+            event.impactSoundId ?? registeredImpactFx?.audio?.defaultSoundId ?? impact.soundId,
+            registeredImpactFx?.audio?.volume,
+          );
+          this.applyCameraShake(event.cameraShake ?? event.cameraShakePreset ?? registeredImpactFx?.camera?.shakePreset ?? impact.cameraShake);
         },
       });
       return;
@@ -967,9 +1224,13 @@ class PhaserBattleScene extends Phaser.Scene {
         ? { x: targetToken.x, y: targetToken.y }
         : adapter.getCellCenter(event.to!.x, event.to!.y);
       const impact = getBattleEffect(event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId, 'default_impact');
+      const registeredImpactFx = this.visualFxPlayer?.getFx(event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId);
       this.playImpactEffect(impactTarget.x, impactTarget.y, impact.id);
-      this.playSoundSafe(event.impactSoundId ?? impact.soundId);
-      this.applyCameraShake(event.cameraShake ?? event.cameraShakePreset ?? impact.cameraShake);
+      this.playSoundSafe(
+        event.impactSoundId ?? registeredImpactFx?.audio?.defaultSoundId ?? impact.soundId,
+        registeredImpactFx?.audio?.volume,
+      );
+      this.applyCameraShake(event.cameraShake ?? event.cameraShakePreset ?? registeredImpactFx?.camera?.shakePreset ?? impact.cameraShake);
       return;
     }
 
@@ -1090,6 +1351,25 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     entityId?: string;
     cell?: { x: number; y: number };
   } | null>(null);
+  const [visualFxDefinitions, setVisualFxDefinitions] = useState<VisualFxDefinition[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+    void visualFxService.getAll()
+      .then((entries) => {
+        if (!disposed) {
+          setVisualFxDefinitions(entries.filter((entry) => entry.status !== 'disabled'));
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setVisualFxDefinitions([]);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   const viewport = useMemo(() => buildViewport(props), [
     props.battleMapHeight,
@@ -1113,7 +1393,8 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     heightPx: Math.max(320, hostSize.height),
     viewport,
     sceneCellSize,
-  }), [hostSize.height, hostSize.width, props, sceneCellSize, viewport]);
+    visualFxDefinitions,
+  }), [hostSize.height, hostSize.width, props, sceneCellSize, viewport, visualFxDefinitions]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1225,12 +1506,12 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     if (!scene) {
       return;
     }
-    if (!props.isPlaybackActive || !props.playbackPhases?.length) {
+    if (!props.isPlaybackActive || !props.playbackPhases?.length || !props.playbackRunId) {
       scene.clearPlaybackTimeline();
       return;
     }
-    scene.startPlaybackTimeline(props.playbackPhases);
-  }, [props.isPlaybackActive, props.playbackPhases]);
+    scene.startPlaybackTimeline(props.playbackPhases, props.playbackRunId, props.onPlaybackComplete);
+  }, [props.isPlaybackActive, props.onPlaybackComplete, props.playbackPhases, props.playbackRunId]);
 
   useEffect(() => {
     const root = rootRef.current;

@@ -57,12 +57,12 @@ export function getMovementTweenDurationMs(event: Pick<CombatAnimationEvent, 'fr
     : 1;
 
   if (event.movementType === 'dash') {
-    return Math.max(450, Math.min(850, 450 + Math.max(0, cells - 2) * 100));
+    return Math.max(580, Math.min(1080, 580 + Math.max(0, cells - 2) * 120));
   }
   if (event.movementType === 'disengage') {
-    return Math.max(350, Math.min(700, 350 + Math.max(0, cells - 1) * 80));
+    return Math.max(480, Math.min(940, 480 + Math.max(0, cells - 1) * 110));
   }
-  return Math.max(350, Math.min(850, 350 + Math.max(0, cells - 1) * 90));
+  return Math.max(500, Math.min(1040, 500 + Math.max(0, cells - 1) * 120));
 }
 
 function inferPhaseKind(event: CombatAnimationEvent): BattlePlaybackPhase['kind'] {
@@ -103,22 +103,22 @@ function inferPhaseMode(kind: BattlePlaybackPhase['kind']): BattlePlaybackPhase[
 function inferPhaseDuration(kind: BattlePlaybackPhase['kind'], events: CombatAnimationEvent[]): number {
   switch (kind) {
     case 'movement':
-      return events.reduce((max, event) => Math.max(max, getMovementTweenDurationMs(event)), 350);
+      return events.reduce((max, event) => Math.max(max, getMovementTweenDurationMs(event)), 460);
     case 'melee':
-      return 300;
+      return 420;
     case 'projectile':
-      return 520;
-    case 'damage':
-      return 520;
-    case 'status':
-      return 500;
-    case 'death':
       return 620;
+    case 'damage':
+      return 680;
+    case 'status':
+      return 560;
+    case 'death':
+      return 760;
     case 'loot':
-      return 520;
+      return 620;
     case 'log':
     default:
-      return 120;
+      return 180;
   }
 }
 
