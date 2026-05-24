@@ -1,29 +1,21 @@
 import Phaser from 'phaser';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
-import { getZoneCenter } from './zoneGeometry';
-import { getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, REGION_GRID_SIZE } from './regionPaintSystem';
-import { type MapPlayer } from './movementSystem';
 import { detectHoverZone, pickRuntimeClickTarget } from './zoneSystem';
 import { getDefaultPlayerClickable } from './zoneTaxonomy';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
-import type { PlayerWorldState } from './types';
 import type { WorldMapCanvasHandle, WorldMapCanvasProps } from './WorldMapCanvas';
 import { resolveWorldClickInteraction, resolveWorldHoverZone } from './worldInteractionCommands';
 import { resolveWorldEntityMarkerLayout } from './worldEntityScreenHitTesting';
 import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
 import type { RenderedWorldEntity, WorldSceneSnapshot } from './worldSceneTypes';
-import { useWorldRuntimeController } from './useWorldRuntimeController';
+import {
+  loadWorldMapRuntimeSettings,
+  WORLD_MAP_RUNTIME_SETTINGS_EVENT,
+} from './worldMapRuntimeSettings';
 import type { WorldMapZone } from './zoneEditorTypes';
-import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
 
 const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
-const PLAY_PLAYER_BASE: Omit<MapPlayer, 'speed'> = {
-  x: 0.53,
-  y: 0.83,
-  targetX: null,
-  targetY: null,
-};
 
 type ActiveEntity = WorldSimulationSnapshot['activeEntities'][number];
 
@@ -33,19 +25,8 @@ type PhaserWorldMapCanvasProps = Pick<
   | 'playerStartPosition'
   | 'playerAvatarUrl'
   | 'zones'
-  | 'regions'
-  | 'onOpenLocation'
-  | 'onEnterZone'
   | 'onHoverZone'
-  | 'onRuntimeZoneInteract'
-  | 'onPlayerPosition'
-  | 'onPlayerState'
-  | 'playerTargetPosition'
-  | 'playerTargetLocationId'
   | 'movementLocked'
-  | 'controlScheme'
-  | 'playerSpeed'
-  | 'sprintActive'
   | 'playQuestMarkers'
   | 'playNpcMarkers'
   | 'sceneSnapshot'
@@ -66,7 +47,7 @@ interface WorldRendererSnapshot {
   widthPx: number;
   heightPx: number;
   camera: WorldCamera;
-  player: MapPlayer;
+  player: { x: number; y: number };
   playerAvatarUrl?: string | null;
   zones: WorldMapZone[];
   hoverZoneId: string | null;
@@ -77,6 +58,16 @@ interface WorldRendererSnapshot {
   renderedActiveEntities: RenderedWorldEntity[];
   lockedWorldEntityId?: string | null;
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
+  npcMovement: {
+    speedScale: number;
+    tweenMinMs: number;
+    tweenMaxMs: number;
+  };
+}
+
+interface ActiveEntityInterpolationSource {
+  sourceTick?: number;
+  updatedAt?: string;
 }
 
 function clamp01(value: number): number {
@@ -105,6 +96,22 @@ function normalizedToScreen(point: { x: number; y: number }, camera: WorldCamera
   };
 }
 
+function resolveTextureSource(imageSrc: string): string {
+  const normalized = imageSrc.trim();
+  if (!normalized) {
+    return normalized;
+  }
+  if (
+    normalized.startsWith('/')
+    || normalized.startsWith('data:')
+    || normalized.startsWith('http://')
+    || normalized.startsWith('https://')
+  ) {
+    return normalized;
+  }
+  return `/api/content/images/${encodeURIComponent(normalized)}/raw`;
+}
+
 class PhaserWorldMapScene extends Phaser.Scene {
   private snapshot: WorldRendererSnapshot | null = null;
   private bg?: Phaser.GameObjects.Image;
@@ -116,6 +123,27 @@ class PhaserWorldMapScene extends Phaser.Scene {
   private dynamicTextureKeys = new Map<string, string>();
   private pendingTextureKeys = new Set<string>();
   private nextDynamicTextureId = 0;
+  private activeEntitySprites = new Map<string, {
+    container: Phaser.GameObjects.Container;
+    imageSrc?: string;
+    memberCount: number;
+    isHostile: boolean;
+    hasQuest: boolean;
+    kind?: RenderedWorldEntity['kind'];
+    renderWorldX: number;
+    renderWorldY: number;
+    fromWorldX: number;
+    fromWorldY: number;
+    targetWorldX: number;
+    targetWorldY: number;
+    blendStartedAtMs: number;
+    blendDurationMs: number;
+    lastWorldMoveAtMs?: number;
+    lastWorldMoveIntervalMs?: number;
+    lastSourceTick?: number;
+    lastSourceUpdatedAtMs?: number;
+    sourceCadenceMs?: number;
+  }>();
 
   constructor() {
     super({ key: 'PhaserWorldMapScene' });
@@ -135,6 +163,10 @@ class PhaserWorldMapScene extends Phaser.Scene {
     this.entityLayer = this.add.container(0, 0);
     this.labelLayer = this.add.container(0, 0);
     this.renderSnapshot();
+  }
+
+  update(time: number) {
+    this.updateActiveEntityPositions(time);
   }
 
   setSnapshot(snapshot: WorldRendererSnapshot) {
@@ -173,7 +205,6 @@ class PhaserWorldMapScene extends Phaser.Scene {
 
     this.mapGraphics.clear();
     this.markerGraphics.clear();
-    this.entityLayer.removeAll(true);
     this.labelLayer.removeAll(true);
     if (this.playerToken) {
       this.playerToken.destroy(true);
@@ -340,77 +371,279 @@ class PhaserWorldMapScene extends Phaser.Scene {
   }
 
   private drawActiveEntities(snapshot: WorldRendererSnapshot) {
-    if (!this.markerGraphics || !this.labelLayer || !this.entityLayer) {
+    if (!this.entityLayer) {
       return;
     }
+
+    const sourceByEntityId = new Map<string, ActiveEntityInterpolationSource>();
+    for (const source of snapshot.activeEntities) {
+      sourceByEntityId.set(source.id, {
+        sourceTick: source.sourceTick,
+        updatedAt: source.updatedAt,
+      });
+    }
+
+    const renderedIds = new Set<string>();
+
     for (const entity of snapshot.renderedActiveEntities) {
       const coordinates = snapshot.lockedWorldEntityId === entity.id && snapshot.lockedWorldEntityCoordinates
         ? snapshot.lockedWorldEntityCoordinates
         : entity.coordinates;
       const point = normalizedToScreen(coordinates, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
-      if (point.x < -24 || point.y < -24 || point.x > snapshot.widthPx + 24 || point.y > snapshot.heightPx + 24) continue;
-
-      if (!this.drawActiveEntityVisual(entity, point.x, point.y)) {
-        this.markerGraphics.fillStyle(entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc, 0.95);
-        this.markerGraphics.lineStyle(2, 0x120e09, 0.9);
-        this.markerGraphics.fillCircle(point.x, point.y, 9);
-        this.markerGraphics.strokeCircle(point.x, point.y, 9);
+      if (point.x < -48 || point.y < -48 || point.x > snapshot.widthPx + 48 || point.y > snapshot.heightPx + 48) {
+        continue;
       }
 
-      if (entity.memberCount > 1) {
-        this.drawMarkerBadge(String(entity.memberCount), point.x + 10, point.y + 10, 0xf5d18d, 0x2d1a0e);
+      renderedIds.add(entity.id);
+      this.upsertActiveEntityVisual(entity, point.x, point.y, snapshot, coordinates, sourceByEntityId.get(entity.id));
+    }
+
+    for (const [entityId, value] of this.activeEntitySprites.entries()) {
+      if (renderedIds.has(entityId)) {
+        continue;
       }
-      if (entity.isHostile) {
-        this.drawMarkerBadge('!', point.x + 12, point.y - 12, 0xff4444, 0xffffff);
-      }
-      if (entity.hasQuest) {
-        this.drawMarkerBadge('?', point.x - 12, point.y - 12, 0xffff00, 0x333333);
-      }
+      value.container.destroy(true);
+      this.activeEntitySprites.delete(entityId);
     }
   }
 
-  private drawActiveEntityVisual(entity: RenderedWorldEntity, x: number, y: number): boolean {
+  private sampleInterpolatedWorldPosition(
+    value: {
+      fromWorldX: number;
+      fromWorldY: number;
+      targetWorldX: number;
+      targetWorldY: number;
+      blendStartedAtMs: number;
+      blendDurationMs: number;
+    },
+    nowMs: number,
+  ): { x: number; y: number } {
+    if (value.blendDurationMs <= 1) {
+      return { x: value.targetWorldX, y: value.targetWorldY };
+    }
+
+    const progress = Phaser.Math.Clamp((nowMs - value.blendStartedAtMs) / value.blendDurationMs, 0, 1);
+    return {
+      x: value.fromWorldX + ((value.targetWorldX - value.fromWorldX) * progress),
+      y: value.fromWorldY + ((value.targetWorldY - value.fromWorldY) * progress),
+    };
+  }
+
+  private updateActiveEntityPositions(nowMs: number): void {
+    const snapshot = this.snapshot;
+    if (!snapshot) {
+      return;
+    }
+
+    for (const value of this.activeEntitySprites.values()) {
+      const world = this.sampleInterpolatedWorldPosition(value, nowMs);
+      value.renderWorldX = world.x;
+      value.renderWorldY = world.y;
+      const screen = normalizedToScreen(world, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
+      value.container.setPosition(screen.x, screen.y);
+    }
+  }
+
+  private upsertActiveEntityVisual(
+    entity: RenderedWorldEntity,
+    x: number,
+    y: number,
+    snapshot: WorldRendererSnapshot,
+    worldCoordinates: { x: number; y: number },
+    source?: ActiveEntityInterpolationSource,
+  ): void {
     if (!this.entityLayer) {
-      return false;
+      return;
     }
 
-    const imageSrc = entity.imageSrc;
-    if (!imageSrc) {
-      return false;
+    const imageSrc = entity.imageSrc?.trim();
+    const textureKey = imageSrc ? this.ensureDynamicTexture(imageSrc) : null;
+    const canUseImage = Boolean(textureKey && this.textures.exists(textureKey));
+    const existing = this.activeEntitySprites.get(entity.id);
+    const shouldRecreate = !existing
+      || existing.imageSrc !== (canUseImage ? imageSrc : undefined)
+      || existing.memberCount !== entity.memberCount
+      || existing.isHostile !== entity.isHostile
+      || existing.hasQuest !== entity.hasQuest
+      || existing.kind !== entity.kind;
+
+    let container = existing?.container;
+    if (shouldRecreate) {
+      if (existing) {
+        existing.container.destroy(true);
+      }
+      container = this.buildActiveEntityContainer(entity, canUseImage ? (textureKey as string) : null, x, y);
+      this.entityLayer.add(container);
+      this.activeEntitySprites.set(entity.id, {
+        container,
+        imageSrc: canUseImage ? imageSrc : undefined,
+        memberCount: entity.memberCount,
+        isHostile: entity.isHostile,
+        hasQuest: entity.hasQuest,
+        kind: entity.kind,
+        renderWorldX: worldCoordinates.x,
+        renderWorldY: worldCoordinates.y,
+        fromWorldX: worldCoordinates.x,
+        fromWorldY: worldCoordinates.y,
+        targetWorldX: worldCoordinates.x,
+        targetWorldY: worldCoordinates.y,
+        blendStartedAtMs: this.time.now,
+        blendDurationMs: 1,
+        lastWorldMoveAtMs: existing?.lastWorldMoveAtMs,
+        lastWorldMoveIntervalMs: existing?.lastWorldMoveIntervalMs,
+        lastSourceTick: source?.sourceTick,
+        lastSourceUpdatedAtMs: source?.updatedAt ? Date.parse(source.updatedAt) : undefined,
+        sourceCadenceMs: existing?.sourceCadenceMs,
+      });
+      return;
     }
 
-    const textureKey = this.ensureDynamicTexture(imageSrc);
-    if (!textureKey || !this.textures.exists(textureKey)) {
-      return false;
+    if (!container) {
+      return;
     }
 
+    const nowMs = this.time.now;
+    const currentWorld = this.sampleInterpolatedWorldPosition(existing, nowMs);
+
+    const movedInWorld = Math.hypot(
+      worldCoordinates.x - existing.targetWorldX,
+      worldCoordinates.y - existing.targetWorldY,
+    ) > 0.00012;
+
+    const nextSourceUpdatedAtMs = source?.updatedAt ? Date.parse(source.updatedAt) : undefined;
+    const sourceTickChanged = Number.isFinite(source?.sourceTick)
+      && source?.sourceTick !== existing.lastSourceTick;
+    const sourceUpdatedAtChanged = Number.isFinite(nextSourceUpdatedAtMs)
+      && Number.isFinite(existing.lastSourceUpdatedAtMs)
+      ? (nextSourceUpdatedAtMs as number) > (existing.lastSourceUpdatedAtMs as number)
+      : Number.isFinite(nextSourceUpdatedAtMs);
+
+    const hasNewSourceSample = Boolean(sourceTickChanged || sourceUpdatedAtChanged || movedInWorld);
+
+    if (!hasNewSourceSample) {
+      this.activeEntitySprites.set(entity.id, {
+        ...existing,
+        container,
+        renderWorldX: currentWorld.x,
+        renderWorldY: currentWorld.y,
+        lastSourceTick: source?.sourceTick ?? existing.lastSourceTick,
+        lastSourceUpdatedAtMs: nextSourceUpdatedAtMs ?? existing.lastSourceUpdatedAtMs,
+      });
+      return;
+    }
+
+    const fromScreen = normalizedToScreen(currentWorld, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
+    const toScreen = normalizedToScreen(worldCoordinates, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
+    const distancePx = Phaser.Math.Distance.Between(fromScreen.x, fromScreen.y, toScreen.x, toScreen.y);
+    const heroPixelsPerSecond = this.resolveHeroLikePixelsPerSecond(snapshot);
+    const configuredTweenMaxMs = Math.max(snapshot.npcMovement.tweenMinMs, snapshot.npcMovement.tweenMaxMs);
+    const effectiveTweenMaxMs = Math.min(configuredTweenMaxMs, 560);
+
+    const baseDurationMs = Phaser.Math.Clamp(
+      (distancePx / heroPixelsPerSecond) * 1000,
+      snapshot.npcMovement.tweenMinMs,
+      effectiveTweenMaxMs,
+    );
+
+    const observedSourceIntervalMs = Number.isFinite(nextSourceUpdatedAtMs) && Number.isFinite(existing.lastSourceUpdatedAtMs)
+      ? Phaser.Math.Clamp((nextSourceUpdatedAtMs as number) - (existing.lastSourceUpdatedAtMs as number), 90, 2400)
+      : undefined;
+    const observedIntervalMs = observedSourceIntervalMs ?? (existing.lastWorldMoveAtMs !== undefined
+      ? Phaser.Math.Clamp(nowMs - existing.lastWorldMoveAtMs, 120, 2200)
+      : undefined);
+    const smoothedIntervalMs = observedIntervalMs === undefined
+      ? existing.lastWorldMoveIntervalMs
+      : existing.lastWorldMoveIntervalMs === undefined
+        ? observedIntervalMs
+        : (existing.lastWorldMoveIntervalMs * 0.65) + (observedIntervalMs * 0.35);
+    const cadenceDurationMs = smoothedIntervalMs === undefined
+      ? undefined
+      : Phaser.Math.Clamp(
+        smoothedIntervalMs * 0.92,
+        snapshot.npcMovement.tweenMinMs,
+        effectiveTweenMaxMs,
+      );
+    const durationMs = Phaser.Math.Clamp(
+      Math.max(baseDurationMs, cadenceDurationMs ?? 0),
+      snapshot.npcMovement.tweenMinMs,
+      effectiveTweenMaxMs,
+    );
+
+    this.activeEntitySprites.set(entity.id, {
+      ...existing,
+      container,
+      renderWorldX: currentWorld.x,
+      renderWorldY: currentWorld.y,
+      fromWorldX: currentWorld.x,
+      fromWorldY: currentWorld.y,
+      targetWorldX: worldCoordinates.x,
+      targetWorldY: worldCoordinates.y,
+      blendStartedAtMs: nowMs,
+      blendDurationMs: distancePx <= 1.2 ? 1 : durationMs,
+      lastWorldMoveAtMs: nowMs,
+      lastWorldMoveIntervalMs: smoothedIntervalMs,
+      lastSourceTick: source?.sourceTick ?? existing.lastSourceTick,
+      lastSourceUpdatedAtMs: nextSourceUpdatedAtMs ?? existing.lastSourceUpdatedAtMs,
+      sourceCadenceMs: smoothedIntervalMs,
+    });
+  }
+
+  private buildActiveEntityContainer(
+    entity: RenderedWorldEntity,
+    textureKey: string | null,
+    x: number,
+    y: number,
+  ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
     const layout = resolveWorldEntityMarkerLayout(entity);
 
-    if (layout.clipShape === 'circle') {
-      const ring = this.add.circle(0, 0, (layout.widthPx / 2) + 1, 0x1a120c, 0.96).setStrokeStyle(2, 0xd8b15a, 1);
-      container.add(ring);
+    if (textureKey) {
+      if (layout.clipShape === 'circle') {
+        const ring = this.add.circle(0, 0, (layout.widthPx / 2) + 1, 0x1a120c, 0.96).setStrokeStyle(2, 0xd8b15a, 1);
+        container.add(ring);
+      }
+
+      const image = this.add.image(0, 0, textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
+
+      if (layout.clipShape === 'circle') {
+        const maskShape = this.add.circle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2, 0xffffff, 1);
+        maskShape.setVisible(false);
+        image.setMask(maskShape.createGeometryMask());
+        container.add(maskShape);
+      }
+
+      container.add(image);
+    } else {
+      const fillColor = entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc;
+      const token = this.add.circle(0, 0, 9, fillColor, 0.95).setStrokeStyle(2, 0x120e09, 0.9);
+      container.add(token);
     }
 
-    const image = this.add.image(0, 0, textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
-
-    if (layout.clipShape === 'circle') {
-      const maskShape = this.add.circle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2, 0xffffff, 1);
-      maskShape.setVisible(false);
-      image.setMask(maskShape.createGeometryMask());
-      container.add(maskShape);
+    if (entity.memberCount > 1) {
+      container.add(this.createMarkerBadge(String(entity.memberCount), 10, 10, 0xf5d18d, 0x2d1a0e));
     }
-
-    container.add(image);
+    if (entity.isHostile) {
+      container.add(this.createMarkerBadge('!', 12, -12, 0xff4444, 0xffffff));
+    }
+    if (entity.hasQuest) {
+      container.add(this.createMarkerBadge('?', -12, -12, 0xffff00, 0x333333));
+    }
 
     if (entity.isHostile) {
       container.setAlpha(0.96);
     }
 
     container.setDepth(20);
+    return container;
+  }
 
-    this.entityLayer.add(container);
-    return true;
+  private resolveHeroLikePixelsPerSecond(snapshot: WorldRendererSnapshot): number {
+    const heroWorldUnitsPerSecond = 0.0105;
+    const pxPerWorldUnitX = snapshot.widthPx / Math.max(snapshot.camera.width, 0.0001);
+    const pxPerWorldUnitY = snapshot.heightPx / Math.max(snapshot.camera.height, 0.0001);
+    const averagePxPerWorldUnit = (pxPerWorldUnitX + pxPerWorldUnitY) / 2;
+    const baseline = heroWorldUnitsPerSecond * averagePxPerWorldUnit;
+    return Math.max(120, baseline * snapshot.npcMovement.speedScale);
   }
 
   private ensureDynamicTexture(imageSrc: string): string | null {
@@ -427,7 +660,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     }
 
     this.pendingTextureKeys.add(textureKey);
-    this.load.image(textureKey, imageSrc);
+    this.load.image(textureKey, resolveTextureSource(imageSrc));
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       this.pendingTextureKeys.delete(textureKey);
       this.renderSnapshot();
@@ -468,11 +701,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     return snapshot.camera.width <= 0.105;
   }
 
-  private drawMarkerBadge(text: string, x: number, y: number, backgroundColor: number, textColor: number) {
-    if (!this.entityLayer) {
-      return;
-    }
-
+  private createMarkerBadge(text: string, x: number, y: number, backgroundColor: number, textColor: number): Phaser.GameObjects.Container {
     const badge = this.add.container(x, y);
     const circle = this.add.circle(0, 0, 10, backgroundColor, 1).setStrokeStyle(1, 0x2b2016, 0.8);
     const label = this.add.text(0, 0, text, {
@@ -483,7 +712,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     }).setOrigin(0.5, 0.5);
     badge.add([circle, label]);
     badge.setDepth(30);
-    this.entityLayer.add(badge);
+    return badge;
   }
 
   private addLabel(text: string, x: number, y: number, color = '#f8edd8') {
@@ -507,19 +736,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     gameplayPaused = false,
     playerStartPosition,
     zones = WORLD_MAP_ZONES as WorldMapZone[],
-    regions = [],
-    onOpenLocation,
-    onEnterZone,
     onHoverZone,
-    onRuntimeZoneInteract,
-    onPlayerPosition,
-    onPlayerState,
-    playerTargetPosition = null,
-    playerTargetLocationId = null,
     movementLocked = false,
-    controlScheme = 'arrows',
-    playerSpeed,
-    sprintActive = false,
     playQuestMarkers = [],
     playNpcMarkers = [],
     sceneSnapshot = null,
@@ -532,91 +750,46 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<PhaserWorldMapScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
-  const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
 
   const [size, setSize] = useState({ width: 1200, height: 780 });
-  const initialPlayer = useMemo<MapPlayer>(() => ({
-    ...PLAY_PLAYER_BASE,
-    speed: runtimeSettings.playerSpeed,
-    x: clamp01(playerStartPosition?.x ?? PLAY_PLAYER_BASE.x),
-    y: clamp01(playerStartPosition?.y ?? PLAY_PLAYER_BASE.y),
-  }), [playerStartPosition?.x, playerStartPosition?.y, runtimeSettings.playerSpeed]);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
-  const [cameraFocusPoint, setCameraFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; zone: WorldMapZone } | null>(null);
-
-  const resolveCanMoveTo = useCallback((x: number, y: number) => {
-    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
-    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
-    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
-    return cell ? !isBlockedRegionType(cell.regionType) : true;
-  }, [paintedCellMap]);
-
-  const resolveSpeedMultiplier = useCallback((x: number, y: number) => {
-    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
-    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
-    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
-    return cell ? getRegionMoveSpeedMultiplier(cell.regionType) : 1;
-  }, [paintedCellMap]);
-  const { player, currentZone, moveToPoint } = useWorldRuntimeController({
-    enabled: true,
-    initialPlayer,
-    playerStartPosition,
-    defaultPlayerSpeed: runtimeSettings.playerSpeed,
-    playerSpeed,
-    gameplayPaused,
-    movementLocked,
-    controlScheme,
-    sprintActive,
-    zones,
-    resolveCanMoveTo,
-    resolveSpeedMultiplier,
-    playerTargetPosition,
-    playerTargetLocationId,
-    onPlayerPosition,
-    onPlayerState,
-    onEnterZone,
-    onOpenLocation,
-  });
+  const [runtimeSettings, setRuntimeSettings] = useState(() => loadWorldMapRuntimeSettings());
+  const snapshotPlayerPosition = sceneSnapshot?.player.position ?? playerStartPosition ?? { x: 0.53, y: 0.83 };
+  const currentZone = sceneSnapshot?.currentZoneId
+    ? zones.find((zone) => zone.id === sceneSnapshot.currentZoneId) ?? null
+    : null;
 
   const camera = useMemo<WorldCamera>(() => {
-    const width = 1 / runtimeSettings.playZoom;
-    const height = 1 / runtimeSettings.playZoom;
-    const cameraTarget = cameraFocusPoint ?? { x: player.x, y: player.y };
+    const fallback = { left: 0, top: 0, width: 1, height: 1 };
+    const snapshotCamera = sceneSnapshot?.camera ?? fallback;
+    const width = Math.max(0.001, Math.min(1, snapshotCamera.width));
+    const height = Math.max(0.001, Math.min(1, snapshotCamera.height));
     return {
       width,
       height,
-      left: Math.max(0, Math.min(1 - width, cameraTarget.x - width / 2)),
-      top: Math.max(0, Math.min(1 - height, cameraTarget.y - height / 2)),
+      left: Math.max(0, Math.min(1 - width, snapshotCamera.left)),
+      top: Math.max(0, Math.min(1 - height, snapshotCamera.top)),
     };
-  }, [cameraFocusPoint, player.x, player.y, runtimeSettings.playZoom]);
+  }, [sceneSnapshot?.camera]);
 
   useImperativeHandle(ref, () => ({
     resetView() {
-      setCameraFocusPoint(null);
+      onSceneCommand?.({ type: 'focus_point', point: null });
     },
     fitToScreen() {
-      setCameraFocusPoint(null);
+      onSceneCommand?.({ type: 'focus_point', point: null });
     },
     focusZone(zoneId) {
-      if (!zoneId) {
-        setCameraFocusPoint(null);
-        return;
-      }
-
-      const zone = zones.find((entry) => entry.id === zoneId) ?? null;
-      if (!zone) {
-        return;
-      }
-
-      const [x, y] = getZoneCenter(zone);
-      setCameraFocusPoint({ x, y });
+      onSceneCommand?.({ type: 'focus_zone', zoneId: zoneId ?? null });
     },
     focusPoint(point) {
-      setCameraFocusPoint(point ? { x: point[0], y: point[1] } : null);
+      onSceneCommand?.({
+        type: 'focus_point',
+        point: point ? { x: point[0], y: point[1] } : null,
+      });
     },
-  }), [zones]);
+  }), [onSceneCommand]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -629,6 +802,22 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleRuntimeSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<ReturnType<typeof loadWorldMapRuntimeSettings>>).detail;
+      if (detail && typeof detail === 'object') {
+        setRuntimeSettings(detail);
+        return;
+      }
+      setRuntimeSettings(loadWorldMapRuntimeSettings());
+    };
+
+    window.addEventListener(WORLD_MAP_RUNTIME_SETTINGS_EVENT, handleRuntimeSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener(WORLD_MAP_RUNTIME_SETTINGS_EVENT, handleRuntimeSettingsChanged as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -661,7 +850,7 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       widthPx: size.width,
       heightPx: size.height,
       camera,
-      player,
+      player: { x: snapshotPlayerPosition.x, y: snapshotPlayerPosition.y },
       playerAvatarUrl: props.playerAvatarUrl,
       zones,
       hoverZoneId: hoverZone?.id ?? null,
@@ -672,12 +861,36 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       renderedActiveEntities,
       lockedWorldEntityId,
       lockedWorldEntityCoordinates,
+      npcMovement: {
+        speedScale: runtimeSettings.phaserNpcMoveSpeedScale,
+        tweenMinMs: runtimeSettings.phaserNpcMoveTweenMinMs,
+        tweenMaxMs: runtimeSettings.phaserNpcMoveTweenMaxMs,
+      },
     });
-  }, [camera, currentZone?.id, hoverZone?.id, lockedWorldEntityCoordinates, lockedWorldEntityId, playNpcMarkers, playQuestMarkers, player, props.playerAvatarUrl, sceneSnapshot?.activeEntities, sceneSnapshot?.renderedActiveEntities, size.height, size.width, zones]);
+  }, [
+    camera,
+    currentZone?.id,
+    hoverZone?.id,
+    lockedWorldEntityCoordinates,
+    lockedWorldEntityId,
+    playNpcMarkers,
+    playQuestMarkers,
+    props.playerAvatarUrl,
+    runtimeSettings.phaserNpcMoveSpeedScale,
+    runtimeSettings.phaserNpcMoveTweenMaxMs,
+    runtimeSettings.phaserNpcMoveTweenMinMs,
+    sceneSnapshot?.activeEntities,
+    sceneSnapshot?.renderedActiveEntities,
+    size.height,
+    size.width,
+    snapshotPlayerPosition.x,
+    snapshotPlayerPosition.y,
+    zones,
+  ]);
 
   function screenToNormalized(clientX: number, clientY: number): { x: number; y: number; localX: number; localY: number } {
     const rect = hostRef.current?.getBoundingClientRect();
-    if (!rect) return { x: player.x, y: player.y, localX: 0, localY: 0 };
+    if (!rect) return { x: snapshotPlayerPosition.x, y: snapshotPlayerPosition.y, localX: 0, localY: 0 };
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
     return {
@@ -690,7 +903,6 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (gameplayPaused || movementLocked || event.button !== 0) return;
-    setCameraFocusPoint(null);
     const point = screenToNormalized(event.clientX, event.clientY);
     const resolution = resolveWorldClickInteraction({
       point: { x: point.x, y: point.y },
@@ -717,19 +929,12 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     if (resolution.clickedZone) {
       if (onSceneCommand) {
         onSceneCommand({ type: 'interact_zone', zoneId: resolution.clickedZone.id, point: { x: point.x, y: point.y } });
-      } else {
-        onRuntimeZoneInteract?.(resolution.clickedZone, { x: point.x, y: point.y });
       }
     }
 
     const moveCommand = resolution.commands.find((command) => command.type === 'move_to_point');
     if (moveCommand) {
       onSceneCommand?.(moveCommand);
-    }
-
-    if (resolution.moveTarget && !onSceneCommand) {
-      moveToPoint(resolution.moveTarget.point, resolution.moveTarget.pendingLocationId);
-      return;
     }
   }
 
@@ -771,7 +976,7 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
         ) : null}
       </div>
       <footer className="wm-map-legend">
-        <span>Игрок: {player.x.toFixed(3)}, {player.y.toFixed(3)} | Зона: {currentZone?.name ?? 'Пустоши'} | Наведение: {hoverZone?.name ?? '-'}</span>
+        <span>Игрок: {snapshotPlayerPosition.x.toFixed(3)}, {snapshotPlayerPosition.y.toFixed(3)} | Зона: {currentZone?.name ?? 'Пустоши'} | Наведение: {hoverZone?.name ?? '-'}</span>
       </footer>
     </section>
   );

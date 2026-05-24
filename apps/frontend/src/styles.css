@@ -7301,6 +7301,19 @@ h3 {
   gap: 10px;
 }
 
+.zone-editor-color-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zone-editor-color-input-row input[type="color"] {
+  width: 52px;
+  min-width: 52px;
+  height: 32px;
+  padding: 2px;
+}
+
 .zone-editor-color-controls {
   display: grid;
   gap: 8px;
@@ -11495,5 +11508,66 @@ body:has(.page.page--scroll) {
 
   .godmode-console__header {
     flex-direction: column;
+  }
+}
+
+.visual-fx-page {
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+  align-items: start;
+}
+
+.visual-fx-section {
+  display: grid;
+  gap: 12px;
+}
+
+.visual-fx-section h3,
+.visual-fx-preview h3 {
+  margin: 0;
+}
+
+.visual-fx-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.visual-fx-preview-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.visual-fx-preview-host {
+  width: 100%;
+  min-height: 350px;
+  border: 1px solid rgba(216, 177, 90, 0.42);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #120e09;
+}
+
+.visual-fx-preview-host canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.visual-fx-list button {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  min-height: 78px;
+}
+
+.visual-fx-list button span {
+  font-size: 0.82rem;
+  opacity: 0.76;
+}
+
+@media (max-width: 980px) {
+  .visual-fx-page {
+    grid-template-columns: 1fr;
   }
 }

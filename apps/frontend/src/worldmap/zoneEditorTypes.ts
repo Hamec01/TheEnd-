@@ -32,9 +32,9 @@ export type ZoneEditorTool = 'select' | 'circle' | 'polygon' | 'rectangle' | 'pa
 
 export type RegionType = 'walkable' | 'blocked' | 'water' | 'swamp' | 'sand' | 'road' | 'danger' | 'trigger';
 
-export type RegionToolMode = 'circle' | 'pencil' | 'eraser';
+export type RegionToolMode = 'circle' | 'pencil' | 'brush' | 'eraser';
 
-export type RegionBrushSize = 1 | 2 | 3 | 5;
+export type RegionBrushSize = 0.05 | 0.25 | 0.5 | 0.75 | 1 | 2 | 3 | 5 | 8 | 12;
 
 export interface RegionCell {
   x: number;
@@ -45,6 +45,8 @@ export interface PaintedRegion {
   id: string;
   name: string;
   type: RegionType;
+  color?: string;
+  gridSize?: number;
   cells: RegionCell[];
 }
 

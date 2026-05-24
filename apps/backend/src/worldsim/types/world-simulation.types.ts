@@ -126,10 +126,17 @@ export interface ActiveWorldEntity {
   routeId: string;
   
   // Текущее состояние
-  state: 'traveling' | 'resting' | 'in_city' | 'in_combat' | 'dead' | 'frozen' | 'respawning';
+  state: 'traveling' | 'resting' | 'blocked_waiting' | 'in_city' | 'in_combat' | 'dead' | 'frozen' | 'respawning';
   
   // Прогресс по маршруту (0.0 - 1.0)
   routeProgress: number;
+  routeWaypointIndex?: number;
+  routePolyline?: Array<{ x: number; y: number }>;
+  routePolylineIndex?: number;
+
+  maxStamina?: number;
+  currentStamina?: number;
+  staminaRegenPerTick?: number;
   
   // Когда будет следующее событие (например, прибытие в город)
   nextEventAt?: string; // ISO timestamp
@@ -205,6 +212,8 @@ export interface EconomicEvent {
  * Снимок мира для отправки на фронтенд (игроку).
  */
 export interface WorldSimulationSnapshot {
+  sourceTick: number;
+  generatedAt: string;
   activeEntities: {
     id: string;
     archetypeId: string;
@@ -221,6 +230,11 @@ export interface WorldSimulationSnapshot {
     coordinates: { x: number; y: number };
     isHostile: boolean;
     hasQuest: boolean;
+    updatedAt: string;
+    sourceTick: number;
+    maxStamina?: number;
+    currentStamina?: number;
+    staminaRegenPerTick?: number;
   }[];
   
   cityMarkets: CityMarketState[];

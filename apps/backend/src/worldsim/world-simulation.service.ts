@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ContentService } from '../content/content.service';
+import type { RegionType } from '../content/content.types';
 import type {
   ActiveWorldEntity,
   CityMarketState,
@@ -9,6 +10,8 @@ import type {
   WorldSpawnRule,
   WorldSimulationSnapshot,
 } from './types/world-simulation.types';
+import { applyWorldEntityStaminaTick, resolveWorldEntityStaminaDefaults } from './world-entity-stamina';
+import { WorldRegionPathAdapter } from './world-region-path.adapter';
 
 /**
  * Сервис симуляции живого мира.
@@ -30,6 +33,11 @@ export class WorldSimulationService {
   // Симуляция время (для тестирования)
   private simulationTime: Date = new Date();
   private simulationTickCount = 0;
+  private worldPathAdapter: WorldRegionPathAdapter | null = null;
+
+  private readonly defaultEntityMaxStamina = 150;
+  private readonly defaultEntityStaminaRegenPerTick = 6;
+  private readonly entityMoveCostPerWorldUnit = 220;
 
   private clamp01(value: number): number {
     return Math.min(1, Math.max(0, value));
@@ -67,6 +75,11 @@ export class WorldSimulationService {
         }
       }
     }
+  }
+
+  private refreshWorldPathAdapter(): void {
+    const worldMap = this.contentService.getWorldMap();
+    this.worldPathAdapter = new WorldRegionPathAdapter(worldMap);
   }
 
   private getZoneAnchorCoordinates(zoneId: string | undefined): { x: number; y: number } {
@@ -110,6 +123,239 @@ export class WorldSimulationService {
       x: start.x + (end.x - start.x) * localT,
       y: start.y + (end.y - start.y) * localT,
     };
+  }
+
+  private resolveTravelTimeSeconds(route: WorldRoute): number {
+    const isBuildDev = process.env.NODE_ENV !== 'production';
+    return isBuildDev
+      ? route.travelTimingDevMinutes * 60
+      : route.travelTimingReleaseHours * 3600;
+  }
+
+  private resolveRouteLoopDistance(route: WorldRoute): number {
+    if (route.waypoints.length <= 1) {
+      return 0.001;
+    }
+
+    let distance = 0;
+    for (let index = 0; index < route.waypoints.length - 1; index += 1) {
+      const start = this.getZoneAnchorCoordinates(route.waypoints[index]?.zoneId);
+      const end = this.getZoneAnchorCoordinates(route.waypoints[index + 1]?.zoneId);
+      distance += Math.hypot(end.x - start.x, end.y - start.y);
+    }
+
+    // Keep loops moving even on degenerate routes.
+    return Math.max(0.001, distance);
+  }
+
+  private resolveWaypointCursor(entity: ActiveWorldEntity, route: WorldRoute): { fromIndex: number; toIndex: number } {
+    const waypointCount = route.waypoints.length;
+    if (waypointCount <= 1) {
+      return { fromIndex: 0, toIndex: 0 };
+    }
+
+    const fromIndex = Number.isFinite(entity.routeWaypointIndex)
+      ? Math.max(0, Math.min(waypointCount - 1, Number(entity.routeWaypointIndex)))
+      : 0;
+    const toIndex = (fromIndex + 1) % waypointCount;
+    return { fromIndex, toIndex };
+  }
+
+  private buildEntityRoutePolyline(
+    route: WorldRoute,
+    fromIndex: number,
+    toIndex: number,
+  ): Array<{ x: number; y: number }> | null {
+    const start = this.getZoneAnchorCoordinates(route.waypoints[fromIndex]?.zoneId);
+    const end = this.getZoneAnchorCoordinates(route.waypoints[toIndex]?.zoneId);
+
+    if (!this.worldPathAdapter) {
+      return [start, end];
+    }
+
+    const polyline = this.worldPathAdapter.buildPolyline(start, end);
+    return polyline;
+  }
+
+  private resolveRegionTypeAtPoint(point: { x: number; y: number }): RegionType {
+    if (!this.worldPathAdapter) {
+      return 'walkable';
+    }
+    const cell = this.worldPathAdapter.worldToCell(point);
+    return this.worldPathAdapter.getRegionTypeAt(cell);
+  }
+
+  private applyIdleRegen(entity: ActiveWorldEntity): void {
+    const tick = applyWorldEntityStaminaTick(
+      {
+        state: {
+          maxStamina: entity.maxStamina,
+          currentStamina: entity.currentStamina,
+          staminaRegenPerTick: entity.staminaRegenPerTick,
+        },
+        movementDistance: 0,
+      },
+      {
+        maxStamina: this.defaultEntityMaxStamina,
+        regenPerTick: this.defaultEntityStaminaRegenPerTick,
+        moveCostPerWorldUnit: this.entityMoveCostPerWorldUnit,
+      },
+    );
+
+    entity.maxStamina = tick.maxStamina;
+    entity.currentStamina = tick.currentStamina;
+    entity.staminaRegenPerTick = tick.staminaRegenPerTick;
+  }
+
+  private enterRestingState(entity: ActiveWorldEntity, waypoint: WorldRoute['waypoints'][number] | undefined): void {
+    if (waypoint?.cityId) {
+      if (entity.cargo && entity.cargo.length > 0) {
+        this.addCargoToMarket(waypoint.cityId, entity.cargo);
+      }
+      this.addEconomicEvent({
+        type: 'merchant_arrival',
+        cityId: waypoint.cityId,
+        entityId: entity.id,
+        timestamp: this.simulationTime.toISOString(),
+      } as EconomicEvent);
+    }
+
+    const stopMin = waypoint?.stopDurationMin ?? 0;
+    const stopMax = waypoint?.stopDurationMax ?? stopMin;
+    if (stopMax <= 0) {
+      entity.state = 'traveling';
+      entity.nextEventAt = undefined;
+      return;
+    }
+
+    const stopDuration = stopMin + Math.random() * Math.max(0, stopMax - stopMin);
+    entity.state = 'resting';
+    entity.nextEventAt = new Date(this.simulationTime.getTime() + stopDuration * 60 * 1000).toISOString();
+  }
+
+  private moveEntityAlongRoute(entity: ActiveWorldEntity, route: WorldRoute, deltaSeconds: number): void {
+    const waypointCount = route.waypoints.length;
+    if (waypointCount <= 1) {
+      entity.state = 'resting';
+      return;
+    }
+
+    const staminaState = resolveWorldEntityStaminaDefaults(
+      {
+        maxStamina: entity.maxStamina,
+        currentStamina: entity.currentStamina,
+        staminaRegenPerTick: entity.staminaRegenPerTick,
+      },
+      {
+        maxStamina: this.defaultEntityMaxStamina,
+        regenPerTick: this.defaultEntityStaminaRegenPerTick,
+        moveCostPerWorldUnit: this.entityMoveCostPerWorldUnit,
+      },
+    );
+
+    entity.maxStamina = staminaState.maxStamina;
+    entity.currentStamina = staminaState.currentStamina;
+    entity.staminaRegenPerTick = staminaState.staminaRegenPerTick;
+
+    if ((entity.currentStamina ?? 0) <= 0) {
+      entity.state = 'blocked_waiting';
+      this.applyIdleRegen(entity);
+      return;
+    }
+
+    const cursor = this.resolveWaypointCursor(entity, route);
+    if (!entity.routePolyline || entity.routePolyline.length < 2) {
+      const nextPolyline = this.buildEntityRoutePolyline(route, cursor.fromIndex, cursor.toIndex);
+      if (!nextPolyline || nextPolyline.length < 2) {
+        entity.state = 'blocked_waiting';
+        return;
+      }
+      entity.routePolyline = nextPolyline;
+      entity.routePolylineIndex = 0;
+      entity.visibility.anchorCoordinates = {
+        x: nextPolyline[0].x,
+        y: nextPolyline[0].y,
+      };
+      entity.visibility.anchorZoneId = route.waypoints[cursor.fromIndex]?.zoneId;
+    }
+
+    const travelTimeSeconds = this.resolveTravelTimeSeconds(route);
+    const routeDistance = this.resolveRouteLoopDistance(route);
+    let remainingDistance = (routeDistance / Math.max(1, travelTimeSeconds)) * deltaSeconds;
+    let traveledDistance = 0;
+    let latestRegionType: RegionType = 'walkable';
+
+    const polyline = entity.routePolyline;
+    let nodeIndex = Math.max(0, Math.min(polyline.length - 2, Number(entity.routePolylineIndex ?? 0)));
+    let current = entity.visibility.anchorCoordinates
+      ? { ...entity.visibility.anchorCoordinates }
+      : { ...polyline[0] };
+
+    while (remainingDistance > 0.000001 && nodeIndex < polyline.length - 1) {
+      const segmentEnd = polyline[nodeIndex + 1];
+      const dx = segmentEnd.x - current.x;
+      const dy = segmentEnd.y - current.y;
+      const segmentDistance = Math.hypot(dx, dy);
+
+      if (segmentDistance <= 0.000001) {
+        current = { ...segmentEnd };
+        nodeIndex += 1;
+        continue;
+      }
+
+      const step = Math.min(segmentDistance, remainingDistance);
+      const ratio = step / segmentDistance;
+      current = {
+        x: this.clamp01(current.x + dx * ratio),
+        y: this.clamp01(current.y + dy * ratio),
+      };
+
+      traveledDistance += step;
+      remainingDistance -= step;
+      latestRegionType = this.resolveRegionTypeAtPoint(current);
+
+      if (step >= segmentDistance - 0.000001) {
+        nodeIndex += 1;
+      }
+    }
+
+    const staminaTick = applyWorldEntityStaminaTick(
+      {
+        state: {
+          maxStamina: entity.maxStamina,
+          currentStamina: entity.currentStamina,
+          staminaRegenPerTick: entity.staminaRegenPerTick,
+        },
+        movementDistance: traveledDistance,
+        regionType: latestRegionType,
+      },
+      {
+        maxStamina: this.defaultEntityMaxStamina,
+        regenPerTick: this.defaultEntityStaminaRegenPerTick,
+        moveCostPerWorldUnit: this.entityMoveCostPerWorldUnit,
+      },
+    );
+
+    entity.maxStamina = staminaTick.maxStamina;
+    entity.currentStamina = staminaTick.currentStamina;
+    entity.staminaRegenPerTick = staminaTick.staminaRegenPerTick;
+    entity.visibility.anchorCoordinates = current;
+    entity.routePolylineIndex = nodeIndex;
+
+    const destinationReached = nodeIndex >= polyline.length - 1;
+    if (!destinationReached) {
+      entity.state = staminaTick.currentStamina <= 0 ? 'blocked_waiting' : 'traveling';
+      return;
+    }
+
+    entity.routeWaypointIndex = cursor.toIndex;
+    entity.routeProgress = cursor.toIndex / Math.max(1, waypointCount - 1);
+    entity.visibility.anchorZoneId = route.waypoints[cursor.toIndex]?.zoneId;
+    entity.routePolyline = undefined;
+    entity.routePolylineIndex = undefined;
+
+    const arrivedWaypoint = route.waypoints[cursor.toIndex];
+    this.enterRestingState(entity, arrivedWaypoint);
   }
 
   private hasActiveEntityForArchetype(archetypeId: string): boolean {
@@ -166,6 +412,7 @@ export class WorldSimulationService {
   async initializeSimulation(): Promise<void> {
     this.logger.log('Initializing world simulation...');
     this.rebuildZoneCoordinateIndex();
+    this.refreshWorldPathAdapter();
 
     // Предустановленные архетипы торговцев (подключены к реальным NPC)
     const defaultArchetypes: WorldNpcArchetype[] = [
@@ -451,10 +698,29 @@ export class WorldSimulationService {
   private updateRouteProgress(deltaSeconds: number): void {
     for (const entity of this.activeEntities.values()) {
       if (entity.state === 'resting') {
+        this.applyIdleRegen(entity);
         if (entity.nextEventAt && new Date(entity.nextEventAt) <= this.simulationTime) {
           entity.state = 'traveling';
           entity.nextEventAt = undefined;
+          entity.routePolyline = undefined;
+          entity.routePolylineIndex = undefined;
         }
+        continue;
+      }
+
+      if (entity.state === 'blocked_waiting') {
+        const before = Number(entity.currentStamina ?? 0);
+        this.applyIdleRegen(entity);
+        const max = Number(entity.maxStamina ?? this.defaultEntityMaxStamina);
+        const after = Number(entity.currentStamina ?? 0);
+        if (after >= max && max > 0) {
+          entity.state = 'traveling';
+          entity.routePolyline = undefined;
+          entity.routePolylineIndex = undefined;
+        } else if (after < before && before > 0) {
+          entity.currentStamina = before;
+        }
+        entity.updatedAt = this.simulationTime.toISOString();
         continue;
       }
 
@@ -467,65 +733,9 @@ export class WorldSimulationService {
         continue;
       }
 
-      // Получить время путешествия (dev или release)
-      const isBuildDev = process.env.NODE_ENV !== 'production';
-      const travelTimeSeconds = isBuildDev
-        ? route.travelTimingDevMinutes * 60
-        : route.travelTimingReleaseHours * 3600;
-
-      // Обновить прогресс
-      entity.routeProgress += deltaSeconds / travelTimeSeconds;
-      entity.routeProgress = this.clamp01(entity.routeProgress);
-
-      const position = this.getRouteCoordinates(route, entity.routeProgress);
-      entity.visibility.anchorZoneId = route.waypoints[Math.min(route.waypoints.length - 1, Math.floor(entity.routeProgress * Math.max(route.waypoints.length - 1, 1)))]?.zoneId;
-      entity.visibility.anchorCoordinates = position;
+      this.moveEntityAlongRoute(entity, route, deltaSeconds);
       entity.updatedAt = this.simulationTime.toISOString();
-
-      // Проверить прибытие
-      if (entity.routeProgress >= 1.0) {
-        this.onEntityArrived(entity, route);
-      }
     }
-  }
-
-  /**
-   * Что происходит, когда сущность прибывает в город.
-   */
-  private onEntityArrived(entity: ActiveWorldEntity, route: WorldRoute): void {
-    entity.routeProgress = 0;
-    entity.state = 'resting';
-
-    // Найти последний waypoint (город назначения)
-    const lastWaypoint = route.waypoints[route.waypoints.length - 1];
-    if (!lastWaypoint || !lastWaypoint.cityId) {
-      return;
-    }
-
-    entity.visibility.anchorZoneId = lastWaypoint.zoneId;
-    entity.visibility.anchorCoordinates = this.getZoneAnchorCoordinates(lastWaypoint.zoneId);
-    entity.updatedAt = this.simulationTime.toISOString();
-
-    this.logger.log(`Entity ${entity.id} arrived at city ${lastWaypoint.cityId}`);
-
-    // Обновить рынок города (добавить товар)
-    if (entity.cargo && entity.cargo.length > 0) {
-      this.addCargoToMarket(lastWaypoint.cityId, entity.cargo);
-    }
-
-    // Создать событие
-    this.addEconomicEvent({
-      type: 'merchant_arrival',
-      cityId: lastWaypoint.cityId,
-      entityId: entity.id,
-      timestamp: this.simulationTime.toISOString(),
-    } as EconomicEvent);
-
-    // Установить время отдыха
-    const stopMin = lastWaypoint.stopDurationMin ?? 30;
-    const stopMax = lastWaypoint.stopDurationMax ?? 120;
-    const stopDuration = stopMin + Math.random() * (stopMax - stopMin);
-    entity.nextEventAt = new Date(this.simulationTime.getTime() + stopDuration * 60 * 1000).toISOString();
   }
 
   /**
@@ -648,7 +858,15 @@ export class WorldSimulationService {
     }
 
     const firstWaypoint = route.waypoints[0];
-    const start = this.getRouteCoordinates(route, 0);
+    const start = this.getZoneAnchorCoordinates(firstWaypoint?.zoneId);
+    const staminaDefaults = resolveWorldEntityStaminaDefaults(
+      {},
+      {
+        maxStamina: this.defaultEntityMaxStamina,
+        regenPerTick: this.defaultEntityStaminaRegenPerTick,
+        moveCostPerWorldUnit: this.entityMoveCostPerWorldUnit,
+      },
+    );
 
     const entity: ActiveWorldEntity = {
       id: `active_${archetypeId}_${Date.now()}`,
@@ -656,12 +874,16 @@ export class WorldSimulationService {
       routeId,
       state: 'traveling',
       routeProgress: 0,
+      routeWaypointIndex: 0,
       members: archetype.npcTemplateId ? [archetype.npcTemplateId] : [],
       visibility: {
         isVisibleToPlayer: true,
         anchorZoneId: firstWaypoint?.zoneId,
         anchorCoordinates: start,
       },
+      maxStamina: staminaDefaults.maxStamina,
+      currentStamina: staminaDefaults.currentStamina,
+      staminaRegenPerTick: staminaDefaults.staminaRegenPerTick,
       interactions: {},
       createdAt: this.simulationTime.toISOString(),
       updatedAt: this.simulationTime.toISOString(),
@@ -758,10 +980,24 @@ export class WorldSimulationService {
    * Получить снимок мира для отправки на фронтенд.
    */
   getWorldSnapshot(): WorldSimulationSnapshot {
+    const sourceTick = this.simulationTickCount;
+    const generatedAt = this.simulationTime.toISOString();
     const activeEntities = Array.from(this.activeEntities.values())
       .filter((e) => e.visibility.isVisibleToPlayer)
       .map((e) => {
         const archetype = this.archetypes.get(e.archetypeId);
+        const stamina = resolveWorldEntityStaminaDefaults(
+          {
+            maxStamina: e.maxStamina,
+            currentStamina: e.currentStamina,
+            staminaRegenPerTick: e.staminaRegenPerTick,
+          },
+          {
+            maxStamina: this.defaultEntityMaxStamina,
+            regenPerTick: this.defaultEntityStaminaRegenPerTick,
+            moveCostPerWorldUnit: this.entityMoveCostPerWorldUnit,
+          },
+        );
         return {
           id: e.id,
           archetypeId: e.archetypeId,
@@ -778,10 +1014,17 @@ export class WorldSimulationService {
           coordinates: e.visibility.anchorCoordinates ?? { x: 0, y: 0 },
           isHostile: archetype?.kind === 'bandit',
           hasQuest: false, // TODO: Проверить quest bindings
+          updatedAt: e.updatedAt,
+          sourceTick,
+          maxStamina: stamina.maxStamina,
+          currentStamina: stamina.currentStamina,
+          staminaRegenPerTick: stamina.staminaRegenPerTick,
         };
       });
 
     return {
+      sourceTick,
+      generatedAt,
       activeEntities,
       cityMarkets: Array.from(this.marketStates.values()),
       events: this.economicEvents.slice(-100),
@@ -891,6 +1134,8 @@ export class WorldSimulationService {
     }
     entity.visibility.anchorZoneId = zoneId;
     entity.visibility.anchorCoordinates = coordinates;
+    entity.routePolyline = undefined;
+    entity.routePolylineIndex = undefined;
     return true;
   }
 

@@ -63,11 +63,14 @@ export const imageService = {
     return getContentEntry<StoredImage>('images', id);
   },
 
-  async upload(file: File): Promise<StoredImage> {
+  async upload(file: File, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
     const dataUrl = await fileToDataUrl(file);
     const image = await loadImage(dataUrl);
     return uploadContentImage({
+      id: options?.id?.trim() || undefined,
       name: file.name,
+      ...(options?.name?.trim() ? { name: options.name.trim() } : {}),
+      ...(options?.folder?.trim() ? { folder: options.folder.trim() } : {}),
       mimeType: file.type || 'image/png',
       width: image.width,
       height: image.height,
@@ -75,11 +78,13 @@ export const imageService = {
     });
   },
 
-  async uploadResized(file: File, width: number, height: number, options?: { name?: string }): Promise<StoredImage> {
+  async uploadResized(file: File, width: number, height: number, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
     const originalDataUrl = await fileToDataUrl(file);
     const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
     return uploadContentImage({
+      ...(options?.id?.trim() ? { id: options.id.trim() } : {}),
       name: options?.name?.trim() || file.name,
+      ...(options?.folder?.trim() ? { folder: options.folder.trim() } : {}),
       mimeType: 'image/png',
       width,
       height,
@@ -87,7 +92,7 @@ export const imageService = {
     });
   },
 
-  async uploadPreset(file: File, presetId: ImagePresetId, options?: { name?: string }): Promise<StoredImage> {
+  async uploadPreset(file: File, presetId: ImagePresetId, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
     const preset = IMAGE_PRESETS[presetId];
     return this.uploadResized(file, preset.width, preset.height, options);
   },

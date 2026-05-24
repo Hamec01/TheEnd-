@@ -9,6 +9,7 @@ import type {
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { AdminImageField } from '../admin/AdminImageField';
+import { AdminAudioField } from '../admin/AdminAudioField';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import {
   createDefaultBattleMap,
@@ -23,6 +24,7 @@ import {
 } from '../services/battleMaps/battleMapStorage';
 import { ensureNpcsLoaded, getAllNpcs } from '../services/npcRepository';
 import { imageService } from '../services/content/imageService';
+import { buildUploadFolder } from '../services/content/uploadFolders';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../services/content/adminJsonImportExport';
 import type { NpcDefinition } from '../types/npc';
 
@@ -1074,9 +1076,41 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 onChange={(nextValue) => updateIdentityField('imageUrl', nextValue)}
                 onStatus={(text) => onStatusMessage?.(text)}
                 presetId="battle-map-background"
+                suggestedId={draft.id ? `${draft.id}_background` : undefined}
                 suggestedName={`${draft.id || 'battlemap'}-background`}
+                uploadFolder={buildUploadFolder('images', 'battlemaps', draft.id || draft.name || undefined)}
                 label="Загрузка фона карты"
                 hint="Загружает картинку в content-хранилище и подставляет её ID в карту, чтобы фон сохранялся и работал на другом устройстве."
+              />
+              <div className="row">
+                <label>Battle music URL</label>
+                <input value={draft.musicUrl ?? ''} onChange={(event) => updateIdentityField('musicUrl', event.target.value)} placeholder="/content/assets/audio/my-battle-theme.mp3" />
+              </div>
+              <AdminAudioField
+                value={draft.musicUrl}
+                onChange={(nextValue) => updateIdentityField('musicUrl', nextValue)}
+                onStatus={(text) => onStatusMessage?.(text)}
+                suggestedAssetId={`${draft.id || 'battlemap'}-music`}
+                suggestedName={`${draft.id || 'battlemap'}-music`}
+                uploadFolder={buildUploadFolder('audio', 'battlemaps', draft.id || draft.name || undefined, 'music')}
+                mode="url"
+                label="Загрузка музыки боя"
+                hint="Загружает музыку в content-хранилище и подставляет URL, который автоматически запускается при старте боя на этой карте."
+              />
+              <div className="row">
+                <label>Ambient URL</label>
+                <input value={draft.ambientUrl ?? ''} onChange={(event) => updateIdentityField('ambientUrl', event.target.value)} placeholder="/content/assets/audio/my-ambient-loop.ogg" />
+              </div>
+              <AdminAudioField
+                value={draft.ambientUrl}
+                onChange={(nextValue) => updateIdentityField('ambientUrl', nextValue)}
+                onStatus={(text) => onStatusMessage?.(text)}
+                suggestedAssetId={`${draft.id || 'battlemap'}-ambient`}
+                suggestedName={`${draft.id || 'battlemap'}-ambient`}
+                uploadFolder={buildUploadFolder('audio', 'battlemaps', draft.id || draft.name || undefined, 'ambient')}
+                mode="url"
+                label="Загрузка ambient-аудио"
+                hint="Дополнительный ambient-трек карты. Пока сохраняется в карте и доступен для дальнейшего расширения звуковой сцены."
               />
               <div className="battle-map-editor-dimensions">
                 <div className="row">

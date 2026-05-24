@@ -77,8 +77,14 @@ export interface ActiveWorldEntity {
   id: string;
   archetypeId: string;
   routeId: string;
-  state: 'traveling' | 'resting' | 'in_city' | 'in_combat' | 'dead' | 'frozen' | 'respawning';
+  state: 'traveling' | 'resting' | 'blocked_waiting' | 'in_city' | 'in_combat' | 'dead' | 'frozen' | 'respawning';
   routeProgress: number;
+  routeWaypointIndex?: number;
+  routePolyline?: Array<{ x: number; y: number }>;
+  routePolylineIndex?: number;
+  maxStamina?: number;
+  currentStamina?: number;
+  staminaRegenPerTick?: number;
   nextEventAt?: string;
   members: string[];
   cargo?: {
@@ -130,6 +136,8 @@ export interface EconomicEvent {
 }
 
 export interface WorldSimulationSnapshot {
+  sourceTick: number;
+  generatedAt: string;
   activeEntities: {
     id: string;
     archetypeId: string;
@@ -146,6 +154,11 @@ export interface WorldSimulationSnapshot {
     coordinates: { x: number; y: number };
     isHostile: boolean;
     hasQuest: boolean;
+    updatedAt: string;
+    sourceTick: number;
+    maxStamina?: number;
+    currentStamina?: number;
+    staminaRegenPerTick?: number;
   }[];
   cityMarkets: CityMarketState[];
   events: EconomicEvent[];

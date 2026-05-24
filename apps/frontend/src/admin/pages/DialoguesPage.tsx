@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
+import { AdminAudioField } from '../AdminAudioField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel } from '../adminUi';
 import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from '../adminVisuals';
@@ -44,6 +45,21 @@ function emptyDialogue(): DialogueDefinition {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function isLikelyWindowsPath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function sanitizeAudioAssetRef(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (isLikelyWindowsPath(normalized)) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function parseJsonArray<T>(raw: string, fallback: T[]): T[] {
@@ -211,12 +227,21 @@ export function DialoguesPage() {
       id: draft.id.trim() || `dlg_${Math.random().toString(36).slice(2, 8)}`,
       title: draft.title.trim(),
       startNodeId: draft.startNodeId.trim(),
-      introVoiceAssetId: draft.introVoiceAssetId?.trim() || undefined,
-      introMusicAssetId: draft.introMusicAssetId?.trim() || undefined,
+        introVoiceAssetId: sanitizeAudioAssetRef(draft.introVoiceAssetId),
+        introMusicAssetId: sanitizeAudioAssetRef(draft.introMusicAssetId),
       nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes),
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
     };
+
+      if (draft.introVoiceAssetId && !prepared.introVoiceAssetId) {
+        setStatusText('Intro voice выглядит как локальный путь Windows. Загрузите файл через кнопку "Выбрать аудио" (asset ID).');
+        return;
+      }
+      if (draft.introMusicAssetId && !prepared.introMusicAssetId) {
+        setStatusText('Intro music выглядит как локальный путь Windows. Загрузите файл через кнопку "Выбрать аудио" (asset ID).');
+        return;
+      }
 
     const result = dialogueValidation(prepared, worldData);
     if (prepared.status === 'active' && result.errors.length > 0) {
@@ -485,6 +510,28 @@ export function DialoguesPage() {
           <label><AdminFieldLabel label="Intro voice asset ID" hint="Optional voice asset played when the dialogue starts." /><input value={draft.introVoiceAssetId ?? ''} onChange={(event) => patch({ introVoiceAssetId: event.target.value || undefined })} placeholder="vo_dialogue_intro_01" /></label>
           <label><AdminFieldLabel label="Intro music asset ID" hint="Optional music cue for this dialogue scene." /><input value={draft.introMusicAssetId ?? ''} onChange={(event) => patch({ introMusicAssetId: event.target.value || undefined })} placeholder="music_dialogue_tension" /></label>
         </div>
+
+        <AdminAudioField
+          value={draft.introVoiceAssetId}
+          onChange={(nextValue) => patch({ introVoiceAssetId: nextValue || undefined })}
+          onStatus={setStatusText}
+          mode="assetId"
+          suggestedAssetId={`${draft.id || 'dialogue'}_intro_voice`}
+          suggestedName={`${draft.id || 'dialogue'}-intro-voice`}
+          label="Загрузить intro voice"
+          hint="Загружает voice-файл и подставляет его asset ID в поле Intro voice asset ID."
+        />
+
+        <AdminAudioField
+          value={draft.introMusicAssetId}
+          onChange={(nextValue) => patch({ introMusicAssetId: nextValue || undefined })}
+          onStatus={setStatusText}
+          mode="assetId"
+          suggestedAssetId={`${draft.id || 'dialogue'}_intro_music`}
+          suggestedName={`${draft.id || 'dialogue'}-intro-music`}
+          label="Загрузить intro music"
+          hint="Загружает music-файл и подставляет его asset ID в поле Intro music asset ID."
+        />
 
         <label>
           <AdminFieldLabel label="Описание" hint="Техническое описание для редактора." />

@@ -11,6 +11,7 @@ import { translateAdminErrorMessage } from '../adminUi';
 const CONTENT_KEYS = [
   'items',
   'skills',
+  'visualFx',
   'merchants',
   'cities',
   'materials',
@@ -99,6 +100,7 @@ function countContent(content: Partial<ContentSnapshot>): CountMap {
     npcs: Array.isArray(content.npcs) ? content.npcs.length : 0,
     items: Array.isArray(content.items) ? content.items.length : 0,
     skills: Array.isArray(content.skills) ? content.skills.length : 0,
+    visualFx: Array.isArray(content.visualFx) ? content.visualFx.length : 0,
     cities: Array.isArray(content.cities) ? content.cities.length : 0,
     merchants: Array.isArray(content.merchants) ? content.merchants.length : 0,
     lootTables: Array.isArray(content.lootTables) ? content.lootTables.length : 0,
@@ -326,6 +328,7 @@ function CountList({ counts }: { counts: CountMap }) {
       <div><dt>npcs</dt><dd>{counts.npcs}</dd></div>
       <div><dt>items</dt><dd>{counts.items}</dd></div>
       <div><dt>skills</dt><dd>{counts.skills}</dd></div>
+      <div><dt>visualFx</dt><dd>{counts.visualFx}</dd></div>
       <div><dt>cities</dt><dd>{counts.cities}</dd></div>
       <div><dt>maps / zones / markers</dt><dd>{counts.battleMaps} / {counts.zones} / {counts.markers}</dd></div>
     </dl>

@@ -22,7 +22,7 @@ export class WorldSimulationModule implements OnModuleInit {
     // Запустить тиковый воркер для симуляции.
     // Двигаем мир маленькими шагами, чтобы перемещение было видно игроку на карте,
     // а не происходило телепортом между waypoint-ами.
-    const tickIntervalMs = 1000;
+    const tickIntervalMs = 250;
     const devGameSecondsPerRealSecond = 10;
     const prodGameSecondsPerRealSecond = 1;
 

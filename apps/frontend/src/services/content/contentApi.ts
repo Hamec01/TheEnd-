@@ -13,6 +13,7 @@ import type {
   AdminQuestItem,
   AdminQuestMarker,
   AdminSkill,
+  AdminVisualFx,
   ItemSet,
   LootTable,
   Material,
@@ -30,6 +31,7 @@ const IMAGE_UPLOAD_TIMEOUT_MS = 120_000;
 export type ContentCollectionName =
   | 'items'
   | 'skills'
+  | 'visualFx'
   | 'merchants'
   | 'cities'
   | 'locations'
@@ -101,6 +103,7 @@ export interface WorldMapContent {
 export interface ContentSnapshot {
   items: AdminItem[];
   skills: AdminSkill[];
+  visualFx: AdminVisualFx[];
   merchants: AdminMerchant[];
   cities: City[];
   locations: WorldLocation[];
@@ -305,9 +308,19 @@ export async function createContentEntry<T>(collection: ContentCollectionName, p
   return entry;
 }
 
-export async function uploadContentImage(payload: Partial<StoredImage> & { dataUrl: string }): Promise<StoredImage> {
+export async function uploadContentImage(payload: Partial<StoredImage> & { folder?: string; dataUrl: string }): Promise<StoredImage> {
   await ensureContentBackendReady();
   const entry = await requestJson<StoredImage>('/content/images/upload', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });
+  notifyContentSync('content');
+  return entry;
+}
+
+export async function uploadContentAudioAsset(payload: { id?: string; name?: string; mimeType?: string; folder?: string; dataUrl: string }): Promise<{ assetId: string; publicUrl: string; mimeType: string }> {
+  await ensureContentBackendReady();
+  const entry = await requestJson<{ assetId: string; publicUrl: string; mimeType: string }>('/content/assets/audio/upload', {
     method: 'POST',
     body: JSON.stringify(payload),
   }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });

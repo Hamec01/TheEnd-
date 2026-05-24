@@ -35,6 +35,7 @@ function makeDatabase(overrides: Partial<ContentDatabase> = {}): ContentDatabase
     version: 1,
     items: [],
     skills: [],
+    visualFx: [],
     merchants: [],
     cities: [],
     locations: [],

@@ -168,6 +168,8 @@ describe('world interaction command mapping', () => {
           coordinates: { x: 0.4, y: 0.6 },
           isHostile: false,
           hasQuest: false,
+          updatedAt: 'now',
+          sourceTick: 1,
         },
       ],
       renderedEntities: [createRenderedEntity({
@@ -209,6 +211,8 @@ describe('world interaction command mapping', () => {
         coordinates: { x: 0.5, y: 0.5 },
         isHostile: true,
         hasQuest: false,
+        updatedAt: 'now',
+        sourceTick: 1,
       }],
       renderedEntities: [createRenderedEntity({
         id: 'entity_1',
@@ -250,6 +254,8 @@ describe('world interaction command mapping', () => {
         coordinates: { x: 0.5, y: 0.5 },
         isHostile: true,
         hasQuest: false,
+        updatedAt: 'now',
+        sourceTick: 1,
       }],
       renderedEntities: [createRenderedEntity({
         id: 'entity_1',
@@ -304,6 +310,8 @@ describe('world interaction command mapping', () => {
         coordinates: { x: 0.5, y: 0.5 },
         isHostile: true,
         hasQuest: false,
+        updatedAt: 'now',
+        sourceTick: 1,
       }],
       renderedEntities: [createRenderedEntity({
         id: 'entity_1',

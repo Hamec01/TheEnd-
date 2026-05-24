@@ -9,7 +9,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import '../styles.css';
-import { type MapPlayer } from './movementSystem';
 import { detectHoverZone, pickRuntimeClickTarget } from './zoneSystem';
 import { WORLD_MAP_ZONES, type Zone } from './worldMapNodes';
 import type { PlayerWorldState } from './types';
@@ -32,24 +31,16 @@ import { clamp, getZoneCenter, hitTestHandle, hitTestZones, mapNormalizedToScree
 import { createDraftFromZone, createEmptyZoneDraft, type PaintedRegion, type WorldMapZone, type ZoneEditorDraft, type ZoneEditorSettings, type ZoneEditorTool } from './zoneEditorTypes';
 import { REGION_GRID_SIZE, REGION_TYPE_COLORS, applyBrushAlongLine, applyRegionPaint, getPaintedRegionCellMap, getRegionMoveSpeedMultiplier, isBlockedRegionType, mapPointToRegionCell, type RegionPaintSettings } from './regionPaintSystem';
 import type { QuestMarkerDefinition } from '../types/quest';
-import { loadWorldMapRuntimeSettings } from './worldMapRuntimeSettings';
 import type { MovementControlScheme } from './playerMovementSettings';
 import type { WorldSceneCommand, WorldSceneSnapshot } from './worldSceneTypes';
 import { resolveWorldClickInteraction } from './worldInteractionCommands';
 import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
-import { useWorldRuntimeController } from './useWorldRuntimeController';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
 const OVERSCROLL = 120;
 const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
 const EDITOR_WORLD_MAP_IMAGE_PATH = '/map/world-map.png';
-const PLAY_PLAYER_BASE: Omit<MapPlayer, 'speed'> = {
-  x: 0.53,
-  y: 0.83,
-  targetX: null,
-  targetY: null,
-};
 
 interface TooltipState {
   x: number;
@@ -403,15 +394,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
-  const initialPlayer = useMemo<MapPlayer>(() => ({
-    ...PLAY_PLAYER_BASE,
-    speed: runtimeSettings.playerSpeed,
-    x: clamp(playerStartPosition?.x ?? PLAY_PLAYER_BASE.x, 0, 1),
-    y: clamp(playerStartPosition?.y ?? PLAY_PLAYER_BASE.y, 0, 1),
-  }), [playerStartPosition?.x, playerStartPosition?.y, runtimeSettings.playerSpeed]);
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -435,6 +419,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     toolMode: 'circle',
     regionType: 'blocked',
     brushSize: 1,
+    regionColor: undefined,
   };
 
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
@@ -460,26 +445,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     return getRegionMoveSpeedMultiplier(cell.regionType);
   }, [paintedCellMap]);
-  const { player, currentZone, moveToPoint } = useWorldRuntimeController({
-    enabled: mode === 'play',
-    initialPlayer,
-    playerStartPosition,
-    defaultPlayerSpeed: runtimeSettings.playerSpeed,
-    playerSpeed,
-    gameplayPaused,
-    movementLocked,
-    controlScheme,
-    sprintActive,
-    zones,
-    resolveCanMoveTo,
-    resolveSpeedMultiplier,
-    playerTargetPosition,
-    playerTargetLocationId,
-    onPlayerPosition,
-    onPlayerState,
-    onEnterZone,
-    onOpenLocation,
-  });
+  const snapshotPlayerPosition = sceneSnapshot?.player.position ?? playerStartPosition ?? { x: 0.53, y: 0.83 };
+  const currentZone = sceneSnapshot?.currentZoneId
+    ? zones.find((zone) => zone.id === sceneSnapshot.currentZoneId) ?? null
+    : null;
   const createLayerDraftBase = (tool: ZoneEditorTool): ZoneEditorDraft => {
     const type = getDefaultTypeForLayer(activeEditorLayer);
     const layerDefault = createEmptyZoneDraft(tool);
@@ -570,6 +539,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
   useImperativeHandle(ref, () => ({
     resetView() {
+      if (mode === 'play') {
+        onSceneCommand?.({ type: 'focus_point', point: null });
+        return;
+      }
       if (!worldImage) {
         return;
       }
@@ -577,6 +550,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       onSettingsChange?.(fit);
     },
     fitToScreen() {
+      if (mode === 'play') {
+        onSceneCommand?.({ type: 'focus_point', point: null });
+        return;
+      }
       if (!worldImage) {
         return;
       }
@@ -585,12 +562,23 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       onStatusMessage?.('Editor: fit map to screen.');
     },
     focusZone(zoneId) {
+      if (mode === 'play') {
+        onSceneCommand?.({ type: 'focus_zone', zoneId: zoneId ?? null });
+        return;
+      }
       focusZoneInView(zoneId);
     },
     focusPoint(point) {
+      if (mode === 'play') {
+        onSceneCommand?.({
+          type: 'focus_point',
+          point: point ? { x: point[0], y: point[1] } : null,
+        });
+        return;
+      }
       focusPointInView(point);
     },
-  }), [canvasSize.height, canvasSize.width, editorSettings.zoom, editorViewport, focusPointInView, focusZoneInView, onSettingsChange, onStatusMessage, worldImage, zones]);
+  }), [canvasSize.height, canvasSize.width, editorSettings.zoom, editorViewport, focusPointInView, focusZoneInView, mode, onSceneCommand, onSettingsChange, onStatusMessage, worldImage, zones]);
 
   useEffect(() => {
     const surface = surfaceRef.current;
@@ -772,10 +760,12 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   }
 
   function getPlayCamera() {
-    const width = 1 / runtimeSettings.playZoom;
-    const height = 1 / runtimeSettings.playZoom;
-    const left = clamp(player.x - width / 2, 0, 1 - width);
-    const top = clamp(player.y - height / 2, 0, 1 - height);
+    const fallback = { left: 0, top: 0, width: 1, height: 1 };
+    const camera = sceneSnapshot?.camera ?? fallback;
+    const width = clamp(camera.width, 0.001, 1);
+    const height = clamp(camera.height, 0.001, 1);
+    const left = clamp(camera.left, 0, 1 - width);
+    const top = clamp(camera.top, 0, 1 - height);
     return { left, top, width, height };
   }
 
@@ -1020,9 +1010,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       onSceneCommand?.(moveCommand);
     }
 
-    if (resolution.moveTarget && !onSceneCommand) {
-      moveToPoint(resolution.moveTarget.point, resolution.moveTarget.pendingLocationId);
-    }
   }
 
   function handleMouseMove(event: ReactMouseEvent<HTMLCanvasElement>) {
@@ -1362,8 +1349,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       if (!playerAvatarUrl) {
         const playerRadius = Math.max(5, canvas.width * 0.0075);
-        const playerX = ((player.x - camera.left) / camera.width) * canvas.width;
-        const playerY = ((player.y - camera.top) / camera.height) * canvas.height;
+        const playerX = ((snapshotPlayerPosition.x - camera.left) / camera.width) * canvas.width;
+        const playerY = ((snapshotPlayerPosition.y - camera.top) / camera.height) * canvas.height;
         ctx.beginPath();
         ctx.fillStyle = '#f8e8b0';
         ctx.arc(playerX, playerY, playerRadius, 0, Math.PI * 2);
@@ -1388,11 +1375,13 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     );
 
     if (regions.length > 0) {
-      const cellWidth = (worldImage.naturalWidth * editorViewport.zoom) / REGION_GRID_SIZE;
-      const cellHeight = (worldImage.naturalHeight * editorViewport.zoom) / REGION_GRID_SIZE;
-
       for (const region of regions) {
-        ctx.fillStyle = REGION_TYPE_COLORS[region.type] ?? 'rgba(255, 0, 0, 0.35)';
+        const regionGridSize = region.gridSize && Number.isFinite(region.gridSize)
+          ? Math.max(1, Math.floor(region.gridSize))
+          : REGION_GRID_SIZE;
+        const cellWidth = (worldImage.naturalWidth * editorViewport.zoom) / regionGridSize;
+        const cellHeight = (worldImage.naturalHeight * editorViewport.zoom) / regionGridSize;
+        ctx.fillStyle = region.color ?? REGION_TYPE_COLORS[region.type] ?? 'rgba(255, 0, 0, 0.35)';
         for (const cell of region.cells) {
           const x = editorViewport.panX + cell.x * cellWidth;
           const y = editorViewport.panY + cell.y * cellHeight;
@@ -1543,8 +1532,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     mode,
     playNpcMarkers,
     playQuestMarkers,
-    player,
     playerAvatarUrl,
+    snapshotPlayerPosition.x,
+    snapshotPlayerPosition.y,
     regions,
     selectedZone,
     worldImage,
@@ -1563,8 +1553,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     ? (() => {
       const camera = getPlayCamera();
       return {
-        left: `${((player.x - camera.left) / camera.width) * 100}%`,
-        top: `${((player.y - camera.top) / camera.height) * 100}%`,
+        left: `${((snapshotPlayerPosition.x - camera.left) / camera.width) * 100}%`,
+        top: `${((snapshotPlayerPosition.y - camera.top) / camera.height) * 100}%`,
         backgroundImage: `url("${playerAvatarUrl}")`,
       };
     })()
@@ -1659,7 +1649,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
       {mode === 'play' ? (
         <footer className="wm-map-legend">
-          <span>Игрок: {player.x.toFixed(3)}, {player.y.toFixed(3)} | Зона: {currentZone?.name ?? 'Пустоши'} | Наведение: {hoverZone?.name ?? '-'}</span>
+          <span>Игрок: {snapshotPlayerPosition.x.toFixed(3)}, {snapshotPlayerPosition.y.toFixed(3)} | Зона: {currentZone?.name ?? 'Пустоши'} | Наведение: {hoverZone?.name ?? '-'}</span>
         </footer>
       ) : null}
     </section>

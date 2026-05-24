@@ -1,4 +1,4 @@
-import type { ActorBattleVisualConfig, AdminSkillDefinition, BattleMapDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { ActorBattleVisualConfig, AdminSkillDefinition, BattleMapDefinition, PrimaryStat, VisualFxDefinition } from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -600,7 +600,7 @@ export type ZoneInteractionMode =
   | 'rest'
   | 'locked';
 
-export type RegionType = 'walkable' | 'blocked' | 'water' | 'road' | 'danger' | 'trigger';
+export type RegionType = 'walkable' | 'blocked' | 'water' | 'swamp' | 'sand' | 'road' | 'danger' | 'trigger';
 
 export interface RegionCell {
   x: number;
@@ -805,6 +805,7 @@ export interface ContentDatabase {
   version: 1;
   items: AdminItem[];
   skills: AdminSkillDefinition[];
+  visualFx: VisualFxDefinition[];
   merchants: AdminMerchant[];
   cities: City[];
   locations: WorldLocation[];
@@ -866,6 +867,7 @@ export interface ContentImportResult {
 export type ContentCollectionName =
   | 'items'
   | 'skills'
+  | 'visualFx'
   | 'merchants'
   | 'cities'
   | 'locations'
@@ -885,6 +887,7 @@ export type ContentCollectionName =
 export interface ContentCollectionMap {
   items: AdminItem;
   skills: AdminSkillDefinition;
+  visualFx: VisualFxDefinition;
   merchants: AdminMerchant;
   cities: City;
   locations: WorldLocation;

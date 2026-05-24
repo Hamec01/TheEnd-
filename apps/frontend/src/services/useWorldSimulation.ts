@@ -20,7 +20,7 @@ interface WorldSnapshotStoreState {
   error: string | null;
 }
 
-const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 1000;
+const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 250;
 
 const worldSnapshotStore: {
   state: WorldSnapshotStoreState;

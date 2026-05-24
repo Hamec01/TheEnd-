@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
+import { AdminAudioField } from '../AdminAudioField';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
@@ -12,6 +13,7 @@ import { itemsService } from '../../services/content/itemsService';
 import { lootTablesService } from '../../services/content/lootTablesService';
 import { merchantsService } from '../../services/content/merchantsService';
 import { skillsService } from '../../services/content/skillsService';
+import { visualFxService } from '../../services/content/visualFxService';
 import { ensureQuestMarkersLoaded, getQuestMarkers } from '../../services/questMapRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
 import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateNpc, importNpcsJson, getNpcAdminNormalizationIssues } from '../../services/npcRepository';
@@ -34,6 +36,7 @@ import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
 import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { NpcGroupList } from '../components/NpcGroupList';
 import { groupNpcsByKey, getGroupingLabel, type GroupingKey } from '../utils/npcGrouping';
 import { AdminSectionErrorBoundary } from '../components/AdminSectionErrorBoundary';
@@ -95,6 +98,21 @@ function parseJsonArray<T>(raw: string, fallback: T[]): T[] {
   }
 }
 
+function isLikelyWindowsPath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function sanitizeAudioAssetRef(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (isLikelyWindowsPath(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
 function formatLabel(value: string): string {
   return value.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
@@ -128,6 +146,7 @@ export function NpcsPage() {
   const [lootTableIds, setLootTableIds] = useState<string[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
+  const [visualFxIds, setVisualFxIds] = useState<string[]>([]);
 
   const [mapBindingsJson, setMapBindingsJson] = useState('[]');
   const [dialogueBindingsJson, setDialogueBindingsJson] = useState('[]');
@@ -157,11 +176,13 @@ export function NpcsPage() {
       itemsService.getAll(),
       merchantsService.getAll(),
       lootTablesService.getAll(),
+      visualFxService.getAll().catch(() => []),
       imageService.getAll().catch(() => []),
-    ]).then(([, , , , skills, items, merchants, lootTables, images]) => {
+    ]).then(([, , , , skills, items, merchants, lootTables, visualFx, images]) => {
       setSkillIds(skills.map((entry) => entry.id));
       setItemIds(items.map((entry) => entry.id));
       setStoredImages(images);
+      setVisualFxIds(visualFx.filter((entry) => entry.status !== 'disabled').map((entry) => entry.id));
       setTraderOptions(merchants.map((entry) => ({
         id: entry.id,
         name: entry.name,
@@ -193,11 +214,13 @@ export function NpcsPage() {
           itemsService.getAll(),
           merchantsService.getAll(),
           lootTablesService.getAll(),
+          visualFxService.getAll().catch(() => []),
           imageService.getAll().catch(() => []),
-        ]).then(([, , , skills, items, merchants, lootTables, images]) => {
+        ]).then(([, , , skills, items, merchants, lootTables, visualFx, images]) => {
           setSkillIds(skills.map((entry) => entry.id));
           setItemIds(items.map((entry) => entry.id));
           setStoredImages(images);
+          setVisualFxIds(visualFx.filter((entry) => entry.status !== 'disabled').map((entry) => entry.id));
           setTraderOptions(merchants.map((entry) => ({
             id: entry.id,
             name: entry.name,
@@ -247,6 +270,10 @@ export function NpcsPage() {
   }, [draft]);
 
   const zoneIds = useMemo(() => zones.map((zone) => zone.id), [zones]);
+  const npcBattleEffectIds = useMemo(
+    () => Array.from(new Set([...visualFxIds, ...BATTLE_EFFECT_IDS])).sort(),
+    [visualFxIds],
+  );
 
   const worldData = useMemo<NpcValidationWorldData>(() => ({
     questIds,
@@ -315,10 +342,10 @@ export function NpcsPage() {
     try {
       const baseName = draft.id.trim() || 'npc';
       const [portrait, fullImage, combatImage, icon] = await Promise.all([
-        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-portrait` }),
-        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-full` }),
-        imageService.uploadPreset(file, 'merchant-portrait', { name: `${baseName}-combat` }),
-        imageService.uploadPreset(file, 'item-icon', { name: `${baseName}-icon` }),
+        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_portrait`, name: `${baseName}-portrait`, folder: buildUploadFolder('images', 'npcs', baseName) }),
+        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_full`, name: `${baseName}-full`, folder: buildUploadFolder('images', 'npcs', baseName) }),
+        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_combat`, name: `${baseName}-combat`, folder: buildUploadFolder('images', 'npcs', baseName) }),
+        imageService.uploadPreset(file, 'item-icon', { id: `${baseName}_icon`, name: `${baseName}-icon`, folder: buildUploadFolder('images', 'npcs', baseName) }),
       ]);
 
       patch({
@@ -367,6 +394,7 @@ export function NpcsPage() {
       ...draft,
       id: draft.id.trim() || `npc_${Math.random().toString(36).slice(2, 8)}`,
       name: draft.name.trim(),
+      dialogueStartVoiceAssetId: sanitizeAudioAssetRef(draft.dialogueStartVoiceAssetId),
       mapBindings: parseJsonArray<NpcMapBinding>(mapBindingsJson, draft.mapBindings),
       dialogues: parseJsonArray(draft.dialogues ? dialogueBindingsJson : '[]', draft.dialogues),
       questBindings: parseJsonArray(draft.questBindings ? questBindingsJson : '[]', draft.questBindings),
@@ -374,6 +402,11 @@ export function NpcsPage() {
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
     };
+
+    if (draft.dialogueStartVoiceAssetId && !prepared.dialogueStartVoiceAssetId) {
+      setStatusText('Dialogue start voice выглядит как локальный путь Windows. Загрузите файл через кнопку "Выбрать аудио" (asset ID).');
+      return;
+    }
 
     const result = validateNpc(prepared, worldData);
     if (prepared.status === 'active' && result.errors.length > 0) {
@@ -725,10 +758,10 @@ export function NpcsPage() {
                 Система автоматически подготовит изображения под нужные размеры интерфейса. При необходимости любой слот можно заменить вручную ниже.
               </p>
             </section>
-            <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-portrait`} label="Портрет NPC" hint="Главный портрет персонажа." />
-            <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-full`} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
-            <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedName={`${draft.id || 'npc'}-combat`} label="Боевой портрет" hint="Изображение для боя." />
-            <AdminImageField value={draft.iconUrl} onChange={(next) => patch({ iconUrl: next || undefined })} onStatus={setStatusText} presetId="item-icon" suggestedName={`${draft.id || 'npc'}-icon`} label="Иконка NPC" hint="Иконка маркера NPC на карте." />
+            <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-portrait`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Портрет NPC" hint="Главный портрет персонажа." />
+            <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-full`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
+            <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-combat`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Боевой портрет" hint="Изображение для боя." />
+            <AdminImageField value={draft.iconUrl} onChange={(next) => patch({ iconUrl: next || undefined })} onStatus={setStatusText} presetId="item-icon" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-icon`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Иконка NPC" hint="Иконка маркера NPC на карте." />
           </>
         ) : null}
 
@@ -836,7 +869,7 @@ export function NpcsPage() {
             <label><AdminFieldLabel label="Death effect ID" hint="Effect registry id used when this NPC dies." /><input list="npc-battle-effect-ids" value={draft.deathEffectId ?? ''} onChange={(event) => patch({ deathEffectId: event.target.value || undefined })} placeholder="death_fade" /></label>
             <label><AdminFieldLabel label="Hit effect preset" hint="Default impact effect for this NPC." /><input list="npc-battle-effect-ids" value={draft.hitEffectPreset ?? ''} onChange={(event) => patch({ hitEffectPreset: event.target.value || undefined })} placeholder="hit_blunt" /></label>
             <datalist id="npc-battle-effect-ids">
-              {BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
+              {npcBattleEffectIds.map((id) => <option key={id} value={id}>{id}</option>)}
             </datalist>
           </div>
         ) : null}
@@ -921,6 +954,17 @@ export function NpcsPage() {
               <label><AdminFieldLabel label="Dialogue start line" hint="Optional one-line bark/subtitle used before the dialogue UI opens." /><input value={draft.dialogueStartLine ?? ''} onChange={(event) => patch({ dialogueStartLine: event.target.value || undefined })} placeholder="State your business." /></label>
               <label><AdminFieldLabel label="Voice profile ID" hint="Shared voice profile key for future TTS/voice selection." /><input value={draft.voiceProfileId ?? ''} onChange={(event) => patch({ voiceProfileId: event.target.value || undefined })} placeholder="voice_gruff_male_01" /></label>
             </div>
+            <AdminAudioField
+              value={draft.dialogueStartVoiceAssetId}
+              onChange={(nextValue) => patch({ dialogueStartVoiceAssetId: nextValue || undefined })}
+              onStatus={setStatusText}
+              mode="assetId"
+              suggestedAssetId={`${draft.id || 'npc'}_dialogue_start_voice`}
+              suggestedName={`${draft.id || 'npc'}-dialogue-start-voice`}
+              uploadFolder={buildUploadFolder('audio', 'npcs', draft.id || draft.name || undefined, 'voice')}
+              label="Загрузить voice для старта диалога"
+              hint="Загружает voice-файл и подставляет его asset ID в поле Dialogue start voice asset ID."
+            />
             <div className="admin-actions-row">
               <button type="button" onClick={createDialogueForNpc}>Создать диалог для NPC</button>
             </div>

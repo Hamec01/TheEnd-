@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { imageService } from '../services/content/imageService';
 import { IMAGE_PRESETS, type ImagePresetId } from '../services/content/imagePresets';
+import { buildUploadFolder } from '../services/content/uploadFolders';
 import type { StoredImage } from '../services/content/models';
 import { AdminFieldLabel, translateAdminErrorMessage } from './adminUi';
 
@@ -9,7 +10,9 @@ interface AdminImageFieldProps {
   onChange: (nextValue: string) => void;
   onStatus?: (message: string) => void;
   presetId: ImagePresetId;
+  suggestedId?: string;
   suggestedName?: string;
+  uploadFolder?: string;
   label?: string;
   hint?: string;
 }
@@ -23,13 +26,17 @@ export function AdminImageField({
   onChange,
   onStatus,
   presetId,
+  suggestedId,
   suggestedName,
+  uploadFolder,
   label = 'Быстрая загрузка картинки',
   hint = 'Загружает файл и сразу ужимает его под нужный размер для игрового интерфейса.',
 }: AdminImageFieldProps) {
   const [storedImage, setStoredImage] = useState<StoredImage | null>(null);
   const [isUploading, setUploading] = useState(false);
   const preset = IMAGE_PRESETS[presetId];
+  const resolvedUploadFolder = uploadFolder?.trim()
+    || buildUploadFolder('images', presetId, suggestedId || suggestedName || undefined);
 
   useEffect(() => {
     const normalized = value?.trim();
@@ -71,7 +78,9 @@ export function AdminImageField({
     setUploading(true);
     try {
       const uploaded = await imageService.uploadPreset(file, presetId, {
+        id: suggestedId?.trim() || undefined,
         name: suggestedName?.trim() || file.name,
+        folder: resolvedUploadFolder,
       });
       setStoredImage(uploaded);
       onChange(uploaded.id);

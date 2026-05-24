@@ -3,6 +3,7 @@ import type { BattleMapDefinition } from '@theend/rpg-domain';
 import { getContentCollection } from '../../services/content/contentApi';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { imageService } from '../../services/content/imageService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { locationService } from '../../services/locationRepository';
 import type { AdminDialogue, AdminMerchant, AdminNpc, AdminQuest, StoredImage } from '../../services/content/models';
 import { translateAdminErrorMessage } from '../adminUi';
@@ -525,8 +526,12 @@ export function LocationsPage() {
   async function uploadDefaultImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
-    const image = await imageService.upload(file);
+    if (!file || !draft) return;
+    const image = await imageService.upload(file, {
+      id: draft.id ? `${draft.id}_default` : undefined,
+      name: `${draft.id || 'location'}-default`,
+      folder: buildUploadFolder('images', 'locations', draft.id || draft.name || undefined),
+    });
     setImages((current) => [...current, image]);
     patchDraft({ defaultImageId: image.id, defaultImagePath: undefined });
     setStatus(`Загружено изображение: ${image.name}`);
@@ -535,8 +540,12 @@ export function LocationsPage() {
   async function uploadStateImage(index: number, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
-    const image = await imageService.upload(file);
+    if (!file || !draft) return;
+    const image = await imageService.upload(file, {
+      id: draft.id ? `${draft.id}_state_${index}` : undefined,
+      name: `${draft.id || 'location'}-state-${index}`,
+      folder: buildUploadFolder('images', 'locations', draft.id || draft.name || undefined, 'states'),
+    });
     setImages((current) => [...current, image]);
     patchState(index, { imageId: image.id, imagePath: undefined });
     setStatus(`Загружено изображение состояния: ${image.name}`);
@@ -545,8 +554,12 @@ export function LocationsPage() {
   async function uploadAreaImage(areaId: string, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
-    const image = await imageService.upload(file);
+    if (!file || !draft) return;
+    const image = await imageService.upload(file, {
+      id: draft.id ? `${draft.id}_area_${areaId}` : undefined,
+      name: `${draft.id || 'location'}-area-${areaId}`,
+      folder: buildUploadFolder('images', 'locations', draft.id || draft.name || undefined, 'areas'),
+    });
     setImages((current) => [...current, image]);
     patchArea(areaId, { imageId: image.id, imagePath: undefined });
     setStatus(`Загружено изображение внутреннего места: ${image.name}`);

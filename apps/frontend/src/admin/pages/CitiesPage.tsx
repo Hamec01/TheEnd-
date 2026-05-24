@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { AdminAudioField } from '../AdminAudioField';
 import type { City, CityLocation, CityLocationShape, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
 import { cityService } from '../../services/cityRepository';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 
@@ -280,7 +282,11 @@ export function CitiesPage() {
     }
 
     try {
-      const stored = await imageService.upload(file);
+      const stored = await imageService.upload(file, {
+        id: draft.id ? `${draft.id}_background` : undefined,
+        name: `${draft.id || 'city'}-background`,
+        folder: buildUploadFolder('images', 'cities', draft.id || draft.name || undefined),
+      });
       setImages((current) => [stored, ...current.filter((image) => image.id !== stored.id)]);
       patchCity({ backgroundImageId: stored.id, backgroundImageUrl: '' });
       setTab('images');
@@ -673,6 +679,26 @@ export function CitiesPage() {
                         <label>Location Music URL<input value={selectedLocation.music?.url ?? ''} onChange={(e) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/cities/tavern.ogg" /></label>
                         <label>Location Ambient Asset ID<input value={selectedLocation.ambientSound?.assetId ?? ''} onChange={(e) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="amb_market_crowd" /></label>
                         <label>Location Ambient URL<input value={selectedLocation.ambientSound?.url ?? ''} onChange={(e) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/ambience/market.ogg" /></label>
+                        <AdminAudioField
+                          value={selectedLocation.music?.url}
+                          onChange={(nextValue) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), url: nextValue || undefined, loop: true } })}
+                          onStatus={setStatus}
+                          mode="url"
+                          suggestedAssetId={`${draft.id || 'city'}_${selectedLocation.id}_music`}
+                          suggestedName={`${draft.id || 'city'}-${selectedLocation.id}-music`}
+                          label="Загрузить музыку локации"
+                          hint="Загружает файл и подставляет URL в поле Location Music URL."
+                        />
+                        <AdminAudioField
+                          value={selectedLocation.ambientSound?.url}
+                          onChange={(nextValue) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), url: nextValue || undefined, loop: true } })}
+                          onStatus={setStatus}
+                          mode="url"
+                          suggestedAssetId={`${draft.id || 'city'}_${selectedLocation.id}_ambient`}
+                          suggestedName={`${draft.id || 'city'}-${selectedLocation.id}-ambient`}
+                          label="Загрузить ambient локации"
+                          hint="Загружает файл и подставляет URL в поле Location Ambient URL."
+                        />
                         <label>
                           Auto Triggers (JSON) <AdminHelpTooltip section="cities" field="autoTriggers" />
                           <textarea
@@ -735,6 +761,26 @@ export function CitiesPage() {
                     <label>Ambient Asset ID<input value={draft.ambientSound?.assetId ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="amb_city_crowd" /></label>
                     <label>Ambient URL<input value={draft.ambientSound?.url ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/ambience/city-crowd.ogg" /></label>
                     <label>Ambient Volume<input type="number" min={0} max={1} step={0.05} value={draft.ambientSound?.volume ?? ''} onChange={(e) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), volume: e.target.value ? Number(e.target.value) : undefined, loop: true } })} /></label>
+                    <AdminAudioField
+                      value={draft.music?.url}
+                      onChange={(nextValue) => patchCity({ music: { ...(draft.music ?? {}), url: nextValue || undefined, loop: true } })}
+                      onStatus={setStatus}
+                      mode="url"
+                      suggestedAssetId={`${draft.id || 'city'}_music`}
+                      suggestedName={`${draft.id || 'city'}-music`}
+                      label="Загрузить city music"
+                      hint="Загружает файл и подставляет URL в поле City Music URL."
+                    />
+                    <AdminAudioField
+                      value={draft.ambientSound?.url}
+                      onChange={(nextValue) => patchCity({ ambientSound: { ...(draft.ambientSound ?? {}), url: nextValue || undefined, loop: true } })}
+                      onStatus={setStatus}
+                      mode="url"
+                      suggestedAssetId={`${draft.id || 'city'}_ambient`}
+                      suggestedName={`${draft.id || 'city'}-ambient`}
+                      label="Загрузить city ambient"
+                      hint="Загружает файл и подставляет URL в поле Ambient URL."
+                    />
                     <p className="muted">These fields are metadata for the runtime audio layer: city theme, ambience, and location overrides stay optional for old content.</p>
                   </div>
                 )}

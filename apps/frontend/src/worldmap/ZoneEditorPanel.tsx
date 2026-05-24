@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { REGION_TYPE_COLORS } from './regionPaintSystem';
+import { REGION_TYPE_COLORS, REGION_TYPE_HEX_COLORS } from './regionPaintSystem';
 import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
 import {
   MAP_EDITOR_LAYER_OPTIONS,
@@ -48,11 +48,12 @@ const TOOL_OPTIONS: Array<{ value: ZoneEditorTool; label: string }> = [
 const REGION_TOOL_OPTIONS: Array<{ value: RegionToolMode; label: string }> = [
   { value: 'circle', label: 'Circle' },
   { value: 'pencil', label: 'Pencil' },
+  { value: 'brush', label: 'Brush' },
   { value: 'eraser', label: 'Eraser' },
 ];
 
 const REGION_TYPE_OPTIONS: Array<{ value: RegionType; label: string }> = [
-  { value: 'blocked', label: 'Непроходимо (скалы/горы)' },
+  { value: 'blocked', label: 'Горы (проходимо, очень тяжело)' },
   { value: 'water', label: 'Вода (непроходимо)' },
   { value: 'swamp', label: 'Болото (медленнее)' },
   { value: 'sand', label: 'Песок (медленнее)' },
@@ -62,7 +63,7 @@ const REGION_TYPE_OPTIONS: Array<{ value: RegionType; label: string }> = [
   { value: 'trigger', label: 'Триггер' },
 ];
 
-const BRUSH_SIZE_OPTIONS: RegionBrushSize[] = [1, 2, 3, 5];
+const BRUSH_SIZE_OPTIONS: RegionBrushSize[] = [0.05, 0.25, 0.5, 0.75, 1, 2, 3, 5, 8, 12];
 
 const EDITOR_LAYER_OPTIONS: Array<{ value: MapEditorLayer; label: string }> = [
   { value: 'areas', label: 'Территории' },
@@ -102,9 +103,11 @@ interface ZoneEditorPanelProps {
   regionToolMode: RegionToolMode;
   regionType: RegionType;
   regionBrushSize: RegionBrushSize;
+  regionColor: string;
   onRegionToolModeChange: (tool: RegionToolMode) => void;
   onRegionTypeChange: (type: RegionType) => void;
   onRegionBrushSizeChange: (size: RegionBrushSize) => void;
+  onRegionColorChange: (color: string) => void;
   onToolChange: (tool: ZoneEditorTool) => void;
   onSettingsChange: (patch: Partial<ZoneEditorSettings>) => void;
   onDraftChange: (draft: ZoneEditorDraft | null) => void;
@@ -217,9 +220,11 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     regionToolMode,
     regionType,
     regionBrushSize,
+    regionColor,
     onRegionToolModeChange,
     onRegionTypeChange,
     onRegionBrushSizeChange,
+    onRegionColorChange,
     onToolChange,
     onSettingsChange,
     onDraftChange,
@@ -732,8 +737,26 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
 
         <div className="zone-editor-color-row">
           <span>Region color preview</span>
-          <div className="zone-editor-color-preview" style={{ background: REGION_TYPE_COLORS[regionType] }} />
+          <div className="zone-editor-color-preview" style={{ background: regionColor || REGION_TYPE_COLORS[regionType] }} />
         </div>
+
+        <label>
+          <span>Custom region color</span>
+          <div className="zone-editor-color-input-row">
+            <input
+              type="color"
+              value={regionColor || REGION_TYPE_HEX_COLORS[regionType]}
+              onChange={(event) => onRegionColorChange(event.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => onRegionColorChange(REGION_TYPE_HEX_COLORS[regionType])}
+            >
+              Reset
+            </button>
+          </div>
+        </label>
       </div>
 
       <div className="zone-editor-section">

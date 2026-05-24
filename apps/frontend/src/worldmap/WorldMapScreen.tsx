@@ -80,8 +80,17 @@ import type {
   WorldMapMode,
 } from "./types";
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
-import { getZoneCenter, moveZone } from "./zoneGeometry";
+import { clamp, getZoneCenter, moveZone } from "./zoneGeometry";
 import { detectHoverZone, getPassiveZonesAtPoint } from "./zoneSystem";
+import { type MapPlayer } from "./movementSystem";
+import {
+  getPaintedRegionCellMap,
+  getRegionMoveSpeedMultiplier,
+  getRegionStaminaCostMultiplier,
+  isBlockedRegionType,
+  REGION_GRID_SIZE,
+  REGION_TYPE_HEX_COLORS,
+} from "./regionPaintSystem";
 import {
   canEnterLinkedLocation,
   getLocationActiveState,
@@ -189,6 +198,7 @@ import {
   PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT,
   type MovementControlScheme,
 } from "./playerMovementSettings";
+import { loadWorldMapRuntimeSettings } from "./worldMapRuntimeSettings";
 import { useWorldSnapshot } from "../services/useWorldSimulation";
 import { buildWorldSceneSnapshot } from "./worldSceneAdapter";
 import { resolveRenderedWorldEntities } from "./worldEntityVisualResolver";
@@ -201,6 +211,7 @@ import {
   writeStringArrayStorage,
 } from "../utils/playerInventory";
 import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
+import { useWorldRuntimeController } from "./useWorldRuntimeController";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 
@@ -407,6 +418,29 @@ function getFirstString(value: unknown): string | null {
   }
 
   return null;
+}
+
+function isDirectAudioSource(value: string): boolean {
+  return value.startsWith("/")
+    || value.startsWith("http://")
+    || value.startsWith("https://")
+    || value.startsWith("data:audio/");
+}
+
+function isLikelyWindowsLocalPath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function getGlobalAudioVolume(): number {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  const volumeKeys = ["theend.audio.volume", "theend.sound.volume"];
+  const rawVolume = volumeKeys
+    .map((key) => window.localStorage.getItem(key))
+    .find((value) => value !== null);
+  const parsed = rawVolume ? Number(rawVolume) : 1;
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
 }
 
 function getFirstAvailableNpcDialogueId(npc: NpcDefinition | null | undefined): string | null {
@@ -838,6 +872,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   } | null>(null);
   const editorSaveInFlightRef = useRef<Promise<void> | null>(null);
   const lastRevealedCellRef = useRef<string | null>(null);
+  const dialogueVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastDialogueVoiceKeyRef = useRef<string | null>(null);
+  const warnedDialogueVoiceSourcesRef = useRef<Set<string>>(new Set());
+  const pendingDialogueVoicePlayRef = useRef(false);
+  const dialogueVoiceRetryBoundRef = useRef(false);
 
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(
     adminEditorOnly ? "editor" : initialMode,
@@ -902,6 +941,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     loadMovementControlScheme(),
   );
   const [shiftPressed, setShiftPressed] = useState(false);
+  const [playCameraFocusPoint, setPlayCameraFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [eventOverlayMessages, setEventOverlayMessages] = useState<
     Array<ChatMessage & { isFading: boolean }>
   >([]);
@@ -944,6 +984,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [engagedWorldEntityId, setEngagedWorldEntityId] = useState<string | null>(null);
   const [engagedWorldEntityAnchor, setEngagedWorldEntityAnchor] = useState<{ x: number; y: number } | null>(null);
   const [travelExhausted, setTravelExhausted] = useState(false);
+  const [terrainStaminaDrainMultiplier, setTerrainStaminaDrainMultiplier] = useState(1);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
   const [activeMineRun, setActiveMineRun] = useState<InternalMineRunState | null>(null);
@@ -984,6 +1025,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeInteraction, setActiveInteraction] = useState<QuestInteractionDefinition | null>(null);
   const [activeInteractionChoices, setActiveInteractionChoices] = useState<QuestInteractionChoice[]>([]);
   const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
+  const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const { snapshot: worldSnapshot, loading: worldSnapshotLoading, error: worldSnapshotError } = useWorldSnapshot();
   const playMovementLocked = worldMapMode === "play"
     && locationView === "map"
@@ -1031,6 +1073,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     player: dialoguePlayer,
     onStartQuest: refreshPlayerQuestStates,
   });
+
+  useEffect(() => {
+    return () => {
+      if (dialogueVoiceAudioRef.current) {
+        dialogueVoiceAudioRef.current.pause();
+        dialogueVoiceAudioRef.current.currentTime = 0;
+      }
+      pendingDialogueVoicePlayRef.current = false;
+      dialogueVoiceRetryBoundRef.current = false;
+    };
+  }, []);
 
   const handleTrackQuest = useCallback((questId: string, objectiveId: string | null) => {
     setTrackedQuestId(questId);
@@ -1167,7 +1220,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
 
       if (playerState === "moving") {
-        const drain = sprintActive ? sprintStaminaCostPerSecond : walkStaminaCostPerSecond;
+        const baseDrain = sprintActive ? sprintStaminaCostPerSecond : walkStaminaCostPerSecond;
+        const drain = Math.max(1, Math.ceil(baseDrain * terrainStaminaDrainMultiplier));
         const nextStamina = Math.max(0, currentStamina - drain);
         if (nextStamina !== currentStamina) {
           onTravelStaminaChange(nextStamina);
@@ -1192,6 +1246,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     sprintActive,
     sprintStaminaCostPerSecond,
     staminaRegenPerSecond,
+    terrainStaminaDrainMultiplier,
     travelExhausted,
     walkStaminaCostPerSecond,
   ]);
@@ -1204,7 +1259,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [regionToolMode, setRegionToolMode] =
     useState<RegionToolMode>("pencil");
   const [regionType, setRegionType] = useState<RegionType>("blocked");
-  const [regionBrushSize, setRegionBrushSize] = useState<RegionBrushSize>(1);
+  const [regionBrushSize, setRegionBrushSize] = useState<RegionBrushSize>(0.5);
+  const [regionColorByType, setRegionColorByType] = useState<Record<RegionType, string>>(() => ({ ...REGION_TYPE_HEX_COLORS }));
   const [editorSettings, setEditorSettings] = useState<ZoneEditorSettings>(
     () =>
       typeof window === "undefined"
@@ -1434,7 +1490,114 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       npcs.find((entry) => entry.id === selectedNpcForInteractionId) ?? null
     );
   }, [npcs, selectedNpcForInteractionId]);
-  const npcById = useMemo(() => new Map(npcs.map((npc) => [npc.id, npc])), [npcs]);
+  const npcById = useMemo(() => {
+    const entries = new Map<string, NpcDefinition>();
+    for (const npc of npcs) {
+      const rawId = String(npc.id ?? "").trim();
+      if (!rawId) {
+        continue;
+      }
+
+      entries.set(rawId, npc);
+      const lowered = rawId.toLowerCase();
+      if (!entries.has(lowered)) {
+        entries.set(lowered, npc);
+      }
+    }
+    return entries;
+  }, [npcs]);
+  const resolveNpcById = useCallback((id: string | null | undefined): NpcDefinition | null => {
+    const normalized = String(id ?? "").trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return npcById.get(normalized) ?? npcById.get(normalized.toLowerCase()) ?? null;
+  }, [npcById]);
+
+  useEffect(() => {
+    if (!dialogueRunner.state.isOpen || !dialogueRunner.dialogue) {
+      lastDialogueVoiceKeyRef.current = null;
+      pendingDialogueVoicePlayRef.current = false;
+      if (dialogueVoiceAudioRef.current) {
+        dialogueVoiceAudioRef.current.pause();
+        dialogueVoiceAudioRef.current.currentTime = 0;
+      }
+      return;
+    }
+
+    const contextNpcId = dialogueRunner.state.context?.npcId;
+    const contextNpc = contextNpcId ? resolveNpcById(contextNpcId) : null;
+    const voiceRef = String(
+      dialogueRunner.dialogue.introVoiceAssetId
+      ?? contextNpc?.dialogueStartVoiceAssetId
+      ?? "",
+    ).trim();
+
+    if (!voiceRef) {
+      return;
+    }
+
+    const voiceKey = `${dialogueRunner.dialogue.id}:${contextNpc?.id ?? ""}:${voiceRef}`;
+    if (lastDialogueVoiceKeyRef.current === voiceKey) {
+      return;
+    }
+    lastDialogueVoiceKeyRef.current = voiceKey;
+
+    if (isLikelyWindowsLocalPath(voiceRef)) {
+      if (!warnedDialogueVoiceSourcesRef.current.has(voiceRef)) {
+        warnedDialogueVoiceSourcesRef.current.add(voiceRef);
+        onStatus("Голос диалога задан как локальный путь Windows. Загрузите файл через админку, чтобы получить asset ID.");
+      }
+      return;
+    }
+
+    const source = isDirectAudioSource(voiceRef)
+      ? voiceRef
+      : `/api/content/assets/audio/${encodeURIComponent(voiceRef)}/raw`;
+
+    try {
+      const audio = dialogueVoiceAudioRef.current ?? new Audio();
+      dialogueVoiceAudioRef.current = audio;
+      audio.pause();
+      audio.currentTime = 0;
+      audio.preload = "auto";
+      audio.src = source;
+      audio.volume = getGlobalAudioVolume();
+      void audio.play()
+        .then(() => {
+          pendingDialogueVoicePlayRef.current = false;
+        })
+        .catch(() => {
+          // Browser can block autoplay in edge cases; retry on the next explicit user gesture.
+          pendingDialogueVoicePlayRef.current = true;
+          if (!dialogueVoiceRetryBoundRef.current && typeof window !== "undefined") {
+            dialogueVoiceRetryBoundRef.current = true;
+            const retry = () => {
+              dialogueVoiceRetryBoundRef.current = false;
+              if (!pendingDialogueVoicePlayRef.current) {
+                return;
+              }
+              const pendingAudio = dialogueVoiceAudioRef.current;
+              if (!pendingAudio) {
+                return;
+              }
+              pendingAudio.volume = getGlobalAudioVolume();
+              void pendingAudio.play()
+                .then(() => {
+                  pendingDialogueVoicePlayRef.current = false;
+                })
+                .catch(() => {
+                  // Keep silent fail to avoid interrupting gameplay.
+                });
+            };
+            window.addEventListener("pointerdown", retry, { once: true, capture: true });
+          }
+        });
+    } catch {
+      // Ignore audio setup failures to avoid breaking dialogue flow.
+    }
+  }, [dialogueRunner.dialogue, dialogueRunner.state.context, dialogueRunner.state.isOpen, onStatus, resolveNpcById]);
   const npcQuestMarkerPlayer = useMemo<QuestRuntimePlayer>(() => {
     const activeQuestIds = playerQuestStates
       .filter((entry) => entry.playerId === character.id && entry.status === "active")
@@ -1477,11 +1640,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return undefined;
       }
 
-      return (
-        resolveStoredImageSource(npc.fullImageUrl, runtimeImages) ??
-        resolveStoredImageSource(npc.portraitUrl, runtimeImages) ??
-        resolveStoredImageSource(npc.iconUrl, runtimeImages)
-      );
+      const candidates = [npc.fullImageUrl, npc.portraitUrl, npc.combatImageUrl, npc.iconUrl]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value));
+
+      for (const candidate of candidates) {
+        const resolved = resolveStoredImageSource(candidate, runtimeImages);
+        if (resolved) {
+          return resolved;
+        }
+
+        if (
+          candidate.startsWith("/")
+          || candidate.startsWith("data:")
+          || candidate.startsWith("http://")
+          || candidate.startsWith("https://")
+        ) {
+          return candidate;
+        }
+      }
+
+      return undefined;
     },
     [runtimeImages],
   );
@@ -1548,6 +1727,25 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return isLinkedLocationVisibleToPlayer(linkedLocation);
     });
   }, [contentSnapshot, zones]);
+  const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
+  const resolveCanMoveTo = useCallback((x: number, y: number) => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    return cell ? !isBlockedRegionType(cell.regionType) : true;
+  }, [paintedCellMap]);
+  const resolveSpeedMultiplier = useCallback((x: number, y: number) => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    return cell ? getRegionMoveSpeedMultiplier(cell.regionType) : 1;
+  }, [paintedCellMap]);
+  useEffect(() => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    setTerrainStaminaDrainMultiplier(cell ? getRegionStaminaCostMultiplier(cell.regionType) : 1);
+  }, [paintedCellMap, playerPosition.x, playerPosition.y]);
   const mapDiscoveryMarkers = useMemo<MapDiscoveryMarker[]>(() => {
     const cityIds = new Set(mapDiscoveryState.discoveredCityIds);
     const locationIds = new Set(mapDiscoveryState.discoveredLocationIds);
@@ -1678,13 +1876,26 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       zones,
     ],
   );
+  const regionColor = regionColorByType[regionType] ?? REGION_TYPE_HEX_COLORS[regionType];
+  const handleRegionTypeChange = useCallback((nextType: RegionType) => {
+    setRegionType(nextType);
+  }, []);
+
+  const handleRegionColorChange = useCallback((nextColor: string) => {
+    setRegionColorByType((prev) => ({
+      ...prev,
+      [regionType]: nextColor,
+    }));
+  }, [regionType]);
+
   const regionPaintSettings = useMemo(
     () => ({
       toolMode: regionToolMode,
       regionType,
       brushSize: regionBrushSize,
+      regionColor,
     }),
-    [regionBrushSize, regionToolMode, regionType],
+    [regionBrushSize, regionColor, regionToolMode, regionType],
   );
 
   const flushQueuedEditorSaves = useCallback(function run() {
@@ -3788,7 +3999,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
   const openNpcDialogue = useCallback(
     (npcId: string, context?: { cityId?: string; locationId?: string }) => {
-      const npc = npcs.find((entry) => entry.id === npcId) ?? null;
+      const npc = resolveNpcById(npcId);
       if (!npc) {
         dialogueRunner.openDialogueForNpc(npcId, context ?? {});
         return;
@@ -3850,7 +4061,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
       dialogueRunner.openDialogueForNpc(npcId, context ?? {});
     },
-    [character.id, character.level, character.race, dialogueRunner, inventory.gold, inventory.items, npcs, playerQuestStates, questDefinitions],
+    [character.id, character.level, character.race, dialogueRunner, inventory.gold, inventory.items, playerQuestStates, questDefinitions, resolveNpcById],
   );
 
   const handleNpcTalk = useCallback(() => {
@@ -3868,7 +4079,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const merchantId = entity.merchantId?.trim();
 
     if (npcId) {
-      const npc = npcById.get(npcId) ?? null;
+      const npc = resolveNpcById(npcId);
       openNpcDialogue(npcId, {
         cityId: npc?.cityId ?? activeCity?.id,
         locationId: npc?.cityLocationId ?? npc?.locationId,
@@ -3887,7 +4098,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     onStatus(`У сущности ${entity.id} не задан NPC или merchant source.`);
-  }, [activeCity?.id, npcById, onOpenMerchant, onStatus, openNpcDialogue]);
+  }, [activeCity?.id, onOpenMerchant, onStatus, openNpcDialogue, resolveNpcById]);
 
   const pendingWorldEntityInteraction = useMemo(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -3912,6 +4123,52 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const sharedWorldMovementTargetLocationId = worldEntityApproachTarget
     ? null
     : playMovementTarget?.pendingLocationId ?? null;
+  const initialPlayer = useMemo<MapPlayer>(() => ({
+    x: clamp(playSpawnPosition.x, 0, 1),
+    y: clamp(playSpawnPosition.y, 0, 1),
+    targetX: null,
+    targetY: null,
+    speed: runtimeSettings.playerSpeed,
+  }), [playSpawnPosition.x, playSpawnPosition.y, runtimeSettings.playerSpeed]);
+
+  const worldRuntime = useWorldRuntimeController({
+    enabled: worldMapMode === "play" && locationView === "map",
+    initialPlayer,
+    playerStartPosition: playSpawnPosition,
+    defaultPlayerSpeed: runtimeSettings.playerSpeed,
+    playerSpeed: travelMoveSpeed,
+    gameplayPaused: worldMapViewerOpen,
+    movementLocked: playMovementLocked,
+    controlScheme: movementControlScheme,
+    sprintActive,
+    zones: playVisibleZones,
+    resolveCanMoveTo,
+    resolveSpeedMultiplier,
+    playerTargetPosition: sharedWorldMovementTarget,
+    playerTargetLocationId: sharedWorldMovementTargetLocationId,
+    onPlayerPosition: handlePlayerPosition,
+    onPlayerState: handlePlayerState,
+    onEnterZone: handleZoneEnterMemoized,
+    onOpenLocation: handleOpenLocationMemoized,
+  });
+
+  const playRuntimePlayerPosition = useMemo(() => ({
+    x: worldRuntime.player.x,
+    y: worldRuntime.player.y,
+  }), [worldRuntime.player.x, worldRuntime.player.y]);
+
+  const playCamera = useMemo(() => {
+    const width = 1 / runtimeSettings.playZoom;
+    const height = 1 / runtimeSettings.playZoom;
+    const target = playCameraFocusPoint ?? playRuntimePlayerPosition;
+    return {
+      width,
+      height,
+      left: clamp(target.x - width / 2, 0, 1 - width),
+      top: clamp(target.y - height / 2, 0, 1 - height),
+    };
+  }, [playCameraFocusPoint, playRuntimePlayerPosition, runtimeSettings.playZoom]);
+
   const renderedActiveEntities = useMemo(
     () => resolveRenderedWorldEntities(
       worldSnapshot?.activeEntities ?? [],
@@ -3922,15 +4179,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const playWorldSceneSnapshot = useMemo<WorldSceneSnapshot>(
     () => buildWorldSceneSnapshot({
-      playerPosition,
-      playerState,
+      playerPosition: playRuntimePlayerPosition,
+      playerState: playerState === "moving" ? "moving" : worldRuntime.currentZone?.type === "city" ? "in_city" : worldRuntime.currentZone ? "in_zone" : playerState,
       playerAvatarUrl: playerAvatarUrl ?? null,
-      movementTarget: sharedWorldMovementTarget,
+      movementTarget: worldRuntime.player.targetX !== null && worldRuntime.player.targetY !== null
+        ? { x: worldRuntime.player.targetX, y: worldRuntime.player.targetY }
+        : null,
       movementLocked: playMovementLocked,
       movementLockReason: playMovementLockReason,
       controlScheme: movementControlScheme,
+      camera: playCamera,
       zones: playVisibleZones,
-      currentZoneId: currentZone?.id ?? null,
+      currentZoneId: worldRuntime.currentZone?.id ?? currentZone?.id ?? null,
       hoverZoneId: hoverZone?.id ?? null,
       questMarkers: playQuestMarkers,
       npcMarkers: playNpcMarkers,
@@ -3947,17 +4207,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       hoverZone?.id,
       mapDiscoveryMarkers,
       movementControlScheme,
+      playCamera,
       playMovementLocked,
       playMovementLockReason,
       playNpcMarkers,
       playQuestMarkers,
       playVisibleZones,
       playerAvatarUrl,
-      playerPosition,
+      playRuntimePlayerPosition,
       playerState,
       playMovementTarget?.pendingLocationId,
       renderedActiveEntities,
       sharedWorldMovementTarget,
+      worldRuntime.currentZone,
+      worldRuntime.player.targetX,
+      worldRuntime.player.targetY,
       worldSnapshot,
     ],
   );
@@ -4030,6 +4294,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
       case 'move_to_point': {
         setLastRuntimeClickPoint(command.point);
+        setPlayCameraFocusPoint(null);
         setPlayMovementTarget({
           point: command.point,
           pendingLocationId: command.pendingLocationId ?? null,
@@ -4041,11 +4306,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return;
       }
       case 'focus_zone': {
-        canvasRef.current?.focusZone(command.zoneId);
+        if (!command.zoneId) {
+          setPlayCameraFocusPoint(null);
+          return;
+        }
+        const zone = playVisibleZones.find((entry) => entry.id === command.zoneId) ?? null;
+        if (!zone) {
+          return;
+        }
+        const [x, y] = getZoneCenter(zone);
+        setPlayCameraFocusPoint({ x, y });
         return;
       }
       case 'focus_point': {
-        canvasRef.current?.focusPoint(command.point ? [command.point.x, command.point.y] : null);
+        setPlayCameraFocusPoint(command.point ? { x: command.point.x, y: command.point.y } : null);
         return;
       }
       case 'move_directional':
@@ -6621,7 +6895,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const context = dialogueRunner.state.context;
     const contextNpc =
       context.npcId
-        ? npcs.find((entry) => entry.id === context.npcId) ?? null
+        ? resolveNpcById(context.npcId)
         : null;
     const currentNode = dialogueRunner.node;
 
@@ -6926,24 +7200,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   playerStartPosition={playSpawnPosition}
                   playerAvatarUrl={playerAvatarUrl}
                   zones={playVisibleZones}
-                  regions={regions}
                   playQuestMarkers={playQuestMarkers}
                   playNpcMarkers={playNpcMarkers}
-                  onOpenLocation={handleOpenLocation}
-                  onEnterZone={handleZoneEnterMemoized}
                   onHoverZone={handleHoverZone}
-                  onRuntimeZoneInteract={handleRuntimeZoneInteract}
-                  onPlayerPosition={handlePlayerPosition}
-                  onPlayerState={handlePlayerState}
-                  playerTargetPosition={sharedWorldMovementTarget}
-                  playerTargetLocationId={sharedWorldMovementTargetLocationId}
                   movementLocked={playMovementLocked}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
-                  controlScheme={movementControlScheme}
-                  playerSpeed={travelMoveSpeed}
-                  sprintActive={sprintActive}
                 />
               ) : (
                 <WorldMapCanvas
@@ -6957,21 +7220,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   regions={regions}
                   playQuestMarkers={playQuestMarkers}
                   playNpcMarkers={playNpcMarkers}
-                  onOpenLocation={handleOpenLocation}
-                  onEnterZone={handleZoneEnterMemoized}
                   onHoverZone={handleHoverZone}
-                  onRuntimeZoneInteract={handleRuntimeZoneInteract}
-                  onPlayerPosition={handlePlayerPosition}
-                  onPlayerState={handlePlayerState}
-                  playerTargetPosition={sharedWorldMovementTarget}
-                  playerTargetLocationId={sharedWorldMovementTargetLocationId}
                   movementLocked={playMovementLocked}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
-                  controlScheme={movementControlScheme}
-                  playerSpeed={travelMoveSpeed}
-                  sprintActive={sprintActive}
                 />
               )}
               {miniMapVisible ? (
@@ -7549,9 +7802,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           regionToolMode={regionToolMode}
           regionType={regionType}
           regionBrushSize={regionBrushSize}
+          regionColor={regionColor}
           onRegionToolModeChange={setRegionToolMode}
-          onRegionTypeChange={setRegionType}
+          onRegionTypeChange={handleRegionTypeChange}
           onRegionBrushSizeChange={setRegionBrushSize}
+          onRegionColorChange={handleRegionColorChange}
           onToolChange={handleToolChange}
           onSettingsChange={handleEditorViewChange}
           onDraftChange={handleDraftChange}

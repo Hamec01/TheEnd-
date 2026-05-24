@@ -1,6 +1,7 @@
 import { getWorldMapContent, saveWorldMapContent } from '../services/content/contentApi';
 import type { QuestMarkerDefinition, QuestMarkerType } from '../types/quest';
 import type { PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
+import { LEGACY_REGION_GRID_SIZE, REGION_GRID_SIZE } from './regionPaintSystem';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
 import { normalizeWorldMapZone } from './zoneTaxonomy';
 
@@ -115,6 +116,14 @@ function normalizeRegion(input: unknown): PaintedRegion | null {
   }
 
   const seen = new Set<string>();
+  const rawGridSize = Number(region.gridSize);
+  const sourceGridSize = Number.isFinite(rawGridSize) && rawGridSize > 0
+    ? Math.floor(rawGridSize)
+    : LEGACY_REGION_GRID_SIZE;
+  const migrationScale = sourceGridSize === REGION_GRID_SIZE
+    ? 1
+    : (REGION_GRID_SIZE / sourceGridSize);
+
   const cells: PaintedRegion['cells'] = [];
   for (const entry of region.cells) {
     if (!entry || typeof entry !== 'object') {
@@ -125,8 +134,31 @@ function normalizeRegion(input: unknown): PaintedRegion | null {
       continue;
     }
 
-    const x = Math.floor(cell.x);
-    const y = Math.floor(cell.y);
+    if (migrationScale > 1) {
+      const baseX = Math.floor(cell.x * migrationScale);
+      const baseY = Math.floor(cell.y * migrationScale);
+      const span = Math.max(1, Math.ceil(migrationScale));
+      for (let oy = 0; oy < span; oy += 1) {
+        for (let ox = 0; ox < span; ox += 1) {
+          const x = baseX + ox;
+          const y = baseY + oy;
+          if (x < 0 || y < 0 || x > 4096 || y > 4096) {
+            continue;
+          }
+
+          const key = `${x}:${y}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          cells.push({ x, y });
+        }
+      }
+      continue;
+    }
+
+    const x = Math.floor(cell.x * migrationScale);
+    const y = Math.floor(cell.y * migrationScale);
     if (x < 0 || y < 0 || x > 4096 || y > 4096) {
       continue;
     }
@@ -143,6 +175,8 @@ function normalizeRegion(input: unknown): PaintedRegion | null {
     id: String(region.id ?? '').trim(),
     name: String(region.name ?? '').trim() || String(type),
     type: type as RegionType,
+    color: typeof region.color === 'string' ? region.color.trim() || undefined : undefined,
+    gridSize: REGION_GRID_SIZE,
     cells,
   };
 }

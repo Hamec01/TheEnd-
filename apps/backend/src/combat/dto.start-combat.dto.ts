@@ -353,6 +353,22 @@ export class RuntimeBattleMapDto {
   imageUrl?: string;
 
   @IsOptional()
+  @IsString()
+  musicAssetId?: string;
+
+  @IsOptional()
+  @IsString()
+  musicUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  ambientAssetId?: string;
+
+  @IsOptional()
+  @IsString()
+  ambientUrl?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   cellSizePx?: number;

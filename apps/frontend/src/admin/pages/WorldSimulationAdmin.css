@@ -47,6 +47,49 @@
   border-bottom-color: #00d4ff;
 }
 
+.runtime-tuning-panel {
+  background: rgba(0, 90, 140, 0.18);
+  border: 1px solid #00d4ff;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.runtime-tuning-panel h3 {
+  margin: 0 0 8px 0;
+  color: #00d4ff;
+}
+
+.runtime-tuning-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 10px;
+}
+
+.runtime-tuning-grid label {
+  display: block;
+  font-size: 13px;
+  color: #d9f3ff;
+}
+
+.runtime-tuning-grid input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #00d4ff;
+  border-radius: 4px;
+  color: #fff;
+  font-family: monospace;
+}
+
+.runtime-tuning-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 /* Контент вкладки */
 
 .admin-tab-content {

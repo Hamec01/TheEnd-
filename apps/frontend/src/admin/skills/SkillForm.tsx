@@ -1,6 +1,7 @@
 import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisitionConfig, type SkillRequirementConfig } from '@theend/rpg-domain';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
+import { AdminAudioField } from '../AdminAudioField';
 import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
@@ -13,6 +14,8 @@ import { SkillPreview } from './SkillPreview';
 import { SkillRequirementsEditor } from './SkillRequirementsEditor';
 import { clampLevel, formatCommaList, formatEnumLabel, parseCommaList, SKILL_CAST_TYPES, SKILL_TARGET_TYPES, SKILL_TYPES, syncLevels } from './skillAdminUtils';
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
+import { visualFxService } from '../../services/content/visualFxService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 
 type SkillTab = 'basic' | 'levels' | 'costs' | 'effects' | 'visuals' | 'target' | 'requirements' | 'acquisition' | 'classes' | 'races' | 'runes' | 'shamanism' | 'risks' | 'preview';
 
@@ -52,6 +55,7 @@ const TABS: Array<{ id: SkillTab; label: string }> = [
 export function SkillForm(props: SkillFormProps) {
   const { draft, selectedId, previewLevel, iconSrc, status, saveState, isSaving, onChange, onPreviewLevelChange, onSave, onDuplicate, onDelete, onTogglePublish } = props;
   const [activeTab, setActiveTab] = useState<SkillTab>('basic');
+  const [visualFxIds, setVisualFxIds] = useState<string[]>([]);
 
   function patch(patchValue: Partial<AdminSkillDefinition>) {
     onChange({ ...draft, ...patchValue });
@@ -70,9 +74,31 @@ export function SkillForm(props: SkillFormProps) {
   }
 
   const translatedStatus = useMemo(() => translateAdminErrorMessage(status), [status]);
+  const battleEffectIds = useMemo(
+    () => Array.from(new Set([...visualFxIds, ...BATTLE_EFFECT_IDS])).sort(),
+    [visualFxIds],
+  );
+
+  useEffect(() => {
+    let disposed = false;
+    void visualFxService.getAll()
+      .then((entries) => {
+        if (!disposed) {
+          setVisualFxIds(entries.filter((entry) => entry.status !== 'disabled').map((entry) => entry.id));
+        }
+      })
+      .catch(() => {
+        if (!disposed) {
+          setVisualFxIds([]);
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   function renderEffectOptions() {
-    return BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>);
+    return battleEffectIds.map((id) => <option key={id} value={id}>{id}</option>);
   }
 
   return (
@@ -149,7 +175,9 @@ export function SkillForm(props: SkillFormProps) {
         onChange={(nextValue) => patch({ iconUrl: nextValue })}
         onStatus={() => undefined}
         presetId="item-icon"
+        suggestedId={draft.id || undefined}
         suggestedName={`${draft.id || draft.name || 'skill'}-icon`}
+        uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
         label="Иконка навыка"
         hint="Загружает иконку навыка в тот же content image store, что и предметы, поэтому preview и экспорт работают одинаково."
       />
@@ -343,6 +371,26 @@ export function SkillForm(props: SkillFormProps) {
             <datalist id="battle-effect-ids">
               {renderEffectOptions()}
             </datalist>
+            <AdminAudioField
+              value={draft.visuals?.castSoundId}
+              onChange={(nextValue) => patchVisuals({ castSoundId: nextValue || undefined })}
+              mode="assetId"
+              suggestedAssetId={`${draft.id || 'skill'}_cast_sound`}
+              suggestedName={`${draft.id || 'skill'}-cast-sound`}
+              uploadFolder={buildUploadFolder('audio', 'skills', draft.id || undefined)}
+              label="Загрузить Cast sound"
+              hint="Загружает audio-файл и подставляет asset ID в Cast sound ID."
+            />
+            <AdminAudioField
+              value={draft.visuals?.impactSoundId}
+              onChange={(nextValue) => patchVisuals({ impactSoundId: nextValue || undefined })}
+              mode="assetId"
+              suggestedAssetId={`${draft.id || 'skill'}_impact_sound`}
+              suggestedName={`${draft.id || 'skill'}-impact-sound`}
+              uploadFolder={buildUploadFolder('audio', 'skills', draft.id || undefined)}
+              label="Загрузить Impact sound"
+              hint="Загружает audio-файл и подставляет asset ID в Impact sound ID."
+            />
             <SkillJsonField label="Visual JSON" hint="SkillVisualConfig. Optional fields only; old skills work with defaults." value={draft.visuals ?? {}} onChange={(next) => patch({ visuals: next })} onStatus={() => undefined} rows={10} />
           </div>
         ) : null}

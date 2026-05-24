@@ -153,6 +153,22 @@ resource set regen 4
 - `stamina`
 - `regen`
 
+Бесконечные ресурсы (тумблеры):
+
+```txt
+inv hp on
+inv hp off
+
+inv mana on
+inv mana off
+
+inv stamina on
+inv stamina off
+
+inv all on
+inv all off
+```
+
 ---
 
 ### Обычные предметы

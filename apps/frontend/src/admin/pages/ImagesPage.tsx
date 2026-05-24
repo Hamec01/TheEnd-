@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 
@@ -29,7 +30,10 @@ export function ImagesPage() {
     }
 
     try {
-      const stored = await imageService.upload(file);
+      const stored = await imageService.upload(file, {
+        name: file.name,
+        folder: buildUploadFolder('images', 'library'),
+      });
       setStatus(`Изображение загружено: ${stored.name}`);
       setSelectedId(stored.id);
       await refresh();

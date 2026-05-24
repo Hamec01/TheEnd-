@@ -25,11 +25,14 @@ import {
   validateItem,
 } from '../../services/content/itemsService';
 import { uid } from '../../services/content/storage';
+import { AdminAudioField } from '../AdminAudioField';
 import { AdminImageField } from '../AdminImageField';
 import { ItemEffectEditor } from '../components/ItemEffectEditor';
 import type { ItemEffectJson } from '../itemEffectConstants';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
+import { visualFxService } from '../../services/content/visualFxService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 import {
   AdminFieldLabel,
@@ -183,6 +186,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
 
   const [previewImage, setPreviewImage] = useState<StoredImage | null>(null);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+  const [visualFxIds, setVisualFxIds] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
 
@@ -200,16 +204,18 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   }
 
   async function refresh() {
-    const [all, images, fetchedItemSets, fetchedRuneComplexes] = await Promise.all([
+    const [all, images, fetchedItemSets, fetchedRuneComplexes, fetchedVisualFx] = await Promise.all([
       itemsService.getAll(),
       loadRuntimeImages(),
       getContentCollection<ExtendedAdminItemCollections['itemSets'][number]>('itemSets').catch(() => []),
       getContentCollection<ExtendedAdminItemCollections['runeComplexes'][number]>('runeComplexes').catch(() => []),
+      visualFxService.getAll().catch(() => []),
     ]);
     setItems(all);
     setRuntimeImages(images);
     setItemSets(fetchedItemSets);
     setRuneComplexes(fetchedRuneComplexes);
+    setVisualFxIds(fetchedVisualFx.filter((entry) => entry.status !== 'disabled').map((entry) => entry.id));
     if (selectedId && !all.some((item) => item.id === selectedId)) {
       setSelectedId(null);
       const next = emptyItem();
@@ -221,6 +227,11 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   useEffect(() => {
     void refresh();
   }, []);
+
+  const itemBattleEffectIds = useMemo(
+    () => Array.from(new Set([...visualFxIds, ...BATTLE_EFFECT_IDS])).sort(),
+    [visualFxIds],
+  );
 
   const visibleItems = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -921,7 +932,9 @@ export function ItemsPage(props: ItemsPageProps = {}) {
           onChange={(nextValue) => patch({ imagePath: nextValue })}
           onStatus={setStatus}
           presetId="item-icon"
+          suggestedId={draft.id || undefined}
           suggestedName={`${draft.id || draft.name || 'item'}-icon`}
+          uploadFolder={buildUploadFolder('images', 'items', draft.type, draft.subtype || undefined)}
           label="Картинка предмета"
           hint="Загружает иконку предмета и автоматически подгоняет её под единый квадратный размер для магазина, инвентаря и слотов."
         />
@@ -941,9 +954,39 @@ export function ItemsPage(props: ItemsPageProps = {}) {
               <AdminFieldLabel label="Hit effect preset" hint="Effect registry id for this weapon or item impact." />
               <input list="item-battle-effect-ids" value={draft.battleVisuals?.hitEffectPreset ?? ''} onChange={(event) => patchBattleVisuals({ hitEffectPreset: event.target.value || undefined })} placeholder="hit_slash" />
             </label>
+            <label>
+              <AdminFieldLabel label="Cast sound ID" hint="Опциональный звук подготовки/каста для оружия или предмета." />
+              <input value={draft.battleVisuals?.castSoundId ?? ''} onChange={(event) => patchBattleVisuals({ castSoundId: event.target.value || undefined })} placeholder="sfx_item_cast_01" />
+            </label>
+            <label>
+              <AdminFieldLabel label="Impact sound ID" hint="Опциональный звук попадания/удара для предмета." />
+              <input value={draft.battleVisuals?.impactSoundId ?? ''} onChange={(event) => patchBattleVisuals({ impactSoundId: event.target.value || undefined })} placeholder="sfx_item_impact_01" />
+            </label>
           </div>
+          <AdminAudioField
+            value={draft.battleVisuals?.castSoundId}
+            onChange={(nextValue) => patchBattleVisuals({ castSoundId: nextValue || undefined })}
+            onStatus={setStatus}
+            mode="assetId"
+            suggestedAssetId={`${draft.id || 'item'}_cast_sound`}
+            suggestedName={`${draft.id || 'item'}-cast-sound`}
+            uploadFolder={buildUploadFolder('audio', 'items', draft.type, draft.subtype || undefined, draft.id || undefined)}
+            label="Загрузить item cast sound"
+            hint="Загружает audio-файл и подставляет asset ID в поле Cast sound ID."
+          />
+          <AdminAudioField
+            value={draft.battleVisuals?.impactSoundId}
+            onChange={(nextValue) => patchBattleVisuals({ impactSoundId: nextValue || undefined })}
+            onStatus={setStatus}
+            mode="assetId"
+            suggestedAssetId={`${draft.id || 'item'}_impact_sound`}
+            suggestedName={`${draft.id || 'item'}-impact-sound`}
+            uploadFolder={buildUploadFolder('audio', 'items', draft.type, draft.subtype || undefined, draft.id || undefined)}
+            label="Загрузить item impact sound"
+            hint="Загружает audio-файл и подставляет asset ID в поле Impact sound ID."
+          />
           <datalist id="item-battle-effect-ids">
-            {BATTLE_EFFECT_IDS.map((id) => <option key={id} value={id}>{id}</option>)}
+            {itemBattleEffectIds.map((id) => <option key={id} value={id}>{id}</option>)}
           </datalist>
         </section>
 

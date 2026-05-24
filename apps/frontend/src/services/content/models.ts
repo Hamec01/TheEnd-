@@ -1,4 +1,4 @@
-import type { AdminSkillDefinition, PrimaryStat } from '@theend/rpg-domain';
+import type { AdminSkillDefinition, PrimaryStat, VisualFxDefinition } from '@theend/rpg-domain';
 import type { ActorBattleVisualConfig } from '@theend/rpg-domain';
 import type { DialogueDefinition } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
@@ -305,6 +305,7 @@ export interface StoredImage {
 }
 
 export type AdminSkill = AdminSkillDefinition;
+export type AdminVisualFx = VisualFxDefinition;
 export type AdminDialogue = DialogueDefinition;
 export type AdminNpc = NpcDefinition;
 export type AdminQuest = QuestDefinition;

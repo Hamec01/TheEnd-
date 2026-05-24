@@ -9,6 +9,13 @@ import {
 } from '../../services/useWorldSimulation';
 import { getContentSnapshot } from '../../services/content/contentApi';
 import { imageService } from '../../services/content/imageService';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
+import {
+  DEFAULT_WORLD_MAP_RUNTIME_SETTINGS,
+  clearWorldMapRuntimeSettings,
+  loadWorldMapRuntimeSettings,
+  saveWorldMapRuntimeSettings,
+} from '../../worldmap/worldMapRuntimeSettings';
 import './WorldSimulationAdmin.css';
 
 /**
@@ -40,10 +47,98 @@ export function WorldSimulationAdmin() {
         </button>
       </div>
 
+      <LiveWorldRuntimeTuningPanel />
+
       {activeTab === 'archetypes' && <ArchetypesTab />}
       {activeTab === 'routes' && <RoutesTab />}
       {activeTab === 'rules' && <SpawnRulesTab />}
       {activeTab === 'monitor' && <MonitorTab />}
+    </div>
+  );
+}
+
+function LiveWorldRuntimeTuningPanel() {
+  const initialSettings = loadWorldMapRuntimeSettings();
+  const [npcSpeedScale, setNpcSpeedScale] = useState(String(initialSettings.phaserNpcMoveSpeedScale));
+  const [npcTweenMinMs, setNpcTweenMinMs] = useState(String(initialSettings.phaserNpcMoveTweenMinMs));
+  const [npcTweenMaxMs, setNpcTweenMaxMs] = useState(String(initialSettings.phaserNpcMoveTweenMaxMs));
+  const [status, setStatus] = useState('Не сохранено');
+
+  function handleSave() {
+    const speedScale = Number(npcSpeedScale);
+    const tweenMinMs = Number(npcTweenMinMs);
+    const tweenMaxMs = Number(npcTweenMaxMs);
+
+    if (!Number.isFinite(speedScale) || !Number.isFinite(tweenMinMs) || !Number.isFinite(tweenMaxMs)) {
+      setStatus('Ошибка: все поля должны быть числовыми.');
+      return;
+    }
+
+    const saved = saveWorldMapRuntimeSettings({
+      phaserNpcMoveSpeedScale: speedScale,
+      phaserNpcMoveTweenMinMs: tweenMinMs,
+      phaserNpcMoveTweenMaxMs: tweenMaxMs,
+    });
+
+    setNpcSpeedScale(String(saved.phaserNpcMoveSpeedScale));
+    setNpcTweenMinMs(String(saved.phaserNpcMoveTweenMinMs));
+    setNpcTweenMaxMs(String(saved.phaserNpcMoveTweenMaxMs));
+    setStatus('Сохранено. Phaser-NPC движение обновлено.');
+  }
+
+  function handleReset() {
+    clearWorldMapRuntimeSettings();
+    const defaults = DEFAULT_WORLD_MAP_RUNTIME_SETTINGS;
+    setNpcSpeedScale(String(defaults.phaserNpcMoveSpeedScale));
+    setNpcTweenMinMs(String(defaults.phaserNpcMoveTweenMinMs));
+    setNpcTweenMaxMs(String(defaults.phaserNpcMoveTweenMaxMs));
+    setStatus('Сброшено к значениям по умолчанию.');
+  }
+
+  return (
+    <div className="runtime-tuning-panel">
+      <h3>Настройка движения NPC (Phaser)</h3>
+      <p className="muted">Регулирует визуальную скорость и плавность перемещения NPC на карте мира в Phaser.</p>
+      <div className="runtime-tuning-grid">
+        <label>
+          Скорость NPC относительно героя (0.5 - 2.5)
+          <input
+            type="number"
+            step="0.05"
+            min="0.5"
+            max="2.5"
+            value={npcSpeedScale}
+            onChange={(event) => setNpcSpeedScale(event.target.value)}
+          />
+        </label>
+        <label>
+          Минимальная длительность шага (ms)
+          <input
+            type="number"
+            step="5"
+            min="16"
+            max="240"
+            value={npcTweenMinMs}
+            onChange={(event) => setNpcTweenMinMs(event.target.value)}
+          />
+        </label>
+        <label>
+          Максимальная длительность шага (ms)
+          <input
+            type="number"
+            step="10"
+            min="120"
+            max="2000"
+            value={npcTweenMaxMs}
+            onChange={(event) => setNpcTweenMaxMs(event.target.value)}
+          />
+        </label>
+      </div>
+      <div className="runtime-tuning-actions">
+        <button type="button" className="btn btn-success" onClick={handleSave}>Сохранить движение NPC</button>
+        <button type="button" className="btn btn-cancel" onClick={handleReset}>Сбросить</button>
+      </div>
+      <p className="muted">Статус: {status}</p>
     </div>
   );
 }
@@ -209,7 +304,11 @@ function ArchetypesTab() {
     try {
       setUploadError(null);
       setUploadingSprite(true);
-      const stored = await imageService.upload(file);
+      const stored = await imageService.upload(file, {
+        id: formData.id ? `${formData.id}_world_sprite` : undefined,
+        name: `${formData.id || 'archetype'}-world-sprite`,
+        folder: buildUploadFolder('images', 'worldsim', 'archetypes', formData.id || undefined),
+      });
       setFormData((prev: any) => ({ ...prev, worldSpriteId: stored.id }));
     } catch {
       setUploadError('Не удалось загрузить спрайт. Попробуй другой файл PNG/JPG.');
@@ -225,7 +324,11 @@ function ArchetypesTab() {
     try {
       setUploadError(null);
       setUploadingPortrait(true);
-      const stored = await imageService.upload(file);
+      const stored = await imageService.upload(file, {
+        id: formData.id ? `${formData.id}_portrait` : undefined,
+        name: `${formData.id || 'archetype'}-portrait`,
+        folder: buildUploadFolder('images', 'worldsim', 'archetypes', formData.id || undefined),
+      });
       setFormData((prev: any) => ({ ...prev, portraitId: stored.id }));
     } catch {
       setUploadError('Не удалось загрузить портрет. Попробуй другой файл PNG/JPG.');

@@ -8,8 +8,11 @@ import {
   type AdminSkillDefinition,
   type ArenaCombatEntity,
   type CombatAnimationEvent,
+  type CombatLootContainer,
   type CombatLogEntry,
+  type ExitZone,
   type BattlefieldTile,
+  type BattlefieldTrapState,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CombatContextAction, ClickedCombatTarget, SelectedCombatSource } from './combatContextActions';
@@ -72,8 +75,13 @@ export interface BattleFieldProps {
   lastLog?: CombatLogEntry | null;
   recentLogs?: CombatLogEntry[];
   animationEvents?: CombatAnimationEvent[];
+  battlefieldTraps?: BattlefieldTrapState[];
+  exitZones?: ExitZone[];
+  lootContainers?: CombatLootContainer[];
   isPlaybackActive?: boolean;
   playbackPhases?: BattlePlaybackPhase[];
+  playbackRunId?: number;
+  onPlaybackComplete?: (runId: number) => void;
 }
 
 interface ContextMenu {
@@ -162,6 +170,9 @@ export function BattleField({
   inventoryItems = [],
   selectedSkillId = null,
   animationEvents = [],
+  battlefieldTraps = [],
+  exitZones = [],
+  lootContainers = [],
 }: BattleFieldProps) {
     function getRacePortrait(entity: ArenaCombatEntity): string {
       if (entity.avatarUrl) {
@@ -759,6 +770,44 @@ export function BattleField({
   const fullMapPixelHeight = gridOffsetY * 2 + battleMapHeight * sceneCellSize;
   const backgroundOffsetX = gridOffsetX - viewport.offsetX * sceneCellSize;
   const backgroundOffsetY = gridOffsetY - viewport.offsetY * sceneCellSize;
+  const tileByCoord = useMemo(
+    () => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile])),
+    [battlefieldTiles],
+  );
+  const visibleTrapByCoord = useMemo(() => {
+    const traps = new Map<string, BattlefieldTrapState>();
+    const trapById = new Map(battlefieldTraps.map((trap) => [trap.id, trap]));
+    for (const tile of battlefieldTiles) {
+      if (!tile.trapId) {
+        continue;
+      }
+      const trap = trapById.get(tile.trapId);
+      if (!trap || trap.isActive === false) {
+        continue;
+      }
+      traps.set(`${tile.x}:${tile.y}`, trap);
+    }
+    return traps;
+  }, [battlefieldTiles, battlefieldTraps]);
+  const exitZoneByCoord = useMemo(() => {
+    const zones = new Map<string, ExitZone>();
+    for (const zone of exitZones) {
+      for (const cell of zone.cells ?? []) {
+        zones.set(`${cell.x}:${cell.y}`, zone);
+      }
+    }
+    return zones;
+  }, [exitZones]);
+  const lootByCoord = useMemo(() => {
+    const loot = new Map<string, CombatLootContainer>();
+    for (const container of lootContainers) {
+      if (container.claimed) {
+        continue;
+      }
+      loot.set(`${container.x}:${container.y}`, container);
+    }
+    return loot;
+  }, [lootContainers]);
 
   return (
     <div className="battle-field tactical-field">
@@ -846,6 +895,19 @@ export function BattleField({
               const placement = placementByTile.get(`${x}:${y}`);
               const entity = placement ? entityById.get(placement.entityId) : null;
               const tileState = getTileState(x, y);
+              const tile = tileByCoord.get(`${x}:${y}`);
+              const trap = visibleTrapByCoord.get(`${x}:${y}`) ?? null;
+              const exitZone = exitZoneByCoord.get(`${x}:${y}`) ?? null;
+              const lootContainer = lootByCoord.get(`${x}:${y}`) ?? null;
+              const mapObjectGlyph = tile?.type === BattlefieldTileType.HighCover
+                ? '▦'
+                : tile?.type === BattlefieldTileType.LowCover
+                  ? '▤'
+                  : tile?.type === BattlefieldTileType.Hazard
+                    ? '☣'
+                    : tile?.type === BattlefieldTileType.Summon
+                      ? '✶'
+                      : null;
 
               return (
                 <div
@@ -885,6 +947,34 @@ export function BattleField({
                   role="button"
                   tabIndex={-1}
                 >
+                  {mapObjectGlyph || trap || exitZone || lootContainer ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 2,
+                        top: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        fontSize: Math.max(9, Math.floor(sceneCellSize * 0.23)),
+                        lineHeight: 1,
+                        textShadow: '0 0 3px rgba(0, 0, 0, 0.75)',
+                        pointerEvents: 'none',
+                        zIndex: 2,
+                      }}
+                      title={[
+                        mapObjectGlyph ? `Map object: ${tile?.type ?? 'unknown'}` : null,
+                        trap ? `Trap: ${trap.name}` : null,
+                        exitZone ? `Exit zone: ${exitZone.label ?? exitZone.id}` : null,
+                        lootContainer ? `Loot: ${lootContainer.sourceName}` : null,
+                      ].filter(Boolean).join(' | ')}
+                    >
+                      {mapObjectGlyph ? <span style={{ color: '#8dc8ff' }}>{mapObjectGlyph}</span> : null}
+                      {trap ? <span style={{ color: '#ff7a7a' }}>⚠</span> : null}
+                      {exitZone ? <span style={{ color: '#66e2ff' }}>⇱</span> : null}
+                      {lootContainer ? <span style={{ color: '#f6d47b' }}>◈</span> : null}
+                    </div>
+                  ) : null}
                    {entity ? (() => {
                      const hpPercent = Math.max(
                        0,

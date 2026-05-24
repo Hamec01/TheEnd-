@@ -2,6 +2,12 @@ import { resolveStoredImageSource } from '../services/content/runtimeImageServic
 import type { StoredImage } from '../services/content/models';
 import type { NpcDefinition } from '../types/npc';
 import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
+import {
+  isInvalidActorVisualToken,
+  normalizeActorVisualSource,
+  pickDeterministicBanditPortrait,
+  toContentImageRawUrl,
+} from '../phaser/assets/actorVisualResolver';
 import type { RenderedWorldEntity } from './worldSceneTypes';
 
 type ActiveWorldEntity = WorldSimulationSnapshot['activeEntities'][number];
@@ -11,9 +17,29 @@ function isMeaningfulPortraitId(value?: string): boolean {
   return Boolean(normalized && normalized !== 'unknown' && normalized !== 'none' && normalized !== 'null');
 }
 
+function isDirectImageSource(value: string): boolean {
+  return value.startsWith('/')
+    || value.startsWith('data:')
+    || value.startsWith('http://')
+    || value.startsWith('https://');
+}
+
+function shouldResolveAsActorSprite(value: string): boolean {
+  const slashNormalized = value.replace(/\\/g, '/');
+  if (/(?:^|\/)Resurse\/actor\//i.test(slashNormalized)) {
+    return true;
+  }
+
+  if (/^bandit_\d{1,2}$/i.test(slashNormalized)) {
+    return true;
+  }
+
+  return /^(human_01|dwarf_01|high_elf_01|drogan|mirel|selene)(\.(png|jpg|jpeg|webp|gif))?$/i.test(slashNormalized);
+}
+
 function resolveSpriteSource(spriteId: string | undefined, runtimeImages: StoredImage[]): string | undefined {
   const normalized = spriteId?.trim();
-  if (!normalized) {
+  if (!normalized || isInvalidActorVisualToken(normalized)) {
     return undefined;
   }
 
@@ -22,7 +48,22 @@ function resolveSpriteSource(spriteId: string | undefined, runtimeImages: Stored
     return runtimeSprite;
   }
 
-  return normalized.startsWith('/') ? normalized : `/sprites/world/${normalized}.png`;
+  if (/^img_[a-z0-9_\-]+$/i.test(normalized)) {
+    return toContentImageRawUrl(normalized);
+  }
+
+  if (isDirectImageSource(normalized)) {
+    return normalized;
+  }
+
+  if (shouldResolveAsActorSprite(normalized)) {
+    return normalizeActorVisualSource(normalized);
+  }
+
+  const slashNormalized = normalized.replace(/\\/g, '/');
+  return /\.(png|jpg|jpeg|webp|gif)$/i.test(slashNormalized)
+    ? `/sprites/world/${slashNormalized}`
+    : `/sprites/world/${slashNormalized}.png`;
 }
 
 function resolvePortraitSource(
@@ -37,11 +78,7 @@ function resolvePortraitSource(
       return runtimePortrait;
     }
 
-    if (normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('data:') || normalized.startsWith('/')) {
-      return normalized;
-    }
-
-    return normalized.includes('.') ? `/sprites/actor/${normalized}` : `/sprites/actor/${normalized}.png`;
+    return normalizeActorVisualSource(normalized);
   }
 
   if (!npc) {
@@ -53,7 +90,7 @@ function resolvePortraitSource(
     .filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
-    const resolved = resolveStoredImageSource(candidate, runtimeImages) ?? candidate;
+    const resolved = resolveStoredImageSource(candidate, runtimeImages) ?? normalizeActorVisualSource(candidate);
     if (resolved) {
       return resolved;
     }
@@ -76,10 +113,14 @@ export function resolveRenderedWorldEntities(
     const npc = entity.npcTemplateId ? npcById.get(entity.npcTemplateId) : undefined;
     const spriteSrc = resolveSpriteSource(entity.spriteId, runtimeImages);
     const portraitSrc = resolvePortraitSource(entity.portraitId, npc, runtimeImages);
+    const isBanditLike = entity.isHostile || entity.kind === 'bandit';
+    const finalPortraitSrc = portraitSrc
+      ?? (isBanditLike ? pickDeterministicBanditPortrait(entity.id) : undefined);
+    const shouldPreferSprite = entity.kind === 'merchant' && Boolean(spriteSrc);
 
-    const renderMode = entity.kind === 'merchant' && spriteSrc
+    const renderMode = shouldPreferSprite
       ? 'sprite'
-      : portraitSrc
+      : finalPortraitSrc
         ? 'portrait'
         : spriteSrc
           ? 'sprite'
@@ -88,8 +129,8 @@ export function resolveRenderedWorldEntities(
     const label = npc?.name?.trim() || entity.archetypeId || entity.id;
     const title = `${label} (${entity.state})`;
     const imageSrc = renderMode === 'portrait'
-      ? (portraitSrc ?? spriteSrc)
-      : (spriteSrc ?? portraitSrc);
+      ? (finalPortraitSrc ?? spriteSrc)
+      : (spriteSrc ?? finalPortraitSrc);
 
     return {
       id: entity.id,
@@ -99,7 +140,7 @@ export function resolveRenderedWorldEntities(
       coordinates: entity.coordinates,
       spriteId: entity.spriteId,
       spriteSrc,
-      portraitSrc,
+      portraitSrc: finalPortraitSrc,
       imageSrc,
       renderMode,
       isHostile: entity.isHostile,

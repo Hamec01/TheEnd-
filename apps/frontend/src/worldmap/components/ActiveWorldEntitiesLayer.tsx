@@ -6,7 +6,12 @@ import './ActiveWorldEntities.css';
 type ActiveEntity = WorldSimulationSnapshot['activeEntities'][number];
 type DisplayEntity = RenderedWorldEntity & { renderedCoordinates: { x: number; y: number } };
 
-const SNAPSHOT_BLEND_DURATION_MS = 900;
+const SNAPSHOT_BLEND_MIN_MS = 120;
+const SNAPSHOT_BLEND_MAX_MS = 420;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export function ActiveWorldEntitiesLayer({
   camera,
@@ -22,6 +27,7 @@ export function ActiveWorldEntitiesLayer({
   const [displayEntities, setDisplayEntities] = useState<DisplayEntity[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const displayEntitiesRef = useRef<DisplayEntity[]>([]);
+  const lastSnapshotAppliedAtRef = useRef<number | null>(null);
 
   const visibleEntities = useMemo(
     () => renderedEntities,
@@ -53,10 +59,17 @@ export function ActiveWorldEntitiesLayer({
     const previousById = new Map(
       displayEntitiesRef.current.map((entity) => [entity.id, entity]),
     );
-    const startedAt = performance.now();
+    const now = performance.now();
+    const observedIntervalMs = lastSnapshotAppliedAtRef.current === null
+      ? SNAPSHOT_BLEND_MAX_MS
+      : now - lastSnapshotAppliedAtRef.current;
+    lastSnapshotAppliedAtRef.current = now;
+
+    const blendDurationMs = clamp(observedIntervalMs * 0.9, SNAPSHOT_BLEND_MIN_MS, SNAPSHOT_BLEND_MAX_MS);
+    const startedAt = now;
 
     const animate = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / SNAPSHOT_BLEND_DURATION_MS);
+      const progress = Math.min(1, (now - startedAt) / blendDurationMs);
       const nextEntities: DisplayEntity[] = visibleEntities.map((entity) => {
         const previous = previousById.get(entity.id);
         const fromX = previous?.renderedCoordinates.x ?? entity.coordinates.x;

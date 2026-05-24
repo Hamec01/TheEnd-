@@ -223,6 +223,12 @@ interface BattleSummary {
   freePointsAfter: number;
 }
 
+interface GodmodeInfiniteResourceFlags {
+  hp: boolean;
+  mana: boolean;
+  stamina: boolean;
+}
+
 const ARENA_NPC_LOCATION_ID = 'arena:combat';
 const DEFAULT_ARENA_NPC_DESCRIPTION = 'Arena combat NPC managed from the arena editor.';
 
@@ -269,6 +275,16 @@ const TRACKED_QUEST_STORAGE_PREFIX = 'theend.worldMap.trackedQuest.';
 const GODMODE_LOGIN = 'godmod';
 const GODMODE_PASSWORD = 'godmod123';
 const GODMODE_TUTORIAL_PATH = 'C:\\theend\\docs\\GODMODE_CONSOLE_TUTORIAL.md';
+const GODMODE_INFINITE_RESOURCES_STORAGE_KEY = 'theend.godmode.infiniteResources';
+
+const RANDOM_BANDIT_AVATAR_CANDIDATES = [
+  '/sprites/actor/bandit_01.png',
+  '/sprites/actor/bandit_02.png',
+  '/sprites/actor/bandit_03.png',
+  '/sprites/actor/bandit_04.png',
+  '/sprites/actor/bandit_05.png',
+  '/sprites/actor/bandit_06.png',
+] as const;
 
 const MERCHANT_TYPE_LABELS: Record<Merchant['merchantType'], string> = {
   weaponsmith: 'Оружие и дуэльные наборы',
@@ -416,6 +432,19 @@ function writeJsonRecord(key: string, value: Record<string, unknown>): void {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeGodmodeInfiniteResourceFlags(value: Record<string, unknown> | null | undefined): GodmodeInfiniteResourceFlags {
+  return {
+    hp: value?.hp === true,
+    mana: value?.mana === true,
+    stamina: value?.stamina === true,
+  };
+}
+
+function pickRandomBanditAvatarUrl(): string {
+  const index = Math.floor(Math.random() * RANDOM_BANDIT_AVATAR_CANDIDATES.length);
+  return RANDOM_BANDIT_AVATAR_CANDIDATES[index] ?? '/sprites/actor/human_01.png';
+}
+
 function normalizeGodmodeCommandTokens(commandLine: string): string[] {
   const trimmed = commandLine.trim();
   if (!trimmed) {
@@ -529,6 +558,7 @@ function getGodmodeHelpLines(): string[] {
     'stat set <hp|mp|stamina|strength|constitution|dexterity|intelligence|luck|perception|willpower> <value>',
     'stat add <stat> <delta>',
     'resource full | resource set <hp|mp|stamina|regen> <value>',
+    'inv mana|hp|stamina on|off | inv all on|off',
     'item add <itemId> [qty] | item remove <itemId> [qty]',
     'equip <itemId> [slot] | unequip <slot>',
     'skill add <skillId> | skill remove <skillId>',
@@ -1075,6 +1105,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [activeTrainerSkillIds, setActiveTrainerSkillIds] = useState<unknown>(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const travelStaminaSyncTimeoutRef = useRef<number | null>(null);
+  const infiniteResourceSyncTimeoutRef = useRef<number | null>(null);
 
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -1111,6 +1142,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [actionSlots, setActionSlots] = useState<CharacterActionSlot[]>(() => createEmptyActionSlots());
   const [runtimeInventoryRevision, setRuntimeInventoryRevision] = useState(0);
   const [godmodeTravelRequest, setGodmodeTravelRequest] = useState<GodmodeTravelRequest | null>(null);
+  const [godmodeInfiniteResources, setGodmodeInfiniteResources] = useState<GodmodeInfiniteResourceFlags>(() => {
+    return normalizeGodmodeInfiniteResourceFlags(readJsonRecord(GODMODE_INFINITE_RESOURCES_STORAGE_KEY));
+  });
 
   const [combatId, setCombatId] = useState<string | null>(null);
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
@@ -1374,6 +1408,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     () => resolveStoredImageSource(activeCombatBattleMap.imageUrl, runtimeImages) ?? activeCombatBattleMap.imageUrl,
     [activeCombatBattleMap.imageUrl, runtimeImages],
   );
+  const activeCombatMapMusicUrl = useMemo(() => {
+    const music = activeCombatBattleMap.musicUrl?.trim();
+    if (music) {
+      return music;
+    }
+    const ambient = activeCombatBattleMap.ambientUrl?.trim();
+    return ambient || undefined;
+  }, [activeCombatBattleMap.ambientUrl, activeCombatBattleMap.musicUrl]);
 
   const refreshRuntimeContent = useCallback(async (options?: { force?: boolean }) => {
     const now = Date.now();
@@ -1982,6 +2024,86 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return hub;
   }, [character]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    writeJsonRecord(GODMODE_INFINITE_RESOURCES_STORAGE_KEY, {
+      hp: godmodeInfiniteResources.hp,
+      mana: godmodeInfiniteResources.mana,
+      stamina: godmodeInfiniteResources.stamina,
+    });
+  }, [godmodeInfiniteResources]);
+
+  useEffect(() => {
+    if (!isGodmodeAccount) {
+      setGodmodeInfiniteResources((current) => (
+        current.hp || current.mana || current.stamina
+          ? { hp: false, mana: false, stamina: false }
+          : current
+      ));
+      return;
+    }
+
+    if (!character) {
+      return;
+    }
+
+    const payload: Partial<Pick<ArenaCharacter, 'currentHp' | 'currentMp' | 'currentStamina'>> = {};
+    if (godmodeInfiniteResources.hp && character.currentHp < character.maxHp) {
+      payload.currentHp = character.maxHp;
+    }
+    if (godmodeInfiniteResources.mana && character.currentMp < character.maxMp) {
+      payload.currentMp = character.maxMp;
+    }
+    if (godmodeInfiniteResources.stamina && character.currentStamina < character.maxStamina) {
+      payload.currentStamina = character.maxStamina;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return;
+    }
+
+    setCharacter((current) => {
+      if (!current || current.id !== character.id) {
+        return current;
+      }
+
+      return {
+        ...current,
+        currentHp: payload.currentHp ?? current.currentHp,
+        currentMp: payload.currentMp ?? current.currentMp,
+        currentStamina: payload.currentStamina ?? current.currentStamina,
+      };
+    });
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (infiniteResourceSyncTimeoutRef.current !== null) {
+      window.clearTimeout(infiniteResourceSyncTimeoutRef.current);
+    }
+
+    infiniteResourceSyncTimeoutRef.current = window.setTimeout(() => {
+      void updateCharacterResources(character.id, {
+        currentHp: payload.currentHp,
+        currentMp: payload.currentMp,
+        currentStamina: payload.currentStamina,
+      }).catch((error) => {
+        console.warn('Failed to sync infinite resources:', error);
+      });
+      infiniteResourceSyncTimeoutRef.current = null;
+    }, 120);
+  }, [
+    character,
+    godmodeInfiniteResources.hp,
+    godmodeInfiniteResources.mana,
+    godmodeInfiniteResources.stamina,
+    isGodmodeAccount,
+  ]);
+
   async function finalizeAccountLogin(account: { id: string; login: string }): Promise<void> {
     setAccountId(account.id);
     window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
@@ -2353,14 +2475,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
 
     const clamped = Math.max(0, Math.min(character.maxStamina, Math.round(nextStamina)));
+    const targetStamina = godmodeInfiniteResources.stamina ? character.maxStamina : clamped;
     setCharacter((current) => {
-      if (!current || current.currentStamina === clamped) {
+      if (!current || current.currentStamina === targetStamina) {
         return current;
       }
 
       return {
         ...current,
-        currentStamina: clamped,
+        currentStamina: targetStamina,
       };
     });
 
@@ -2374,13 +2497,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     travelStaminaSyncTimeoutRef.current = window.setTimeout(() => {
       void updateCharacterResources(character.id, {
-        currentStamina: clamped,
+        currentStamina: targetStamina,
       }).catch((error) => {
         console.warn('Failed to sync travel stamina:', error);
       });
       travelStaminaSyncTimeoutRef.current = null;
     }, 250);
-  }, [character]);
+  }, [character, godmodeInfiniteResources.stamina]);
 
   function openEquipmentOverlay(): void {
     onNavigate?.('/equipment');
@@ -2589,6 +2712,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return {
       name: `Random Arena Enemy ${index}`,
       race: character?.race ?? Race.Human,
+      avatarUrl: pickRandomBanditAvatarUrl(),
       stats: {
         hp: vary(stats.hp),
         mp: vary(stats.mp),
@@ -2843,6 +2967,71 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             `Runtime items=${runtimeItems.length}, questItems=${runtimeQuestItems.length}, quests=${questStates.length}`,
             `Known skills=${characterSkills.length}, materials=${Object.keys(materials).length}, resources=${Object.keys(resources).length}`,
             `Tutorial: ${GODMODE_TUTORIAL_PATH}`,
+          ],
+        };
+      }
+
+      if (head === 'inv' || head === 'infinite') {
+        const resourceRaw = String(actionRaw ?? '').trim().toLowerCase();
+        const modeRaw = String(rest[0] ?? '').trim().toLowerCase();
+        if (!resourceRaw || !modeRaw) {
+          throw new Error('Use: inv mana|hp|stamina on|off OR inv all on|off.');
+        }
+
+        const enabled = modeRaw === 'on'
+          ? true
+          : modeRaw === 'off'
+            ? false
+            : null;
+        if (enabled === null) {
+          throw new Error('Use on|off as the toggle value.');
+        }
+
+        const nextFlags = { ...godmodeInfiniteResources };
+        if (resourceRaw === 'all') {
+          nextFlags.hp = enabled;
+          nextFlags.mana = enabled;
+          nextFlags.stamina = enabled;
+        } else if (resourceRaw === 'hp' || resourceRaw === 'health') {
+          nextFlags.hp = enabled;
+        } else if (resourceRaw === 'mana' || resourceRaw === 'mp') {
+          nextFlags.mana = enabled;
+        } else if (resourceRaw === 'stamina') {
+          nextFlags.stamina = enabled;
+        } else {
+          throw new Error(`Unknown resource for inv command: ${resourceRaw}`);
+        }
+
+        setGodmodeInfiniteResources(nextFlags);
+
+        const player = character;
+        if (player) {
+          const payload: Partial<Pick<ArenaCharacter, 'currentHp' | 'currentMp' | 'currentStamina'>> = {};
+          if (nextFlags.hp) {
+            payload.currentHp = player.maxHp;
+          }
+          if (nextFlags.mana) {
+            payload.currentMp = player.maxMp;
+          }
+          if (nextFlags.stamina) {
+            payload.currentStamina = player.maxStamina;
+          }
+          if (Object.keys(payload).length > 0) {
+            await updateCharacterResources(player.id, {
+              currentHp: payload.currentHp,
+              currentMp: payload.currentMp,
+              currentStamina: payload.currentStamina,
+            });
+            await refreshActiveCharacterHub();
+          }
+        }
+
+        return {
+          ok: true,
+          lines: [
+            `Infinite HP: ${nextFlags.hp ? 'ON' : 'OFF'}`,
+            `Infinite mana: ${nextFlags.mana ? 'ON' : 'OFF'}`,
+            `Infinite stamina: ${nextFlags.stamina ? 'ON' : 'OFF'}`,
           ],
         };
       }
@@ -4019,6 +4208,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     character,
     characterSkills.length,
     changeCharacterOverlayFocus,
+    godmodeInfiniteResources,
     handleRuntimeInventoryChanged,
     inventory.gold,
     isGodmodeAccount,
@@ -4786,6 +4976,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 inventory={inventory}
                 actionSlots={actionSlots}
                 mapImageUrl={activeCombatMapImageUrl}
+                mapMusicUrl={activeCombatMapMusicUrl}
                 mapCalibration={{
                   cellSizePx: activeCombatBattleMap.cellSizePx,
                   gridOffsetX: activeCombatBattleMap.gridOffsetX,

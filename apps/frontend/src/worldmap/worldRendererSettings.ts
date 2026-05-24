@@ -4,11 +4,11 @@ const WORLD_RENDERER_STORAGE_KEY = 'theend.worldMap.renderer';
 
 export function readWorldRendererSetting(): WorldRendererKind {
   if (typeof window === 'undefined') {
-    return 'canvas';
+    return 'phaser';
   }
 
   const raw = window.localStorage.getItem(WORLD_RENDERER_STORAGE_KEY);
-  return raw === 'phaser' ? 'phaser' : 'canvas';
+  return raw === 'canvas' ? 'canvas' : 'phaser';
 }
 
 export function writeWorldRendererSetting(value: WorldRendererKind): void {

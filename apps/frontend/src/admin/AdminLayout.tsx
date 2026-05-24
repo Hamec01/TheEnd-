@@ -22,6 +22,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin/items', label: 'Предметы' },
       { path: '/admin/item-sets', label: 'Сеты предметов' },
       { path: '/admin/skills', label: 'Skills' },
+      { path: '/admin/visual-fx', label: 'Visual FX' },
       { path: '/admin/quests', label: 'Квесты' },
       { path: '/admin/quest-items', label: 'Квестовые предметы' },
       { path: '/admin/quest-interactions', label: 'Quest Interactions' },

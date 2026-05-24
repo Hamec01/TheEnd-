@@ -14,6 +14,7 @@ import {
   type ItemDefinition,
   type Merchant,
   type StatBlock,
+  type VisualFxDefinition,
 } from '@theend/rpg-domain';
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -21,7 +22,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSy
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
-import { isEmbeddedDataUrl, writeStoredImageAsset } from './content-assets';
+import { isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStoredAudioAsset, writeStoredImageAsset } from './content-assets';
 import type {
   AdminItem,
   AdminMerchant,
@@ -60,6 +61,7 @@ const CONTENT_DB_VERSION = 1 as const;
 const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'items',
   'skills',
+  'visualFx',
   'merchants',
   'cities',
   'locations',
@@ -93,7 +95,27 @@ const CONTENT_BACKUP_SCHEMA_VERSION = 2;
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type InputJsonValue = JsonValue;
-type StoredImageAssetPayload = Partial<StoredImage> & { dataUrl?: string };
+type StoredImageAssetPayload = Partial<StoredImage> & { folder?: string; dataUrl?: string };
+type StoredAudioAssetPayload = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  folder?: string;
+  dataUrl?: string;
+};
+
+function extractAssetsUploadFolder(publicUrl?: string): string | undefined {
+  const normalized = String(publicUrl ?? '').trim();
+  if (!normalized.startsWith('/assets/upload/')) {
+    return undefined;
+  }
+  const relative = normalized.slice('/assets/upload/'.length);
+  const parts = relative.split('/').filter(Boolean);
+  if (parts.length <= 1) {
+    return undefined;
+  }
+  return parts.slice(0, -1).join('/');
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -112,6 +134,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
   return {
     items: db.items.length,
     skills: db.skills.length,
+    visualFx: db.visualFx.length,
     merchants: db.merchants.length,
     cities: db.cities.length,
     locations: db.locations.length,
@@ -462,6 +485,7 @@ function createEmptyDatabase(): ContentDatabase {
     version: CONTENT_DB_VERSION,
     items: [],
     skills: [],
+    visualFx: [],
     merchants: [],
     cities: [],
     locations: [],
@@ -492,6 +516,7 @@ function createSeedDatabase(): ContentDatabase {
     version: CONTENT_DB_VERSION,
     items: Object.values(ITEMS).map((item) => seedItemFromDomain(item, timestamp)),
     skills: [],
+    visualFx: [],
     merchants: MERCHANTS.map((merchant) => seedMerchantFromDomain(merchant, timestamp)),
     cities: seedStarterCities(timestamp),
     locations: [],
@@ -812,6 +837,80 @@ function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
   };
 }
 
+function normalizeVisualFxInput(input: VisualFxDefinition): VisualFxDefinition {
+  const timestamp = nowIso();
+  const id = String(input.id ?? '').trim();
+  const type = input.type === 'static_image' ? 'static_image' : 'sprite_sheet';
+  const frameWidth = toInteger(input.asset?.frameWidth);
+  const frameHeight = toInteger(input.asset?.frameHeight);
+  const frameCount = toInteger(input.asset?.frameCount);
+  const frameRate = toFiniteNumber(input.animation?.frameRate);
+  const repeat = toInteger(input.animation?.repeat);
+  const durationMs = toInteger(input.animation?.durationMs);
+  const scale = toFiniteNumber(input.render?.scale);
+  const alpha = toFiniteNumber(input.render?.alpha);
+  const originX = toFiniteNumber(input.render?.originX);
+  const originY = toFiniteNumber(input.render?.originY);
+  const depth = toInteger(input.render?.depth);
+  const speed = toFiniteNumber(input.projectile?.speed);
+
+  return {
+    ...input,
+    id,
+    name: String(input.name ?? id).trim() || id,
+    status: input.status === 'disabled' || input.status === 'draft' ? input.status : 'active',
+    category: input.category ?? 'hit',
+    element: input.element,
+    type,
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    asset: {
+      url: String(input.asset?.url ?? '').trim(),
+      key: typeof input.asset?.key === 'string' && input.asset.key.trim() ? input.asset.key.trim() : id,
+      frameWidth: frameWidth ? Math.max(1, frameWidth) : undefined,
+      frameHeight: frameHeight ? Math.max(1, frameHeight) : undefined,
+      frameCount: frameCount ? Math.max(1, frameCount) : undefined,
+    },
+    animation: {
+      frameRate: frameRate !== undefined ? Math.max(1, Math.min(120, frameRate)) : undefined,
+      repeat: repeat ?? 0,
+      durationMs: durationMs ? Math.max(1, durationMs) : undefined,
+    },
+    placement: {
+      defaultPlayOn: input.placement?.defaultPlayOn ?? 'target',
+      anchor: input.placement?.anchor ?? 'center',
+      offsetX: toFiniteNumber(input.placement?.offsetX) ?? 0,
+      offsetY: toFiniteNumber(input.placement?.offsetY) ?? 0,
+      rotateToDirection: input.placement?.rotateToDirection === true,
+    },
+    render: {
+      scale: scale !== undefined ? Math.max(0.01, scale) : 1,
+      alpha: alpha !== undefined ? Math.max(0, Math.min(1, alpha)) : 1,
+      rotation: toFiniteNumber(input.render?.rotation) ?? 0,
+      blendMode: input.render?.blendMode ?? 'NORMAL',
+      originX: originX !== undefined ? Math.max(0, Math.min(1, originX)) : 0.5,
+      originY: originY !== undefined ? Math.max(0, Math.min(1, originY)) : 0.5,
+      depth: depth ?? 5000,
+    },
+    projectile: {
+      speed: speed !== undefined ? Math.max(1, speed) : undefined,
+      arc: toFiniteNumber(input.projectile?.arc) ?? 0,
+      destroyOnImpact: input.projectile?.destroyOnImpact !== false,
+    },
+    camera: {
+      shakePreset: input.camera?.shakePreset ?? 'none',
+    },
+    audio: {
+      defaultSoundId: typeof input.audio?.defaultSoundId === 'string' && input.audio.defaultSoundId.trim()
+        ? input.audio.defaultSoundId.trim()
+        : undefined,
+      volume: Math.max(0, Math.min(1, toFiniteNumber(input.audio?.volume) ?? 1)),
+    },
+    tags: normalizeStringList(input.tags),
+    createdAt: input.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function normalizeItemInput(input: AdminItem): AdminItem {
   const damageMin = typeof input.damageMin === 'number' && Number.isFinite(input.damageMin)
     ? Math.max(0, Math.round(input.damageMin))
@@ -885,6 +984,8 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
         battleSpriteAssetId: input.battleVisuals.battleSpriteAssetId?.trim() || undefined,
         deathEffectId: input.battleVisuals.deathEffectId?.trim() || undefined,
         hitEffectPreset: input.battleVisuals.hitEffectPreset?.trim() || undefined,
+        castSoundId: input.battleVisuals.castSoundId?.trim() || undefined,
+        impactSoundId: input.battleVisuals.impactSoundId?.trim() || undefined,
       }
       : undefined,
     damageMin: input.type === 'weapon' ? (damageMin ?? damageMax) : damageMin,
@@ -2293,6 +2394,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       version: CONTENT_DB_VERSION,
       items: sanitizeIdObjectArray<AdminItem>(raw.items).map((item) => normalizeItemInput(item)),
       skills: sanitizeIdObjectArray<AdminSkillDefinition>(raw.skills).map((skill) => normalizeSkillInput(skill)),
+      visualFx: sanitizeIdObjectArray<VisualFxDefinition>(raw.visualFx).map((entry) => normalizeVisualFxInput(entry)).filter((entry) => Boolean(entry.id)),
       merchants: sanitizeIdObjectArray<AdminMerchant>(raw.merchants).map((merchant) => normalizeMerchantInput(merchant)),
       cities: sanitizeIdObjectArray<City>(raw.cities).map((city) => normalizeCityInput(city)).filter((city) => Boolean(city.id)),
       locations: sanitizeIdObjectArray<WorldLocation>(raw.locations).map((location) => normalizeLocationInput(location)).filter((location) => Boolean(location.id)),
@@ -2387,6 +2489,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       version: CONTENT_DB_VERSION,
       items: mergeById(existing.items, incoming.items),
       skills: mergeById(existing.skills, incoming.skills),
+      visualFx: mergeById(existing.visualFx, incoming.visualFx),
       merchants: mergeById(existing.merchants, incoming.merchants),
       cities: mergeById(existing.cities, incoming.cities),
       locations: mergeById(existing.locations, incoming.locations),
@@ -2420,6 +2523,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       version: CONTENT_DB_VERSION,
       items: addMissingById(existing.items, incoming.items),
       skills: addMissingById(existing.skills, incoming.skills),
+      visualFx: addMissingById(existing.visualFx, incoming.visualFx),
       merchants: addMissingById(existing.merchants, incoming.merchants),
       cities: addMissingById(existing.cities, incoming.cities),
       locations: addMissingById(existing.locations, incoming.locations),
@@ -2497,6 +2601,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         version: CONTENT_DB_VERSION,
         items: filterCollection('items', incoming.items, existing.items) as AdminItem[] | undefined,
         skills: filterCollection('skills', incoming.skills, existing.skills) as AdminSkillDefinition[] | undefined,
+        visualFx: filterCollection('visualFx', incoming.visualFx, existing.visualFx) as VisualFxDefinition[] | undefined,
         merchants: filterCollection('merchants', incoming.merchants, existing.merchants) as AdminMerchant[] | undefined,
         cities: filterCollection('cities', incoming.cities, existing.cities) as City[] | undefined,
         materials: filterCollection('materials', incoming.materials, existing.materials) as Material[] | undefined,
@@ -2777,6 +2882,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         id,
         name: payload.name ?? existing?.name ?? 'image',
         mimeType: payload.mimeType ?? existing?.mimeType ?? 'image/png',
+        folder: String(payload.folder ?? '').trim() || extractAssetsUploadFolder(existing?.dataUrl),
         dataUrl,
       });
 
@@ -2825,6 +2931,35 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     return clone(next);
   }
 
+  async uploadAudioAsset(payload: StoredAudioAssetPayload): Promise<{ assetId: string; publicUrl: string; mimeType: string }> {
+    const dataUrl = String(payload.dataUrl ?? '').trim();
+    if (!isEmbeddedAudioDataUrl(dataUrl)) {
+      throw new BadRequestException('Audio upload payload must include an audio dataUrl.');
+    }
+
+    const requestedId = String(payload.id ?? '').trim();
+    const assetId = requestedId || `audio_${Date.now()}_${randomUUID().slice(0, 8)}`;
+
+    try {
+      const stored = writeStoredAudioAsset({
+        id: assetId,
+        name: payload.name ?? assetId,
+        mimeType: payload.mimeType ?? 'audio/ogg',
+        folder: payload.folder,
+        dataUrl,
+      });
+
+      return {
+        assetId,
+        publicUrl: stored.publicUrl,
+        mimeType: stored.mimeType,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown audio asset error';
+      throw new BadRequestException(`Failed to store uploaded audio '${assetId}': ${message}`);
+    }
+  }
+
   async createCollectionEntry<K extends ContentCollectionName>(name: K | string, payload: ContentCollectionMap[K]): Promise<ContentCollectionMap[K]> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
@@ -2842,6 +2977,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeItemInput(payload as ContentCollectionMap['items']) as ContentCollectionMap[K];
     } else if (collectionName === 'skills') {
       nextEntry = normalizeSkillInput(payload as ContentCollectionMap['skills']) as ContentCollectionMap[K];
+    } else if (collectionName === 'visualFx') {
+      nextEntry = normalizeVisualFxInput(payload as unknown as VisualFxDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       nextEntry = normalizeMerchantInput(payload as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else if (collectionName === 'materials') {
@@ -2892,6 +3029,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeItemInput(mergedBase as ContentCollectionMap['items']) as ContentCollectionMap[K];
     } else if (collectionName === 'skills') {
       merged = normalizeSkillInput(mergedBase as ContentCollectionMap['skills']) as ContentCollectionMap[K];
+    } else if (collectionName === 'visualFx') {
+      merged = normalizeVisualFxInput(mergedBase as unknown as VisualFxDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'merchants') {
       merged = normalizeMerchantInput(mergedBase as ContentCollectionMap['merchants']) as ContentCollectionMap[K];
     } else if (collectionName === 'materials') {
@@ -2953,6 +3092,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.skills) && payload.skills.length > 0) {
       const normalizedSkills = payload.skills.map((skill) => normalizeSkillInput(skill as AdminSkillDefinition));
       db.skills = mergeById(db.skills, normalizedSkills);
+    }
+    if (Array.isArray(payload.visualFx) && payload.visualFx.length > 0) {
+      const normalized = payload.visualFx.map((entry) => normalizeVisualFxInput(entry as VisualFxDefinition));
+      db.visualFx = mergeById(db.visualFx, normalized);
     }
     if (Array.isArray(payload.locations) && payload.locations.length > 0) {
       const normalizedLocations = payload.locations.map((location) => normalizeLocationInput(location as WorldLocation));

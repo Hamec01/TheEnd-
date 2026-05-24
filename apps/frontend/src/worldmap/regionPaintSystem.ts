@@ -1,26 +1,57 @@
 import type { PaintedRegion, RegionBrushSize, RegionCell, RegionToolMode, RegionType } from './zoneEditorTypes';
 
-export const REGION_GRID_SIZE = 256;
+export const LEGACY_REGION_GRID_SIZE = 256;
+export const REGION_GRID_SIZE = 1024;
+
+export const REGION_TYPE_HEX_COLORS: Record<RegionType, string> = {
+  walkable: '#8cc284',
+  blocked: '#cc4444',
+  water: '#4a7cdb',
+  swamp: '#628048',
+  sand: '#ceaa5e',
+  road: '#b89359',
+  danger: '#c0702a',
+  trigger: '#54b275',
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '').trim();
+  const value = normalized.length === 3
+    ? normalized.split('').map((part) => `${part}${part}`).join('')
+    : normalized;
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  if (!Number.isFinite(red) || !Number.isFinite(green) || !Number.isFinite(blue)) {
+    return `rgba(255, 0, 0, ${alpha})`;
+  }
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
 
 export const REGION_TYPE_COLORS: Record<RegionType, string> = {
-  walkable: 'rgba(140, 194, 132, 0.35)',
-  blocked: 'rgba(204, 68, 68, 0.35)',
-  water: 'rgba(74, 124, 219, 0.35)',
-  swamp: 'rgba(98, 128, 72, 0.35)',
-  sand: 'rgba(206, 170, 94, 0.35)',
-  road: 'rgba(184, 147, 89, 0.35)',
-  danger: 'rgba(192, 112, 42, 0.35)',
-  trigger: 'rgba(84, 178, 117, 0.35)',
+  walkable: hexToRgba(REGION_TYPE_HEX_COLORS.walkable, 0.175),
+  blocked: hexToRgba(REGION_TYPE_HEX_COLORS.blocked, 0.175),
+  water: hexToRgba(REGION_TYPE_HEX_COLORS.water, 0.175),
+  swamp: hexToRgba(REGION_TYPE_HEX_COLORS.swamp, 0.175),
+  sand: hexToRgba(REGION_TYPE_HEX_COLORS.sand, 0.175),
+  road: hexToRgba(REGION_TYPE_HEX_COLORS.road, 0.175),
+  danger: hexToRgba(REGION_TYPE_HEX_COLORS.danger, 0.175),
+  trigger: hexToRgba(REGION_TYPE_HEX_COLORS.trigger, 0.175),
 };
 
 export interface RegionPaintSettings {
   toolMode: RegionToolMode;
   regionType: RegionType;
   brushSize: RegionBrushSize;
+  regionColor?: string;
 }
 
 function clampCell(value: number): number {
   return Math.max(0, Math.min(REGION_GRID_SIZE - 1, value));
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 export function mapPointToRegionCell(point: [number, number]): RegionCell {
@@ -67,11 +98,38 @@ export function bresenhamCells(a: RegionCell, b: RegionCell): RegionCell[] {
   return cells;
 }
 
-export function brushCells(center: RegionCell, size: RegionBrushSize): RegionCell[] {
+type BrushShape = 'square' | 'circle';
+
+function resolveBrushRadius(size: RegionBrushSize, shape: BrushShape): number {
+  if (shape !== 'circle') {
+    return size / 2;
+  }
+
+  // Keep tiny values precise while still making them visually different.
+  if (size <= 0.05) return 0.48;
+  if (size <= 0.25) return 0.95;
+  if (size <= 0.5) return 1.35;
+  if (size <= 0.75) return 1.8;
+  if (size <= 1) return 2.2;
+  if (size <= 2) return 3;
+  if (size <= 3) return 3.8;
+  if (size <= 5) return 5;
+  if (size <= 8) return 6.5;
+  return 8.2;
+}
+
+export function brushCells(center: RegionCell, size: RegionBrushSize, shape: BrushShape = 'square'): RegionCell[] {
   const result: RegionCell[] = [];
-  const radius = Math.floor(size / 2);
-  for (let oy = -radius; oy <= radius; oy += 1) {
-    for (let ox = -radius; ox <= radius; ox += 1) {
+  const radius = resolveBrushRadius(size, shape);
+  const bound = Math.ceil(radius);
+  for (let oy = -bound; oy <= bound; oy += 1) {
+    for (let ox = -bound; ox <= bound; ox += 1) {
+      if (Math.abs(ox) > radius + 0.001 || Math.abs(oy) > radius + 0.001) {
+        continue;
+      }
+      if (shape === 'circle' && Math.hypot(ox, oy) > radius + 0.15) {
+        continue;
+      }
       result.push({ x: clampCell(center.x + ox), y: clampCell(center.y + oy) });
     }
   }
@@ -79,13 +137,86 @@ export function brushCells(center: RegionCell, size: RegionBrushSize): RegionCel
 }
 
 export function applyBrushAlongLine(from: RegionCell, to: RegionCell, size: RegionBrushSize, mode: RegionToolMode): RegionCell[] {
-  const line = mode === 'pencil' ? bresenhamCells(from, to) : [to];
-  const byKey = new Map<string, RegionCell>();
+  const fromPoint: [number, number] = [
+    (from.x + 0.5) / REGION_GRID_SIZE,
+    (from.y + 0.5) / REGION_GRID_SIZE,
+  ];
+  const toPoint: [number, number] = [
+    (to.x + 0.5) / REGION_GRID_SIZE,
+    (to.y + 0.5) / REGION_GRID_SIZE,
+  ];
+  return applyBrushAlongPoints(fromPoint, toPoint, size, mode);
+}
 
-  for (const cell of line) {
-    for (const brushCell of brushCells(cell, size)) {
-      byKey.set(regionCellKey(brushCell), brushCell);
+function paintBrushAtGridPoint(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  shape: BrushShape,
+  out: Map<string, RegionCell>,
+) {
+  const bound = Math.ceil(radius);
+  const startX = Math.floor(centerX - bound);
+  const endX = Math.ceil(centerX + bound);
+  const startY = Math.floor(centerY - bound);
+  const endY = Math.ceil(centerY + bound);
+
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      if (shape === 'square') {
+        if (Math.abs(dx) > radius + 0.001 || Math.abs(dy) > radius + 0.001) {
+          continue;
+        }
+      } else if (Math.hypot(dx, dy) > radius + 0.2) {
+        continue;
+      }
+
+      const cell = { x: clampCell(x), y: clampCell(y) };
+      out.set(regionCellKey(cell), cell);
     }
+  }
+}
+
+export function applyBrushAlongPoints(
+  fromPoint: [number, number],
+  toPoint: [number, number],
+  size: RegionBrushSize,
+  mode: RegionToolMode,
+): RegionCell[] {
+  const brushShape: BrushShape = mode === 'pencil' ? 'square' : 'circle';
+  const radius = resolveBrushRadius(size, brushShape);
+  const startX = clamp01(fromPoint[0]) * REGION_GRID_SIZE;
+  const startY = clamp01(fromPoint[1]) * REGION_GRID_SIZE;
+  const endX = clamp01(toPoint[0]) * REGION_GRID_SIZE;
+  const endY = clamp01(toPoint[1]) * REGION_GRID_SIZE;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const distance = Math.hypot(dx, dy);
+  const isContinuousMode = true;
+
+  const out = new Map<string, RegionCell>();
+  if (!isContinuousMode || distance <= 0.0001) {
+    paintBrushAtGridPoint(endX, endY, radius, brushShape, out);
+    return [...out.values()];
+  }
+
+  const step = mode === 'pencil'
+    ? 0.7
+    : Math.max(0.08, radius * 0.18);
+  const steps = Math.max(1, Math.ceil(distance / step));
+
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const x = startX + dx * t;
+    const y = startY + dy * t;
+    paintBrushAtGridPoint(x, y, radius, brushShape, out);
+  }
+
+  const byKey = new Map<string, RegionCell>();
+  for (const value of out.values()) {
+    byKey.set(regionCellKey(value), value);
   }
 
   return [...byKey.values()];
@@ -96,6 +227,59 @@ function cloneRegions(regions: PaintedRegion[]): PaintedRegion[] {
     ...region,
     cells: region.cells.map((cell) => ({ ...cell })),
   }));
+}
+
+function normalizeRegionCellsToGrid(region: PaintedRegion, targetGridSize: number): PaintedRegion {
+  const sourceGridSize = region.gridSize && Number.isFinite(region.gridSize)
+    ? Math.max(1, Math.floor(region.gridSize))
+    : LEGACY_REGION_GRID_SIZE;
+
+  if (sourceGridSize === targetGridSize) {
+    return region;
+  }
+
+  const scale = targetGridSize / sourceGridSize;
+  const seen = new Set<string>();
+  const cells: RegionCell[] = [];
+  for (const cell of region.cells) {
+    if (scale > 1) {
+      const baseX = Math.floor(cell.x * scale);
+      const baseY = Math.floor(cell.y * scale);
+      const span = Math.max(1, Math.ceil(scale));
+      for (let oy = 0; oy < span; oy += 1) {
+        for (let ox = 0; ox < span; ox += 1) {
+          const expandedCell = {
+            x: clampCell(baseX + ox),
+            y: clampCell(baseY + oy),
+          };
+          const expandedKey = regionCellKey(expandedCell);
+          if (seen.has(expandedKey)) {
+            continue;
+          }
+          seen.add(expandedKey);
+          cells.push(expandedCell);
+        }
+      }
+      continue;
+    }
+
+    const nextCell = {
+      x: clampCell(Math.floor(cell.x * scale)),
+      y: clampCell(Math.floor(cell.y * scale)),
+    };
+    const key = regionCellKey(nextCell);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    cells.push(nextCell);
+  }
+
+  return {
+    ...region,
+    gridSize: targetGridSize,
+    cells,
+  };
 }
 
 function regionIdForType(type: RegionType): string {
@@ -148,11 +332,19 @@ export function applyRegionPaint(
   }
 
   const regionId = regionIdForType(settings.regionType);
-  const existing = next.find((region) => region.id === regionId);
+  const existingIndex = next.findIndex((region) => region.id === regionId);
+  const existing = existingIndex >= 0
+    ? normalizeRegionCellsToGrid(next[existingIndex], REGION_GRID_SIZE)
+    : undefined;
+  if (existingIndex >= 0 && existing) {
+    next[existingIndex] = existing;
+  }
   const target = existing ?? {
     id: regionId,
     name: regionNameForType(settings.regionType),
     type: settings.regionType,
+    color: settings.regionColor,
+    gridSize: REGION_GRID_SIZE,
     cells: [],
   };
 
@@ -162,6 +354,9 @@ export function applyRegionPaint(
   }
 
   target.cells = [...targetByKey.values()];
+  if (settings.regionColor) {
+    target.color = settings.regionColor;
+  }
   if (!existing) {
     next.push(target);
   }
@@ -172,23 +367,66 @@ export function applyRegionPaint(
 export function getPaintedRegionCellMap(regions: PaintedRegion[]): Map<string, { regionId: string; regionType: RegionType }> {
   const map = new Map<string, { regionId: string; regionType: RegionType }>();
   for (const region of regions) {
+    const sourceGridSize = region.gridSize && Number.isFinite(region.gridSize)
+      ? Math.max(1, Math.floor(region.gridSize))
+      : LEGACY_REGION_GRID_SIZE;
+    const scale = REGION_GRID_SIZE / sourceGridSize;
     for (const cell of region.cells) {
-      map.set(regionCellKey(cell), { regionId: region.id, regionType: region.type });
+      if (scale > 1) {
+        const baseX = Math.floor(cell.x * scale);
+        const baseY = Math.floor(cell.y * scale);
+        const span = Math.max(1, Math.ceil(scale));
+        for (let oy = 0; oy < span; oy += 1) {
+          for (let ox = 0; ox < span; ox += 1) {
+            const expandedCell = {
+              x: clampCell(baseX + ox),
+              y: clampCell(baseY + oy),
+            };
+            map.set(regionCellKey(expandedCell), { regionId: region.id, regionType: region.type });
+          }
+        }
+        continue;
+      }
+
+      const normalizedCell = {
+        x: clampCell(Math.floor(cell.x * scale)),
+        y: clampCell(Math.floor(cell.y * scale)),
+      };
+      map.set(regionCellKey(normalizedCell), { regionId: region.id, regionType: region.type });
     }
   }
   return map;
 }
 
 export function isBlockedRegionType(regionType: RegionType): boolean {
-  return regionType === 'blocked' || regionType === 'water';
+  return regionType === 'water';
 }
 
 export function getRegionMoveSpeedMultiplier(regionType: RegionType): number {
+  if (regionType === 'blocked') {
+    return 0.4;
+  }
   if (regionType === 'swamp') {
     return 0.55;
   }
   if (regionType === 'sand') {
     return 0.72;
+  }
+  return 1;
+}
+
+export function getRegionStaminaCostMultiplier(regionType: RegionType): number {
+  if (regionType === 'blocked') {
+    return 2.6;
+  }
+  if (regionType === 'swamp') {
+    return 1.55;
+  }
+  if (regionType === 'sand') {
+    return 1.25;
+  }
+  if (regionType === 'danger') {
+    return 1.15;
   }
   return 1;
 }

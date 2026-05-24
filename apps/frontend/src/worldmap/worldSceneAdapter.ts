@@ -14,6 +14,12 @@ interface BuildWorldSceneSnapshotInput {
   movementLocked: boolean;
   movementLockReason: string | null;
   controlScheme: MovementControlScheme;
+  camera: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
   zones: WorldMapZone[];
   currentZoneId: string | null;
   hoverZoneId: string | null;
@@ -50,12 +56,7 @@ export function buildWorldSceneSnapshot(input: BuildWorldSceneSnapshotInput): Wo
       movementLockReason: input.movementLockReason,
       controlScheme: input.controlScheme,
     },
-    camera: {
-      left: 0,
-      top: 0,
-      width: 1,
-      height: 1,
-    },
+    camera: input.camera,
     zones: input.zones,
     currentZoneId: input.currentZoneId,
     hoverZoneId: input.hoverZoneId,

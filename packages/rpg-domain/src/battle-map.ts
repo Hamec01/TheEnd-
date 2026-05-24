@@ -145,6 +145,10 @@ export interface BattleMapDefinition {
   name: string;
   description?: string;
   imageUrl?: string;
+  musicAssetId?: string;
+  musicUrl?: string;
+  ambientAssetId?: string;
+  ambientUrl?: string;
   cellSizePx?: number;
   gridOffsetX?: number;
   gridOffsetY?: number;

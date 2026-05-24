@@ -4,9 +4,9 @@ export const BATTLE_RENDERER_STORAGE_KEY = 'theend.battleRenderer';
 
 export function readBattleRendererSetting(): BattleRendererKind {
   if (typeof window === 'undefined') {
-    return 'react';
+    return 'phaser';
   }
-  return window.localStorage.getItem(BATTLE_RENDERER_STORAGE_KEY) === 'phaser' ? 'phaser' : 'react';
+  return window.localStorage.getItem(BATTLE_RENDERER_STORAGE_KEY) === 'react' ? 'react' : 'phaser';
 }
 
 export function writeBattleRendererSetting(kind: BattleRendererKind): void {

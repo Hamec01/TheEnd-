@@ -13,6 +13,7 @@ import { QuestItemsPage } from './pages/QuestItemsPage';
 import { QuestInteractionsPage } from './pages/QuestInteractionsPage';
 import { QuestsPage } from './pages/QuestsPage';
 import { SkillsPage } from './pages/SkillsPage';
+import { VisualFxPage } from './pages/VisualFxPage';
 import { NpcsPage } from './pages/NpcsPage';
 import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
@@ -28,13 +29,14 @@ interface AdminAppProps {
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim' | '/admin/professions';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/visual-fx' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim' | '/admin/professions';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
     path === '/admin/items'
     || path === '/admin/item-sets'
     || path === '/admin/skills'
+    || path === '/admin/visual-fx'
     || path === '/admin/quests'
     || path === '/admin/quest-items'
     || path === '/admin/quest-interactions'
@@ -69,6 +71,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Сеты предметов';
       case '/admin/skills':
         return 'Skills';
+      case '/admin/visual-fx':
+        return 'Visual FX';
       case '/admin/quests':
         return 'Квесты';
       case '/admin/quest-items':
@@ -131,6 +135,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/skills':
       page = <SkillsPage />;
+      break;
+    case '/admin/visual-fx':
+      page = <VisualFxPage />;
       break;
     case '/admin/quests':
       page = <QuestsPage />;
