@@ -1,9 +1,13 @@
-export function fixMojibake(value: string | null | undefined): string {
+export function fixMojibake(value: string | null | undefined, fallback?: string | null | undefined): string {
   const input = String(value ?? '');
+  const safeFallback = String(fallback ?? '');
   if (!input) {
-    return '';
+    return safeFallback;
   }
   if (!looksLikeMojibake(input)) {
+    if (shouldPreferFallbackForPseudoCyrillic(input, safeFallback)) {
+      return safeFallback;
+    }
     return input;
   }
 
@@ -21,13 +25,56 @@ export function fixMojibake(value: string | null | undefined): string {
       bestScore = score;
     }
   }
+
+  if (safeFallback && !looksLikeMojibake(safeFallback)) {
+    const fallbackScore = scoreDecodedText(safeFallback);
+    if (fallbackScore > bestScore) {
+      return safeFallback;
+    }
+  }
+
   return best;
 }
 
 function looksLikeMojibake(input: string): boolean {
-  return /[ÐÑ]/.test(input)
+  return /�/.test(input)
+    || /[ÐÑ]/.test(input)
     || /[ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—™љ›њќћџ]/.test(input)
-    || /Р[ђѓєѕўџ“”‘’]/.test(input);
+    || /Р[ђѓєѕўџ“”‘’]/.test(input)
+    || /[ÃÂ]/.test(input);
+}
+
+function shouldPreferFallbackForPseudoCyrillic(input: string, fallback: string): boolean {
+  if (!fallback || looksLikeMojibake(fallback)) {
+    return false;
+  }
+
+  const inputHasCyrillic = /[А-Яа-яЁё]/.test(input);
+  const fallbackHasCyrillic = /[А-Яа-яЁё]/.test(fallback);
+  if (!inputHasCyrillic || !fallbackHasCyrillic) {
+    return false;
+  }
+
+  if (containsNonRussianCyrillic(input)) {
+    return true;
+  }
+
+  return /[A-Za-z]/.test(input);
+}
+
+function containsNonRussianCyrillic(input: string): boolean {
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    const isCyrillic = code >= 0x0400 && code <= 0x04FF;
+    if (!isCyrillic) {
+      continue;
+    }
+    const isRussianCore = /[А-Яа-яЁё]/.test(char);
+    if (!isRussianCore) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function decodeLatin1AsUtf8(input: string): string | null {
@@ -95,7 +142,8 @@ function scoreDecodedText(input: string): number {
   const replacement = countMatches(input, /�/g);
   const latinMojibake = countMatches(input, /[ÐÑ]/g);
   const cp1251Mojibake = countMatches(input, /[ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏђ‘’“”•–—™љ›њќћџ]/g);
-  return cyrillic * 4 - replacement * 20 - latinMojibake * 8 - cp1251Mojibake * 8;
+  const latinUtf8Noise = countMatches(input, /[ÃÂ]/g);
+  return cyrillic * 4 - replacement * 20 - latinMojibake * 8 - cp1251Mojibake * 8 - latinUtf8Noise * 6;
 }
 
 function countMatches(input: string, pattern: RegExp): number {

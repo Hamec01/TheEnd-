@@ -52,6 +52,10 @@ function withVersion(url: string, version?: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`;
 }
 
+function shouldMoveAsProjectile(fx: VisualFxDefinition): boolean {
+  return fx.category === 'projectile' || fx.placement?.defaultPlayOn === 'projectile';
+}
+
 export class PhaserVisualFxPlayer {
   private registry = new Map<string, VisualFxDefinition>();
   private loadingKeys = new Set<string>();
@@ -107,6 +111,14 @@ export class PhaserVisualFxPlayer {
     const url = fx.asset.url?.trim();
     if (!url) {
       return false;
+    }
+
+    if (!shouldMoveAsProjectile(fx)) {
+      return this.playFxAt(fx, {
+        x: options.to.x,
+        y: options.to.y,
+        onComplete: options.onImpact,
+      });
     }
 
     this.ensureLoaded(fx, () => {

@@ -440,7 +440,7 @@ export function getHiddenFieldsForLayer(layer: MapEditorLayer): string[] {
     hidden.push('requiredQuestId');
   }
   if (layer !== 'resources') {
-    hidden.push('resourceTableId', 'professionId');
+    hidden.push('resourceTableId', 'resourceKind', 'mineId', 'professionId');
   }
   
   return hidden;

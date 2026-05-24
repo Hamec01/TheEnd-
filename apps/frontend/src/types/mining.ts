@@ -21,8 +21,13 @@ export interface MineDefinition {
   dangerLevel: MineDangerLevel;
   visualTheme: MineVisualTheme;
   region?: string;
+  locationId?: string;
+  backgroundImageAssetId?: string;
+  backgroundImageUrl?: string;
   depthIds: string[];
   knownResources: string[];
+  knownResourceItemIds?: string[];
+  knownMaterialIds?: string[];
   entryText?: string;
   isEnabled: boolean;
   createdAt?: string;
@@ -49,6 +54,50 @@ export interface MineDepth {
   isFinalDepth: boolean;
   requiredMiningLevel: number;
   backgroundImage?: string;
+  blockSpriteAssetId?: string;
+  blockSpriteUrl?: string;
+  blockCrackSpriteAssetId?: string;
+  blockCrackSpriteUrl?: string;
+  blockBreakSpriteSheetAssetId?: string;
+  blockBreakSpriteSheetUrl?: string;
+  particleTextureAssetId?: string;
+  particleTextureUrl?: string;
+  isEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type MiningToolType =
+  | 'pickaxe'
+  | 'dynamite'
+  | 'rope'
+  | 'torch'
+  | 'support'
+  | 'food'
+  | 'helper'
+  | 'special';
+
+export type MiningToolEffectType =
+  | 'extra_hits'
+  | 'break_block'
+  | 'safe_retreat'
+  | 'reveal_hint'
+  | 'reduce_next_hazard'
+  | 'restore_stamina'
+  | 'extra_loot_slots';
+
+export interface MiningToolDefinition {
+  id: string;
+  professionId: 'mining';
+  itemId: string;
+  toolType: MiningToolType;
+  name: string;
+  description?: string;
+  spriteAssetId?: string;
+  spriteUrl?: string;
+  effectType?: MiningToolEffectType;
+  effectValue?: number;
+  isConsumable: boolean;
   isEnabled: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -195,6 +244,20 @@ export interface MineLootStack {
   quantity: number;
 }
 
+export interface TemporaryMiningLootSlot {
+  slotIndex: number;
+  itemId?: string;
+  materialId?: string;
+  name: string;
+  quantity: number;
+  iconUrl?: string;
+}
+
+export interface TemporaryMiningLootSlots {
+  maxSlots: number;
+  slots: TemporaryMiningLootSlot[];
+}
+
 export interface MineSpecialFind {
   itemId: string;
   quantity: number;
@@ -232,10 +295,19 @@ export interface MineRunState {
   remainingHits: number;
   collapseRisk: number;
   temporaryLoot: MineLootStack[];
+  temporaryLootSlots?: TemporaryMiningLootSlots;
   temporaryGold: number;
   blocks: MineBlockState[];
   foundExit: boolean;
   foundPassage: boolean;
+  selectedToolId?: string;
+  miningInventory?: Array<{
+    toolId: string;
+    itemId: string;
+    name: string;
+    quantity: number;
+    iconUrl?: string;
+  }>;
   eventLog: string[];
   startedAt: string;
   collectedLoot?: MineLootStack[];
@@ -304,4 +376,5 @@ export interface MiningContentBundle {
   hazards: MineHazard[];
   hazardTables: MineHazardTable[];
   lootTables: MineLootTable[];
+  tools?: MiningToolDefinition[];
 }

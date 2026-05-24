@@ -37,6 +37,7 @@ import { resolveBattleSkillEntry, resolveBattleSkillId } from './resolveBattleSk
 import type { BattleRendererKind } from './battleRendererSettings';
 import { PhaserBattleRenderer } from './renderers/PhaserBattleRenderer';
 import { buildBattlePlaybackTimeline, type BattlePlaybackPhase } from './playback/buildBattlePlaybackTimeline';
+import { resolveActorPortraitWithFallback } from '../phaser/assets/actorVisualResolver';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,16 @@ function classifyCombatStyle(
   if (entity.intelligence >= entity.strength && entity.intelligence >= entity.dexterity) return 'MAGIC';
   if (entity.dexterity > entity.strength) return 'RANGED';
   return 'MELEE';
+}
+
+function isBanditLikeEntity(entity: Pick<ArenaCombatEntity, 'id' | 'name' | 'team'>): boolean {
+  const id = entity.id.toLowerCase();
+  const name = entity.name.toLowerCase();
+  return entity.team === TeamSide.Right
+    || id.includes('bandit')
+    || name.includes('bandit')
+    || name.includes('бандит')
+    || name.includes('разбой');
 }
 
 function formatCountdown(totalSeconds: number): string {
@@ -409,6 +420,16 @@ export function BattlePanel({
     () => enemies.find((e) => e.id === selectedTargetId) ?? enemies[0] ?? null,
     [enemies, selectedTargetId],
   );
+  const selectedEnemyAvatarUrl = useMemo(() => {
+    if (!selectedEnemy) {
+      return undefined;
+    }
+    return resolveActorPortraitWithFallback(selectedEnemy.avatarUrl, {
+      entityId: selectedEnemy.id,
+      isBanditLike: isBanditLikeEntity(selectedEnemy),
+      fallback: '/sprites/actor/human_01.png',
+    });
+  }, [selectedEnemy]);
   const playerPlacement = useMemo(
     () => state.entities.find((e) => e.id === playerId) ?? null,
     [state.entities, playerId],
@@ -1739,7 +1760,7 @@ export function BattlePanel({
                   key={`enemy-${state.logs.length}`}
                   fighter={selectedEnemy}
                   side="enemy"
-                  avatarUrl={selectedEnemy.avatarUrl}
+                  avatarUrl={selectedEnemyAvatarUrl}
                   visualState={feedback.enemyVisualState}
                   floatingText={feedback.floatingText}
                   subtitle={enemyGuardLabel ? `Цель — ${enemyGuardLabel}` : 'Цель'}

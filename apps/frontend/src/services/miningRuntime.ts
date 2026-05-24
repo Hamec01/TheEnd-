@@ -30,6 +30,7 @@ import {
   findMineHazardById,
   findMineHazardTableById,
   findMineLootTableById,
+  loadMiningToolsFromStorage,
 } from './miningRepository';
 
 const DEFAULT_LOG_LIMIT = 30;
@@ -137,12 +138,12 @@ const SPECIAL_PROPERTY_IDS = [
 ] as const;
 
 const SPECIAL_PROPERTY_LABELS: Record<string, string> = {
-  region_memory: 'ÐŸÐ°Ð¼ÑÑ‚ÑŒ Ñ€ÐµÐ³Ð¸Ð¾Ð½Ð°',
-  pure_core: 'Ð§Ð¸ÑÑ‚Ð¾Ðµ ÑÐ´Ñ€Ð¾',
-  warm_glow: 'Ð¢Ñ‘Ð¿Ð»Ð¾Ðµ ÑÐ²ÐµÑ‡ÐµÐ½Ð¸Ðµ',
-  cold_echo: 'Ð¥Ð¾Ð»Ð¾Ð´Ð½Ð¾Ðµ ÑÑ…Ð¾',
-  deep_resonance: 'Ð“Ð»ÑƒÐ±Ð¸Ð½Ð½Ñ‹Ð¹ Ñ€ÐµÐ·Ð¾Ð½Ð°Ð½Ñ',
-  cracked_soul_trace: 'Ð¡Ð»ÐµÐ´ Ñ‚Ñ€ÐµÑÐ½ÑƒÐ²ÑˆÐµÐ¹ Ð´ÑƒÑˆÐ¸',
+  region_memory: 'Память региона',
+  pure_core: 'Чистое ядро',
+  warm_glow: 'Теплое свечение',
+  cold_echo: 'Холодное эхо',
+  deep_resonance: 'Глубинный резонанс',
+  cracked_soul_trace: 'След треснувшей души',
 };
 
 function mergeLootStacks(current: MineLootStack[], incoming: MineLootStack[]): MineLootStack[] {
@@ -239,9 +240,23 @@ function toFrontendBlock(block: InternalMineBlockState): MineBlockState {
 }
 
 function toFrontendRun(run: InternalMineRunState): MineRunState {
+  const miningInventory = run.miningInventory ?? [];
+  const maxSlots = 10 + miningInventory.reduce(
+    (sum, entry) => sum + (entry.quantity > 0 && entry.toolId.includes('helper') ? 3 : 0),
+    0,
+  );
   return {
     ...run,
     blocks: run.blocks.map(toFrontendBlock),
+    temporaryLootSlots: {
+      maxSlots,
+      slots: run.temporaryLoot.map((entry, index) => ({
+        slotIndex: index,
+        itemId: entry.itemId,
+        name: entry.itemId,
+        quantity: entry.quantity,
+      })),
+    },
   };
 }
 
@@ -855,10 +870,16 @@ function generateBlocks(depth: MineDepth, effects: ActiveMiningEffect[], rng: ()
   }
 
   const closedIndexes = result.map((entry) => entry.index);
-  // Legacy exit blocks are intentionally ignored: safe exit is always available via UI button.
+  if (depth.guaranteedExit && !result.some((entry) => entry.hiddenType === 'exit')) {
+    const exitIndex = closedIndexes[Math.floor(rng() * closedIndexes.length)] ?? 0;
+    result[exitIndex] = { ...result[exitIndex]!, hiddenType: 'exit', hiddenLabel: 'Выход' };
+  }
   if (depth.canSpawnPassage && !depth.isFinalDepth && !result.some((entry) => entry.hiddenType === 'passage')) {
     const randomIndex = closedIndexes[Math.floor(rng() * closedIndexes.length)] ?? 0;
-    result[randomIndex] = { ...result[randomIndex]!, hiddenType: 'passage', hiddenLabel: 'ÐŸÑ€Ð¾Ñ…Ð¾Ð´' };
+    const passageIndex = result[randomIndex]?.hiddenType === 'exit' && closedIndexes.length > 1
+      ? closedIndexes.find((entry) => entry !== randomIndex) ?? randomIndex
+      : randomIndex;
+    result[passageIndex] = { ...result[passageIndex]!, hiddenType: 'passage', hiddenLabel: 'Проход' };
   }
   return result;
 }
@@ -1303,7 +1324,9 @@ function resolveBlockOpen(
   }
 
   if (block.hiddenType === 'exit') {
-    run.eventLog = pushLog(run.eventLog, 'Старый выход помечен как неактуальный блок. Используйте кнопку выхода.');
+    run.foundExit = true;
+    run.earnedXp += 5;
+    run.eventLog = pushLog(run.eventLog, 'Вы нашли безопасный выход.');
     return;
   }
 
@@ -1517,6 +1540,15 @@ function createBaseRun(
   rng: () => number,
 ): InternalMineRunState {
   const mine = findMineById(mineId);
+  const availableTools = loadMiningToolsFromStorage().filter((entry) => entry.isEnabled);
+  const miningInventory = availableTools.map((entry) => ({
+    toolId: entry.id,
+    itemId: entry.itemId,
+    name: entry.name,
+    quantity: entry.isConsumable ? 2 : 1,
+    iconUrl: entry.spriteUrl,
+  }));
+  const selectedPickaxe = availableTools.find((entry) => entry.toolType === 'pickaxe') ?? null;
   const context: MiningEffectContext = {
     mineId,
     depthLevel: depth.depthLevel,
@@ -1542,6 +1574,8 @@ function createBaseRun(
     blocks: generateBlocks(depth, effects, rng),
     foundExit: false,
     foundPassage: false,
+    selectedToolId: selectedPickaxe?.id,
+    miningInventory,
     eventLog: [depth.description ? `${depth.name}: ${depth.description}` : `Ð’Ñ‹ Ð²Ð¾ÑˆÐ»Ð¸ Ð² Ð³Ð»ÑƒÐ±Ð¸Ð½Ñƒ: ${depth.name}.`],
     startedAt: new Date().toISOString(),
     earnedXp: 0,
@@ -1702,7 +1736,7 @@ export function retreatMineRun(
 }
 
 export function escapeMineRun(run: InternalMineRunState, effects: ActiveMiningEffect[] = []): InternalMineRunState {
-  if (run.status !== 'active') {
+  if (run.status !== 'active' || !run.foundExit) {
     return run;
   }
   const escapeBonus = run.currentDepthLevel === 1 ? 10 : run.currentDepthLevel === 2 ? 20 : 30;
@@ -1787,33 +1821,33 @@ export function toPublicMineRun(run: InternalMineRunState): MineRunState {
 const MINING_PLACEHOLDER_ITEMS = [
   {
     id: 'item_raw_stone',
-    name: 'ÐÐµÐ¾Ð±Ñ€Ð°Ð±Ð¾Ñ‚Ð°Ð½Ð½Ñ‹Ð¹ ÐºÐ°Ð¼ÐµÐ½ÑŒ',
-    gameplayDescription: 'ÐšÑƒÑÐ¾Ðº Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾Ð¹ Ð¿Ð¾Ñ€Ð¾Ð´Ñ‹ Ð¸Ð· ÑˆÐ°Ñ…Ñ‚Ñ‹.',
-    loreDescription: 'Ð“Ñ€ÑƒÐ±Ñ‹Ð¹ ÐºÐ°Ð¼ÐµÐ½ÑŒ, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ð¹ ÑˆÐ°Ñ…Ñ‚Ñ‘Ñ€Ñ‹ Ð²Ñ‹Ð½Ð¾ÑÑÑ‚ Ð¼ÐµÑˆÐºÐ°Ð¼Ð¸.',
+    name: 'Необработанный камень',
+    gameplayDescription: 'Кусок обычной породы из шахты.',
+    loreDescription: 'Грубый камень, который шахтёры выносят мешками.',
   },
   {
     id: 'item_iron_ore',
-    name: 'Ð–ÐµÐ»ÐµÐ·Ð½Ð°Ñ Ñ€ÑƒÐ´Ð°',
-    gameplayDescription: 'Ð–Ð¸Ð»Ð° Ð¶ÐµÐ»ÐµÐ·Ð°, Ð¿Ñ€Ð¸Ð³Ð¾Ð´Ð½Ð°Ñ Ð´Ð»Ñ Ð²Ñ‹Ð¿Ð»Ð°Ð²ÐºÐ¸.',
-    loreDescription: 'ÐžÐ±Ñ‹Ñ‡Ð½Ð°Ñ Ð¶ÐµÐ»ÐµÐ·Ð½Ð°Ñ Ñ€ÑƒÐ´Ð° Ñ Ð³Ð»ÑƒÐ±Ð¸Ð½ Ð¢ÐµÑ€Ð°Ð¼Ð¾Ñ€Ð°.',
+    name: 'Железная руда',
+    gameplayDescription: 'Жила железа, пригодная для выплавки.',
+    loreDescription: 'Обычная железная руда с глубин Терамора.',
   },
   {
     id: 'item_small_gold_nugget',
-    name: 'ÐœÐ°Ð»ÐµÐ½ÑŒÐºÐ¸Ð¹ Ð·Ð¾Ð»Ð¾Ñ‚Ð¾Ð¹ ÑÐ°Ð¼Ð¾Ñ€Ð¾Ð´Ð¾Ðº',
-    gameplayDescription: 'ÐÐµÐ±Ð¾Ð»ÑŒÑˆÐ¾Ð¹, Ð½Ð¾ Ñ†ÐµÐ½Ð½Ñ‹Ð¹ ÐºÑƒÑÐ¾Ðº Ð·Ð¾Ð»Ð¾Ñ‚Ð°.',
-    loreDescription: 'Ð ÐµÐ´ÐºÐ°Ñ Ð½Ð°Ñ…Ð¾Ð´ÐºÐ°, Ð·Ð° ÐºÐ¾Ñ‚Ð¾Ñ€ÑƒÑŽ Ñ‚Ð¾Ñ€Ð³Ð¾Ð²Ñ†Ñ‹ Ð¾Ñ…Ð¾Ñ‚Ð½Ð¾ Ð¿Ð»Ð°Ñ‚ÑÑ‚.',
+    name: 'Маленький золотой самородок',
+    gameplayDescription: 'Небольшой, но ценный кусок золота.',
+    loreDescription: 'Редкая находка, за которую торговцы охотно платят.',
   },
   {
     id: 'item_cracked_crystal',
-    name: 'Ð¢Ñ€ÐµÑÐ½ÑƒÐ²ÑˆÐ¸Ð¹ ÐºÑ€Ð¸ÑÑ‚Ð°Ð»Ð»',
-    gameplayDescription: 'Ð¥Ñ€ÑƒÐ¿ÐºÐ¸Ð¹ ÐºÑ€Ð¸ÑÑ‚Ð°Ð»Ð» Ñ Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾Ð¹ Ñ†ÐµÐ½Ð½Ð¾ÑÑ‚ÑŒÑŽ.',
-    loreDescription: 'ÐÐµÐ¸Ð´ÐµÐ°Ð»ÑŒÐ½Ñ‹Ð¹, Ð½Ð¾ Ð²ÑÑ‘ ÐµÑ‰Ñ‘ ÐºÑ€Ð°ÑÐ¸Ð²Ñ‹Ð¹ ÑˆÐ°Ñ…Ñ‚Ð½Ñ‹Ð¹ ÐºÑ€Ð¸ÑÑ‚Ð°Ð»Ð».',
+    name: 'Треснувший кристалл',
+    gameplayDescription: 'Хрупкий кристалл с остаточной ценностью.',
+    loreDescription: 'Неидеальный, но всё ещё красивый шахтный кристалл.',
   },
   {
     id: 'item_zeptyrite_trace',
-    name: 'Ð—ÐµÐ¿Ñ‚Ð¸Ñ€Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ»ÐµÐ´',
-    gameplayDescription: 'Ð ÐµÐ´ÐºÐ¸Ð¹ ÑÐ»ÐµÐ´ Ð·Ð°Ð³Ð°Ð´Ð¾Ñ‡Ð½Ð¾Ð³Ð¾ Ð¼Ð¸Ð½ÐµÑ€Ð°Ð»Ð°.',
-    loreDescription: 'Ð¡Ð»Ð°Ð±Ñ‹Ð¹ Ð·ÐµÐ¿Ñ‚Ð¸Ñ€Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ»ÐµÐ´, Ð¿Ð¾ ÐºÐ¾Ñ‚Ð¾Ñ€Ð¾Ð¼Ñƒ Ð¾Ñ…Ð¾Ñ‚ÑÑ‚ÑÑ Ð¼Ð°ÑÑ‚ÐµÑ€Ð° Ð¸ Ð°Ð»Ñ…Ð¸Ð¼Ð¸ÐºÐ¸.',
+    name: 'Зептиритовый след',
+    gameplayDescription: 'Редкий след загадочного минерала.',
+    loreDescription: 'Слабый зептиритовый след, по которому охотятся мастера и алхимики.',
   },
   {
     id: 'item_rune_fragment_weak',
@@ -1839,12 +1873,26 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
   try {
     for (const entry of MINING_PLACEHOLDER_ITEMS) {
       const existing = await itemsService.getById(entry.id);
+      const normalizedName = fixMojibake(entry.name, entry.name);
+      const normalizedGameplay = fixMojibake(entry.gameplayDescription, entry.gameplayDescription);
+      const normalizedLore = fixMojibake(entry.loreDescription, entry.loreDescription);
       if (existing) {
+        if (
+          fixMojibake(existing.name) !== normalizedName
+          || fixMojibake(existing.gameplayDescription) !== normalizedGameplay
+          || fixMojibake(existing.loreDescription) !== normalizedLore
+        ) {
+          await itemsService.update(entry.id, {
+            name: normalizedName,
+            gameplayDescription: normalizedGameplay,
+            loreDescription: normalizedLore,
+          });
+        }
         continue;
       }
       await itemsService.create({
         id: entry.id,
-        name: fixMojibake(entry.name),
+        name: normalizedName,
         type: 'material',
         subtype: 'mining',
         slot: 'none',
@@ -1863,8 +1911,8 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
         maxStack: 99,
         requiredStats: {},
         bonuses: {},
-        gameplayDescription: fixMojibake(entry.gameplayDescription),
-        loreDescription: fixMojibake(entry.loreDescription),
+        gameplayDescription: normalizedGameplay,
+        loreDescription: normalizedLore,
         imagePath: '',
         isEnabled: true,
       });

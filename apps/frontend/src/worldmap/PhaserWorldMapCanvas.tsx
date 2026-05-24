@@ -14,8 +14,10 @@ import {
   WORLD_MAP_RUNTIME_SETTINGS_EVENT,
 } from './worldMapRuntimeSettings';
 import type { WorldMapZone } from './zoneEditorTypes';
+import { DETERMINISTIC_BANDIT_CANDIDATES, pickDeterministicBanditPortrait } from '../phaser/assets/actorVisualResolver';
 
 const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
+const STATIC_WORLD_ENTITY_TEXTURE_SOURCES = [...DETERMINISTIC_BANDIT_CANDIDATES, '/sprites/actor/human_01.png'] as const;
 
 type ActiveEntity = WorldSimulationSnapshot['activeEntities'][number];
 
@@ -152,6 +154,13 @@ class PhaserWorldMapScene extends Phaser.Scene {
   preload() {
     if (!this.textures.exists('world-map-main')) {
       this.load.image('world-map-main', PLAY_WORLD_MAP_IMAGE_PATH);
+    }
+    for (const source of STATIC_WORLD_ENTITY_TEXTURE_SOURCES) {
+      const key = `world-entity-static:${source}`;
+      if (this.textures.exists(key)) {
+        continue;
+      }
+      this.load.image(key, source);
     }
   }
 
@@ -457,11 +466,13 @@ class PhaserWorldMapScene extends Phaser.Scene {
     }
 
     const imageSrc = entity.imageSrc?.trim();
-    const textureKey = imageSrc ? this.ensureDynamicTexture(imageSrc) : null;
+    const fallbackHostileSrc = entity.isHostile ? pickDeterministicBanditPortrait(entity.id) : undefined;
+    const resolvedImageSrc = imageSrc || fallbackHostileSrc;
+    const textureKey = resolvedImageSrc ? this.ensureDynamicTexture(resolvedImageSrc) : null;
     const canUseImage = Boolean(textureKey && this.textures.exists(textureKey));
     const existing = this.activeEntitySprites.get(entity.id);
     const shouldRecreate = !existing
-      || existing.imageSrc !== (canUseImage ? imageSrc : undefined)
+      || existing.imageSrc !== (canUseImage ? resolvedImageSrc : undefined)
       || existing.memberCount !== entity.memberCount
       || existing.isHostile !== entity.isHostile
       || existing.hasQuest !== entity.hasQuest
@@ -476,7 +487,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
       this.entityLayer.add(container);
       this.activeEntitySprites.set(entity.id, {
         container,
-        imageSrc: canUseImage ? imageSrc : undefined,
+        imageSrc: canUseImage ? resolvedImageSrc : undefined,
         memberCount: entity.memberCount,
         isHostile: entity.isHostile,
         hasQuest: entity.hasQuest,
@@ -604,14 +615,16 @@ class PhaserWorldMapScene extends Phaser.Scene {
       }
 
       const image = this.add.image(0, 0, textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
-
       if (layout.clipShape === 'circle') {
-        const maskShape = this.add.circle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2, 0xffffff, 1);
-        maskShape.setVisible(false);
-        image.setMask(maskShape.createGeometryMask());
-        container.add(maskShape);
+        const maskGraphics = this.add.graphics({ x: 0, y: 0 });
+        maskGraphics.setVisible(false);
+        maskGraphics.fillStyle(0xffffff, 1);
+        maskGraphics.fillCircle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2);
+        image.setMask(maskGraphics.createGeometryMask());
+        image.once(Phaser.GameObjects.Events.DESTROY, () => {
+          maskGraphics.destroy();
+        });
       }
-
       container.add(image);
     } else {
       const fillColor = entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc;
@@ -647,6 +660,13 @@ class PhaserWorldMapScene extends Phaser.Scene {
   }
 
   private ensureDynamicTexture(imageSrc: string): string | null {
+    if (imageSrc.startsWith('/sprites/actor/')) {
+      const staticKey = `world-entity-static:${imageSrc}`;
+      if (this.textures.exists(staticKey)) {
+        return staticKey;
+      }
+    }
+
     const existingKey = this.dynamicTextureKeys.get(imageSrc);
     if (existingKey) {
       return existingKey;

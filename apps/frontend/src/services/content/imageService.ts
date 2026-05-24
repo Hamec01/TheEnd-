@@ -97,6 +97,23 @@ export const imageService = {
     return this.uploadResized(file, preset.width, preset.height, options);
   },
 
+  async replaceResized(imageId: string, file: File, width: number, height: number, options?: { name?: string }): Promise<StoredImage> {
+    const originalDataUrl = await fileToDataUrl(file);
+    const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
+    return replaceContentImage(imageId, {
+      name: options?.name?.trim() || file.name,
+      mimeType: 'image/png',
+      dataUrl: resizedDataUrl,
+      width,
+      height,
+    });
+  },
+
+  async replacePreset(imageId: string, file: File, presetId: ImagePresetId, options?: { name?: string }): Promise<StoredImage> {
+    const preset = IMAGE_PRESETS[presetId];
+    return this.replaceResized(imageId, file, preset.width, preset.height, options);
+  },
+
   async resize(imageId: string, width: number, height: number): Promise<StoredImage> {
     const found = await this.get(imageId);
     if (!found) {

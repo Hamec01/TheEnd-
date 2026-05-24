@@ -117,6 +117,11 @@ function extensionFromMime(mimeType: string): string {
   }
 }
 
+function prefersMimeExtension(mimeType: string | undefined): boolean {
+  const normalized = String(mimeType ?? '').trim().toLowerCase();
+  return normalized.startsWith('image/') || normalized.startsWith('audio/');
+}
+
 function extensionFromName(name: string | undefined): string {
   const ext = extname(String(name ?? '')).toLowerCase();
   return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'].includes(ext) ? ext : '';
@@ -164,7 +169,9 @@ export function writeStoredImageAsset(input: StoredImageAssetInput): StoredImage
   const mimeType = input.mimeType?.trim() || match[1] || 'image/png';
   const rawId = input.id?.trim() || `img_${Date.now()}_${randomUUID().slice(0, 8)}`;
   const id = slugifyFileName(rawId);
-  const ext = extensionFromName(input.name) || extensionFromMime(mimeType);
+  const ext = prefersMimeExtension(mimeType)
+    ? extensionFromMime(mimeType) || extensionFromName(input.name)
+    : extensionFromName(input.name) || extensionFromMime(mimeType);
   const fileName = `${id}-${slugifyFileName(input.name)}${ext}`;
   const dir = ensureContentAssetsDir();
   const folderSegments = sanitizeFolderPath(input.folder);
@@ -196,7 +203,9 @@ export function writeStoredAudioAsset(input: StoredAudioAssetInput): StoredAudio
   const mimeType = input.mimeType?.trim() || match[1] || 'audio/ogg';
   const rawId = input.id?.trim() || `aud_${Date.now()}_${randomUUID().slice(0, 8)}`;
   const id = slugifyFileName(rawId);
-  const ext = extensionFromAudioName(input.name) || extensionFromAudioMime(mimeType);
+  const ext = prefersMimeExtension(mimeType)
+    ? extensionFromAudioMime(mimeType) || extensionFromAudioName(input.name)
+    : extensionFromAudioName(input.name) || extensionFromAudioMime(mimeType);
   const fileName = `${id}-${slugifyFileName(input.name ?? 'audio')}${ext}`;
   const dir = ensureContentAssetsDir();
   const folderSegments = sanitizeFolderPath(input.folder);

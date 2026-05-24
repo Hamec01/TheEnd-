@@ -7782,24 +7782,36 @@ body:has(.page.page--scroll) {
 }
 
 .battle-overlay {
-  overflow: hidden;
-  padding: 0;
+  overflow: auto;
+  padding: 8px;
 }
 
 .battle-window {
-  width: 100vw;
-  height: 100vh;
-  max-height: 100vh;
-  border-radius: 0;
-  margin: 0;
+  width: min(1200px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  border-radius: 8px;
+  margin: 0 auto;
   padding: 6px;
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.battle-window.wm-modal {
+  height: auto;
 }
 
 .battle-window:not(.wm-modal) {
   width: 100vw;
   height: 100vh;
   max-height: 100vh;
+  border-radius: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.battle-overlay:has(.battle-window:not(.wm-modal)) {
+  overflow: hidden;
+  padding: 0;
 }
 
 .battle-fullscreen-root .battle-main-grid,

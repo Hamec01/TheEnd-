@@ -8,6 +8,7 @@ import { AdminFieldLabel, translateAdminErrorMessage } from './adminUi';
 interface AdminImageFieldProps {
   value?: string;
   onChange: (nextValue: string) => void;
+  onUploaded?: (image: StoredImage) => void;
   onStatus?: (message: string) => void;
   presetId: ImagePresetId;
   suggestedId?: string;
@@ -24,16 +25,18 @@ function isDirectImageSource(value: string): boolean {
 export function AdminImageField({
   value,
   onChange,
+  onUploaded,
   onStatus,
   presetId,
   suggestedId,
   suggestedName,
   uploadFolder,
-  label = 'Быстрая загрузка картинки',
-  hint = 'Загружает файл и сразу ужимает его под нужный размер для игрового интерфейса.',
+  label = 'Quick image upload',
+  hint = 'The file will be resized to the required in-game size and saved through content upload.',
 }: AdminImageFieldProps) {
   const [storedImage, setStoredImage] = useState<StoredImage | null>(null);
   const [isUploading, setUploading] = useState(false);
+  const [inlineStatus, setInlineStatus] = useState('');
   const preset = IMAGE_PRESETS[presetId];
   const resolvedUploadFolder = uploadFolder?.trim()
     || buildUploadFolder('images', presetId, suggestedId || suggestedName || undefined);
@@ -77,16 +80,27 @@ export function AdminImageField({
 
     setUploading(true);
     try {
-      const uploaded = await imageService.uploadPreset(file, presetId, {
-        id: suggestedId?.trim() || undefined,
-        name: suggestedName?.trim() || file.name,
-        folder: resolvedUploadFolder,
-      });
+      const normalizedValue = value?.trim() || '';
+      const isReplace = Boolean(normalizedValue) && !isDirectImageSource(normalizedValue);
+      const uploaded = isReplace
+        ? await imageService.replacePreset(normalizedValue, file, presetId, {
+          name: suggestedName?.trim() || file.name,
+        })
+        : await imageService.uploadPreset(file, presetId, {
+          id: suggestedId?.trim() || undefined,
+          name: suggestedName?.trim() || file.name,
+          folder: resolvedUploadFolder,
+        });
       setStoredImage(uploaded);
       onChange(uploaded.id);
-      onStatus?.(`Картинка загружена и приведена к размеру ${uploaded.width}x${uploaded.height}: ${uploaded.name}`);
+      onUploaded?.(uploaded);
+      const message = `Image uploaded: ${uploaded.name} (${uploaded.width}x${uploaded.height}, preset ${preset.width}x${preset.height}).`;
+      setInlineStatus(message);
+      onStatus?.(message);
     } catch (error) {
-      onStatus?.(translateAdminErrorMessage((error as Error).message));
+      const message = translateAdminErrorMessage((error as Error).message);
+      setInlineStatus(message);
+      onStatus?.(message);
     } finally {
       setUploading(false);
     }
@@ -101,21 +115,21 @@ export function AdminImageField({
 
       <div className="admin-inline-image-field-body">
         <label className="admin-inline-image-upload">
-          <span>{isUploading ? 'Загрузка...' : 'Выбрать файл'}</span>
+          <span>{isUploading ? 'Uploading...' : 'Choose file'}</span>
           <input type="file" accept="image/*" onChange={handleUpload} disabled={isUploading} />
         </label>
 
         <button type="button" disabled={!value} onClick={() => onChange('')}>
-          Очистить
+          Clear
         </button>
       </div>
 
       {value ? (
         <p className="muted">
-          Текущее значение: <strong>{value}</strong>
+          Current value: <strong>{value}</strong>
         </p>
       ) : (
-        <p className="muted">Картинка пока не выбрана.</p>
+        <p className="muted">No image selected yet.</p>
       )}
 
       {previewSrc ? (
@@ -127,6 +141,10 @@ export function AdminImageField({
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {inlineStatus ? (
+        <p className="muted">{inlineStatus}</p>
       ) : null}
     </section>
   );

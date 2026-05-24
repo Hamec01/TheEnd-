@@ -1,4 +1,5 @@
 import type { ArenaCombatEntity, Equipment, ItemDefinition } from '@theend/rpg-domain';
+import { resolveActorPortraitWithFallback } from '../phaser/assets/actorVisualResolver';
 
 interface InspectPanelProps {
   entity: ArenaCombatEntity | null;
@@ -16,6 +17,16 @@ function getInitials(name: string): string {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+function isBanditLikeEntity(entity: Pick<ArenaCombatEntity, 'id' | 'name' | 'team'>): boolean {
+  const id = entity.id.toLowerCase();
+  const name = entity.name.toLowerCase();
+  return entity.team === 'RIGHT'
+    || id.includes('bandit')
+    || name.includes('bandit')
+    || name.includes('бандит')
+    || name.includes('разбой');
 }
 
 function getEquipmentRows(equipment: Equipment | undefined, resolveItemById?: (itemId: string) => ItemDefinition | null): Array<{ label: string; value: string }> {
@@ -55,6 +66,11 @@ export function InspectPanel({ entity, playerId, onClose, resolveItemById, playe
   const hpPercent = Math.max(0, Math.min(100, Math.round((entity.currentHp / Math.max(1, entity.maxHp)) * 100)));
   const isPlayer = entity.id === playerId;
   const equipmentRows = isPlayer ? getEquipmentRows(playerEquipment, resolveItemById) : [];
+  const resolvedAvatarUrl = resolveActorPortraitWithFallback(entity.avatarUrl, {
+    entityId: entity.id,
+    isBanditLike: isBanditLikeEntity(entity),
+    fallback: '/sprites/actor/human_01.png',
+  });
   const entityLevel = typeof (entity as ArenaCombatEntity & { level?: unknown }).level === 'number'
     ? (entity as ArenaCombatEntity & { level?: number }).level
     : null;
@@ -68,7 +84,7 @@ export function InspectPanel({ entity, playerId, onClose, resolveItemById, playe
 
       <div className="battle-inspect-identity">
         <div className={`combat-avatar ${entity.isAlive ? '' : 'is-dead'}`} style={{ ['--hp-percent' as string]: `${hpPercent}%` }}>
-          {entity.avatarUrl ? <img src={entity.avatarUrl} alt={entity.name} className="combat-avatar-image" /> : <div className="combat-avatar-fallback">{getInitials(entity.name)}</div>}
+          {resolvedAvatarUrl ? <img src={resolvedAvatarUrl} alt={entity.name} className="combat-avatar-image" /> : <div className="combat-avatar-fallback">{getInitials(entity.name)}</div>}
           <div className="combat-avatar-base" />
           <div className="combat-avatar-hp-fill" />
         </div>

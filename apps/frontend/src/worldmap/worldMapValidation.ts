@@ -58,6 +58,7 @@ export type ValidateWorldMapContentArgs = {
   battleMaps?: unknown[];
   items?: unknown[];
   professionIds?: string[];
+  mineIds?: string[];
 };
 
 const KNOWN_ZONE_TYPES: Set<ZoneType> = new Set<ZoneType>([
@@ -453,6 +454,7 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
   const battleMapIds = toIdSet(battleMaps as unknown as Record<string, unknown>[]);
   const npcIds = toIdSet(npcs as unknown as Record<string, unknown>[]);
   const professionIds = new Set<string>(Array.isArray(args.professionIds) ? args.professionIds.filter((entry) => typeof entry === 'string' && entry.trim().length > 0) : []);
+  const mineIds = new Set<string>(Array.isArray(args.mineIds) ? args.mineIds.filter((entry) => typeof entry === 'string' && entry.trim().length > 0) : []);
 
   if (cities.length === 0 || quests.length === 0 || lootTables.length === 0 || battleMaps.length === 0 || items.length === 0) {
     pushIssue(issues, nextId, {
@@ -648,8 +650,10 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
       });
     }
 
-    if (zone.type === 'resource_area') {
+    if (zone.type === 'resource_area' || zone.type === 'resource') {
       const resourceTableId = asNonEmptyString(zone.resourceTableId);
+      const resourceKind = asNonEmptyString((zone as WorldMapZone & { resourceKind?: string }).resourceKind);
+      const mineId = asNonEmptyString((zone as WorldMapZone & { mineId?: string }).mineId);
       if (resourceTableId && lootTableIds.size > 0 && !lootTableIds.has(resourceTableId)) {
         pushIssue(issues, nextId, {
           severity: 'warning',
@@ -661,7 +665,7 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
           field: 'resourceTableId',
         });
       }
-      if (!resourceTableId) {
+      if (!resourceTableId && resourceKind !== 'mine') {
         pushIssue(issues, nextId, {
           severity: 'warning',
           code: 'zone.resourceTable.empty',
@@ -693,6 +697,74 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
           zoneName: zone.name,
           editorLayer: zoneLayer,
           field: 'professionId',
+        });
+      }
+
+      if (resourceKind === 'mine') {
+        if (!mineId) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.mineId.empty',
+            message: 'Mine zone requires mineId.',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'mineId',
+          });
+        } else if (mineIds.size > 0 && !mineIds.has(mineId)) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.mineId.missing',
+            message: `mineId=${mineId} not found.`,
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'mineId',
+          });
+        }
+
+        if (!professionId) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.mine.profession.empty',
+            message: 'Mine zone should usually have professionId=mining.',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'professionId',
+          });
+        } else if (professionId !== 'mining') {
+          pushIssue(issues, nextId, {
+            severity: 'info',
+            code: 'zone.mine.profession.unusual',
+            message: `Mine zone usually uses professionId=mining, current value is ${professionId}.`,
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'professionId',
+          });
+        }
+
+        if (!mineId && resourceTableId) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.mine.resourceTable.notMineId',
+            message: 'Resource Table Id is not Mine Id. Fill Mine Id for mining mini-game.',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'mineId',
+          });
+        }
+      } else if (mineId) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.mineId.withoutMineKind',
+          message: 'mineId is set, but resourceKind is not mine.',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'resourceKind',
         });
       }
     }

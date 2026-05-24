@@ -35,6 +35,13 @@ export type RegionType = 'walkable' | 'blocked' | 'water' | 'swamp' | 'sand' | '
 export type RegionToolMode = 'circle' | 'pencil' | 'brush' | 'eraser';
 
 export type RegionBrushSize = 0.05 | 0.25 | 0.5 | 0.75 | 1 | 2 | 3 | 5 | 8 | 12;
+export type ResourceKind =
+  | 'mine'
+  | 'grove'
+  | 'herb_patch'
+  | 'fishing_spot'
+  | 'hunting_ground'
+  | 'other';
 
 export interface RegionCell {
   x: number;
@@ -92,6 +99,8 @@ export interface WorldMapZone {
   allowPvP?: boolean;
   enemyTableId?: string;
   resourceTableId?: string;
+  resourceKind?: ResourceKind;
+  mineId?: string;
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;
@@ -142,6 +151,8 @@ export interface ZoneEditorDraft {
   allowPvP: boolean;
   enemyTableId: string;
   resourceTableId: string;
+  resourceKind: ResourceKind | '';
+  mineId: string;
   professionId: string;
   respawnSeconds: number | null;
   cooldownSeconds: number | null;
@@ -227,6 +238,8 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     allowPvP: false,
     enemyTableId: '',
     resourceTableId: '',
+    resourceKind: '',
+    mineId: '',
     professionId: '',
     respawnSeconds: null,
     cooldownSeconds: null,
@@ -281,6 +294,8 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     allowPvP: zone.allowPvP ?? false,
     enemyTableId: zone.enemyTableId ?? '',
     resourceTableId: zone.resourceTableId ?? '',
+    resourceKind: zone.resourceKind ?? '',
+    mineId: zone.mineId ?? '',
     professionId: zone.professionId ?? '',
     respawnSeconds: zone.respawnSeconds ?? null,
     cooldownSeconds: zone.cooldownSeconds ?? null,
@@ -357,6 +372,8 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     allowPvP: draft.allowPvP || undefined,
     enemyTableId: draft.enemyTableId.trim() || undefined,
     resourceTableId: draft.resourceTableId.trim() || undefined,
+    resourceKind: draft.resourceKind || undefined,
+    mineId: draft.mineId.trim() || undefined,
     professionId: draft.professionId.trim() || undefined,
     respawnSeconds: draft.respawnSeconds ?? undefined,
     cooldownSeconds: draft.cooldownSeconds ?? undefined,

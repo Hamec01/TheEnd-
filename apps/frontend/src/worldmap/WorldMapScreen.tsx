@@ -81,7 +81,7 @@ import type {
 } from "./types";
 import { WORLD_MAP_ZONES, type Zone } from "./worldMapNodes";
 import { clamp, getZoneCenter, moveZone } from "./zoneGeometry";
-import { detectHoverZone, getPassiveZonesAtPoint } from "./zoneSystem";
+import { detectHoverZone, getPassiveZonesAtPoint, isInsideZone } from "./zoneSystem";
 import { type MapPlayer } from "./movementSystem";
 import {
   getPaintedRegionCellMap,
@@ -215,6 +215,16 @@ import { useWorldRuntimeController } from "./useWorldRuntimeController";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 
+function isZoneInteractionModeInteractive(interactionMode: string | undefined): boolean {
+  if (!interactionMode) {
+    return true;
+  }
+  if (interactionMode === "none" || interactionMode === "random_event" || interactionMode === "danger") {
+    return false;
+  }
+  return true;
+}
+
 type LocationView = "map" | "city" | "location";
 type ActiveWorldModal =
   | {
@@ -244,6 +254,10 @@ type SidePanelKey =
   | "adminEditor"
   | "adminBattle"
   | "contextActions";
+
+function isMineResourceZone(zone: WorldMapZone | null | undefined): zone is WorldMapZone & { resourceKind: 'mine'; mineId: string } {
+  return Boolean(zone && zone.resourceKind === 'mine' && zone.mineId?.trim());
+}
 
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const UI_LEFT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.leftPanelCollapsed";
@@ -877,6 +891,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const warnedDialogueVoiceSourcesRef = useRef<Set<string>>(new Set());
   const pendingDialogueVoicePlayRef = useRef(false);
   const dialogueVoiceRetryBoundRef = useRef(false);
+  const handlePrimaryWorldInteractionRef = useRef<() => void>(() => undefined);
+  const handleRuntimeZoneInteractRef = useRef<((zone: WorldMapZone, point: { x: number; y: number }) => void) | null>(null);
 
   const [worldMapMode, setWorldMapMode] = useState<WorldMapMode>(
     adminEditorOnly ? "editor" : initialMode,
@@ -987,6 +1003,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [terrainStaminaDrainMultiplier, setTerrainStaminaDrainMultiplier] = useState(1);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
+  const [expandedMineZoneId, setExpandedMineZoneId] = useState<string | null>(null);
   const [activeMineRun, setActiveMineRun] = useState<InternalMineRunState | null>(null);
   const [activeMineEffects, setActiveMineEffects] = useState<ActiveMiningEffect[] | null>(null);
   const [activeMineLoading, setActiveMineLoading] = useState(false);
@@ -1863,6 +1880,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         battleMaps: validationSnapshot?.battleMaps as unknown[] | undefined,
         items: validationSnapshot?.items as unknown[] | undefined,
         professionIds: compatibleProfessionIds,
+        mineIds: loadMinesFromStorage().map((entry) => entry.id),
       }),
     [
       npcs,
@@ -2131,6 +2149,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (event.code === "KeyN") {
         event.preventDefault();
         setMiniMapVisible((current) => !current);
+        return;
+      }
+
+      if (event.code === "Space" || event.key === "Enter") {
+        event.preventDefault();
+        handlePrimaryWorldInteractionRef.current();
       }
     };
 
@@ -3018,6 +3042,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
 
       const worldZone = zone as WorldMapZone;
+      const interactionMode = worldZone.interactionMode ?? getDefaultInteractionMode(worldZone.type);
+      const shouldAutoInteractOnEntry = (
+        worldZone.type !== "resource_area"
+        && isZoneInteractionModeInteractive(interactionMode)
+        && (isMineResourceZone(worldZone) || interactionMode !== "enter")
+      );
+
+      if (shouldAutoInteractOnEntry) {
+        const [zoneCenterX, zoneCenterY] = getZoneCenter(worldZone);
+        handleRuntimeZoneInteractRef.current?.(worldZone, { x: zoneCenterX, y: zoneCenterY });
+      }
+
       const targetScene = worldZone.targetScene?.trim();
       if (targetScene && worldZone.type !== "city") {
         const now = Date.now();
@@ -3155,17 +3191,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
       setLastRuntimeClickPoint(point);
 
+      const isMineZone = isMineResourceZone(zone);
       const interactionMode = zone.interactionMode ?? getDefaultInteractionMode(zone.type);
+      const resolvedInteractionMode = isMineZone && interactionMode === "none" ? "resource" : interactionMode;
       const clickable =
-        typeof zone.playerClickable === "boolean"
-          ? zone.playerClickable
-          : getDefaultPlayerClickable(zone.type);
+        isMineZone
+          ? true
+          : typeof zone.playerClickable === "boolean"
+            ? zone.playerClickable
+            : getDefaultPlayerClickable(zone.type);
 
-      if (!clickable || interactionMode === "none") {
+      if (!clickable || resolvedInteractionMode === "none") {
         return;
       }
 
-      if (interactionMode === "random_event" || interactionMode === "danger") {
+      if (resolvedInteractionMode === "random_event" || resolvedInteractionMode === "danger") {
+        return;
+      }
+
+      if (isMineZone) {
+        setExpandedMineZoneId(null);
+        setActiveWorldModal({ type: "zone", zoneId: zone.id });
+        setContextMode("location");
         return;
       }
 
@@ -3173,7 +3220,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         return;
       }
 
-      if (interactionMode === "enter") {
+      if (resolvedInteractionMode === "enter") {
         onStatus(`Вход в локацию: ${zone.name}`);
         return;
       }
@@ -3184,6 +3231,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     },
     [onStatus, setActiveWorldModal, setContextMode, worldMapMode],
   );
+
+  useEffect(() => {
+    handleRuntimeZoneInteractRef.current = handleRuntimeZoneInteract;
+  }, [handleRuntimeZoneInteract]);
 
   const handleInspectCurrentZone = useCallback(() => {
     if (worldMapMode === "editor") {
@@ -3296,6 +3347,25 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     zones,
     worldMapMode,
   ]);
+
+  const handlePrimaryWorldInteraction = useCallback(() => {
+    if (worldMapMode !== "play" || locationView !== "map") {
+      return;
+    }
+
+    const activeZone = currentZone;
+    if (activeZone) {
+      const [x, y] = getZoneCenter(activeZone);
+      handleRuntimeZoneInteract(activeZone, { x, y });
+      return;
+    }
+
+    handleInspectCurrentZone();
+  }, [currentZone, handleInspectCurrentZone, handleRuntimeZoneInteract, locationView, worldMapMode]);
+
+  useEffect(() => {
+    handlePrimaryWorldInteractionRef.current = handlePrimaryWorldInteraction;
+  }, [handlePrimaryWorldInteraction]);
 
   const handleInteractionChoice = useCallback((choice: QuestInteractionChoice) => {
     if (!activeInteraction) {
@@ -4281,7 +4351,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       case 'interact_zone': {
         const zone = playVisibleZones.find((entry) => entry.id === command.zoneId) ?? null;
         if (zone) {
-          handleRuntimeZoneInteract(zone, command.point);
+          const isInside = isInsideZone(zone as Zone, playerPosition.x, playerPosition.y, 0);
+          if (isInside || currentZone?.id === zone.id) {
+            handleRuntimeZoneInteract(zone, command.point);
+          }
         }
         return;
       }
@@ -4327,7 +4400,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       default:
         return;
     }
-  }, [handleHoverZone, handleInspectCurrentZone, handleRuntimeZoneInteract, handleWorldEntityClick, playVisibleZones, worldSnapshot?.activeEntities]);
+  }, [currentZone?.id, handleHoverZone, handleInspectCurrentZone, handleRuntimeZoneInteract, handleWorldEntityClick, playVisibleZones, playerPosition.x, playerPosition.y, worldSnapshot?.activeEntities]);
 
   useEffect(() => {
     if (!playMovementTarget || playerState === 'moving') {
@@ -4672,6 +4745,40 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     return null;
   }, [questRuntimeProfessionCompat]);
+
+  const resolveMineZoneOpenError = useCallback((zone: WorldMapZone): string | null => {
+    if (!playerHasProfessionCompat(questRuntimeProfessionCompat, 'mining')) {
+      return 'Вы не умеете работать в шахте. Найдите наставника-горняка.';
+    }
+
+    const miningState = getPlayerProfession(questRuntimeProfessionCompat.professions ?? { professions: [] }, 'mining');
+    const miningLevel = Number(miningState?.level ?? 0);
+    if (Number.isFinite(Number(zone.requiredLevel)) && miningLevel < Number(zone.requiredLevel)) {
+      return 'Ваш уровень Горняка слишком низкий.';
+    }
+
+    if (zone.requiredQuestId) {
+      const requiredQuestId = zone.requiredQuestId.trim();
+      const state = playerQuestStates.find((entry) => entry.questId === requiredQuestId) ?? null;
+      if (!state || (state.status !== 'active' && state.status !== 'completed')) {
+        return `Доступ закрыт: требуется квест ${requiredQuestId}.`;
+      }
+    }
+
+    if (zone.requiredItemId) {
+      const requiredItemId = zone.requiredItemId.trim();
+      const hasItem = inventory.items.some((item) => item.itemId === requiredItemId && item.quantity > 0);
+      if (!hasItem) {
+        return `Доступ закрыт: нужен предмет ${requiredItemId}.`;
+      }
+    }
+
+    if (zone.requiredFaction) {
+      return `Доступ закрыт: требуется фракция ${zone.requiredFaction.trim()}.`;
+    }
+
+    return resolveMineOpenError(zone.mineId ?? '');
+  }, [inventory.items, playerQuestStates, questRuntimeProfessionCompat, resolveMineOpenError]);
 
   useEffect(() => {
     if (!devTravelRequest || worldMapMode === 'editor') {
@@ -5963,6 +6070,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const modalLocation = modalCityLocation ?? modalWorldLocation;
     const closeModal = () => {
       setActiveWorldModal(null);
+      setExpandedMineZoneId(null);
       dialogueRunner.closeDialogue();
     };
 
@@ -6390,6 +6498,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const worldZone = zones.find((z) => z.id === activeWorldModal.zoneId) ?? null;
       title = worldZone?.name ?? activeWorldModal.zoneId;
       description = worldZone?.description || undefined;
+      const linkedMine = isMineResourceZone(worldZone) ? findMineById(worldZone.mineId) : null;
+      const isMineZone = isMineResourceZone(worldZone);
 
       const zoneInteractions = questInteractions.filter(
         (qi) => qi.triggerType === "zone_inspect" && qi.zoneId === activeWorldModal.zoneId,
@@ -6402,24 +6512,51 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         itemIds: inventory.items.filter((item) => item.quantity > 0).map((item) => item.itemId),
       };
 
-      content = zoneInteractions.length > 0 ? (
-        <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-          {zoneInteractions.map((qi) => (
-            <button
-              key={qi.id}
-              className="btn"
-              onClick={() => {
-                const choices = getAvailableQuestInteractionChoices(qi, questRuntimePlayer);
-                setActiveInteraction(qi);
-                setActiveInteractionChoices(choices);
-                closeModal();
-              }}
-            >
-              {qi.title || qi.id}
-            </button>
-          ))}
+      const mineDetailsVisible = isMineZone && expandedMineZoneId === worldZone?.id;
+      const mineKnownResources = linkedMine
+        ? [...(linkedMine.knownResourceItemIds ?? []), ...(linkedMine.knownMaterialIds ?? [])].filter(Boolean)
+        : [];
+      content = (
+        <div style={{ marginTop: 16, display: "grid", gap: 10, textAlign: "left" }}>
+          {isMineZone ? (
+            <>
+              <div className="wm-stat-block">
+                <div><strong>Mine ID:</strong> {worldZone.mineId}</div>
+                <div><strong>Profession:</strong> {worldZone.professionId?.trim() || 'mining'}</div>
+                {worldZone.requiredLevel ? <div><strong>Required level:</strong> {worldZone.requiredLevel}</div> : null}
+              </div>
+              {mineDetailsVisible ? (
+                <div className="wm-stat-block">
+                  <div><strong>Name:</strong> {linkedMine?.name ?? worldZone.name}</div>
+                  <div><strong>Region:</strong> {linkedMine?.region || worldZone.region || '-'}</div>
+                  <div><strong>Depths:</strong> {linkedMine?.depthIds.length ?? 0}</div>
+                  <div><strong>Required mining level:</strong> {linkedMine?.requiredMiningLevel ?? worldZone.requiredLevel ?? 1}</div>
+                  <div><strong>Known resources:</strong> {mineKnownResources.length > 0 ? mineKnownResources.join(', ') : '-'}</div>
+                  <div style={{ marginTop: 6 }}>{linkedMine?.description || worldZone.tooltip || worldZone.description || 'No additional information.'}</div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          {zoneInteractions.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {zoneInteractions.map((qi) => (
+                <button
+                  key={qi.id}
+                  className="btn"
+                  onClick={() => {
+                    const choices = getAvailableQuestInteractionChoices(qi, questRuntimePlayer);
+                    setActiveInteraction(qi);
+                    setActiveInteractionChoices(choices);
+                    closeModal();
+                  }}
+                >
+                  {qi.title || qi.id}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null;
+      );
 
       if (worldZone?.dangerLevel && worldZone.dangerLevel > 0) {
         subtitle = `Уровень опасности: ${worldZone.dangerLevel}`;
@@ -6428,7 +6565,37 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         subtitle = `${subtitle ? subtitle + " | " : ""}Рек. уровень: ${worldZone.recommendedLevel}`;
       }
 
-      buttons = <button onClick={closeModal}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>;
+      buttons = isMineZone ? (
+        <>
+          <button
+            onClick={() => {
+              if (!worldZone || !isMineResourceZone(worldZone)) {
+                return;
+              }
+              const mineError = resolveMineZoneOpenError(worldZone);
+              if (mineError) {
+                onStatus(mineError);
+                return;
+              }
+              closeModal();
+              openMine(worldZone.mineId);
+            }}
+          >
+            {"\u0412\u043e\u0439\u0442\u0438"}
+          </button>
+          <button
+            onClick={() => {
+              if (!worldZone) {
+                return;
+              }
+              setExpandedMineZoneId((current) => current === worldZone.id ? null : worldZone.id);
+            }}
+          >
+            {mineDetailsVisible ? 'Скрыть' : 'Осмотреть'}
+          </button>
+          <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
+        </>
+      ) : <button onClick={closeModal}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>;
     } else {
       const _exhaustive: never = activeWorldModal;
       title = modalLocation?.name ?? String((_exhaustive as any)?.locationId ?? "");

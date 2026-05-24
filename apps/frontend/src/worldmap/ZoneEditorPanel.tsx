@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { REGION_TYPE_COLORS, REGION_TYPE_HEX_COLORS } from './regionPaintSystem';
-import type { RegionBrushSize, RegionToolMode, RegionType, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
+import type { RegionBrushSize, RegionToolMode, RegionType, ResourceKind, WorldMapZone, ZoneEditorDraft, ZoneEditorSettings, ZoneEditorTool, ZoneType } from './zoneEditorTypes';
 import {
   MAP_EDITOR_LAYER_OPTIONS,
   getDefaultEditorLayer,
@@ -23,6 +23,7 @@ import type { NpcDefinition } from '../types/npc';
 import type { WorldLocation } from '../types/location';
 import type { StoredImage } from '../services/content/models';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
+import { loadMinesFromStorage } from '../services/miningRepository';
 
 type LocationPreviewEntry = {
   id: string;
@@ -86,6 +87,16 @@ const INTERACTION_MODE_OPTIONS: Array<{ value: NonNullable<ZoneEditorDraft['inte
   { value: 'fast_travel', label: 'Быстрое перемещение' },
   { value: 'rest', label: 'Отдых' },
   { value: 'locked', label: 'Закрыто' },
+];
+
+const RESOURCE_KIND_OPTIONS: Array<{ value: ResourceKind | ''; label: string }> = [
+  { value: '', label: 'None' },
+  { value: 'mine', label: 'mine' },
+  { value: 'grove', label: 'grove' },
+  { value: 'herb_patch', label: 'herb_patch' },
+  { value: 'fishing_spot', label: 'fishing_spot' },
+  { value: 'hunting_ground', label: 'hunting_ground' },
+  { value: 'other', label: 'other' },
 ];
 
 interface ZoneEditorPanelProps {
@@ -280,6 +291,11 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     setHexInputValue(getResolvedZoneColor(draft));
     setHexWarning(null);
   }, [draft]);
+
+  const availableMines = useMemo(
+    () => loadMinesFromStorage().filter((entry) => entry.isEnabled !== false),
+    [],
+  );
 
   const resolvedDraftColor = draft ? getResolvedZoneColor(draft) : getDefaultZoneColor('city');
   const colorInputValue = normalizeHexColor(resolvedDraftColor) ?? '#d6b35f';
@@ -491,6 +507,18 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       ...draft,
       ...patch,
       updatedAt: Date.now(),
+    });
+  }
+
+  function handleResourceKindChange(nextValue: ResourceKind | '') {
+    if (!draft) {
+      return;
+    }
+
+    updateDraft({
+      resourceKind: nextValue,
+      professionId: nextValue === 'mine' && !draft.professionId.trim() ? 'mining' : draft.professionId,
+      mineId: nextValue === 'mine' ? draft.mineId : '',
     });
   }
 
@@ -1178,9 +1206,48 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <input disabled={!draft} value={draft?.resourceTableId ?? ''} onChange={(event) => updateDraft({ resourceTableId: event.target.value })} />
         </label>
         <label>
+          <span>Resource Kind</span>
+          <select
+            disabled={!draft}
+            value={draft?.resourceKind ?? ''}
+            onChange={(event) => handleResourceKindChange(event.target.value as ResourceKind | '')}
+          >
+            {RESOURCE_KIND_OPTIONS.map((option) => (
+              <option key={option.value || 'empty'} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        {draft?.resourceKind === 'mine' ? (
+          <label>
+            <span>Mine Id</span>
+            {availableMines.length > 0 ? (
+              <select
+                disabled={!draft}
+                value={draft?.mineId ?? ''}
+                onChange={(event) => updateDraft({ mineId: event.target.value })}
+              >
+                <option value="">Select mine...</option>
+                {availableMines.map((mine) => (
+                  <option key={mine.id} value={mine.id}>{mine.name} ({mine.id})</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                disabled={!draft}
+                value={draft?.mineId ?? ''}
+                onChange={(event) => updateDraft({ mineId: event.target.value })}
+                placeholder="mine_teramor_old_iron"
+              />
+            )}
+          </label>
+        ) : null}
+        <label>
           <span>Profession Id</span>
           <input disabled={!draft} value={draft?.professionId ?? ''} onChange={(event) => updateDraft({ professionId: event.target.value })} />
         </label>
+        <p className="muted" style={{ marginTop: -4 }}>
+          Resource Table Id is for generic resource tables. Mine Id is for mining mini-game entrances.
+        </p>
         <label>
           <span>Respawn Seconds</span>
           <input disabled={!draft} type="number" value={draft?.respawnSeconds ?? ''} onChange={(event) => updateDraft({ respawnSeconds: parseNumber(event.target.value) })} />

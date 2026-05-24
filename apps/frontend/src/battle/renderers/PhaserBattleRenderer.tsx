@@ -18,12 +18,18 @@ import { getBattleEffect, inferEffectIdForAnimation, type CameraShakePreset } fr
 import { PhaserVisualFxPlayer } from '../../phaser/effects/PhaserVisualFxPlayer';
 import type { CombatContextAction, ClickedCombatTarget } from '../combatContextActions';
 import { getMovementTweenDurationMs, type BattlePlaybackPhase } from '../playback/buildBattlePlaybackTimeline';
-import { normalizeActorVisualSource, pickDeterministicBanditPortrait, resolveActorPortraitWithFallback } from '../../phaser/assets/actorVisualResolver';
+import {
+  DETERMINISTIC_BANDIT_CANDIDATES,
+  normalizeActorVisualSource,
+  pickDeterministicBanditPortrait,
+  resolveActorPortraitWithFallback,
+} from '../../phaser/assets/actorVisualResolver';
 import { resolveCircularPortraitLayout } from '../../phaser/assets/circularPortraitLayout';
 import { resolvePhaserAsset } from '../../phaser/assets/phaserAssetRegistry';
 import { visualFxService } from '../../services/content/visualFxService';
 
 const IS_DEV = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
+const STATIC_ACTOR_TEXTURE_SOURCES = [...DETERMINISTIC_BANDIT_CANDIDATES, '/sprites/actor/human_01.png'] as const;
 
 type PhaserBattleRendererProps = BattleFieldProps;
 
@@ -57,6 +63,9 @@ function getRacePortrait(entity: ArenaCombatEntity, playerId: string, playerAvat
   }
 
   const banditLike = isBanditLike(entity);
+  if (banditLike) {
+    return pickDeterministicBanditPortrait(entity.id);
+  }
   const raceKey = String(entity.race).toLowerCase();
   const raceFallback = raceKey.includes('dwarf')
     ? '/art/races/dwarf.png'
@@ -117,7 +126,7 @@ class PhaserBattleScene extends Phaser.Scene {
     size: number,
   ) {
     const existingImage = token.getByName('portraitImage') as Phaser.GameObjects.Image | null;
-    const existingMask = token.getByName('portraitMask') as Phaser.GameObjects.Arc | null;
+    const existingMaskGraphics = token.getData('portraitMaskGraphics') as Phaser.GameObjects.Graphics | undefined;
     const frame = this.textures.getFrame(imageKey);
     const layout = resolveCircularPortraitLayout({
       existingTextureKey: existingImage?.texture?.key,
@@ -132,15 +141,20 @@ class PhaserBattleScene extends Phaser.Scene {
     }
 
     existingImage?.destroy();
-    existingMask?.destroy();
+    existingMaskGraphics?.destroy();
+    token.setData('portraitMaskGraphics', undefined);
 
     const image = this.add.image(0, -1, imageKey).setDisplaySize(layout.displayWidth, layout.displayHeight).setName('portraitImage');
-    const maskShape = this.add.circle(0, -1, layout.maskRadius, 0xffffff, 1).setName('portraitMask');
-    maskShape.setVisible(false);
-    image.setMask(maskShape.createGeometryMask());
-
-    token.addAt(maskShape, 1);
-    token.addAt(image, 2);
+    const maskGraphics = this.add.graphics({ x: 0, y: 0 });
+    maskGraphics.setVisible(false);
+    maskGraphics.fillStyle(0xffffff, 1);
+    maskGraphics.fillCircle(0, -1, layout.maskRadius);
+    image.setMask(maskGraphics.createGeometryMask());
+    image.once(Phaser.GameObjects.Events.DESTROY, () => {
+      maskGraphics.destroy();
+    });
+    token.setData('portraitMaskGraphics', maskGraphics);
+    token.addAt(image, 1);
 
     const label = token.getByName('portraitLabel') as Phaser.GameObjects.Text | null;
     label?.setVisible(false);
@@ -332,6 +346,16 @@ class PhaserBattleScene extends Phaser.Scene {
     this.gridGraphics = this.add.graphics();
     this.fxGraphics = this.add.graphics();
     this.renderSnapshot();
+  }
+
+  preload() {
+    for (const source of STATIC_ACTOR_TEXTURE_SOURCES) {
+      const key = `actor-static:${source}`;
+      if (this.textures.exists(key)) {
+        continue;
+      }
+      this.load.image(key, source);
+    }
   }
 
   private ensureProceduralParticleTexture() {
@@ -679,16 +703,29 @@ class PhaserBattleScene extends Phaser.Scene {
     const existing = this.tokenById.get(entity.id);
     const portrait = getRacePortrait(entity, snapshot.playerId, snapshot.playerAvatarUrl);
     const imageKey = `actor:${portrait}`;
+    const staticImageKey = portrait.startsWith('/sprites/actor/') ? `actor-static:${portrait}` : null;
     const fallbackPortrait = isBanditLike(entity)
       ? pickDeterministicBanditPortrait(entity.id)
       : '/sprites/actor/human_01.png';
     const fallbackImageKey = `actor:${fallbackPortrait}`;
+    const fallbackStaticImageKey = `actor-static:${fallbackPortrait}`;
 
     const ensureLoadedPortrait = (targetToken: Phaser.GameObjects.Container, key: string, source: string, size: number) => {
+      if (staticImageKey && this.textures.exists(staticImageKey)) {
+        this.addCircularPortrait(targetToken, staticImageKey, size);
+        this.tokenPortraitKeyById.set(entity.id, staticImageKey);
+        return;
+      }
+
       if (this.textures.exists(key)) {
         this.addCircularPortrait(targetToken, key, size);
         this.tokenPortraitKeyById.set(entity.id, key);
         return;
+      }
+
+      if (this.textures.exists(fallbackStaticImageKey)) {
+        this.addCircularPortrait(targetToken, fallbackStaticImageKey, size);
+        this.tokenPortraitKeyById.set(entity.id, fallbackStaticImageKey);
       }
 
       if (!this.loadedImages.has(key)) {
@@ -712,6 +749,9 @@ class PhaserBattleScene extends Phaser.Scene {
           if (this.textures.exists(key)) {
             this.addCircularPortrait(sceneToken, key, size);
             this.tokenPortraitKeyById.set(entity.id, key);
+          } else if (this.textures.exists(fallbackStaticImageKey)) {
+            this.addCircularPortrait(sceneToken, fallbackStaticImageKey, size);
+            this.tokenPortraitKeyById.set(entity.id, fallbackStaticImageKey);
           } else if (this.textures.exists(fallbackImageKey)) {
             this.addCircularPortrait(sceneToken, fallbackImageKey, size);
             this.tokenPortraitKeyById.set(entity.id, fallbackImageKey);

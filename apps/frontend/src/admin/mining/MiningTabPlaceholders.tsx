@@ -4,6 +4,7 @@ import { MineEditor } from './MineEditor';
 import { MineHazardEditor } from './MineHazardEditor';
 import { MineHazardTableEditor } from './MineHazardTableEditor';
 import { MineLootTableEditor } from './MineLootTableEditor';
+import { MiningToolEditor } from './MiningToolEditor';
 
 interface MiningTabProps {
   professionName: string;
@@ -38,4 +39,8 @@ export function MiningHazardsTab(_props: MiningTabProps) {
 
 export function MiningLootTab(_props: MiningTabProps) {
   return <MineLootTableEditor />;
+}
+
+export function MiningToolsTab(_props: MiningTabProps) {
+  return <MiningToolEditor />;
 }

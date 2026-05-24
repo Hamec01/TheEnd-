@@ -229,6 +229,7 @@ describe('mining runtime flow', () => {
     seedMineForPayload('loot_item');
     const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
     const hit = hitMineBlock(run, 0, [], () => 0.5).run;
+    hit.foundExit = true;
     const escaped = escapeMineRun(hit);
 
     expect(escaped.status).toBe('escaped');
@@ -244,6 +245,13 @@ describe('mining runtime flow', () => {
     const retreated = retreatMineRun(run, []);
     expect(retreated.status).toBe('retreated');
     expect(retreated.awardedLoot?.[0]?.quantity).toBe(6);
+  });
+
+  it('cannot use safe exit before finding exit block', () => {
+    seedMineForPayload('loot_item');
+    const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
+    const escaped = escapeMineRun(run);
+    expect(escaped.status).toBe('active');
   });
 
   it('hazard death loses loot by default', () => {
@@ -262,6 +270,7 @@ describe('mining runtime flow', () => {
     const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
     const hit = hitMineBlock(run, 0, [], () => 0.5).run;
     expect(hit.temporaryGold).toBe(7);
+    hit.foundExit = true;
 
     const escaped = escapeMineRun(hit);
     expect(escaped.awardedGold).toBe(7);
@@ -297,6 +306,7 @@ describe('mining runtime flow', () => {
     seedMineForPayload('loot_item');
     const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
     const hit = hitMineBlock(run, 0, [], () => 0.5).run;
+    hit.foundExit = true;
     const escaped = escapeMineRun(hit, [effect('mine_loot_sell_value_modifier', { value: 100 })]);
     expect(escaped.bonusGoldFromSellValue).toBeGreaterThan(0);
     expect(escaped.resultSummary?.bonusGoldFromSellValue).toBeGreaterThan(0);

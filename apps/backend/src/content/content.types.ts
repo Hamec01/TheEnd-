@@ -641,6 +641,8 @@ export interface WorldMapZone {
   allowPvP?: boolean;
   enemyTableId?: string;
   resourceTableId?: string;
+  resourceKind?: 'mine' | 'grove' | 'herb_patch' | 'fishing_spot' | 'hunting_ground' | 'other';
+  mineId?: string;
   professionId?: string;
   respawnSeconds?: number;
   cooldownSeconds?: number;

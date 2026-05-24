@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AdminImageField } from '../AdminImageField';
 import type { MineDepth } from '../../types/mining';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import {
   loadMineDepthsFromStorage,
   loadMinesFromStorage,
@@ -33,6 +35,14 @@ function emptyDepth(defaultMineId = ''): MineDepth {
     isFinalDepth: false,
     requiredMiningLevel: 1,
     backgroundImage: '',
+    blockSpriteAssetId: '',
+    blockSpriteUrl: '',
+    blockCrackSpriteAssetId: '',
+    blockCrackSpriteUrl: '',
+    blockBreakSpriteSheetAssetId: '',
+    blockBreakSpriteSheetUrl: '',
+    particleTextureAssetId: '',
+    particleTextureUrl: '',
     isEnabled: true,
   };
 }
@@ -42,7 +52,7 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMineId, setSelectedMineId] = useState<string>('');
   const [draft, setDraft] = useState<MineDepth>(emptyDepth());
-  const [status, setStatus] = useState('Готово');
+  const [status, setStatus] = useState('Ready');
   const mines = useMemo(() => loadMinesFromStorage(), []);
 
   useEffect(() => {
@@ -64,6 +74,13 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
       .sort((left, right) => left.depthLevel - right.depthLevel),
     [depths, selectedMineId],
   );
+
+  const baseFolder = buildUploadFolder('images', 'mining', 'depths', draft.id || draft.name || undefined);
+  const backgroundFolder = buildUploadFolder(baseFolder, 'background');
+  const blockFolder = buildUploadFolder(baseFolder, 'blocks');
+  const crackFolder = buildUploadFolder(baseFolder, 'cracks');
+  const breakFolder = buildUploadFolder(baseFolder, 'break');
+  const particleFolder = buildUploadFolder(baseFolder, 'particles');
 
   function persist(next: MineDepth[], nextStatus: string) {
     setDepths(next);
@@ -98,6 +115,14 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
       blockTableId: draft.blockTableId.trim(),
       hazardTableId: draft.hazardTableId.trim(),
       backgroundImage: draft.backgroundImage?.trim() || undefined,
+      blockSpriteAssetId: draft.blockSpriteAssetId?.trim() || undefined,
+      blockSpriteUrl: draft.blockSpriteUrl?.trim() || undefined,
+      blockCrackSpriteAssetId: draft.blockCrackSpriteAssetId?.trim() || undefined,
+      blockCrackSpriteUrl: draft.blockCrackSpriteUrl?.trim() || undefined,
+      blockBreakSpriteSheetAssetId: draft.blockBreakSpriteSheetAssetId?.trim() || undefined,
+      blockBreakSpriteSheetUrl: draft.blockBreakSpriteSheetUrl?.trim() || undefined,
+      particleTextureAssetId: draft.particleTextureAssetId?.trim() || undefined,
+      particleTextureUrl: draft.particleTextureUrl?.trim() || undefined,
       depthLevel: Math.max(1, Math.floor(Number(draft.depthLevel || 1))),
       rows: Math.max(1, Math.floor(Number(draft.rows || 1))),
       columns: Math.max(1, Math.floor(Number(draft.columns || 1))),
@@ -109,39 +134,41 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
     };
 
     if (!normalized.id || !normalized.mineId || !normalized.name || !normalized.lootTableId || !normalized.blockTableId || !normalized.hazardTableId) {
-      setStatus('Заполните id, шахту, название и все связанные таблицы.');
+      setStatus('Fill in id, mine, name and all linked tables.');
       return;
     }
 
     if (selectedId) {
       if (selectedId !== normalized.id && depths.some((entry) => entry.id === normalized.id)) {
-        setStatus(`Глубина с id ${normalized.id} уже существует.`);
+        setStatus(`A depth with id ${normalized.id} already exists.`);
         return;
       }
       const next = depths.filter((entry) => entry.id !== selectedId).concat([normalized]);
       setSelectedId(normalized.id);
-      persist(next, `Глубина сохранена: ${normalized.name}`);
+      setDraft(normalized);
+      persist(next, `Depth saved: ${normalized.name}`);
       return;
     }
 
     if (depths.some((entry) => entry.id === normalized.id)) {
-      setStatus(`Глубина с id ${normalized.id} уже существует.`);
+      setStatus(`A depth with id ${normalized.id} already exists.`);
       return;
     }
     const next = [...depths, normalized];
     setSelectedId(normalized.id);
-    persist(next, `Глубина создана: ${normalized.name}`);
+    setDraft(normalized);
+    persist(next, `Depth created: ${normalized.name}`);
   }
 
   function deleteSelected() {
     if (!selectedId) {
       return;
     }
-    if (!window.confirm(`Удалить глубину ${selectedId}?`)) {
+    if (!window.confirm(`Delete depth ${selectedId}?`)) {
       return;
     }
     const next = depths.filter((entry) => entry.id !== selectedId);
-    persist(next, `Глубина удалена: ${selectedId}`);
+    persist(next, `Depth deleted: ${selectedId}`);
     if (next.length > 0) {
       selectDepth(next[0]!.id);
     } else {
@@ -155,27 +182,27 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
       collectionKey: 'mineDepths',
       entries: depths,
     });
-    setStatus(`Экспортировано глубин: ${depths.length}`);
+    setStatus(`Exported depths: ${depths.length}`);
   }
 
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
         <div className="admin-list-tools">
-          <button onClick={startNew}>Новая глубина</button>
-          <button onClick={exportJson}>Экспорт JSON</button>
+          <button onClick={startNew}>New depth</button>
+          <button onClick={exportJson}>Export JSON</button>
         </div>
         <label>
-          <AdminFieldLabel label="Шахта" />
+          <AdminFieldLabel label="Mine" />
           <select value={selectedMineId} onChange={(event) => setSelectedMineId(event.target.value)}>
-            <option value="">Все шахты</option>
+            <option value="">All mines</option>
             {mines.map((mine) => <option key={mine.id} value={mine.id}>{mine.name}</option>)}
           </select>
         </label>
         <div className="admin-scroll-list">
           {filteredDepths.map((depth) => (
             <button key={depth.id} className={selectedId === depth.id ? 'is-active' : ''} onClick={() => selectDepth(depth.id)}>
-              <strong>{depth.name || `Глубина ${depth.depthLevel}`}</strong>
+              <strong>{depth.name || `Depth ${depth.depthLevel}`}</strong>
               <span>{depth.id} | {depth.rows}x{depth.columns} | hits {depth.baseHits}</span>
             </button>
           ))}
@@ -189,94 +216,154 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
             <input value={draft.id} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Шахта" />
+            <AdminFieldLabel label="Mine" />
             <select value={draft.mineId} onChange={(event) => setDraft((current) => ({ ...current, mineId: event.target.value }))}>
-              <option value="">Выберите шахту</option>
+              <option value="">Choose mine</option>
               {mines.map((mine) => <option key={mine.id} value={mine.id}>{mine.name}</option>)}
             </select>
           </label>
           <label>
-            <AdminFieldLabel label="Название" />
+            <AdminFieldLabel label="Name" />
             <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Уровень глубины" />
+            <AdminFieldLabel label="Depth level" />
             <input type="number" min={1} value={draft.depthLevel} onChange={(event) => setDraft((current) => ({ ...current, depthLevel: Number(event.target.value) || 1 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Строк" />
+            <AdminFieldLabel label="Rows" />
             <input type="number" min={1} value={draft.rows} onChange={(event) => setDraft((current) => ({ ...current, rows: Number(event.target.value) || 1 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Столбцов" />
+            <AdminFieldLabel label="Columns" />
             <input type="number" min={1} value={draft.columns} onChange={(event) => setDraft((current) => ({ ...current, columns: Number(event.target.value) || 1 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Базовые хиты" />
+            <AdminFieldLabel label="Base hits" />
             <input type="number" min={1} value={draft.baseHits} onChange={(event) => setDraft((current) => ({ ...current, baseHits: Number(event.target.value) || 1 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Выносливость за удар" />
+            <AdminFieldLabel label="Stamina per hit" />
             <input type="number" min={0} value={draft.staminaCostPerHit} onChange={(event) => setDraft((current) => ({ ...current, staminaCostPerHit: Number(event.target.value) || 0 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Базовый риск обвала" />
+            <AdminFieldLabel label="Base collapse risk" />
             <input type="number" min={0} step="0.001" value={draft.baseCollapseRisk} onChange={(event) => setDraft((current) => ({ ...current, baseCollapseRisk: Number(event.target.value) || 0 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Рост риска за удар" />
+            <AdminFieldLabel label="Risk increase per hit" />
             <input type="number" min={0} step="0.001" value={draft.riskIncreasePerHit} onChange={(event) => setDraft((current) => ({ ...current, riskIncreasePerHit: Number(event.target.value) || 0 }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Таблица добычи" />
+            <AdminFieldLabel label="Loot table" />
             <input value={draft.lootTableId} onChange={(event) => setDraft((current) => ({ ...current, lootTableId: event.target.value }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Таблица блоков" />
+            <AdminFieldLabel label="Block table" />
             <input value={draft.blockTableId} onChange={(event) => setDraft((current) => ({ ...current, blockTableId: event.target.value }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Таблица опасностей" />
+            <AdminFieldLabel label="Hazard table" />
             <input value={draft.hazardTableId} onChange={(event) => setDraft((current) => ({ ...current, hazardTableId: event.target.value }))} />
           </label>
           <label>
-            <AdminFieldLabel label="Требуемый уровень Горняка" />
+            <AdminFieldLabel label="Required Mining level" />
             <input type="number" min={1} value={draft.requiredMiningLevel} onChange={(event) => setDraft((current) => ({ ...current, requiredMiningLevel: Number(event.target.value) || 1 }))} />
           </label>
         </div>
 
         <label>
-          <AdminFieldLabel label="Описание" />
+          <AdminFieldLabel label="Description" />
           <textarea value={draft.description ?? ''} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} rows={3} />
         </label>
 
-        <label>
-          <AdminFieldLabel label="Background image" />
-          <input value={draft.backgroundImage ?? ''} onChange={(event) => setDraft((current) => ({ ...current, backgroundImage: event.target.value }))} />
-        </label>
+        <AdminImageField
+          value={draft.backgroundImage ?? ''}
+          onChange={(nextValue) => setDraft((current) => ({ ...current, backgroundImage: nextValue }))}
+          onUploaded={(image) => setStatus(`Legacy depth background uploaded to ${backgroundFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
+          onStatus={setStatus}
+          presetId="battle-map-background"
+          suggestedId={draft.id ? `${draft.id}-background` : undefined}
+          suggestedName={`${draft.id || draft.name || 'depth'}-background`}
+          uploadFolder={backgroundFolder}
+          label="Legacy background depth image"
+          hint="Only needed as a fallback. The main background should now be set on the mine."
+        />
+
+        <AdminImageField
+          value={draft.blockSpriteUrl ?? ''}
+          onChange={(nextValue) => setDraft((current) => ({ ...current, blockSpriteUrl: nextValue, blockSpriteAssetId: nextValue }))}
+          onUploaded={(image) => setStatus(`Block sprite uploaded to ${blockFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
+          onStatus={setStatus}
+          presetId="mining-block"
+          suggestedId={draft.id ? `${draft.id}-block` : undefined}
+          suggestedName={`${draft.id || draft.name || 'depth'}-block`}
+          uploadFolder={blockFolder}
+          label="Block sprite"
+          hint="Use upload. The image will be resized to PNG 256x256."
+        />
+
+        <AdminImageField
+          value={draft.blockCrackSpriteUrl ?? ''}
+          onChange={(nextValue) => setDraft((current) => ({ ...current, blockCrackSpriteUrl: nextValue, blockCrackSpriteAssetId: nextValue }))}
+          onUploaded={(image) => setStatus(`Crack sprite uploaded to ${crackFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
+          onStatus={setStatus}
+          presetId="mining-block"
+          suggestedId={draft.id ? `${draft.id}-crack` : undefined}
+          suggestedName={`${draft.id || draft.name || 'depth'}-crack`}
+          uploadFolder={crackFolder}
+          label="Crack sprite"
+          hint="Rendered over the block when it is hit."
+        />
+
+        <AdminImageField
+          value={draft.blockBreakSpriteSheetUrl ?? ''}
+          onChange={(nextValue) => setDraft((current) => ({ ...current, blockBreakSpriteSheetUrl: nextValue, blockBreakSpriteSheetAssetId: nextValue }))}
+          onUploaded={(image) => setStatus(`Break spritesheet uploaded to ${breakFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
+          onStatus={setStatus}
+          presetId="mining-block"
+          suggestedId={draft.id ? `${draft.id}-break` : undefined}
+          suggestedName={`${draft.id || draft.name || 'depth'}-break`}
+          uploadFolder={breakFolder}
+          label="Break spritesheet"
+          hint="For the first version a regular PNG placeholder of the same size is fine."
+        />
+
+        <AdminImageField
+          value={draft.particleTextureUrl ?? ''}
+          onChange={(nextValue) => setDraft((current) => ({ ...current, particleTextureUrl: nextValue, particleTextureAssetId: nextValue }))}
+          onUploaded={(image) => setStatus(`Particle texture uploaded to ${particleFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
+          onStatus={setStatus}
+          presetId="mining-block"
+          suggestedId={draft.id ? `${draft.id}-particle` : undefined}
+          suggestedName={`${draft.id || draft.name || 'depth'}-particle`}
+          uploadFolder={particleFolder}
+          label="Particle texture"
+          hint="Leave empty if you do not have a dedicated particle texture yet."
+        />
 
         <div className="admin-form-grid">
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.guaranteedExit} onChange={(event) => setDraft((current) => ({ ...current, guaranteedExit: event.target.checked }))} />
-            <AdminFieldLabel label="Гарантированный выход" />
+            <AdminFieldLabel label="Guaranteed exit" />
           </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.canSpawnPassage} onChange={(event) => setDraft((current) => ({ ...current, canSpawnPassage: event.target.checked }))} />
-            <AdminFieldLabel label="Может появиться проход" />
+            <AdminFieldLabel label="Can spawn passage" />
           </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.isFinalDepth} onChange={(event) => setDraft((current) => ({ ...current, isFinalDepth: event.target.checked }))} />
-            <AdminFieldLabel label="Финальная глубина" />
+            <AdminFieldLabel label="Final depth" />
           </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.isEnabled} onChange={(event) => setDraft((current) => ({ ...current, isEnabled: event.target.checked }))} />
-            <AdminFieldLabel label="Включена" />
+            <AdminFieldLabel label="Enabled" />
           </label>
         </div>
 
         <div className="admin-actions-row">
-          <button onClick={saveDraft}>{selectedId ? 'Сохранить' : 'Создать'}</button>
-          <button disabled={!selectedId} onClick={deleteSelected}>Удалить</button>
+          <button onClick={saveDraft}>{selectedId ? 'Save' : 'Create'}</button>
+          <button disabled={!selectedId} onClick={deleteSelected}>Delete</button>
         </div>
         <p className="muted">{status}</p>
       </section>

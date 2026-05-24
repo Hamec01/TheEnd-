@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ProfessionSkillEditor } from './ProfessionSkillEditor';
+import { MiningBlocksTab, MiningDepthsTab, MiningHazardsTab, MiningLootTab, MiningMinesTab, MiningToolsTab } from '../mining/MiningTabPlaceholders';
 import { ProfessionBranchEditor } from './ProfessionBranchEditor';
-import { MiningMinesTab, MiningDepthsTab, MiningBlocksTab, MiningHazardsTab, MiningLootTab } from '../mining/MiningTabPlaceholders';
+import { ProfessionSkillEditor } from './ProfessionSkillEditor';
 
-type TabType = 'general' | 'skills' | 'branches' | 'mines' | 'depths' | 'blocks' | 'hazards' | 'loot' | 'recipes' | 'actions' | 'buffs' | 'locations' | 'fish' | 'bait' | 'ingredients' | 'prey' | 'weapons' | string;
+type TabType = 'general' | 'skills' | 'branches' | 'mines' | 'depths' | 'blocks' | 'hazards' | 'loot' | 'tools';
 
 interface ProfessionEditorTabsProps {
   professionId: string;
@@ -11,33 +11,14 @@ interface ProfessionEditorTabsProps {
   onBack: () => void;
 }
 
-// Карта специфичных для профессии табов
-const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: string; label: string }>> = {
-  'mining': [
+const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: TabType; label: string }>> = {
+  mining: [
     { id: 'mines', label: 'Шахты' },
     { id: 'depths', label: 'Глубины' },
     { id: 'blocks', label: 'Блоки' },
     { id: 'hazards', label: 'Опасности' },
     { id: 'loot', label: 'Добыча' },
-  ],
-  'blacksmithing': [
-    { id: 'recipes', label: 'Рецепты' },
-    { id: 'actions', label: 'Кузнечные действия' },
-    { id: 'buffs', label: 'Баффы' },
-  ],
-  'fishing': [
-    { id: 'locations', label: 'Озёра' },
-    { id: 'fish', label: 'Рыба' },
-    { id: 'bait', label: 'Наживки' },
-  ],
-  'cooking': [
-    { id: 'recipes', label: 'Рецепты' },
-    { id: 'ingredients', label: 'Ингредиенты' },
-  ],
-  'hunting': [
-    { id: 'locations', label: 'Охотничьи угодья' },
-    { id: 'prey', label: 'Добыча' },
-    { id: 'weapons', label: 'Оружие' },
+    { id: 'tools', label: 'Инструменты' },
   ],
 };
 
@@ -50,8 +31,8 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
     { id: 'branches', label: 'Ветки' },
   ];
 
-  const customTabs = PROFESSION_SPECIFIC_TABS[professionId] || [];
-  const allTabs = [...commonTabs, ...customTabs.map(t => ({ id: t.id as TabType, label: t.label }))];
+  const customTabs = PROFESSION_SPECIFIC_TABS[professionId] ?? [];
+  const allTabs = [...commonTabs, ...customTabs];
 
   return (
     <div className="profession-editor-tabs">
@@ -74,54 +55,30 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
         </div>
 
         <div className="tabs-content">
-          {activeTab === 'general' && (
+          {activeTab === 'general' ? (
             <div className="tab-pane">
-              <p className="muted">Базовые параметры профессии "{professionName}"</p>
-              <p style={{ marginTop: '1rem' }}>Редактор базовых параметров сейчас не реализован, но будет содержать:</p>
-              <ul>
-                <li>Название и описание</li>
-                <li>Категорию</li>
-                <li>Максимальный уровень</li>
-                <li>Иконку</li>
-                <li>Статус включения</li>
-              </ul>
+              <p className="muted">Базовые параметры профессии "{professionName}".</p>
             </div>
-          )}
+          ) : null}
 
-          {activeTab === 'skills' && (
+          {activeTab === 'skills' ? (
             <div className="tab-pane">
-              <ProfessionSkillEditor
-                professions={[{ id: professionId, name: professionName }]}
-                filterByProfession={professionId}
-              />
+              <ProfessionSkillEditor professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
             </div>
-          )}
+          ) : null}
 
-          {activeTab === 'branches' && (
+          {activeTab === 'branches' ? (
             <div className="tab-pane">
-              <ProfessionBranchEditor
-                professions={[{ id: professionId, name: professionName }]}
-                filterByProfession={professionId}
-              />
+              <ProfessionBranchEditor professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
             </div>
-          )}
+          ) : null}
 
-          {(customTabs.some(t => t.id === activeTab)) && (
-            <div className="tab-pane">
-              {professionId === 'mining' && activeTab === 'mines' && <MiningMinesTab professionName={professionName} />}
-              {professionId === 'mining' && activeTab === 'depths' && <MiningDepthsTab professionName={professionName} />}
-              {professionId === 'mining' && activeTab === 'blocks' && <MiningBlocksTab professionName={professionName} />}
-              {professionId === 'mining' && activeTab === 'hazards' && <MiningHazardsTab professionName={professionName} />}
-              {professionId === 'mining' && activeTab === 'loot' && <MiningLootTab professionName={professionName} />}
-              
-              {!(professionId === 'mining') && (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <p>Раздел "{allTabs.find(t => t.id === activeTab)?.label}" будет реализован для этой профессии</p>
-                  <p style={{ fontSize: '0.9rem', marginTop: '1rem' }}>professionId: {professionId}</p>
-                </div>
-              )}
-            </div>
-          )}
+          {professionId === 'mining' && activeTab === 'mines' ? <div className="tab-pane"><MiningMinesTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'depths' ? <div className="tab-pane"><MiningDepthsTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'blocks' ? <div className="tab-pane"><MiningBlocksTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'hazards' ? <div className="tab-pane"><MiningHazardsTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'loot' ? <div className="tab-pane"><MiningLootTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'tools' ? <div className="tab-pane"><MiningToolsTab professionName={professionName} /></div> : null}
         </div>
       </div>
 
@@ -158,7 +115,6 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
         .tabs-container {
           display: flex;
           flex-direction: column;
-          gap: 0;
         }
         .tabs-nav {
           display: flex;
@@ -182,7 +138,7 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           background: rgba(255, 255, 255, 0.03);
         }
         .tab-button.is-active {
-          border-bottom-color: var(--text-accent, #a89;
+          border-bottom-color: var(--text-accent, #a89);
           color: var(--text-accent, #aaa);
         }
         .tab-pane {
@@ -190,12 +146,8 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           animation: fadeIn 0.2s ease;
         }
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
     </div>

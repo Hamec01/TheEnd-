@@ -6,6 +6,7 @@
   MineHazard,
   MineHazardTable,
   MineLootTable,
+  MiningToolDefinition,
   MiningContentBundle,
 } from '../types/mining';
 import { fixMojibake } from '../utils/fixMojibake';
@@ -17,10 +18,20 @@ const MINING_STORAGE_KEYS = {
   hazards: 'theend.mining.hazards',
   hazardTables: 'theend.mining.hazardTables',
   lootTables: 'theend.mining.lootTables',
+  tools: 'theend.mining.tools',
   seeded: 'theend.mining.seeded.v2',
 } as const;
 
 export const MINING_MINE_STORAGE_KEY = MINING_STORAGE_KEYS.mines;
+
+const DEFAULT_MINING_FALLBACK = defaultMiningContent();
+const DEFAULT_MINE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.mines.map((entry) => [entry.id, entry]));
+const DEFAULT_DEPTH_BY_ID = new Map(DEFAULT_MINING_FALLBACK.depths.map((entry) => [entry.id, entry]));
+const DEFAULT_BLOCK_TABLE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.blockTables.map((entry) => [entry.id, entry]));
+const DEFAULT_HAZARD_BY_ID = new Map(DEFAULT_MINING_FALLBACK.hazards.map((entry) => [entry.id, entry]));
+const DEFAULT_HAZARD_TABLE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.hazardTables.map((entry) => [entry.id, entry]));
+const DEFAULT_LOOT_TABLE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.lootTables.map((entry) => [entry.id, entry]));
+const DEFAULT_TOOL_BY_ID = new Map((DEFAULT_MINING_FALLBACK.tools ?? []).map((entry) => [entry.id, entry]));
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -92,19 +103,34 @@ function normalizeMine(raw: unknown): MineDefinition | null {
     return null;
   }
 
+  const fallback = DEFAULT_MINE_BY_ID.get(id);
+
   return {
     id,
-    name: fixMojibake(name),
-    description: fixMojibake(String(row.description ?? '').trim()),
-    shortDescription: fixMojibake(String(row.shortDescription ?? '').trim()) || undefined,
+    name: fixMojibake(name, fallback?.name),
+    description: fixMojibake(String(row.description ?? '').trim(), fallback?.description),
+    shortDescription: fixMojibake(String(row.shortDescription ?? '').trim(), fallback?.shortDescription) || undefined,
     requiredProfessionId: 'mining',
     requiredMiningLevel: Math.max(1, Math.floor(Number(row.requiredMiningLevel ?? 1))),
     dangerLevel,
     visualTheme,
-    region: fixMojibake(String(row.region ?? '').trim()) || undefined,
+    region: fixMojibake(String(row.region ?? '').trim(), fallback?.region) || undefined,
+    locationId: String(row.locationId ?? '').trim() || fallback?.locationId || undefined,
+    backgroundImageAssetId: String(row.backgroundImageAssetId ?? '').trim() || fallback?.backgroundImageAssetId || undefined,
+    backgroundImageUrl: String(row.backgroundImageUrl ?? '').trim() || fallback?.backgroundImageUrl || undefined,
     depthIds: Array.isArray(row.depthIds) ? row.depthIds.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [],
-    knownResources: Array.isArray(row.knownResources) ? row.knownResources.map((entry) => fixMojibake(String(entry ?? '').trim())).filter(Boolean) : [],
-    entryText: fixMojibake(String(row.entryText ?? '').trim()) || undefined,
+    knownResources: Array.isArray(row.knownResources)
+      ? row.knownResources
+        .map((entry, index) => fixMojibake(String(entry ?? '').trim(), fallback?.knownResources?.[index]))
+        .filter(Boolean)
+      : (fallback?.knownResources ?? []),
+    knownResourceItemIds: Array.isArray(row.knownResourceItemIds)
+      ? row.knownResourceItemIds.map((entry) => String(entry ?? '').trim()).filter(Boolean)
+      : (fallback?.knownResourceItemIds ?? []),
+    knownMaterialIds: Array.isArray(row.knownMaterialIds)
+      ? row.knownMaterialIds.map((entry) => String(entry ?? '').trim()).filter(Boolean)
+      : (fallback?.knownMaterialIds ?? []),
+    entryText: fixMojibake(String(row.entryText ?? '').trim(), fallback?.entryText) || undefined,
     isEnabled: row.isEnabled !== false,
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
@@ -123,12 +149,14 @@ function normalizeDepth(raw: unknown): MineDepth | null {
     return null;
   }
 
+  const fallback = DEFAULT_DEPTH_BY_ID.get(id);
+
   return {
     id,
     mineId,
     depthLevel: Math.max(1, Math.floor(Number(row.depthLevel ?? 1))),
-    name: fixMojibake(name),
-    description: fixMojibake(String(row.description ?? '').trim()) || undefined,
+    name: fixMojibake(name, fallback?.name),
+    description: fixMojibake(String(row.description ?? '').trim(), fallback?.description) || undefined,
     rows: Math.max(1, Math.floor(Number(row.rows ?? 4))),
     columns: Math.max(1, Math.floor(Number(row.columns ?? 4))),
     baseHits: Math.max(1, Math.floor(Number(row.baseHits ?? 10))),
@@ -142,7 +170,45 @@ function normalizeDepth(raw: unknown): MineDepth | null {
     canSpawnPassage: row.canSpawnPassage !== false,
     isFinalDepth: row.isFinalDepth === true,
     requiredMiningLevel: Math.max(1, Math.floor(Number(row.requiredMiningLevel ?? 1))),
-    backgroundImage: fixMojibake(String(row.backgroundImage ?? '').trim()) || undefined,
+    backgroundImage: fixMojibake(String(row.backgroundImage ?? '').trim(), fallback?.backgroundImage) || undefined,
+    blockSpriteAssetId: String(row.blockSpriteAssetId ?? '').trim() || fallback?.blockSpriteAssetId || undefined,
+    blockSpriteUrl: String(row.blockSpriteUrl ?? '').trim() || fallback?.blockSpriteUrl || undefined,
+    blockCrackSpriteAssetId: String(row.blockCrackSpriteAssetId ?? '').trim() || fallback?.blockCrackSpriteAssetId || undefined,
+    blockCrackSpriteUrl: String(row.blockCrackSpriteUrl ?? '').trim() || fallback?.blockCrackSpriteUrl || undefined,
+    blockBreakSpriteSheetAssetId: String(row.blockBreakSpriteSheetAssetId ?? '').trim() || fallback?.blockBreakSpriteSheetAssetId || undefined,
+    blockBreakSpriteSheetUrl: String(row.blockBreakSpriteSheetUrl ?? '').trim() || fallback?.blockBreakSpriteSheetUrl || undefined,
+    particleTextureAssetId: String(row.particleTextureAssetId ?? '').trim() || fallback?.particleTextureAssetId || undefined,
+    particleTextureUrl: String(row.particleTextureUrl ?? '').trim() || fallback?.particleTextureUrl || undefined,
+    isEnabled: row.isEnabled !== false,
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
+    updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
+  };
+}
+
+function normalizeTool(raw: unknown): MiningToolDefinition | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+  const row = raw as Record<string, unknown>;
+  const id = String(row.id ?? '').trim();
+  const itemId = String(row.itemId ?? '').trim();
+  const name = String(row.name ?? '').trim();
+  if (!id || !itemId || !name) {
+    return null;
+  }
+  const fallback = DEFAULT_TOOL_BY_ID.get(id);
+  return {
+    id,
+    professionId: 'mining',
+    itemId,
+    toolType: String(row.toolType ?? fallback?.toolType ?? 'pickaxe').trim() as MiningToolDefinition['toolType'],
+    name: fixMojibake(name, fallback?.name),
+    description: fixMojibake(String(row.description ?? '').trim(), fallback?.description) || undefined,
+    spriteAssetId: String(row.spriteAssetId ?? '').trim() || fallback?.spriteAssetId || undefined,
+    spriteUrl: String(row.spriteUrl ?? '').trim() || fallback?.spriteUrl || undefined,
+    effectType: (String(row.effectType ?? fallback?.effectType ?? '').trim() || undefined) as MiningToolDefinition['effectType'],
+    effectValue: Number.isFinite(Number(row.effectValue)) ? Number(row.effectValue) : fallback?.effectValue,
+    isConsumable: row.isConsumable === true,
     isEnabled: row.isEnabled !== false,
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
@@ -160,13 +226,16 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
     return null;
   }
 
+  const fallback = DEFAULT_BLOCK_TABLE_BY_ID.get(id);
+
   const entries: MineBlockTable['entries'] = [];
   if (Array.isArray(row.entries)) {
-    for (const entry of row.entries) {
+    for (const [entryIndex, entry] of row.entries.entries()) {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
         continue;
       }
       const block = entry as Record<string, unknown>;
+      const fallbackEntry = fallback?.entries?.[entryIndex];
       const type = String(block.type ?? '').trim();
       const weight = Number(block.weight ?? 0);
       if (!type || !Number.isFinite(weight) || weight <= 0) {
@@ -174,11 +243,12 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
       }
       const payloads: MineBlockTable['entries'][number]['payloads'] = [];
       if (Array.isArray(block.payloads)) {
-        for (const payload of block.payloads) {
+        for (const [payloadIndex, payload] of block.payloads.entries()) {
           if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
             continue;
           }
           const rawPayload = payload as Record<string, unknown>;
+          const fallbackPayload = fallbackEntry?.payloads?.[payloadIndex];
           const payloadType = String(rawPayload.type ?? '').trim();
           const payloadWeight = Number(rawPayload.weight ?? 0);
           if (!payloadType || !Number.isFinite(payloadWeight) || payloadWeight <= 0) {
@@ -201,7 +271,7 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
             maxQuantity: Number.isFinite(Number(rawPayload.maxQuantity)) ? Math.max(1, Math.floor(Number(rawPayload.maxQuantity))) : undefined,
             minDepth: Number.isFinite(Number(rawPayload.minDepth)) ? Math.max(1, Math.floor(Number(rawPayload.minDepth))) : undefined,
             maxDepth: Number.isFinite(Number(rawPayload.maxDepth)) ? Math.max(1, Math.floor(Number(rawPayload.maxDepth))) : undefined,
-            rarity: fixMojibake(String(rawPayload.rarity ?? '').trim()) || undefined,
+            rarity: fixMojibake(String(rawPayload.rarity ?? '').trim(), fallbackPayload?.rarity) || undefined,
             tags,
             params: rawPayload.params && typeof rawPayload.params === 'object' && !Array.isArray(rawPayload.params)
               ? rawPayload.params as Record<string, unknown>
@@ -215,8 +285,8 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
         weight,
         lootTableId: String(block.lootTableId ?? '').trim() || undefined,
         hazardTableId: String(block.hazardTableId ?? '').trim() || undefined,
-        label: fixMojibake(String(block.label ?? '').trim()) || undefined,
-        description: fixMojibake(String(block.description ?? '').trim()) || undefined,
+        label: fixMojibake(String(block.label ?? '').trim(), fallbackEntry?.label) || undefined,
+        description: fixMojibake(String(block.description ?? '').trim(), fallbackEntry?.description) || undefined,
         payloads: payloads.length > 0 ? payloads : undefined,
       });
     }
@@ -224,7 +294,7 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
 
   return {
     id,
-    name: fixMojibake(name),
+    name: fixMojibake(name, fallback?.name),
     mineId: String(row.mineId ?? '').trim() || undefined,
     depthLevel: Number.isFinite(Number(row.depthLevel)) ? Math.max(1, Math.floor(Number(row.depthLevel))) : undefined,
     entries,
@@ -245,18 +315,22 @@ function normalizeHazard(raw: unknown): MineHazard | null {
     return null;
   }
 
+  const fallback = DEFAULT_HAZARD_BY_ID.get(id);
+
   return {
     id,
-    name: fixMojibake(name),
+    name: fixMojibake(name, fallback?.name),
     type: type as MineHazard['type'],
-    description: fixMojibake(String(row.description ?? '').trim()),
+    description: fixMojibake(String(row.description ?? '').trim(), fallback?.description),
     hpDamageMin: Math.max(0, Math.floor(Number(row.hpDamageMin ?? 0))),
     hpDamageMax: Math.max(0, Math.floor(Number(row.hpDamageMax ?? 0))),
     staminaDamageMin: Math.max(0, Math.floor(Number(row.staminaDamageMin ?? 0))),
     staminaDamageMax: Math.max(0, Math.floor(Number(row.staminaDamageMax ?? 0))),
     lootLossChance: Math.max(0, Number(row.lootLossChance ?? 0)),
     lootLossPercent: Math.max(0, Number(row.lootLossPercent ?? 0)),
-    statusEffectIds: Array.isArray(row.statusEffectIds) ? row.statusEffectIds.map((entry) => fixMojibake(String(entry ?? '').trim())).filter(Boolean) : [],
+    statusEffectIds: Array.isArray(row.statusEffectIds)
+      ? row.statusEffectIds.map((entry, index) => fixMojibake(String(entry ?? '').trim(), fallback?.statusEffectIds?.[index])).filter(Boolean)
+      : (fallback?.statusEffectIds ?? []),
     canBeReducedByConstitution: row.canBeReducedByConstitution !== false,
     canBeDodgedByDexterity: row.canBeDodgedByDexterity === true,
     isDeadly: row.isDeadly === true,
@@ -276,6 +350,8 @@ function normalizeHazardTable(raw: unknown): MineHazardTable | null {
   if (!id || !name) {
     return null;
   }
+
+  const fallback = DEFAULT_HAZARD_TABLE_BY_ID.get(id);
 
   const entries: MineHazardTable['entries'] = [];
   if (Array.isArray(row.entries)) {
@@ -302,7 +378,7 @@ function normalizeHazardTable(raw: unknown): MineHazardTable | null {
 
   return {
     id,
-    name: fixMojibake(name),
+    name: fixMojibake(name, fallback?.name),
     entries,
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
@@ -320,9 +396,11 @@ function normalizeLootTable(raw: unknown): MineLootTable | null {
     return null;
   }
 
+  const fallback = DEFAULT_LOOT_TABLE_BY_ID.get(id);
+
   const entries: MineLootTable['entries'] = [];
   if (Array.isArray(row.entries)) {
-    for (const entry of row.entries) {
+    for (const [entryIndex, entry] of row.entries.entries()) {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
         continue;
       }
@@ -334,20 +412,21 @@ function normalizeLootTable(raw: unknown): MineLootTable | null {
       if (!itemId || !Number.isFinite(weight) || weight <= 0) {
         continue;
       }
+      const fallbackEntry = fallback?.entries.find((candidate) => candidate.itemId === itemId) ?? fallback?.entries?.[entryIndex];
       entries.push({
         itemId,
         weight,
         minQuantity: Math.max(1, Math.floor(minQuantity)),
         maxQuantity: Math.max(1, Math.floor(maxQuantity)),
         requiredDepth: Number.isFinite(Number(value.requiredDepth)) ? Math.max(1, Math.floor(Number(value.requiredDepth))) : undefined,
-        rarity: fixMojibake(String(value.rarity ?? '').trim()) || undefined,
+        rarity: fixMojibake(String(value.rarity ?? '').trim(), fallbackEntry?.rarity) || undefined,
       });
     }
   }
 
   return {
     id,
-    name: fixMojibake(name),
+    name: fixMojibake(name, fallback?.name),
     entries,
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
@@ -807,6 +886,50 @@ function defaultMiningContent(): MiningContentBundle {
         updatedAt: createdAt,
       },
     ],
+    tools: [
+      {
+        id: 'mining_tool_rusty_pickaxe',
+        professionId: 'mining',
+        itemId: 'tool_pickaxe_rusty',
+        toolType: 'pickaxe',
+        name: 'Ржавая кирка',
+        description: 'Старая, но надежная кирка для первых спусков.',
+        effectType: 'extra_hits',
+        effectValue: 0,
+        isConsumable: false,
+        isEnabled: true,
+        createdAt,
+        updatedAt: createdAt,
+      },
+      {
+        id: 'mining_tool_dynamite',
+        professionId: 'mining',
+        itemId: 'tool_dynamite',
+        toolType: 'dynamite',
+        name: 'Динамит',
+        description: 'Моментально вскрывает один блок.',
+        effectType: 'break_block',
+        effectValue: 1,
+        isConsumable: true,
+        isEnabled: true,
+        createdAt,
+        updatedAt: createdAt,
+      },
+      {
+        id: 'mining_tool_torch',
+        professionId: 'mining',
+        itemId: 'tool_torch',
+        toolType: 'torch',
+        name: 'Факел',
+        description: 'Подсказывает один перспективный блок.',
+        effectType: 'reveal_hint',
+        effectValue: 1,
+        isConsumable: true,
+        isEnabled: true,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ],
   };
 }
 
@@ -815,12 +938,43 @@ function ensureSeeded(): void {
     return;
   }
   const defaults = normalizeMiningBundle(defaultMiningContent());
-  writeArray(MINING_STORAGE_KEYS.mines, mergeById(readArray<MineDefinition>(MINING_STORAGE_KEYS.mines), defaults.mines));
-  writeArray(MINING_STORAGE_KEYS.depths, mergeById(readArray<MineDepth>(MINING_STORAGE_KEYS.depths), defaults.depths));
-  writeArray(MINING_STORAGE_KEYS.blockTables, mergeById(readArray<MineBlockTable>(MINING_STORAGE_KEYS.blockTables), defaults.blockTables));
-  writeArray(MINING_STORAGE_KEYS.hazards, mergeById(readArray<MineHazard>(MINING_STORAGE_KEYS.hazards), defaults.hazards));
-  writeArray(MINING_STORAGE_KEYS.hazardTables, mergeById(readArray<MineHazardTable>(MINING_STORAGE_KEYS.hazardTables), defaults.hazardTables));
-  writeArray(MINING_STORAGE_KEYS.lootTables, mergeById(readArray<MineLootTable>(MINING_STORAGE_KEYS.lootTables), defaults.lootTables));
+
+  const mines = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.mines).map(normalizeMine).filter((entry): entry is MineDefinition => Boolean(entry)),
+    defaults.mines,
+  );
+  const depths = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.depths).map(normalizeDepth).filter((entry): entry is MineDepth => Boolean(entry)),
+    defaults.depths,
+  );
+  const blockTables = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.blockTables).map(normalizeBlockTable).filter((entry): entry is MineBlockTable => Boolean(entry)),
+    defaults.blockTables,
+  );
+  const hazards = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.hazards).map(normalizeHazard).filter((entry): entry is MineHazard => Boolean(entry)),
+    defaults.hazards,
+  );
+  const hazardTables = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.hazardTables).map(normalizeHazardTable).filter((entry): entry is MineHazardTable => Boolean(entry)),
+    defaults.hazardTables,
+  );
+  const lootTables = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.lootTables).map(normalizeLootTable).filter((entry): entry is MineLootTable => Boolean(entry)),
+    defaults.lootTables,
+  );
+  const tools = mergeById(
+    readArray<unknown>(MINING_STORAGE_KEYS.tools).map(normalizeTool).filter((entry): entry is MiningToolDefinition => Boolean(entry)),
+    defaults.tools ?? [],
+  );
+
+  writeArray(MINING_STORAGE_KEYS.mines, mines);
+  writeArray(MINING_STORAGE_KEYS.depths, depths);
+  writeArray(MINING_STORAGE_KEYS.blockTables, blockTables);
+  writeArray(MINING_STORAGE_KEYS.hazards, hazards);
+  writeArray(MINING_STORAGE_KEYS.hazardTables, hazardTables);
+  writeArray(MINING_STORAGE_KEYS.lootTables, lootTables);
+  writeArray(MINING_STORAGE_KEYS.tools, tools);
   window.localStorage.setItem(MINING_STORAGE_KEYS.seeded, 'true');
 }
 
@@ -832,6 +986,7 @@ function normalizeMiningBundle(bundle: MiningContentBundle): MiningContentBundle
     hazards: bundle.hazards.map(normalizeHazard).filter((entry): entry is MineHazard => Boolean(entry)),
     hazardTables: bundle.hazardTables.map(normalizeHazardTable).filter((entry): entry is MineHazardTable => Boolean(entry)),
     lootTables: bundle.lootTables.map(normalizeLootTable).filter((entry): entry is MineLootTable => Boolean(entry)),
+    tools: (bundle.tools ?? []).map(normalizeTool).filter((entry): entry is MiningToolDefinition => Boolean(entry)),
   };
 }
 
@@ -889,6 +1044,15 @@ export function saveMineLootTablesToStorage(tables: MineLootTable[]): void {
   writeArray(MINING_STORAGE_KEYS.lootTables, tables);
 }
 
+export function loadMiningToolsFromStorage(): MiningToolDefinition[] {
+  ensureSeeded();
+  return readArray<unknown>(MINING_STORAGE_KEYS.tools).map(normalizeTool).filter((entry): entry is MiningToolDefinition => Boolean(entry));
+}
+
+export function saveMiningToolsToStorage(tools: MiningToolDefinition[]): void {
+  writeArray(MINING_STORAGE_KEYS.tools, tools);
+}
+
 export function findMineById(mineId: string): MineDefinition | null {
   const normalizedId = String(mineId ?? '').trim();
   return loadMinesFromStorage().find((entry) => entry.id === normalizedId) ?? null;
@@ -926,6 +1090,11 @@ export function findMineLootTableById(id: string): MineLootTable | null {
   return loadMineLootTablesFromStorage().find((entry) => entry.id === normalizedId) ?? null;
 }
 
+export function findMiningToolById(id: string): MiningToolDefinition | null {
+  const normalizedId = String(id ?? '').trim();
+  return loadMiningToolsFromStorage().find((entry) => entry.id === normalizedId) ?? null;
+}
+
 export function getMiningContentSnapshot(): MiningContentBundle {
   ensureSeeded();
   return clone({
@@ -935,6 +1104,7 @@ export function getMiningContentSnapshot(): MiningContentBundle {
     hazards: loadMineHazardsFromStorage(),
     hazardTables: loadMineHazardTablesFromStorage(),
     lootTables: loadMineLootTablesFromStorage(),
+    tools: loadMiningToolsFromStorage(),
   });
 }
 
@@ -946,6 +1116,7 @@ export function resetMiningContentToDefaults(): MiningContentBundle {
   saveMineHazardsToStorage(defaults.hazards);
   saveMineHazardTablesToStorage(defaults.hazardTables);
   saveMineLootTablesToStorage(defaults.lootTables);
+  saveMiningToolsToStorage(defaults.tools ?? []);
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(MINING_STORAGE_KEYS.seeded, 'true');
   }

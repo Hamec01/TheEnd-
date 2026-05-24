@@ -30,7 +30,7 @@ export function resolveCircularPortraitLayout(input: {
   return {
     reuseExisting: false,
     maskRadius,
-    displayWidth: Math.ceil(sourceWidth * coverScale),
-    displayHeight: Math.ceil(sourceHeight * coverScale),
+    displayWidth: Math.max(1, Math.ceil(sourceWidth * coverScale)),
+    displayHeight: Math.max(1, Math.ceil(sourceHeight * coverScale)),
   };
 }

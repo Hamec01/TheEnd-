@@ -1445,3 +1445,86 @@ Use this stack:
 **EN:** If you ask “what is the best way to create quests in our game right now?”, the answer is:
 
 > Build them through `NPC + Dialogue + Quest + Zone/Quest Interaction`, stick to runtime-verified enum values, minimize magic, create a simple working pipeline first, and only then add branching, items, shops, combat, and more complex conditions.
+
+---
+
+## 22. Mining entry on world map / Вход в шахту через карту мира
+
+### RU
+
+Для нового контента вход в шахту нужно делать **через resource zone на карте мира**, а не через `open_mine` в диалоге.
+
+Правильная схема теперь такая:
+
+`World Map -> Resource Zone -> Mine Modal -> Enter -> Mining mini-game`
+
+Что это значит на практике:
+
+1. В `Профессии -> Горняк -> Шахты` создаётся шахта с реальным `mineId`.
+2. В `Zone Editor` на слое `Resources` создаётся зона входа.
+3. У зоны явно задаются:
+   - `resourceKind = "mine"`
+   - `mineId = "<your mine id>"`
+   - обычно `professionId = "mining"`
+4. `Resource Table Id` не используется как `mineId`.
+5. При клике по зоне открывается модальное окно:
+   - `Войти`
+   - `Осмотреть`
+   - `Уйти`
+
+Перед входом игра проверяет:
+- открыта ли у игрока профессия `mining`
+- хватает ли уровня Горняка (`requiredLevel`, если задан)
+- выполнены ли `requiredQuestId` / `requiredItemId` / `requiredFaction`, если они заданы
+
+Что показывать в Zone Editor для шахты:
+
+```json
+{
+  "id": "zone_mine_teramor_old_iron",
+  "name": "Старая шахта Терамора",
+  "type": "resource",
+  "editorLayer": "resources",
+  "interactionMode": "resource",
+  "resourceKind": "mine",
+  "professionId": "mining",
+  "mineId": "mine_teramor_old_iron",
+  "isVisibleToPlayer": true,
+  "isDiscovered": true,
+  "description": "Холодный воздух выходит из расщелины. В глубине слышен стук камня."
+}
+```
+
+Когда допустим `open_mine` в диалоге:
+- legacy-контент
+- dev / QA сценарии
+- временные тестовые цепочки
+
+Но для нового основного игрового контента это уже не основной путь.
+
+### EN
+
+For new content, mines should be entered **through a resource zone on the world map**, not primarily through a dialogue `open_mine` action.
+
+The preferred flow is:
+
+`World Map -> Resource Zone -> Mine Modal -> Enter -> Mining mini-game`
+
+Practical rules:
+
+1. Create the mine in `Professions -> Mining -> Mines` with a real `mineId`.
+2. Create a world map zone on the `Resources` layer.
+3. Set:
+   - `resourceKind = "mine"`
+   - `mineId = "<your mine id>"`
+   - usually `professionId = "mining"`
+4. Do not use `Resource Table Id` as `mineId`.
+5. Clicking the zone opens a modal with:
+   - `Enter`
+   - `Inspect`
+   - `Leave`
+
+Before entering, the game checks:
+- whether the player has the `mining` profession
+- whether the mining level is high enough
+- whether quest, item, or faction requirements are met

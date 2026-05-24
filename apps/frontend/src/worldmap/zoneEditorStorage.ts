@@ -351,6 +351,16 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     allowPvP: zone.allowPvP === true,
     enemyTableId: zone.enemyTableId ? String(zone.enemyTableId) : undefined,
     resourceTableId: zone.resourceTableId ? String(zone.resourceTableId) : undefined,
+    resourceKind:
+      zone.resourceKind === 'mine'
+      || zone.resourceKind === 'grove'
+      || zone.resourceKind === 'herb_patch'
+      || zone.resourceKind === 'fishing_spot'
+      || zone.resourceKind === 'hunting_ground'
+      || zone.resourceKind === 'other'
+        ? zone.resourceKind
+        : undefined,
+    mineId: zone.mineId ? String(zone.mineId) : undefined,
     professionId: zone.professionId ? String(zone.professionId) : undefined,
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,

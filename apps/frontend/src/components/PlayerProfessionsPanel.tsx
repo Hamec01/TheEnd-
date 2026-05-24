@@ -13,6 +13,7 @@ import { getBlockedByExclusiveBranchReason } from '../services/miningSkillValida
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
 import type { StoredImage } from '../services/content/models';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
+import { SkillTreeView } from '../features/professions/SkillTreeView';
 
 interface PlayerProfessionsPanelProps {
   professionsState: PlayerProfessionsState;
@@ -67,6 +68,15 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     () => professionBranches.filter((entry) => entry.professionId === 'mining' && entry.isEnabled).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
     [professionBranches],
   );
+
+  const selectedProfessionBranches = useMemo(() => {
+    if (!selectedProfession) {
+      return [] as ProfessionBranch[];
+    }
+    return professionBranches
+      .filter((entry) => entry.professionId === selectedProfession.state.professionId && entry.isEnabled)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [professionBranches, selectedProfession]);
 
   const selectedProfessionSkills = useMemo(() => {
     if (!selectedProfession) {
@@ -333,119 +343,142 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
 
             {selectedProfession ? (
               <section className="inner-card">
-                <h3 style={{ marginTop: 0 }}>{selectedProfession.definition?.name ?? selectedProfession.state.professionId}</h3>
-                <p>{selectedProfession.definition?.description ?? 'Описание профессии пока не заполнено.'}</p>
-                <p>Уровень: {selectedProfession.state.level}</p>
-                <p>XP: {selectedProfession.state.xp} / {selectedProfession.state.xpToNextLevel}</p>
-                <p>Очки навыков: {selectedProfession.state.skillPoints}</p>
-                <p>Изучено навыков: {selectedProfession.state.learnedSkillIds.length}</p>
-
-                {selectedProfessionSkills.length > 0 ? (
-                  <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                    <strong>Изученные навыки</strong>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {selectedProfessionSkills.map((skill) => {
-                        const iconSrc = resolveStoredImageSource(skill.icon?.trim(), runtimeImages);
-                        return (
-                          <div
-                            key={skill.id}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '64px minmax(0, 1fr)',
-                              gap: 12,
-                              alignItems: 'center',
-                              padding: 8,
-                              border: '1px solid rgba(164, 141, 110, 0.18)',
-                              borderRadius: 8,
-                              background: 'rgba(27, 22, 18, 0.72)',
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 64,
-                                height: 64,
-                                borderRadius: 8,
-                                overflow: 'hidden',
-                                border: '1px solid rgba(164, 141, 110, 0.24)',
-                                background: 'rgba(14, 11, 9, 0.95)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              {iconSrc ? <img src={iconSrc} alt={skill.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 12 }}>64x64</span>}
-                            </div>
-                            <div>
-                              <strong>{skill.name}</strong>
-                              <p className="wm-stat-hint" style={{ marginTop: 4 }}>{skill.description}</p>
-                            </div>
+                <SkillTreeView
+                  professionId={selectedProfession.state.professionId}
+                  professionName={selectedProfession.definition?.name ?? selectedProfession.state.professionId}
+                  skills={professionSkills}
+                  branches={selectedProfessionBranches}
+                  playerProfessionState={selectedProfession.state}
+                  onLearnSkill={(skillId) => {
+                    const skill = professionSkills.find((entry) => entry.id === skillId);
+                    if (!skill) {
+                      onStatus(`Навык не найден: ${skillId}.`);
+                      return;
+                    }
+                    handleLearnSkill(skill);
+                  }}
+                  onChooseBranch={(branchId) => {
+                    const branch = selectedProfessionBranches.find((entry) => entry.id === branchId);
+                    if (!branch) {
+                      onStatus(`Ветка не найдена: ${branchId}.`);
+                      return;
+                    }
+                    handleSelectBranch(branch);
+                  }}
+                  onBack={() => setSelectedProfessionId(null)}
+                  resolveIcon={(icon) => resolveStoredImageSource(icon?.trim(), runtimeImages) ?? icon}
+                  isDev={isDev}
+                  legacyFallback={(
+                    <>
+                      {selectedProfessionSkills.length > 0 ? (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                          <strong>Изученные навыки</strong>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            {selectedProfessionSkills.map((skill) => {
+                              const iconSrc = resolveStoredImageSource(skill.icon?.trim(), runtimeImages);
+                              return (
+                                <div
+                                  key={skill.id}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '64px minmax(0, 1fr)',
+                                    gap: 12,
+                                    alignItems: 'center',
+                                    padding: 8,
+                                    border: '1px solid rgba(164, 141, 110, 0.18)',
+                                    borderRadius: 8,
+                                    background: 'rgba(27, 22, 18, 0.72)',
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: 64,
+                                      height: 64,
+                                      borderRadius: 8,
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(164, 141, 110, 0.24)',
+                                      background: 'rgba(14, 11, 9, 0.95)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    {iconSrc ? <img src={iconSrc} alt={skill.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 12 }}>64x64</span>}
+                                  </div>
+                                  <div>
+                                    <strong>{skill.name}</strong>
+                                    <p className="wm-stat-hint" style={{ marginTop: 4 }}>{skill.description}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                  <strong>Доступные навыки дерева</strong>
-                  {selectedProfessionSkillTree.available.length === 0 ? (
-                    <p className="wm-stat-hint">Нет доступных навыков для покупки на текущем уровне.</p>
-                  ) : (
-                    selectedProfessionSkillTree.available.map((skill) => (
-                      <div key={`available-${skill.id}`} style={{ border: '1px solid rgba(164, 141, 110, 0.2)', borderRadius: 8, padding: 8 }}>
-                        <p className="wm-stat-hint" style={{ margin: 0 }}>
-                          {skill.name} ({skill.id}) • cost {skill.skillPointCost}
-                        </p>
-                        <p className="wm-stat-hint" style={{ margin: '4px 0 8px' }}>{skill.description}</p>
-                        <button type="button" onClick={() => handleLearnSkill(skill)}>Изучить</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                  <strong>Заблокировано</strong>
-                  {selectedProfessionSkillTree.locked.length === 0 ? (
-                    <p className="wm-stat-hint">Нет заблокированных узлов.</p>
-                  ) : (
-                    selectedProfessionSkillTree.locked.slice(0, 12).map((entry) => (
-                      <p key={`locked-${entry.skill.id}`} className="wm-stat-hint" style={{ margin: 0 }}>
-                        {entry.skill.name}: {entry.reason}
-                      </p>
-                    ))
-                  )}
-                </div>
-
-                {selectedProfession.state.professionId === 'mining' ? (
-                  <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                    <strong>Ветки Горняка</strong>
-                    {miningBranches.map((branch) => {
-                      const selectedIds = new Set(selectedProfession.state.selectedBranchIds ?? []);
-                      const isSelected = selectedIds.has(branch.id);
-                      const isLockedByExclusive = miningBranches.some((candidate) => (
-                        candidate.id !== branch.id
-                        && candidate.exclusiveGroupId
-                        && candidate.exclusiveGroupId === branch.exclusiveGroupId
-                        && selectedIds.has(candidate.id)
-                      ));
-                      return (
-                        <div key={branch.id} style={{ border: '1px solid rgba(164, 141, 110, 0.2)', borderRadius: 8, padding: 8 }}>
-                          <p className="wm-stat-hint" style={{ margin: 0 }}>
-                            {branch.name} ({branch.id})
-                          </p>
-                          <p className="wm-stat-hint" style={{ margin: '4px 0 8px' }}>{branch.description}</p>
-                          <button
-                            type="button"
-                            disabled={isSelected || isLockedByExclusive}
-                            onClick={() => handleSelectBranch(branch)}
-                          >
-                            {isSelected ? 'Выбрано' : isLockedByExclusive ? 'Заблокировано веткой' : 'Выбрать ветку'}
-                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                      ) : null}
+
+                      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                        <strong>Доступные навыки дерева</strong>
+                        {selectedProfessionSkillTree.available.length === 0 ? (
+                          <p className="wm-stat-hint">Нет доступных навыков для покупки на текущем уровне.</p>
+                        ) : (
+                          selectedProfessionSkillTree.available.map((skill) => (
+                            <div key={`available-${skill.id}`} style={{ border: '1px solid rgba(164, 141, 110, 0.2)', borderRadius: 8, padding: 8 }}>
+                              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                                {skill.name} ({skill.id}) • cost {skill.skillPointCost}
+                              </p>
+                              <p className="wm-stat-hint" style={{ margin: '4px 0 8px' }}>{skill.description}</p>
+                              <button type="button" onClick={() => handleLearnSkill(skill)}>Изучить</button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                        <strong>Заблокировано</strong>
+                        {selectedProfessionSkillTree.locked.length === 0 ? (
+                          <p className="wm-stat-hint">Нет заблокированных узлов.</p>
+                        ) : (
+                          selectedProfessionSkillTree.locked.slice(0, 12).map((entry) => (
+                            <p key={`locked-${entry.skill.id}`} className="wm-stat-hint" style={{ margin: 0 }}>
+                              {entry.skill.name}: {entry.reason}
+                            </p>
+                          ))
+                        )}
+                      </div>
+
+                      {selectedProfession.state.professionId === 'mining' ? (
+                        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                          <strong>Ветки Горняка</strong>
+                          {miningBranches.map((branch) => {
+                            const selectedIds = new Set(selectedProfession.state.selectedBranchIds ?? []);
+                            const isSelected = selectedIds.has(branch.id);
+                            const isLockedByExclusive = miningBranches.some((candidate) => (
+                              candidate.id !== branch.id
+                              && candidate.exclusiveGroupId
+                              && candidate.exclusiveGroupId === branch.exclusiveGroupId
+                              && selectedIds.has(candidate.id)
+                            ));
+                            return (
+                              <div key={branch.id} style={{ border: '1px solid rgba(164, 141, 110, 0.2)', borderRadius: 8, padding: 8 }}>
+                                <p className="wm-stat-hint" style={{ margin: 0 }}>
+                                  {branch.name} ({branch.id})
+                                </p>
+                                <p className="wm-stat-hint" style={{ margin: '4px 0 8px' }}>{branch.description}</p>
+                                <button
+                                  type="button"
+                                  disabled={isSelected || isLockedByExclusive}
+                                  onClick={() => handleSelectBranch(branch)}
+                                >
+                                  {isSelected ? 'Выбрано' : isLockedByExclusive ? 'Заблокировано веткой' : 'Выбрать ветку'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                />
               </section>
             ) : null}
           </>
