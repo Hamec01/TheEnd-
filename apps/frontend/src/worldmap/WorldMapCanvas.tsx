@@ -35,6 +35,7 @@ import type { MovementControlScheme } from './playerMovementSettings';
 import type { WorldSceneCommand, WorldSceneSnapshot } from './worldSceneTypes';
 import { resolveWorldClickInteraction } from './worldInteractionCommands';
 import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
+import { findClickedLocationSprite, resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
@@ -104,6 +105,15 @@ interface DragStateRegionPaint {
   lastCell: { x: number; y: number };
 }
 
+interface DragStateMoveSprite {
+  kind: 'move-sprite';
+  zoneId: string;
+  startX: number;
+  startY: number;
+  originOffsetX: number;
+  originOffsetY: number;
+}
+
 type DragState =
   | DragStatePan
   | DragStateMoveZone
@@ -113,7 +123,8 @@ type DragState =
   | DragStateMoveCircleDraft
   | DragStateRectDraft
   | DragStateMeasure
-  | DragStateRegionPaint;
+  | DragStateRegionPaint
+  | DragStateMoveSprite;
 
 interface ContextMenuState {
   x: number;
@@ -191,6 +202,8 @@ export interface WorldMapCanvasProps {
   onWorldEntityClick?: (entity: WorldSimulationSnapshot['activeEntities'][number]) => void;
   lockedWorldEntityId?: string | null;
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
+  discoveredLocationIds?: Set<string>;
+  discoveredZoneIds?: Set<string>;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -390,11 +403,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     },
     lockedWorldEntityId = null,
     lockedWorldEntityCoordinates = null,
+    discoveredLocationIds,
+    discoveredZoneIds,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
+  const [locationSpriteImages, setLocationSpriteImages] = useState<Map<string, HTMLImageElement>>(() => new Map());
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -423,6 +439,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   };
 
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
+  const locationSpriteImageSizes = useMemo(() => {
+    const out = new Map<string, { width: number; height: number }>();
+    for (const [src, image] of locationSpriteImages.entries()) {
+      out.set(src, {
+        width: image.naturalWidth || image.width || 48,
+        height: image.naturalHeight || image.height || 48,
+      });
+    }
+    return out;
+  }, [locationSpriteImages]);
 
   const resolveCanMoveTo = useCallback((x: number, y: number) => {
     const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
@@ -610,6 +636,44 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   }, [mode]);
 
   useEffect(() => {
+    const spriteSources = Array.from(new Set(
+      [
+        ...zones.flatMap((zone) => [resolveZoneSpriteImageRef(zone), resolveCapturedBannerSource(zone) ?? '']),
+        draft?.locationSprite.imageUrl ?? '',
+      ]
+        .filter(Boolean)
+        .map(resolveWorldImageSource),
+    ));
+    for (const source of spriteSources) {
+      if (locationSpriteImages.has(source)) {
+        continue;
+      }
+      const image = new Image();
+      image.onload = () => {
+        setLocationSpriteImages((current) => {
+          if (current.has(source)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.set(source, image);
+          return next;
+        });
+      };
+      image.onerror = () => {
+        setLocationSpriteImages((current) => {
+          if (current.has(source)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.set(source, image);
+          return next;
+        });
+      };
+      image.src = source;
+    }
+  }, [draft?.locationSprite.imageUrl, locationSpriteImages, zones]);
+
+  useEffect(() => {
     if (mode !== 'editor' || !worldImage || didInitialFit) {
       return;
     }
@@ -769,6 +833,61 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     return { left, top, width, height };
   }
 
+  function getEditorSpriteCamera() {
+    if (!editorViewport) {
+      return null;
+    }
+    const scaledWidth = editorViewport.imageWidth * editorViewport.zoom;
+    const scaledHeight = editorViewport.imageHeight * editorViewport.zoom;
+    return {
+      left: -editorViewport.panX / Math.max(1, scaledWidth),
+      top: -editorViewport.panY / Math.max(1, scaledHeight),
+      width: canvasSize.width / Math.max(1, scaledWidth),
+      height: canvasSize.height / Math.max(1, scaledHeight),
+    };
+  }
+
+  function patchZoneSprite(zoneId: string, patch: Partial<NonNullable<WorldMapZone['locationSprite']>>) {
+    const sourceZone = zones.find((zone) => zone.id === zoneId);
+    if (!sourceZone?.locationSprite) {
+      return;
+    }
+
+    const nextSprite = {
+      ...sourceZone.locationSprite,
+      ...patch,
+      scale: patch.scale !== undefined ? Math.max(0.01, patch.scale) : sourceZone.locationSprite.scale,
+    };
+    const nextZone = { ...sourceZone, locationSprite: nextSprite, updatedAt: Date.now() };
+    updateZones(zones.map((zone) => (zone.id === zoneId ? nextZone : zone)), zoneId);
+    if (draft?.id === zoneId) {
+      onDraftChange?.({
+        ...draft,
+        locationSprite: nextSprite,
+        updatedAt: nextZone.updatedAt,
+      });
+    }
+  }
+
+  function findEditorSpriteAt(canvasX: number, canvasY: number): WorldMapZone | null {
+    const camera = getEditorSpriteCamera();
+    if (!camera) {
+      return null;
+    }
+    const candidates = selectedZone
+      ? [selectedZone]
+      : visibleEditorZones.filter((zone) => (zone.editorLayer ?? 'zones') === activeEditorLayer);
+    return findClickedLocationSprite(
+      candidates,
+      { x: canvasX, y: canvasY },
+      camera,
+      { width: canvasSize.width, height: canvasSize.height },
+      locationSpriteImageSizes,
+      new Set(candidates.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
+      new Set(candidates.map((zone) => zone.id)),
+    );
+  }
+
   function getCanvasPoint(event: ReactMouseEvent<HTMLCanvasElement>): [number, number] {
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -839,6 +958,25 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       paintRegionAlongLine(cell, cell);
       setDragState({ kind: 'region-paint', lastCell: cell });
       return;
+    }
+
+    if (event.shiftKey) {
+      const spriteZone = findEditorSpriteAt(canvasX, canvasY);
+      if (spriteZone?.locationSprite) {
+        event.preventDefault();
+        onCheckpoint?.();
+        onSelectZone?.(spriteZone);
+        setDragState({
+          kind: 'move-sprite',
+          zoneId: spriteZone.id,
+          startX: canvasX,
+          startY: canvasY,
+          originOffsetX: spriteZone.locationSprite.offsetX,
+          originOffsetY: spriteZone.locationSprite.offsetY,
+        });
+        onStatusMessage?.('Sprite move: drag with Shift to adjust offset.');
+        return;
+      }
     }
 
     if (selectedTool === 'select') {
@@ -986,6 +1124,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       renderedEntities: sceneSnapshot?.renderedActiveEntities ?? [],
       lockedWorldEntityId,
       lockedWorldEntityCoordinates,
+      spriteImageSizes: locationSpriteImageSizes,
+      discoveredLocationIds,
+      discoveredZoneIds,
     });
 
     if (resolution.clickedEntity) {
@@ -1069,6 +1210,14 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       return;
     }
 
+    if (dragState.kind === 'move-sprite') {
+      patchZoneSprite(dragState.zoneId, {
+        offsetX: Math.round((dragState.originOffsetX + (canvasX - dragState.startX)) * 10) / 10,
+        offsetY: Math.round((dragState.originOffsetY + (canvasY - dragState.startY)) * 10) / 10,
+      });
+      return;
+    }
+
     if (dragState.kind === 'move-zone') {
       const deltaX = point[0] - dragState.startPoint[0];
       const deltaY = point[1] - dragState.startPoint[1];
@@ -1132,6 +1281,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       if (current?.kind === 'move-circle-draft') {
         onStatusMessage?.('Circle draft moved.');
       }
+      if (current?.kind === 'move-sprite') {
+        onStatusMessage?.('Sprite offset updated.');
+      }
       if (current?.kind === 'rect-draft') {
         onStatusMessage?.('Draft rectangle created. Press Enter or Save New Zone.');
       }
@@ -1183,6 +1335,15 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
+      if (event.shiftKey && selectedZone?.locationSprite) {
+        event.preventDefault();
+        event.stopPropagation();
+        const factor = event.deltaY < 0 ? 1.08 : 0.92;
+        const nextScale = Math.round(Math.max(0.01, selectedZone.locationSprite.scale * factor) * 100) / 100;
+        patchZoneSprite(selectedZone.id, { scale: nextScale });
+        return;
+      }
+
       const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
       if (!isZoomIntent) {
         return;
@@ -1200,7 +1361,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
 
     canvas.addEventListener('wheel', handleNativeWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', handleNativeWheel);
-  }, [editorSettings.zoom, editorViewport, mode]);
+  }, [editorSettings.zoom, editorViewport, mode, selectedZone]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1270,6 +1431,43 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         }
 
         ctx.restore();
+      }
+
+      const locationSprites = resolveLocationSpritesForViewport(
+        zones,
+        camera,
+        { width: canvas.width, height: canvas.height },
+        locationSpriteImageSizes,
+        discoveredLocationIds,
+        discoveredZoneIds,
+      );
+      for (const sprite of locationSprites) {
+        const image = locationSpriteImages.get(sprite.imageSrc);
+        if (!image || !image.complete || image.naturalWidth === 0) {
+          continue;
+        }
+        ctx.drawImage(
+          image,
+          sprite.screenX - sprite.displayWidth * sprite.originX,
+          sprite.screenY - sprite.displayHeight * sprite.originY,
+          sprite.displayWidth,
+          sprite.displayHeight,
+        );
+        if (sprite.capturedBannerSrc) {
+          const banner = locationSpriteImages.get(resolveWorldImageSource(sprite.capturedBannerSrc));
+          if (banner && banner.complete && banner.naturalWidth > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.42;
+            ctx.drawImage(
+              banner,
+              sprite.screenX - sprite.displayWidth * sprite.originX,
+              sprite.screenY - sprite.displayHeight * sprite.originY,
+              sprite.displayWidth,
+              sprite.displayHeight,
+            );
+            ctx.restore();
+          }
+        }
       }
 
       for (const zone of zones) {
@@ -1428,6 +1626,98 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       }
     }
 
+    const editorSpriteCamera = getEditorSpriteCamera();
+    if (editorSpriteCamera) {
+      const draftSpriteZone: WorldMapZone | null = draft && (
+        draft.shape === 'circle'
+          ? draft.x !== null && draft.y !== null
+          : draft.points.length >= 3
+      )
+        ? {
+          id: draft.id || '__draft_sprite__',
+          name: draft.name || 'Draft',
+          type: draft.type,
+          shape: draft.shape,
+          x: draft.x ?? undefined,
+          y: draft.y ?? undefined,
+          radius: draft.radius ?? undefined,
+          points: draft.points,
+          description: draft.description || 'Draft zone',
+          tooltip: draft.tooltip || undefined,
+          dangerLevel: draft.dangerLevel,
+          recommendedLevel: draft.recommendedLevel ?? undefined,
+          requiredLevel: draft.requiredLevel ?? undefined,
+          isDiscovered: true,
+          isVisibleToPlayer: true,
+          hidden: false,
+          requiresDiscovery: false,
+          locationSprite: draft.locationSprite,
+          stateSprites: draft.stateSprites,
+          currentState: draft.currentState,
+          linkedLocationId: draft.linkedLocationId || undefined,
+          kingdomId: draft.kingdomId || undefined,
+          faction: draft.faction || undefined,
+          editorLayer: draft.editorLayer,
+          createdAt: draft.createdAt,
+          updatedAt: draft.updatedAt,
+        }
+        : null;
+      const editorSpriteZones = draftSpriteZone
+        ? [...visibleEditorZones.filter((zone) => zone.id !== draftSpriteZone.id), draftSpriteZone]
+        : visibleEditorZones;
+      const editorLocationSprites = resolveLocationSpritesForViewport(
+        editorSpriteZones,
+        editorSpriteCamera,
+        { width: canvas.width, height: canvas.height },
+        locationSpriteImageSizes,
+        new Set(editorSpriteZones.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
+        new Set(editorSpriteZones.map((zone) => zone.id)),
+      );
+      for (const sprite of editorLocationSprites) {
+        const image = locationSpriteImages.get(sprite.imageSrc);
+        if (!image || !image.complete || image.naturalWidth === 0) {
+          continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = (sprite.zone.editorLayer ?? 'zones') === activeEditorLayer ? 1 : 0.55;
+        ctx.drawImage(
+          image,
+          sprite.screenX - sprite.displayWidth * sprite.originX,
+          sprite.screenY - sprite.displayHeight * sprite.originY,
+          sprite.displayWidth,
+          sprite.displayHeight,
+        );
+        if (sprite.capturedBannerSrc) {
+          const banner = locationSpriteImages.get(resolveWorldImageSource(sprite.capturedBannerSrc));
+          if (banner && banner.complete && banner.naturalWidth > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.42;
+            ctx.drawImage(
+              banner,
+              sprite.screenX - sprite.displayWidth * sprite.originX,
+              sprite.screenY - sprite.displayHeight * sprite.originY,
+              sprite.displayWidth,
+              sprite.displayHeight,
+            );
+            ctx.restore();
+          }
+        }
+        if (sprite.zone.id === selectedZoneId) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 3]);
+          ctx.strokeRect(
+            sprite.screenX - sprite.displayWidth * sprite.originX,
+            sprite.screenY - sprite.displayHeight * sprite.originY,
+            sprite.displayWidth,
+            sprite.displayHeight,
+          );
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+    }
+
     if (hoverZone && (hoverZone.editorLayer ?? 'zones') === activeEditorLayer) {
       drawZoneShape(ctx, hoverZone, editorViewport);
       ctx.lineWidth = 2;
@@ -1529,6 +1819,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     editorSettings,
     editorViewport,
     hoverZone,
+    locationSpriteImages,
+    locationSpriteImageSizes,
     mode,
     playNpcMarkers,
     playQuestMarkers,
@@ -1543,6 +1835,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     layerVisibility,
     visibleEditorZones,
     selectableEditorZones,
+    discoveredLocationIds,
+    discoveredZoneIds,
   ]);
 
   function distanceLabel(a: [number, number], b: [number, number]): string {

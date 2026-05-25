@@ -35,6 +35,23 @@ export type RegionType = 'walkable' | 'blocked' | 'water' | 'swamp' | 'sand' | '
 export type RegionToolMode = 'circle' | 'pencil' | 'brush' | 'eraser';
 
 export type RegionBrushSize = 0.05 | 0.25 | 0.5 | 0.75 | 1 | 2 | 3 | 5 | 8 | 12;
+export type LocationSpriteAnchor = 'center' | 'bottom';
+export type LocationStateSpriteKey = 'active' | 'hidden' | 'destroyed' | 'restored' | 'captured' | 'locked';
+
+export interface LocationSpriteConfig {
+  imageUrl: string;
+  assetKey?: string;
+  visibleOnWorldMap: boolean;
+  visibleInLocationView: boolean;
+  anchor: LocationSpriteAnchor;
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+  zIndex: number;
+}
+
+export type LocationStateSprites = Partial<Record<LocationStateSpriteKey, string>>;
+
 export type ResourceKind =
   | 'mine'
   | 'grove'
@@ -119,6 +136,12 @@ export interface WorldMapZone {
   cityId?: string;
   linkedLocationId?: string;
   linkedLocation?: string;
+  subtype?: string;
+  currentState?: LocationStateSpriteKey | string;
+  hidden?: boolean;
+  requiresDiscovery?: boolean;
+  locationSprite?: LocationSpriteConfig;
+  stateSprites?: LocationStateSprites;
   music?: WorldAudioCue;
   ambientSound?: WorldAudioCue;
   createdAt: number;
@@ -170,6 +193,12 @@ export interface ZoneEditorDraft {
   kingdomId: string;
   cityId: string;
   linkedLocationId: string;
+  subtype: string;
+  currentState: string;
+  hidden: boolean;
+  requiresDiscovery: boolean;
+  locationSprite: LocationSpriteConfig;
+  stateSprites: Record<LocationStateSpriteKey, string>;
   musicAssetId: string;
   musicUrl: string;
   ambientSoundAssetId: string;
@@ -257,6 +286,29 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     kingdomId: '',
     cityId: '',
     linkedLocationId: '',
+    subtype: '',
+    currentState: 'active',
+    hidden: false,
+    requiresDiscovery: false,
+    locationSprite: {
+      imageUrl: '',
+      assetKey: '',
+      visibleOnWorldMap: false,
+      visibleInLocationView: true,
+      anchor: 'bottom',
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      zIndex: 10,
+    },
+    stateSprites: {
+      active: '',
+      hidden: '',
+      destroyed: '',
+      restored: '',
+      captured: '',
+      locked: '',
+    },
     musicAssetId: '',
     musicUrl: '',
     ambientSoundAssetId: '',
@@ -317,6 +369,29 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     kingdomId: zone.kingdomId ?? '',
     cityId: zone.cityId ?? '',
     linkedLocationId: zone.linkedLocationId ?? zone.linkedLocation ?? '',
+    subtype: zone.subtype ?? '',
+    currentState: zone.currentState ?? 'active',
+    hidden: zone.hidden === true,
+    requiresDiscovery: zone.requiresDiscovery === true,
+    locationSprite: {
+      imageUrl: zone.locationSprite?.imageUrl ?? '',
+      assetKey: zone.locationSprite?.assetKey ?? '',
+      visibleOnWorldMap: zone.locationSprite?.visibleOnWorldMap === true,
+      visibleInLocationView: zone.locationSprite?.visibleInLocationView !== false,
+      anchor: zone.locationSprite?.anchor === 'center' ? 'center' : 'bottom',
+      offsetX: Number.isFinite(zone.locationSprite?.offsetX) ? zone.locationSprite!.offsetX : 0,
+      offsetY: Number.isFinite(zone.locationSprite?.offsetY) ? zone.locationSprite!.offsetY : 0,
+      scale: Number.isFinite(zone.locationSprite?.scale) && zone.locationSprite!.scale > 0 ? zone.locationSprite!.scale : 1,
+      zIndex: Number.isFinite(zone.locationSprite?.zIndex) ? zone.locationSprite!.zIndex : 10,
+    },
+    stateSprites: {
+      active: zone.stateSprites?.active ?? '',
+      hidden: zone.stateSprites?.hidden ?? '',
+      destroyed: zone.stateSprites?.destroyed ?? '',
+      restored: zone.stateSprites?.restored ?? '',
+      captured: zone.stateSprites?.captured ?? '',
+      locked: zone.stateSprites?.locked ?? '',
+    },
     musicAssetId: zone.music?.assetId ?? '',
     musicUrl: zone.music?.url ?? '',
     ambientSoundAssetId: zone.ambientSound?.assetId ?? '',
@@ -349,6 +424,20 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
       : Array.isArray(draft.passiveEffects)
         ? draft.passiveEffects
         : undefined;
+
+  const locationSprite = draft.locationSprite.imageUrl.trim() || draft.locationSprite.assetKey?.trim()
+    ? {
+      imageUrl: draft.locationSprite.imageUrl.trim(),
+      assetKey: draft.locationSprite.assetKey?.trim() || undefined,
+      visibleOnWorldMap: draft.locationSprite.visibleOnWorldMap === true,
+      visibleInLocationView: draft.locationSprite.visibleInLocationView !== false,
+      anchor: (draft.locationSprite.anchor === 'center' ? 'center' : 'bottom') as LocationSpriteAnchor,
+      offsetX: Number.isFinite(draft.locationSprite.offsetX) ? draft.locationSprite.offsetX : 0,
+      offsetY: Number.isFinite(draft.locationSprite.offsetY) ? draft.locationSprite.offsetY : 0,
+      scale: Number.isFinite(draft.locationSprite.scale) && draft.locationSprite.scale > 0 ? draft.locationSprite.scale : 1,
+      zIndex: Number.isFinite(draft.locationSprite.zIndex) ? draft.locationSprite.zIndex : 10,
+    }
+    : undefined;
 
   const base = {
     id: draft.id.trim(),
@@ -394,6 +483,14 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     kingdomId: draft.kingdomId.trim() || undefined,
     cityId: draft.cityId.trim() || undefined,
     linkedLocationId: draft.linkedLocationId.trim() || undefined,
+    subtype: draft.subtype.trim() || undefined,
+    currentState: draft.currentState.trim() || undefined,
+    hidden: draft.hidden || undefined,
+    requiresDiscovery: draft.requiresDiscovery || undefined,
+    locationSprite,
+    stateSprites: Object.fromEntries(
+      Object.entries(draft.stateSprites).filter(([, value]) => value.trim().length > 0),
+    ) as LocationStateSprites,
     music: draft.musicAssetId.trim() || draft.musicUrl.trim()
       ? {
         assetId: draft.musicAssetId.trim() || undefined,

@@ -153,6 +153,7 @@ function ArchetypesTab() {
   const [npcOptions, setNpcOptions] = useState<any[]>([]);
   const [merchantOptions, setMerchantOptions] = useState<any[]>([]);
   const [uploadingSprite, setUploadingSprite] = useState(false);
+  const [uploadingRestingSprite, setUploadingRestingSprite] = useState(false);
   const [uploadingPortrait, setUploadingPortrait] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -201,6 +202,7 @@ function ArchetypesTab() {
         ...current,
         kind,
         worldSpriteId: 'camp_world_sprite',
+        restingWorldSpriteId: current.restingWorldSpriteId || 'fire_world_sprite',
         portraitId: current.portraitId || 'unknown',
       };
     }
@@ -274,6 +276,7 @@ function ArchetypesTab() {
       npcTemplateId: '',
       merchantId: '',
       worldSpriteId: 'trader_world_sprite',
+      restingWorldSpriteId: '',
       isEnabled: true,
     });
   };
@@ -335,6 +338,26 @@ function ArchetypesTab() {
       setUploadError('Не удалось загрузить спрайт. Попробуй другой файл PNG/JPG.');
     } finally {
       setUploadingSprite(false);
+    }
+  };
+
+  const handleRestingSpriteUpload = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    try {
+      setUploadError(null);
+      setUploadingRestingSprite(true);
+      const stored = await imageService.upload(file, {
+        id: formData.id ? `${formData.id}_resting_world_sprite` : undefined,
+        name: `${formData.id || 'archetype'}-resting-world-sprite`,
+        folder: buildUploadFolder('images', 'worldsim', 'archetypes', formData.id || undefined),
+      });
+      setFormData((prev: any) => ({ ...prev, restingWorldSpriteId: stored.id }));
+    } catch {
+      setUploadError('Не удалось загрузить спрайт отдыха. Попробуй другой файл PNG/JPG.');
+    } finally {
+      setUploadingRestingSprite(false);
     }
   };
 
@@ -455,6 +478,36 @@ function ArchetypesTab() {
             </small>
           </label>
           <label>
+            Спрайт отдыха:
+            <select
+              value={formData.restingWorldSpriteId ?? ''}
+              onChange={(e) => setFormData({ ...formData, restingWorldSpriteId: e.target.value || undefined })}
+            >
+              <option value="">Как основной спрайт</option>
+              <option value="fire_world_sprite">Костер</option>
+              <option value="camp_world_sprite">Лагерь</option>
+              <option value="camp_world_sprite_2">Лагерь 2</option>
+              <option value="trader_world_sprite">Торговец</option>
+            </select>
+          </label>
+          <label>
+            Загрузить свой спрайт отдыха:
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                void handleRestingSpriteUpload(file);
+                e.currentTarget.value = '';
+              }}
+            />
+            <small>
+              {uploadingRestingSprite
+                ? 'Загрузка спрайта отдыха...'
+                : `Текущий restingWorldSpriteId: ${formData.restingWorldSpriteId || 'не задан'}`}
+            </small>
+          </label>
+          <label>
             Портрет ID:
             <input
               type="text"
@@ -525,6 +578,7 @@ function ArchetypesTab() {
             <div className="item-details">
               <small>ID: {arch.id}</small>
               <small>Спрайт: {arch.worldSpriteId}</small>
+              <small>Отдых: {arch.restingWorldSpriteId || 'как основной'}</small>
               <small>Источник: {arch.sourceType ?? (arch.merchantId ? 'merchant' : 'npc')} / {arch.sourceId ?? arch.merchantId ?? arch.npcTemplateId ?? '-'}</small>
             </div>
           </div>

@@ -116,7 +116,8 @@ export function resolveRenderedWorldEntities(
     const isBanditLike = entity.isHostile || entity.kind === 'bandit';
     const finalPortraitSrc = portraitSrc
       ?? (isBanditLike ? pickDeterministicBanditPortrait(entity.id) : undefined);
-    const shouldPreferSprite = entity.kind === 'merchant' && Boolean(spriteSrc);
+    const shouldPreferSprite = Boolean(spriteSrc)
+      && (entity.kind === 'merchant' || entity.state === 'resting');
 
     const renderMode = shouldPreferSprite
       ? 'sprite'

@@ -1,6 +1,6 @@
 import { getWorldMapContent, saveWorldMapContent } from '../services/content/contentApi';
 import type { QuestMarkerDefinition, QuestMarkerType } from '../types/quest';
-import type { PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
+import type { LocationSpriteConfig, LocationStateSprites, PaintedRegion, RegionType, ZoneEditorSettings, ZoneType, ZoneValidationResult, WorldMapZone } from './zoneEditorTypes';
 import { LEGACY_REGION_GRID_SIZE, REGION_GRID_SIZE } from './regionPaintSystem';
 import { createDefaultEditorSettings } from './zoneEditorTypes';
 import { normalizeWorldMapZone } from './zoneTaxonomy';
@@ -317,6 +317,44 @@ function normalizeAudioCue(value: unknown): WorldMapZone['music'] | undefined {
   };
 }
 
+function normalizeLocationSprite(value: unknown): LocationSpriteConfig | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const input = value as Record<string, unknown>;
+  const imageUrl = typeof input.imageUrl === 'string' ? input.imageUrl.trim() : '';
+  const assetKey = typeof input.assetKey === 'string' ? input.assetKey.trim() : '';
+  if (!imageUrl && !assetKey) {
+    return undefined;
+  }
+
+  return {
+    imageUrl,
+    assetKey: assetKey || undefined,
+    visibleOnWorldMap: input.visibleOnWorldMap === true,
+    visibleInLocationView: input.visibleInLocationView !== false,
+    anchor: input.anchor === 'center' ? 'center' : 'bottom',
+    offsetX: isFiniteNumber(input.offsetX) ? input.offsetX : 0,
+    offsetY: isFiniteNumber(input.offsetY) ? input.offsetY : 0,
+    scale: isFiniteNumber(input.scale) && input.scale > 0 ? input.scale : 1,
+    zIndex: isFiniteNumber(input.zIndex) ? input.zIndex : 10,
+  };
+}
+
+function normalizeStateSprites(value: unknown): LocationStateSprites | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const input = value as Record<string, unknown>;
+  const output: LocationStateSprites = {};
+  for (const key of ['active', 'hidden', 'destroyed', 'restored', 'captured', 'locked'] as const) {
+    if (typeof input[key] === 'string' && input[key].trim()) {
+      output[key] = input[key].trim();
+    }
+  }
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
 export function normalizeZone(input: unknown): WorldMapZone | null {
   if (!input || typeof input !== 'object') {
     return null;
@@ -415,6 +453,12 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
         : typeof zone.linkedLocation === 'string'
           ? zone.linkedLocation
           : undefined,
+    subtype: typeof zone.subtype === 'string' ? zone.subtype : undefined,
+    currentState: typeof zone.currentState === 'string' ? zone.currentState : undefined,
+    hidden: zone.hidden === true,
+    requiresDiscovery: zone.requiresDiscovery === true,
+    locationSprite: normalizeLocationSprite(zone.locationSprite),
+    stateSprites: normalizeStateSprites(zone.stateSprites),
     music: normalizeAudioCue(zone.music),
     ambientSound: normalizeAudioCue(zone.ambientSound),
     createdAt: isFiniteNumber(zone.createdAt) ? zone.createdAt : Date.now(),

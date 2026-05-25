@@ -662,6 +662,24 @@ export interface WorldMapZone {
   passiveEffects?: boolean;
   color?: string;
   parentAreaId?: string;
+  subtype?: string;
+  currentState?: string;
+  hidden?: boolean;
+  requiresDiscovery?: boolean;
+  linkedLocationId?: string;
+  linkedLocation?: string;
+  locationSprite?: {
+    imageUrl: string;
+    assetKey?: string;
+    visibleOnWorldMap: boolean;
+    visibleInLocationView: boolean;
+    anchor: 'center' | 'bottom';
+    offsetX: number;
+    offsetY: number;
+    scale: number;
+    zIndex: number;
+  };
+  stateSprites?: Partial<Record<'active' | 'hidden' | 'destroyed' | 'restored' | 'captured' | 'locked', string>>;
   music?: AudioCueConfig;
   ambientSound?: AudioCueConfig;
   createdAt: number;
@@ -919,7 +937,19 @@ export interface ContentCollectionMap {
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';
 
 export type LocationSubtype =
+  | 'village'
+  | 'academy'
+  | 'magic_school'
+  | 'mine_entrance'
   | 'camp'
+  | 'cult_camp'
+  | 'farmstead'
+  | 'fort'
+  | 'destroyed_village'
+  | 'restored_village'
+  | 'oasis'
+  | 'market'
+  | 'harbor'
   | 'sanctuary'
   | 'ruins'
   | 'cave'

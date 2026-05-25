@@ -13,6 +13,7 @@ import {
   loadWorldMapRuntimeSettings,
   WORLD_MAP_RUNTIME_SETTINGS_EVENT,
 } from './worldMapRuntimeSettings';
+import { resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
 import type { WorldMapZone } from './zoneEditorTypes';
 import { DETERMINISTIC_BANDIT_CANDIDATES, pickDeterministicBanditPortrait } from '../phaser/assets/actorVisualResolver';
 
@@ -36,6 +37,8 @@ type PhaserWorldMapCanvasProps = Pick<
   | 'onWorldEntityClick'
   | 'lockedWorldEntityId'
   | 'lockedWorldEntityCoordinates'
+  | 'discoveredLocationIds'
+  | 'discoveredZoneIds'
 >;
 
 interface WorldCamera {
@@ -60,6 +63,8 @@ interface WorldRendererSnapshot {
   renderedActiveEntities: RenderedWorldEntity[];
   lockedWorldEntityId?: string | null;
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
+  discoveredLocationIds?: Set<string>;
+  discoveredZoneIds?: Set<string>;
   npcMovement: {
     speedScale: number;
     tweenMinMs: number;
@@ -119,6 +124,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
   private bg?: Phaser.GameObjects.Image;
   private mapGraphics?: Phaser.GameObjects.Graphics;
   private markerGraphics?: Phaser.GameObjects.Graphics;
+  private locationSpriteLayer?: Phaser.GameObjects.Container;
   private entityLayer?: Phaser.GameObjects.Container;
   private playerToken?: Phaser.GameObjects.Container;
   private labelLayer?: Phaser.GameObjects.Container;
@@ -169,6 +175,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     this.bg = this.add.image(0, 0, 'world-map-main').setOrigin(0);
     this.mapGraphics = this.add.graphics();
     this.markerGraphics = this.add.graphics();
+    this.locationSpriteLayer = this.add.container(0, 0);
     this.entityLayer = this.add.container(0, 0);
     this.labelLayer = this.add.container(0, 0);
     this.renderSnapshot();
@@ -187,7 +194,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
 
   private renderSnapshot() {
     const snapshot = this.snapshot;
-    if (!snapshot || !this.bg || !this.mapGraphics || !this.markerGraphics || !this.entityLayer || !this.labelLayer) {
+    if (!snapshot || !this.bg || !this.mapGraphics || !this.markerGraphics || !this.locationSpriteLayer || !this.entityLayer || !this.labelLayer) {
       return;
     }
 
@@ -214,6 +221,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
 
     this.mapGraphics.clear();
     this.markerGraphics.clear();
+    this.locationSpriteLayer.removeAll(true);
     this.labelLayer.removeAll(true);
     if (this.playerToken) {
       this.playerToken.destroy(true);
@@ -221,11 +229,67 @@ class PhaserWorldMapScene extends Phaser.Scene {
     }
 
     this.drawKingdomBorders(snapshot);
+    this.drawLocationSprites(snapshot);
     this.drawHoverZone(snapshot);
     this.drawQuestMarkers(snapshot);
     this.drawNpcMarkers(snapshot);
     this.drawActiveEntities(snapshot);
     this.drawPlayer(snapshot);
+  }
+
+  private drawLocationSprites(snapshot: WorldRendererSnapshot) {
+    if (!this.locationSpriteLayer) {
+      return;
+    }
+
+    const imageSizes = new Map<string, { width: number; height: number }>();
+    for (const zone of snapshot.zones) {
+      for (const imageRef of [resolveZoneSpriteImageRef(zone), resolveCapturedBannerSource(zone) ?? '']) {
+        if (!imageRef) {
+          continue;
+        }
+        const src = resolveWorldImageSource(imageRef);
+        const textureKey = this.ensureDynamicTexture(src);
+        if (!textureKey || !this.textures.exists(textureKey)) {
+          continue;
+        }
+        const source = this.textures.get(textureKey).getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+        imageSizes.set(src, { width: source?.width ?? 48, height: source?.height ?? 48 });
+      }
+    }
+
+    const sprites = resolveLocationSpritesForViewport(
+      snapshot.zones,
+      snapshot.camera,
+      { width: snapshot.widthPx, height: snapshot.heightPx },
+      imageSizes,
+      snapshot.discoveredLocationIds,
+      snapshot.discoveredZoneIds,
+    );
+
+    for (const sprite of sprites) {
+      const textureKey = this.ensureDynamicTexture(sprite.imageSrc);
+      if (!textureKey || !this.textures.exists(textureKey)) {
+        continue;
+      }
+      const image = this.add.image(sprite.screenX, sprite.screenY, textureKey)
+        .setOrigin(sprite.originX, sprite.originY)
+        .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+        .setDepth(sprite.zIndex);
+      this.locationSpriteLayer.add(image);
+
+      if (sprite.capturedBannerSrc) {
+        const bannerTextureKey = this.ensureDynamicTexture(resolveWorldImageSource(sprite.capturedBannerSrc));
+        if (bannerTextureKey && this.textures.exists(bannerTextureKey)) {
+          const banner = this.add.image(sprite.screenX, sprite.screenY, bannerTextureKey)
+            .setOrigin(sprite.originX, sprite.originY)
+            .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+            .setAlpha(0.42)
+            .setDepth(sprite.zIndex + 0.1);
+          this.locationSpriteLayer.add(banner);
+        }
+      }
+    }
   }
 
   private drawZonePath(graphics: Phaser.GameObjects.Graphics, zone: WorldMapZone, snapshot: WorldRendererSnapshot): boolean {
@@ -660,6 +724,9 @@ class PhaserWorldMapScene extends Phaser.Scene {
   }
 
   private ensureDynamicTexture(imageSrc: string): string | null {
+    if (!imageSrc) {
+      return null;
+    }
     if (imageSrc.startsWith('/sprites/actor/')) {
       const staticKey = `world-entity-static:${imageSrc}`;
       if (this.textures.exists(staticKey)) {
@@ -765,6 +832,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     onWorldEntityClick,
     lockedWorldEntityId = null,
     lockedWorldEntityCoordinates = null,
+    discoveredLocationIds,
+    discoveredZoneIds,
   } = props;
 
   const hostRef = useRef<HTMLDivElement>(null);
@@ -881,6 +950,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       renderedActiveEntities,
       lockedWorldEntityId,
       lockedWorldEntityCoordinates,
+      discoveredLocationIds,
+      discoveredZoneIds,
       npcMovement: {
         speedScale: runtimeSettings.phaserNpcMoveSpeedScale,
         tweenMinMs: runtimeSettings.phaserNpcMoveTweenMinMs,
@@ -893,6 +964,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     hoverZone?.id,
     lockedWorldEntityCoordinates,
     lockedWorldEntityId,
+    discoveredLocationIds,
+    discoveredZoneIds,
     playNpcMarkers,
     playQuestMarkers,
     props.playerAvatarUrl,
@@ -934,6 +1007,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       renderedEntities: sceneSnapshot?.renderedActiveEntities ?? [],
       lockedWorldEntityId,
       lockedWorldEntityCoordinates,
+      discoveredLocationIds,
+      discoveredZoneIds,
     });
     if (resolution.clickedEntity) {
       event.preventDefault();

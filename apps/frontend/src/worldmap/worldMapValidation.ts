@@ -587,6 +587,33 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
     const requiredQuestId = asNonEmptyString(zone.requiredQuestId);
     const requiredItemId = asNonEmptyString(zone.requiredItemId);
     const parentAreaId = asNonEmptyString(zone.parentAreaId);
+    const locationSprite = zone.locationSprite;
+
+    if (locationSprite) {
+      if (typeof locationSprite.scale === 'number' && locationSprite.scale <= 0) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.sprite.scale.invalid',
+          message: 'locationSprite.scale должен быть больше 0.',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'locationSprite.scale',
+        });
+      }
+      const imageUrl = asNonEmptyString(locationSprite.imageUrl);
+      if (imageUrl && /^[a-zA-Z]:[\\/]/.test(imageUrl)) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.sprite.imageUrl.localPath',
+          message: 'locationSprite.imageUrl похож на локальный путь Windows. Игра не упадет, но картинка не загрузится в браузере.',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'locationSprite.imageUrl',
+        });
+      }
+    }
 
     if (zone.type === 'city' || zone.type === 'city_area') {
       if (cityId && citiesByReference.size > 0 && !citiesByReference.has(cityId.toLowerCase()) && !citiesByReference.has(normalizeCityReferenceKey(cityId))) {

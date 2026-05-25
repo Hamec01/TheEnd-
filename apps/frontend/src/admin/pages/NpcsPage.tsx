@@ -631,6 +631,7 @@ export function NpcsPage() {
         sourceId: npcId,
         npcTemplateId: npcId,
         worldSpriteId: kind === 'merchant' ? 'trader_world_sprite' : kind === 'bandit' ? 'camp_world_sprite' : 'camp_world_sprite_2',
+        restingWorldSpriteId: kind === 'bandit' ? 'fire_world_sprite' : undefined,
         portraitId: draft.portraitUrl || 'unknown',
         isEnabled: true,
         createdAt: new Date().toISOString(),

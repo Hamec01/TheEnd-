@@ -35,6 +35,7 @@ export interface WorldNpcArchetype {
   
   // Спрайт на карте
   worldSpriteId: string; // 'trader_world_sprite', 'camp_world_sprite'
+  restingWorldSpriteId?: string; // Optional sprite while the entity is resting/camping.
   
   // Визуальные параметры
   portraitId?: string; // actor/human_01.png

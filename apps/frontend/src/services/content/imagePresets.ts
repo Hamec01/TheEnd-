@@ -3,6 +3,7 @@ export type ImagePresetId =
   | 'set-icon'
   | 'merchant-portrait'
   | 'battle-map-background'
+  | 'world-location-sprite'
   | 'mining-tool-icon'
   | 'mining-block';
 
@@ -37,6 +38,12 @@ export const IMAGE_PRESETS: Record<ImagePresetId, ImagePreset> = {
     width: 1920,
     height: 1080,
     label: 'Battle map background',
+  },
+  'world-location-sprite': {
+    id: 'world-location-sprite',
+    width: 512,
+    height: 512,
+    label: 'World location sprite',
   },
   'mining-tool-icon': {
     id: 'mining-tool-icon',

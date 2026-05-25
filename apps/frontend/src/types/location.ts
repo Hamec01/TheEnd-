@@ -1,7 +1,19 @@
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';
 
 export type LocationSubtype =
+  | 'village'
+  | 'academy'
+  | 'magic_school'
+  | 'mine_entrance'
   | 'camp'
+  | 'cult_camp'
+  | 'farmstead'
+  | 'fort'
+  | 'destroyed_village'
+  | 'restored_village'
+  | 'oasis'
+  | 'market'
+  | 'harbor'
   | 'sanctuary'
   | 'ruins'
   | 'cave'

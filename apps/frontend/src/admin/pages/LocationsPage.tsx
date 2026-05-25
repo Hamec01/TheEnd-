@@ -20,6 +20,18 @@ import type {
 
 const LOCATION_STATUSES: LocationStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const LOCATION_SUBTYPES: Array<{ value: LocationSubtype; label: string }> = [
+  { value: 'village', label: 'Деревня' },
+  { value: 'academy', label: 'Академия' },
+  { value: 'magic_school', label: 'Магическая школа' },
+  { value: 'mine_entrance', label: 'Вход в шахту' },
+  { value: 'cult_camp', label: 'Лагерь культистов' },
+  { value: 'farmstead', label: 'Хутор' },
+  { value: 'fort', label: 'Форт' },
+  { value: 'destroyed_village', label: 'Разрушенная деревня' },
+  { value: 'restored_village', label: 'Восстановленная деревня' },
+  { value: 'oasis', label: 'Оазис' },
+  { value: 'market', label: 'Рынок' },
+  { value: 'harbor', label: 'Гавань' },
   { value: 'camp', label: 'Лагерь' },
   { value: 'sanctuary', label: 'Святилище' },
   { value: 'ruins', label: 'Руины' },

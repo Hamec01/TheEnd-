@@ -216,6 +216,8 @@ import { resolveNpcReaction, resolveZoneReaction } from "../services/reputationR
 import { fixMojibake } from "../utils/fixMojibake";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
+const HOSTILE_BANDIT_AGGRO_RADIUS = 0.028;
+const HOSTILE_BANDIT_AGGRO_COOLDOWN_MS = 18_000;
 const HOSTILE_BANDIT_ATTACK_CHANCE = 0.4;
 const HOSTILE_BANDIT_BATTLE_MAP_ID = "teramor_forest";
 const HOSTILE_BANDIT_MIN_ENEMIES = 3;
@@ -466,6 +468,13 @@ function resolveLocalLocationMapImageRef(location: WorldLocation | null | undefi
   if (fromState) return fromState;
   const fallback = String(location.defaultImageId ?? location.defaultImagePath ?? "").trim();
   return fallback;
+}
+
+function isDirectLocationImageSource(value: string): boolean {
+  return value.startsWith("/")
+    || value.startsWith("data:")
+    || value.startsWith("http://")
+    || value.startsWith("https://");
 }
 
 function getAreaPercent(area: { shapeType?: string; shape?: any }): { left: string; top: string; width: string; height: string } {
@@ -1067,6 +1076,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     useState<string | null>(null);
   const [engagedWorldEntityId, setEngagedWorldEntityId] = useState<string | null>(null);
   const [engagedWorldEntityAnchor, setEngagedWorldEntityAnchor] = useState<{ x: number; y: number } | null>(null);
+  const hostileBanditAggroCooldownRef = useRef<Record<string, number>>({});
   const [travelExhausted, setTravelExhausted] = useState(false);
   const [terrainStaminaDrainMultiplier, setTerrainStaminaDrainMultiplier] = useState(1);
   const [activeWorldModal, setActiveWorldModal] =
@@ -1802,8 +1812,35 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [selectedZoneId, zones],
   );
   const playVisibleZones = useMemo(() => {
-    return zones.filter((zone) => {
+    const discoveredLocationIds = new Set(mapDiscoveryState.discoveredLocationIds);
+    const discoveredZoneIds = new Set(mapDiscoveryState.discoveredZoneIds);
+    return zones.map((zone) => {
+      if (zone.type !== "location" || !contentSnapshot) {
+        return zone;
+      }
+      const linkedLocation = getZoneLinkedLocation(zone, contentSnapshot);
+      if (!linkedLocation) {
+        return zone;
+      }
+      return {
+        ...zone,
+        subtype: zone.subtype ?? linkedLocation.subtype,
+        currentState: zone.currentState ?? linkedLocation.currentState,
+        hidden: zone.hidden === true || linkedLocation.isHidden === true || linkedLocation.hidden === true,
+        requiresDiscovery: zone.requiresDiscovery === true || linkedLocation.requiresDiscovery === true,
+      };
+    }).filter((zone) => {
       if (zone.isVisibleToPlayer === false) {
+        return false;
+      }
+      if (zone.hidden === true) {
+        return false;
+      }
+      const linkedLocationId = zone.linkedLocationId ?? zone.linkedLocation ?? zone.id;
+      const zoneDiscovered = zone.isDiscovered === true
+        || discoveredZoneIds.has(zone.id)
+        || discoveredLocationIds.has(linkedLocationId);
+      if (zone.requiresDiscovery === true && !zoneDiscovered) {
         return false;
       }
       if (zone.type !== "location" || !contentSnapshot) {
@@ -1813,9 +1850,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (!linkedLocation) {
         return true;
       }
+      const linkedLocationDiscovered = linkedLocation.isDiscovered === true
+        || linkedLocation.requiresDiscovery === false
+        || discoveredLocationIds.has(linkedLocation.id);
+      if (linkedLocation.requiresDiscovery === true && !linkedLocationDiscovered) {
+        return false;
+      }
       return isLinkedLocationVisibleToPlayer(linkedLocation);
     });
-  }, [contentSnapshot, zones]);
+  }, [contentSnapshot, mapDiscoveryState.discoveredLocationIds, mapDiscoveryState.discoveredZoneIds, zones]);
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
   const resolveCanMoveTo = useCallback((x: number, y: number) => {
     const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
@@ -2307,7 +2350,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setActiveLocationBackgroundUrl("");
       return;
     }
-    if (!imageRef.startsWith("img_")) {
+    if (isDirectLocationImageSource(imageRef)) {
       setActiveLocationBackgroundUrl(imageRef);
       return;
     }
@@ -4239,6 +4282,48 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     });
   }, [activeCity?.id, openNpcDialogue, selectedNpcForInteraction]);
 
+  const openBanditEncounter = useCallback((
+    entity: WorldSimulationSnapshot['activeEntities'][number],
+    options?: { ambush?: boolean },
+  ) => {
+    const npc = entity.npcTemplateId?.trim()
+      ? resolveNpcById(entity.npcTemplateId.trim())
+      : null;
+    const randomizedEnemyCount = rollHostileBanditEnemyCount();
+    const enemyCount = Math.max(HOSTILE_BANDIT_MIN_ENEMIES, Math.max(entity.memberCount, randomizedEnemyCount));
+    const customEnemies = npc
+      ? buildWorldEntityCombatEnemies(npc, enemyCount)
+      : undefined;
+    const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+    const demandGold = currentGold > 0
+      ? Math.max(1, Math.ceil(currentGold * BANDIT_TOLL_PERCENT))
+      : 0;
+    const luck = Math.max(0, Math.floor(Number(character.activeStats?.luck ?? 0)));
+    const escapeChancePercent = Math.max(
+      0,
+      Math.min(100, BANDIT_ESCAPE_BASE_PERCENT + luck * BANDIT_ESCAPE_PER_LUCK_PERCENT),
+    );
+
+    setActiveWorldModal({
+      type: 'bandit_encounter',
+      entityId: entity.id,
+      enemyCount,
+      demandGold,
+      escapeChancePercent,
+      customEnemies,
+      introLine: options?.ambush
+        ? 'Бандиты бросаются за вами с дороги: "Стоять! Добыча сама пришла."'
+        : 'Р“Р»Р°РІР°СЂСЊ Р±Р°РЅРґРёС‚РѕРІ РїРµСЂРµРєСЂС‹РІР°РµС‚ РґРѕСЂРѕРіСѓ: "РЎС‚РѕР№. Р”Р°Р»СЊС€Рµ РёРґС‘С‚ С‚РѕР»СЊРєРѕ С‚РѕС‚, РєС‚Рѕ РїР»Р°С‚РёС‚ Р·Р° С‚РёС€РёРЅСѓ."',
+      demandLine: demandGold > 0
+        ? `"РџР»Р°С‚Рё ${demandGold} Р·РѕР»РѕС‚С‹С…, Рё СЃРµРіРѕРґРЅСЏ РјС‹ С‚РµР±СЏ РЅРµ С‚СЂРѕРЅРµРј."`
+        : '"Р—РѕР»РѕС‚Р° Сѓ С‚РµР±СЏ РЅРµС‚... С‚РѕРіРґР° РїР»Р°С‚Рё РєСЂРѕРІСЊСЋ РёР»Рё Р±РµРіРё, РїРѕРєР° РјРѕР¶РµС€СЊ."',
+    });
+    setContextMode('npc');
+    onStatus(options?.ambush
+      ? 'Бандиты заметили вас и бросились в погоню.'
+      : 'Р‘Р°РЅРґРёС‚С‹ С‚СЂРµР±СѓСЋС‚ РїР»Р°С‚Сѓ Р·Р° РїСЂРѕС…РѕРґ.');
+  }, [character.activeStats?.luck, inventory.gold, onStatus, resolveNpcById]);
+
   const interactWithWorldEntity = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     const npcId = entity.npcTemplateId?.trim();
     const merchantId = entity.merchantId?.trim();
@@ -4456,6 +4541,65 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       playerPosition.y - entity.coordinates.y,
     ) <= WORLD_ENTITY_INTERACTION_DISTANCE;
   }, [playerPosition.x, playerPosition.y]);
+
+  useEffect(() => {
+    if (worldMapMode !== 'play' || locationView !== 'map' || !worldSnapshot || activeWorldModal) {
+      return;
+    }
+    if (dialogueRunner.state.isOpen || npcQuestSceneModal || activeMineRun || engagedWorldEntityId) {
+      return;
+    }
+
+    const now = Date.now();
+    for (const entity of worldSnapshot.activeEntities) {
+      if (entity.kind !== 'bandit' || !entity.isHostile || entity.state === 'dead' || entity.state === 'in_combat') {
+        continue;
+      }
+
+      const distance = Math.hypot(
+        playerPosition.x - entity.coordinates.x,
+        playerPosition.y - entity.coordinates.y,
+      );
+      if (distance > HOSTILE_BANDIT_AGGRO_RADIUS) {
+        continue;
+      }
+
+      const nextAllowedAt = hostileBanditAggroCooldownRef.current[entity.id] ?? 0;
+      if (now < nextAllowedAt) {
+        continue;
+      }
+      hostileBanditAggroCooldownRef.current[entity.id] = now + HOSTILE_BANDIT_AGGRO_COOLDOWN_MS;
+
+      if (Math.random() >= HOSTILE_BANDIT_ATTACK_CHANCE) {
+        onStatus('Бандиты заметили вас, но не решились нападать.');
+        return;
+      }
+
+      setPlayMovementTarget(null);
+      setPendingWorldEntityInteractionId(null);
+      setSelectedWorldEntity(entity);
+      setEngagedWorldEntityId(entity.id);
+      setEngagedWorldEntityAnchor({
+        x: playerPosition.x,
+        y: playerPosition.y,
+      });
+      openBanditEncounter(entity, { ambush: true });
+      return;
+    }
+  }, [
+    activeMineRun,
+    activeWorldModal,
+    dialogueRunner.state.isOpen,
+    engagedWorldEntityId,
+    locationView,
+    npcQuestSceneModal,
+    onStatus,
+    openBanditEncounter,
+    playerPosition.x,
+    playerPosition.y,
+    worldMapMode,
+    worldSnapshot,
+  ]);
 
   const handleWorldEntityClick = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     const liveEntity = worldSnapshot?.activeEntities.find((entry) => entry.id === entity.id) ?? entity;
@@ -7554,6 +7698,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
+                  discoveredLocationIds={new Set(mapDiscoveryState.discoveredLocationIds)}
+                  discoveredZoneIds={new Set(mapDiscoveryState.discoveredZoneIds)}
                 />
               ) : (
                 <WorldMapCanvas
@@ -7572,6 +7718,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
+                  discoveredLocationIds={new Set(mapDiscoveryState.discoveredLocationIds)}
+                  discoveredZoneIds={new Set(mapDiscoveryState.discoveredZoneIds)}
                 />
               )}
               {miniMapVisible ? (
@@ -7670,69 +7818,80 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             <section className="wm-map card">
               <div
                 className="wm-map-surface wm-city-surface"
-                style={{
-                  backgroundImage: activeLocationBackgroundUrl
-                    ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeLocationBackgroundUrl}')`
-                    : "linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))",
-                }}
+                onWheel={handleCityWheel}
+                onMouseDown={handleCityPanStart}
+                onMouseMove={handleCityPanMove}
+                onMouseUp={handleCityPanEnd}
+                onMouseLeave={handleCityPanEnd}
+                onDoubleClick={resetCityTransform}
               >
-                <div className="wm-map-title">
-                  {activeLocation?.name ?? selectedLocationName}
-                </div>
-                <div className="wm-city-hotspots">
-                  {(activeLocation?.areas ?? []).map((area) => (
-                    <button
-                      key={area.id}
-                      type="button"
-                      className={`city-location-hotspot city-location-hotspot-${area.shapeType ?? "rectangle"}`}
-                      style={getAreaPercent(area)}
-                      onClick={() => handleLocationPlaceClick(area)}
-                    >
-                      <span className="city-location-hotspot-title">
-                        {area.name}
-                      </span>
-                    </button>
-                  ))}
+                <div
+                  className="city-map-transform-layer"
+                  style={{
+                    transform: `translate(${cityPan.x}px, ${cityPan.y}px) scale(${cityZoom})`,
+                    backgroundImage: activeLocationBackgroundUrl
+                      ? `linear-gradient(rgba(24, 17, 12, 0.28), rgba(24, 17, 12, 0.52)), url('${activeLocationBackgroundUrl}')`
+                      : "linear-gradient(135deg, rgba(38, 29, 20, 0.96), rgba(14, 12, 10, 0.98))",
+                  }}
+                >
+                  <div className="wm-map-title">
+                    {activeLocation?.name ?? selectedLocationName}
+                  </div>
+                  <div className="wm-city-hotspots">
+                    {(activeLocation?.areas ?? []).map((area) => (
+                      <button
+                        key={area.id}
+                        type="button"
+                        className={`city-location-hotspot city-location-hotspot-${area.shapeType ?? "rectangle"}`}
+                        style={getAreaPercent(area)}
+                        onClick={() => handleLocationPlaceClick(area)}
+                      >
+                        <span className="city-location-hotspot-title">
+                          {area.name}
+                        </span>
+                      </button>
+                    ))}
 
-                  {(() => {
-                    const stateNpcIds = activeLocation ? getLocationActiveState(activeLocation)?.npcIds : undefined;
-                    const locationNpcIds: string[] = (stateNpcIds ?? activeLocation?.npcIds ?? [])
-                      .filter((npcId): npcId is string => typeof npcId === "string" && npcId.trim().length > 0);
-                    const locationNpcs: NpcDefinition[] = locationNpcIds
-                      .map((npcId) => npcById.get(npcId))
-                      .filter((entry): entry is NpcDefinition => Boolean(entry));
-                    return locationNpcs.map((npc: NpcDefinition, index: number) => {
-                      const left = 8 + (index % 5) * 18;
-                      const top = 72 + Math.floor(index / 5) * 12;
-                      return (
-                        <button
-                          key={npc.id}
-                          type="button"
-                          className="city-location-hotspot city-location-hotspot-rectangle"
-                          style={{
-                            left: `${left}%`,
-                            top: `${top}%`,
-                            width: "16%",
-                            height: "10%",
-                          }}
-                          onClick={() =>
-                            handleLocationPlaceClick({
-                              id: `location_npc_${npc.id}`,
-                              name: npc.name ?? npc.id,
-                              type: "npc",
-                              npcIds: [npc.id],
-                              canEnter: true,
-                              isHidden: false,
-                            })
-                          }
-                        >
-                          <span className="city-location-hotspot-title">
-                            {npc.name ?? npc.id}
-                          </span>
-                        </button>
-                      );
-                    });
-                  })()}
+                    {(() => {
+                      const stateNpcIds = activeLocation ? getLocationActiveState(activeLocation)?.npcIds : undefined;
+                      const locationNpcIds: string[] = (stateNpcIds ?? activeLocation?.npcIds ?? [])
+                        .filter((npcId): npcId is string => typeof npcId === "string" && npcId.trim().length > 0);
+                      const locationNpcs: NpcDefinition[] = locationNpcIds
+                        .map((npcId) => npcById.get(npcId))
+                        .filter((entry): entry is NpcDefinition => Boolean(entry));
+                      return locationNpcs.map((npc: NpcDefinition, index: number) => {
+                        const left = 8 + (index % 5) * 18;
+                        const top = 72 + Math.floor(index / 5) * 12;
+                        return (
+                          <button
+                            key={npc.id}
+                            type="button"
+                            className="city-location-hotspot city-location-hotspot-rectangle"
+                            style={{
+                              left: `${left}%`,
+                              top: `${top}%`,
+                              width: "16%",
+                              height: "10%",
+                            }}
+                            onClick={() =>
+                              handleLocationPlaceClick({
+                                id: `location_npc_${npc.id}`,
+                                name: npc.name ?? npc.id,
+                                type: "npc",
+                                npcIds: [npc.id],
+                                canEnter: true,
+                                isHidden: false,
+                              })
+                            }
+                          >
+                            <span className="city-location-hotspot-title">
+                              {npc.name ?? npc.id}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
               </div>
               <footer className="wm-map-legend">

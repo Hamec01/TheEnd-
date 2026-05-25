@@ -24,6 +24,11 @@ import type { WorldLocation } from '../types/location';
 import type { StoredImage } from '../services/content/models';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import { loadMinesFromStorage } from '../services/miningRepository';
+import { AdminImageField } from '../admin/AdminImageField';
+import { buildUploadFolder } from '../services/content/uploadFolders';
+import { resolveStoredImageSource } from '../services/content/runtimeImageService';
+import type { LocationStateSpriteKey } from './zoneEditorTypes';
+import { resolveWorldImageSource } from './worldLocationSprites';
 
 type LocationPreviewEntry = {
   id: string;
@@ -98,6 +103,44 @@ const RESOURCE_KIND_OPTIONS: Array<{ value: ResourceKind | ''; label: string }> 
   { value: 'hunting_ground', label: 'hunting_ground' },
   { value: 'other', label: 'other' },
 ];
+
+const LOCATION_SUBTYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: '-' },
+  { value: 'village', label: 'Деревня' },
+  { value: 'academy', label: 'Академия' },
+  { value: 'magic_school', label: 'Магическая школа' },
+  { value: 'mine_entrance', label: 'Вход в шахту' },
+  { value: 'camp', label: 'Лагерь' },
+  { value: 'cult_camp', label: 'Лагерь культистов' },
+  { value: 'farmstead', label: 'Хутор' },
+  { value: 'outpost', label: 'Застава' },
+  { value: 'fort', label: 'Форт' },
+  { value: 'ruins', label: 'Руины' },
+  { value: 'destroyed_village', label: 'Разрушенная деревня' },
+  { value: 'restored_village', label: 'Восстановленная деревня' },
+  { value: 'grove', label: 'Роща' },
+  { value: 'oasis', label: 'Оазис' },
+  { value: 'sanctuary', label: 'Святилище' },
+  { value: 'temple', label: 'Храм' },
+  { value: 'cave', label: 'Пещера' },
+  { value: 'forge', label: 'Кузница' },
+  { value: 'market', label: 'Рынок' },
+  { value: 'harbor', label: 'Гавань' },
+  { value: 'settlement', label: 'settlement' },
+  { value: 'mine', label: 'mine' },
+  { value: 'hideout', label: 'hideout' },
+  { value: 'tower', label: 'tower' },
+  { value: 'forest', label: 'forest' },
+  { value: 'graveyard', label: 'graveyard' },
+  { value: 'battlefield', label: 'battlefield' },
+  { value: 'ritual_place', label: 'ritual_place' },
+  { value: 'shrine', label: 'shrine' },
+  { value: 'farm', label: 'farm' },
+  { value: 'crossroad', label: 'crossroad' },
+  { value: 'custom', label: 'custom' },
+];
+
+const LOCATION_STATE_SPRITE_KEYS: LocationStateSpriteKey[] = ['active', 'destroyed'];
 
 interface ZoneEditorPanelProps {
   activeEditorLayer: MapEditorLayer;
@@ -321,6 +364,17 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       previewImage: resolveLocationPreviewImage(selectedLinkedLocation, locationPreviewImages),
     }
     : null;
+  const spritePreviewSource = draft?.locationSprite.imageUrl
+    ? resolveStoredImageSource(draft.locationSprite.imageUrl, locationPreviewImages) ?? resolveWorldImageSource(draft.locationSprite.imageUrl)
+    : null;
+  const spriteScaleWarning = draft && draft.locationSprite.scale <= 0
+    ? 'Sprite scale must be greater than 0.'
+    : null;
+  const spriteUrlWarning = draft?.locationSprite.imageUrl
+    && !resolveStoredImageSource(draft.locationSprite.imageUrl, locationPreviewImages)
+    && !/^(\/|data:image\/|https?:\/\/)/i.test(draft.locationSprite.imageUrl.trim())
+      ? 'Image id/URL is not found in loaded Images. It will be kept, but may not render until the asset exists.'
+      : null;
   const looksLikeArklein = Boolean(draft && /арклейн|arklein/i.test(`${draft.name} ${draft.id}`));
   const draftLayerForChecks = draft ? (draft.editorLayer ?? getDefaultEditorLayer(draft.type)) : null;
   const showRepairAsCity = Boolean(draft && (
@@ -519,6 +573,33 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       resourceKind: nextValue,
       professionId: nextValue === 'mine' && !draft.professionId.trim() ? 'mining' : draft.professionId,
       mineId: nextValue === 'mine' ? draft.mineId : '',
+    });
+  }
+
+  function updateLocationSprite(patch: Partial<ZoneEditorDraft['locationSprite']>) {
+    if (!draft) {
+      return;
+    }
+    updateDraft({
+      locationSprite: {
+        ...draft.locationSprite,
+        ...patch,
+        visibleOnWorldMap: patch.imageUrl && !draft.locationSprite.visibleOnWorldMap
+          ? true
+          : patch.visibleOnWorldMap ?? draft.locationSprite.visibleOnWorldMap,
+      },
+    });
+  }
+
+  function updateStateSprite(key: LocationStateSpriteKey, value: string) {
+    if (!draft) {
+      return;
+    }
+    updateDraft({
+      stateSprites: {
+        ...draft.stateSprites,
+        [key]: value,
+      },
     });
   }
 
@@ -1088,6 +1169,128 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
             )}
           </>
         ) : null}
+        <label>
+          <span>Location subtype</span>
+          <select disabled={!draft} value={draft?.subtype ?? ''} onChange={(event) => updateDraft({ subtype: event.target.value })}>
+            {LOCATION_SUBTYPE_OPTIONS.map((option) => (
+              <option key={option.value || 'empty'} value={option.value}>{option.label}</option>
+            ))}
+            {draft?.subtype && !LOCATION_SUBTYPE_OPTIONS.some((option) => option.value === draft.subtype) ? (
+              <option value={draft.subtype}>{draft.subtype}</option>
+            ) : null}
+          </select>
+        </label>
+        <label>
+          <span>Current state</span>
+          <select disabled={!draft} value={draft?.currentState ?? 'active'} onChange={(event) => updateDraft({ currentState: event.target.value })}>
+            <option value="active">active</option>
+            <option value="hidden">hidden</option>
+            <option value="destroyed">destroyed</option>
+            <option value="restored">restored</option>
+            <option value="captured">captured</option>
+            <option value="locked">locked</option>
+          </select>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input disabled={!draft} type="checkbox" checked={draft?.hidden === true} onChange={(event) => updateDraft({ hidden: event.target.checked })} />
+          <span>hidden</span>
+        </label>
+        <label className="zone-editor-checkbox">
+          <input disabled={!draft} type="checkbox" checked={draft?.requiresDiscovery === true} onChange={(event) => updateDraft({ requiresDiscovery: event.target.checked })} />
+          <span>requiresDiscovery</span>
+        </label>
+        <div className="zone-editor-section" style={{ margin: '12px 0 0', padding: 12 }}>
+          <h3>Sprite / World Image</h3>
+          <label>
+            <span>Sprite image URL</span>
+            <input disabled={!draft} value={draft?.locationSprite.imageUrl ?? ''} onChange={(event) => updateLocationSprite({ imageUrl: event.target.value })} placeholder="/sprites/world/village.png or stored image id" />
+          </label>
+          <label>
+            <span>Select sprite from Images</span>
+            <select disabled={!draft} value={draft?.locationSprite.imageUrl ?? ''} onChange={(event) => updateLocationSprite({ imageUrl: event.target.value })}>
+              <option value="">-</option>
+              {locationPreviewImages.map((image) => (
+                <option key={image.id} value={image.id}>{image.name || image.id}</option>
+              ))}
+            </select>
+          </label>
+          <AdminImageField
+            value={draft?.locationSprite.imageUrl ?? ''}
+            onChange={(next) => updateLocationSprite({ imageUrl: next })}
+            onUploaded={(image) => updateLocationSprite({ imageUrl: image.id, assetKey: image.id, visibleOnWorldMap: true })}
+            presetId="world-location-sprite"
+            suggestedId={draft?.id ? `${draft.id}_world_sprite` : undefined}
+            suggestedName={`${draft?.id || 'location'}-world-sprite`}
+            uploadFolder={buildUploadFolder('images', 'locations', draft?.id || draft?.name || 'world-location', 'world-sprite')}
+            label="Upload/select sprite from Images"
+            hint="World map sprite for villages, academies, mines, camps, ruins and state variants."
+          />
+          <label className="zone-editor-checkbox">
+            <input disabled={!draft} type="checkbox" checked={draft?.locationSprite.visibleOnWorldMap === true} onChange={(event) => updateLocationSprite({ visibleOnWorldMap: event.target.checked })} />
+            <span>Show on world map</span>
+          </label>
+          <label className="zone-editor-checkbox">
+            <input disabled={!draft} type="checkbox" checked={draft?.locationSprite.visibleInLocationView !== false} onChange={(event) => updateLocationSprite({ visibleInLocationView: event.target.checked })} />
+            <span>Show inside location</span>
+          </label>
+          <label>
+            <span>Anchor</span>
+            <select disabled={!draft} value={draft?.locationSprite.anchor ?? 'bottom'} onChange={(event) => updateLocationSprite({ anchor: event.target.value as ZoneEditorDraft['locationSprite']['anchor'] })}>
+              <option value="bottom">bottom</option>
+              <option value="center">center</option>
+            </select>
+          </label>
+          <label><span>Offset X</span><input disabled={!draft} type="number" value={draft?.locationSprite.offsetX ?? 0} onChange={(event) => updateLocationSprite({ offsetX: Number(event.target.value) || 0 })} /></label>
+          <label><span>Offset Y</span><input disabled={!draft} type="number" value={draft?.locationSprite.offsetY ?? 0} onChange={(event) => updateLocationSprite({ offsetY: Number(event.target.value) || 0 })} /></label>
+          <label><span>Scale</span><input disabled={!draft} type="number" step={0.05} min={0.01} value={draft?.locationSprite.scale ?? 1} onChange={(event) => updateLocationSprite({ scale: Number(event.target.value) || 1 })} /></label>
+          <label><span>Z-index</span><input disabled={!draft} type="number" value={draft?.locationSprite.zIndex ?? 10} onChange={(event) => updateLocationSprite({ zIndex: Number(event.target.value) || 0 })} /></label>
+          {spriteScaleWarning || spriteUrlWarning ? (
+            <div className="zone-validation-errors">
+              {spriteScaleWarning ? <p>{spriteScaleWarning}</p> : null}
+              {spriteUrlWarning ? <p>{spriteUrlWarning}</p> : null}
+            </div>
+          ) : null}
+          <div className="zone-editor-linked-location-preview">
+            <strong>Preview</strong>
+            {spritePreviewSource ? (
+              <img
+                src={spritePreviewSource}
+                alt={draft?.name || 'sprite preview'}
+                style={{ width: 72, height: 72, objectFit: 'contain', transform: `scale(${Math.max(0.01, draft?.locationSprite.scale ?? 1)})`, transformOrigin: 'center bottom' }}
+              />
+            ) : (
+              <div style={{ opacity: 0.7 }}>No sprite selected</div>
+            )}
+          </div>
+          {LOCATION_STATE_SPRITE_KEYS.map((key) => (
+            <div key={key} className="zone-editor-section" style={{ margin: '10px 0 0', padding: 10 }}>
+              <label>
+                <span>{key[0].toUpperCase() + key.slice(1)} sprite</span>
+                <input disabled={!draft} value={draft?.stateSprites[key] ?? ''} onChange={(event) => updateStateSprite(key, event.target.value)} />
+              </label>
+              <label>
+                <span>Select {key} sprite from Images</span>
+                <select disabled={!draft} value={draft?.stateSprites[key] ?? ''} onChange={(event) => updateStateSprite(key, event.target.value)}>
+                  <option value="">-</option>
+                  {locationPreviewImages.map((image) => (
+                    <option key={`${key}-${image.id}`} value={image.id}>{image.name || image.id}</option>
+                  ))}
+                </select>
+              </label>
+              <AdminImageField
+                value={draft?.stateSprites[key] ?? ''}
+                onChange={(next) => updateStateSprite(key, next)}
+                onUploaded={(image) => updateStateSprite(key, image.id)}
+                presetId="world-location-sprite"
+                suggestedId={draft?.id ? `${draft.id}_${key}_world_sprite` : undefined}
+                suggestedName={`${draft?.id || 'location'}-${key}-world-sprite`}
+                uploadFolder={buildUploadFolder('images', 'locations', draft?.id || draft?.name || 'world-location', 'states')}
+                label={`Upload ${key} sprite`}
+                hint={`Optional sprite override for state=${key}.`}
+              />
+            </div>
+          ))}
+        </div>
         <div className="zone-editor-color-row">
           <span>Цвет</span>
         </div>

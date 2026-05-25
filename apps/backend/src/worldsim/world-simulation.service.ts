@@ -391,6 +391,24 @@ export class WorldSimulationService {
     return archetypeId.toLowerCase().includes('bandit');
   }
 
+  private isCityLikeRouteZone(zoneId: string | undefined): boolean {
+    const normalized = String(zoneId ?? '').trim().toLowerCase();
+    return normalized === 'arklein'
+      || normalized === 'brainhold'
+      || normalized === 'city_brainhold'
+      || normalized.startsWith('city_');
+  }
+
+  private toBanditRoadsideZoneId(zoneId: string | undefined, index: number): string {
+    const normalized = String(zoneId ?? '').trim();
+    if (!normalized) {
+      return `bandit_roadside_stop_${index + 1}`;
+    }
+    return this.isCityLikeRouteZone(normalized)
+      ? `bandit_roadside_${normalized}_${index + 1}`
+      : normalized;
+  }
+
   private sanitizeRouteForBanditPolicy(route: WorldRoute): WorldRoute {
     const hasBandits = route.allowedArchetypes.some((archetypeId) => this.isBanditArchetypeId(archetypeId));
     if (!hasBandits) {
@@ -399,10 +417,13 @@ export class WorldSimulationService {
 
     return {
       ...route,
-      waypoints: route.waypoints.map((waypoint) => {
+      waypoints: route.waypoints.map((waypoint, index) => {
         const { cityId: _cityId, ...rest } = waypoint;
         void _cityId;
-        return rest;
+        return {
+          ...rest,
+          zoneId: this.toBanditRoadsideZoneId(rest.zoneId, index),
+        };
       }),
       restChance: Math.max(0.35, Number(route.restChance ?? 0.35)),
     };
@@ -436,6 +457,7 @@ export class WorldSimulationService {
       if (!normalized.worldSpriteId || normalized.worldSpriteId === 'trader_world_sprite') {
         normalized.worldSpriteId = 'camp_world_sprite';
       }
+      normalized.restingWorldSpriteId = normalized.restingWorldSpriteId || 'fire_world_sprite';
       // В проекте нет отдельного bandit image id, используем валидный fallback.
       normalized.portraitId = normalized.portraitId || 'unknown';
     }
@@ -531,6 +553,7 @@ export class WorldSimulationService {
         sourceType: 'npc',
         sourceId: 'npc_bandit_raider',
         worldSpriteId: 'camp_world_sprite',
+        restingWorldSpriteId: 'fire_world_sprite',
         portraitId: 'bandit_01',
         escorts: { npcTemplateId: 'npc_bandit_raider', count: 2 },
         isEnabled: true,
@@ -1061,8 +1084,8 @@ export class WorldSimulationService {
           sourceId: archetype?.sourceId,
           state: e.state,
           spriteId:
-            archetype?.kind === 'bandit' && e.state === 'resting'
-              ? 'fire_world_sprite'
+            e.state === 'resting' && archetype?.restingWorldSpriteId
+              ? archetype.restingWorldSpriteId
               : (archetype?.worldSpriteId ?? 'unknown'),
           portraitId: archetype?.portraitId,
           memberCount: e.members.length,

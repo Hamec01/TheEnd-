@@ -2,6 +2,7 @@ import type { WorldSimulationSnapshot } from '../types/world-simulation.types';
 import { getZoneCenter } from './zoneGeometry';
 import { findClickedWorldEntityInScreenSpace, type WorldViewportCamera, type WorldViewportSize } from './worldEntityScreenHitTesting';
 import { detectHoverZone, pickRuntimeClickTarget } from './zoneSystem';
+import { findClickedLocationSprite } from './worldLocationSprites';
 import type { WorldSceneCommand } from './worldSceneTypes';
 import type { RenderedWorldEntity } from './worldSceneTypes';
 import type { Zone } from './worldMapNodes';
@@ -21,6 +22,9 @@ interface ResolveWorldClickInteractionInput {
   renderedEntities?: RenderedWorldEntity[];
   lockedWorldEntityId?: string | null;
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
+  spriteImageSizes?: Map<string, { width: number; height: number }>;
+  discoveredLocationIds?: Set<string>;
+  discoveredZoneIds?: Set<string>;
 }
 
 export interface WorldClickInteractionResolution {
@@ -79,6 +83,36 @@ export function resolveWorldClickInteraction(input: ResolveWorldClickInteraction
       clickedEntity,
       commands: [{ type: 'interact_world_entity', entityId: clickedEntity.id }],
       moveTarget: null,
+    };
+  }
+
+  const clickedSpriteZone = input.screenPointPx && input.viewportPx && input.camera
+    ? findClickedLocationSprite(
+      input.zones,
+      input.screenPointPx,
+      input.camera,
+      input.viewportPx,
+      input.spriteImageSizes ?? new Map(),
+      input.discoveredLocationIds,
+      input.discoveredZoneIds,
+    )
+    : null;
+  if (clickedSpriteZone) {
+    const [zoneCenterX, zoneCenterY] = getZoneCenter(clickedSpriteZone);
+    const moveTarget = {
+      point: { x: zoneCenterX, y: zoneCenterY },
+      pendingLocationId: clickedSpriteZone.type === 'city' || clickedSpriteZone.type === 'location'
+        ? clickedSpriteZone.id
+        : null,
+    };
+    return {
+      clickedZone: clickedSpriteZone,
+      clickedEntity: null,
+      commands: [
+        { type: 'interact_zone', zoneId: clickedSpriteZone.id, point: input.point },
+        { type: 'move_to_point', point: moveTarget.point, pendingLocationId: moveTarget.pendingLocationId },
+      ],
+      moveTarget,
     };
   }
 

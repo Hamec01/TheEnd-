@@ -23,6 +23,7 @@ export interface WorldNpcArchetype {
     count: number;
   };
   worldSpriteId: string;
+  restingWorldSpriteId?: string;
   portraitId?: string;
   isEnabled: boolean;
   createdAt: string;
