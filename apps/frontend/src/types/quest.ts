@@ -176,6 +176,14 @@ export interface QuestReward {
   amount?: number;
   title?: string;
   description?: string;
+  reputationChanges?: Array<{
+    targetType?: 'kingdom' | 'faction';
+    targetId?: string;
+    reason?: string;
+    factionId?: string;
+    kingdomId?: string;
+    amount: number;
+  }>;
 }
 
 export interface QuestTrigger {
@@ -285,7 +293,9 @@ export type QuestInteractionEffectType =
   | 'fail_quest'
   | 'give_rewards'
   | 'add_reputation'
+  | 'addReputation'
   | 'change_citizenship'
+  | 'changeCitizenship'
   | 'give_item'
   | 'take_item'
   | 'give_quest_item'
@@ -318,10 +328,19 @@ export interface QuestInteractionEffect {
   factionId?: string;
   kingdomId?: string;
   reputationChanges?: Array<{
+    targetType?: 'kingdom' | 'faction';
+    targetId?: string;
+    reason?: string;
     factionId?: string;
     kingdomId?: string;
     amount: number;
   }>;
+  changeCitizenship?: {
+    kingdomId: 'luminor' | 'artalon' | 'kriantar' | 'terimia' | 'argos';
+    oldKingdomPenalty?: number;
+    newKingdomBonus?: number;
+    requireAuthorityNpc?: boolean;
+  };
 }
 
 export interface QuestInteractionChoice {

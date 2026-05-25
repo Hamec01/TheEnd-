@@ -146,6 +146,7 @@ export interface DialogueAction {
     | 'giveExperience'
     | 'give_experience'
     | 'addReputation'
+    | 'add_reputation'
     | 'changeCitizenship'
     | 'change_citizenship'
     | 'openShop'
@@ -192,10 +193,19 @@ export interface DialogueAction {
   mineId?: string;
   action?: string;
   reputationChanges?: Array<{
+    targetType?: 'kingdom' | 'faction';
+    targetId?: string;
+    reason?: string;
     factionId?: string;
     kingdomId?: string;
     amount: number;
   }>;
+  changeCitizenship?: {
+    kingdomId: 'luminor' | 'artalon' | 'kriantar' | 'terimia' | 'argos';
+    oldKingdomPenalty?: number;
+    newKingdomBonus?: number;
+    requireAuthorityNpc?: boolean;
+  };
   payload?: {
     mineId?: string;
     [key: string]: unknown;

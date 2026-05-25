@@ -5,6 +5,7 @@ import type {
   QuestValidationResult,
   QuestValidationWorldData,
 } from '../types/quest';
+import { validateReputationChangesValue } from './reputationCitizenshipValidation';
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
@@ -23,6 +24,8 @@ function validateRewardReferences(
   worldData: QuestValidationWorldData,
   errors: string[],
 ): void {
+  errors.push(...validateReputationChangesValue(reward.reputationChanges, `Reward '${reward.id}' reputationChanges`));
+
   if (!reward.targetId) {
     return;
   }

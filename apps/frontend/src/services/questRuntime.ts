@@ -640,13 +640,28 @@ export function applyQuestRewards(playerId: string, questId: string): { applied:
         break;
       }
       case 'reputation': {
-        const key = normalizeId(reward.title) ?? targetId ?? 'global';
-        const logs = applyPlayerReputationChanges(
-          [isKingdomId(key)
-            ? { kingdomId: key, amount: amount ?? 0 }
-            : { factionId: key, amount: amount ?? 0 }],
-          { source: 'quest' },
-        );
+        const reputationChanges = Array.isArray(reward.reputationChanges) && reward.reputationChanges.length > 0
+          ? reward.reputationChanges
+            .map((entry) => {
+              const targetType = String(entry.targetType ?? '').trim();
+              const targetIdFromEntry = String(entry.targetId ?? '').trim();
+              const kingdomId = String(entry.kingdomId ?? '').trim();
+              const factionId = String(entry.factionId ?? '').trim();
+              return {
+                kingdomId: (targetType === 'kingdom' ? targetIdFromEntry : kingdomId) || undefined,
+                factionId: (targetType === 'faction' ? targetIdFromEntry : factionId) || undefined,
+                amount: Number(entry.amount ?? 0),
+              };
+            })
+            .filter((entry) => Boolean(entry.kingdomId || entry.factionId))
+          : (() => {
+              const key = normalizeId(reward.title) ?? targetId ?? 'global';
+              return [isKingdomId(key)
+                ? { kingdomId: key, amount: amount ?? 0 }
+                : { factionId: key, amount: amount ?? 0 }];
+            })();
+
+        const logs = applyPlayerReputationChanges(reputationChanges, { source: 'quest' });
         rewardLines.push(...logs.map((entry) => `reputation:${entry}`));
         break;
       }

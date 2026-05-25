@@ -4,6 +4,11 @@ import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import { ReputationChangesEditor, type ReputationChangeEditorValue } from '../components/ReputationChangesEditor';
+import {
+  mergeQuestRewardReputation,
+  toEditorReputationChanges,
+} from '../components/reputationEffectAdapters';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import { imageService } from '../../services/content/imageService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
@@ -29,6 +34,7 @@ import { validateQuest } from '../../services/questValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { extractRawCollectionFromImportJson, formatExportStamp } from '../../services/content/adminJsonImportExport';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
+import { isKingdomId } from '@theend/rpg-domain';
 import type {
   QuestCategory,
   QuestCondition,
@@ -211,6 +217,46 @@ export function QuestsPage() {
   const [rewardsJson, setRewardsJson] = useState('[]');
   const [failureJson, setFailureJson] = useState('[]');
   const [triggersJson, setTriggersJson] = useState('[]');
+
+  const rewardsReputationChanges = useMemo(() => {
+    const rewards = asArray(safeParseJson<QuestReward[]>(rewardsJson, asArray(draft.rewards)));
+    const changes = rewards.flatMap((reward) => {
+      if (Array.isArray(reward.reputationChanges) && reward.reputationChanges.length > 0) {
+        return toEditorReputationChanges(reward.reputationChanges);
+      }
+      if (reward.type === 'reputation' && reward.targetId && typeof reward.amount === 'number') {
+        return toEditorReputationChanges([
+          {
+            targetType: isKingdomId(reward.targetId) ? 'kingdom' : 'faction',
+            targetId: reward.targetId,
+            amount: reward.amount,
+          },
+        ]);
+      }
+      return [];
+    });
+    return changes;
+  }, [draft.rewards, rewardsJson]);
+
+  const failureReputationChanges = useMemo(() => {
+    const rewards = asArray(safeParseJson<QuestReward[]>(failureJson, asArray(draft.failureConsequences)));
+    const changes = rewards.flatMap((reward) => {
+      if (Array.isArray(reward.reputationChanges) && reward.reputationChanges.length > 0) {
+        return toEditorReputationChanges(reward.reputationChanges);
+      }
+      if (reward.type === 'reputation' && reward.targetId && typeof reward.amount === 'number') {
+        return toEditorReputationChanges([
+          {
+            targetType: isKingdomId(reward.targetId) ? 'kingdom' : 'faction',
+            targetId: reward.targetId,
+            amount: reward.amount,
+          },
+        ]);
+      }
+      return [];
+    });
+    return changes;
+  }, [draft.failureConsequences, failureJson]);
 
   async function refreshValidationSources(): Promise<ValidationSources> {
     await Promise.all([
@@ -651,6 +697,28 @@ export function QuestsPage() {
     return resolveStoredImageSource(imageKey, images);
   }
 
+  function patchRewardsReputationChanges(changes: ReputationChangeEditorValue[]) {
+    const parsedRewards = asArray(safeParseJson<QuestReward[]>(rewardsJson, asArray(draft.rewards)));
+    const nextRewards = parsedRewards.filter((reward) => reward.type !== 'reputation');
+    if (changes.length > 0) {
+      nextRewards.push(mergeQuestRewardReputation({ id: 'reward_reputation_changes', type: 'reputation' }, changes));
+    }
+    const nextJson = JSON.stringify(nextRewards, null, 2);
+    setRewardsJson(nextJson);
+    patch({ rewards: nextRewards });
+  }
+
+  function patchFailureReputationChanges(changes: ReputationChangeEditorValue[]) {
+    const parsedRewards = asArray(safeParseJson<QuestReward[]>(failureJson, asArray(draft.failureConsequences)));
+    const nextRewards = parsedRewards.filter((reward) => reward.type !== 'reputation');
+    if (changes.length > 0) {
+      nextRewards.push(mergeQuestRewardReputation({ id: 'failure_reputation_changes', type: 'reputation' }, changes));
+    }
+    const nextJson = JSON.stringify(nextRewards, null, 2);
+    setFailureJson(nextJson);
+    patch({ failureConsequences: nextRewards });
+  }
+
   return (
     <div className="admin-page-grid">
       <section className="admin-form-panel">
@@ -848,8 +916,10 @@ export function QuestsPage() {
           <h4>Rewards</h4>
           <textarea rows={8} value={rewardsJson} onChange={(event) => setRewardsJson(event.target.value)} onBlur={() => patch({ rewards: asArray(safeParseJson<QuestReward[]>(rewardsJson, asArray(draft.rewards))) })} />
           <p className="muted">Для королевской репутации используйте reward `type: "reputation"` и `targetId` вроде `artalon`, `luminor`, `argos`.</p>
+          <ReputationChangesEditor value={rewardsReputationChanges} onChange={patchRewardsReputationChanges} />
           <h4>Failure Consequences</h4>
           <textarea rows={6} value={failureJson} onChange={(event) => setFailureJson(event.target.value)} onBlur={() => patch({ failureConsequences: asArray(safeParseJson<QuestReward[]>(failureJson, asArray(draft.failureConsequences))) })} />
+          <ReputationChangesEditor value={failureReputationChanges} onChange={patchFailureReputationChanges} />
         </section>
 
         <section className="card admin-item-preview">

@@ -3,6 +3,14 @@ import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminAudioField } from '../AdminAudioField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel } from '../adminUi';
+import { CitizenshipEffectEditor, type CitizenshipEffectEditorValue } from '../components/CitizenshipEffectEditor';
+import { ReputationChangesEditor, type ReputationChangeEditorValue } from '../components/ReputationChangesEditor';
+import {
+  mergeDialogueActionCitizenship,
+  mergeDialogueActionReputation,
+  toEditorCitizenshipEffect,
+  toEditorReputationChanges,
+} from '../components/reputationEffectAdapters';
 import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from '../adminVisuals';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
@@ -78,6 +86,8 @@ function dialogueValidation(
   return validateDialogue(dialogue, worldData);
 }
 
+type DialogueEffectContainer = 'choice_effects' | 'choice_actions' | 'node_actions';
+
 export function DialoguesPage() {
   const [dialogues, setDialogues] = useState<DialogueDefinition[]>([]);
   const [query, setQuery] = useState('');
@@ -93,6 +103,9 @@ export function DialoguesPage() {
   const [mineActionChoiceId, setMineActionChoiceId] = useState('');
   const [mineActionMineId, setMineActionMineId] = useState('');
   const [mineActionUsePayload, setMineActionUsePayload] = useState(false);
+  const [selectedEffectContainer, setSelectedEffectContainer] = useState<DialogueEffectContainer>('choice_effects');
+  const [selectedReputationEffectIndex, setSelectedReputationEffectIndex] = useState(-1);
+  const [selectedCitizenshipEffectIndex, setSelectedCitizenshipEffectIndex] = useState(-1);
 
   const [npcIds, setNpcIds] = useState<string[]>([]);
   const [questIds, setQuestIds] = useState<string[]>([]);
@@ -164,6 +177,69 @@ export function DialoguesPage() {
     return node?.choices ?? [];
   }, [mineActionNodeId, parsedNodes]);
 
+  const selectedChoice = useMemo(() => {
+    const node = parsedNodes.find((entry) => entry.id === mineActionNodeId);
+    if (!node) {
+      return null;
+    }
+    return node.choices.find((entry) => entry.id === mineActionChoiceId) ?? null;
+  }, [mineActionChoiceId, mineActionNodeId, parsedNodes]);
+
+  const selectedContainerActions = useMemo<DialogueAction[]>(() => {
+    const selectedNode = parsedNodes.find((entry) => entry.id === mineActionNodeId) ?? null;
+    if (!selectedNode) {
+      return [];
+    }
+
+    if (selectedEffectContainer === 'node_actions') {
+      return selectedNode.actions ?? [];
+    }
+
+    if (!selectedChoice) {
+      return [];
+    }
+
+    return selectedEffectContainer === 'choice_actions'
+      ? (selectedChoice.actions ?? [])
+      : (selectedChoice.effects ?? []);
+  }, [mineActionNodeId, parsedNodes, selectedChoice, selectedEffectContainer]);
+
+  const selectedChoiceReputationChanges = useMemo(() => {
+    if (selectedContainerActions.length === 0) {
+      return [];
+    }
+    const effects = selectedContainerActions;
+    const action = selectedReputationEffectIndex >= 0
+      ? effects[selectedReputationEffectIndex]
+      : undefined;
+    return toEditorReputationChanges(action?.reputationChanges);
+  }, [selectedContainerActions, selectedReputationEffectIndex]);
+
+  const selectedChoiceCitizenship = useMemo(() => {
+    if (selectedContainerActions.length === 0) {
+      return null;
+    }
+    const effects = selectedContainerActions;
+    const action = selectedCitizenshipEffectIndex >= 0
+      ? effects[selectedCitizenshipEffectIndex]
+      : undefined;
+    return toEditorCitizenshipEffect(action?.changeCitizenship ?? action?.kingdomId);
+  }, [selectedContainerActions, selectedCitizenshipEffectIndex]);
+
+  const selectedChoiceReputationEffectEntries = useMemo(() => {
+    const effects = selectedContainerActions;
+    return effects
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.type === 'addReputation' || entry.type === 'add_reputation');
+  }, [selectedContainerActions]);
+
+  const selectedChoiceCitizenshipEffectEntries = useMemo(() => {
+    const effects = selectedContainerActions;
+    return effects
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.type === 'changeCitizenship' || entry.type === 'change_citizenship');
+  }, [selectedContainerActions]);
+
   useEffect(() => {
     if (!parsedNodes.some((entry) => entry.id === mineActionNodeId)) {
       setMineActionNodeId(parsedNodes[0]?.id ?? '');
@@ -175,6 +251,28 @@ export function DialoguesPage() {
       setMineActionChoiceId(mineActionChoices[0]?.id ?? '');
     }
   }, [mineActionChoiceId, mineActionChoices]);
+
+  useEffect(() => {
+    const available = selectedChoiceReputationEffectEntries.map((entry) => entry.index);
+    if (available.length === 0) {
+      setSelectedReputationEffectIndex(-1);
+      return;
+    }
+    if (!available.includes(selectedReputationEffectIndex)) {
+      setSelectedReputationEffectIndex(available[0]);
+    }
+  }, [selectedChoiceReputationEffectEntries, selectedReputationEffectIndex]);
+
+  useEffect(() => {
+    const available = selectedChoiceCitizenshipEffectEntries.map((entry) => entry.index);
+    if (available.length === 0) {
+      setSelectedCitizenshipEffectIndex(-1);
+      return;
+    }
+    if (!available.includes(selectedCitizenshipEffectIndex)) {
+      setSelectedCitizenshipEffectIndex(available[0]);
+    }
+  }, [selectedChoiceCitizenshipEffectEntries, selectedCitizenshipEffectIndex]);
 
   const worldData = useMemo<DialogueValidationWorldData>(() => ({
     npcIds,
@@ -388,6 +486,196 @@ export function DialoguesPage() {
     setStatusText(`Добавлен action open_mine в choice: ${mineActionChoiceId}`);
   }
 
+  function patchSelectedChoice(mutator: (choice: DialogueNode['choices'][number]) => DialogueNode['choices'][number]) {
+    if (!mineActionNodeId || !mineActionChoiceId) {
+      setStatusText('Сначала выберите Node и Choice для редактирования эффектов.');
+      return;
+    }
+
+    const nextNodes = parsedNodes.map((node) => {
+      if (node.id !== mineActionNodeId) {
+        return node;
+      }
+      return {
+        ...node,
+        choices: node.choices.map((choice) => {
+          if (choice.id !== mineActionChoiceId) {
+            return choice;
+          }
+          return mutator(choice);
+        }),
+      };
+    });
+
+    setNodesJson(JSON.stringify(nextNodes, null, 2));
+    patch({ nodes: nextNodes });
+  }
+
+  function patchSelectedActionCollection(mutator: (actions: DialogueAction[]) => DialogueAction[]) {
+    if (!mineActionNodeId) {
+      setStatusText('Сначала выберите Node для редактирования эффектов.');
+      return;
+    }
+
+    if (selectedEffectContainer !== 'node_actions' && !mineActionChoiceId) {
+      setStatusText('Сначала выберите Choice для редактирования эффектов.');
+      return;
+    }
+
+    if (selectedEffectContainer === 'node_actions') {
+      const nextNodes = parsedNodes.map((node) => {
+        if (node.id !== mineActionNodeId) {
+          return node;
+        }
+        const currentActions = node.actions ?? [];
+        return {
+          ...node,
+          actions: mutator(currentActions),
+        };
+      });
+      setNodesJson(JSON.stringify(nextNodes, null, 2));
+      patch({ nodes: nextNodes });
+      return;
+    }
+
+    patchSelectedChoice((choice) => {
+      const currentActions = selectedEffectContainer === 'choice_actions'
+        ? (choice.actions ?? [])
+        : (choice.effects ?? []);
+      const nextActions = mutator(currentActions);
+
+      if (selectedEffectContainer === 'choice_actions') {
+        return { ...choice, actions: nextActions };
+      }
+
+      return { ...choice, effects: nextActions };
+    });
+  }
+
+  function updateSelectedChoiceReputation(changes: ReputationChangeEditorValue[]) {
+    if (selectedContainerActions.length === 0 && selectedEffectContainer !== 'node_actions') {
+      return;
+    }
+
+    if (selectedReputationEffectIndex < 0) {
+      if (changes.length === 0) {
+        return;
+      }
+
+      patchSelectedActionCollection((existing) => {
+        const effects = Array.isArray(existing) ? [...existing] : [];
+        const nextAction = mergeDialogueActionReputation(
+          { id: `choice_rep_${Math.random().toString(36).slice(2, 8)}`, type: 'addReputation' as const },
+          changes,
+        );
+        effects.push(nextAction);
+        return effects;
+      });
+      setSelectedReputationEffectIndex(selectedContainerActions.length);
+      return;
+    }
+
+    patchSelectedActionCollection((existing) => {
+      const effects = Array.isArray(existing) ? [...existing] : [];
+      const index = selectedReputationEffectIndex;
+
+      if (changes.length === 0) {
+        if (index >= 0 && index < effects.length) {
+          effects.splice(index, 1);
+        }
+        return effects;
+      }
+
+      const current = index >= 0 && index < effects.length
+        ? effects[index]
+        : { id: `choice_rep_${Math.random().toString(36).slice(2, 8)}`, type: 'addReputation' as const };
+      const nextAction = mergeDialogueActionReputation(current, changes);
+      if (index >= 0 && index < effects.length) {
+        effects[index] = nextAction;
+      } else {
+        effects.push(nextAction);
+      }
+      return effects;
+    });
+
+    if (changes.length === 0) {
+      setSelectedReputationEffectIndex(-1);
+    }
+  }
+
+  function updateSelectedChoiceCitizenship(value: CitizenshipEffectEditorValue | null) {
+    if (selectedContainerActions.length === 0 && selectedEffectContainer !== 'node_actions') {
+      return;
+    }
+
+    if (selectedCitizenshipEffectIndex < 0) {
+      if (!value) {
+        return;
+      }
+
+      patchSelectedActionCollection((existing) => {
+        const effects = Array.isArray(existing) ? [...existing] : [];
+        const nextAction = mergeDialogueActionCitizenship(
+          { id: `choice_cit_${Math.random().toString(36).slice(2, 8)}`, type: 'changeCitizenship' as const },
+          value,
+        );
+        effects.push(nextAction);
+        return effects;
+      });
+      setSelectedCitizenshipEffectIndex(selectedContainerActions.length);
+      return;
+    }
+
+    patchSelectedActionCollection((existing) => {
+      const effects = Array.isArray(existing) ? [...existing] : [];
+      const index = selectedCitizenshipEffectIndex;
+
+      if (!value) {
+        if (index >= 0 && index < effects.length) {
+          effects.splice(index, 1);
+        }
+        return effects;
+      }
+
+      const current = index >= 0 && index < effects.length
+        ? effects[index]
+        : { id: `choice_cit_${Math.random().toString(36).slice(2, 8)}`, type: 'changeCitizenship' as const };
+      const nextAction = mergeDialogueActionCitizenship(current, value);
+      if (index >= 0 && index < effects.length) {
+        effects[index] = nextAction;
+      } else {
+        effects.push(nextAction);
+      }
+
+      return effects;
+    });
+
+    if (!value) {
+      setSelectedCitizenshipEffectIndex(-1);
+    }
+  }
+
+  function addReputationEffectToChoice() {
+    updateSelectedChoiceReputation([{ targetType: 'kingdom', targetId: 'luminor', amount: 0 }]);
+  }
+
+  function removeSelectedReputationEffectFromChoice() {
+    updateSelectedChoiceReputation([]);
+  }
+
+  function addCitizenshipEffectToChoice() {
+    updateSelectedChoiceCitizenship({
+      kingdomId: 'luminor',
+      oldKingdomPenalty: -50,
+      newKingdomBonus: 20,
+      requireAuthorityNpc: true,
+    });
+  }
+
+  function removeSelectedCitizenshipEffectFromChoice() {
+    updateSelectedChoiceCitizenship(null);
+  }
+
   function applyMineDialogueTemplate() {
     const mineId = mineActionMineId.trim() || 'mine_teramor_mineral';
     const nextNodes: DialogueNode[] = [
@@ -588,6 +876,84 @@ export function DialoguesPage() {
           <div className="admin-actions-row" style={{ marginTop: 8 }}>
             <button type="button" onClick={addOpenMineActionToChoice}>Открыть шахту</button>
           </div>
+
+          <section className="card admin-item-preview" style={{ marginTop: 12 }}>
+            <h4>Репутация и подданство</h4>
+            <p className="muted">
+              Выберите Node и при необходимости Choice, затем укажите контейнер эффектов (choice.effects, choice.actions или node.actions).
+            </p>
+            <label>
+              <AdminFieldLabel label="Контейнер эффектов" hint="Куда сохранить addReputation/changeCitizenship в JSON." />
+              <select
+                value={selectedEffectContainer}
+                onChange={(event) => setSelectedEffectContainer(event.target.value as DialogueEffectContainer)}
+              >
+                <option value="choice_effects">choice.effects</option>
+                <option value="choice_actions">choice.actions</option>
+                <option value="node_actions">node.actions</option>
+              </select>
+            </label>
+            <div className="admin-form-grid" style={{ marginBottom: 10 }}>
+              <label>
+                <AdminFieldLabel label="Reputation effect" hint="Можно иметь несколько addReputation/add_reputation в одном choice." />
+                <select
+                  value={selectedReputationEffectIndex >= 0 ? String(selectedReputationEffectIndex) : ''}
+                  onChange={(event) => setSelectedReputationEffectIndex(event.target.value ? Number(event.target.value) : -1)}
+                >
+                  <option value="">Не выбран</option>
+                  {selectedChoiceReputationEffectEntries.map(({ entry, index }, idx) => (
+                    <option key={`${entry.id ?? 'rep'}-${index}`} value={String(index)}>
+                      {`#${idx + 1} (${entry.id ?? entry.type})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="admin-actions-row" style={{ alignSelf: 'end' }}>
+                <button type="button" onClick={addReputationEffectToChoice}>Добавить reputation effect</button>
+                <button
+                  type="button"
+                  onClick={removeSelectedReputationEffectFromChoice}
+                  disabled={selectedReputationEffectIndex < 0}
+                >
+                  Удалить выбранный reputation effect
+                </button>
+              </div>
+            </div>
+            <ReputationChangesEditor
+              value={selectedChoiceReputationChanges}
+              onChange={updateSelectedChoiceReputation}
+            />
+            <div className="admin-form-grid" style={{ marginBottom: 10 }}>
+              <label>
+                <AdminFieldLabel label="Citizenship effect" hint="Можно иметь несколько changeCitizenship/change_citizenship в одном choice." />
+                <select
+                  value={selectedCitizenshipEffectIndex >= 0 ? String(selectedCitizenshipEffectIndex) : ''}
+                  onChange={(event) => setSelectedCitizenshipEffectIndex(event.target.value ? Number(event.target.value) : -1)}
+                >
+                  <option value="">Не выбран</option>
+                  {selectedChoiceCitizenshipEffectEntries.map(({ entry, index }, idx) => (
+                    <option key={`${entry.id ?? 'cit'}-${index}`} value={String(index)}>
+                      {`#${idx + 1} (${entry.id ?? entry.type})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="admin-actions-row" style={{ alignSelf: 'end' }}>
+                <button type="button" onClick={addCitizenshipEffectToChoice}>Добавить citizenship effect</button>
+                <button
+                  type="button"
+                  onClick={removeSelectedCitizenshipEffectFromChoice}
+                  disabled={selectedCitizenshipEffectIndex < 0}
+                >
+                  Удалить выбранный citizenship effect
+                </button>
+              </div>
+            </div>
+            <CitizenshipEffectEditor
+              value={selectedChoiceCitizenship}
+              onChange={updateSelectedChoiceCitizenship}
+            />
+          </section>
         </section>
 
         <section className="card admin-item-preview">

@@ -351,6 +351,28 @@ function normalizeChoiceEffects(interaction: QuestInteractionDefinition, choice:
   return [...fromNew, ...legacy].filter((effect) => Boolean(effect.type));
 }
 
+function normalizeReputationChanges(effect: QuestInteractionEffect): Array<{ factionId?: string; kingdomId?: string; amount: number }> {
+  if (Array.isArray(effect.reputationChanges) && effect.reputationChanges.length > 0) {
+    return effect.reputationChanges
+      .map((entry) => {
+        const targetType = String(entry.targetType ?? '').trim();
+        const targetId = String(entry.targetId ?? '').trim();
+        const kingdomId = String(entry.kingdomId ?? '').trim();
+        const factionId = String(entry.factionId ?? '').trim();
+        const resolvedKingdomId = targetType === 'kingdom' ? targetId : kingdomId;
+        const resolvedFactionId = targetType === 'faction' ? targetId : factionId;
+        return {
+          kingdomId: resolvedKingdomId || undefined,
+          factionId: resolvedFactionId || undefined,
+          amount: Number(entry.amount ?? 0),
+        };
+      })
+      .filter((entry) => Boolean(entry.kingdomId || entry.factionId));
+  }
+
+  return [{ factionId: effect.factionId, kingdomId: effect.kingdomId, amount: effect.amount ?? 0 }];
+}
+
 export function runQuestInteractionEffects(
   playerId: string,
   interaction: QuestInteractionDefinition,
@@ -411,22 +433,24 @@ export function runQuestInteractionEffects(
             }
           }
           break;
-        case 'add_reputation': {
-          const reputationChanges = Array.isArray(effect.reputationChanges) && effect.reputationChanges.length > 0
-            ? effect.reputationChanges
-            : [{ factionId: effect.factionId, kingdomId: effect.kingdomId, amount: effect.amount ?? 0 }];
+        case 'add_reputation':
+        case 'addReputation': {
+          const reputationChanges = normalizeReputationChanges(effect);
           const repLogs = applyPlayerReputationChanges(reputationChanges, { source: 'interaction' });
           logs.push(...repLogs);
           grantedRewardLines.push(...repLogs);
           break;
         }
         case 'change_citizenship':
-          if (isKingdomId(effect.kingdomId)) {
-            logs.push(...applyPlayerCitizenshipCommand(effect.kingdomId));
+        case 'changeCitizenship': {
+          const kingdomId = effect.changeCitizenship?.kingdomId ?? effect.kingdomId;
+          if (isKingdomId(kingdomId)) {
+            logs.push(...applyPlayerCitizenshipCommand(kingdomId));
           } else {
             logs.push('Citizenship change skipped: missing kingdomId.');
           }
           break;
+        }
         case 'give_item':
           if (effect.itemId) {
             const items = readArray(PLAYER_ITEMS_KEY);

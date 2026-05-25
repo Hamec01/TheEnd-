@@ -1,4 +1,5 @@
 import type { DialogueDefinition, DialogueValidationWorldData } from '../types/dialogue';
+import { validateChangeCitizenshipValue, validateReputationChangesValue } from './reputationCitizenshipValidation';
 
 function hasId(list: string[], id: string | undefined): boolean {
   if (!id) {
@@ -52,6 +53,8 @@ function normalizeActionType(type: string): string {
       return 'giveGold';
     case 'give_experience':
       return 'giveExperience';
+      case 'add_reputation':
+        return 'addReputation';
     case 'give_skill':
       return 'trainSkill';
     case 'open_shop':
@@ -179,6 +182,14 @@ export function validateDialogue(
         if ((actionType === 'advanceQuest' || actionType === 'failQuest') && !action.questId) {
           warnings.push(`Action '${action.id}' ${action.type} is missing questId.`);
         }
+        errors.push(...validateReputationChangesValue(action.reputationChanges, `Choice '${choice.id}' action '${action.id ?? action.type}' reputationChanges`));
+        if (actionType === 'changeCitizenship') {
+          if (action.changeCitizenship !== undefined) {
+            errors.push(...validateChangeCitizenshipValue(action.changeCitizenship, `Choice '${choice.id}' action '${action.id ?? action.type}' changeCitizenship`));
+          } else if (action.kingdomId && !hasId(worldData.kingdomIds, action.kingdomId)) {
+            errors.push(`Action '${action.id ?? action.type}' has invalid kingdomId '${action.kingdomId}'.`);
+          }
+        }
         if (actionType === 'completeObjective' && (!action.questId || !action.objectiveId)) {
           warnings.push(`Action '${action.id}' completeObjective is missing questId/objectiveId.`);
         }
@@ -204,6 +215,14 @@ export function validateDialogue(
 
         if (effectType === 'openMine' && !String(mineId ?? '').trim()) {
           warnings.push(`Effect '${effect.id ?? '(no id)'}' openMine is missing mineId.`);
+        }
+        errors.push(...validateReputationChangesValue(effect.reputationChanges, `Choice '${choice.id}' effect '${effect.id ?? effect.type}' reputationChanges`));
+        if (effectType === 'changeCitizenship') {
+          if (effect.changeCitizenship !== undefined) {
+            errors.push(...validateChangeCitizenshipValue(effect.changeCitizenship, `Choice '${choice.id}' effect '${effect.id ?? effect.type}' changeCitizenship`));
+          } else if (effect.kingdomId && !hasId(worldData.kingdomIds, effect.kingdomId)) {
+            errors.push(`Effect '${effect.id ?? effect.type}' has invalid kingdomId '${effect.kingdomId}'.`);
+          }
         }
       }
 

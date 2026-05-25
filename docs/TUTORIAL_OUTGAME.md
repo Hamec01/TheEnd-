@@ -16,11 +16,7 @@
 
 ### Импорт/экспорт JSON в админке (формат файла)
 Импорт для коллекций поддерживает такие формы:
-1) **Массив**:
-```json
-[ { "...": "..." }, { "...": "..." } ]
 ```
-2) **Envelope**:
 ```json
 { "items": [ ... ] }
 ```
@@ -28,10 +24,6 @@
 ```json
 { "content": { "items": [ ... ] } }
 ```
-
-Экспорт обычно создаёт envelope вида:
-```json
-{
   "schemaVersion": 1,
   "game": "TheEnd",
   "exportedAt": "2026-05-13T12:00:00.000Z",
@@ -40,19 +32,11 @@
   "items": [ ... ]
 }
 ```
-
----
-
 ## 1) Предметы (`items`)
 Раздел админки: **КОНТЕНТ → ПРЕДМЕТЫ**
 
 ### Минимально важные поля
 - `id: string` (required)
-- `name: string` (required)
-- `type: ItemType` (required)
-- `rarity: ItemRarity` (required)
-- `price: number` (>= 0)
-- `stackable: boolean`
 - `createdAt: string(ISO)`, `updatedAt: string(ISO)` (обычно проставляет админка/импорт)
 
 ### Полезные поля

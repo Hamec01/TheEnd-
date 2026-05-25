@@ -3199,6 +3199,29 @@ h3 {
   gap: 6px 8px;
 }
 
+.reputation-editor-card,
+.citizenship-editor-card {
+  margin-top: 10px;
+}
+
+.reputation-editor-row {
+  margin-top: 8px;
+}
+
+.reputation-amount-input.is-positive {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, rgba(255, 255, 255, 0.2));
+}
+
+.reputation-amount-input.is-negative {
+  color: #f0a3a0;
+  border-color: color-mix(in srgb, #f0a3a0 45%, rgba(255, 255, 255, 0.2));
+}
+
+.reputation-amount-input.is-neutral {
+  color: var(--text-primary);
+}
+
 .admin-form-grid label,
 .admin-stat-grid label,
 .admin-actions-row label {

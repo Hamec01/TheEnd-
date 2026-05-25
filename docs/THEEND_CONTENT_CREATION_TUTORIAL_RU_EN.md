@@ -1448,6 +1448,122 @@ Use this stack:
 
 ---
 
+## 22. Репутация и подданство / Reputation and citizenship
+
+### RU
+
+Это раздел про инструментарий для будущего контента, а не про автогенерацию сюжетов.
+
+Репутацию можно менять через:
+- dialogue choice
+- quest reward
+- quest failure consequence
+- quest interaction
+
+Можно менять несколько репутаций одновременно, например:
+- `+20` Artalon
+- `-15` Argos
+- `+5` Kriantar
+
+Подданство меняется через `changeCitizenship`.
+
+Подданство не должен выдавать случайный NPC. Обычно это:
+- king
+- city ruler
+- council
+- official representative
+- special quest NPC with authority
+
+### EN
+
+This section describes admin tooling for future content creation. It does not auto-create story quests/events/factions.
+
+Reputation can be changed from:
+- dialogue choice
+- quest reward
+- quest failure consequence
+- quest interaction
+
+You can apply multiple reputation changes at once, for example:
+- `+20` Artalon
+- `-15` Argos
+- `+5` Kriantar
+
+Citizenship changes are configured via `changeCitizenship`.
+
+Citizenship should not be granted by random NPCs. In lore it should be an authority NPC (king/council/city ruler/official representative).
+
+### JSON examples
+
+Example 1: `reputationChanges` only
+
+```json
+{
+  "type": "addReputation",
+  "reputationChanges": [
+    {
+      "targetType": "kingdom",
+      "targetId": "artalon",
+      "kingdomId": "artalon",
+      "amount": 20
+    },
+    {
+      "targetType": "kingdom",
+      "targetId": "argos",
+      "kingdomId": "argos",
+      "amount": -15
+    }
+  ]
+}
+```
+
+Example 2: `changeCitizenship`
+
+```json
+{
+  "type": "changeCitizenship",
+  "kingdomId": "luminor",
+  "changeCitizenship": {
+    "kingdomId": "luminor",
+    "oldKingdomPenalty": -50,
+    "newKingdomBonus": 20,
+    "requireAuthorityNpc": true
+  }
+}
+```
+
+Example 3: both together
+
+```json
+{
+  "effects": [
+    {
+      "type": "changeCitizenship",
+      "kingdomId": "luminor",
+      "changeCitizenship": {
+        "kingdomId": "luminor",
+        "oldKingdomPenalty": -50,
+        "newKingdomBonus": 20,
+        "requireAuthorityNpc": true
+      }
+    },
+    {
+      "type": "addReputation",
+      "reputationChanges": [
+        {
+          "targetType": "kingdom",
+          "targetId": "luminor",
+          "kingdomId": "luminor",
+          "amount": 20
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 ## 22. Mining entry on world map / Вход в шахту через карту мира
 
 ### RU

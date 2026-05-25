@@ -475,6 +475,8 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'takeGold';
     case 'give_experience':
       return 'giveExperience';
+    case 'add_reputation':
+      return 'addReputation';
     case 'change_citizenship':
       return 'changeCitizenship';
     case 'give_skill':
@@ -572,6 +574,28 @@ function normalizeActions(actions: DialogueAction[]): DialogueAction[] {
   }
 
   return normalized.filter((_, index) => !skippedTakeGoldIndexes.has(index));
+}
+
+function normalizeReputationChanges(action: DialogueAction): Array<{ factionId?: string; kingdomId?: string; amount: number }> {
+  if (Array.isArray(action.reputationChanges) && action.reputationChanges.length > 0) {
+    return action.reputationChanges
+      .map((entry) => {
+        const targetType = String(entry.targetType ?? '').trim();
+        const targetId = String(entry.targetId ?? '').trim();
+        const kingdomId = String(entry.kingdomId ?? '').trim();
+        const factionId = String(entry.factionId ?? '').trim();
+        const resolvedKingdomId = targetType === 'kingdom' ? targetId : kingdomId;
+        const resolvedFactionId = targetType === 'faction' ? targetId : factionId;
+        return {
+          kingdomId: resolvedKingdomId || undefined,
+          factionId: resolvedFactionId || undefined,
+          amount: Number(entry.amount ?? 0),
+        };
+      })
+      .filter((entry) => Boolean(entry.kingdomId || entry.factionId));
+  }
+
+  return [{ factionId: action.factionId, kingdomId: action.kingdomId, amount: action.amount ?? 0 }];
 }
 
 function isFullHealChoiceText(text: string | undefined): boolean {
@@ -795,14 +819,12 @@ export function executeDialogueActions(
         logs.push(`Healing service requested: full (${getActionGoldCost(action)})`);
         break;
       case 'addReputation': {
-        const reputationChanges = Array.isArray(action.reputationChanges) && action.reputationChanges.length > 0
-          ? action.reputationChanges
-          : [{ factionId: action.factionId, kingdomId: action.kingdomId, amount: action.amount ?? 0 }];
+        const reputationChanges = normalizeReputationChanges(action);
         logs.push(...applyPlayerReputationChanges(reputationChanges, { source: 'dialogue' }));
         break;
       }
       case 'changeCitizenship': {
-        const kingdomId = String(action.kingdomId ?? action.value ?? '').trim();
+        const kingdomId = String(action.changeCitizenship?.kingdomId ?? action.kingdomId ?? action.value ?? '').trim();
         if (!isKingdomId(kingdomId)) {
           logs.push('changeCitizenship skipped: missing kingdomId.');
           break;

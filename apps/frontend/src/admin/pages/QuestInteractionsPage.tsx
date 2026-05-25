@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
+import { CitizenshipEffectEditor, type CitizenshipEffectEditorValue } from '../components/CitizenshipEffectEditor';
+import { ReputationChangesEditor, type ReputationChangeEditorValue } from '../components/ReputationChangesEditor';
+import {
+  mergeInteractionEffectCitizenship,
+  mergeInteractionEffectReputation,
+  toEditorCitizenshipEffect,
+  toEditorReputationChanges,
+} from '../components/reputationEffectAdapters';
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import {
   deleteQuestInteraction,
@@ -18,6 +26,8 @@ import { getContentCollection } from '../../services/content/contentApi';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import type { AdminItem, AdminSkill } from '../../services/content/models';
 import type { QuestInteractionDefinition, QuestInteractionChoice } from '../../types/quest';
+import { validateChangeCitizenshipValue, validateReputationChangesValue } from '../../services/reputationCitizenshipValidation';
+import { isKingdomId } from '@theend/rpg-domain';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const TRIGGER_TYPES: QuestInteractionDefinition['triggerType'][] = [
@@ -135,6 +145,9 @@ export function QuestInteractionsPage() {
   const [draft, setDraft] = useState<QuestInteractionDefinition>(emptyInteraction());
   const [requirementsJson, setRequirementsJson] = useState('[]');
   const [choicesJson, setChoicesJson] = useState('[]');
+  const [selectedChoiceId, setSelectedChoiceId] = useState('');
+  const [selectedReputationEffectIndex, setSelectedReputationEffectIndex] = useState(-1);
+  const [selectedCitizenshipEffectIndex, setSelectedCitizenshipEffectIndex] = useState(-1);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
@@ -183,6 +196,86 @@ export function QuestInteractionsPage() {
     setRequirementsJson(JSON.stringify(draft.requirements ?? [], null, 2));
     setChoicesJson(JSON.stringify(draft.choices ?? [], null, 2));
   }, [draft]);
+
+  const parsedChoices = useMemo(() => {
+    try {
+      const parsed = JSON.parse(choicesJson) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((entry): entry is QuestInteractionChoice => Boolean(entry && typeof entry === 'object'))
+        : [];
+    } catch {
+      return [];
+    }
+  }, [choicesJson]);
+
+  useEffect(() => {
+    if (!parsedChoices.some((entry) => entry.id === selectedChoiceId)) {
+      setSelectedChoiceId(parsedChoices[0]?.id ?? '');
+    }
+  }, [parsedChoices, selectedChoiceId]);
+
+  const selectedChoice = useMemo(
+    () => parsedChoices.find((entry) => entry.id === selectedChoiceId) ?? null,
+    [parsedChoices, selectedChoiceId],
+  );
+
+  const selectedChoiceReputationChanges = useMemo(() => {
+    if (!selectedChoice) {
+      return [];
+    }
+    const effects = selectedChoice.effects ?? [];
+    const effect = selectedReputationEffectIndex >= 0
+      ? effects[selectedReputationEffectIndex]
+      : undefined;
+    return toEditorReputationChanges(effect?.reputationChanges);
+  }, [selectedChoice, selectedReputationEffectIndex]);
+
+  const selectedChoiceCitizenship = useMemo(() => {
+    if (!selectedChoice) {
+      return null;
+    }
+    const effects = selectedChoice.effects ?? [];
+    const effect = selectedCitizenshipEffectIndex >= 0
+      ? effects[selectedCitizenshipEffectIndex]
+      : undefined;
+    return toEditorCitizenshipEffect(effect?.changeCitizenship ?? effect?.kingdomId);
+  }, [selectedChoice, selectedCitizenshipEffectIndex]);
+
+  const selectedChoiceReputationEffectEntries = useMemo(() => {
+    const effects = selectedChoice?.effects ?? [];
+    return effects
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.type === 'add_reputation' || entry.type === 'addReputation');
+  }, [selectedChoice]);
+
+  const selectedChoiceCitizenshipEffectEntries = useMemo(() => {
+    const effects = selectedChoice?.effects ?? [];
+    return effects
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry.type === 'change_citizenship' || entry.type === 'changeCitizenship');
+  }, [selectedChoice]);
+
+  useEffect(() => {
+    const available = selectedChoiceReputationEffectEntries.map((entry) => entry.index);
+    if (available.length === 0) {
+      setSelectedReputationEffectIndex(-1);
+      return;
+    }
+    if (!available.includes(selectedReputationEffectIndex)) {
+      setSelectedReputationEffectIndex(available[0]);
+    }
+  }, [selectedChoiceReputationEffectEntries, selectedReputationEffectIndex]);
+
+  useEffect(() => {
+    const available = selectedChoiceCitizenshipEffectEntries.map((entry) => entry.index);
+    if (available.length === 0) {
+      setSelectedCitizenshipEffectIndex(-1);
+      return;
+    }
+    if (!available.includes(selectedCitizenshipEffectIndex)) {
+      setSelectedCitizenshipEffectIndex(available[0]);
+    }
+  }, [selectedChoiceCitizenshipEffectEntries, selectedCitizenshipEffectIndex]);
 
   const visibleInteractions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -247,6 +340,14 @@ export function QuestInteractionsPage() {
       choiceIds.add(choice.id);
 
       for (const effect of choice.effects ?? []) {
+          errors.push(...validateReputationChangesValue(effect.reputationChanges, `choice ${choice.id} effect ${effect.type} reputationChanges`));
+          if (effect.type === 'change_citizenship' || effect.type === 'changeCitizenship') {
+            if (effect.changeCitizenship !== undefined) {
+              errors.push(...validateChangeCitizenshipValue(effect.changeCitizenship, `choice ${choice.id} effect ${effect.type} changeCitizenship`));
+            } else if (effect.kingdomId && !isKingdomId(effect.kingdomId)) {
+              errors.push(`Effect ${effect.type}: kingdomId невалиден (${effect.kingdomId})`);
+            }
+          }
         if (effect.questId && !questIds.includes(effect.questId)) {
           errors.push(`Effect ${effect.type}: questId не найден (${effect.questId})`);
         }
@@ -336,6 +437,134 @@ export function QuestInteractionsPage() {
     } catch (error) {
       setStatus(translateAdminErrorMessage((error as Error).message));
     }
+  }
+
+  function patchChoiceEffects(mutator: (choice: QuestInteractionChoice) => QuestInteractionChoice) {
+    if (!selectedChoiceId) {
+      setStatus('Сначала выберите choice для редактирования эффектов.');
+      return;
+    }
+
+    const nextChoices = parsedChoices.map((choice) => {
+      if (choice.id !== selectedChoiceId) {
+        return choice;
+      }
+      return mutator(choice);
+    });
+    setChoicesJson(JSON.stringify(nextChoices, null, 2));
+  }
+
+  function updateSelectedChoiceReputation(changes: ReputationChangeEditorValue[]) {
+    if (!selectedChoice) {
+      return;
+    }
+
+    if (selectedReputationEffectIndex < 0) {
+      if (changes.length === 0) {
+        return;
+      }
+      patchChoiceEffects((choice) => {
+        const effects = Array.isArray(choice.effects) ? [...choice.effects] : [];
+        effects.push(mergeInteractionEffectReputation({ type: 'add_reputation' as const }, changes));
+        return { ...choice, effects };
+      });
+      setSelectedReputationEffectIndex((selectedChoice.effects ?? []).length);
+      return;
+    }
+
+    patchChoiceEffects((choice) => {
+      const effects = Array.isArray(choice.effects) ? [...choice.effects] : [];
+      const index = selectedReputationEffectIndex;
+
+      if (changes.length === 0) {
+        if (index >= 0 && index < effects.length) {
+          effects.splice(index, 1);
+        }
+        return { ...choice, effects };
+      }
+
+      const current = index >= 0 && index < effects.length
+        ? effects[index]
+        : { type: 'add_reputation' as const };
+      const nextEffect = mergeInteractionEffectReputation(current, changes);
+      if (index >= 0 && index < effects.length) {
+        effects[index] = nextEffect;
+      } else {
+        effects.push(nextEffect);
+      }
+      return { ...choice, effects };
+    });
+
+    if (changes.length === 0) {
+      setSelectedReputationEffectIndex(-1);
+    }
+  }
+
+  function updateSelectedChoiceCitizenship(value: CitizenshipEffectEditorValue | null) {
+    if (!selectedChoice) {
+      return;
+    }
+
+    if (selectedCitizenshipEffectIndex < 0) {
+      if (!value) {
+        return;
+      }
+      patchChoiceEffects((choice) => {
+        const effects = Array.isArray(choice.effects) ? [...choice.effects] : [];
+        effects.push(mergeInteractionEffectCitizenship({ type: 'change_citizenship' as const }, value));
+        return { ...choice, effects };
+      });
+      setSelectedCitizenshipEffectIndex((selectedChoice.effects ?? []).length);
+      return;
+    }
+
+    patchChoiceEffects((choice) => {
+      const effects = Array.isArray(choice.effects) ? [...choice.effects] : [];
+      const index = selectedCitizenshipEffectIndex;
+
+      if (!value) {
+        if (index >= 0 && index < effects.length) {
+          effects.splice(index, 1);
+        }
+        return { ...choice, effects };
+      }
+
+      const current = index >= 0 && index < effects.length
+        ? effects[index]
+        : { type: 'change_citizenship' as const };
+      const nextEffect = mergeInteractionEffectCitizenship(current, value);
+      if (index >= 0 && index < effects.length) {
+        effects[index] = nextEffect;
+      } else {
+        effects.push(nextEffect);
+      }
+      return { ...choice, effects };
+    });
+
+    if (!value) {
+      setSelectedCitizenshipEffectIndex(-1);
+    }
+  }
+
+  function addReputationEffectToChoice() {
+    updateSelectedChoiceReputation([{ targetType: 'kingdom', targetId: 'luminor', amount: 0 }]);
+  }
+
+  function removeSelectedReputationEffectFromChoice() {
+    updateSelectedChoiceReputation([]);
+  }
+
+  function addCitizenshipEffectToChoice() {
+    updateSelectedChoiceCitizenship({
+      kingdomId: 'luminor',
+      oldKingdomPenalty: -50,
+      newKingdomBonus: 20,
+      requireAuthorityNpc: true,
+    });
+  }
+
+  function removeSelectedCitizenshipEffectFromChoice() {
+    updateSelectedChoiceCitizenship(null);
   }
 
   function exportJson() {
@@ -585,6 +814,67 @@ export function QuestInteractionsPage() {
           <textarea rows={14} value={choicesJson} onChange={(event) => setChoicesJson(event.target.value)} />
           <small className="muted">Эффекты понимают `add_reputation`, `reputationChanges` и `change_citizenship`.</small>
         </label>
+
+        <section className="card admin-item-preview">
+          <h4>Репутация и подданство</h4>
+          <label>
+            <AdminFieldLabel label="Choice" hint="Выберите choice, для которого редактируются эффекты." />
+            <select value={selectedChoiceId} onChange={(event) => setSelectedChoiceId(event.target.value)}>
+              <option value="">Выберите choice</option>
+              {parsedChoices.map((choice) => <option key={choice.id} value={choice.id}>{choice.text || choice.id}</option>)}
+            </select>
+          </label>
+
+          <div className="admin-form-grid" style={{ marginBottom: 10 }}>
+            <label>
+              <AdminFieldLabel label="Reputation effect" hint="Можно иметь несколько add_reputation/addReputation в одном choice." />
+              <select
+                value={selectedReputationEffectIndex >= 0 ? String(selectedReputationEffectIndex) : ''}
+                onChange={(event) => setSelectedReputationEffectIndex(event.target.value ? Number(event.target.value) : -1)}
+              >
+                <option value="">Не выбран</option>
+                {selectedChoiceReputationEffectEntries.map(({ entry, index }, idx) => (
+                  <option key={`${entry.type}-${index}`} value={String(index)}>
+                    {`#${idx + 1} (${entry.type})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="admin-actions-row" style={{ alignSelf: 'end' }}>
+              <button type="button" onClick={addReputationEffectToChoice}>Добавить reputation effect</button>
+              <button type="button" onClick={removeSelectedReputationEffectFromChoice} disabled={selectedReputationEffectIndex < 0}>
+                Удалить выбранный reputation effect
+              </button>
+            </div>
+          </div>
+
+          <ReputationChangesEditor value={selectedChoiceReputationChanges} onChange={updateSelectedChoiceReputation} />
+
+          <div className="admin-form-grid" style={{ marginBottom: 10 }}>
+            <label>
+              <AdminFieldLabel label="Citizenship effect" hint="Можно иметь несколько change_citizenship/changeCitizenship в одном choice." />
+              <select
+                value={selectedCitizenshipEffectIndex >= 0 ? String(selectedCitizenshipEffectIndex) : ''}
+                onChange={(event) => setSelectedCitizenshipEffectIndex(event.target.value ? Number(event.target.value) : -1)}
+              >
+                <option value="">Не выбран</option>
+                {selectedChoiceCitizenshipEffectEntries.map(({ entry, index }, idx) => (
+                  <option key={`${entry.type}-${index}`} value={String(index)}>
+                    {`#${idx + 1} (${entry.type})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="admin-actions-row" style={{ alignSelf: 'end' }}>
+              <button type="button" onClick={addCitizenshipEffectToChoice}>Добавить citizenship effect</button>
+              <button type="button" onClick={removeSelectedCitizenshipEffectFromChoice} disabled={selectedCitizenshipEffectIndex < 0}>
+                Удалить выбранный citizenship effect
+              </button>
+            </div>
+          </div>
+
+          <CitizenshipEffectEditor value={selectedChoiceCitizenship} onChange={updateSelectedChoiceCitizenship} />
+        </section>
 
         <div className="admin-actions-row">
           <button disabled={isSaving} onClick={() => { void saveCurrent(); }}>{isSaving ? 'Сохранение...' : (selectedId ? 'Сохранить' : 'Создать')}</button>
