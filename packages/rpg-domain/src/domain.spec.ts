@@ -65,9 +65,9 @@ describe('race definitions', () => {
     expect(dwarf.canUseMagic).toBe(false);
     expect(dwarf.canUseElements).toBe(false);
     expect(dwarf.magicDamageTakenMultiplier).toBe(0.5);
-    expect(dwarf.elementDamageTakenMultiplier).toBe(0.5);
+    expect(dwarf.elementDamageTakenMultiplier).toBe(1);
 
-    expect(human.elementMpCostMultiplier).toBe(2);
+    expect(human.elementMpCostMultiplier).toBe(1);
 
     expect(highElf.magicMpCostMultiplier).toBe(2);
     expect(highElf.elementMpCostMultiplier).toBe(1);

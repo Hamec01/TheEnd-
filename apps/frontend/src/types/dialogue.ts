@@ -146,6 +146,8 @@ export interface DialogueAction {
     | 'giveExperience'
     | 'give_experience'
     | 'addReputation'
+    | 'changeCitizenship'
+    | 'change_citizenship'
     | 'openShop'
     | 'open_shop'
     | 'startCombat'
@@ -189,6 +191,11 @@ export interface DialogueAction {
   costGold?: number;
   mineId?: string;
   action?: string;
+  reputationChanges?: Array<{
+    factionId?: string;
+    kingdomId?: string;
+    amount: number;
+  }>;
   payload?: {
     mineId?: string;
     [key: string]: unknown;

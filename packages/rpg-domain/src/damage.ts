@@ -1,5 +1,7 @@
 import type { RaceModifiers } from './races';
+import { Race } from './races';
 import type { StatBlock } from './stats';
+import { getRaceOutgoingDamageMultiplier } from './character-rules';
 
 export type DamageCategory =
   | 'physical'
@@ -75,6 +77,7 @@ export interface DamagePayload {
   ignoresArmor?: boolean;
   ignoresResistance?: boolean;
   sourceSkillId?: string;
+  tags?: string[];
 }
 
 export type ElementStatusEffect =
@@ -273,6 +276,7 @@ export function checkElementCombo(
 
 export interface DamageEntityLike {
   stats: StatBlock;
+  race?: Race;
   raceModifiers?: RaceModifiers;
   activeEffects?: Array<string | { id: string; type: string; turnsLeft: number }>;
 }
@@ -324,6 +328,14 @@ export function calculateFinalDamage(input: CalculateFinalDamageInput): DamageCa
   if (payload.category === 'elemental' && payload.elementType) {
     multiplier *= getElementMultiplier(payload.elementType, context.targetElementState);
   }
+  if (input.attacker.race) {
+    multiplier *= getRaceOutgoingDamageMultiplier({
+      race: input.attacker.race,
+      category: payload.category,
+      elementType: payload.elementType,
+      tags: payload.tags,
+    });
+  }
 
   amount = Math.max(0, amount * multiplier);
 
@@ -332,6 +344,12 @@ export function calculateFinalDamage(input: CalculateFinalDamageInput): DamageCa
   }
   if (payload.category === 'elemental') {
     amount *= input.defender.raceModifiers?.elementDamageTakenMultiplier ?? 1;
+  }
+  if (payload.category === 'runic') {
+    amount *= input.defender.raceModifiers?.runicDamageTakenMultiplier ?? 1;
+  }
+  if (payload.category === 'shamanic') {
+    amount *= input.defender.raceModifiers?.shamanicDamageTakenMultiplier ?? 1;
   }
 
   let mitigation = 0;

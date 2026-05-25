@@ -183,7 +183,7 @@ export function DialoguesPage() {
     questItemIds,
     skillIds,
     factionIds: ['free_cities', 'artalon_guard', 'mist_cult'],
-    kingdomIds: ['artalon', 'none'],
+    kingdomIds: ['luminor', 'artalon', 'kriantar', 'terimia', 'argos', 'none'],
     locationIds: ['arklein', 'brenhold', 'ironcrest', 'whisper_port'],
   }), [itemIds, npcIds, questIds, questItemIds, skillIds]);
 
@@ -552,6 +552,7 @@ export function DialoguesPage() {
             <button type="button" onClick={applyMineDialogueTemplate}>Шаблон: Вход в шахту</button>
           </div>
           <textarea rows={20} value={nodesJson} onChange={(event) => setNodesJson(event.target.value)} onBlur={() => patch({ nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes) })} />
+          <p className="muted" style={{ marginTop: 8 }}>Actions внутри choice/node поддерживают `addReputation`, массив `reputationChanges` и `changeCitizenship` с `kingdomId`.</p>
           <div className="admin-form-grid" style={{ marginTop: 12 }}>
             <label>
               <AdminFieldLabel label="Открыть шахту" hint="Добавить action/effect open_mine в choice." />

@@ -4,8 +4,14 @@ import {
   Race,
   STARTING_GOLD,
   applyAllocation,
+  createInitialCitizenshipState,
   getAllocationCost,
   getRaceDefinition,
+  getStartingFreePoints,
+  getStartingProfessionIds,
+  getStartingSkillIds,
+  getKingdomStartingGoldBonus,
+  isKingdomId,
   validateAllocation,
 } from '@theend/rpg-domain';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,12 +19,16 @@ import { isFileStorageMode } from '../config/storage-mode';
 import { CreateCharacterDto, normalizeAllocation } from './dto.create-character.dto';
 import { AllocateStatsDto } from './dto.allocate-stats.dto';
 import { RuntimeCharacterStore, type RuntimeCharacterRecord } from './runtime-character-store';
+import { CharacterMetadataStore } from './character-metadata.store';
 
 @Injectable()
 export class CharactersService {
   private readonly runtimeStore = new RuntimeCharacterStore();
+  private readonly metadataStore: CharacterMetadataStore;
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {
+    this.metadataStore = new CharacterMetadataStore(this.prisma, this.runtimeStore);
+  }
 
   getRuntimeStorageHealth(): {
     runtimeStorage: 'readable-writable' | 'unavailable';
@@ -73,21 +83,33 @@ export class CharactersService {
     const allocation = normalizeAllocation(dto.allocation ?? {});
 
     try {
-      validateAllocation(allocation);
+      validateAllocation(allocation, getStartingFreePoints(dto.race as Race));
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
 
+    const citizenshipKingdomId = dto.citizenshipKingdomId && isKingdomId(dto.citizenshipKingdomId)
+      ? dto.citizenshipKingdomId
+      : null;
+    if (dto.race === Race.Human && !citizenshipKingdomId) {
+      throw new BadRequestException('Human characters must select a kingdom citizenship.');
+    }
+    if (dto.race !== Race.Human && citizenshipKingdomId) {
+      throw new BadRequestException('Only humans can start with human kingdom citizenship.');
+    }
+
     const finalStats = applyAllocation(raceDef.baseStats, allocation);
     const spent = getAllocationCost(allocation);
+    const startingFreePoints = getStartingFreePoints(dto.race as Race);
+    const finalStartingGold = STARTING_GOLD + getKingdomStartingGoldBonus(citizenshipKingdomId);
 
     const data = {
       name: dto.name,
       race: dto.race,
       level: 0,
       exp: 0,
-      freePoints: Math.max(0, 5 - spent),
-      gold: STARTING_GOLD,
+      freePoints: Math.max(0, startingFreePoints - spent),
+      gold: finalStartingGold,
       hpBase: finalStats.hp,
       mpBase: finalStats.mp,
       staminaBase: finalStats.stamina,
@@ -107,6 +129,9 @@ export class CharactersService {
         id: randomUUID(),
         accountId: resolvedAccountId,
         ...data,
+        ...createInitialCitizenshipState(citizenshipKingdomId),
+        startingProfessionIds: getStartingProfessionIds(dto.race as Race),
+        startingSkillIds: getStartingSkillIds(dto.race as Race),
         createdAt: now,
         updatedAt: now,
       };
@@ -121,7 +146,13 @@ export class CharactersService {
       equipment: { create: {} },
     };
 
-    return this.prisma.character.create({ data: createData });
+    const created = await this.prisma.character.create({ data: createData });
+    await this.metadataStore.set(created.id, {
+      ...createInitialCitizenshipState(citizenshipKingdomId),
+      startingProfessionIds: getStartingProfessionIds(dto.race as Race),
+      startingSkillIds: getStartingSkillIds(dto.race as Race),
+    });
+    return created;
   }
 
   async listForAccount(accountId?: string) {

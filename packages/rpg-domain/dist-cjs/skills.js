@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAdjustedSkillCost = getAdjustedSkillCost;
 exports.canUseSkill = canUseSkill;
 exports.applySkillCost = applySkillCost;
+const character_rules_1 = require("./character-rules");
 function getMpMultiplier(category, modifiers) {
     if (category === 'magic') {
         return modifiers.magicMpCostMultiplier;
@@ -11,6 +12,21 @@ function getMpMultiplier(category, modifiers) {
         return modifiers.elementMpCostMultiplier;
     }
     return 1;
+}
+function toSkillType(category) {
+    if (category === 'elemental') {
+        return 'elemental_magic';
+    }
+    if (category === 'magic') {
+        return 'normal_magic';
+    }
+    if (category === 'shamanic') {
+        return 'shamanism';
+    }
+    if (category === 'runic') {
+        return 'rune';
+    }
+    return 'physical';
 }
 function getAdjustedSkillCost(skill, modifiers) {
     const mpBase = skill.cost.mp ?? 0;
@@ -28,6 +44,9 @@ function canUseSkill(user, skill) {
     }
     if (skill.forbiddenRace && skill.forbiddenRace.includes(user.race)) {
         return { ok: false, reason: 'Skill is forbidden for this race.', adjustedCost: skill.cost };
+    }
+    if (!(0, character_rules_1.canRaceUseSkillType)(user.race, toSkillType(skill.category))) {
+        return { ok: false, reason: 'Race cannot use this skill category.', adjustedCost: skill.cost };
     }
     if (skill.category === 'magic' && !user.raceModifiers.canUseMagic) {
         return { ok: false, reason: 'Race cannot use magic skills.', adjustedCost: skill.cost };

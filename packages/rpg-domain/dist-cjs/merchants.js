@@ -9,6 +9,7 @@ exports.MERCHANTS = [
         id: 'merchant_weaponsmith',
         name: 'Гаррик Оружейник',
         merchantType: 'weaponsmith',
+        kingdomId: 'argos',
         itemIds: [
             'iron_sword',
             'raider_axe',
@@ -28,6 +29,7 @@ exports.MERCHANTS = [
         id: 'merchant_armorer',
         name: 'Бруна Бронник',
         merchantType: 'armorer',
+        kingdomId: 'argos',
         itemIds: [
             'leather_helmet',
             'plated_helm',
@@ -45,6 +47,7 @@ exports.MERCHANTS = [
         id: 'merchant_supplier',
         name: 'Селла Припасы',
         merchantType: 'supplier',
+        kingdomId: 'argos',
         itemIds: ['potion_hp_small', 'potion_mp_small', 'tonic_focus', 'tonic_ironhide', 'potion_stamina_large'],
     },
 ];

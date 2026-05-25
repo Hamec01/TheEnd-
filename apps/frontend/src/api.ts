@@ -8,6 +8,7 @@ import type {
   PrimaryStat,
   Race,
   StatBlock,
+  KingdomId,
   DistanceBand,
   TargetZone,
   TeamSide,
@@ -47,6 +48,7 @@ export interface CharacterSummary {
 export interface CreateCharacterRequest {
   name: string;
   race: Race;
+  citizenshipKingdomId?: KingdomId | null;
   allocation: Partial<Record<PrimaryStat, number>>;
 }
 
@@ -68,6 +70,8 @@ export interface ArenaHubState {
     maxStamina: number;
     hpRegenPerTurn?: number;
     professions?: PlayerProfessionsState;
+    citizenshipKingdomId?: KingdomId | null;
+    kingdomReputation?: Partial<Record<KingdomId, number>>;
   };
   inventory: InventoryState;
   equipment: Equipment;

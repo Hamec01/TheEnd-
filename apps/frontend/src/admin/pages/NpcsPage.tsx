@@ -285,7 +285,7 @@ export function NpcsPage() {
     markerIds,
     dialogueIds,
     factionIds: ['free_cities', 'artalon_guard', 'mist_cult'],
-    kingdomIds: ['artalon', 'none'],
+    kingdomIds: ['luminor', 'artalon', 'kriantar', 'terimia', 'argos', 'none'],
     cityIds: ['arklein', 'brenhold', 'ironcrest', 'whisper_port'],
     mapIds: ['worldmap-main'],
   }), [dialogueIds, itemIds, markerIds, questIds, questItemIds, skillIds, traderOptions, zoneIds]);

@@ -51,4 +51,25 @@ describe('world entity stamina', () => {
 
     expect(state.currentStamina).toBe(state.maxStamina);
   });
+
+  it('ignores sand movement penalty when the flag is enabled', () => {
+    const normal = applyWorldEntityStaminaTick(
+      {
+        state: { currentStamina: 150, maxStamina: 150, staminaRegenPerTick: 5 },
+        movementDistance: 0.1,
+        regionType: 'sand',
+      },
+      defaults,
+    );
+    const ignored = applyWorldEntityStaminaTick(
+      {
+        state: { currentStamina: 150, maxStamina: 150, staminaRegenPerTick: 5, ignoreSandMovementPenalty: true },
+        movementDistance: 0.1,
+        regionType: 'sand',
+      },
+      defaults,
+    );
+
+    expect(ignored.spentStamina).toBeLessThan(normal.spentStamina);
+  });
 });

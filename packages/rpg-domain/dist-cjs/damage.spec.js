@@ -2,7 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const damage_1 = require("./damage");
+const character_rules_1 = require("./character-rules");
 const skills_1 = require("./skills");
+const index_1 = require("./skills/index");
 const races_1 = require("./races");
 function createStats(overrides = {}) {
     return {
@@ -107,7 +109,7 @@ function createSkillUser(race) {
         const next = (0, skills_1.applySkillCost)(user, skill);
         (0, vitest_1.expect)(next.currentMp).toBe(88);
     });
-    (0, vitest_1.it)('Human elemental MP cost is doubled', () => {
+    (0, vitest_1.it)('Human elemental MP cost stays normal', () => {
         const user = createSkillUser(races_1.Race.Human);
         const skill = {
             id: 'fire_wave',
@@ -117,9 +119,9 @@ function createSkillUser(race) {
             cost: { mp: 10 },
         };
         const next = (0, skills_1.applySkillCost)(user, skill);
-        (0, vitest_1.expect)(next.currentMp).toBe(80);
+        (0, vitest_1.expect)(next.currentMp).toBe(90);
     });
-    (0, vitest_1.it)('HighElf and WoodElf magic MP cost is doubled', () => {
+    (0, vitest_1.it)('HighElf and WoodElf cannot use non-elemental magic', () => {
         const magicSkill = {
             id: 'mind_spike',
             name: 'Mind Spike',
@@ -127,10 +129,8 @@ function createSkillUser(race) {
             category: 'magic',
             cost: { mp: 10 },
         };
-        const highElfResult = (0, skills_1.applySkillCost)(createSkillUser(races_1.Race.HighElf), magicSkill);
-        const woodElfResult = (0, skills_1.applySkillCost)(createSkillUser(races_1.Race.WoodElf), magicSkill);
-        (0, vitest_1.expect)(highElfResult.currentMp).toBe(80);
-        (0, vitest_1.expect)(woodElfResult.currentMp).toBe(80);
+        (0, vitest_1.expect)((0, skills_1.canUseSkill)(createSkillUser(races_1.Race.HighElf), magicSkill).ok).toBe(false);
+        (0, vitest_1.expect)((0, skills_1.canUseSkill)(createSkillUser(races_1.Race.WoodElf), magicSkill).ok).toBe(false);
     });
     (0, vitest_1.it)('Dwarf cannot cast magic', () => {
         const dwarf = createSkillUser(races_1.Race.Dwarf);
@@ -177,7 +177,19 @@ function createSkillUser(race) {
                 elementType: 'fire',
             },
         });
-        (0, vitest_1.expect)(result.finalDamage).toBe(50);
+        (0, vitest_1.expect)(result.finalDamage).toBe(100);
+    });
+    (0, vitest_1.it)('Dwarf takes full runic damage', () => {
+        const result = (0, damage_1.calculateFinalDamage)({
+            attacker: { stats: createStats() },
+            defender: { stats: createStats(), raceModifiers: races_1.RACE_DEFINITIONS[races_1.Race.Dwarf].modifiers },
+            damagePayload: {
+                category: 'runic',
+                amount: 100,
+                runicType: 'binding',
+            },
+        });
+        (0, vitest_1.expect)(result.finalDamage).toBe(60);
     });
     (0, vitest_1.it)('Dwarf is immune to magical curse, silence, stun, and blind', () => {
         const defender = { raceModifiers: races_1.RACE_DEFINITIONS[races_1.Race.Dwarf].modifiers };
@@ -189,5 +201,76 @@ function createSkillUser(race) {
     (0, vitest_1.it)('Dwarf can still be stunned by physical shield bash', () => {
         const defender = { raceModifiers: races_1.RACE_DEFINITIONS[races_1.Race.Dwarf].modifiers };
         (0, vitest_1.expect)((0, damage_1.isEffectBlockedByRace)(defender, 'stun', 'physical')).toBe(false);
+    });
+    (0, vitest_1.it)('uses race-based starting free points', () => {
+        (0, vitest_1.expect)((0, character_rules_1.getStartingFreePoints)(races_1.Race.Human)).toBe(10);
+        (0, vitest_1.expect)((0, character_rules_1.getStartingFreePoints)(races_1.Race.Dwarf)).toBe(5);
+        (0, vitest_1.expect)((0, character_rules_1.getStartingFreePoints)(races_1.Race.WoodElf)).toBe(5);
+        (0, vitest_1.expect)((0, character_rules_1.getStartingFreePoints)(races_1.Race.HighElf)).toBe(5);
+    });
+    (0, vitest_1.it)('blocks non-elemental elven magic learning', () => {
+        (0, vitest_1.expect)((0, character_rules_1.canRaceUseSkillDefinition)(races_1.Race.WoodElf, {
+            type: index_1.SkillType.ELEMENTAL_MAGIC,
+            requirements: { requiredMagicSchools: [index_1.MagicSchoolType.ELEMENTAL] },
+            damage: [],
+            tags: [],
+        })).toBe(true);
+        (0, vitest_1.expect)((0, character_rules_1.canRaceUseSkillDefinition)(races_1.Race.WoodElf, {
+            type: index_1.SkillType.NORMAL_MAGIC,
+            requirements: { requiredMagicSchools: [index_1.MagicSchoolType.ILLUSION] },
+            damage: [],
+            tags: ['illusion'],
+        })).toBe(false);
+    });
+    (0, vitest_1.it)('applies extra high elf ice damage only to ice-tagged elemental skills', () => {
+        const ice = (0, damage_1.calculateFinalDamage)({
+            attacker: { stats: createStats(), race: races_1.Race.HighElf },
+            defender: { stats: createStats() },
+            damagePayload: {
+                category: 'elemental',
+                amount: 10,
+                elementType: 'water',
+                tags: ['ice'],
+            },
+        });
+        const fire = (0, damage_1.calculateFinalDamage)({
+            attacker: { stats: createStats(), race: races_1.Race.HighElf },
+            defender: { stats: createStats() },
+            damagePayload: {
+                category: 'elemental',
+                amount: 10,
+                elementType: 'fire',
+            },
+        });
+        (0, vitest_1.expect)(ice.finalDamage).toBe(23);
+        (0, vitest_1.expect)(fire.finalDamage).toBe(15);
+    });
+    (0, vitest_1.it)('applies citizenship changes and academy bypasses', () => {
+        const luminorStart = (0, character_rules_1.createInitialCitizenshipState)('luminor');
+        (0, vitest_1.expect)(luminorStart.kingdomReputation.luminor).toBe(20);
+        (0, vitest_1.expect)(luminorStart.kingdomReputation.artalon).toBe(10);
+        (0, vitest_1.expect)(luminorStart.kingdomReputation.terimia).toBe(10);
+        const updated = (0, character_rules_1.applyCitizenshipChange)({
+            citizenshipKingdomId: 'artalon',
+            kingdomReputation: { luminor: 0, artalon: 20, kriantar: 0, terimia: 0, argos: 0 },
+        }, 'luminor');
+        (0, vitest_1.expect)(updated.citizenshipKingdomId).toBe('luminor');
+        (0, vitest_1.expect)(updated.kingdomReputation.artalon).toBe(-30);
+        (0, vitest_1.expect)(updated.kingdomReputation.luminor).toBe(20);
+        (0, vitest_1.expect)((0, character_rules_1.canAccessAcademy)({
+            race: races_1.Race.Human,
+            academyId: 'academy_black_rite',
+            citizenshipKingdomId: 'terimia',
+        })).toEqual({ allowed: true, bypassIntroQuest: true });
+    });
+    (0, vitest_1.it)('derives merchant and city reputation outcomes', () => {
+        const modifiers = (0, character_rules_1.getMerchantPriceModifiers)({
+            kingdomReputation: 80,
+            playerKingdomId: 'luminor',
+        });
+        (0, vitest_1.expect)(modifiers.tradeBlocked).toBe(false);
+        (0, vitest_1.expect)(modifiers.buyMultiplier).toBe(0.8);
+        (0, vitest_1.expect)(modifiers.sellMultiplier).toBe(1.38);
+        (0, vitest_1.expect)((0, character_rules_1.getCityAccessOutcome)(-90)).toMatchObject({ allowed: false, hostile: true });
     });
 });

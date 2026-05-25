@@ -4,6 +4,7 @@ export interface WorldEntityStaminaState {
   maxStamina?: number;
   currentStamina?: number;
   staminaRegenPerTick?: number;
+  ignoreSandMovementPenalty?: boolean;
 }
 
 export interface StaminaDefaults {
@@ -78,7 +79,9 @@ export function applyWorldEntityStaminaTick(
   const movementDistance = Number.isFinite(input.movementDistance)
     ? Math.max(0, Number(input.movementDistance))
     : 0;
-  const regionMultiplier = resolveRegionStaminaMultiplier(input.regionType);
+  const regionMultiplier = input.regionType === 'sand' && input.state.ignoreSandMovementPenalty
+    ? 1
+    : resolveRegionStaminaMultiplier(input.regionType);
 
   const spentRaw = movementDistance * defaults.moveCostPerWorldUnit * regionMultiplier;
   const spentStamina = movementDistance <= 0.000001 ? 0 : Math.max(0, spentRaw);

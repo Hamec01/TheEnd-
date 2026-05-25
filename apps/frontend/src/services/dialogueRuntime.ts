@@ -17,6 +17,8 @@ import {
 } from './questRuntime';
 import { getQuestById } from './questRepository';
 import { playerHasProfessionCompat } from './professionCompat';
+import { applyPlayerCitizenshipCommand, applyPlayerReputationChanges, PLAYER_REP_KEY } from './playerCivicRuntime';
+import { isKingdomId } from '@theend/rpg-domain';
 import type { DialogueAction, DialogueChoice, DialogueCondition, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
 
@@ -24,7 +26,6 @@ import type { NpcDefinition } from '../types/npc';
   const PLAYER_FLAGS_KEY = 'theend.player.flags';
   const PLAYER_ITEMS_KEY = 'theend.player.items';
   const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
-  const PLAYER_REP_KEY = 'theend.player.reputation';
 
 export type DialogueRuntimeEvent =
   | { type: 'openShop'; npcId: string; merchantId?: string | null }
@@ -474,6 +475,8 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'takeGold';
     case 'give_experience':
       return 'giveExperience';
+    case 'change_citizenship':
+      return 'changeCitizenship';
     case 'give_skill':
       return 'trainSkill';
     case 'open_shop':
@@ -792,12 +795,19 @@ export function executeDialogueActions(
         logs.push(`Healing service requested: full (${getActionGoldCost(action)})`);
         break;
       case 'addReputation': {
-        const rep = readRecord(PLAYER_REP_KEY);
-        const key = action.factionId ?? action.kingdomId ?? 'global';
-        const current = Number(rep[key] ?? 0);
-        rep[key] = current + (action.amount ?? 0);
-        writeRecord(PLAYER_REP_KEY, rep);
-        logs.push(`Reputation changed: ${key} (${action.amount ?? 0})`);
+        const reputationChanges = Array.isArray(action.reputationChanges) && action.reputationChanges.length > 0
+          ? action.reputationChanges
+          : [{ factionId: action.factionId, kingdomId: action.kingdomId, amount: action.amount ?? 0 }];
+        logs.push(...applyPlayerReputationChanges(reputationChanges, { source: 'dialogue' }));
+        break;
+      }
+      case 'changeCitizenship': {
+        const kingdomId = String(action.kingdomId ?? action.value ?? '').trim();
+        if (!isKingdomId(kingdomId)) {
+          logs.push('changeCitizenship skipped: missing kingdomId.');
+          break;
+        }
+        logs.push(...applyPlayerCitizenshipCommand(kingdomId));
         break;
       }
       case 'setGlobalFlag': {

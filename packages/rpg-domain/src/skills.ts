@@ -1,6 +1,7 @@
 import type { Race, RaceModifiers } from './races';
 import type { DamagePayload } from './damage';
 import type { PrimaryStat, StatBlock } from './stats';
+import { canRaceUseSkillType } from './character-rules';
 
 export type StatKey = PrimaryStat;
 
@@ -57,6 +58,22 @@ function getMpMultiplier(category: SkillCategory, modifiers: RaceModifiers): num
   return 1;
 }
 
+function toSkillType(category: SkillCategory): 'physical' | 'elemental_magic' | 'normal_magic' | 'shamanism' | 'rune' {
+  if (category === 'elemental') {
+    return 'elemental_magic';
+  }
+  if (category === 'magic') {
+    return 'normal_magic';
+  }
+  if (category === 'shamanic') {
+    return 'shamanism';
+  }
+  if (category === 'runic') {
+    return 'rune';
+  }
+  return 'physical';
+}
+
 export function getAdjustedSkillCost(skill: SkillDefinition, modifiers: RaceModifiers): SkillCost {
   const mpBase = skill.cost.mp ?? 0;
   const multiplier = getMpMultiplier(skill.category, modifiers);
@@ -75,6 +92,9 @@ export function canUseSkill(user: SkillUser, skill: SkillDefinition): SkillUsage
   }
   if (skill.forbiddenRace && skill.forbiddenRace.includes(user.race)) {
     return { ok: false, reason: 'Skill is forbidden for this race.', adjustedCost: skill.cost };
+  }
+  if (!canRaceUseSkillType(user.race, toSkillType(skill.category) as any)) {
+    return { ok: false, reason: 'Race cannot use this skill category.', adjustedCost: skill.cost };
   }
 
   if (skill.category === 'magic' && !user.raceModifiers.canUseMagic) {

@@ -22,8 +22,9 @@ import { getAllZones } from './worldRepository';
 import { getAllDialogues } from './dialogueRepository';
 import { getAllNpcs } from './npcRepository';
 import { getQuestItems } from './questRepository';
-import { ITEMS } from '@theend/rpg-domain';
+import { ITEMS, isKingdomId } from '@theend/rpg-domain';
 import { playerHasProfessionCompat } from './professionCompat';
+import { applyPlayerReputationChanges } from './playerCivicRuntime';
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
@@ -639,12 +640,14 @@ export function applyQuestRewards(playerId: string, questId: string): { applied:
         break;
       }
       case 'reputation': {
-        const rep = readRecord(PLAYER_REPUTATION_KEY);
         const key = normalizeId(reward.title) ?? targetId ?? 'global';
-        const current = Number(rep[key] ?? 0);
-        rep[key] = current + (amount ?? 0);
-        writeRecord(PLAYER_REPUTATION_KEY, rep);
-        rewardLines.push(`reputation:${key}:${amount ?? 0}`);
+        const logs = applyPlayerReputationChanges(
+          [isKingdomId(key)
+            ? { kingdomId: key, amount: amount ?? 0 }
+            : { factionId: key, amount: amount ?? 0 }],
+          { source: 'quest' },
+        );
+        rewardLines.push(...logs.map((entry) => `reputation:${entry}`));
         break;
       }
       case 'unlock_dialogue': {

@@ -38,6 +38,8 @@ import {
   saveMovementControlScheme,
   type MovementControlScheme,
 } from '../worldmap/playerMovementSettings';
+import { buildProfileStandings, getCitizenshipBanner } from '../services/reputationRuntime';
+import { readPlayerCitizenshipKingdomId } from '../services/playerCivicRuntime';
 
 export type CharacterPageFocus = 'character' | 'equipment' | 'inventory' | 'stats' | 'skills';
 type InventoryTab = 'items' | 'questItems' | 'resources';
@@ -514,6 +516,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
   const derivedBase = useMemo(() => calculateDerivedStats(character.activeStats, equipment), [character.activeStats, equipment]);
   const derivedPreview = useMemo(() => calculateDerivedStats(previewStats, equipment), [equipment, previewStats]);
+  const citizenshipKingdomId = useMemo(
+    () => character.citizenshipKingdomId ?? readPlayerCitizenshipKingdomId() ?? null,
+    [character.citizenshipKingdomId],
+  );
+  const citizenshipBanner = useMemo(
+    () => getCitizenshipBanner(character.race, citizenshipKingdomId),
+    [character.race, citizenshipKingdomId],
+  );
+  const profileStandings = useMemo(
+    () => buildProfileStandings(character.race),
+    [character.race, character.id, character.level],
+  );
   const levelProgress = useMemo(() => getLevelProgress(character.level, character.exp), [character.exp, character.level]);
   const expToNextLevel = Math.max(0, levelProgress.next - character.exp);
   const normalizedPlayerInventory = useMemo(() => normalizePlayerInventory(inventory as unknown), [inventory]);
@@ -3160,6 +3174,34 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             {/* ── CENTER: Paper Doll ───────────────────────────────────── */}
             <div className="combined-char-center">
               {renderPaperDoll()}
+              <section className="character-meta-card combined-char-civic-card">
+                <h3>Подданство и репутация</h3>
+                {citizenshipBanner ? (
+                  <div className="character-status-head">
+                    <img src={citizenshipBanner.imageUrl} alt={citizenshipBanner.label} className="character-avatar-img civic-banner-img" />
+                    <div>
+                      <strong>{citizenshipBanner.label}</strong>
+                      <p className="muted">
+                        {String(character.race).toLowerCase() === 'human' ? 'Текущее подданство персонажа.' : 'Родовое знамя народа персонажа.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted">Подданство ещё не определено.</p>
+                )}
+                {profileStandings.length > 0 ? (
+                  <div className="combined-char-derived">
+                    {profileStandings.map((entry) => (
+                      <p key={entry.id}>
+                        <span>{entry.isCitizen ? `${entry.label} (ваше)` : entry.label}</span>
+                        <strong>{entry.standing.label}</strong>
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">Для нечеловеческих народов здесь показывается знамя расы. Королевские отношения откроются позже через фракции и квесты.</p>
+                )}
+              </section>
             </div>
 
             {/* ── RIGHT: Skills ────────────────────────────────────────── */}

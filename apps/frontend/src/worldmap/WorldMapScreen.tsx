@@ -5,7 +5,7 @@ import type {
   ItemDefinition,
   StatBlock,
 } from "@theend/rpg-domain";
-import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS } from "@theend/rpg-domain";
+import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS, Race } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
 import type { CustomArenaNpcPayload, NearbyPvpPlayer } from "../api";
 import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
@@ -212,15 +212,36 @@ import {
 } from "../utils/playerInventory";
 import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 import { useWorldRuntimeController } from "./useWorldRuntimeController";
+import { resolveNpcReaction, resolveZoneReaction } from "../services/reputationRuntime";
+import { fixMojibake } from "../utils/fixMojibake";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 const HOSTILE_BANDIT_ATTACK_CHANCE = 0.4;
 const HOSTILE_BANDIT_BATTLE_MAP_ID = "teramor_forest";
 const HOSTILE_BANDIT_MIN_ENEMIES = 3;
 const HOSTILE_BANDIT_MAX_ENEMIES = 5;
+const BANDIT_TOLL_PERCENT = 0.15;
+const BANDIT_ESCAPE_BASE_PERCENT = 30;
+const BANDIT_ESCAPE_PER_LUCK_PERCENT = 1;
 
 function rollHostileBanditEnemyCount(): number {
   return HOSTILE_BANDIT_MIN_ENEMIES + Math.floor(Math.random() * (HOSTILE_BANDIT_MAX_ENEMIES - HOSTILE_BANDIT_MIN_ENEMIES + 1));
+}
+
+function toCombatRace(race: string | undefined): Race {
+  switch ((race ?? "").toLowerCase()) {
+    case "dwarf":
+      return Race.Dwarf;
+    case "high_elf":
+    case "highelf":
+      return Race.HighElf;
+    case "forest_elf":
+    case "wood_elf":
+      return Race.WoodElf;
+    case "human":
+    default:
+      return Race.Human;
+  }
 }
 
 function buildWorldEntityCombatEnemies(
@@ -233,7 +254,7 @@ function buildWorldEntityCombatEnemies(
     const variation = index === 0 ? 1 : Math.max(0.82, 0.96 - index * 0.06);
     return {
       name: normalizedCount > 1 ? `${npc.name} ${index + 1}` : npc.name,
-      race: (npc.race ?? "human") as CustomArenaNpcPayload["race"],
+      race: toCombatRace(npc.race),
       stats: {
         hp: Math.max(60, Math.round((combat?.hp ?? 120) * variation)),
         mp: 0,
@@ -285,6 +306,16 @@ type ActiveWorldModal =
   | {
     type: "zone";
     zoneId: string;
+  }
+  | {
+    type: "bandit_encounter";
+    entityId: string;
+    enemyCount: number;
+    demandGold: number;
+    escapeChancePercent: number;
+    customEnemies?: CustomArenaNpcPayload[];
+    introLine: string;
+    demandLine: string;
   }
   | null;
 type SidePanelKey =
@@ -1416,6 +1447,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         0.09,
       ),
     [playerPosition.x, playerPosition.y],
+  );
+  const nearbyNpcReactions = useMemo(
+    () => nearbyNpcs.map((entry) => ({ ...entry, reaction: resolveNpcReaction(entry.npc) })),
+    [nearbyNpcs],
   );
   const playQuestMarkers = useMemo(() => {
     const activeStates = playerQuestStates.filter((entry) => entry.status === "active");
@@ -3000,6 +3035,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const cityId = normalizeCitySceneId(
         targetScene && isCitySceneId(targetScene) ? targetScene : locationId,
       );
+      const zoneReaction = zone ? resolveZoneReaction(zone) : null;
+      if (zoneReaction && !zoneReaction.allowed) {
+        onStatus(fixMojibake(zoneReaction.summary, "Вас не впускают в город."));
+        if (zoneReaction.hostile) {
+          setContextMode("combat");
+          void onStartCombat();
+        }
+        return;
+      }
       rememberCurrentMapPosition();
       setActiveCityId(cityId);
       setActiveLocationId(null);
@@ -3009,7 +3053,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setPlayerState("in_city");
       onStatus(`\u0412\u044b \u0432\u043e\u0448\u043b\u0438 \u0432 ${zone?.name ?? "\u0433\u043e\u0440\u043e\u0434"}.`);
     },
-    [contentSnapshot, discoverMapEntity, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
+    [contentSnapshot, discoverMapEntity, onStartCombat, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
   );
 
   const handleZoneEnterMemoized = useCallback(
@@ -3030,6 +3074,23 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         type: "system",
       };
       setSystemChat((prev) => [...prev, entry].slice(-12));
+      const zoneReaction = resolveZoneReaction(zone as WorldMapZone);
+      if (zoneReaction.summary) {
+        const reactionText = zoneReaction.summary;
+        const reactionEntry: ChatMessage = {
+          id: `sys-zone-reaction-${Date.now()}-${zone.id}`,
+          text: reactionText,
+          type: "system",
+        };
+        setSystemChat((prev) => [...prev, reactionEntry].slice(-12));
+      }
+      if (!zoneReaction.allowed) {
+        onStatus(zoneReaction.summary ?? "\u0412\u0440\u0430\u0436\u0434\u0435\u0431\u043d\u0430\u044f \u0442\u0435\u0440\u0440\u0438\u0442\u043e\u0440\u0438\u044f.");
+        if (zoneReaction.hostile) {
+          setContextMode("combat");
+          void onStartCombat();
+        }
+      }
 
       const questRuntimePlayer = {
         id: character.id,
@@ -3759,11 +3820,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (worldMapMode !== "play") {
       return;
     }
-    const hostile = nearbyNpcs.find(
-      (entry) =>
-        (entry.npc.defaultDisposition === "hostile" ||
-          entry.npc.defaultDisposition === "aggressive_on_sight") &&
-        entry.npc.canFight,
+    const hostile = nearbyNpcReactions.find(
+      (entry) => entry.reaction.autoHostile && entry.npc.canFight,
     );
     if (!hostile) {
       return;
@@ -3781,7 +3839,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     setContextMode("combat");
     onStatus(`${hostile.npc.name} \u0430\u0442\u0430\u043a\u0443\u0435\u0442 \u0432\u0430\u0441 \u043f\u0440\u0438 \u043f\u0440\u0438\u0431\u043b\u0438\u0436\u0435\u043d\u0438\u0438.`);
     void onStartCombat();
-  }, [nearbyNpcs, onStartCombat, onStatus, worldMapMode]);
+  }, [nearbyNpcReactions, onStartCombat, onStatus, worldMapMode]);
 
   const handlePlaceNpcAtCursor = useCallback(async () => {
     if (!selectedNpcIdForPlacement) {
@@ -4196,13 +4254,31 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           const customEnemies = npc
             ? buildWorldEntityCombatEnemies(npc, enemyCount)
             : undefined;
-          onStatus(`Бандиты атакуют! В бой вступают ${enemyCount} противников.`);
-          void onStartCombat(
-            HOSTILE_BANDIT_BATTLE_MAP_ID,
-            customEnemies && customEnemies.length > 0
-              ? { customEnemies }
-              : { enemyCount },
+
+          const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+          const demandGold = currentGold > 0
+            ? Math.max(1, Math.ceil(currentGold * BANDIT_TOLL_PERCENT))
+            : 0;
+          const luck = Math.max(0, Math.floor(Number(character.activeStats?.luck ?? 0)));
+          const escapeChancePercent = Math.max(
+            0,
+            Math.min(100, BANDIT_ESCAPE_BASE_PERCENT + luck * BANDIT_ESCAPE_PER_LUCK_PERCENT),
           );
+
+          setActiveWorldModal({
+            type: 'bandit_encounter',
+            entityId: entity.id,
+            enemyCount,
+            demandGold,
+            escapeChancePercent,
+            customEnemies,
+            introLine: 'Главарь бандитов перекрывает дорогу: "Стой. Дальше идёт только тот, кто платит за тишину."',
+            demandLine: demandGold > 0
+              ? `"Плати ${demandGold} золотых, и сегодня мы тебя не тронем."`
+              : '"Золота у тебя нет... тогда плати кровью или беги, пока можешь."',
+          });
+          setContextMode('npc');
+          onStatus('Бандиты требуют плату за проход.');
           return;
         }
 
@@ -4228,7 +4304,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     onStatus(`У сущности ${entity.id} не задан NPC или merchant source.`);
-  }, [activeCity?.id, onOpenMerchant, onStartCombat, onStatus, openNpcDialogue, resolveNpcById]);
+  }, [activeCity?.id, character.activeStats?.luck, inventory.gold, onOpenMerchant, onStartCombat, onStatus, openNpcDialogue, resolveNpcById]);
 
   const pendingWorldEntityInteraction = useMemo(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -6147,8 +6223,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       );
       const canTrain = Boolean(npc?.canTrain);
       const canTrade = Boolean(npc?.canTrade);
+      const npcReaction = npc ? resolveNpcReaction(npc) : null;
 
-      const canOpenDialogue = canTalk || canQuest;
+      const canOpenDialogue = (npcReaction?.canTalk ?? canTalk) || canQuest;
       buttons = (
         <>
           {canOpenDialogue ? (
@@ -6163,7 +6240,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               {"\u0417\u0430\u0433\u043e\u0432\u043e\u0440\u0438\u0442\u044c"}
             </button>
           ) : null}
-          {canTrain ? (
+          {canTrain && (npcReaction?.canTrain ?? true) ? (
             <button
               onClick={() => {
                 console.debug("[NPC CARD] training clicked", {
@@ -6181,7 +6258,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           ) : null}
           {canTrade ? (
             <button
+              disabled={npcReaction ? !npcReaction.canTrade : false}
               onClick={() => {
+                if (npcReaction && !npcReaction.canTrade) {
+                  onStatus(fixMojibake(npcReaction.summary, "Торговец не хочет иметь с вами дело."));
+                  return;
+                }
                 const traderId = npc?.traderId?.trim();
                 if (!traderId) {
                   onStatus(
@@ -6209,13 +6291,80 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <button
             onClick={() => {
               onStatus(
-                `${npc?.name ?? "NPC"}: ${npc?.description || "\u0431\u0435\u0437 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u044f"}`,
+                `${npc?.name ?? "NPC"}: ${npc?.description || "\u0431\u0435\u0437 \u043e\u043f\u0438\u0441\u0430\u043d\u0438\u044f"}${npcReaction?.summary ? ` ${npcReaction.summary}` : ""}`,
               );
             }}
           >
             {"\u041e\u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c"}
           </button>
           <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
+        </>
+      );
+    } else if (activeWorldModal.type === "bandit_encounter") {
+      title = "Засада бандитов";
+      subtitle = `${activeWorldModal.enemyCount} противников`;
+      description = `${activeWorldModal.introLine} ${activeWorldModal.demandLine}`;
+
+      const startBanditCombat = () => {
+        void onStartCombat(
+          HOSTILE_BANDIT_BATTLE_MAP_ID,
+          activeWorldModal.customEnemies && activeWorldModal.customEnemies.length > 0
+            ? { customEnemies: activeWorldModal.customEnemies }
+            : { enemyCount: activeWorldModal.enemyCount },
+        );
+      };
+
+      content = (
+        <div style={{ marginTop: 16, display: "grid", gap: 8, textAlign: "left" }}>
+          <div className="wm-stat-block">
+            <div><strong>Требуемая сумма:</strong> {activeWorldModal.demandGold} золота (15%)</div>
+            <div><strong>Шанс побега:</strong> {activeWorldModal.escapeChancePercent}%</div>
+          </div>
+        </div>
+      );
+
+      buttons = (
+        <>
+          <button
+            disabled={Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, inventory.gold ?? 0))) < activeWorldModal.demandGold}
+            onClick={() => {
+              const currentGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, inventory.gold ?? 0)));
+              if (currentGold < activeWorldModal.demandGold) {
+                onStatus('У вас недостаточно золота, чтобы откупиться.');
+                return;
+              }
+              writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, Math.max(0, currentGold - activeWorldModal.demandGold));
+              onRuntimeInventoryChanged?.();
+              closeModal();
+              onStatus(`Вы заплатили ${activeWorldModal.demandGold} золота. Бандиты пропустили вас без боя.`);
+            }}
+          >
+            Заплатить
+          </button>
+          <button
+            onClick={() => {
+              closeModal();
+              onStatus('Вы решили атаковать бандитов.');
+              startBanditCombat();
+            }}
+          >
+            Атаковать
+          </button>
+          <button
+            onClick={() => {
+              const roll = Math.random() * 100;
+              const escaped = roll < activeWorldModal.escapeChancePercent;
+              closeModal();
+              if (escaped) {
+                onStatus(`Побег удался (${Math.round(activeWorldModal.escapeChancePercent)}% шанс). Вы ушли от бандитов.`);
+                return;
+              }
+              onStatus(`Побег провалился (${Math.round(activeWorldModal.escapeChancePercent)}% шанс). Бандиты навязали бой.`);
+              startBanditCombat();
+            }}
+          >
+            Сбежать
+          </button>
         </>
       );
     } else if (activeWorldModal.type === "encounter") {

@@ -574,6 +574,7 @@ export function QuestInteractionsPage() {
             hint="Массив requirements для interaction (quest/item/flag/race/class/level/faction checks)."
           />
           <textarea rows={8} value={requirementsJson} onChange={(event) => setRequirementsJson(event.target.value)} />
+          <small className="muted">Поддерживаются runtime-проверки квестов, флагов, предметов, класса, расы и репутации.</small>
         </label>
 
         <label>
@@ -582,6 +583,7 @@ export function QuestInteractionsPage() {
             hint="Массив choices с requirements/effects. Legacy-поля тоже поддерживаются." 
           />
           <textarea rows={14} value={choicesJson} onChange={(event) => setChoicesJson(event.target.value)} />
+          <small className="muted">Эффекты понимают `add_reputation`, `reputationChanges` и `change_citizenship`.</small>
         </label>
 
         <div className="admin-actions-row">

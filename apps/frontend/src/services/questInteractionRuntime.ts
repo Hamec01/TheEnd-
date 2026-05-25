@@ -6,6 +6,7 @@ import type {
   QuestInteractionEvent,
   QuestInteractionRequirement,
 } from '../types/quest';
+import { isKingdomId } from '@theend/rpg-domain';
 import { getQuestInteractions } from './questRepository';
 import {
   applyQuestRewards,
@@ -18,6 +19,7 @@ import {
   startQuest,
   type QuestRuntimePlayer,
 } from './questRuntime';
+import { applyPlayerCitizenshipCommand, applyPlayerReputationChanges } from './playerCivicRuntime';
 
 const QUEST_INTERACTIONS_USED_KEY = 'theend.questInteractions.used';
 const PLAYER_ITEMS_KEY = 'theend.player.items';
@@ -407,6 +409,22 @@ export function runQuestInteractionEffects(
               grantedRewardLines.push(...result.rewards);
               logs.push(`Rewards granted: ${effectQuestId}`);
             }
+          }
+          break;
+        case 'add_reputation': {
+          const reputationChanges = Array.isArray(effect.reputationChanges) && effect.reputationChanges.length > 0
+            ? effect.reputationChanges
+            : [{ factionId: effect.factionId, kingdomId: effect.kingdomId, amount: effect.amount ?? 0 }];
+          const repLogs = applyPlayerReputationChanges(reputationChanges, { source: 'interaction' });
+          logs.push(...repLogs);
+          grantedRewardLines.push(...repLogs);
+          break;
+        }
+        case 'change_citizenship':
+          if (isKingdomId(effect.kingdomId)) {
+            logs.push(...applyPlayerCitizenshipCommand(effect.kingdomId));
+          } else {
+            logs.push('Citizenship change skipped: missing kingdomId.');
           }
           break;
         case 'give_item':

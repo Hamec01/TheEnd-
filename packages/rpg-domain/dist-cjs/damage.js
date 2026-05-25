@@ -7,6 +7,7 @@ exports.applyElementEffect = applyElementEffect;
 exports.checkElementCombo = checkElementCombo;
 exports.calculateFinalDamage = calculateFinalDamage;
 exports.isEffectBlockedByRace = isEffectBlockedByRace;
+const character_rules_1 = require("./character-rules");
 exports.DAMAGE_CATEGORIES = [
     'physical',
     'elemental',
@@ -173,12 +174,26 @@ function calculateFinalDamage(input) {
     if (payload.category === 'elemental' && payload.elementType) {
         multiplier *= getElementMultiplier(payload.elementType, context.targetElementState);
     }
+    if (input.attacker.race) {
+        multiplier *= (0, character_rules_1.getRaceOutgoingDamageMultiplier)({
+            race: input.attacker.race,
+            category: payload.category,
+            elementType: payload.elementType,
+            tags: payload.tags,
+        });
+    }
     amount = Math.max(0, amount * multiplier);
     if (payload.category === 'magic') {
         amount *= input.defender.raceModifiers?.magicDamageTakenMultiplier ?? 1;
     }
     if (payload.category === 'elemental') {
         amount *= input.defender.raceModifiers?.elementDamageTakenMultiplier ?? 1;
+    }
+    if (payload.category === 'runic') {
+        amount *= input.defender.raceModifiers?.runicDamageTakenMultiplier ?? 1;
+    }
+    if (payload.category === 'shamanic') {
+        amount *= input.defender.raceModifiers?.shamanicDamageTakenMultiplier ?? 1;
     }
     let mitigation = 0;
     if (!payload.ignoresArmor && payload.category === 'physical') {

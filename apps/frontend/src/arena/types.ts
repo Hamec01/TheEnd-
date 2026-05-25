@@ -1,5 +1,6 @@
 import type {
   Equipment,
+  KingdomId,
   InventoryState,
   PlayerProfessionsState,
   Race,
@@ -23,6 +24,8 @@ export interface ArenaCharacter {
   maxStamina: number;
   hpRegenPerTurn?: number;
   professions?: PlayerProfessionsState;
+  citizenshipKingdomId?: KingdomId | null;
+  kingdomReputation?: Partial<Record<KingdomId, number>>;
 }
 
 export interface ArenaPlayerState {

@@ -219,10 +219,34 @@
 - `startQuest | completeObjective | completeStep | advanceQuest | completeQuest | failQuest`
 - `giveRewards | setQuestFlag`
 - `giveItem | takeItem | giveQuestItem | takeQuestItem`
-- `giveGold | takeGold | giveExperience | addReputation`
+- `giveGold | takeGold | giveExperience | addReputation | changeCitizenship`
 - `openShop | startCombat | trainSkill`
 - `unlockLocation | unlockDialogue | openDialogue`
 - `setNpcDisposition | setGlobalFlag`
+
+### Reputation and citizenship commands
+- `addReputation` can target either `kingdomId` or `factionId`.
+- Use `reputationChanges` when one choice should affect several sides at once.
+- `changeCitizenship` expects `kingdomId` and should normally be used only in king/ruler questlines, but the engine accepts it from dialogue and quest-interaction runtime.
+
+Example:
+```json
+{
+  "type": "addReputation",
+  "reputationChanges": [
+    { "kingdomId": "artalon", "amount": 20 },
+    { "kingdomId": "argos", "amount": -15 }
+  ]
+}
+```
+
+Citizenship example:
+```json
+{
+  "type": "changeCitizenship",
+  "kingdomId": "luminor"
+}
+```
 
 ---
 

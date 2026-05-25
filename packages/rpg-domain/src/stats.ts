@@ -18,6 +18,7 @@ export type StatBlock = Record<PrimaryStat, number>;
 export type StatAllocation = Partial<Record<PrimaryStat, number>>;
 
 export const RESOURCE_STATS: PrimaryStat[] = ['hp', 'mp', 'stamina'];
+export const RESOURCE_POINT_MULTIPLIER = 10;
 
 export const STARTING_FREE_POINTS = 5;
 
@@ -49,7 +50,7 @@ export function applyAllocation(base: StatBlock, allocation: StatAllocation): St
     }
 
     if (stat === 'hp' || stat === 'mp' || stat === 'stamina') {
-      next[stat] += points * 10;
+      next[stat] += points * RESOURCE_POINT_MULTIPLIER;
     } else {
       next[stat] += points;
     }

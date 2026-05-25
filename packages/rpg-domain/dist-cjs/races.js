@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RACE_DEFINITIONS = exports.Race = void 0;
 exports.ensureRaceBaseStatsAreValid = ensureRaceBaseStatsAreValid;
 exports.getRaceDefinition = getRaceDefinition;
+exports.createRaceModifiers = createRaceModifiers;
 const stats_1 = require("./stats");
 var Race;
 (function (Race) {
@@ -17,7 +18,7 @@ exports.RACE_DEFINITIONS = {
         label: 'Люди',
         description: 'Универсальная раса. Люди хорошо изучают обычную магию, но стихии даются им тяжелее.',
         bonuses: ['+10% к опыту', 'Обычная магия без штрафа', 'Гибкое развитие'],
-        restrictions: ['Стихийные навыки стоят x2 MP'],
+        restrictions: [],
         baseStats: {
             hp: 70,
             mp: 60,
@@ -37,7 +38,7 @@ exports.RACE_DEFINITIONS = {
             magicDamageTakenMultiplier: 1,
             elementDamageTakenMultiplier: 1,
             magicMpCostMultiplier: 1,
-            elementMpCostMultiplier: 2,
+            elementMpCostMultiplier: 1,
         },
     },
     [Race.Dwarf]: {
@@ -70,7 +71,9 @@ exports.RACE_DEFINITIONS = {
             canUseMagic: false,
             canUseElements: false,
             magicDamageTakenMultiplier: 0.5,
-            elementDamageTakenMultiplier: 0.5,
+            elementDamageTakenMultiplier: 1,
+            runicDamageTakenMultiplier: 1,
+            shamanicDamageTakenMultiplier: 0.5,
             magicMpCostMultiplier: 999,
             elementMpCostMultiplier: 999,
             immuneToMagicalCurses: true,
@@ -84,7 +87,7 @@ exports.RACE_DEFINITIONS = {
         label: 'Высшие Эльфы',
         description: 'Высшие Эльфы - боевые эльфы, владеющие стихиями с рождения. Сильны в атакующих стихиях и магической мощи.',
         bonuses: ['Врождённая стихия', '2-3 случайных стихийных навыка при создании персонажа', 'Стихийные навыки без штрафа MP'],
-        restrictions: ['Обычная магия стоит x2 MP'],
+        restrictions: ['Не может использовать обычную магию'],
         baseStats: {
             hp: 65,
             mp: 80,
@@ -112,7 +115,7 @@ exports.RACE_DEFINITIONS = {
         label: 'Лесные Эльфы',
         description: 'Лесные Эльфы - ловкие охотники и мастера природных стихий. Сильны в мобильности, луках, контроле и выживании.',
         bonuses: ['Врождённая стихия', '2-3 случайных стихийных навыка при создании персонажа', 'Высокая ловкость и восприятие'],
-        restrictions: ['Обычная магия стоит x2 MP'],
+        restrictions: ['Не может использовать обычную магию'],
         baseStats: {
             hp: 65,
             mp: 70,
@@ -161,4 +164,9 @@ function ensureRaceBaseStatsAreValid() {
 }
 function getRaceDefinition(race) {
     return exports.RACE_DEFINITIONS[race];
+}
+function createRaceModifiers(race) {
+    return {
+        ...exports.RACE_DEFINITIONS[race].modifiers,
+    };
 }

@@ -847,6 +847,7 @@ export function QuestsPage() {
         <section className="card admin-item-preview">
           <h4>Rewards</h4>
           <textarea rows={8} value={rewardsJson} onChange={(event) => setRewardsJson(event.target.value)} onBlur={() => patch({ rewards: asArray(safeParseJson<QuestReward[]>(rewardsJson, asArray(draft.rewards))) })} />
+          <p className="muted">Для королевской репутации используйте reward `type: "reputation"` и `targetId` вроде `artalon`, `luminor`, `argos`.</p>
           <h4>Failure Consequences</h4>
           <textarea rows={6} value={failureJson} onChange={(event) => setFailureJson(event.target.value)} onBlur={() => patch({ failureConsequences: asArray(safeParseJson<QuestReward[]>(failureJson, asArray(draft.failureConsequences))) })} />
         </section>

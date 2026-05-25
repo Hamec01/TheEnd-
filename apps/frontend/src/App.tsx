@@ -5,7 +5,9 @@ import {
   normalizePlayerProfessionsState,
   PROFESSION_DEFINITIONS,
   addProfessionXp,
+  getKingdomBonusHighlights,
   getPlayerProfession,
+  getStartingFreePoints,
   unlockProfession,
   ITEMS,
   RACE_DEFINITIONS,
@@ -65,19 +67,27 @@ import { BattlePanel } from './battle/BattlePanel';
 import { readBattleRendererSetting, writeBattleRendererSetting, type BattleRendererKind } from './battle/battleRendererSettings';
 import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
+import { loadEditorDataFromBackend } from './worldmap/zoneEditorStorage';
+import type { WorldMapZone } from './worldmap/zoneEditorTypes';
+import { WORLD_MAP_ZONES } from './worldmap/worldMapNodes';
 import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/GodmodeConsole';
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
 import {
+  CHARACTER_CREATION_AVATAR_PRESETS,
   HUMAN_ORIGINS,
   STARTING_ELEMENT_SKILLS,
+  getCharacterCreationBanner,
+  getCharacterCreationOriginLore,
   getCharacterCreationRaceConfig,
+  getCharacterCreationRaceLore,
   getDefaultAvatarFor,
   getRandomStartingElements,
   type CharacterElement,
   type CharacterGender,
+  type CharacterCreationLore,
   type CharacterOrigin,
 } from './config/characterCreation';
 import type { PlayerPath } from './RootApp';
@@ -126,6 +136,8 @@ import {
   mergePlayerProfessionsState,
   savePlayerProfessionsState,
 } from './services/playerProfessions';
+import { writePlayerCitizenshipKingdomId, writePlayerReputation } from './services/playerCivicRuntime';
+import { fixMojibake } from './utils/fixMojibake';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -1005,6 +1017,27 @@ interface AppProps {
   onNavigate?: (path: PlayerPath, options?: { replace?: boolean }) => void;
 }
 
+type KingdomKey = 'luminor' | 'artalon' | 'kriantar' | 'terimia' | 'argos';
+
+const HUMAN_ORIGIN_TO_KINGDOM_KEY: Partial<Record<string, KingdomKey>> = {
+  origin_luminor: 'luminor',
+  origin_artalon: 'artalon',
+  origin_kriantar: 'kriantar',
+  origin_terimia: 'terimia',
+  origin_argos: 'argos',
+};
+
+const KINGDOM_KEY_ALIASES: Record<string, KingdomKey> = {
+  luminor: 'luminor',
+  artalon: 'artalon',
+  atalion: 'artalon',
+  kriantar: 'kriantar',
+  kriatar: 'kriantar',
+  teremia: 'terimia',
+  terimia: 'terimia',
+  argos: 'argos',
+};
+
 type GodmodeTravelRequest = {
   mode: 'world' | 'city' | 'location' | 'mine';
   targetId?: string | null;
@@ -1087,6 +1120,175 @@ function loadCharacterProfile(characterId: string): CharacterCreationProfile | n
   }
 }
 
+function normalizeKingdomKey(value: string | null | undefined): KingdomKey | null {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^origin_/, '')
+    .replace(/^kingdom_/, '')
+    .replace(/_kingdom$/, '');
+  return KINGDOM_KEY_ALIASES[normalized] ?? null;
+}
+
+function resolveKingdomKeyFromZone(zone: WorldMapZone): KingdomKey | null {
+  return normalizeKingdomKey(zone.kingdomId)
+    ?? normalizeKingdomKey(zone.faction)
+    ?? normalizeKingdomKey(zone.id);
+}
+
+function toKingdomDisplayName(name: string): string {
+  const normalized = name.replace(/^королевство\s+/i, '').trim();
+  if (!normalized) {
+    return name;
+  }
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getKingdomDisplayName(originId: string, zones: WorldMapZone[], fallback: string): string {
+  const kingdomKey = HUMAN_ORIGIN_TO_KINGDOM_KEY[originId] ?? normalizeKingdomKey(originId);
+  if (!kingdomKey) {
+    return fallback;
+  }
+  const matchingZone = zones.find((zone) => resolveKingdomKeyFromZone(zone) === kingdomKey);
+  return matchingZone ? toKingdomDisplayName(matchingZone.name) : fallback;
+}
+
+function getZoneBounds(zone: WorldMapZone): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (zone.shape === 'circle') {
+    const x = zone.x ?? 0;
+    const y = zone.y ?? 0;
+    const radius = zone.radius ?? 0.03;
+    return {
+      minX: x - radius,
+      minY: y - radius,
+      maxX: x + radius,
+      maxY: y + radius,
+    };
+  }
+
+  const points = zone.points ?? [];
+  if (points.length === 0) {
+    return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+  }
+
+  return points.reduce((acc, [x, y]) => ({
+    minX: Math.min(acc.minX, x),
+    minY: Math.min(acc.minY, y),
+    maxX: Math.max(acc.maxX, x),
+    maxY: Math.max(acc.maxY, y),
+  }), { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY });
+}
+
+function getKingdomPreviewViewBox(zone: WorldMapZone): string {
+  const bounds = getZoneBounds(zone);
+  const width = Math.max(bounds.maxX - bounds.minX, 0.08);
+  const height = Math.max(bounds.maxY - bounds.minY, 0.08);
+  const padX = Math.max(width * 0.28, 0.05);
+  const padY = Math.max(height * 0.28, 0.05);
+  let left = bounds.minX - padX;
+  let top = bounds.minY - padY;
+  let viewWidth = width + padX * 2;
+  let viewHeight = height + padY * 2;
+
+  const targetAspect = 1.6;
+  const currentAspect = viewWidth / viewHeight;
+  if (currentAspect > targetAspect) {
+    const desiredHeight = viewWidth / targetAspect;
+    top -= (desiredHeight - viewHeight) / 2;
+    viewHeight = desiredHeight;
+  } else {
+    const desiredWidth = viewHeight * targetAspect;
+    left -= (desiredWidth - viewWidth) / 2;
+    viewWidth = desiredWidth;
+  }
+
+  if (viewWidth > 1) {
+    viewWidth = 1;
+    left = 0;
+  } else {
+    left = Math.min(Math.max(0, left), 1 - viewWidth);
+  }
+
+  if (viewHeight > 1) {
+    viewHeight = 1;
+    top = 0;
+  } else {
+    top = Math.min(Math.max(0, top), 1 - viewHeight);
+  }
+
+  return `${left} ${top} ${viewWidth} ${viewHeight}`;
+}
+
+function renderKingdomZoneShape(zone: WorldMapZone, className: string): React.ReactNode {
+  if (zone.shape === 'circle') {
+    return (
+      <circle
+        key={zone.id}
+        className={className}
+        cx={zone.x ?? 0}
+        cy={zone.y ?? 0}
+        r={zone.radius ?? 0.03}
+        style={{ ['--zone-color' as string]: zone.color ?? '#d2aa66' }}
+      />
+    );
+  }
+
+  const points = (zone.points ?? []).map(([x, y]) => `${x},${y}`).join(' ');
+  return (
+    <polygon
+      key={zone.id}
+      className={className}
+      points={points}
+      style={{ ['--zone-color' as string]: zone.color ?? '#d2aa66' }}
+    />
+  );
+}
+
+function CharacterCreationKingdomPreview({
+  zones,
+  selectedZone,
+}: {
+  zones: WorldMapZone[];
+  selectedZone: WorldMapZone | null;
+}): React.ReactNode {
+  if (!selectedZone) {
+    return null;
+  }
+
+  return (
+    <section className="inner-card setup-kingdom-preview-card">
+      <div className="setup-kingdom-preview-copy">
+        <strong>Территория королевства</strong>
+        <p className="muted">Фрагмент мировой карты из Zone Editor для {toKingdomDisplayName(selectedZone.name)}.</p>
+      </div>
+      <svg
+        className="setup-kingdom-preview-map"
+        viewBox={getKingdomPreviewViewBox(selectedZone)}
+        aria-label={`Территория королевства ${toKingdomDisplayName(selectedZone.name)}`}
+        role="img"
+      >
+        <rect className="setup-kingdom-preview-background" x="0" y="0" width="1" height="1" />
+        {zones.map((zone) => renderKingdomZoneShape(zone, zone.id === selectedZone.id ? 'setup-kingdom-zone is-active' : 'setup-kingdom-zone'))}
+      </svg>
+    </section>
+  );
+}
+
+function CharacterCreationLoreCard({ lore }: { lore: CharacterCreationLore }): React.ReactNode {
+  return (
+    <section className="inner-card setup-lore-card">
+      <div className="setup-lore-header">
+        <strong>{lore.title}</strong>
+        <span>{lore.era}</span>
+      </div>
+      <p className="setup-lore-lead">{lore.lead}</p>
+      <div className="setup-lore-body">
+        {lore.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+      </div>
+    </section>
+  );
+}
+
 export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
   const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
@@ -1114,9 +1316,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [name, setName] = useState('');
   const [gender, setGender] = useState<CharacterGender>('male');
   const [race, setRace] = useState<Race>(Race.Human);
-  const [originId, setOriginId] = useState<string>(HUMAN_ORIGINS[0].id);
+  const [originId, setOriginId] = useState<string>('origin_luminor');
   const [setupElements, setSetupElements] = useState<CharacterElement[]>([]);
   const [setupAvatarUrl, setSetupAvatarUrl] = useState<string>('');
+  const [setupKingdomZones, setSetupKingdomZones] = useState<WorldMapZone[]>([]);
   const setupAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const [status, setStatus] = useState('Сначала зарегистрируйтесь или войдите, затем создайте персонажа и начните игру.');
@@ -1172,26 +1375,57 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [tradeItem, setTradeItem] = useState<ItemDefinition | null>(null);
 
   const raceConfig = useMemo(() => getCharacterCreationRaceConfig(race), [race]);
-  const selectedOrigin = useMemo<CharacterOrigin | null>(
-    () => HUMAN_ORIGINS.find((entry) => entry.id === originId) ?? null,
-    [originId],
+  const setupOriginRequired = race === Race.Human;
+  const selectableHumanOrigins = useMemo(
+    () => HUMAN_ORIGINS.filter((entry) => entry.id !== 'origin_free'),
+    [],
   );
+  const selectedOrigin = useMemo<CharacterOrigin | null>(
+    () => selectableHumanOrigins.find((entry) => entry.id === originId) ?? null,
+    [originId, selectableHumanOrigins],
+  );
+  const humanOriginDisplayNames = useMemo(() => selectableHumanOrigins.reduce<Record<string, string>>((acc, origin) => {
+    acc[origin.id] = getKingdomDisplayName(origin.id, setupKingdomZones, origin.name);
+    return acc;
+  }, {}), [selectableHumanOrigins, setupKingdomZones]);
   const setupSkills = useMemo(
     () => setupElements.map((entry) => STARTING_ELEMENT_SKILLS[entry.id]?.skillId).filter((entry): entry is string => Boolean(entry)),
     [setupElements],
   );
   const setupAvatarFallback = useMemo(() => getDefaultAvatarFor(race, gender), [gender, race]);
+  const selectedAvatarPreset = useMemo(
+    () => CHARACTER_CREATION_AVATAR_PRESETS.find((entry) => entry.imageUrl === setupAvatarUrl) ?? null,
+    [setupAvatarUrl],
+  );
+  const selectedKingdomKey = useMemo(
+    () => normalizeKingdomKey(HUMAN_ORIGIN_TO_KINGDOM_KEY[originId] ?? originId),
+    [originId],
+  );
+  const selectedKingdomZone = useMemo(
+    () => setupOriginRequired
+      ? setupKingdomZones.find((zone) => resolveKingdomKeyFromZone(zone) === selectedKingdomKey) ?? null
+      : null,
+    [selectedKingdomKey, setupKingdomZones, setupOriginRequired],
+  );
+  const selectedOriginLabel = useMemo(
+    () => selectedOrigin ? (humanOriginDisplayNames[selectedOrigin.id] ?? selectedOrigin.name) : null,
+    [humanOriginDisplayNames, selectedOrigin],
+  );
+  const selectedOriginHighlights = useMemo(
+    () => selectedKingdomKey ? (selectedOrigin?.featureHighlights ?? getKingdomBonusHighlights(selectedKingdomKey)) : [],
+    [selectedKingdomKey, selectedOrigin],
+  );
+  const setupLore = useMemo<CharacterCreationLore>(() => {
+    if (setupOriginRequired && selectedOrigin) {
+      return getCharacterCreationOriginLore(selectedOrigin.id) ?? getCharacterCreationRaceLore(race);
+    }
+    return getCharacterCreationRaceLore(race);
+  }, [race, selectedOrigin, setupOriginRequired]);
+  const setupBanner = useMemo(() => getCharacterCreationBanner(race, originId), [originId, race]);
   const setupAvatarResolved = setupAvatarUrl || setupAvatarFallback;
   const setupStatsPreview = useMemo<StatBlock>(() => {
-    const base = { ...raceConfig.stats };
-    if (race === Race.Human && selectedOrigin) {
-      for (const [key, value] of Object.entries(selectedOrigin.bonuses)) {
-        const stat = key as PrimaryStat;
-        base[stat] += value ?? 0;
-      }
-    }
-    return base;
-  }, [race, raceConfig.stats, selectedOrigin]);
+    return { ...raceConfig.stats };
+  }, [raceConfig.stats]);
   const runtimeMerchants = useMemo(() => getRuntimeMerchants(runtimeAdminMerchants), [runtimeAdminMerchants]);
   const worldInventory = useMemo(
     () => mergeInventoryWithRuntimeOverlay(inventory),
@@ -1517,12 +1751,33 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [refreshRuntimeContent]);
 
   useEffect(() => {
+    let cancelled = false;
+    void loadEditorDataFromBackend(WORLD_MAP_ZONES)
+      .then((loaded) => {
+        if (cancelled) {
+          return;
+        }
+        setSetupKingdomZones(loaded.zones.filter((zone) => zone.type === 'kingdom_area'));
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setSetupKingdomZones(WORLD_MAP_ZONES.filter((zone) => zone.type === 'kingdom_area'));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (race === Race.Human) {
       setSetupElements([]);
       return;
     }
 
-    setOriginId(HUMAN_ORIGINS[0].id);
+    setOriginId('origin_luminor');
 
     if (race === Race.Dwarf) {
       setSetupElements([]);
@@ -1935,6 +2190,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       ...hub.character,
       professions: mergedProfessions,
     });
+    writePlayerCitizenshipKingdomId(hub.character.citizenshipKingdomId ?? null);
+    if (hub.character.kingdomReputation) {
+      writePlayerReputation(hub.character.kingdomReputation as Record<string, number>);
+    }
     savePlayerProfessionsState(hub.character.id, mergedProfessions);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
@@ -2218,6 +2477,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       const saved = await createCharacter({
         name: trimmedName,
         race,
+        citizenshipKingdomId: race === Race.Human
+          ? (originId.replace(/^origin_/, '') as any)
+          : null,
         allocation: {},
       }, accountId);
 
@@ -2297,6 +2559,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       image.src = result;
     };
     reader.readAsDataURL(file);
+  }
+
+  function handleSetupAvatarPresetSelect(imageUrl: string, presetName: string): void {
+    setSetupAvatarUrl(imageUrl);
+    setStatus(`Выбран аватар: ${presetName}.`);
+  }
+
+  function handleSetupAvatarReset(): void {
+    setSetupAvatarUrl('');
+    setStatus('Аватар сброшен к расовому портрету по умолчанию.');
   }
 
   async function handleEquip(itemId: string, preferredSlot?: keyof Equipment): Promise<void> {
@@ -4255,44 +4527,24 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setPendingStatAllocation(next);
   }
 
-  const setupOriginRequired = race === Race.Human;
   const setupElementsText = setupElements.map((entry) => entry.name).join(', ');
   const setupSkillNames = setupElements
     .map((entry) => STARTING_ELEMENT_SKILLS[entry.id]?.name)
     .filter((entry): entry is string => Boolean(entry));
-  const setupCharacterPreview = useMemo(() => ({
-    id: 'char_generated_uuid',
-    name: name.trim() || '(имя не задано)',
-    gender,
-    raceId: raceConfig.id,
-    originId: setupOriginRequired ? originId : null,
-    avatarUrl: setupAvatarResolved,
-    stats: setupStatsPreview,
-    elements: race === Race.Dwarf ? [] : setupElements.map((entry) => entry.id),
-    skills: race === Race.Dwarf ? [] : setupSkills,
-    traits: {
-      ...(raceConfig.traits.experienceGainMultiplier !== undefined ? { experienceGainMultiplier: raceConfig.traits.experienceGainMultiplier } : {}),
-      ...(raceConfig.traits.elementalMagicCostMultiplier !== undefined ? { elementalMagicCostMultiplier: raceConfig.traits.elementalMagicCostMultiplier } : {}),
-      ...(raceConfig.traits.normalMagicCostMultiplier !== undefined ? { normalMagicCostMultiplier: raceConfig.traits.normalMagicCostMultiplier } : {}),
-      ...(raceConfig.traits.magicDamageTakenMultiplier !== undefined ? { magicDamageTakenMultiplier: raceConfig.traits.magicDamageTakenMultiplier } : {}),
-      canUseMagic: raceConfig.traits.canUseMagic,
-      canUseElementalMagic: raceConfig.traits.canUseElementalMagic,
-    },
-  }), [gender, name, originId, race, raceConfig.id, raceConfig.traits, setupAvatarResolved, setupElements, setupOriginRequired, setupSkills, setupStatsPreview]);
 
   const respecStats = useCallback(async (): Promise<void> => {
     if (!character) {
       return;
     }
 
-    const ok = window.confirm('Ð¡Ð±Ñ€Ð¾ÑÐ¸Ñ‚ÑŒ Ñ…Ð°Ñ€Ð°ÐºÑ‚ÐµÑ€Ð¸ÑÑ‚Ð¸ÐºÐ¸ Ð¸ Ð²ÐµÑ€Ð½ÑƒÑ‚ÑŒ Ð²ÑÐµ Ð¾Ñ‡ÐºÐ¸ Ð´Ð»Ñ Ð¿ÐµÑ€ÐµÑ€Ð°ÑÐ¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ñ?');
+    const ok = window.confirm('Сбросить характеристики и вернуть все очки для перераспределения?');
     if (!ok) {
       return;
     }
 
     const baseline = { ...getCharacterCreationRaceConfig(character.race).stats };
     const level = character.level ?? 1;
-    const totalFreePoints = 5 + Math.max(0, level - 1) * 5;
+    const totalFreePoints = getStartingFreePoints(character.race) + Math.max(0, level - 1) * 5;
 
     setPendingStatAllocation({});
     setCharacter((current) => {
@@ -4305,7 +4557,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       };
     });
 
-    setStatus('Ð¥Ð°Ñ€Ð°ÐºÑ‚ÐµÑ€Ð¸ÑÑ‚Ð¸ÐºÐ¸ ÑÐ±Ñ€Ð¾ÑˆÐµÐ½Ñ‹. ÐžÑ‡ÐºÐ¸ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰ÐµÐ½Ñ‹.');
+    setStatus('Характеристики сброшены. Очки возвращены.');
   }, [character]);
 
   if (phase === 'setup') {
@@ -4391,8 +4643,26 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <input ref={setupAvatarInputRef} type="file" accept="image/png,image/jpg,image/jpeg,image/webp" style={{ display: 'none' }} onChange={handleSetupAvatarChange} />
                 <img src={setupAvatarResolved} alt="Character avatar" className="setup-avatar-preview setup-avatar-preview-xl" />
                 <div className="setup-avatar-actions">
-                  <button type="button" onClick={() => setupAvatarInputRef.current?.click()}>{setupAvatarUrl ? 'Заменить аватар' : 'Загрузить аватар'}</button>
-                  {setupAvatarUrl ? <button type="button" onClick={() => setSetupAvatarUrl('')}>Сбросить</button> : null}
+                  <button type="button" onClick={() => setupAvatarInputRef.current?.click()}>{setupAvatarUrl && !selectedAvatarPreset ? 'Заменить свой аватар' : 'Загрузить свой аватар'}</button>
+                  {setupAvatarUrl ? <button type="button" onClick={handleSetupAvatarReset}>Сбросить</button> : null}
+                </div>
+                <div className="setup-avatar-presets" role="list" aria-label="Выбор пресетного аватара">
+                  {CHARACTER_CREATION_AVATAR_PRESETS.map((preset) => {
+                    const isActive = setupAvatarResolved === preset.imageUrl;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`setup-avatar-preset${isActive ? ' is-active' : ''}`}
+                        onClick={() => handleSetupAvatarPresetSelect(preset.imageUrl, preset.name)}
+                        aria-pressed={isActive}
+                        title={preset.name}
+                      >
+                        <img src={preset.imageUrl} alt={preset.name} className="setup-avatar-preset-image" />
+                        <span>{preset.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="muted">PNG/JPG/JPEG/WEBP, минимум 128x128, рекомендуется 256x256, до 2 MB.</p>
               </div>
@@ -4428,8 +4698,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <div className="row">
                   <label>Подданство</label>
                   <select value={originId} onChange={(event) => setOriginId(event.target.value)}>
-                    {HUMAN_ORIGINS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.name}</option>
+                    {selectableHumanOrigins.map((option) => (
+                      <option key={option.id} value={option.id}>{humanOriginDisplayNames[option.id] ?? option.name}</option>
                     ))}
                   </select>
                 </div>
@@ -4439,7 +4709,20 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <strong>{raceConfig.name}</strong>
                 <p>{raceConfig.description}</p>
                 {setupOriginRequired && selectedOrigin ? (
-                  <p><strong>Подданство:</strong> {selectedOrigin.name} - {selectedOrigin.description}</p>
+                  <p><strong>Подданство:</strong> {fixMojibake(selectedOriginLabel ?? selectedOrigin.name)} - {fixMojibake(selectedOrigin.description)}</p>
+                ) : null}
+                {setupBanner ? (
+                  <figure className="setup-banner-card">
+                    <img src={setupBanner.imageUrl} alt={setupBanner.title} className="setup-banner-image" />
+                    <figcaption>{fixMojibake(setupBanner.title)}</figcaption>
+                  </figure>
+                ) : null}
+                {setupOriginRequired ? <CharacterCreationKingdomPreview zones={setupKingdomZones} selectedZone={selectedKingdomZone} /> : null}
+                {setupOriginRequired && selectedOriginHighlights.length > 0 ? (
+                  <div className="setup-trait-list">
+                    <strong>Бонусы королевства</strong>
+                    {selectedOriginHighlights.map((entry) => <p key={entry}>{fixMojibake(entry)}</p>)}
+                  </div>
                 ) : null}
               </section>
             </section>
@@ -4482,10 +4765,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 <p>{setupSkillNames.length > 0 ? setupSkillNames.join(', ') : 'Нет'}</p>
               </section>
 
-              <section className="inner-card setup-race-note">
-                <strong>Итоговый объект персонажа</strong>
-                <pre className="setup-preview-json">{JSON.stringify(setupCharacterPreview, null, 2)}</pre>
-              </section>
+              <CharacterCreationLoreCard lore={setupLore} />
             </section>
                 </section>
               )}
@@ -4536,7 +4816,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     const baseline = { ...getCharacterCreationRaceConfig(character.race).stats };
     const level = character.level ?? 1;
-    const totalFreePoints = 5 + Math.max(0, level - 1) * 5;
+      const totalFreePoints = getStartingFreePoints(character.race) + Math.max(0, level - 1) * 5;
 
     setPendingStatAllocation({});
     setCharacter((current) => {

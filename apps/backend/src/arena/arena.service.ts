@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
+  getMerchantPriceModifiers,
+  getKingdomMaxStaminaMultiplier,
   type Equipment,
   type InventoryState,
   type StatBlock,
@@ -15,6 +17,7 @@ import {
   type CharacterItemSocketState,
   type CharacterItemInstanceRecord,
 } from '../characters/character-item-instance.types';
+import { CharacterMetadataStore } from '../characters/character-metadata.store';
 import { isDatabaseEnabled, isFileStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
@@ -117,12 +120,15 @@ const HOTBAR_SLOT_COUNT = 10;
 @Injectable()
 export class ArenaService implements OnModuleInit {
   private readonly logger = new Logger(ArenaService.name);
+  private readonly metadataStore: CharacterMetadataStore;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
     private readonly runtimeStore: RuntimeCharacterStore,
-  ) { }
+  ) {
+    this.metadataStore = new CharacterMetadataStore(this.prisma, this.runtimeStore);
+  }
 
   async onModuleInit(): Promise<void> {
     if (!isDatabaseEnabled()) {
@@ -269,6 +275,7 @@ export class ArenaService implements OnModuleInit {
 
   private async getCharacterArenaStateForFileMode(characterId: string) {
     const character = await this.requireRuntimeCharacter(characterId);
+    const metadata = await this.metadataStore.get(characterId);
 
     const baseStats = this.toBaseStats(character);
     const equipment = this.normalizeRuntimeEquipment((character as { equipment?: unknown }).equipment ?? null);
@@ -305,6 +312,11 @@ export class ArenaService implements OnModuleInit {
         currentStamina: resources.currentStamina,
         maxStamina: resources.maxStamina,
         hpRegenPerTurn: resources.hpRegenPerTurn,
+        professions: metadata.startingProfessionIds.length > 0
+          ? { professions: metadata.startingProfessionIds.map((professionId) => ({ professionId, level: 1, xp: 0, xpToNextLevel: 100, skillPoints: 0, learnedSkillIds: [], selectedBranchIds: [], unlockedAt: new Date().toISOString() })) }
+          : undefined,
+        citizenshipKingdomId: metadata.citizenshipKingdomId,
+        kingdomReputation: metadata.kingdomReputation,
       },
       inventory,
       equipment,
@@ -1504,6 +1516,7 @@ export class ArenaService implements OnModuleInit {
       ? this.contentService.normalizeEquipment((character as { equipment?: Partial<Equipment> | null }).equipment ?? null)
       : this.fromEquipmentRecord((character as { equipment?: Record<string, unknown> | null }).equipment ?? null);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const metadata = await this.metadataStore.get(characterId);
     const stored = await this.readCharacterResourceMap(characterId);
     const runtimeOverride = isFileStorageMode() && character
       ? {
@@ -1528,7 +1541,13 @@ export class ArenaService implements OnModuleInit {
       }
       : stored;
 
-    const resourceState = this.buildResourceState(activeStats, effectiveStored);
+    const resourceState = this.buildResourceState(
+      {
+        ...activeStats,
+        stamina: Math.max(0, Math.round(activeStats.stamina * getKingdomMaxStaminaMultiplier(metadata.citizenshipKingdomId))),
+      },
+      effectiveStored,
+    );
 
     await this.writeCharacterResourceMap(characterId, {
       currentHp: resourceState.currentHp,
@@ -1983,6 +2002,7 @@ export class ArenaService implements OnModuleInit {
     const baseStats = this.toBaseStats(character);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const resources = await this.getCharacterResources(characterId);
+    const metadata = await this.metadataStore.get(characterId);
 
     return {
       character: {
@@ -2001,6 +2021,11 @@ export class ArenaService implements OnModuleInit {
         currentStamina: resources.currentStamina,
         maxStamina: resources.maxStamina,
         hpRegenPerTurn: resources.hpRegenPerTurn,
+        professions: metadata.startingProfessionIds.length > 0
+          ? { professions: metadata.startingProfessionIds.map((professionId) => ({ professionId, level: 1, xp: 0, xpToNextLevel: 100, skillPoints: 0, learnedSkillIds: [], selectedBranchIds: [], unlockedAt: new Date().toISOString() })) }
+          : undefined,
+        citizenshipKingdomId: metadata.citizenshipKingdomId,
+        kingdomReputation: metadata.kingdomReputation,
       },
       inventory,
       equipment,
@@ -2018,7 +2043,7 @@ export class ArenaService implements OnModuleInit {
     }
     this.assertDatabaseEnabled();
     const state = await this.getCharacterArenaState(characterId);
-    const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
+    const price = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
 
     if (state.inventory.gold < price) {
       throw new BadRequestException('Недостаточно золота.');
@@ -2054,7 +2079,6 @@ export class ArenaService implements OnModuleInit {
       return this.sellItemFileMode(characterId, itemId, quantity);
     }
     this.assertDatabaseEnabled();
-    const item = this.contentService.resolveItemById(itemId);
     const safeQuantity = Math.max(1, Math.floor(quantity));
     const state = await this.getCharacterArenaState(characterId);
 
@@ -2063,7 +2087,7 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('Недостаточно предметов для продажи.');
     }
 
-    const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
+    const sellPrice = await this.getAdjustedMerchantSellPrice(characterId, null, itemId);
     const goldGain = sellPrice * safeQuantity;
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -2284,9 +2308,63 @@ export class ArenaService implements OnModuleInit {
     return this.getCharacterArenaState(characterId);
   }
 
+  private resolveMerchantKingdomId(merchantId: string): string | null {
+    const merchant = this.contentService.getCollectionEntry('merchants', merchantId) as { cityId?: string; placeId?: string } | null;
+    if (!merchant) {
+      return null;
+    }
+    if (merchant.cityId) {
+      const city = this.contentService.getCollectionEntry('cities', merchant.cityId) as { kingdomId?: string } | null;
+      return city?.kingdomId?.trim() || null;
+    }
+    return null;
+  }
+
+  private async getAdjustedMerchantBuyPrice(characterId: string, merchantId: string, itemId: string): Promise<number> {
+    const basePrice = this.contentService.getMerchantItemPrice(merchantId, itemId);
+    const metadata = await this.metadataStore.get(characterId);
+    const kingdomId = this.resolveMerchantKingdomId(merchantId);
+    if (!kingdomId) {
+      return basePrice;
+    }
+    const modifiers = getMerchantPriceModifiers({
+      kingdomReputation: metadata.kingdomReputation[kingdomId as keyof typeof metadata.kingdomReputation] ?? 0,
+      playerKingdomId: metadata.citizenshipKingdomId ?? undefined,
+    });
+    if (modifiers.tradeBlocked) {
+      throw new BadRequestException('Trade is blocked by kingdom reputation.');
+    }
+    return Math.max(1, Math.round(basePrice * modifiers.buyMultiplier));
+  }
+
+  private async getAdjustedMerchantSellPrice(characterId: string, merchantId: string | null, itemId: string): Promise<number> {
+    const item = this.contentService.resolveItemById(itemId);
+    const basePrice = Math.max(1, Math.floor(item.price * 0.6));
+    const metadata = await this.metadataStore.get(characterId);
+    if (!merchantId) {
+      const modifiers = getMerchantPriceModifiers({
+        kingdomReputation: 0,
+        playerKingdomId: metadata.citizenshipKingdomId ?? undefined,
+      });
+      return Math.max(1, Math.round(basePrice * modifiers.sellMultiplier));
+    }
+    const kingdomId = this.resolveMerchantKingdomId(merchantId);
+    if (!kingdomId) {
+      return basePrice;
+    }
+    const modifiers = getMerchantPriceModifiers({
+      kingdomReputation: metadata.kingdomReputation[kingdomId as keyof typeof metadata.kingdomReputation] ?? 0,
+      playerKingdomId: metadata.citizenshipKingdomId ?? undefined,
+    });
+    if (modifiers.tradeBlocked) {
+      throw new BadRequestException('Trade is blocked by kingdom reputation.');
+    }
+    return Math.max(1, Math.round(basePrice * modifiers.sellMultiplier));
+  }
+
   private async buyItemFileMode(characterId: string, itemId: string, merchantId: string) {
     const character = await this.requireRuntimeCharacter(characterId);
-    const price = this.contentService.getMerchantItemPrice(merchantId, itemId);
+    const price = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
     const gold = Number((character as { gold?: unknown }).gold ?? 0) || 0;
 
     if (gold < price) {
@@ -2301,7 +2379,6 @@ export class ArenaService implements OnModuleInit {
 
   private async sellItemFileMode(characterId: string, itemId: string, quantity = 1) {
     await this.requireRuntimeCharacter(characterId);
-    const item = this.contentService.resolveItemById(itemId);
     const safeQuantity = Math.max(1, Math.floor(quantity));
     const inventoryItems = await this.readRuntimeInventoryItems(characterId);
 
@@ -2310,7 +2387,7 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('Недостаточно предметов для продажи.');
     }
 
-    const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
+    const sellPrice = await this.getAdjustedMerchantSellPrice(characterId, null, itemId);
     const goldGain = sellPrice * safeQuantity;
 
     const character = await this.requireRuntimeCharacter(characterId);

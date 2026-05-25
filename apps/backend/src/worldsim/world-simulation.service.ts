@@ -207,8 +207,15 @@ export class WorldSimulationService {
     entity.staminaRegenPerTick = tick.staminaRegenPerTick;
   }
 
-  private enterRestingState(entity: ActiveWorldEntity, waypoint: WorldRoute['waypoints'][number] | undefined): void {
-    if (waypoint?.cityId) {
+  private enterRestingState(
+    entity: ActiveWorldEntity,
+    waypoint: WorldRoute['waypoints'][number] | undefined,
+    route: WorldRoute,
+  ): void {
+    const archetype = this.archetypes.get(entity.archetypeId);
+    const isBandit = archetype?.kind === 'bandit';
+
+    if (waypoint?.cityId && !isBandit) {
       if (entity.cargo && entity.cargo.length > 0) {
         this.addCargoToMarket(waypoint.cityId, entity.cargo);
       }
@@ -218,6 +225,15 @@ export class WorldSimulationService {
         entityId: entity.id,
         timestamp: this.simulationTime.toISOString(),
       } as EconomicEvent);
+    }
+
+    if (isBandit) {
+      const campChance = Math.max(0.15, Math.min(0.9, Number(route.restChance ?? 0.35)));
+      if (Math.random() >= campChance) {
+        entity.state = 'traveling';
+        entity.nextEventAt = undefined;
+        return;
+      }
     }
 
     const stopMin = waypoint?.stopDurationMin ?? 0;
@@ -355,7 +371,7 @@ export class WorldSimulationService {
     entity.routePolylineIndex = undefined;
 
     const arrivedWaypoint = route.waypoints[cursor.toIndex];
-    this.enterRestingState(entity, arrivedWaypoint);
+    this.enterRestingState(entity, arrivedWaypoint, route);
   }
 
   private hasActiveEntityForArchetype(archetypeId: string): boolean {
@@ -365,6 +381,31 @@ export class WorldSimulationService {
       }
     }
     return false;
+  }
+
+  private isBanditArchetypeId(archetypeId: string): boolean {
+    const archetype = this.archetypes.get(archetypeId);
+    if (archetype) {
+      return archetype.kind === 'bandit';
+    }
+    return archetypeId.toLowerCase().includes('bandit');
+  }
+
+  private sanitizeRouteForBanditPolicy(route: WorldRoute): WorldRoute {
+    const hasBandits = route.allowedArchetypes.some((archetypeId) => this.isBanditArchetypeId(archetypeId));
+    if (!hasBandits) {
+      return route;
+    }
+
+    return {
+      ...route,
+      waypoints: route.waypoints.map((waypoint) => {
+        const { cityId: _cityId, ...rest } = waypoint;
+        void _cityId;
+        return rest;
+      }),
+      restChance: Math.max(0.35, Number(route.restChance ?? 0.35)),
+    };
   }
 
   private normalizeArchetype(archetype: WorldNpcArchetype): WorldNpcArchetype {
@@ -558,15 +599,15 @@ export class WorldSimulationService {
         id: 'route_bandit_road_patrol',
         name: 'Разбойничья тропа',
         waypoints: [
-          { zoneId: 'arklein', cityId: 'arklein', stopDurationMin: 25, stopDurationMax: 60 },
-          { zoneId: 'city_grankor', cityId: 'city_grankor', stopDurationMin: 30, stopDurationMax: 70 },
-          { zoneId: 'city_brainhold', cityId: 'brainhold', stopDurationMin: 35, stopDurationMax: 80 },
-          { zoneId: 'arklein', cityId: 'arklein', stopDurationMin: 25, stopDurationMax: 60 },
+          { zoneId: 'arklein', stopDurationMin: 18, stopDurationMax: 42 },
+          { zoneId: 'city_grankor', stopDurationMin: 20, stopDurationMax: 48 },
+          { zoneId: 'city_brainhold', stopDurationMin: 22, stopDurationMax: 52 },
+          { zoneId: 'arklein', stopDurationMin: 18, stopDurationMax: 42 },
         ],
         travelTimingDevMinutes: 18,
         travelTimingReleaseHours: 9,
         dangerLevel: 6,
-        restChance: 0.15,
+        restChance: 0.45,
         allowedArchetypes: ['bandit_road_raiders'],
         isActive: true,
         createdAt: new Date().toISOString(),
@@ -660,6 +701,18 @@ export class WorldSimulationService {
     }
     for (const s of defaultSpawnRules) {
       if (!this.spawnRules.has(s.id)) this.spawnRules.set(s.id, s);
+    }
+
+    // Enforce policy: bandits do not use city stop metadata and camp on the road.
+    for (const [routeId, route] of this.routes.entries()) {
+      const sanitized = this.sanitizeRouteForBanditPolicy(route);
+      if (sanitized === route) {
+        continue;
+      }
+      this.routes.set(routeId, {
+        ...sanitized,
+        updatedAt: this.simulationTime.toISOString(),
+      });
     }
 
     this.logger.log(`World simulation ready: ${this.archetypes.size} archetypes, ${this.routes.size} routes, ${this.spawnRules.size} rules`);
@@ -1007,7 +1060,10 @@ export class WorldSimulationService {
           sourceType: archetype?.sourceType,
           sourceId: archetype?.sourceId,
           state: e.state,
-          spriteId: archetype?.worldSpriteId ?? 'unknown',
+          spriteId:
+            archetype?.kind === 'bandit' && e.state === 'resting'
+              ? 'fire_world_sprite'
+              : (archetype?.worldSpriteId ?? 'unknown'),
           portraitId: archetype?.portraitId,
           memberCount: e.members.length,
           zoneId: e.visibility.anchorZoneId ?? 'unknown',
@@ -1132,8 +1188,9 @@ export class WorldSimulationService {
 
   // Управление маршрутами
   createRoute(route: WorldRoute): WorldRoute {
-    this.routes.set(route.id, route);
-    return route;
+    const normalized = this.sanitizeRouteForBanditPolicy(route);
+    this.routes.set(normalized.id, normalized);
+    return normalized;
   }
 
   updateRoute(routeId: string, updates: Partial<WorldRoute>): WorldRoute | null {
@@ -1141,7 +1198,11 @@ export class WorldSimulationService {
     if (!route) {
       return null;
     }
-    const updated = { ...route, ...updates, updatedAt: this.simulationTime.toISOString() };
+    const updated = this.sanitizeRouteForBanditPolicy({
+      ...route,
+      ...updates,
+      updatedAt: this.simulationTime.toISOString(),
+    });
     this.routes.set(routeId, updated);
     return updated;
   }

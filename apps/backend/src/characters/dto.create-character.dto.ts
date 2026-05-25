@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsObject, IsString, Length, Min, ValidateNested } from 'class-validator';
-import { PRIMARY_STATS, type PrimaryStat, Race } from '@theend/rpg-domain';
+import { IsEnum, IsInt, IsObject, IsOptional, IsString, Length, Min, ValidateNested } from 'class-validator';
+import { PRIMARY_STATS, type PrimaryStat, Race, type KingdomId } from '@theend/rpg-domain';
 
 class AllocationDto {
   @IsInt() @Min(0) hp = 0;
@@ -22,6 +22,10 @@ export class CreateCharacterDto {
 
   @IsEnum(Race)
   race!: Race;
+
+  @IsOptional()
+  @IsString()
+  citizenshipKingdomId?: KingdomId | null;
 
   @IsObject()
   @ValidateNested()

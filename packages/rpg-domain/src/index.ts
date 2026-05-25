@@ -1,5 +1,6 @@
 export * from './stats';
 export * from './races';
+export * from './character-rules';
 export * from './combat';
 export * from './combat-core';
 export * from './combat-plan';

@@ -2,11 +2,12 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import type { AdminSkillDefinition } from '@theend/rpg-domain';
-import { SkillType, validateSkillDefinition } from '@theend/rpg-domain';
+import { canAccessAcademy, canRaceUseSkillDefinition, SkillType, validateSkillDefinition } from '@theend/rpg-domain';
 import { isFileStorageMode } from '../config/storage-mode';
 import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
+import { CharacterMetadataStore } from '../characters/character-metadata.store';
 import { ArenaService } from '../arena/arena.service';
 import type { CharacterSkill, CharacterSkillLoadout, CharacterSkillSourceType, CombatSkillSlot } from './character-skill.types';
 import { createDefaultLoadout, getUnlockedSlotCount } from './character-skill.types';
@@ -198,13 +199,16 @@ function getSkillTrainingPrice(skill: AdminSkillDefinition, npcId: string | null
 @Injectable()
 export class SkillLearningService {
   private readonly logger = new Logger(SkillLearningService.name);
+  private readonly metadataStore: CharacterMetadataStore;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly contentService: ContentService,
     private readonly runtimeStore: RuntimeCharacterStore,
     private readonly arenaService: ArenaService,
-  ) {}
+  ) {
+    this.metadataStore = new CharacterMetadataStore(this.prisma, this.runtimeStore);
+  }
 
   async getCharacterSkills(characterId: string): Promise<Array<CharacterSkill & { definition: AdminSkillDefinition | null }>> {
     await this.contentService.ensureInitialized();
@@ -469,8 +473,10 @@ export class SkillLearningService {
     if (!skillDef) {
       throw new NotFoundException(`Skill not found: ${skillId}`);
     }
-
-    await this.ensureCharacterExists(characterId);
+    const characterRecord = await this.ensureCharacterExists(characterId);
+    if (!canRaceUseSkillDefinition(String(characterRecord.race ?? '') as any, skillDef)) {
+      throw new BadRequestException('Race cannot learn or use this skill.');
+    }
 
     const existing = (await this.readCharacterSkills(characterId)).find((entry) => entry.skillId === skillId);
     if (existing) {
@@ -564,6 +570,9 @@ export class SkillLearningService {
   ): Promise<void> {
     // Race restrictions
     const req = skillDef.requirements;
+    if (!canRaceUseSkillDefinition(character.race as any, skillDef)) {
+      throw new BadRequestException(`Race ${character.race} cannot learn this skill`);
+    }
 
     if (DWARF_RACES.has(character.race) && MAGIC_SKILL_TYPES.has(skillDef.type)) {
       const dwarfRule = skillDef.raceRules.find((r) => DWARF_RACES.has(r.raceId));
@@ -665,6 +674,19 @@ export class SkillLearningService {
     if ((req.requiredQuestIds ?? []).length > 0) {
       const firstRequiredQuestId = req.requiredQuestIds?.[0] ?? 'unknown';
       throw new BadRequestException(`Requires completed quest: ${firstRequiredQuestId}`);
+    }
+
+    const academyId = sourceId?.startsWith('academy_') ? sourceId : null;
+    if (academyId) {
+      const metadata = await this.metadataStore.get(characterId);
+      const academyAccess = canAccessAcademy({
+        race: character.race as any,
+        academyId: academyId as any,
+        citizenshipKingdomId: metadata.citizenshipKingdomId,
+      });
+      if (!academyAccess.allowed) {
+        throw new BadRequestException(`Academy access denied: ${academyId}`);
+      }
     }
   }
 

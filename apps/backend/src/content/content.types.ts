@@ -436,6 +436,8 @@ export type QuestInteractionEffectType =
   | 'start_quest'
   | 'fail_quest'
   | 'give_rewards'
+  | 'add_reputation'
+  | 'change_citizenship'
   | 'give_item'
   | 'take_item'
   | 'give_quest_item'
@@ -465,6 +467,13 @@ export interface QuestInteractionEffect {
   flagKey?: string;
   value?: unknown;
   amount?: number;
+  factionId?: string;
+  kingdomId?: string;
+  reputationChanges?: Array<{
+    factionId?: string;
+    kingdomId?: string;
+    amount: number;
+  }>;
 }
 
 export interface QuestInteractionChoice {

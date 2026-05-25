@@ -22,7 +22,8 @@ export type DialogueQuestActionType =
   | 'giveQuestItem'
   | 'takeQuestItem'
   | 'giveReward'
-  | 'addReputation';
+  | 'addReputation'
+  | 'changeCitizenship';
 
 export interface DialogueQuestAction {
   type: DialogueQuestActionType;
@@ -157,6 +158,9 @@ export function applyDialogueQuestAction(player: QuestRuntimePlayer, action: Dia
     }
     case 'addReputation': {
       return `Reputation changed by ${action.amount ?? 0}.`;
+    }
+    case 'changeCitizenship': {
+      return `Citizenship changed to ${String(action.value ?? '').trim() || 'unknown kingdom'}.`;
     }
     default:
       return 'Unsupported dialogue quest action.';
