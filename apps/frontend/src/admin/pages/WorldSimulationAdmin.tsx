@@ -147,7 +147,7 @@ function LiveWorldRuntimeTuningPanel() {
  * Вкладка Архетипы.
  */
 function ArchetypesTab() {
-  const { archetypes, create, update } = useWorldArchetypes();
+  const { archetypes, create, update, remove } = useWorldArchetypes();
   const [editing, setEditing] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [npcOptions, setNpcOptions] = useState<any[]>([]);
@@ -159,7 +159,7 @@ function ArchetypesTab() {
   const refreshSourceOptions = () => {
     getContentSnapshot()
       .then((snapshot) => {
-        setNpcOptions((snapshot.npcs ?? []).filter((npc: any) => npc.worldSimTrader));
+        setNpcOptions(snapshot.npcs ?? []);
         setMerchantOptions((snapshot.merchants ?? []).filter((merchant: any) => merchant.worldSimTrader));
       })
       .catch(() => {
@@ -295,6 +295,27 @@ function ArchetypesTab() {
       sourceType: arch.sourceType ?? (arch.merchantId ? 'merchant' : 'npc'),
       sourceId: arch.sourceId ?? arch.merchantId ?? arch.npcTemplateId ?? '',
     });
+  };
+
+  const handleDelete = async (arch: any) => {
+    const accepted = window.confirm(`Удалить архетип ${arch.name} (${arch.id})?\n\nСвязи в маршрутах и spawn-правилах будут очищены автоматически.`);
+    if (!accepted) {
+      return;
+    }
+
+    const result = await remove(arch.id);
+    if (!result.success) {
+      window.alert('Архетип не найден или уже удалён.');
+      return;
+    }
+
+    if (editing === arch.id) {
+      setEditing(null);
+    }
+
+    window.alert(
+      `Архетип удалён.\nАктивных сущностей удалено: ${result.removedActiveEntities}.\nОбновлено маршрутов: ${result.updatedRoutes}.\nОбновлено spawn-правил: ${result.updatedSpawnRules}.`,
+    );
   };
 
   const handleSpriteUpload = async (file: File | null) => {
@@ -493,6 +514,12 @@ function ArchetypesTab() {
                 style={{ marginLeft: 'auto' }}
               >
                 ✏️ Редактировать
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => void handleDelete(arch)}
+              >
+                🗑 Удалить
               </button>
             </div>
             <div className="item-details">

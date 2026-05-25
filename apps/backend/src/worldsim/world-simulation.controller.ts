@@ -43,6 +43,17 @@ export class WorldSimulationController {
     return this.worldSim.updateArchetype(id, updates);
   }
 
+  @Delete('archetypes/:id')
+  deleteArchetype(@Param('id') id: string): {
+    success: boolean;
+    removedActiveEntities: number;
+    updatedRoutes: number;
+    updatedSpawnRules: number;
+  } {
+    this.logger.log(`Delete archetype: ${id}`);
+    return this.worldSim.deleteArchetype(id);
+  }
+
   /**
    * === МАРШРУТЫ ===
    */

@@ -1064,6 +1064,72 @@ export class WorldSimulationService {
     return Array.from(this.archetypes.values());
   }
 
+  deleteArchetype(archetypeId: string): {
+    success: boolean;
+    removedActiveEntities: number;
+    updatedRoutes: number;
+    updatedSpawnRules: number;
+  } {
+    if (!this.archetypes.has(archetypeId)) {
+      return {
+        success: false,
+        removedActiveEntities: 0,
+        updatedRoutes: 0,
+        updatedSpawnRules: 0,
+      };
+    }
+
+    this.archetypes.delete(archetypeId);
+
+    let removedActiveEntities = 0;
+    for (const [entityId, entity] of this.activeEntities.entries()) {
+      if (entity.archetypeId !== archetypeId) {
+        continue;
+      }
+      this.activeEntities.delete(entityId);
+      removedActiveEntities += 1;
+    }
+
+    let updatedRoutes = 0;
+    for (const [routeId, route] of this.routes.entries()) {
+      if (!route.allowedArchetypes.includes(archetypeId)) {
+        continue;
+      }
+
+      const allowedArchetypes = route.allowedArchetypes.filter((id) => id !== archetypeId);
+      this.routes.set(routeId, {
+        ...route,
+        allowedArchetypes,
+        isActive: allowedArchetypes.length > 0 ? route.isActive : false,
+        updatedAt: this.simulationTime.toISOString(),
+      });
+      updatedRoutes += 1;
+    }
+
+    let updatedSpawnRules = 0;
+    for (const [ruleId, rule] of this.spawnRules.entries()) {
+      if (!rule.archetypeIds.includes(archetypeId)) {
+        continue;
+      }
+
+      const archetypeIds = rule.archetypeIds.filter((id) => id !== archetypeId);
+      this.spawnRules.set(ruleId, {
+        ...rule,
+        archetypeIds,
+        isActive: archetypeIds.length > 0 ? rule.isActive : false,
+        updatedAt: this.simulationTime.toISOString(),
+      });
+      updatedSpawnRules += 1;
+    }
+
+    return {
+      success: true,
+      removedActiveEntities,
+      updatedRoutes,
+      updatedSpawnRules,
+    };
+  }
+
   // Управление маршрутами
   createRoute(route: WorldRoute): WorldRoute {
     this.routes.set(route.id, route);

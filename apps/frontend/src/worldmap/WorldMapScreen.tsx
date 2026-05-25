@@ -214,6 +214,43 @@ import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 import { useWorldRuntimeController } from "./useWorldRuntimeController";
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
+const HOSTILE_BANDIT_ATTACK_CHANCE = 0.4;
+const HOSTILE_BANDIT_BATTLE_MAP_ID = "teramor_forest";
+const HOSTILE_BANDIT_MIN_ENEMIES = 3;
+const HOSTILE_BANDIT_MAX_ENEMIES = 5;
+
+function rollHostileBanditEnemyCount(): number {
+  return HOSTILE_BANDIT_MIN_ENEMIES + Math.floor(Math.random() * (HOSTILE_BANDIT_MAX_ENEMIES - HOSTILE_BANDIT_MIN_ENEMIES + 1));
+}
+
+function buildWorldEntityCombatEnemies(
+  npc: NpcDefinition,
+  enemyCount: number,
+): CustomArenaNpcPayload[] {
+  const combat = npc.combat;
+  const normalizedCount = Math.max(1, Math.min(5, enemyCount));
+  return Array.from({ length: normalizedCount }, (_, index) => {
+    const variation = index === 0 ? 1 : Math.max(0.82, 0.96 - index * 0.06);
+    return {
+      name: normalizedCount > 1 ? `${npc.name} ${index + 1}` : npc.name,
+      race: (npc.race ?? "human") as CustomArenaNpcPayload["race"],
+      stats: {
+        hp: Math.max(60, Math.round((combat?.hp ?? 120) * variation)),
+        mp: 0,
+        stamina: Math.max(40, Math.round((combat?.stamina ?? 90) * variation)),
+        strength: Math.max(6, Math.round((combat?.strength ?? 10) * variation)),
+        constitution: Math.max(6, Math.round((combat?.endurance ?? 10) * variation)),
+        dexterity: Math.max(6, Math.round((combat?.agility ?? 10) * variation)),
+        intelligence: Math.max(4, Math.round((combat?.intellect ?? 6) * variation)),
+        luck: Math.max(4, Math.round((combat?.luck ?? 6) * variation)),
+        perception: Math.max(4, Math.round((combat?.perception ?? 6) * variation)),
+        willpower: Math.max(4, Math.round((combat?.wisdom ?? 6) * variation)),
+      },
+      equipment: {},
+      avatarUrl: npc.portraitUrl ?? npc.combatImageUrl ?? npc.iconUrl ?? undefined,
+    };
+  });
+}
 
 function isZoneInteractionModeInteractive(interactionMode: string | undefined): boolean {
   if (!interactionMode) {
@@ -4150,6 +4187,29 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     if (npcId) {
       const npc = resolveNpcById(npcId);
+
+      if (entity.kind === 'bandit') {
+        const willAttack = Math.random() < HOSTILE_BANDIT_ATTACK_CHANCE;
+        if (willAttack) {
+          const randomizedEnemyCount = rollHostileBanditEnemyCount();
+          const enemyCount = Math.max(HOSTILE_BANDIT_MIN_ENEMIES, Math.max(entity.memberCount, randomizedEnemyCount));
+          const customEnemies = npc
+            ? buildWorldEntityCombatEnemies(npc, enemyCount)
+            : undefined;
+          onStatus(`Бандиты атакуют! В бой вступают ${enemyCount} противников.`);
+          void onStartCombat(
+            HOSTILE_BANDIT_BATTLE_MAP_ID,
+            customEnemies && customEnemies.length > 0
+              ? { customEnemies }
+              : { enemyCount },
+          );
+          return;
+        }
+
+        onStatus('Бандиты заметили вас, но в этот раз не напали.');
+        return;
+      }
+
       openNpcDialogue(npcId, {
         cityId: npc?.cityId ?? activeCity?.id,
         locationId: npc?.cityLocationId ?? npc?.locationId,
@@ -4168,7 +4228,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     onStatus(`У сущности ${entity.id} не задан NPC или merchant source.`);
-  }, [activeCity?.id, onOpenMerchant, onStatus, openNpcDialogue, resolveNpcById]);
+  }, [activeCity?.id, onOpenMerchant, onStartCombat, onStatus, openNpcDialogue, resolveNpcById]);
 
   const pendingWorldEntityInteraction = useMemo(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -4477,35 +4537,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     engagedWorldEntityId,
     npcQuestSceneModal,
   ]);
-
-  const buildWorldEntityCombatEnemies = useCallback((
-    npc: NpcDefinition,
-    memberCount: number,
-  ): CustomArenaNpcPayload[] => {
-    const combat = npc.combat;
-    const normalizedCount = Math.max(1, Math.min(4, memberCount));
-    return Array.from({ length: normalizedCount }, (_, index) => {
-      const variation = index === 0 ? 1 : Math.max(0.82, 0.96 - index * 0.06);
-      return {
-        name: normalizedCount > 1 ? `${npc.name} ${index + 1}` : npc.name,
-        race: (npc.race ?? "human") as CustomArenaNpcPayload["race"],
-        stats: {
-          hp: Math.max(60, Math.round((combat?.hp ?? 120) * variation)),
-          mp: 0,
-          stamina: Math.max(40, Math.round((combat?.stamina ?? 90) * variation)),
-          strength: Math.max(6, Math.round((combat?.strength ?? 10) * variation)),
-          constitution: Math.max(6, Math.round((combat?.endurance ?? 10) * variation)),
-          dexterity: Math.max(6, Math.round((combat?.agility ?? 10) * variation)),
-          intelligence: Math.max(4, Math.round((combat?.intellect ?? 6) * variation)),
-          luck: Math.max(4, Math.round((combat?.luck ?? 6) * variation)),
-          perception: Math.max(4, Math.round((combat?.perception ?? 6) * variation)),
-          willpower: Math.max(4, Math.round((combat?.wisdom ?? 6) * variation)),
-        },
-        equipment: {},
-        avatarUrl: npc.portraitUrl ?? npc.combatImageUrl ?? npc.iconUrl ?? undefined,
-      };
-    });
-  }, []);
 
   const handleNpcTrade = useCallback(() => {
     if (!selectedNpcForInteraction?.traderId) {

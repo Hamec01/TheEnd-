@@ -20,6 +20,19 @@ interface WorldSnapshotStoreState {
   error: string | null;
 }
 
+async function parseJsonSafe(response: Response): Promise<any> {
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 250;
 
 const worldSnapshotStore: {
@@ -156,9 +169,13 @@ export function useWorldArchetypes() {
 
   useEffect(() => {
     fetch('/api/world-simulation/archetypes')
-      .then((r) => r.json())
+      .then((r) => parseJsonSafe(r))
       .then((data) => {
-        setArchetypes(data);
+        setArchetypes(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setArchetypes([]);
         setLoading(false);
       });
   }, []);
@@ -185,7 +202,21 @@ export function useWorldArchetypes() {
     return data;
   };
 
-  return { archetypes, loading, create, update };
+  const remove = async (id: string) => {
+    const res = await fetch(`/api/world-simulation/archetypes/${id}`, {
+      method: 'DELETE',
+    });
+    const data = await parseJsonSafe(res);
+    setArchetypes((current) => current.filter((a) => a.id !== id));
+    return (data ?? { success: res.ok, removedActiveEntities: 0, updatedRoutes: 0, updatedSpawnRules: 0 }) as {
+      success: boolean;
+      removedActiveEntities: number;
+      updatedRoutes: number;
+      updatedSpawnRules: number;
+    };
+  };
+
+  return { archetypes, loading, create, update, remove };
 }
 
 /**
@@ -197,9 +228,13 @@ export function useWorldRoutes() {
 
   useEffect(() => {
     fetch('/api/world-simulation/routes')
-      .then((r) => r.json())
+      .then((r) => parseJsonSafe(r))
       .then((data) => {
-        setRoutes(data);
+        setRoutes(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setRoutes([]);
         setLoading(false);
       });
   }, []);
@@ -238,9 +273,13 @@ export function useWorldSpawnRules() {
 
   useEffect(() => {
     fetch('/api/world-simulation/spawn-rules')
-      .then((r) => r.json())
+      .then((r) => parseJsonSafe(r))
       .then((data) => {
-        setRules(data);
+        setRules(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setRules([]);
         setLoading(false);
       });
   }, []);
