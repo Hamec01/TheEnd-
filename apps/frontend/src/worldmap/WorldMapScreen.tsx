@@ -54,6 +54,7 @@ import {
   type RegionToolMode,
   type RegionType,
   type WorldMapZone,
+  type WorldAudioCue,
   type ZoneEditorDraft,
   type ZoneEditorSettings,
   type ZoneEditorTool,
@@ -139,7 +140,9 @@ import {
   startMineRun,
   toPublicMineRun,
   retreatMineRun,
+  useMineActiveSkill,
 } from "../services/miningRuntime";
+import { recordMiningCareerRun } from '../services/miningCareerStats';
 import { MiningScreen } from "./MiningScreen";
 import {
   findMatchingQuestInteractions,
@@ -534,6 +537,48 @@ function getGlobalAudioVolume(): number {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
 }
 
+function resolveWorldAudioSource(value: string | undefined | null): string | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || isLikelyWindowsLocalPath(normalized)) {
+    return null;
+  }
+  return isDirectAudioSource(normalized)
+    ? normalized
+    : `/api/content/assets/audio/${encodeURIComponent(normalized)}/raw`;
+}
+
+function getWorldAudioCueSources(cue: WorldAudioCue | undefined): string[] {
+  if (!cue) {
+    return [];
+  }
+
+  const rawRefs: string[] = [];
+  if (Array.isArray(cue.urls)) {
+    rawRefs.push(...cue.urls);
+  }
+  if (Array.isArray(cue.assetIds)) {
+    rawRefs.push(...cue.assetIds);
+  }
+  if (cue.url) {
+    rawRefs.push(cue.url);
+  }
+  if (cue.assetId) {
+    rawRefs.push(cue.assetId);
+  }
+
+  const unique = new Set<string>();
+  const sources: string[] = [];
+  for (const ref of rawRefs) {
+    const source = resolveWorldAudioSource(ref);
+    if (!source || unique.has(source)) {
+      continue;
+    }
+    unique.add(source);
+    sources.push(source);
+  }
+  return sources;
+}
+
 function getFirstAvailableNpcDialogueId(npc: NpcDefinition | null | undefined): string | null {
   if (!npc) {
     return null;
@@ -871,6 +916,7 @@ interface WorldMapScreenProps {
   onRuntimeInventoryChanged?: () => void;
   onStatus: (text: string) => void;
   onTravelStaminaChange?: (nextStamina: number) => void;
+  onMineRunResourcesChange?: (next: { hp: number; stamina: number }) => void;
   onPlayerProfessionsChange?: (next: ArenaCharacter["professions"]) => void;
   cityMerchants?: AdminMerchant[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -930,6 +976,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onRuntimeInventoryChanged,
     onStatus,
     onTravelStaminaChange,
+    onMineRunResourcesChange,
     onPlayerProfessionsChange,
     cityMerchants = [],
     resolveItemById,
@@ -965,6 +1012,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const editorSaveInFlightRef = useRef<Promise<void> | null>(null);
   const lastRevealedCellRef = useRef<string | null>(null);
   const dialogueVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const worldMusicActiveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const worldMusicIdleAudioRef = useRef<HTMLAudioElement | null>(null);
+  const worldMusicFadeRafRef = useRef<number | null>(null);
+  const worldMusicCurrentKingdomRef = useRef<string | null>(null);
+  const worldMusicLastTrackByKingdomRef = useRef<Map<string, string>>(new Map());
   const lastDialogueVoiceKeyRef = useRef<string | null>(null);
   const warnedDialogueVoiceSourcesRef = useRef<Set<string>>(new Set());
   const pendingDialogueVoicePlayRef = useRef(false);
@@ -1176,6 +1228,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         dialogueVoiceAudioRef.current.pause();
         dialogueVoiceAudioRef.current.currentTime = 0;
       }
+      if (worldMusicFadeRafRef.current !== null) {
+        window.cancelAnimationFrame(worldMusicFadeRafRef.current);
+        worldMusicFadeRafRef.current = null;
+      }
+      if (worldMusicActiveAudioRef.current) {
+        worldMusicActiveAudioRef.current.pause();
+        worldMusicActiveAudioRef.current.currentTime = 0;
+      }
+      if (worldMusicIdleAudioRef.current) {
+        worldMusicIdleAudioRef.current.pause();
+        worldMusicIdleAudioRef.current.currentTime = 0;
+      }
+      worldMusicCurrentKingdomRef.current = null;
       pendingDialogueVoicePlayRef.current = false;
       dialogueVoiceRetryBoundRef.current = false;
     };
@@ -1449,6 +1514,143 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     return lines;
   }, [currentPassiveContexts]);
+
+  useEffect(() => {
+    const kingdomArea = currentPassiveContexts.currentKingdomArea;
+    const kingdomKey = (kingdomArea?.kingdomId || kingdomArea?.id || '').trim() || null;
+    const cue = kingdomArea?.music;
+    const sources = getWorldAudioCueSources(cue);
+    const targetVolume = Math.max(0, Math.min(1, (cue?.volume ?? 0.45) * getGlobalAudioVolume()));
+    const fadeOutMs = Math.max(250, cue?.fadeOutMs ?? 1200);
+    const fadeInMs = Math.max(250, cue?.fadeInMs ?? 1200);
+
+    const ensureAudioPair = () => {
+      if (!worldMusicActiveAudioRef.current) {
+        const active = new Audio();
+        active.preload = 'auto';
+        active.loop = true;
+        worldMusicActiveAudioRef.current = active;
+      }
+      if (!worldMusicIdleAudioRef.current) {
+        const idle = new Audio();
+        idle.preload = 'auto';
+        idle.loop = true;
+        worldMusicIdleAudioRef.current = idle;
+      }
+    };
+
+    const clearFade = () => {
+      if (worldMusicFadeRafRef.current !== null) {
+        window.cancelAnimationFrame(worldMusicFadeRafRef.current);
+        worldMusicFadeRafRef.current = null;
+      }
+    };
+
+    const fadeOutAndStop = (audio: HTMLAudioElement | null, durationMs: number) => {
+      if (!audio) {
+        return;
+      }
+      clearFade();
+      const startAt = performance.now();
+      const fromVolume = Number.isFinite(audio.volume) ? audio.volume : targetVolume;
+      const step = (now: number) => {
+        const progress = Math.min(1, Math.max(0, (now - startAt) / durationMs));
+        audio.volume = Math.max(0, fromVolume * (1 - progress));
+        if (progress >= 1) {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.removeAttribute('src');
+          audio.load();
+          worldMusicFadeRafRef.current = null;
+          return;
+        }
+        worldMusicFadeRafRef.current = window.requestAnimationFrame(step);
+      };
+      worldMusicFadeRafRef.current = window.requestAnimationFrame(step);
+    };
+
+    const pickRandomSource = (pool: string[], previous: string | null): string => {
+      if (pool.length <= 1) {
+        return pool[0]!;
+      }
+      const candidates = pool.filter((entry) => entry !== previous);
+      const sourcePool = candidates.length > 0 ? candidates : pool;
+      const randomIndex = Math.floor(Math.random() * sourcePool.length);
+      return sourcePool[Math.max(0, Math.min(sourcePool.length - 1, randomIndex))]!;
+    };
+
+    if (!kingdomKey || sources.length === 0) {
+      worldMusicCurrentKingdomRef.current = null;
+      fadeOutAndStop(worldMusicActiveAudioRef.current, fadeOutMs);
+      return;
+    }
+
+    const sameKingdom = worldMusicCurrentKingdomRef.current === kingdomKey;
+    const activeAudio = worldMusicActiveAudioRef.current;
+    const currentlyPlaying = Boolean(activeAudio && !activeAudio.paused && activeAudio.currentSrc);
+    if (sameKingdom && currentlyPlaying) {
+      return;
+    }
+
+    ensureAudioPair();
+
+    const outgoing = worldMusicActiveAudioRef.current;
+    const incoming = worldMusicIdleAudioRef.current;
+    if (!incoming) {
+      return;
+    }
+
+    const previousTrack = worldMusicLastTrackByKingdomRef.current.get(kingdomKey) ?? null;
+    const nextSource = pickRandomSource(sources, previousTrack);
+    worldMusicLastTrackByKingdomRef.current.set(kingdomKey, nextSource);
+    worldMusicCurrentKingdomRef.current = kingdomKey;
+
+    incoming.pause();
+    incoming.currentTime = 0;
+    incoming.src = nextSource;
+    incoming.loop = true;
+    incoming.volume = 0;
+
+    const playPromise = incoming.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      void playPromise.then(() => {
+        clearFade();
+        const startAt = performance.now();
+        const outgoingVolume = outgoing ? Math.max(0, outgoing.volume || targetVolume) : 0;
+        const durationMs = Math.max(fadeOutMs, fadeInMs);
+        const step = (now: number) => {
+          const elapsed = now - startAt;
+          const fadeOutProgress = Math.min(1, Math.max(0, elapsed / fadeOutMs));
+          const fadeInProgress = Math.min(1, Math.max(0, elapsed / fadeInMs));
+
+          if (outgoing) {
+            outgoing.volume = Math.max(0, outgoingVolume * (1 - fadeOutProgress));
+          }
+          incoming.volume = Math.max(0, targetVolume * fadeInProgress);
+
+          if (elapsed >= durationMs) {
+            incoming.volume = targetVolume;
+            if (outgoing) {
+              outgoing.pause();
+              outgoing.currentTime = 0;
+              outgoing.removeAttribute('src');
+              outgoing.load();
+            }
+            worldMusicActiveAudioRef.current = incoming;
+            worldMusicIdleAudioRef.current = outgoing ?? worldMusicIdleAudioRef.current;
+            worldMusicFadeRafRef.current = null;
+            return;
+          }
+
+          worldMusicFadeRafRef.current = window.requestAnimationFrame(step);
+        };
+
+        worldMusicFadeRafRef.current = window.requestAnimationFrame(step);
+      }).catch(() => {
+        // Ignore autoplay restrictions silently; audio starts after next user interaction.
+      });
+    }
+  }, [currentPassiveContexts.currentKingdomArea]);
   const nearbyNpcs = useMemo(
     () =>
       getNearbyMappedNpcs(
@@ -1668,7 +1870,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         .then(() => {
           pendingDialogueVoicePlayRef.current = false;
         })
-        .catch(() => {
+        .catch((error) => {
+          const name = String((error as { name?: string } | null)?.name ?? '').toLowerCase();
+          const message = String((error as { message?: string } | null)?.message ?? '').toLowerCase();
+          if (name.includes('aborterror') || message.includes('interrupted by a call to pause')) {
+            pendingDialogueVoicePlayRef.current = false;
+            return;
+          }
           // Browser can block autoplay in edge cases; retry on the next explicit user gesture.
           pendingDialogueVoicePlayRef.current = true;
           if (!dialogueVoiceRetryBoundRef.current && typeof window !== "undefined") {
@@ -4522,9 +4730,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return `Parity ${worldRenderer} pos=${position} current=${playWorldSceneSnapshot.currentZoneId ?? '-'} hover=${playWorldSceneSnapshot.hoverZoneId ?? '-'} active=${playWorldSceneSnapshot.activeEntities.length} pending=${pendingWorldEntityInteractionId ?? '-'} locked=${engagedWorldEntityId ?? '-'}`;
   }, [engagedWorldEntityId, pendingWorldEntityInteractionId, playWorldSceneSnapshot.activeEntities.length, playWorldSceneSnapshot.currentZoneId, playWorldSceneSnapshot.hoverZoneId, playWorldSceneSnapshot.player.position.x, playWorldSceneSnapshot.player.position.y, worldRenderer]);
   const lastWorldParityLogRef = useRef<string | null>(null);
+  const worldParityDebugEnabled = useMemo(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem('theend.debug.worldParity') === '1';
+  }, []);
 
   useEffect(() => {
-    if (!import.meta.env.DEV) {
+    if (!worldParityDebugEnabled) {
       return;
     }
 
@@ -4534,7 +4748,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     lastWorldParityLogRef.current = worldParityDebugLine;
     console.info(`[world-parity] ${worldParityDebugLine}`);
-  }, [worldParityDebugLine]);
+  }, [worldParityDebugEnabled, worldParityDebugLine]);
 
   const isWithinWorldEntityInteractionRange = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     return Math.hypot(
@@ -4988,7 +5202,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onPlayerProfessionsChange(nextProfessions);
     }
 
+    if (onMineRunResourcesChange) {
+      const nextHp = Math.max(0, Math.min(character.maxHp, Math.floor(Number(activeMineRun.hp) || 0)));
+      const nextStamina = Math.max(0, Math.min(character.maxStamina, Math.floor(Number(activeMineRun.stamina) || 0)));
+      onMineRunResourcesChange({ hp: nextHp, stamina: nextStamina });
+    }
+
     onRuntimeInventoryChanged?.();
+    recordMiningCareerRun(character.id, toPublicMineRun(activeMineRun), xpAward);
     onStatus(`Итог шахты: добыча перенесена, золото +${awardedGold}, опыт Горняка +${xpAward}.`);
     if (levelAfter > levelBefore) {
       onStatus('Горняк повысил уровень!');
@@ -5000,7 +5221,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     activeMineRun,
     addGoldToPlayerInventory,
     addItemsToPlayerInventory,
+    character.maxHp,
+    character.maxStamina,
     character.professions,
+    onMineRunResourcesChange,
     onPlayerProfessionsChange,
     onRuntimeInventoryChanged,
     onStatus,
@@ -5262,6 +5486,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const nextRun = descendMineRun(activeMineRun, activeMineEffects);
     setActiveMineRun(nextRun);
   }, [activeMineEffects, activeMineRun]);
+
+  const handleMineUseActiveSkill = useCallback((skillId: string, blockIndex: number): string => {
+    if (!activeMineRun || !activeMineEffects) {
+      return 'Спуск не активен.';
+    }
+    const result = useMineActiveSkill(activeMineRun, activeMineEffects, skillId, blockIndex);
+    if (result.changed) {
+      setActiveMineRun(result.run);
+    }
+    if (result.message) {
+      onStatus(result.message);
+    }
+    return result.message ?? 'Подсказка недоступна.';
+  }, [activeMineEffects, activeMineRun, onStatus]);
 
   const handleMineClose = useCallback(() => {
     if (!activeMineRun) {
@@ -7622,6 +7860,66 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const mine = findMineById(activeMineRun.mineId);
     const depth = findMineDepthById(activeMineRun.currentDepthId);
     const miningProfession = getPlayerProfession(questRuntimeProfessionCompat.professions ?? { professions: [] }, 'mining');
+    const activeMiningSkillDefs = [
+      {
+        id: 'mining_stone_hearing',
+        name: 'Каменный слух',
+        description: 'Моментально раскрывает подсказку выбранного блока.',
+        iconUrl: '/art/mining-skills/Каменный слух.png',
+      },
+      {
+        id: 'mining_careful_strike',
+        name: 'Осторожный удар',
+        description: 'Выполняет более бережный удар по выбранному блоку.',
+        iconUrl: '/art/mining-skills/Осторожный удар.png',
+      },
+      {
+        id: 'mining_soft_strike',
+        name: 'Мягкий удар',
+        description: 'Сильно снижает риск повредить хрупкую добычу при ударе.',
+        iconUrl: '/art/mining-skills/Мягкий удар.png',
+      },
+      {
+        id: 'mining_crack_reading',
+        name: 'Чтение трещин',
+        description: 'Проверяет выбранный блок на признаки скрытой опасности.',
+        iconUrl: '/art/mining-skills/Чтение трещин.png',
+      },
+      {
+        id: 'mining_support_beams',
+        name: 'Подпорки',
+        description: 'Укрепляет участок и может нейтрализовать опасный блок.',
+        iconUrl: '/art/mining-skills/Подпорки.png',
+      },
+      {
+        id: 'mining_master_brace',
+        name: 'Распорка мастера',
+        description: 'Усиливает укрепление и дополнительно снижает риск обвала.',
+        iconUrl: '/art/mining-skills/Распорка мастера.png',
+      },
+      {
+        id: 'mining_underground_map',
+        name: 'Карта подземья',
+        description: 'Показывает дополнительные подсказки по проходам и опасностям.',
+        iconUrl: '/art/mining-skills/Карта подземья.png',
+      },
+      {
+        id: 'mining_stone_memory',
+        name: 'Память камня',
+        description: 'Закрепляет скрытое свойство для выбранного кристалла/самоцвета.',
+        iconUrl: '/art/mining-skills/Память камня.png',
+      },
+    ];
+    const activeMiningSkills = activeMiningSkillDefs
+      .filter((skill) => Boolean(activeMineEffects?.some((effect) => effect.skillId === skill.id)))
+      .map((skill) => {
+        const used = (activeMineRun.usedEffects?.[`active_skill:${skill.id}`] ?? 0) > 0;
+        return {
+          ...skill,
+          enabled: !used,
+          used,
+        };
+      });
 
     if (!mine || !depth) {
       return (
@@ -7645,9 +7943,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         miningLevel={miningProfession?.level ?? 1}
         pickaxeName="Безымянная кирка"
         emergencyEscapeAvailable={Boolean(activeMineEffects?.some((effect) => effect.type === 'mine_once_per_run_escape') && !activeMineRun.usedEmergencyEscape)}
+        activeMiningSkills={activeMiningSkills}
         resolveItemName={resolveMineItemName}
         resolveItemMeta={resolveMineItemMeta}
         onHitBlock={handleMineHitBlock}
+        onUseActiveMiningSkill={handleMineUseActiveSkill}
         onDropLoot={handleMineDropLoot}
         onEscape={handleMineEscape}
         onRetreat={handleMineRetreat}

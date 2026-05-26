@@ -304,12 +304,34 @@ function normalizeAudioCue(value: unknown): WorldMapZone['music'] | undefined {
   const input = value as Record<string, unknown>;
   const assetId = typeof input.assetId === 'string' ? input.assetId.trim() : '';
   const url = typeof input.url === 'string' ? input.url.trim() : '';
-  if (!assetId && !url) {
+  const assetIds = Array.isArray(input.assetIds)
+    ? input.assetIds
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+    : typeof input.assetIds === 'string'
+      ? input.assetIds
+        .split(/\r?\n|,|;/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
+  const urls = Array.isArray(input.urls)
+    ? input.urls
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean)
+    : typeof input.urls === 'string'
+      ? input.urls
+        .split(/\r?\n|,|;/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
+  if (!assetId && !url && assetIds.length === 0 && urls.length === 0) {
     return undefined;
   }
   return {
     assetId: assetId || undefined,
+    assetIds: assetIds.length > 0 ? assetIds : undefined,
     url: url || undefined,
+    urls: urls.length > 0 ? urls : undefined,
     volume: isFiniteNumber(input.volume) ? Math.max(0, Math.min(1, input.volume)) : undefined,
     loop: typeof input.loop === 'boolean' ? input.loop : undefined,
     fadeInMs: isFiniteNumber(input.fadeInMs) ? Math.max(0, Math.round(input.fadeInMs)) : undefined,

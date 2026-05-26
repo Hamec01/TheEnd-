@@ -32,6 +32,15 @@ export interface MiningScreenProps {
     iconUrl?: string;
   } | null;
   onHitBlock: (blockIndex: number) => void;
+  activeMiningSkills?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+    enabled?: boolean;
+    used?: boolean;
+  }>;
+  onUseActiveMiningSkill?: (skillId: string, blockIndex: number) => string | void;
   onDropLoot?: (itemId: string, quantity: number) => void;
   onEscape: () => void;
   onRetreat: () => void;
@@ -62,6 +71,23 @@ interface SlotActionState {
   quantity: number;
   iconUrl?: string;
   description?: string;
+}
+
+interface SkillWheelTarget {
+  blockIndex: number;
+  x: number;
+  y: number;
+}
+
+interface SkillWheelEntry {
+  id: string;
+  name: string;
+  description?: string;
+  iconUrl?: string;
+  enabled: boolean;
+  used: boolean;
+  x: number;
+  y: number;
 }
 
 function areMetaMapsEqual(
@@ -179,6 +205,8 @@ export function MiningScreen({
   resolveItemName,
   resolveItemMeta,
   onHitBlock,
+  activeMiningSkills = [],
+  onUseActiveMiningSkill,
   onDropLoot,
   onEscape,
   onRetreat,
@@ -197,6 +225,9 @@ export function MiningScreen({
   const [itemMetaById, setItemMetaById] = useState<Record<string, MiningItemMeta>>({});
   const [slotActions, setSlotActions] = useState<SlotActionState | null>(null);
   const [inspectTarget, setInspectTarget] = useState<SlotActionState | null>(null);
+  const [skillWheelTarget, setSkillWheelTarget] = useState<SkillWheelTarget | null>(null);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [activeSkillHint, setActiveSkillHint] = useState<string | null>(null);
   const [musicStatus, setMusicStatus] = useState<string>('Музыка: инициализация...');
   const mineMusicRef = React.useRef<HTMLAudioElement | null>(null);
   const visibleSlotIdsKey = useMemo(
@@ -229,7 +260,32 @@ export function MiningScreen({
   useEffect(() => {
     setSlotActions(null);
     setInspectTarget(null);
+    setSkillWheelTarget(null);
+    setSelectedSkillId(null);
+    setActiveSkillHint(null);
   }, [run.runId, run.currentDepthId, run.status]);
+
+  const skillWheelEntries = useMemo<SkillWheelEntry[]>(() => {
+    const radius = 108;
+    const count = Math.max(1, activeMiningSkills.length);
+    return activeMiningSkills.map((skill, index) => {
+      const angle = ((Math.PI * 2) * index / count) - (Math.PI / 2);
+      return {
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        iconUrl: skill.iconUrl,
+        enabled: skill.enabled !== false,
+        used: Boolean(skill.used),
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+      };
+    });
+  }, [activeMiningSkills]);
+
+  const selectedSkill = useMemo(() => (
+    selectedSkillId ? skillWheelEntries.find((entry) => entry.id === selectedSkillId) ?? null : null
+  ), [selectedSkillId, skillWheelEntries]);
 
   useEffect(() => {
     let stopped = false;
@@ -246,6 +302,16 @@ export function MiningScreen({
       return name.includes('notallowed')
         || message.includes('user') && message.includes('interact')
         || message.includes('play() failed');
+    };
+
+    const isBenignPlayInterruption = (error: unknown): boolean => {
+      if (!(error instanceof Error)) {
+        return false;
+      }
+      const name = String((error as { name?: string }).name ?? '').toLowerCase();
+      const message = String(error.message ?? '').toLowerCase();
+      return name.includes('aborterror')
+        || message.includes('interrupted by a call to pause');
     };
 
     const audio = mineMusicRef.current ?? new Audio();
@@ -313,6 +379,9 @@ export function MiningScreen({
         setMusicStatus(`Музыка: играет ${source.split('/').pop() ?? 'трек'}.`);
       }).catch((error) => {
         if (stopped) {
+          return;
+        }
+        if (isBenignPlayInterruption(error)) {
           return;
         }
         if (isAutoplayBlocked(error)) {
@@ -491,6 +560,29 @@ export function MiningScreen({
     setSlotActions(state);
   };
 
+  const handleBlockContextMenu = (payload: { blockIndex: number; x: number; y: number }) => {
+    if (run.status !== 'active') {
+      return;
+    }
+    setSlotActions(null);
+    setInspectTarget(null);
+    setActiveSkillHint(null);
+    setSkillWheelTarget(payload);
+    setSelectedSkillId(null);
+  };
+
+  const handleUseActiveSkill = (skillId: string) => {
+    if (!skillWheelTarget || !onUseActiveMiningSkill) {
+      return;
+    }
+    const message = onUseActiveMiningSkill(skillId, skillWheelTarget.blockIndex);
+    if (message) {
+      setActiveSkillHint(fixMojibake(message));
+    }
+    setSkillWheelTarget(null);
+    setSelectedSkillId(null);
+  };
+
   const handleDropLootFromMenu = () => {
     if (!slotActions || slotActions.section !== 'loot' || !onDropLoot) {
       setSlotActions(null);
@@ -511,7 +603,7 @@ export function MiningScreen({
 
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
-      <section className="card mining-window wm-modal">
+      <section className="card mining-window wm-modal" onContextMenu={(event) => event.preventDefault()}>
         <div className="battle-window-head">
           <h2>Горняк / Горянка</h2>
           <button onClick={onClose}>x</button>
@@ -536,14 +628,83 @@ export function MiningScreen({
             <p className="mining-muted">{musicStatus}</p>
           </aside>
 
-          <main className="mining-center">
+          <main className="mining-center" onContextMenu={(event) => event.preventDefault()}>
             <MiningPhaserRenderer
               mine={mine}
               depth={depth}
               run={run}
               disabled={run.status !== 'active'}
               onHitBlock={onHitBlock}
+              onBlockContextMenu={handleBlockContextMenu}
             />
+            {activeSkillHint ? <p className="mining-active-skill-hint">{activeSkillHint}</p> : null}
+            {skillWheelTarget ? (
+              <div
+                className="mining-skill-wheel-backdrop"
+                onClick={() => {
+                  setSkillWheelTarget(null);
+                  setSelectedSkillId(null);
+                }}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <section
+                  className="mining-skill-wheel"
+                  style={{ left: `${skillWheelTarget.x}px`, top: `${skillWheelTarget.y}px` }}
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Активные навыки"
+                >
+                  {skillWheelEntries.length === 0 ? <p className="mining-muted">Нет доступных активных навыков.</p> : null}
+                  {skillWheelEntries.map((skill) => (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      className={`mining-skill-wheel-icon${skill.used ? ' mining-skill-wheel-icon-used' : ''}`}
+                      style={{ left: `${50 + skill.x / 3.2}%`, top: `${50 + skill.y / 3.2}%` }}
+                      disabled={skill.enabled === false}
+                      onClick={() => setSelectedSkillId(skill.id)}
+                      title={skill.description || skill.name}
+                    >
+                      <img src={skill.iconUrl || SLOT_ICON_FALLBACK} alt={skill.name} loading="lazy" />
+                    </button>
+                  ))}
+                  {selectedSkill ? (
+                    <section className="mining-skill-mini-pop" onClick={(event) => event.stopPropagation()}>
+                      <div className="mining-skill-mini-head">
+                        <div className="mining-slot-icon">
+                          <img src={selectedSkill.iconUrl || SLOT_ICON_FALLBACK} alt={selectedSkill.name} loading="lazy" />
+                        </div>
+                        <div>
+                          <h4>{selectedSkill.name}</h4>
+                          <p className="mining-muted">{selectedSkill.used ? 'Уже использовано в этом спуске' : 'Готово к применению'}</p>
+                        </div>
+                      </div>
+                      <p className="mining-muted">{selectedSkill.description || 'Описание отсутствует.'}</p>
+                      <div className="mining-item-modal-actions">
+                        <button type="button" disabled={!selectedSkill.enabled} onClick={() => handleUseActiveSkill(selectedSkill.id)}>Применить</button>
+                        <button type="button" onClick={() => setSelectedSkillId(null)}>Назад</button>
+                      </div>
+                    </section>
+                  ) : (
+                    <section className="mining-skill-mini-pop mining-skill-mini-pop-hint">
+                      <p className="mining-muted">Выберите иконку навыка.</p>
+                      <div className="mining-item-modal-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSkillWheelTarget(null);
+                            setSelectedSkillId(null);
+                          }}
+                        >
+                          Закрыть
+                        </button>
+                      </div>
+                    </section>
+                  )}
+                </section>
+              </div>
+            ) : null}
           </main>
 
           <aside className="mining-panel mining-side-tabs">
@@ -772,12 +933,106 @@ export function MiningScreen({
             min-width: 0;
             min-height: 0;
             display: flex;
+            position: relative;
             justify-content: center;
             align-items: center;
             overflow: hidden;
             border-radius: 10px;
             background: radial-gradient(circle at top, rgba(72, 50, 34, 0.24), rgba(16, 11, 8, 0.92));
             border: 1px solid rgba(164, 141, 110, 0.2);
+          }
+          .mining-active-skill-hint {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            margin: 0;
+            z-index: 13;
+            padding: 0.35rem 0.55rem;
+            border-radius: 6px;
+            border: 1px solid rgba(223, 188, 132, 0.55);
+            background: rgba(31, 24, 18, 0.92);
+            color: #f6d7a1;
+            font-size: 12px;
+            max-width: min(75%, 520px);
+          }
+          .mining-skill-wheel-backdrop {
+            position: absolute;
+            inset: 0;
+            z-index: 14;
+          }
+          .mining-skill-wheel {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            width: 340px;
+            height: 340px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          }
+          .mining-skill-wheel-icon {
+            position: absolute;
+            width: 66px;
+            height: 66px;
+            border-radius: 999px;
+            border: 1px solid rgba(218, 184, 127, 0.6);
+            background: rgba(42, 31, 23, 0.95);
+            transform: translate(-50%, -50%);
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            transform-origin: center;
+            will-change: transform;
+            transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+          }
+          .mining-skill-wheel-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+          .mining-skill-wheel button.mining-skill-wheel-icon:hover:enabled {
+            transform: translate(-50%, -50%) scale(1.12) !important;
+            border-color: rgba(240, 203, 139, 0.9);
+            box-shadow: 0 0 0 2px rgba(240, 203, 139, 0.2), 0 10px 22px rgba(0, 0, 0, 0.45);
+          }
+          .mining-skill-wheel button.mining-skill-wheel-icon:focus-visible {
+            transform: translate(-50%, -50%) scale(1.12) !important;
+            border-color: rgba(240, 203, 139, 0.9);
+            box-shadow: 0 0 0 2px rgba(240, 203, 139, 0.2), 0 10px 22px rgba(0, 0, 0, 0.45);
+          }
+          .mining-skill-wheel button.mining-skill-wheel-icon:active:enabled {
+            transform: translate(-50%, -50%) scale(1.06) !important;
+          }
+          .mining-skill-wheel-icon-used {
+            filter: grayscale(0.7) brightness(0.72);
+          }
+          .mining-skill-mini-pop {
+            width: 220px;
+            min-height: 140px;
+            border-radius: 10px;
+            border: 1px solid rgba(218, 184, 127, 0.45);
+            background: rgba(24, 18, 14, 0.96);
+            padding: 0.6rem;
+            display: grid;
+            gap: 0.5rem;
+            z-index: 2;
+          }
+          .mining-skill-mini-pop-hint {
+            align-content: center;
+          }
+          .mining-skill-mini-head {
+            display: grid;
+            grid-template-columns: 44px 1fr;
+            gap: 0.45rem;
+            align-items: center;
+          }
+          .mining-skill-mini-head h4 {
+            margin: 0;
+            font-size: 0.88rem;
+            color: #ead3ac;
+            line-height: 1.15;
           }
           .mining-stat-list,
           .mining-loot-list,

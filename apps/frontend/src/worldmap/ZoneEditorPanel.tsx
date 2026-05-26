@@ -24,6 +24,7 @@ import type { WorldLocation } from '../types/location';
 import type { StoredImage } from '../services/content/models';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import { loadMinesFromStorage } from '../services/miningRepository';
+import { audioService } from '../services/content/audioService';
 import { AdminImageField } from '../admin/AdminImageField';
 import { buildUploadFolder } from '../services/content/uploadFolders';
 import { resolveStoredImageSource } from '../services/content/runtimeImageService';
@@ -322,6 +323,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
   const hasSelectedZone = Boolean(selectedZoneId);
   const [hexInputValue, setHexInputValue] = useState('');
   const [hexWarning, setHexWarning] = useState<string | null>(null);
+  const [isMusicPlaylistUploading, setIsMusicPlaylistUploading] = useState(false);
+  const [musicPlaylistUploadStatus, setMusicPlaylistUploadStatus] = useState<string | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -562,6 +565,46 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       ...patch,
       updatedAt: Date.now(),
     });
+  }
+
+  async function handleMusicPlaylistUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!draft) {
+      return;
+    }
+
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) {
+      return;
+    }
+
+    setIsMusicPlaylistUploading(true);
+    setMusicPlaylistUploadStatus(null);
+
+    const uploadFolder = buildUploadFolder('audio', 'world', draft.id || draft.name || 'kingdom');
+    const uploadedUrls: string[] = [];
+
+    try {
+      for (const file of files) {
+        const uploaded = await audioService.upload(file, {
+          name: file.name,
+          folder: uploadFolder,
+        });
+        uploadedUrls.push(uploaded.publicUrl);
+      }
+
+      const existingUrls = String(draft.musicUrls ?? '')
+        .split(/\r?\n|,|;/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const merged = Array.from(new Set([...existingUrls, ...uploadedUrls]));
+      updateDraft({ musicUrls: merged.join('\n') });
+      setMusicPlaylistUploadStatus(`Загружено треков: ${uploadedUrls.length}`);
+    } catch (error) {
+      setMusicPlaylistUploadStatus(`Ошибка загрузки: ${(error as Error).message || 'unknown'}`);
+    } finally {
+      setIsMusicPlaylistUploading(false);
+    }
   }
 
   function handleResourceKindChange(nextValue: ResourceKind | '') {
@@ -1106,6 +1149,39 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
             value={draft?.musicUrl ?? ''}
             onChange={(event) => updateDraft({ musicUrl: event.target.value })}
           />
+        </label>
+        <label>
+          <span>Music playlist URLs (по одной ссылке на строку)</span>
+          <textarea
+            disabled={!draft}
+            placeholder={'/audio/world/argos-theme-1.ogg\n/audio/world/argos-theme-2.ogg'}
+            rows={4}
+            value={draft?.musicUrls ?? ''}
+            onChange={(event) => updateDraft({ musicUrls: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Music playlist asset IDs (по одному ID на строку)</span>
+          <textarea
+            disabled={!draft}
+            placeholder={'music_argos_1\nmusic_argos_2'}
+            rows={3}
+            value={draft?.musicAssetIds ?? ''}
+            onChange={(event) => updateDraft({ musicAssetIds: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Загрузить несколько треков (playlist)</span>
+          <input
+            disabled={!draft || isMusicPlaylistUploading}
+            type="file"
+            accept="audio/*,.ogg,.mp3,.wav,.m4a,.webm"
+            multiple
+            onChange={handleMusicPlaylistUpload}
+          />
+          <small style={{ display: 'block', marginTop: 6, opacity: 0.78 }}>
+            {isMusicPlaylistUploading ? 'Загрузка треков...' : musicPlaylistUploadStatus ?? 'Треки добавятся в поле Music playlist URLs.'}
+          </small>
         </label>
         <label>
           <span>Ambient asset ID</span>

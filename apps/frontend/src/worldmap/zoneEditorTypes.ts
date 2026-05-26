@@ -83,11 +83,27 @@ export interface PaintedRegionCell {
 
 export interface WorldAudioCue {
   assetId?: string;
+  assetIds?: string[];
   url?: string;
+  urls?: string[];
   volume?: number;
   loop?: boolean;
   fadeInMs?: number;
   fadeOutMs?: number;
+}
+
+function parseListField(value: string | undefined | null): string[] {
+  return String(value ?? '')
+    .split(/\r?\n|,|;/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function joinListField(values: string[] | undefined): string {
+  if (!Array.isArray(values) || values.length === 0) {
+    return '';
+  }
+  return values.map((entry) => String(entry ?? '').trim()).filter(Boolean).join('\n');
 }
 
 export interface WorldMapZone {
@@ -201,6 +217,8 @@ export interface ZoneEditorDraft {
   stateSprites: Record<LocationStateSpriteKey, string>;
   musicAssetId: string;
   musicUrl: string;
+  musicAssetIds: string;
+  musicUrls: string;
   ambientSoundAssetId: string;
   ambientSoundUrl: string;
   createdAt: number;
@@ -311,6 +329,8 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     },
     musicAssetId: '',
     musicUrl: '',
+    musicAssetIds: '',
+    musicUrls: '',
     ambientSoundAssetId: '',
     ambientSoundUrl: '',
     createdAt: now,
@@ -394,6 +414,8 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     },
     musicAssetId: zone.music?.assetId ?? '',
     musicUrl: zone.music?.url ?? '',
+    musicAssetIds: joinListField(zone.music?.assetIds),
+    musicUrls: joinListField(zone.music?.urls),
     ambientSoundAssetId: zone.ambientSound?.assetId ?? '',
     ambientSoundUrl: zone.ambientSound?.url ?? '',
     createdAt: zone.createdAt,
@@ -404,6 +426,8 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
 
 export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: number): WorldMapZone {
   const now = Date.now();
+  const musicAssetIds = parseListField(draft.musicAssetIds);
+  const musicUrls = parseListField(draft.musicUrls);
   const isKingdomArea = draft.type === 'kingdom_area';
   const resolvedEditorLayer = isKingdomArea ? 'areas' : draft.editorLayer;
   const resolvedInteractionMode = isKingdomArea ? 'none' : draft.interactionMode;
@@ -491,10 +515,12 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     stateSprites: Object.fromEntries(
       Object.entries(draft.stateSprites).filter(([, value]) => value.trim().length > 0),
     ) as LocationStateSprites,
-    music: draft.musicAssetId.trim() || draft.musicUrl.trim()
+    music: draft.musicAssetId.trim() || draft.musicUrl.trim() || draft.musicAssetIds.trim() || draft.musicUrls.trim()
       ? {
         assetId: draft.musicAssetId.trim() || undefined,
+        assetIds: musicAssetIds.length > 0 ? musicAssetIds : undefined,
         url: draft.musicUrl.trim() || undefined,
+        urls: musicUrls.length > 0 ? musicUrls : undefined,
         loop: true,
       }
       : undefined,

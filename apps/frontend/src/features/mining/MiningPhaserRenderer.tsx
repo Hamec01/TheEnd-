@@ -12,6 +12,7 @@ interface MiningPhaserRendererProps {
   run: MineRunState;
   disabled: boolean;
   onHitBlock: (blockIndex: number) => void;
+  onBlockContextMenu?: (payload: { blockIndex: number; x: number; y: number }) => void;
   onMusicStatus?: (status: string) => void;
 }
 
@@ -92,6 +93,16 @@ function isAutoplayBlocked(error: unknown): boolean {
     || message.includes('play() failed');
 }
 
+function isBenignPlayInterruption(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const name = String((error as { name?: string }).name ?? '').toLowerCase();
+  const message = String(error.message ?? '').toLowerCase();
+  return name.includes('aborterror')
+    || message.includes('interrupted by a call to pause');
+}
+
 function resolveImageSource(value?: string | null): string | null {
   const normalized = String(value ?? '').trim().replace(/\\/g, '/');
   if (!normalized) {
@@ -120,6 +131,7 @@ function resolveImageSource(value?: string | null): string | null {
 class MiningScene extends Phaser.Scene {
   private snapshot: MiningSnapshot | null = null;
   private onHitBlock: ((blockIndex: number) => void) | null = null;
+  private onBlockContextMenu: ((payload: { blockIndex: number; x: number; y: number }) => void) | null = null;
   private background?: Phaser.GameObjects.Image;
   private backgroundFallback?: Phaser.GameObjects.Rectangle;
   private gridLayer?: Phaser.GameObjects.Container;
@@ -145,6 +157,7 @@ class MiningScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#17110d');
+    this.input.mouse?.disableContextMenu();
     this.backgroundFallback = this.add.rectangle(0, 0, 10, 10, 0x251a13).setOrigin(0);
     this.gridLayer = this.add.container(0, 0);
     this.fxLayer = this.add.container(0, 0);
@@ -156,9 +169,14 @@ class MiningScene extends Phaser.Scene {
     this.renderSnapshot();
   }
 
-  setSnapshot(snapshot: MiningSnapshot, onHitBlock: (blockIndex: number) => void) {
+  setSnapshot(
+    snapshot: MiningSnapshot,
+    onHitBlock: (blockIndex: number) => void,
+    onBlockContextMenu?: (payload: { blockIndex: number; x: number; y: number }) => void,
+  ) {
     this.snapshot = snapshot;
     this.onHitBlock = onHitBlock;
+    this.onBlockContextMenu = onBlockContextMenu ?? null;
     if (this.sys.isActive()) {
       this.renderSnapshot();
     }
@@ -179,6 +197,10 @@ class MiningScene extends Phaser.Scene {
     if (!snapshot || !this.gridLayer || !this.fxLayer || !this.pickaxe || !this.backgroundFallback) {
       return;
     }
+
+    // A snapshot redraw can happen while hit tweens are running (asset loads, resize).
+    // Reset pending lock so a canceled tween cannot freeze block interactions.
+    this.pendingBlockIndex = null;
 
     this.scale.resize(snapshot.widthPx, snapshot.heightPx);
     this.renderBackground(snapshot);
@@ -440,13 +462,24 @@ class MiningScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
-    if (this.pendingBlockIndex !== null || this.hoveredBlockIndex === null || !this.onHitBlock) {
+    if (this.hoveredBlockIndex === null) {
       return;
     }
 
     const blockIndex = this.hoveredBlockIndex;
     const node = this.blockNodes.get(blockIndex);
     if (!node || !node.isClosed || node.disabled) {
+      return;
+    }
+
+    const isRightButton = pointer.button === 2 || pointer.rightButtonDown();
+    if (isRightButton) {
+      pointer.event?.preventDefault();
+      this.onBlockContextMenu?.({ blockIndex, x: pointer.x, y: pointer.y });
+      return;
+    }
+
+    if (this.pendingBlockIndex !== null || !this.onHitBlock) {
       return;
     }
 
@@ -461,8 +494,11 @@ class MiningScene extends Phaser.Scene {
       node.container,
       { x: hitX, y: hitY },
       () => {
-        this.onHitBlock?.(blockIndex);
-        this.pendingBlockIndex = null;
+        try {
+          this.onHitBlock?.(blockIndex);
+        } finally {
+          this.pendingBlockIndex = null;
+        }
       },
     );
   }
@@ -800,6 +836,7 @@ export function MiningPhaserRenderer({
   run,
   disabled,
   onHitBlock,
+  onBlockContextMenu,
   onMusicStatus,
 }: MiningPhaserRendererProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -988,6 +1025,9 @@ export function MiningPhaserRenderer({
         if (mineMusicStoppedRef.current) {
           return;
         }
+        if (isBenignPlayInterruption(error)) {
+          return;
+        }
         if (isAutoplayBlocked(error)) {
           waitForUserUnlock(nextTrackIndex);
           return;
@@ -1105,12 +1145,13 @@ export function MiningPhaserRenderer({
       widthPx: size.width,
       heightPx: size.height,
       itemIconById,
-    }, disabled ? () => undefined : onHitBlock);
-  }, [depth, disabled, itemIconById, mine, onHitBlock, run, size.height, size.width]);
+    }, disabled ? () => undefined : onHitBlock, disabled ? undefined : onBlockContextMenu);
+  }, [depth, disabled, itemIconById, mine, onBlockContextMenu, onHitBlock, run, size.height, size.width]);
 
   return (
     <div
       ref={hostRef}
+      onContextMenu={(event) => event.preventDefault()}
       style={{
         width: '100%',
         minHeight: 620,

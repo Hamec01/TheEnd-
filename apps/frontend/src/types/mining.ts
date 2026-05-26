@@ -280,6 +280,8 @@ export interface InternalMineBlockState extends MineBlockState {
   hiddenLootTableId?: string;
   hiddenHazardTableId?: string;
   hiddenPayloads?: MineBlockPayload[];
+  forcedSpecialProperty?: boolean;
+  forcedSpecialPropertySkillId?: string;
 }
 
 export interface MineRunState {

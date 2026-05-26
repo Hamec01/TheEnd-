@@ -670,20 +670,21 @@ export function SkillTreeView(props: SkillTreeViewProps) {
           borderBottom: '1px solid rgba(139, 102, 56, 0.32)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => onBack?.()}
-          disabled={!onBack}
-          style={{
-            borderRadius: 8,
-            border: '1px solid rgba(149, 111, 62, 0.52)',
-            background: 'rgba(21, 18, 14, 0.86)',
-            color: '#e8d8be',
-            padding: '8px 12px',
-          }}
-        >
-          ← Назад к профессиям
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={() => onBack()}
+            style={{
+              borderRadius: 8,
+              border: '1px solid rgba(149, 111, 62, 0.52)',
+              background: 'rgba(21, 18, 14, 0.86)',
+              color: '#e8d8be',
+              padding: '8px 12px',
+            }}
+          >
+            ← Назад к профессиям
+          </button>
+        ) : null}
         <strong style={{ fontSize: 20, letterSpacing: 0.6, color: '#f1dfbf' }}>{professionName.toUpperCase()}</strong>
         <span
           style={{

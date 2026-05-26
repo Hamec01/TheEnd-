@@ -2217,17 +2217,27 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
   const handlePlayerProfessionsChange = useCallback((nextState: ArenaCharacter['professions']) => {
     const normalized = normalizePlayerProfessionsState(nextState);
+    let characterIdForSync: string | null = null;
     setCharacter((current) => {
       if (!current) {
         return current;
       }
 
+      characterIdForSync = current.id;
       savePlayerProfessionsState(current.id, normalized);
       return {
         ...current,
         professions: normalized,
       };
     });
+
+    if (characterIdForSync) {
+      void patchDevCharacterState(characterIdForSync, {
+        professions: normalized,
+      }).catch((error) => {
+        console.warn('Failed to sync professions state:', error);
+      });
+    }
   }, []);
 
   const applyFullHealingService = useCallback(async (options?: { costGold?: number }) => {
@@ -2781,6 +2791,38 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       travelStaminaSyncTimeoutRef.current = null;
     }, 250);
   }, [character, godmodeInfiniteResources.stamina]);
+
+  const handleMineRunResourcesChange = useCallback((next: { hp: number; stamina: number }) => {
+    if (!character) {
+      return;
+    }
+
+    const clampedHp = Math.max(0, Math.min(character.maxHp, Math.round(Number(next.hp) || 0)));
+    const clampedStamina = Math.max(0, Math.min(character.maxStamina, Math.round(Number(next.stamina) || 0)));
+    const targetHp = godmodeInfiniteResources.hp ? character.maxHp : clampedHp;
+    const targetStamina = godmodeInfiniteResources.stamina ? character.maxStamina : clampedStamina;
+
+    setCharacter((current) => {
+      if (!current) {
+        return current;
+      }
+      if (current.currentHp === targetHp && current.currentStamina === targetStamina) {
+        return current;
+      }
+      return {
+        ...current,
+        currentHp: targetHp,
+        currentStamina: targetStamina,
+      };
+    });
+
+    void updateCharacterResources(character.id, {
+      currentHp: targetHp,
+      currentStamina: targetStamina,
+    }).catch((error) => {
+      console.warn('Failed to sync mine run resources:', error);
+    });
+  }, [character, godmodeInfiniteResources.hp, godmodeInfiniteResources.stamina]);
 
   function openEquipmentOverlay(): void {
     onNavigate?.('/equipment');
@@ -4877,6 +4919,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           onApplyHealingService={applyFullHealingService}
           onRuntimeInventoryChanged={handleRuntimeInventoryChanged}
           onTravelStaminaChange={handleTravelStaminaChange}
+          onMineRunResourcesChange={handleMineRunResourcesChange}
           onPlayerProfessionsChange={handlePlayerProfessionsChange}
           onStartCombat={openCombat}
           onStartBattleMap={(battleMapId) => {
@@ -4976,6 +5019,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
         {overlayPanel === 'professions' && character ? (
           <PlayerProfessionsPanel
+            characterId={character.id}
             professionsState={normalizePlayerProfessionsState(character.professions)}
             onClose={() => setOverlayPanel(null)}
             onStatus={setStatus}

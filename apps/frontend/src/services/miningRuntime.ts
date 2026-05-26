@@ -623,8 +623,18 @@ function maybeAddSpecialProperty(params: {
   effects: ActiveMiningEffect[];
   run: InternalMineRunState;
   rng: () => number;
+  force?: boolean;
+  forcedBySkillId?: string;
 }): void {
-  const { loot, blockType, effects, run, rng } = params;
+  const {
+    loot,
+    blockType,
+    effects,
+    run,
+    rng,
+    force = false,
+    forcedBySkillId,
+  } = params;
   if ((blockType !== 'gem' && blockType !== 'crystal') || loot.length === 0) {
     return;
   }
@@ -635,7 +645,7 @@ function maybeAddSpecialProperty(params: {
     0,
     1,
   );
-  if (chance <= 0 || rng() > chance) {
+  if (!force && (chance <= 0 || rng() > chance)) {
     return;
   }
   const sourceSkill = getMatchingEffects(effects, 'mine_loot_special_property_chance', context)[0];
@@ -648,12 +658,15 @@ function maybeAddSpecialProperty(params: {
     itemId: first.itemId,
     quantity: first.quantity,
     propertyId,
-    sourceSkillId: sourceSkill?.skillId,
+    sourceSkillId: forcedBySkillId ?? sourceSkill?.skillId,
   };
   run.specialFinds = [...(run.specialFinds ?? []), specialFind];
   const label = fixMojibake(SPECIAL_PROPERTY_LABELS[propertyId] ?? 'Скрытое свойство');
   run.eventLog = pushLog(run.eventLog, `Особое свойство: ${label}.`);
-  run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Память камня: найден кристалл со скрытым свойством.');
+  run.skillEffectLog = pushSkillEffectLog(
+    run.skillEffectLog,
+    forcedBySkillId ? 'Активный навык добавил скрытое свойство.' : 'Память камня: найден кристалл со скрытым свойством.',
+  );
 }
 
 function maybeAddDynamicRuneTrace(
@@ -1292,7 +1305,15 @@ function resolveBlockOpen(
     }
 
     loot = maybeApplyFragileLootDamage({ loot, blockType: block.hiddenType, effects, run, rng });
-    maybeAddSpecialProperty({ loot, blockType: block.hiddenType, effects, run, rng });
+    maybeAddSpecialProperty({
+      loot,
+      blockType: block.hiddenType,
+      effects,
+      run,
+      rng,
+      force: Boolean(block.forcedSpecialProperty),
+      forcedBySkillId: block.forcedSpecialPropertySkillId,
+    });
     if (loot.length > 0 && payload?.type !== 'rune_trace') {
       loot = mergeLootStacks(loot, maybeAddDynamicRuneTrace(run, block.hiddenType, effects, rng));
     }
@@ -1641,6 +1662,28 @@ export interface HitMineBlockResult {
   changed: boolean;
 }
 
+export interface UseMineActiveSkillResult {
+  run: InternalMineRunState;
+  changed: boolean;
+  message?: string;
+}
+
+function activeSkillUsageKey(skillId: string): string {
+  return `active_skill:${skillId}`;
+}
+
+function hasUsedActiveSkill(run: InternalMineRunState, skillId: string): boolean {
+  return (run.usedEffects?.[activeSkillUsageKey(skillId)] ?? 0) > 0;
+}
+
+function markActiveSkillUsed(run: InternalMineRunState, skillId: string): void {
+  if (!run.usedEffects) {
+    run.usedEffects = {};
+  }
+  const key = activeSkillUsageKey(skillId);
+  run.usedEffects[key] = (run.usedEffects[key] ?? 0) + 1;
+}
+
 export function hitMineBlock(
   run: InternalMineRunState,
   blockIndex: number,
@@ -1696,6 +1739,202 @@ export function hitMineBlock(
   }
 
   return { run: resolvedRun, changed: true };
+}
+
+export function useMineActiveSkill(
+  run: InternalMineRunState,
+  effects: ActiveMiningEffect[],
+  skillId: string,
+  blockIndex: number,
+): UseMineActiveSkillResult {
+  if (run.status !== 'active') {
+    return { run, changed: false, message: 'Спуск уже завершён.' };
+  }
+
+  const knownActiveSkills = new Set([
+    'mining_stone_hearing',
+    'mining_careful_strike',
+    'mining_soft_strike',
+    'mining_crack_reading',
+    'mining_support_beams',
+    'mining_master_brace',
+    'mining_underground_map',
+    'mining_stone_memory',
+  ]);
+  if (!knownActiveSkills.has(skillId)) {
+    return { run, changed: false, message: 'Этот активный навык пока не поддерживается.' };
+  }
+
+  const hasSkill = effects.some((effect) => effect.skillId === skillId);
+  if (!hasSkill) {
+    return { run, changed: false, message: 'Навык не изучен или недоступен.' };
+  }
+
+  if (hasUsedActiveSkill(run, skillId)) {
+    return { run, changed: false, message: 'Этот активный навык уже использован в текущем спуске.' };
+  }
+
+  const block = run.blocks[blockIndex];
+  if (!block || block.state !== 'closed') {
+    return { run, changed: false, message: 'Нужен закрытый блок для применения навыка.' };
+  }
+
+  const context = {
+    ...getEffectContextForRun(run),
+    blockType: block.hiddenType,
+  };
+
+  if (skillId === 'mining_stone_hearing') {
+    if (block.label && String(block.label).trim().length > 0) {
+      return { run, changed: false, message: `Подсказка уже известна: ${block.label}.` };
+    }
+    const hasStoneHearing = effects.some((effect) => (
+      effect.skillId === 'mining_stone_hearing'
+        && effect.type === 'mine_block_hint_chance'
+        && matchesCondition(effect, context)
+    ));
+    if (!hasStoneHearing) {
+      return { run, changed: false, message: 'Навык Каменный слух недоступен для этого блока.' };
+    }
+
+    const nextRun = clone(run);
+    const nextBlock = nextRun.blocks[blockIndex];
+    if (!nextBlock || nextBlock.state !== 'closed') {
+      return { run, changed: false, message: 'Блок уже изменился, попробуйте ещё раз.' };
+    }
+    nextBlock.label = nextBlock.hiddenLabel ?? blockLabelForType(nextBlock.hiddenType);
+    nextRun.eventLog = pushLog(nextRun.eventLog, `Каменный слух: ${nextBlock.label}.`);
+    nextRun.skillEffectLog = pushSkillEffectLog(nextRun.skillEffectLog, `Каменный слух раскрыл блок: ${nextBlock.label}.`);
+    markActiveSkillUsed(nextRun, skillId);
+    return {
+      run: nextRun,
+      changed: true,
+      message: `Каменный слух: ${nextBlock.label}.`,
+    };
+  }
+
+  if (skillId === 'mining_crack_reading') {
+    const nextRun = clone(run);
+    const nextBlock = nextRun.blocks[blockIndex];
+    if (!nextBlock || nextBlock.state !== 'closed') {
+      return { run, changed: false, message: 'Блок уже изменился, попробуйте ещё раз.' };
+    }
+    if (nextBlock.hiddenType === 'hazard') {
+      nextBlock.label = nextBlock.hiddenLabel ?? 'Опасная трещина';
+      nextRun.eventLog = pushLog(nextRun.eventLog, `Чтение трещин: опасность замечена (${nextBlock.label}).`);
+      markActiveSkillUsed(nextRun, skillId);
+      return { run: nextRun, changed: true, message: `Чтение трещин: ${nextBlock.label}.` };
+    }
+    nextBlock.label = nextBlock.label ?? 'Трещины спокойны';
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Чтение трещин: явной опасности нет.');
+    markActiveSkillUsed(nextRun, skillId);
+    return { run: nextRun, changed: true, message: 'Чтение трещин: явной опасности нет.' };
+  }
+
+  if (skillId === 'mining_careful_strike' || skillId === 'mining_soft_strike') {
+    const boostedPercent = skillId === 'mining_soft_strike' ? -100 : -60;
+    const boostedName = skillId === 'mining_soft_strike' ? 'Мягкий удар' : 'Осторожный удар';
+    const boostedEffects: ActiveMiningEffect[] = [
+      ...effects,
+      {
+        skillId,
+        skillName: boostedName,
+        runtimeKey: `${skillId}_active_fragile_guard`,
+        type: 'mine_fragile_loot_break_chance_modifier',
+        value: boostedPercent,
+        valueType: 'percent',
+        condition: { blockType: ['gem', 'crystal'] },
+      },
+    ];
+    const result = hitMineBlock(run, blockIndex, boostedEffects);
+    if (!result.changed) {
+      return { run, changed: false, message: `${boostedName}: не удалось выполнить удар.` };
+    }
+    result.run.eventLog = pushLog(result.run.eventLog, `${boostedName}: точный удар по выбранному блоку.`);
+    markActiveSkillUsed(result.run, skillId);
+    return { run: result.run, changed: true, message: `${boostedName}: выполнен бережный удар.` };
+  }
+
+  if (skillId === 'mining_support_beams' || skillId === 'mining_master_brace') {
+    const nextRun = clone(run);
+    const nextBlock = nextRun.blocks[blockIndex];
+    if (!nextBlock || nextBlock.state !== 'closed') {
+      return { run, changed: false, message: 'Блок уже изменился, попробуйте ещё раз.' };
+    }
+    const isMaster = skillId === 'mining_master_brace';
+    if (nextBlock.hiddenType === 'hazard') {
+      nextBlock.hiddenType = 'stone';
+      nextBlock.hiddenLabel = isMaster ? 'Надёжно укреплённый участок' : 'Укреплённый участок';
+      nextBlock.label = nextBlock.hiddenLabel;
+      nextRun.eventLog = pushLog(nextRun.eventLog, isMaster ? 'Распорка мастера обезвредила опасный участок.' : 'Подпорки укрепили опасный участок.');
+      if (isMaster) {
+        nextRun.collapseRisk = clamp(nextRun.collapseRisk - 0.12, 0, 0.95);
+      }
+      markActiveSkillUsed(nextRun, skillId);
+      return {
+        run: nextRun,
+        changed: true,
+        message: isMaster ? 'Распорка мастера: опасность нейтрализована.' : 'Подпорки: опасность нейтрализована.',
+      };
+    }
+    nextBlock.label = nextBlock.label ?? (isMaster ? 'Надёжная распорка' : 'Участок укреплён');
+    if (isMaster) {
+      nextRun.collapseRisk = clamp(nextRun.collapseRisk - 0.12, 0, 0.95);
+    } else {
+      nextRun.collapseRisk = clamp(nextRun.collapseRisk - 0.05, 0, 0.95);
+    }
+    nextRun.eventLog = pushLog(nextRun.eventLog, isMaster ? 'Распорка мастера усилила устойчивость выработки.' : 'Подпорки усилили устойчивость выработки.');
+    markActiveSkillUsed(nextRun, skillId);
+    return {
+      run: nextRun,
+      changed: true,
+      message: isMaster ? 'Распорка мастера: участок усилен.' : 'Подпорки: участок усилен.',
+    };
+  }
+
+  if (skillId === 'mining_underground_map') {
+    const nextRun = clone(run);
+    const revealOne = (type: InternalMineBlockState['hiddenType']) => {
+      const target = nextRun.blocks.find((entry) => entry.state === 'closed' && entry.hiddenType === type && !entry.label);
+      if (!target) {
+        return false;
+      }
+      target.label = target.hiddenLabel ?? blockLabelForType(type);
+      return true;
+    };
+    const passageRevealed = revealOne('passage');
+    const hazardRevealed = revealOne('hazard');
+    const selected = nextRun.blocks[blockIndex];
+    if (selected?.state === 'closed') {
+      selected.label = selected.label ?? selected.hiddenLabel ?? blockLabelForType(selected.hiddenType);
+    }
+    const changed = passageRevealed || hazardRevealed || Boolean(selected?.label);
+    if (!changed) {
+      return { run, changed: false, message: 'Карта подземья: новых зацепок не найдено.' };
+    }
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Карта подземья: отмечены старые проходы и опасности.');
+    markActiveSkillUsed(nextRun, skillId);
+    return { run: nextRun, changed: true, message: 'Карта подземья: новые метки добавлены.' };
+  }
+
+  if (skillId === 'mining_stone_memory') {
+    if (block.hiddenType !== 'gem' && block.hiddenType !== 'crystal') {
+      return { run, changed: false, message: 'Память камня работает на самоцветах и кристаллах.' };
+    }
+    const nextRun = clone(run);
+    const nextBlock = nextRun.blocks[blockIndex];
+    if (!nextBlock || nextBlock.state !== 'closed') {
+      return { run, changed: false, message: 'Блок уже изменился, попробуйте ещё раз.' };
+    }
+    nextBlock.forcedSpecialProperty = true;
+    nextBlock.forcedSpecialPropertySkillId = 'mining_stone_memory';
+    nextBlock.label = nextBlock.label ?? 'Камень запомнен';
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Память камня: в этом блоке закреплён след региона.');
+    markActiveSkillUsed(nextRun, skillId);
+    return { run: nextRun, changed: true, message: 'Память камня: след региона закреплён.' };
+  }
+
+  return { run, changed: false, message: 'Этот активный навык пока не поддерживается.' };
 }
 
 export function descendMineRun(
