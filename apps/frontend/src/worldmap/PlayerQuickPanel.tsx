@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, StatBlock } from '@theend/rpg-domain';
+import { normalizeActorVisualSource } from '../phaser/assets/actorVisualResolver';
 
 interface QuickActionButton {
   id: string;
@@ -27,6 +29,12 @@ interface PlayerQuickPanelProps {
 
 export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
   const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage, worldStatusLines = [] } = props;
+  const [hasAvatarError, setHasAvatarError] = useState(false);
+  const resolvedAvatarUrl = useMemo(() => normalizeActorVisualSource(avatarUrl), [avatarUrl]);
+
+  useEffect(() => {
+    setHasAvatarError(false);
+  }, [resolvedAvatarUrl]);
 
   return (
     <aside className="wm-left card">
@@ -34,8 +42,8 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
 
       <div className="wm-avatar-wrap" title={`${name} status`}>
         <button className="wm-avatar" title={`Name: ${name}`}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={name} className="wm-avatar-img" onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          {resolvedAvatarUrl && !hasAvatarError ? (
+            <img src={resolvedAvatarUrl} alt={name} className="wm-avatar-img" onError={() => setHasAvatarError(true)} />
           ) : (
             avatarLetter
           )}

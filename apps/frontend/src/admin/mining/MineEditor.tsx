@@ -2,8 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminImageField } from '../AdminImageField';
 import type { MineDefinition, MineDangerLevel, MineVisualTheme } from '../../types/mining';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { itemsService } from '../../services/content/itemsService';
+import { materialsService } from '../../services/content/materialsService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
-import { loadMinesFromStorage, saveMinesToStorage } from '../../services/miningRepository';
+import {
+  loadMineBlockTablesFromStorage,
+  loadMineDepthsFromStorage,
+  loadMineLootTablesFromStorage,
+  loadMinesFromStorage,
+  loadMiningToolsFromStorage,
+  saveMinesToStorage,
+} from '../../services/miningRepository';
 import { AdminFieldLabel } from '../adminUi';
 
 interface MineEditorProps {
@@ -18,6 +27,19 @@ function splitCsv(value: string): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.map((entry) => String(entry ?? '').trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, 'ru'));
+}
+
+function appendCsv(current: string[], next: string): string[] {
+  const normalizedNext = String(next ?? '').trim();
+  if (!normalizedNext || current.includes(normalizedNext)) {
+    return current;
+  }
+  return [...current, normalizedNext];
 }
 
 function emptyMine(): MineDefinition {
@@ -69,6 +91,8 @@ export function MineEditor({ onSave }: MineEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MineDefinition>(emptyMine());
   const [status, setStatus] = useState('Ready');
+  const [knownItemIds, setKnownItemIds] = useState<string[]>([]);
+  const [knownMaterialIds, setKnownMaterialIds] = useState<string[]>([]);
 
   useEffect(() => {
     const loaded = loadMinesFromStorage();
@@ -77,7 +101,48 @@ export function MineEditor({ onSave }: MineEditorProps) {
       setSelectedId(loaded[0]!.id);
       setDraft(loaded[0]!);
     }
+
+    const miningItemIds = uniqueSorted([
+      ...loaded.flatMap((entry) => entry.knownResourceItemIds ?? []),
+      ...loadMineLootTablesFromStorage().flatMap((table) => table.entries.map((entry) => entry.itemId)),
+      ...loadMineBlockTablesFromStorage().flatMap((table) =>
+        table.entries.flatMap((entry) =>
+          (entry.payloads ?? []).map((payload) => payload.itemId).filter(Boolean) as string[],
+        ),
+      ),
+      ...loadMiningToolsFromStorage().map((entry) => entry.itemId),
+    ]);
+    const miningMaterialIds = uniqueSorted([
+      ...loaded.flatMap((entry) => entry.knownMaterialIds ?? []),
+      ...loadMineBlockTablesFromStorage().flatMap((table) =>
+        table.entries.flatMap((entry) =>
+          (entry.payloads ?? []).map((payload) => payload.materialId).filter(Boolean) as string[],
+        ),
+      ),
+    ]);
+
+    void Promise.all([
+      itemsService.getAll().then((items) => items.map((item) => item.id)),
+      materialsService.getAll().then((materials) => materials.map((material) => material.id)),
+    ])
+      .then(([contentItemIds, contentMaterialIds]) => {
+        setKnownItemIds(uniqueSorted([...miningItemIds, ...contentItemIds]));
+        setKnownMaterialIds(uniqueSorted([...miningMaterialIds, ...contentMaterialIds]));
+      })
+      .catch(() => {
+        setKnownItemIds(miningItemIds);
+        setKnownMaterialIds(miningMaterialIds);
+      });
   }, []);
+
+  const knownDepthIds = useMemo(() => uniqueSorted([
+    ...loadMineDepthsFromStorage().map((entry) => entry.id),
+    ...mines.flatMap((entry) => entry.depthIds),
+  ]), [mines]);
+
+  const knownResourceNames = useMemo(() => uniqueSorted(
+    mines.flatMap((entry) => entry.knownResources),
+  ), [mines]);
 
   const selectedMine = useMemo(
     () => mines.find((entry) => entry.id === selectedId) ?? null,
@@ -261,38 +326,98 @@ export function MineEditor({ onSave }: MineEditorProps) {
 
         <label>
           <AdminFieldLabel label="Depth IDs" hint="Comma-separated. This defines the mine depth order." />
-          <input
-            value={draft.depthIds.join(', ')}
-            onChange={(event) => setDraft((current) => ({ ...current, depthIds: splitCsv(event.target.value) }))}
-            placeholder="mine_teramor_old_iron_depth_1, mine_teramor_old_iron_depth_2"
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: 8 }}>
+            <input
+              value={draft.depthIds.join(', ')}
+              onChange={(event) => setDraft((current) => ({ ...current, depthIds: splitCsv(event.target.value) }))}
+              placeholder="mine_teramor_old_iron_depth_1, mine_teramor_old_iron_depth_2"
+            />
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue) {
+                  setDraft((current) => ({ ...current, depthIds: appendCsv(current.depthIds, nextValue) }));
+                  event.currentTarget.value = '';
+                }
+              }}
+            >
+              <option value="">Добавить из созданных depth...</option>
+              {knownDepthIds.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </div>
         </label>
 
         <label>
           <AdminFieldLabel label="Known resources" hint="Comma-separated. Shown to the player before entering." />
-          <input
-            value={draft.knownResources.join(', ')}
-            onChange={(event) => setDraft((current) => ({ ...current, knownResources: splitCsv(event.target.value) }))}
-            placeholder="Камень, Железная руда, Золото"
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: 8 }}>
+            <input
+              value={draft.knownResources.join(', ')}
+              onChange={(event) => setDraft((current) => ({ ...current, knownResources: splitCsv(event.target.value) }))}
+              placeholder="Камень, Железная руда, Золото"
+            />
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue) {
+                  setDraft((current) => ({ ...current, knownResources: appendCsv(current.knownResources, nextValue) }));
+                  event.currentTarget.value = '';
+                }
+              }}
+            >
+              <option value="">Добавить из созданных ресурсов...</option>
+              {knownResourceNames.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </div>
         </label>
 
         <label>
           <AdminFieldLabel label="Known item IDs" hint="Comma-separated. For future links to real items." />
-          <input
-            value={(draft.knownResourceItemIds ?? []).join(', ')}
-            onChange={(event) => setDraft((current) => ({ ...current, knownResourceItemIds: splitCsv(event.target.value) }))}
-            placeholder="item_raw_stone, item_iron_ore"
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: 8 }}>
+            <input
+              value={(draft.knownResourceItemIds ?? []).join(', ')}
+              onChange={(event) => setDraft((current) => ({ ...current, knownResourceItemIds: splitCsv(event.target.value) }))}
+              placeholder="item_raw_stone, item_iron_ore"
+            />
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue) {
+                  setDraft((current) => ({ ...current, knownResourceItemIds: appendCsv(current.knownResourceItemIds ?? [], nextValue) }));
+                  event.currentTarget.value = '';
+                }
+              }}
+            >
+              <option value="">Добавить из созданных предметов...</option>
+              {knownItemIds.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </div>
         </label>
 
         <label>
           <AdminFieldLabel label="Known material IDs" hint="Comma-separated. For future links to materials." />
-          <input
-            value={(draft.knownMaterialIds ?? []).join(', ')}
-            onChange={(event) => setDraft((current) => ({ ...current, knownMaterialIds: splitCsv(event.target.value) }))}
-            placeholder="material_stone, material_iron_ore"
-          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: 8 }}>
+            <input
+              value={(draft.knownMaterialIds ?? []).join(', ')}
+              onChange={(event) => setDraft((current) => ({ ...current, knownMaterialIds: splitCsv(event.target.value) }))}
+              placeholder="material_stone, material_iron_ore"
+            />
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue) {
+                  setDraft((current) => ({ ...current, knownMaterialIds: appendCsv(current.knownMaterialIds ?? [], nextValue) }));
+                  event.currentTarget.value = '';
+                }
+              }}
+            >
+              <option value="">Добавить из созданных материалов...</option>
+              {knownMaterialIds.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </div>
         </label>
 
         <div className="admin-actions-row">

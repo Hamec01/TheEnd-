@@ -24,7 +24,6 @@ import {
   pickDeterministicBanditPortrait,
   resolveActorPortraitWithFallback,
 } from '../../phaser/assets/actorVisualResolver';
-import { resolveCircularPortraitLayout } from '../../phaser/assets/circularPortraitLayout';
 import { resolvePhaserAsset } from '../../phaser/assets/phaserAssetRegistry';
 import { visualFxService } from '../../services/content/visualFxService';
 
@@ -126,38 +125,79 @@ class PhaserBattleScene extends Phaser.Scene {
     size: number,
   ) {
     const existingImage = token.getByName('portraitImage') as Phaser.GameObjects.Image | null;
-    const existingMaskGraphics = token.getData('portraitMaskGraphics') as Phaser.GameObjects.Graphics | undefined;
-    const frame = this.textures.getFrame(imageKey);
-    const layout = resolveCircularPortraitLayout({
-      existingTextureKey: existingImage?.texture?.key,
-      nextTextureKey: imageKey,
-      sourceWidth: frame?.width ?? size,
-      sourceHeight: frame?.height ?? size,
-      size,
-    });
-
-    if (layout.reuseExisting) {
+    const portraitSize = Math.max(12, size - 6);
+    const circularTextureKey = this.ensureCircularPortraitTexture(imageKey, portraitSize);
+    if (!circularTextureKey) {
+      return;
+    }
+    if (existingImage?.texture?.key === circularTextureKey) {
       return;
     }
 
     existingImage?.destroy();
-    existingMaskGraphics?.destroy();
-    token.setData('portraitMaskGraphics', undefined);
+    const existingMaskShape = token.getByName('portraitMask') as Phaser.GameObjects.Graphics | null;
+    existingMaskShape?.destroy();
 
-    const image = this.add.image(0, -1, imageKey).setDisplaySize(layout.displayWidth, layout.displayHeight).setName('portraitImage');
-    const maskGraphics = this.add.graphics({ x: 0, y: 0 });
-    maskGraphics.setVisible(false);
-    maskGraphics.fillStyle(0xffffff, 1);
-    maskGraphics.fillCircle(0, -1, layout.maskRadius);
-    image.setMask(maskGraphics.createGeometryMask());
-    image.once(Phaser.GameObjects.Events.DESTROY, () => {
-      maskGraphics.destroy();
-    });
-    token.setData('portraitMaskGraphics', maskGraphics);
+    const image = this.add.image(0, -1, circularTextureKey)
+      .setDisplaySize(portraitSize, portraitSize)
+      .setName('portraitImage');
     token.addAt(image, 1);
 
     const label = token.getByName('portraitLabel') as Phaser.GameObjects.Text | null;
     label?.setVisible(false);
+  }
+
+  private ensureCircularPortraitTexture(imageKey: string, size: number): string | null {
+    const frame = this.textures.getFrame(imageKey);
+    if (!frame) {
+      return null;
+    }
+
+    const circularKey = `${imageKey}::circle::${size}`;
+    if (this.textures.exists(circularKey)) {
+      return circularKey;
+    }
+
+    const canvasTexture = this.textures.createCanvas(circularKey, size, size);
+    if (!canvasTexture) {
+      return null;
+    }
+    const context = canvasTexture.context;
+    const sourceImage = frame.source.image as CanvasImageSource | undefined;
+    if (!context || !sourceImage) {
+      this.textures.remove(circularKey);
+      return null;
+    }
+
+    const sourceWidth = Math.max(1, frame.cutWidth || frame.width);
+    const sourceHeight = Math.max(1, frame.cutHeight || frame.height);
+    const square = Math.max(1, Math.min(sourceWidth, sourceHeight));
+    const cropX = Math.max(0, Math.floor((sourceWidth - square) / 2));
+    const cropY = Math.max(0, Math.min(
+      Math.floor((sourceHeight - square) * 0.18),
+      sourceHeight - square,
+    ));
+
+    context.clearRect(0, 0, size, size);
+    context.save();
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    context.closePath();
+    context.clip();
+    context.drawImage(
+      sourceImage,
+      (frame.cutX || 0) + cropX,
+      (frame.cutY || 0) + cropY,
+      square,
+      square,
+      0,
+      0,
+      size,
+      size,
+    );
+    context.restore();
+    canvasTexture.refresh();
+    return circularKey;
   }
 
   private isDirectAudioSource(value: string): boolean {

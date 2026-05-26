@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ArenaCombatEntity } from '@theend/rpg-domain';
 
 type FighterVisualState = 'idle' | 'attack' | 'hit' | 'block' | 'dodge';
@@ -28,6 +29,17 @@ function stateLabel(state: FighterVisualState): string {
   return 'Idle';
 }
 
+function describeStaminaState(current: number, max: number): string {
+  const ratio = Math.max(0, Math.min(1, current / Math.max(1, max)));
+  if (ratio <= 0.15) {
+    return 'Выдохся';
+  }
+  if (ratio <= 0.45) {
+    return 'Еще может биться';
+  }
+  return 'Бодрый';
+}
+
 export function FighterCard({
   fighter,
   highlighted = false,
@@ -37,9 +49,17 @@ export function FighterCard({
   subtitle,
   avatarUrl,
 }: FighterCardProps) {
+  const [hasAvatarError, setHasAvatarError] = useState(false);
   const hpPercent = Math.max(0, Math.min(100, Math.round((fighter.currentHp / fighter.maxHp) * 100)));
   const mpPercent = Math.max(0, Math.min(100, Math.round((fighter.currentMp / Math.max(1, fighter.maxMp)) * 100)));
   const staminaPercent = Math.max(0, Math.min(100, Math.round((fighter.currentStamina / fighter.maxStamina) * 100)));
+  const shouldRenderAvatarImage = Boolean(avatarUrl) && !hasAvatarError;
+  const showCompactEnemyVitals = side === 'enemy';
+  const enemyStaminaState = describeStaminaState(fighter.currentStamina, fighter.maxStamina);
+
+  useEffect(() => {
+    setHasAvatarError(false);
+  }, [avatarUrl]);
 
   return (
     <div
@@ -68,8 +88,8 @@ export function FighterCard({
 
       <div className="fighter-avatar-section">
         <div className={`combat-avatar ${fighter.isAlive ? '' : 'is-dead'}`} style={{ ['--hp-percent' as string]: `${hpPercent}%` }}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={fighter.name} className="combat-avatar-image" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          {shouldRenderAvatarImage ? (
+            <img src={avatarUrl} alt={fighter.name} className="combat-avatar-image" onError={() => setHasAvatarError(true)} />
           ) : (
             <div className="combat-avatar-fallback">{fighter.name.slice(0, 2).toUpperCase()}</div>
           )}
@@ -92,29 +112,37 @@ export function FighterCard({
           </div>
         </div>
 
-        <div className="bar-row">
-          <div className="bar-label">
-            <span>MP</span>
-            <span className="bar-value">
-              {fighter.currentMp}/{fighter.maxMp}
-            </span>
-          </div>
-          <div className="meter mana-meter">
-            <span style={{ width: `${mpPercent}%` }} />
-          </div>
-        </div>
+        {showCompactEnemyVitals ? (
+          <p className="fighter-vitals-note" title={`Stamina ${fighter.currentStamina}/${fighter.maxStamina}`}>
+            Состояние: {enemyStaminaState}
+          </p>
+        ) : (
+          <>
+            <div className="bar-row">
+              <div className="bar-label">
+                <span>MP</span>
+                <span className="bar-value">
+                  {fighter.currentMp}/{fighter.maxMp}
+                </span>
+              </div>
+              <div className="meter mana-meter">
+                <span style={{ width: `${mpPercent}%` }} />
+              </div>
+            </div>
 
-        <div className="bar-row">
-          <div className="bar-label">
-            <span>STA</span>
-            <span className="bar-value">
-              {fighter.currentStamina}/{fighter.maxStamina}
-            </span>
-          </div>
-          <div className="meter stamina-meter">
-            <span style={{ width: `${staminaPercent}%` }} />
-          </div>
-        </div>
+            <div className="bar-row">
+              <div className="bar-label">
+                <span>STA</span>
+                <span className="bar-value">
+                  {fighter.currentStamina}/{fighter.maxStamina}
+                </span>
+              </div>
+              <div className="meter stamina-meter">
+                <span style={{ width: `${staminaPercent}%` }} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -430,6 +430,15 @@ export function BattlePanel({
       fallback: '/sprites/actor/human_01.png',
     });
   }, [selectedEnemy]);
+  const playerResolvedAvatarUrl = useMemo(
+    () => (player
+      ? resolveActorPortraitWithFallback(player.avatarUrl ?? playerAvatarUrl, {
+          entityId: player.id,
+          fallback: '/sprites/actor/human_01.png',
+        })
+      : undefined),
+    [player, playerAvatarUrl],
+  );
   const playerPlacement = useMemo(
     () => state.entities.find((e) => e.id === playerId) ?? null,
     [state.entities, playerId],
@@ -1334,7 +1343,7 @@ export function BattlePanel({
                 fighter={player}
                 highlighted={isPlayerTurn}
                 side="player"
-                avatarUrl={player.avatarUrl ?? playerAvatarUrl}
+                avatarUrl={playerResolvedAvatarUrl}
                 visualState={feedback.playerVisualState}
                 floatingText={feedback.floatingText}
                 subtitle={playerGuardLabel ? `Вы — ${playerGuardLabel}` : 'Вы'}

@@ -1412,6 +1412,7 @@ h3 {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  z-index: 1;
 }
 
 .combat-avatar-fallback {
@@ -1419,16 +1420,21 @@ h3 {
   place-items: center;
   font-weight: 700;
   color: #f2e0bc;
+  z-index: 1;
 }
 
 .combat-avatar-base {
-  background: rgba(0, 0, 0, 0.5);
+  inset: auto 0 0 0;
+  height: 40%;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.48));
 }
 
 .combat-avatar-hp-fill {
   top: auto;
   height: var(--hp-percent);
   opacity: 0.5;
+  z-index: 3;
   background: linear-gradient(180deg, rgba(95, 201, 127, 0.78), rgba(40, 124, 68, 0.92));
 }
 
@@ -4476,7 +4482,9 @@ h3 {
 }
 
 .phaser-battle-renderer {
+  position: relative;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
 }
 
 .phaser-battle-host {
@@ -4488,6 +4496,7 @@ h3 {
   border-radius: 10px;
   border: 1px solid rgba(166, 132, 82, 0.45);
   background: #120e09;
+  isolation: isolate;
 }
 
 .battle-fullscreen-root .phaser-battle-host {
@@ -4497,16 +4506,33 @@ h3 {
 
 .phaser-battle-host canvas {
   display: block;
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0;
+}
+
+.phaser-battle-renderer .tactical-header,
+.phaser-battle-renderer .tactical-context-menu {
+  position: relative;
+  z-index: 1;
 }
 
 .wm-map-phaser .wm-map-phaser-surface {
   position: relative;
   overflow: hidden;
   cursor: pointer;
+  isolation: isolate;
 }
 
 .wm-map-phaser .wm-map-phaser-surface canvas {
   display: block;
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0;
 }
 
 .wm-renderer-toggle {
@@ -4879,6 +4905,13 @@ h3 {
 
 .bar-value {
   color: var(--text-main);
+}
+
+.fighter-vitals-note {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .fighter-bars .mana-meter span {
@@ -6814,6 +6847,21 @@ h3 {
 .wm-play-map-wrap {
   position: relative;
   min-height: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.wm-map-dev-status {
+  overflow-wrap: anywhere;
+}
+
+.wm-play-map-wrap > .wm-map,
+.wm-play-map-wrap > .wm-map .wm-map-surface,
+.wm-map-phaser .wm-map-title,
+.wm-map-phaser .wm-zone-tooltip,
+.wm-map-phaser .wm-map-legend {
+  position: relative;
+  z-index: 1;
 }
 
 .wm-mini-map {
@@ -6899,6 +6947,29 @@ h3 {
   .wm-mini-map {
     width: 184px;
     height: 118px;
+  }
+}
+
+@media (max-width: 720px) {
+  .wm-renderer-toggle {
+    position: static;
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .wm-mini-map {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    width: 136px;
+    height: 92px;
+  }
+
+  .godmode-console-toggle {
+    right: 10px;
+    bottom: 10px;
+    min-width: 88px;
+    padding-inline: 12px;
   }
 }
 
@@ -8156,12 +8227,23 @@ body:has(.page.page--scroll) {
   .battle-fullscreen-root .battle-main-grid,
   .battle-window:not(.wm-modal) .battle-main-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(340px, 1fr) auto;
+    overflow-y: auto;
   }
 
   .tactical-board-container {
     min-height: 0;
     height: 100%;
+  }
+
+  .battle-fullscreen-root .battle-center-column,
+  .battle-window:not(.wm-modal) .battle-center-column {
+    min-height: 340px;
+  }
+
+  .battle-fullscreen-root .battle-center-log,
+  .battle-window:not(.wm-modal) .battle-center-log {
+    max-height: 124px;
   }
 
   .wm-editor-shell.is-admin-editor .wm-editor-main {
@@ -10156,11 +10238,12 @@ body:has(.page.page--scroll) {
 }
 
 .battle-fullscreen-root .fighter-card.fighter-side-enemy {
-  min-height: 120px;
+  min-height: 146px;
 }
 
 .battle-fullscreen-root .fighter-card.fighter-side-enemy .fighter-bars {
-  display: none;
+  display: grid;
+  gap: 6px;
 }
 
 .battle-fullscreen-root .column-command-section {
@@ -10868,6 +10951,143 @@ body:has(.page.page--scroll) {
 .battle-window:not(.wm-modal) .tactical-scene {
   transform-origin: center center;
   transition: transform 160ms ease-out;
+}
+
+@media (max-width: 900px) {
+  .battle-fullscreen-root .battle-main-grid,
+  .battle-window:not(.wm-modal) .battle-main-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    overflow-y: auto;
+    grid-auto-flow: row;
+    align-content: start;
+    gap: 8px;
+  }
+
+  .battle-fullscreen-root .battle-center-column,
+  .battle-window:not(.wm-modal) .battle-center-column {
+    order: 1;
+    grid-column: 1 / span 2;
+    grid-row: 1;
+    min-height: 408px;
+    grid-template-rows: minmax(88px, 116px) minmax(290px, 1fr) auto;
+  }
+
+  .battle-fullscreen-root .battle-left-column,
+  .battle-window:not(.wm-modal) .battle-left-column {
+    order: 2;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .battle-fullscreen-root .battle-right-column,
+  .battle-window:not(.wm-modal) .battle-right-column {
+    order: 3;
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .battle-fullscreen-root .battle-column,
+  .battle-window:not(.wm-modal) .battle-column {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .battle-fullscreen-root .battle-left-column,
+  .battle-fullscreen-root .battle-right-column,
+  .battle-window:not(.wm-modal) .battle-left-column,
+  .battle-window:not(.wm-modal) .battle-right-column {
+    align-content: start;
+    grid-template-rows: auto;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+  }
+
+  .battle-fullscreen-root .column-player-section,
+  .battle-fullscreen-root .column-enemy-section,
+  .battle-window:not(.wm-modal) .column-player-section,
+  .battle-window:not(.wm-modal) .column-enemy-section {
+    overflow: visible;
+  }
+
+  .battle-fullscreen-root .fighter-card.fighter-card-compact,
+  .battle-window:not(.wm-modal) .fighter-card.fighter-card-compact {
+    padding: 6px 8px;
+    min-height: 0;
+  }
+
+  .battle-fullscreen-root .fighter-header,
+  .battle-window:not(.wm-modal) .fighter-header {
+    gap: 6px;
+  }
+
+  .battle-fullscreen-root .fighter-name-title strong,
+  .battle-window:not(.wm-modal) .fighter-name-title strong {
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.15;
+  }
+
+  .battle-fullscreen-root .fighter-race-line,
+  .battle-fullscreen-root .fighter-subtitle,
+  .battle-window:not(.wm-modal) .fighter-race-line,
+  .battle-window:not(.wm-modal) .fighter-subtitle {
+    font-size: 0.68rem;
+    line-height: 1.2;
+  }
+
+  .battle-fullscreen-root .fighter-avatar-section,
+  .battle-window:not(.wm-modal) .fighter-avatar-section {
+    min-height: 58px;
+  }
+
+  .battle-fullscreen-root .combat-avatar,
+  .battle-window:not(.wm-modal) .combat-avatar,
+  .battle-fullscreen-root .combat-avatar-image,
+  .battle-window:not(.wm-modal) .combat-avatar-image {
+    width: 44px;
+    height: 44px;
+  }
+
+  .battle-fullscreen-root .battle-center-log,
+  .battle-window:not(.wm-modal) .battle-center-log {
+    min-height: 88px;
+    max-height: 116px;
+  }
+
+  .battle-fullscreen-root .phaser-battle-host,
+  .battle-window:not(.wm-modal) .phaser-battle-host {
+    width: 100%;
+    min-height: 290px;
+    height: min(46vh, 360px);
+  }
+}
+
+@media (max-width: 640px) {
+  .battle-fullscreen-root .battle-main-grid,
+  .battle-window:not(.wm-modal) .battle-main-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+  }
+
+  .battle-fullscreen-root .battle-center-column,
+  .battle-window:not(.wm-modal) .battle-center-column {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .battle-fullscreen-root .battle-left-column,
+  .battle-window:not(.wm-modal) .battle-left-column {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .battle-fullscreen-root .battle-right-column,
+  .battle-window:not(.wm-modal) .battle-right-column {
+    grid-column: 1;
+    grid-row: 3;
+  }
 }
 
 @media (max-height: 760px) {

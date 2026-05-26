@@ -139,7 +139,7 @@ const DEFAULT_TURN_SECONDS = 60;
 const DEFAULT_ROUND_DURATION_SECONDS = DEFAULT_TURN_SECONDS;
 const ACTIVE_TURN_DURATION_SECONDS = 30;
 const MAX_AUTOMATED_TURN_LOOPS = 24;
-const ARENA_GOLD_PER_DEFEATED_ENEMY = 50;
+const ARENA_GOLD_PER_DEFEATED_ENEMY = 18;
 const PVP_LOOT_CONFIG = {
   maxDroppedItems: 2,
   itemDropChance: 0.15,
@@ -216,6 +216,24 @@ export class CombatService {
     }
 
     return [...merged.values()];
+  }
+
+  private applyIncomingCombatModifiersToSkillDamage(target: ArenaCombatEntity, damage: number, damageKind: string): number {
+    const baseDamage = Math.max(0, Math.floor(damage));
+    if (baseDamage <= 0) {
+      return 0;
+    }
+
+    const incoming =
+      damageKind === 'physical'
+        ? target.combatModifiers?.incomingPhysical
+        : target.combatModifiers?.incomingMagic;
+
+    if (!incoming || (incoming.percent === 0 && incoming.flat === 0)) {
+      return baseDamage;
+    }
+
+    return Math.max(1, Math.floor(baseDamage * (1 + incoming.percent / 100) + incoming.flat));
   }
 
   private async readRuntimeInventoryItems(characterId: string): Promise<Array<{ id: string; itemId: string; quantity: number }>> {
@@ -3222,7 +3240,7 @@ export class CombatService {
               continue;
             }
 
-            const damage = Math.max(0, Math.floor(dmg.amount));
+            const damage = this.applyIncomingCombatModifiersToSkillDamage(dmgTarget, dmg.amount, dmg.damageKind);
             if (damage <= 0) {
               continue;
             }
@@ -3346,6 +3364,37 @@ export class CombatService {
           }
 
           for (const applied of execution.effectsApplied) {
+            const appliedTarget = state.entities.find((entity) => entity.id === applied.targetId && entity.isAlive);
+            if (!appliedTarget) {
+              continue;
+            }
+            const result = tryApplyCombatStatus({
+              effect: {
+                type: 'apply_status',
+                statusId: applied.effectType,
+                chancePercent: 100,
+                durationTurns: applied.durationTurns,
+              },
+              target: appliedTarget,
+              targetDefenseProfile: this.buildTargetStatusDefenseProfile(session, appliedTarget),
+              sourceActorId: actor.id,
+              sourceAbilityId: skillId,
+              rng: () => this.rollUniform01(),
+              rollChance: false,
+            });
+            this.emitTryApplyStatusResult(
+              state,
+              {
+                stepIndex,
+                orderIndex,
+                commandId: command.id,
+                attackerId: actor.id,
+                targetId: appliedTarget.id,
+              },
+              result,
+            );
+            syncControlFlagsFromActiveStatuses(appliedTarget);
+            continue;
             this.addCombatEvent(state, {
               id: randomUUID(),
               roundNumber: state.roundNumber,
@@ -5603,7 +5652,8 @@ export class CombatService {
       for (const dmg of result.damageDone) {
         const dmgTarget = state.entities.find((e) => e.id === dmg.targetId);
         if (dmgTarget) {
-          dmgTarget.currentHp = Math.max(0, dmgTarget.currentHp - dmg.amount);
+          const adjustedDamage = this.applyIncomingCombatModifiersToSkillDamage(dmgTarget, dmg.amount, dmg.damageKind);
+          dmgTarget.currentHp = Math.max(0, dmgTarget.currentHp - adjustedDamage);
           dmgTarget.isAlive = dmgTarget.currentHp > 0;
         }
       }
@@ -5613,6 +5663,31 @@ export class CombatService {
         const healTarget = state.entities.find((e) => e.id === heal.targetId);
         if (healTarget) {
           healTarget.currentHp = Math.min(healTarget.maxHp, healTarget.currentHp + heal.amount);
+        }
+      }
+
+      for (const applied of result.effectsApplied) {
+        const appliedTarget = state.entities.find((e) => e.id === applied.targetId && e.isAlive);
+        if (!appliedTarget) {
+          continue;
+        }
+        const statusResult = tryApplyCombatStatus({
+          effect: {
+            type: 'apply_status',
+            statusId: applied.effectType,
+            chancePercent: 100,
+            durationTurns: applied.durationTurns,
+          },
+          target: appliedTarget,
+          targetDefenseProfile: this.buildTargetStatusDefenseProfile(session, appliedTarget),
+          sourceActorId: playerEntity.id,
+          sourceAbilityId: effectiveAction.skillId,
+          rng: () => this.rollUniform01(),
+          rollChance: false,
+        });
+        syncControlFlagsFromActiveStatuses(appliedTarget);
+        if (statusResult.outcome !== 'skipped' || statusResult.messageRu) {
+          skillLogs.push(statusResult.messageRu ?? `${effectiveAction.skillId} applied ${applied.effectType}.`);
         }
       }
 

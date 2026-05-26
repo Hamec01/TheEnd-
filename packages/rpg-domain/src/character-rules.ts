@@ -233,7 +233,7 @@ export const KINGDOM_BONUS_CONFIG: Record<KingdomId, KingdomBonusConfig> = {
   luminor: {
     kingdomId: 'luminor',
     label: 'Луминор',
-    startingGoldBonus: 500,
+    startingGoldBonus: 80,
     sellPriceMultiplierBonus: 0.15,
     reputationGainMultiplierHumanKingdoms: 1.1,
     dialogueReputationBonus: 5,

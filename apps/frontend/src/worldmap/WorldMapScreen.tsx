@@ -952,6 +952,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const skipNextSettingsPersistRef = useRef(false);
   const worldMapRefreshRef = useRef<Promise<void> | null>(null);
   const lastWorldMapRefreshAtRef = useRef(0);
+  const processedDevTravelTokenRef = useRef<number | null>(null);
   const lastAggroNpcRef = useRef<{ id: string; at: number } | null>(null);
   const lastZoneTransitionRef = useRef<{ zoneId: string; at: number } | null>(
     null,
@@ -4885,6 +4886,71 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return item?.name ?? itemId;
   }, [resolveItemById]);
 
+  const resolveMineItemMeta = useCallback((itemId: string) => {
+    const item = resolveItemById?.(itemId);
+    if (!item) {
+      return null;
+    }
+    const itemRecord = item as ItemDefinition & {
+      gameplayDescription?: string;
+      loreDescription?: string;
+      description?: string;
+    };
+    return {
+      name: itemRecord.name,
+      description: itemRecord.gameplayDescription
+        || itemRecord.loreDescription
+        || itemRecord.description
+        || '',
+      iconUrl: resolveItemImage?.(itemRecord) ?? undefined,
+    };
+  }, [resolveItemById, resolveItemImage]);
+
+  const handleMineDropLoot = useCallback((itemId: string, quantity: number) => {
+    if (!activeMineRun || activeMineRun.status !== 'active') {
+      return;
+    }
+
+    const normalizedItemId = String(itemId ?? '').trim();
+    if (!normalizedItemId) {
+      return;
+    }
+
+    const stack = activeMineRun.temporaryLoot.find((entry) => entry.itemId === normalizedItemId) ?? null;
+    if (!stack) {
+      onStatus(`Предмет не найден в добыче: ${normalizedItemId}.`);
+      return;
+    }
+
+    const dropAmount = Math.max(1, Math.min(stack.quantity, Math.floor(Number(quantity) || 0)));
+    if (!Number.isFinite(dropAmount) || dropAmount <= 0) {
+      return;
+    }
+
+    const nextLoot = activeMineRun.temporaryLoot
+      .map((entry) => {
+        if (entry.itemId !== normalizedItemId) {
+          return entry;
+        }
+        return {
+          ...entry,
+          quantity: Math.max(0, entry.quantity - dropAmount),
+        };
+      })
+      .filter((entry) => entry.quantity > 0);
+
+    const droppedName = resolveMineItemName(normalizedItemId);
+    const nextLogEntry = `Выброшено: ${droppedName} x${dropAmount}.`;
+    const nextRun: InternalMineRunState = {
+      ...activeMineRun,
+      temporaryLoot: nextLoot,
+      eventLog: [...activeMineRun.eventLog.slice(-149), nextLogEntry],
+    };
+
+    setActiveMineRun(nextRun);
+    onStatus(nextLogEntry);
+  }, [activeMineRun, onStatus, resolveMineItemName]);
+
   const finishMineRun = useCallback((nextRun: InternalMineRunState) => {
     setActiveMineRun(nextRun);
     if (nextRun.status === 'escaped') {
@@ -5035,6 +5101,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (!devTravelRequest || worldMapMode === 'editor') {
       return;
     }
+
+    if (processedDevTravelTokenRef.current === devTravelRequest.token) {
+      return;
+    }
+    processedDevTravelTokenRef.current = devTravelRequest.token;
 
     const targetId = String(devTravelRequest.targetId ?? '').trim();
 
@@ -7575,7 +7646,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         pickaxeName="Безымянная кирка"
         emergencyEscapeAvailable={Boolean(activeMineEffects?.some((effect) => effect.type === 'mine_once_per_run_escape') && !activeMineRun.usedEmergencyEscape)}
         resolveItemName={resolveMineItemName}
+        resolveItemMeta={resolveMineItemMeta}
         onHitBlock={handleMineHitBlock}
+        onDropLoot={handleMineDropLoot}
         onEscape={handleMineEscape}
         onRetreat={handleMineRetreat}
         onDescend={handleMineDescend}

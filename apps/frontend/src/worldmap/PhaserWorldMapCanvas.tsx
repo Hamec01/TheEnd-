@@ -15,7 +15,7 @@ import {
 } from './worldMapRuntimeSettings';
 import { resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
 import type { WorldMapZone } from './zoneEditorTypes';
-import { DETERMINISTIC_BANDIT_CANDIDATES, pickDeterministicBanditPortrait } from '../phaser/assets/actorVisualResolver';
+import { DETERMINISTIC_BANDIT_CANDIDATES, normalizeActorVisualSource, pickDeterministicBanditPortrait } from '../phaser/assets/actorVisualResolver';
 
 const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
 const STATIC_WORLD_ENTITY_TEXTURE_SOURCES = [...DETERMINISTIC_BANDIT_CANDIDATES, '/sprites/actor/human_01.png'] as const;
@@ -104,7 +104,8 @@ function normalizedToScreen(point: { x: number; y: number }, camera: WorldCamera
 }
 
 function resolveTextureSource(imageSrc: string): string {
-  const normalized = imageSrc.trim();
+  const normalizedVisual = normalizeActorVisualSource(imageSrc);
+  const normalized = (normalizedVisual ?? imageSrc).trim();
   if (!normalized) {
     return normalized;
   }
@@ -678,17 +679,10 @@ class PhaserWorldMapScene extends Phaser.Scene {
         container.add(ring);
       }
 
-      const image = this.add.image(0, 0, textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
-      if (layout.clipShape === 'circle') {
-        const maskGraphics = this.add.graphics({ x: 0, y: 0 });
-        maskGraphics.setVisible(false);
-        maskGraphics.fillStyle(0xffffff, 1);
-        maskGraphics.fillCircle(0, 0, Math.min(layout.widthPx, layout.heightPx) / 2);
-        image.setMask(maskGraphics.createGeometryMask());
-        image.once(Phaser.GameObjects.Events.DESTROY, () => {
-          maskGraphics.destroy();
-        });
-      }
+      const circularTextureKey = layout.clipShape === 'circle'
+        ? this.ensureCircularTexture(textureKey, Math.max(12, Math.round(Math.min(layout.widthPx, layout.heightPx))))
+        : null;
+      const image = this.add.image(0, 0, circularTextureKey ?? textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
       container.add(image);
     } else {
       const fillColor = entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc;
@@ -760,21 +754,73 @@ class PhaserWorldMapScene extends Phaser.Scene {
     return textureKey;
   }
 
+  private ensureCircularTexture(textureKey: string, size: number): string | null {
+    const frame = this.textures.getFrame(textureKey);
+    if (!frame) {
+      return null;
+    }
+
+    const circularKey = `${textureKey}::circle::${size}`;
+    if (this.textures.exists(circularKey)) {
+      return circularKey;
+    }
+
+    const canvasTexture = this.textures.createCanvas(circularKey, size, size);
+    if (!canvasTexture) {
+      return null;
+    }
+    const context = canvasTexture.context;
+    const sourceImage = frame.source.image as CanvasImageSource | undefined;
+    if (!context || !sourceImage) {
+      this.textures.remove(circularKey);
+      return null;
+    }
+
+    const sourceWidth = Math.max(1, frame.cutWidth || frame.width);
+    const sourceHeight = Math.max(1, frame.cutHeight || frame.height);
+    const square = Math.max(1, Math.min(sourceWidth, sourceHeight));
+    const cropX = Math.max(0, Math.floor((sourceWidth - square) / 2));
+    const cropY = Math.max(0, Math.min(
+      Math.floor((sourceHeight - square) * 0.18),
+      sourceHeight - square,
+    ));
+
+    context.clearRect(0, 0, size, size);
+    context.save();
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    context.closePath();
+    context.clip();
+    context.drawImage(
+      sourceImage,
+      (frame.cutX || 0) + cropX,
+      (frame.cutY || 0) + cropY,
+      square,
+      square,
+      0,
+      0,
+      size,
+      size,
+    );
+    context.restore();
+    canvasTexture.refresh();
+    return circularKey;
+  }
+
   private drawPlayer(snapshot: WorldRendererSnapshot) {
     const point = normalizedToScreen({ x: snapshot.player.x, y: snapshot.player.y }, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
     this.playerToken = this.add.container(point.x, point.y);
 
-    const avatarSrc = snapshot.playerAvatarUrl?.trim();
+    const avatarSrc = normalizeActorVisualSource(snapshot.playerAvatarUrl ?? undefined)?.trim()
+      ?? snapshot.playerAvatarUrl?.trim();
     const avatarTextureKey = avatarSrc ? this.ensureDynamicTexture(avatarSrc) : null;
     if (avatarTextureKey && this.textures.exists(avatarTextureKey)) {
       const glow = this.add.circle(0, 0, 17, 0xffd55a, 0.18);
       const ringShadow = this.add.circle(0, 0, 19, 0x2f200d, 0.92);
       const ring = this.add.circle(0, 0, 17, 0x1e160d, 0.92).setStrokeStyle(2, 0xd8b15a, 1);
-      const avatar = this.add.image(0, 0, avatarTextureKey).setDisplaySize(34, 34);
-      const maskShape = this.add.circle(0, 0, 15, 0xffffff, 1);
-      maskShape.setVisible(false);
-      avatar.setMask(maskShape.createGeometryMask());
-      this.playerToken.add([glow, ringShadow, ring, maskShape, avatar]);
+      const circularAvatarKey = this.ensureCircularTexture(avatarTextureKey, 34) ?? avatarTextureKey;
+      const avatar = this.add.image(0, 0, circularAvatarKey).setDisplaySize(34, 34);
+      this.playerToken.add([glow, ringShadow, ring, avatar]);
     } else {
       const glow = this.add.circle(0, 0, 14, 0xffd55a, 0.22);
       const token = this.add.circle(0, 0, 8, 0xf8e8b0, 1).setStrokeStyle(2, 0xffd55a, 1);
@@ -840,7 +886,7 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
   const sceneRef = useRef<PhaserWorldMapScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
 
-  const [size, setSize] = useState({ width: 1200, height: 780 });
+  const [size, setSize] = useState({ width: 320, height: 380 });
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; zone: WorldMapZone } | null>(null);
   const [runtimeSettings, setRuntimeSettings] = useState(() => loadWorldMapRuntimeSettings());

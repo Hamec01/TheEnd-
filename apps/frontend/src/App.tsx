@@ -75,6 +75,7 @@ import { InventoryPanel, type CharacterPageFocus } from './components/InventoryP
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
+import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
   CHARACTER_CREATION_AVATAR_PRESETS,
   HUMAN_ORIGINS,
@@ -1348,6 +1349,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [godmodeInfiniteResources, setGodmodeInfiniteResources] = useState<GodmodeInfiniteResourceFlags>(() => {
     return normalizeGodmodeInfiniteResourceFlags(readJsonRecord(GODMODE_INFINITE_RESOURCES_STORAGE_KEY));
   });
+  const effectivePlayerAvatarUrl = useMemo(
+    () => normalizeActorVisualSource(playerAvatarUrl) ?? resolveRacePortraitSource(character?.race),
+    [character?.race, playerAvatarUrl],
+  );
 
   const [combatId, setCombatId] = useState<string | null>(null);
   const [playerCombatId, setPlayerCombatId] = useState<string | null>(null);
@@ -4839,7 +4844,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           character={character}
           inventory={worldInventory}
           equipment={equipment}
-          playerAvatarUrl={playerAvatarUrl}
+          playerAvatarUrl={effectivePlayerAvatarUrl}
           battleStats={{
             hp: isBattleWindowOpen ? (battlePlayer?.currentHp ?? character.currentHp) : character.currentHp,
             mp: isBattleWindowOpen ? (battlePlayer?.currentMp ?? character.currentMp) : character.currentMp,
@@ -4921,7 +4926,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             onUseItem={handleUseConsumable}
             onUseSkillOutOfCombat={handleUseSkillOutOfCombat}
             onChangeFocus={changeCharacterOverlayFocus}
-            playerAvatarUrl={playerAvatarUrl}
+            playerAvatarUrl={effectivePlayerAvatarUrl}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
             resolveItemImage={resolveItemImage}
@@ -5275,7 +5280,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                 onStatus={setStatus}
                 onBattleFinished={handleBattleFinished}
                 onClose={() => setBattleWindowOpen(false)}
-                playerAvatarUrl={playerAvatarUrl}
+                playerAvatarUrl={effectivePlayerAvatarUrl}
                 resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
                 resolveItemImage={resolveItemImage}
                 resolveSkillIcon={resolveSkillIcon}

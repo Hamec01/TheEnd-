@@ -1,5 +1,6 @@
 ﻿import type { PlayerProfessionState } from '@theend/rpg-domain';
 import { itemsService } from './content/itemsService';
+import { materialsService } from './content/materialsService';
 import {
   loadProfessionSkillsFromStorage,
 } from './professionSkillRepository';
@@ -594,8 +595,8 @@ function maybeApplyFragileLootDamage(params: {
   const protectedBySkill = modifierPercent < 0 && finalChance < baseChance;
   if (rng() > finalChance) {
     if (protectedBySkill) {
-      run.eventLog = pushLog(run.eventLog, 'Ð¥Ñ€ÑƒÐ¿ÐºÐ°Ñ Ð´Ð¾Ð±Ñ‹Ñ‡Ð° Ð²Ñ‹Ð´ÐµÑ€Ð¶Ð°Ð»Ð° ÑƒÐ´Ð°Ñ€.');
-      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'ÐœÑÐ³ÐºÐ¸Ð¹ ÑƒÐ´Ð°Ñ€ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ð» Ñ…Ñ€ÑƒÐ¿ÐºÑƒÑŽ Ð´Ð¾Ð±Ñ‹Ñ‡Ñƒ.');
+      run.eventLog = pushLog(run.eventLog, 'Хрупкая добыча выдержала удар.');
+      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Мягкий удар сохранил хрупкую добычу.');
     }
     return loot;
   }
@@ -605,14 +606,14 @@ function maybeApplyFragileLootDamage(params: {
     return loot;
   }
   if (first.quantity > 1) {
-    run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'ÐšÑ€Ð¸ÑÑ‚Ð°Ð»Ð» Ñ‚Ñ€ÐµÑÐ½ÑƒÐ».' : 'Ð¡Ð°Ð¼Ð¾Ñ†Ð²ÐµÑ‚ Ñ€Ð°ÑÐºÐ¾Ð»Ð¾Ð»ÑÑ.');
+    run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'Кристалл треснул.' : 'Самоцвет раскололся.');
     return [{ ...first, quantity: first.quantity - 1 }, ...rest];
   }
   if (blockType === 'crystal' && first.itemId !== 'item_cracked_crystal') {
-    run.eventLog = pushLog(run.eventLog, 'ÐšÑ€Ð¸ÑÑ‚Ð°Ð»Ð» Ñ‚Ñ€ÐµÑÐ½ÑƒÐ», Ð½Ð¾ Ñ‡Ð°ÑÑ‚ÑŒ ÑÐµÑ€Ð´Ñ†ÐµÐ²Ð¸Ð½Ñ‹ ÑƒÑ†ÐµÐ»ÐµÐ»Ð°.');
+    run.eventLog = pushLog(run.eventLog, 'Кристалл треснул, но часть сердцевины уцелела.');
     return [{ itemId: 'item_cracked_crystal', quantity: 1 }, ...rest];
   }
-  run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'ÐšÑ€Ð¸ÑÑ‚Ð°Ð»Ð» Ñ€Ð°ÑÑÑ‹Ð¿Ð°Ð»ÑÑ Ð² Ð¿Ñ‹Ð»ÑŒ.' : 'Ð¡Ð°Ð¼Ð¾Ñ†Ð²ÐµÑ‚ Ð¾ÐºÐ°Ð·Ð°Ð»ÑÑ Ð¸ÑÐ¿Ð¾Ñ€Ñ‡ÐµÐ½.');
+  run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'Кристалл рассыпался в пыль.' : 'Самоцвет оказался испорчен.');
   return rest;
 }
 
@@ -650,9 +651,9 @@ function maybeAddSpecialProperty(params: {
     sourceSkillId: sourceSkill?.skillId,
   };
   run.specialFinds = [...(run.specialFinds ?? []), specialFind];
-  const label = fixMojibake(SPECIAL_PROPERTY_LABELS[propertyId] ?? 'Ð¡ÐºÑ€Ñ‹Ñ‚Ð¾Ðµ ÑÐ²Ð¾Ð¹ÑÑ‚Ð²Ð¾');
-  run.eventLog = pushLog(run.eventLog, `ÐžÑÐ¾Ð±Ð¾Ðµ ÑÐ²Ð¾Ð¹ÑÑ‚Ð²Ð¾: ${label}.`);
-  run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'ÐŸÐ°Ð¼ÑÑ‚ÑŒ ÐºÐ°Ð¼Ð½Ñ: Ð½Ð°Ð¹Ð´ÐµÐ½ ÐºÑ€Ð¸ÑÑ‚Ð°Ð»Ð» ÑÐ¾ ÑÐºÑ€Ñ‹Ñ‚Ñ‹Ð¼ ÑÐ²Ð¾Ð¹ÑÑ‚Ð²Ð¾Ð¼.');
+  const label = fixMojibake(SPECIAL_PROPERTY_LABELS[propertyId] ?? 'Скрытое свойство');
+  run.eventLog = pushLog(run.eventLog, `Особое свойство: ${label}.`);
+  run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Память камня: найден кристалл со скрытым свойством.');
 }
 
 function maybeAddDynamicRuneTrace(
@@ -672,8 +673,8 @@ function maybeAddDynamicRuneTrace(
     return [];
   }
   const itemId = rng() <= 0.4 ? 'item_rune_dust' : 'item_rune_fragment_weak';
-  run.eventLog = pushLog(run.eventLog, itemId === 'item_rune_dust' ? 'Ð’ ÐºÐ°Ð¼Ð½Ðµ Ð¾ÑÑ‚Ð°Ð»Ð°ÑÑŒ Ñ€ÑƒÐ½Ð½Ð°Ñ Ð¿Ñ‹Ð»ÑŒ.' : 'Ð’Ñ‹ Ð½Ð°ÑˆÐ»Ð¸ ÑÐ»Ð°Ð±Ñ‹Ð¹ Ñ€ÑƒÐ½Ð½Ñ‹Ð¹ Ð¾ÑÐºÐ¾Ð»Ð¾Ðº.');
-  run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Ð¡Ð»ÐµÐ´Ñ‹ Ð´Ñ€ÐµÐ²Ð½Ð¸Ñ…: Ð½Ð°Ð¹Ð´ÐµÐ½ Ñ€ÑƒÐ½Ð½Ñ‹Ð¹ ÑÐ»ÐµÐ´.');
+  run.eventLog = pushLog(run.eventLog, itemId === 'item_rune_dust' ? 'В камне осталась рунная пыль.' : 'Вы нашли слабый рунный осколок.');
+  run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Следы древних: найден рунный след.');
   return [buildLoot(itemId, 1)];
 }
 
@@ -686,17 +687,17 @@ function resolveMineEvent(
   switch (eventId) {
     case 'ancient_tablet':
       run.earnedXp += 12;
-      run.eventLog = pushLog(run.eventLog, 'Ð”Ñ€ÐµÐ²Ð½ÑÑ Ñ‚Ð°Ð±Ð»Ð¸Ñ‡ÐºÐ° Ð¿Ð¾Ð´ÑÐºÐ°Ð·Ð°Ð»Ð° Ð·Ð°Ð±Ñ‹Ñ‚Ñ‹Ð¹ Ð¿Ñ€Ð¸Ñ‘Ð¼ Ð³Ð¾Ñ€Ð½ÑÐºÐ°.');
-      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Ð¯Ð·Ñ‹Ðº Ñ‚Ñ€ÐµÑ‰Ð¸Ð½: Ð¾Ð±Ð½Ð°Ñ€ÑƒÐ¶ÐµÐ½Ð¾ Ð´Ñ€ÐµÐ²Ð½ÐµÐµ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ðµ.');
+      run.eventLog = pushLog(run.eventLog, 'Древняя табличка подсказала забытый приём горняка.');
+      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Язык трещин: обнаружено древнее событие.');
       return [];
     case 'dwarf_cart':
-      run.eventLog = pushLog(run.eventLog, 'Ð’ Ð·Ð°Ð²Ð°Ð»Ðµ ÑƒÑ†ÐµÐ»ÐµÐ»Ð° ÑÑ‚Ð°Ñ€Ð°Ñ Ð³Ð½Ð¾Ð¼ÑŒÑ Ñ‚ÐµÐ»ÐµÐ¶ÐºÐ°.');
+      run.eventLog = pushLog(run.eventLog, 'В завале уцелела старая гномья тележка.');
       return [buildLoot(rng() <= 0.3 ? 'item_small_gold_nugget' : 'item_iron_ore', 1)];
     case 'hidden_cache':
-      run.eventLog = pushLog(run.eventLog, 'Ð’Ñ‹ Ð½Ð°ÑˆÐ»Ð¸ ÑÐºÑ€Ñ‹Ñ‚Ñ‹Ð¹ Ñ‚Ð°Ð¹Ð½Ð¸Ðº ÑˆÐ°Ñ…Ñ‚Ñ‘Ñ€Ð¾Ð².');
+      run.eventLog = pushLog(run.eventLog, 'Вы нашли скрытый тайник шахтёров.');
       return [buildLoot(rng() <= 0.5 ? 'item_iron_ore' : 'item_cracked_crystal', 1)];
     case 'spirit_whisper': {
-      run.eventLog = pushLog(run.eventLog, 'Ð¨Ñ‘Ð¿Ð¾Ñ‚ Ð² ÑÑ‚ÐµÐ½Ð°Ñ… Ð¿Ñ€ÐµÐ´ÑƒÐ¿Ñ€ÐµÐ¶Ð´Ð°ÐµÑ‚ Ð¾Ð± Ð¾Ð¿Ð°ÑÐ½Ð¾ÑÑ‚Ð¸.');
+      run.eventLog = pushLog(run.eventLog, 'Шёпот в стенах предупреждает об опасности.');
       const hazard = findMineHazardById('hazard_spirit_attack');
       if (hazard) {
         applyHazardToRun(run, hazard, effects, getEffectContextForRun(run), rng, 0.5);
@@ -706,14 +707,14 @@ function resolveMineEvent(
     case 'old_mining_mark': {
       const target = run.blocks.find((block) => block.state === 'closed' && (block.hiddenType === 'passage' || block.hiddenType === 'hazard'));
       if (target) {
-        target.label = target.hiddenType === 'passage' ? 'Ð¡Ñ‚Ð°Ñ€Ñ‹Ð¹ Ð·Ð½Ð°Ðº Ð¿Ñ€Ð¾Ñ…Ð¾Ð´Ð°' : 'Ð¡Ñ‚Ð°Ñ€Ñ‹Ð¹ Ð·Ð½Ð°Ðº Ð¾Ð¿Ð°ÑÐ½Ð¾ÑÑ‚Ð¸';
+        target.label = target.hiddenType === 'passage' ? 'Старый знак прохода' : 'Старый знак опасности';
       }
-      run.eventLog = pushLog(run.eventLog, 'Ð¡Ñ‚Ð°Ñ€Ñ‹Ðµ Ð¼ÐµÑ‚ÐºÐ¸ Ð¿Ð¾Ð´ÑÐºÐ°Ð·Ð°Ð»Ð¸, ÐºÑƒÐ´Ð° ÑÐ¼Ð¾Ñ‚Ñ€ÐµÑ‚ÑŒ Ð´Ð°Ð»ÑŒÑˆÐµ.');
-      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Ð¯Ð·Ñ‹Ðº Ñ‚Ñ€ÐµÑ‰Ð¸Ð½: Ð¾Ð±Ð½Ð°Ñ€ÑƒÐ¶ÐµÐ½Ð¾ Ð´Ñ€ÐµÐ²Ð½ÐµÐµ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ðµ.');
+      run.eventLog = pushLog(run.eventLog, 'Старые метки подсказали, куда смотреть дальше.');
+      run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Язык трещин: обнаружено древнее событие.');
       return [];
     }
     default:
-      run.eventLog = pushLog(run.eventLog, `ÐÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð¾Ðµ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ðµ ÑˆÐ°Ñ…Ñ‚Ñ‹: ${eventId}`);
+      run.eventLog = pushLog(run.eventLog, `Неизвестное событие шахты: ${eventId}`);
       return [];
   }
 }
@@ -848,9 +849,15 @@ function generateBlocks(depth: MineDepth, effects: ActiveMiningEffect[], rng: ()
     mineTheme: mine.visualTheme,
     mineDangerLevel: mine.dangerLevel,
   };
+  const emptyBlockBoost = depth.depthLevel <= 1 ? 1.15 : depth.depthLevel === 2 ? 1.08 : 1.03;
   const weightedEntries: MineBlockEntry[] = blockTable.entries.map((entry: MineBlockEntry) => ({
     ...entry,
-    weight: Math.max(0.1, entry.weight * getResourceWeightMultiplier(entry.type, effects, context)),
+    weight: Math.max(
+      0.1,
+      entry.weight
+      * getResourceWeightMultiplier(entry.type, effects, context)
+      * (entry.type === 'empty' ? emptyBlockBoost : 1),
+    ),
   }));
 
   const blockCount = Math.max(1, depth.rows * depth.columns);
@@ -896,10 +903,10 @@ function applyStartHints(run: InternalMineRunState, effects: ActiveMiningEffect[
   };
 
   if (hasMiningEffect(effects, 'mine_start_with_exit_hint', context)) {
-    revealMatching('exit', 'Ð¡Ð»ÐµÐ´ Ðº Ð²Ñ‹Ñ…Ð¾Ð´Ñƒ');
+    revealMatching('exit', 'След к выходу');
   }
   if (hasMiningEffect(effects, 'mine_start_with_passage_hint', context)) {
-    revealMatching('passage', 'Ð¡Ð»ÐµÐ´ Ð²Ð½Ð¸Ð·');
+    revealMatching('passage', 'След вниз');
   }
 
   run.blocks.forEach((block) => {
@@ -1024,12 +1031,12 @@ function buildFailureRecovery(
     nextRun.porters.used = savedByPorters.length > 0;
   }
   nextRun.resultSummary = createResultSummary(nextRun, getMineRunAwardXp(nextRun));
-  nextRun.eventLog = pushLog(nextRun.eventLog, mode === 'dead' ? 'Ð’Ñ‹ Ð¿Ð¾Ñ‚ÐµÑ€ÑÐ»Ð¸ ÑÐ¾Ð·Ð½Ð°Ð½Ð¸Ðµ Ð² ÑˆÐ°Ñ…Ñ‚Ðµ.' : 'Ð’Ñ‹ Ð½Ðµ ÑÐ¼Ð¾Ð³Ð»Ð¸ Ð²Ñ‹Ð±Ñ€Ð°Ñ‚ÑŒÑÑ Ð¸Ð· ÑˆÐ°Ñ…Ñ‚Ñ‹.');
+  nextRun.eventLog = pushLog(nextRun.eventLog, mode === 'dead' ? 'Вы потеряли сознание в шахте.' : 'Вы не смогли выбраться из шахты.');
   if (savedByPorters.length > 0) {
-    nextRun.eventLog = pushLog(nextRun.eventLog, 'ÐÐ¾ÑÐ¸Ð»ÑŒÑ‰Ð¸ÐºÐ¸ Ð²Ñ‹Ð½ÐµÑÐ»Ð¸ Ñ‡Ð°ÑÑ‚ÑŒ Ð´Ð¾Ð±Ñ‹Ñ‡Ð¸.');
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Носильщики вынесли часть добычи.');
   }
   if (savedBySkills.length > 0) {
-    nextRun.eventLog = pushLog(nextRun.eventLog, 'ÐÐ°Ð²Ñ‹Ðº ÑÐ¿Ð°Ñ Ñ‡Ð°ÑÑ‚ÑŒ Ñ€ÐµÑÑƒÑ€ÑÐ¾Ð².');
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Навык спас часть ресурсов.');
   }
   return nextRun;
 }
@@ -1068,9 +1075,9 @@ function applyRetreatRecovery(run: InternalMineRunState, effects: ActiveMiningEf
     nextRun.porters.used = savedByPorters.length > 0;
   }
   nextRun.resultSummary = createResultSummary(nextRun, getMineRunAwardXp(nextRun));
-  nextRun.eventLog = pushLog(nextRun.eventLog, 'Ð’Ñ‹ Ð¾Ñ‚ÑÑ‚ÑƒÐ¿Ð¸Ð»Ð¸ Ð¸ Ð¿Ð¾Ñ‚ÐµÑ€ÑÐ»Ð¸ Ñ‡Ð°ÑÑ‚ÑŒ Ð´Ð¾Ð±Ñ‹Ñ‡Ð¸.');
+  nextRun.eventLog = pushLog(nextRun.eventLog, 'Вы отступили и потеряли часть добычи.');
   if (savedByPorters.length > 0) {
-    nextRun.eventLog = pushLog(nextRun.eventLog, 'ÐÐ¾ÑÐ¸Ð»ÑŒÑ‰Ð¸ÐºÐ¸ Ð²Ñ‹Ð½ÐµÑÐ»Ð¸ Ñ‡Ð°ÑÑ‚ÑŒ Ð´Ð¾Ð±Ñ‹Ñ‡Ð¸.');
+    nextRun.eventLog = pushLog(nextRun.eventLog, 'Носильщики вынесли часть добычи.');
   }
   return nextRun;
 }
@@ -1093,12 +1100,12 @@ function applyEscapeResult(run: InternalMineRunState, effects: ActiveMiningEffec
     nextRun.bonusGoldFromSellValue = Math.max(0, Math.floor(estimateLootStacksGoldValue(awardedLoot) * (sellValuePercent / 100)));
     nextRun.awardedGold = Math.max(0, Math.floor((nextRun.awardedGold ?? 0) + nextRun.bonusGoldFromSellValue));
     if (nextRun.bonusGoldFromSellValue > 0) {
-      nextRun.eventLog = pushLog(nextRun.eventLog, `Ð¢Ð¾Ñ€Ð³Ð¾Ð²Ñ‹Ð¹ Ð³Ð»Ð°Ð· Ð´Ð¾Ð±Ð°Ð²Ð¸Ð» +${nextRun.bonusGoldFromSellValue} Ð·Ð¾Ð»Ð¾Ñ‚Ð°.`);
-      nextRun.skillEffectLog = pushSkillEffectLog(nextRun.skillEffectLog, `Ð¢Ð¾Ñ€Ð³Ð¾Ð²Ñ‹Ð¹ Ð³Ð»Ð°Ð· Ð´Ð¾Ð±Ð°Ð²Ð¸Ð» +${nextRun.bonusGoldFromSellValue} Ð·Ð¾Ð»Ð¾Ñ‚Ð°.`);
+      nextRun.eventLog = pushLog(nextRun.eventLog, `Торговый глаз добавил +${nextRun.bonusGoldFromSellValue} золота.`);
+      nextRun.skillEffectLog = pushSkillEffectLog(nextRun.skillEffectLog, `Торговый глаз добавил +${nextRun.bonusGoldFromSellValue} золота.`);
     }
   }
   nextRun.resultSummary = createResultSummary(nextRun, getMineRunAwardXp(nextRun));
-  nextRun.eventLog = pushLog(nextRun.eventLog, 'Ð’Ñ‹ Ð²Ñ‹Ð±Ñ€Ð°Ð»Ð¸ÑÑŒ Ð¸Ð· ÑˆÐ°Ñ…Ñ‚Ñ‹.');
+  nextRun.eventLog = pushLog(nextRun.eventLog, 'Вы выбрались из шахты.');
   return nextRun;
 }
 
@@ -1173,7 +1180,7 @@ function applyHazardToRun(
 ): void {
   const hazardContext: MiningEffectContext = { ...baseContext, hazardType: hazard.type, blockType: 'hazard' };
   if (rollMiningEffect(effects, 'mine_ignore_first_hazard', hazardContext, rng, run)) {
-    run.eventLog = pushLog(run.eventLog, `${hazard.name}: Ð¾Ð¿Ð°ÑÐ½Ð¾ÑÑ‚ÑŒ ÑÑ€Ð°Ð±Ð¾Ñ‚Ð°Ð»Ð°, Ð½Ð¾ Ð½Ð°Ð²Ñ‹Ðº ÐµÑ‘ Ð½ÐµÐ¹Ñ‚Ñ€Ð°Ð»Ð¸Ð·Ð¾Ð²Ð°Ð».`);
+    run.eventLog = pushLog(run.eventLog, `${hazard.name}: опасность сработала, но навык её нейтрализовал.`);
     return;
   }
 
@@ -1415,7 +1422,7 @@ function applyAreaBreak(
       continue;
     }
     markEffectUsed(effect, run, run.currentDepthLevel);
-    run.eventLog = pushLog(run.eventLog, `${effect.skillName}: ÑÐ¾ÑÐµÐ´Ð½Ð¸Ðµ Ð±Ð»Ð¾ÐºÐ¸ Ñ‚Ñ€ÐµÑÐ½ÑƒÐ»Ð¸ Ð¾Ñ‚ ÑƒÐ´Ð°Ñ€Ð°.`);
+    run.eventLog = pushLog(run.eventLog, `${effect.skillName}: соседние блоки треснули от удара.`);
     indexes.forEach((index) => resolveBlockOpen(run, index, effects, rng, { hazardMultiplier }));
   }
 }
@@ -1460,7 +1467,7 @@ function applyFailureState(
     if (surviveEffect) {
       markEffectUsed(surviveEffect, run, run.currentDepthLevel);
       run.hp = 1;
-      run.eventLog = pushLog(run.eventLog, `${surviveEffect.skillName}: Ð²Ñ‹ ÑƒÐ´ÐµÑ€Ð¶Ð°Ð»Ð¸ÑÑŒ Ð½Ð° Ð³Ñ€Ð°Ð½Ð¸ ÑÐ¼ÐµÑ€Ñ‚Ð¸.`);
+      run.eventLog = pushLog(run.eventLog, `${surviveEffect.skillName}: вы удержались на грани смерти.`);
       return run;
     }
 
@@ -1499,7 +1506,12 @@ function maybeTriggerCollapse(run: InternalMineRunState, effects: ActiveMiningEf
   const context = getEffectContextForRun(run);
   const collapsePercent = percentMiningEffect(effects, 'mine_collapse_chance_modifier', context);
   const collapseFlat = sumMiningEffect(effects, 'mine_collapse_chance_modifier', context, 'flat');
-  const risk = clamp(run.collapseRisk * (1 + collapsePercent / 100) + collapseFlat, 0, 0.95);
+  const isStageOne = depth.depthLevel <= 1;
+  const depthPressure = isStageOne ? 0.08 : depth.depthLevel === 2 ? 0.03 : 0;
+  const progressPressure = isStageOne
+    ? clamp((1 - (run.remainingHits / Math.max(1, depth.baseHits))) * 0.12, 0, 0.12)
+    : 0;
+  const risk = clamp(run.collapseRisk * (1 + collapsePercent / 100) + collapseFlat + depthPressure + progressPressure, 0, 0.95);
   if (rng() > risk) {
     return run;
   }
@@ -1517,10 +1529,10 @@ function maybeTriggerCollapse(run: InternalMineRunState, effects: ActiveMiningEf
     hazardId: hazard.id,
   };
   run.blocks = [...run.blocks, collapseBlock];
-  run.eventLog = pushLog(run.eventLog, `ÐžÐ±Ð²Ð°Ð»: ${hazard.name}.`);
+  run.eventLog = pushLog(run.eventLog, `Обвал: ${hazard.name}.`);
   const hazardContext: MiningEffectContext = { ...context, hazardType: hazard.type };
   if (rollMiningEffect(effects, 'mine_ignore_first_hazard', hazardContext, rng, run)) {
-    run.eventLog = pushLog(run.eventLog, 'ÐÐ°Ð²Ñ‹Ðº ÑÐ¼ÑÐ³Ñ‡Ð¸Ð» Ð¿ÐµÑ€Ð²Ñ‹Ð¹ Ð¾Ð±Ð²Ð°Ð».');
+    run.eventLog = pushLog(run.eventLog, 'Навык смягчил первый обвал.');
     return run;
   }
   const resistance = getHazardResistance(effects, hazardContext);
@@ -1576,7 +1588,7 @@ function createBaseRun(
     foundPassage: false,
     selectedToolId: selectedPickaxe?.id,
     miningInventory,
-    eventLog: [depth.description ? `${depth.name}: ${depth.description}` : `Ð’Ñ‹ Ð²Ð¾ÑˆÐ»Ð¸ Ð² Ð³Ð»ÑƒÐ±Ð¸Ð½Ñƒ: ${depth.name}.`],
+    eventLog: [depth.description ? `${depth.name}: ${depth.description}` : `Вы вошли в глубину: ${depth.name}.`],
     startedAt: new Date().toISOString(),
     earnedXp: 0,
     usedEmergencyEscape: false,
@@ -1607,11 +1619,11 @@ export interface StartMineRunOptions {
 export function startMineRun(options: StartMineRunOptions): InternalMineRunState {
   const mine = findMineById(options.mineId);
   if (!mine) {
-    throw new Error(`Ð¨Ð°Ñ…Ñ‚Ð° Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð°: ${options.mineId}`);
+    throw new Error(`Шахта не найдена: ${options.mineId}`);
   }
   const firstDepth = findMineDepthsByMineId(mine.id)[0];
   if (!firstDepth) {
-    throw new Error(`Ð”Ð»Ñ ÑˆÐ°Ñ…Ñ‚Ñ‹ ${mine.id} Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð° Ð½Ð¸ Ð¾Ð´Ð½Ð° Ð³Ð»ÑƒÐ±Ð¸Ð½Ð°.`);
+    throw new Error(`Для шахты ${mine.id} не найдена ни одна глубина.`);
   }
   const rng = options.rng ?? Math.random;
   return createBaseRun(
@@ -1643,7 +1655,7 @@ export function hitMineBlock(
     return {
       run: buildFailureRecovery({
         ...run,
-        eventLog: pushLog(run.eventLog, 'Ð¢ÐµÐºÑƒÑ‰Ð°Ñ Ð³Ð»ÑƒÐ±Ð¸Ð½Ð° Ð±Ð¾Ð»ÑŒÑˆÐµ Ð½Ðµ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÐµÑ‚.'),
+        eventLog: pushLog(run.eventLog, 'Текущая глубина больше не существует.'),
       }, effects, rng, 'failed'),
       changed: true,
     };
@@ -1676,11 +1688,11 @@ export function hitMineBlock(
 
   if (rollMiningEffect(effects, 'mine_refund_hit_chance', context, rng, resolvedRun)) {
     resolvedRun.remainingHits += 1;
-    resolvedRun.eventLog = pushLog(resolvedRun.eventLog, 'ÐÐ°Ð²Ñ‹Ðº Ð²ÐµÑ€Ð½ÑƒÐ» Ð¾Ð´Ð¸Ð½ ÑƒÐ´Ð°Ñ€.');
+    resolvedRun.eventLog = pushLog(resolvedRun.eventLog, 'Навык вернул один удар.');
   }
   if (rollMiningEffect(effects, 'mine_refund_stamina_chance', context, rng, resolvedRun)) {
     resolvedRun.stamina = Math.min(resolvedRun.maxStamina, resolvedRun.stamina + staminaCost);
-    resolvedRun.eventLog = pushLog(resolvedRun.eventLog, 'ÐÐ°Ð²Ñ‹Ðº Ð²ÐµÑ€Ð½ÑƒÐ» Ð¿Ð¾Ñ‚Ñ€Ð°Ñ‡ÐµÐ½Ð½ÑƒÑŽ stamina.');
+    resolvedRun.eventLog = pushLog(resolvedRun.eventLog, 'Навык вернул потраченную stamina.');
   }
 
   return { run: resolvedRun, changed: true };
@@ -1700,7 +1712,7 @@ export function descendMineRun(
   if (!nextDepth) {
     return {
       ...run,
-      eventLog: pushLog(run.eventLog, 'ÐÐ¸Ð¶Ðµ Ð¸Ð´Ñ‚Ð¸ ÑƒÐ¶Ðµ Ð½ÐµÐºÑƒÐ´Ð°.'),
+      eventLog: pushLog(run.eventLog, 'Ниже идти уже некуда.'),
     };
   }
 
@@ -1718,7 +1730,7 @@ export function descendMineRun(
     foundExit: false,
     foundPassage: false,
     earnedXp: run.earnedXp + 15,
-    eventLog: pushLog(run.eventLog, `Ð’Ñ‹ ÑÐ¿ÑƒÑÐºÐ°ÐµÑ‚ÐµÑÑŒ Ð³Ð»ÑƒÐ±Ð¶Ðµ: ${nextDepth.name}.`),
+    eventLog: pushLog(run.eventLog, `Вы спускаетесь глубже: ${nextDepth.name}.`),
   };
   applyStartHints(nextRun, effects, rng);
   return nextRun;
@@ -1863,15 +1875,37 @@ const MINING_PLACEHOLDER_ITEMS = [
   },
 ];
 
+const MINING_PLACEHOLDER_MARKET: Record<string, {
+  rarity: 'common' | 'rare';
+  itemPrice: number;
+  averageMarketPrice: number;
+  category: 'stone' | 'metal' | 'crystal' | 'other';
+}> = {
+  item_raw_stone: { rarity: 'common', itemPrice: 6, averageMarketPrice: 6, category: 'stone' },
+  item_iron_ore: { rarity: 'common', itemPrice: 14, averageMarketPrice: 14, category: 'metal' },
+  item_small_gold_nugget: { rarity: 'rare', itemPrice: 48, averageMarketPrice: 48, category: 'metal' },
+  item_cracked_crystal: { rarity: 'rare', itemPrice: 32, averageMarketPrice: 32, category: 'crystal' },
+  item_zeptyrite_trace: { rarity: 'rare', itemPrice: 120, averageMarketPrice: 120, category: 'other' },
+  item_rune_fragment_weak: { rarity: 'rare', itemPrice: 35, averageMarketPrice: 35, category: 'other' },
+  item_rune_dust: { rarity: 'common', itemPrice: 12, averageMarketPrice: 12, category: 'other' },
+};
+
 let miningItemsEnsured = false;
+let miningMaterialsEnsured = false;
 
 export async function ensureMiningPlaceholderItems(): Promise<void> {
-  if (miningItemsEnsured) {
+  if (miningItemsEnsured && miningMaterialsEnsured) {
     return;
   }
 
   try {
     for (const entry of MINING_PLACEHOLDER_ITEMS) {
+      const market = MINING_PLACEHOLDER_MARKET[entry.id] ?? {
+        rarity: 'common' as const,
+        itemPrice: 5,
+        averageMarketPrice: 5,
+        category: 'other' as const,
+      };
       const existing = await itemsService.getById(entry.id);
       const normalizedName = fixMojibake(entry.name, entry.name);
       const normalizedGameplay = fixMojibake(entry.gameplayDescription, entry.gameplayDescription);
@@ -1881,43 +1915,77 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
           fixMojibake(existing.name) !== normalizedName
           || fixMojibake(existing.gameplayDescription) !== normalizedGameplay
           || fixMojibake(existing.loreDescription) !== normalizedLore
+          || existing.price !== market.itemPrice
+          || existing.rarity !== market.rarity
         ) {
           await itemsService.update(entry.id, {
             name: normalizedName,
             gameplayDescription: normalizedGameplay,
             loreDescription: normalizedLore,
+            price: market.itemPrice,
+            rarity: market.rarity,
           });
         }
-        continue;
+      } else {
+        await itemsService.create({
+          id: entry.id,
+          name: normalizedName,
+          type: 'material',
+          subtype: 'mining',
+          slot: 'none',
+          handsRequired: 1,
+          rarity: market.rarity,
+          price: market.itemPrice,
+          stackable: true,
+          maxStack: 99,
+          requiredStats: {},
+          bonuses: {},
+          gameplayDescription: normalizedGameplay,
+          loreDescription: normalizedLore,
+          imagePath: '',
+          isEnabled: true,
+        });
       }
-      await itemsService.create({
-        id: entry.id,
-        name: normalizedName,
-        type: 'material',
-        subtype: 'mining',
-        slot: 'none',
-        handsRequired: 1,
-        rarity: entry.id === 'item_zeptyrite_trace' || entry.id === 'item_rune_fragment_weak' ? 'rare' : 'common',
-        price: entry.id === 'item_small_gold_nugget'
-          ? 25
-          : entry.id === 'item_zeptyrite_trace'
-            ? 40
-            : entry.id === 'item_rune_fragment_weak'
-              ? 35
-              : entry.id === 'item_rune_dust'
-                ? 12
-                : 5,
-        stackable: true,
-        maxStack: 99,
-        requiredStats: {},
-        bonuses: {},
-        gameplayDescription: normalizedGameplay,
-        loreDescription: normalizedLore,
-        imagePath: '',
-        isEnabled: true,
-      });
+
+      const existingMaterial = await materialsService.getById(entry.id);
+      if (existingMaterial) {
+        if (
+          fixMojibake(existingMaterial.name) !== normalizedName
+          || fixMojibake(existingMaterial.gameplayDescription) !== normalizedGameplay
+          || fixMojibake(existingMaterial.loreDescription) !== normalizedLore
+          || (existingMaterial.averageMarketPrice ?? 0) !== market.averageMarketPrice
+          || existingMaterial.rarity !== market.rarity
+        ) {
+          await materialsService.update(entry.id, {
+            name: normalizedName,
+            rarity: market.rarity,
+            averageMarketPrice: market.averageMarketPrice,
+            category: market.category,
+            region: 'teramor_mines',
+            properties: ['mining', 'ore'],
+            gameplayDescription: normalizedGameplay,
+            loreDescription: normalizedLore,
+            imagePath: existingMaterial.imagePath ?? '',
+          });
+        }
+      } else {
+        await materialsService.create({
+          id: entry.id,
+          name: normalizedName,
+          rarity: market.rarity,
+          category: market.category,
+          region: 'teramor_mines',
+          averageMarketPrice: market.averageMarketPrice,
+          properties: ['mining', 'ore'],
+          gameplayDescription: normalizedGameplay,
+          loreDescription: normalizedLore,
+          imagePath: '',
+          isEnabled: true,
+        });
+      }
     }
     miningItemsEnsured = true;
+    miningMaterialsEnsured = true;
   } catch {
     // Mining still works with raw ids if content API is unavailable.
   }

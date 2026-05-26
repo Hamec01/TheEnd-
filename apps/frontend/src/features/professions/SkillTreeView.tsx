@@ -64,6 +64,24 @@ function darkBackgroundForProfession(professionId: string): string {
 
 const MINING_STAGE_WIDTH = 1220;
 const MINING_STAGE_HEIGHT = 820;
+const MINING_EXTRA_SKILLS_COLUMN_X = 18;
+const MINING_EXTRA_SKILLS_COLUMN_START_Y = 24;
+const MINING_EXTRA_SKILLS_ROW_GAP = 74;
+const MINING_LEFT_COLUMN_SKILL_NAMES = new Set([
+  'подрывник',
+  'страховка добычи',
+  'носильщик',
+  'старший носильщик',
+  'защита от духов',
+]);
+const MINING_CANONICAL_SKILL_ID_BY_NAME = new Map<string, string>([
+  ['чутье прохода', 'mining_passage_sense'],
+  ['каменная выдержка', 'mining_stone_endurance'],
+]);
+
+function normalizeMiningSkillNameForMatch(value: string): string {
+  return value.trim().toLowerCase().replace(/ё/g, 'е');
+}
 
 const MINING_TREE_LAYOUT: Record<string, { x: number; y: number }> = {
   mining_firm_swing: { x: 452, y: 24 },
@@ -177,10 +195,25 @@ export function SkillTreeView(props: SkillTreeViewProps) {
   const dragState = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const didAutoCenter = useRef(false);
 
-  const allSkills = useMemo(
-    () => skills.filter((entry) => entry.professionId === professionId && entry.isEnabled),
-    [professionId, skills],
-  );
+  const allSkills = useMemo(() => {
+    const visible = skills.filter((entry) => entry.professionId === professionId && entry.isEnabled);
+    if (professionId !== 'mining') {
+      return visible;
+    }
+
+    const visibleIdSet = new Set(visible.map((entry) => entry.id));
+    return visible.filter((entry) => {
+      const normalizedName = normalizeMiningSkillNameForMatch(entry.name);
+      const canonicalId = MINING_CANONICAL_SKILL_ID_BY_NAME.get(normalizedName);
+      if (!canonicalId) {
+        return true;
+      }
+      if (!visibleIdSet.has(canonicalId)) {
+        return true;
+      }
+      return entry.id === canonicalId;
+    });
+  }, [professionId, skills]);
   const allBranches = useMemo(
     () => branches.filter((entry) => entry.professionId === professionId && entry.isEnabled),
     [branches, professionId],
@@ -195,6 +228,15 @@ export function SkillTreeView(props: SkillTreeViewProps) {
 
   const learnedSkillIds = useMemo(() => new Set(playerProfessionState.learnedSkillIds ?? []), [playerProfessionState.learnedSkillIds]);
   const selectedBranchIds = useMemo(() => new Set(playerProfessionState.selectedBranchIds ?? []), [playerProfessionState.selectedBranchIds]);
+  const effectiveSelectedBranchIds = useMemo(() => {
+    const merged = new Set(selectedBranchIds);
+    for (const branch of allBranches) {
+      if (!branch.exclusiveGroupId) {
+        merged.add(branch.id);
+      }
+    }
+    return merged;
+  }, [allBranches, selectedBranchIds]);
 
   const skillStates = useMemo(() => {
     const result = new Map<string, ComputedSkillState>();
@@ -218,7 +260,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       }
 
       for (const requiredBranchId of skill.requiredBranchIds ?? []) {
-        if (!selectedBranchIds.has(requiredBranchId)) {
+        if (!effectiveSelectedBranchIds.has(requiredBranchId)) {
           const requiredBranchName = branchById.get(requiredBranchId)?.name ?? requiredBranchId;
           missing.push(`Требуется ветка: ${requiredBranchName}`);
         }
@@ -229,7 +271,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         if (!branch) {
           missing.push(`Ветка не найдена: ${skill.branchId}`);
         } else {
-          if (!selectedBranchIds.has(branch.id)) {
+          if (branch.exclusiveGroupId && !effectiveSelectedBranchIds.has(branch.id)) {
             missing.push(`Сначала выберите ветку: ${branch.name}`);
           }
           const missingBranchSkill = (branch.requiredSkillIds ?? []).find((requiredId) => !learnedSkillIds.has(requiredId));
@@ -266,7 +308,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     }
 
     return result;
-  }, [allBranches, allSkills, branchById, learnedSkillIds, playerProfessionState.level, playerProfessionState.skillPoints, selectedBranchIds, skillById]);
+  }, [allBranches, allSkills, branchById, effectiveSelectedBranchIds, learnedSkillIds, playerProfessionState.level, playerProfessionState.skillPoints, skillById]);
 
   const branchStates = useMemo(() => {
     const result = new Map<string, ComputedBranchState>();
@@ -324,13 +366,42 @@ export function SkillTreeView(props: SkillTreeViewProps) {
   const positions = useMemo(() => {
     const map = new Map<string, NodePosition>();
 
+    const extraMiningSkillsOrder = professionId === 'mining'
+      ? allSkills
+          .filter((skill) => {
+            if (MINING_TREE_LAYOUT[skill.id]) {
+              return false;
+            }
+            const normalizedName = skill.name.trim().toLowerCase();
+            if (!MINING_LEFT_COLUMN_SKILL_NAMES.has(normalizedName)) {
+              return false;
+            }
+            // Left column is only for specifically requested skills with no explicit icon.
+            return !String(skill.icon ?? '').trim();
+          })
+          .slice()
+          .sort((a, b) => {
+            const levelDiff = a.requiredLevel - b.requiredLevel;
+            if (levelDiff !== 0) {
+              return levelDiff;
+            }
+            return a.name.localeCompare(b.name, 'ru');
+          })
+      : [];
+    const extraMiningSkillIndex = new Map(extraMiningSkillsOrder.map((skill, index) => [skill.id, index]));
+
     allSkills.forEach((skill, index) => {
       const autoX = 120 + ((skill.requiredLevel - 1) % 6) * 220;
       const autoY = 120 + Math.floor(index / 6) * 180;
       const layoutPosition = professionId === 'mining' ? MINING_TREE_LAYOUT[skill.id] : undefined;
+      const extraIndex = professionId === 'mining' ? extraMiningSkillIndex.get(skill.id) : undefined;
       map.set(`skill:${skill.id}`, {
-        x: layoutPosition?.x ?? (Number.isFinite(skill.positionX) ? Number(skill.positionX) : autoX),
-        y: layoutPosition?.y ?? (Number.isFinite(skill.positionY) ? Number(skill.positionY) : autoY),
+        x: layoutPosition?.x
+          ?? (extraIndex !== undefined ? MINING_EXTRA_SKILLS_COLUMN_X : (Number.isFinite(skill.positionX) ? Number(skill.positionX) : autoX)),
+        y: layoutPosition?.y
+          ?? (extraIndex !== undefined
+            ? MINING_EXTRA_SKILLS_COLUMN_START_Y + extraIndex * MINING_EXTRA_SKILLS_ROW_GAP
+            : (Number.isFinite(skill.positionY) ? Number(skill.positionY) : autoY)),
         kind: 'skill',
       });
     });

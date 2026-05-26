@@ -193,7 +193,7 @@ export const HUMAN_ORIGINS: CharacterOrigin[] = [
     id: 'origin_luminor',
     name: 'Луминор',
     bonuses: {},
-    featureHighlights: ['+500 starting gold', '+15% sell prices', '+10 base kingdom reputation'],
+    featureHighlights: ['+80 starting gold', '+15% sell prices', '+10 base kingdom reputation'],
     description: 'Королевство торговли, дипломатии и процветания.',
   },
   {

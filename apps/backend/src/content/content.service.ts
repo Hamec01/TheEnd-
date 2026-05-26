@@ -3326,7 +3326,30 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       itemSets: db.itemSets ?? [],
       activationContexts: ['combat', 'arena'],
     });
-    return aggregateArenaCombatEquipmentModifiers(resolved.effects);
+    const modifiers = aggregateArenaCombatEquipmentModifiers(resolved.effects);
+
+    let totalArmorValue = 0;
+    for (const itemId of Object.values(equipment)) {
+      if (!itemId) {
+        continue;
+      }
+      const adminItem = db.items.find((item) => item.id === itemId && item.isEnabled);
+      if (!adminItem || typeof adminItem.armorValue !== 'number' || !Number.isFinite(adminItem.armorValue)) {
+        continue;
+      }
+      totalArmorValue += Math.max(0, Math.floor(adminItem.armorValue));
+    }
+
+    if (totalArmorValue > 0) {
+      modifiers.incomingPhysical.flat -= Math.max(1, Math.floor(totalArmorValue * 0.6));
+      modifiers.incomingMagic.flat -= Math.floor(totalArmorValue * 0.15);
+    }
+
+    if (equipment.shield) {
+      modifiers.blockChancePercent += 5;
+    }
+
+    return modifiers;
   }
 
   canEquipItem(baseStats: StatBlock, itemId: string, equipment?: Equipment, preferredSlot?: keyof Equipment): { ok: boolean; reason?: string } {

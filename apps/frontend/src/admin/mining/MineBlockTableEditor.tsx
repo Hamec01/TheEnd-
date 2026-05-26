@@ -116,6 +116,8 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
     const warnings: string[] = [];
     for (const entry of draft.entries) {
       const payloads = entry.payloads ?? [];
+      const hasLootTable = Boolean(String(entry.lootTableId ?? '').trim());
+      const hasHazardTable = Boolean(String(entry.hazardTableId ?? '').trim());
       const hasLootPayload = payloads.some((payload) => payload.type === 'loot_item' || payload.type === 'loot_material' || payload.type === 'rune_trace' || payload.type === 'gold');
       const hasOreMaterialPayload = payloads.some((payload) => {
         if (payload.type !== 'loot_item' && payload.type !== 'loot_material') {
@@ -125,16 +127,19 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
         return id.includes('ore') || id.includes('material');
       });
       const hasHazardPayload = payloads.some((payload) => payload.type === 'hazard_ref');
-      if (entry.type === 'stone' && !hasLootPayload) {
+      const hasLootSource = hasLootPayload || hasLootTable;
+      const hasHazardSource = hasHazardPayload || hasHazardTable;
+
+      if (entry.type === 'stone' && !hasLootSource) {
         warnings.push('stone без loot payload.');
       }
-      if (entry.type === 'ore' && !hasOreMaterialPayload) {
+      if (entry.type === 'ore' && !(hasOreMaterialPayload || hasLootTable)) {
         warnings.push('ore без ore/material payload.');
       }
-      if ((entry.type === 'crystal' || entry.type === 'gem') && !hasLootPayload) {
+      if ((entry.type === 'crystal' || entry.type === 'gem') && !hasLootSource) {
         warnings.push(`${entry.type} без loot payload.`);
       }
-      if (entry.type === 'hazard' && !hasHazardPayload) {
+      if (entry.type === 'hazard' && !hasHazardSource) {
         warnings.push('hazard без hazard_ref payload.');
       }
       if (entry.type === 'passage') {
@@ -142,9 +147,6 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
         if (invalid) {
           warnings.push('passage содержит нерелевантный loot/hazard payload.');
         }
-      }
-      if (entry.type === 'exit') {
-        warnings.push('В таблице используется устаревший block type exit.');
       }
     }
     return warnings;

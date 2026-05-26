@@ -78,6 +78,17 @@ export function normalizeActorVisualSource(value: string | undefined): string | 
   return `/sprites/actor/${slashNormalized}.png`;
 }
 
+export function resolveRacePortraitSource(race: string | undefined): string {
+  const normalizedRace = String(race ?? '').trim().toUpperCase();
+  if (normalizedRace === 'DWARF') {
+    return '/sprites/actor/dwarf_01.png';
+  }
+  if (normalizedRace === 'HIGH_ELF' || normalizedRace === 'WOOD_ELF') {
+    return '/sprites/actor/high_elf_01.png';
+  }
+  return '/sprites/actor/human_01.png';
+}
+
 export function resolveActorPortraitWithFallback(
   primary: string | undefined,
   options?: {
