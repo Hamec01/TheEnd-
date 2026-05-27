@@ -23,14 +23,14 @@ export class WorldSimulationModule implements OnModuleInit {
     // Двигаем мир маленькими шагами, чтобы перемещение было видно игроку на карте,
     // а не происходило телепортом между waypoint-ами.
     const tickIntervalMs = 250;
-    const devGameSecondsPerRealSecond = 10;
-    const prodGameSecondsPerRealSecond = 1;
+    const gameSecondsPerRealSecond = 1;
+    let lastTickAt = Date.now();
 
     setInterval(async () => {
-      const gameSecondsPerRealSecond = process.env.NODE_ENV === 'production'
-        ? prodGameSecondsPerRealSecond
-        : devGameSecondsPerRealSecond;
-      const deltaSeconds = (tickIntervalMs / 1000) * gameSecondsPerRealSecond;
+      const now = Date.now();
+      const elapsedSeconds = Math.max(0, (now - lastTickAt) / 1000);
+      lastTickAt = now;
+      const deltaSeconds = elapsedSeconds * gameSecondsPerRealSecond;
       await this.worldSim.tick(deltaSeconds);
     }, tickIntervalMs);
   }

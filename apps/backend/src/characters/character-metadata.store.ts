@@ -12,6 +12,10 @@ const STORE_KEY = 'character-metadata-v1';
 export interface CharacterMetadata extends CharacterCitizenshipState {
   startingProfessionIds: string[];
   startingSkillIds: string[];
+  merchantStockByMerchantId?: Record<string, {
+    lastRefreshAt: number;
+    stockByItemId: Record<string, number>;
+  }>;
 }
 
 const DEFAULT_METADATA: CharacterMetadata = {
@@ -43,6 +47,44 @@ function normalizeMetadata(raw: unknown): CharacterMetadata {
     startingSkillIds: Array.isArray(rec.startingSkillIds)
       ? rec.startingSkillIds.map((entry) => String(entry)).filter(Boolean)
       : [],
+    merchantStockByMerchantId: (() => {
+      const rawStockMap = rec.merchantStockByMerchantId;
+      if (!rawStockMap || typeof rawStockMap !== 'object' || Array.isArray(rawStockMap)) {
+        return undefined;
+      }
+
+      const normalized: Record<string, { lastRefreshAt: number; stockByItemId: Record<string, number> }> = {};
+      for (const [merchantId, rawState] of Object.entries(rawStockMap as Record<string, unknown>)) {
+        if (!merchantId || !rawState || typeof rawState !== 'object' || Array.isArray(rawState)) {
+          continue;
+        }
+
+        const record = rawState as Record<string, unknown>;
+        const rawLastRefreshAt = Number(record.lastRefreshAt ?? 0);
+        const lastRefreshAt = Number.isFinite(rawLastRefreshAt) ? Math.max(0, Math.floor(rawLastRefreshAt)) : 0;
+        const rawByItem = record.stockByItemId;
+        const stockByItemId: Record<string, number> = {};
+        if (rawByItem && typeof rawByItem === 'object' && !Array.isArray(rawByItem)) {
+          for (const [itemId, rawQuantity] of Object.entries(rawByItem as Record<string, unknown>)) {
+            if (!itemId) {
+              continue;
+            }
+            const quantity = Number(rawQuantity);
+            if (!Number.isFinite(quantity)) {
+              continue;
+            }
+            stockByItemId[itemId] = Math.max(0, Math.floor(quantity));
+          }
+        }
+
+        normalized[merchantId] = {
+          lastRefreshAt,
+          stockByItemId,
+        };
+      }
+
+      return Object.keys(normalized).length > 0 ? normalized : undefined;
+    })(),
   };
 }
 

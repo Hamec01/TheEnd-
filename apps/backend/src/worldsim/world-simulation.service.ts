@@ -748,8 +748,8 @@ export class WorldSimulationService {
   async tick(deltaSeconds: number): Promise<void> {
     this.simulationTickCount++;
 
-    // Обновить время симуляции
-    this.simulationTime = new Date(this.simulationTime.getTime() + deltaSeconds * 1000);
+    // Синхронизация с реальным локальным временем машины, где запущен сервер.
+    this.simulationTime = new Date();
 
     // Этап 1: Обновить прогресс маршрутов
     this.updateRouteProgress(deltaSeconds);

@@ -1572,7 +1572,13 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       worldImage.naturalHeight * editorViewport.zoom,
     );
 
-    if (regions.length > 0) {
+    const passabilityVisibility = getEffectiveLayerVisibility('passability', activeEditorLayer, layerVisibility);
+    if (regions.length > 0 && passabilityVisibility !== 'hidden') {
+      ctx.save();
+      if (passabilityVisibility === 'dimmed') {
+        ctx.globalAlpha = 0.35;
+      }
+
       for (const region of regions) {
         const regionGridSize = region.gridSize && Number.isFinite(region.gridSize)
           ? Math.max(1, Math.floor(region.gridSize))
@@ -1586,6 +1592,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           ctx.fillRect(x, y, cellWidth, cellHeight);
         }
       }
+
+      ctx.restore();
     }
 
     if (editorSettings.showGrid) {

@@ -68,6 +68,10 @@ interface TradeModalProps {
   equippedItemImage?: string;
   playerGold: number;
   price?: number;
+  quantity: number;
+  maxQuantity: number;
+  merchantStockLabel?: string;
+  onQuantityChange: (quantity: number) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -83,6 +87,10 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   equippedItemImage,
   playerGold,
   price,
+  quantity,
+  maxQuantity,
+  merchantStockLabel,
+  onQuantityChange,
   onConfirm,
   onCancel,
 }) => {
@@ -112,15 +120,27 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   const equippedDamageMax = typeof equippedAdminItem?.damageMax === 'number' ? equippedAdminItem.damageMax : null;
   const equippedArmorValue = typeof equippedAdminItem?.armorValue === 'number' ? equippedAdminItem.armorValue : null;
 
-  const resolvedPrice =
+  const unitPrice =
     typeof price === 'number'
       ? price
       : action === 'buy'
         ? itemPrice
         : Math.max(1, Math.floor(itemPrice * 0.6));
-  const canAfford = playerGold >= resolvedPrice;
+  const clampedQuantity = Math.max(1, Math.floor(quantity || 1));
+  const canTradeByQuantity = maxQuantity >= 1;
+  const totalPrice = unitPrice * clampedQuantity;
+  const canAfford = playerGold >= totalPrice;
   const isBuy = action === 'buy';
   const title = isBuy ? 'Подтверждение покупки' : 'Подтверждение продажи';
+  const confirmDisabled = !canTradeByQuantity || (isBuy && !canAfford) || clampedQuantity > maxQuantity;
+
+  const applyQuantity = (next: number): void => {
+    if (!canTradeByQuantity) {
+      return;
+    }
+    const safe = Math.max(1, Math.min(maxQuantity, Math.floor(next)));
+    onQuantityChange(safe);
+  };
 
   const description = safeText(adminItem?.gameplayDescription, itemDescription);
   const loreDescription = safeText(adminItem?.loreDescription, '');
@@ -324,32 +344,68 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           </div>
         </section>
 
+        <section className="trade-modal-quantity-row">
+          <div className="trade-modal-quantity-head">
+            <h4>Количество</h4>
+            {isBuy && merchantStockLabel ? <span>У торговца: {merchantStockLabel}</span> : null}
+            {!isBuy ? <span>В инвентаре: {maxQuantity} шт.</span> : null}
+          </div>
+          <div className="trade-modal-quantity-controls">
+            <button type="button" className="trade-modal-step-btn" onClick={() => applyQuantity(clampedQuantity - 1)} disabled={!canTradeByQuantity}>-</button>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, maxQuantity)}
+              value={clampedQuantity}
+              disabled={!canTradeByQuantity}
+              onChange={(event) => applyQuantity(Number(event.target.value))}
+            />
+            <button type="button" className="trade-modal-step-btn" onClick={() => applyQuantity(clampedQuantity + 1)} disabled={!canTradeByQuantity}>+</button>
+            <button type="button" className="trade-modal-chip-btn" onClick={() => applyQuantity(1)} disabled={!canTradeByQuantity}>x1</button>
+            <button type="button" className="trade-modal-chip-btn" onClick={() => applyQuantity(5)} disabled={!canTradeByQuantity}>x5</button>
+            <button type="button" className="trade-modal-chip-btn" onClick={() => applyQuantity(10)} disabled={!canTradeByQuantity}>x10</button>
+            <button type="button" className="trade-modal-chip-btn" onClick={() => applyQuantity(maxQuantity)} disabled={!canTradeByQuantity}>Max</button>
+          </div>
+        </section>
+
         <div className="trade-modal-economy-row">
           <div className="trade-modal-price-block">
-            <span>Цена</span>
-            <strong>{resolvedPrice} gold</strong>
+            <span>Цена за 1</span>
+            <strong>{unitPrice} gold</strong>
+          </div>
+          <div className="trade-modal-price-block">
+            <span>Итого</span>
+            <strong>{totalPrice} gold</strong>
           </div>
           <div className="trade-modal-price-block">
             <span>{isBuy ? 'Ваше золото' : 'После продажи'}</span>
-            <strong>{isBuy ? playerGold : playerGold + resolvedPrice} gold</strong>
+            <strong>{isBuy ? playerGold : playerGold + totalPrice} gold</strong>
           </div>
         </div>
 
         {isBuy ? (
           <div className="trade-modal-gold">
-            {canAfford ? 'Средств достаточно для покупки.' : 'Недостаточно золота для покупки.'}
+            {!canTradeByQuantity
+              ? 'Недостаточно товара у торговца или золота для этой покупки.'
+              : canAfford
+                ? 'Средств достаточно для покупки.'
+                : 'Недостаточно золота для покупки.'}
           </div>
         ) : (
-          <div className="trade-modal-gold">После продажи вы получите {resolvedPrice} gold.</div>
+          <div className="trade-modal-gold">
+            {canTradeByQuantity
+              ? `После продажи вы получите ${totalPrice} gold.`
+              : 'Недостаточно предметов в инвентаре для продажи.'}
+          </div>
         )}
 
         <div className="trade-modal-buttons">
           <button
             className="trade-modal-btn confirm"
             onClick={onConfirm}
-            disabled={!canAfford && isBuy}
+            disabled={confirmDisabled}
           >
-            {isBuy ? 'Купить предмет' : 'Продать предмет'}
+            {isBuy ? `Купить (${clampedQuantity})` : `Продать (${clampedQuantity})`}
           </button>
           <button className="trade-modal-btn cancel" onClick={onCancel}>
             Отмена

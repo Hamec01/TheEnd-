@@ -5839,6 +5839,12 @@ h3 {
   background: rgba(18, 15, 11, 0.35);
 }
 
+.npc-group.is-nested {
+  margin: 4px 4px 0 18px;
+  border-color: rgba(117, 92, 57, 0.28);
+  background: rgba(18, 15, 11, 0.24);
+}
+
 .npc-group-header {
   display: flex;
   align-items: center;
@@ -5854,6 +5860,12 @@ h3 {
   text-align: left;
   cursor: pointer;
   transition: all 120ms ease;
+}
+
+.npc-group-header.is-nested {
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  background: linear-gradient(180deg, rgba(36, 30, 22, 0.74), rgba(22, 18, 14, 0.78));
 }
 
 .npc-group-header:hover {
@@ -5898,8 +5910,146 @@ h3 {
   overflow-y: auto;
 }
 
-.npc-group-items .admin-entity-card {
+.npc-group-items.is-nested {
+  max-height: none;
+  overflow-y: visible;
+  padding: 6px 2px 6px 0;
+}
+
+.npc-group-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
   margin: 0 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(181, 144, 86, 0.18);
+  background: rgba(23, 18, 12, 0.88);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.npc-group-item:hover,
+.npc-group-item:focus-visible {
+  border-color: rgba(196, 157, 95, 0.5);
+  background: rgba(31, 24, 17, 0.96);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.npc-group-item.is-active {
+  border-color: rgba(216, 175, 106, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(216, 175, 106, 0.28);
+}
+
+.npc-group-item-thumb {
+  flex: 0 0 auto;
+}
+
+.npc-group-item-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.npc-group-item-name,
+.npc-group-item-meta,
+.npc-group-item-place {
+  overflow-wrap: anywhere;
+}
+
+.npc-group-item-name {
+  font-size: 0.92rem;
+  color: #f4e7cb;
+}
+
+.npc-group-item-meta {
+  font-size: 0.74rem;
+  color: #c7b089;
+  text-transform: none;
+}
+
+.npc-group-item-place {
+  font-size: 0.72rem;
+  color: #9f9279;
+}
+
+.npc-group-item-actions {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  min-width: 72px;
+}
+
+.npc-group-item-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(84, 74, 59, 0.45);
+  color: #dac6a1;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.npc-group-item-status.is-active {
+  background: rgba(53, 97, 54, 0.4);
+  color: #cce4bf;
+}
+
+.npc-group-item-status.is-draft {
+  background: rgba(112, 88, 40, 0.42);
+  color: #ead6a4;
+}
+
+.npc-group-item-status.is-disabled,
+.npc-group-item-status.is-archived {
+  background: rgba(83, 63, 63, 0.42);
+  color: #d9b6b6;
+}
+
+.npc-group-item-id {
+  display: none;
+}
+
+.npc-group-copy-btn {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(163, 131, 83, 0.45);
+  background: rgba(38, 29, 21, 0.92);
+  color: #dec89e;
+  font-size: 0.66rem;
+}
+
+.npc-group-copy-btn:hover {
+  border-color: rgba(197, 160, 103, 0.72);
+}
+
+.npc-list-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.npc-filter-chip {
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid rgba(126, 100, 68, 0.45);
+  background: rgba(25, 20, 15, 0.82);
+  color: #c8b291;
+  font-size: 0.73rem;
+  white-space: nowrap;
+}
+
+.npc-filter-chip.is-active {
+  border-color: rgba(212, 170, 101, 0.68);
+  background: rgba(71, 52, 23, 0.88);
+  color: #f2ddb2;
 }
 
 /* NPC Bottom Section Styles */
@@ -5968,6 +6118,24 @@ h3 {
 
 .npc-list-bottom-filters .muted {
   font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .npc-group-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .npc-group-item-actions {
+    grid-column: 1 / -1;
+    grid-auto-flow: column;
+    justify-content: flex-start;
+    justify-items: start;
+    padding-left: 70px;
+  }
+
+  .npc-list-bottom-filters {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mmo-inventory-grid {
@@ -10023,9 +10191,82 @@ body:has(.page.page--scroll) {
   color: #fbf0da;
 }
 
+.trade-modal-quantity-row {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(191, 152, 98, 0.24);
+  background: rgba(17, 14, 10, 0.66);
+  display: grid;
+  gap: 8px;
+}
+
+.trade-modal-quantity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.trade-modal-quantity-head h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #efd7a6;
+}
+
+.trade-modal-quantity-head span {
+  font-size: 0.78rem;
+  color: #cfbc98;
+}
+
+.trade-modal-quantity-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.trade-modal-quantity-controls input {
+  width: 84px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(207, 160, 95, 0.4);
+  background: rgba(15, 11, 8, 0.85);
+  color: #f4e7cc;
+  font-weight: 600;
+}
+
+.trade-modal-step-btn,
+.trade-modal-chip-btn {
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(207, 160, 95, 0.4);
+  background: rgba(44, 33, 22, 0.9);
+  color: #f2dfba;
+  cursor: pointer;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.trade-modal-step-btn:hover,
+.trade-modal-chip-btn:hover {
+  border-color: rgba(229, 178, 108, 0.68);
+  background: rgba(63, 46, 29, 0.94);
+}
+
+.trade-modal-step-btn:disabled,
+.trade-modal-chip-btn:disabled,
+.trade-modal-quantity-controls input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .trade-modal-economy-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 10px;
 }

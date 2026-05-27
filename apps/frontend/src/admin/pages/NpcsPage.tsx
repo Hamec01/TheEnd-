@@ -20,6 +20,7 @@ import { ensureNpcsLoaded, getAllNpcs, saveNpc, renameNpc, deleteNpc, duplicateN
 import { validateNpc } from '../../services/npcValidator';
 import { buildWorldZoneLabel, getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { cityService } from '../../services/cityRepository';
+import { locationService } from '../../services/locationRepository';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { normalizeNpcForAdmin } from '../../services/npcAdminNormalization';
 import type {
@@ -34,20 +35,33 @@ import type {
 } from '../../types/npc';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import type { WorldLocation } from '../../types/location';
 import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { NpcGroupList } from '../components/NpcGroupList';
-import { groupNpcsByKey, getGroupingLabel, type GroupingKey } from '../utils/npcGrouping';
+import { buildNpcCardSummary, groupNpcsByKey, getGroupingLabel, resolveNpcPlaceInfo, type GroupingKey } from '../utils/npcGrouping';
 import { AdminSectionErrorBoundary } from '../components/AdminSectionErrorBoundary';
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 
 const NPC_STATUSES: NpcStatus[] = ['draft', 'active', 'disabled', 'archived'];
-const GROUPING_OPTIONS: GroupingKey[] = ['kingdom', 'faction', 'city', 'kind', 'type', 'status', 'race'];
+const GROUPING_OPTIONS: GroupingKey[] = ['place', 'city', 'location', 'kingdom', 'faction', 'kind', 'none'];
 const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'guard', 'enemy', 'boss', 'companion', 'random_encounter', 'story_character', 'monster', 'animal'];
 const NPC_RACES: NpcRace[] = ['human', 'high_elf', 'forest_elf', 'ancient_elf', 'dwarf', 'orc', 'dark_elf', 'arin_fellar', 'monster', 'beast', 'undead', 'spirit', 'other'];
 const NPC_DISPOSITIONS: NpcDispositionMode[] = ['friendly', 'neutral', 'hostile', 'fearful', 'aggressive_on_sight', 'quest_locked', 'hidden'];
 const MAP_SPAWN_TYPES: NpcMapBinding['spawnType'][] = ['fixed', 'random_in_zone', 'quest_spawn', 'event_spawn'];
+const QUICK_FILTER_OPTIONS = [
+  { key: 'unbound', label: 'Только без привязки' },
+  { key: 'traders', label: 'Только торговцы' },
+  { key: 'quest', label: 'Только квестовые' },
+  { key: 'combat', label: 'Только боевые' },
+  { key: 'village', label: 'Только деревни' },
+  { key: 'academy', label: 'Только академии' },
+  { key: 'city', label: 'Только города' },
+  { key: 'active', label: 'Только active' },
+  { key: 'draft', label: 'Только draft' },
+] as const;
+type QuickFilterKey = typeof QUICK_FILTER_OPTIONS[number]['key'];
 
 type NpcTab =
   | 'basic'
@@ -127,7 +141,18 @@ export function NpcsPage() {
   const [draft, setDraft] = useState<NpcDefinition>(emptyNpc());
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<NpcTab>('basic');
-  const [groupingKey, setGroupingKey] = useState<GroupingKey>('city');
+  const [groupingKey, setGroupingKey] = useState<GroupingKey>('place');
+  const [quickFilters, setQuickFilters] = useState<Record<QuickFilterKey, boolean>>({
+    unbound: false,
+    traders: false,
+    quest: false,
+    combat: false,
+    village: false,
+    academy: false,
+    city: false,
+    active: false,
+    draft: false,
+  });
   const [statusText, setStatusText] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
@@ -145,6 +170,7 @@ export function NpcsPage() {
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [lootTableIds, setLootTableIds] = useState<string[]>([]);
   const [cities, setCities] = useState<City[]>([]);
+  const [locations, setLocations] = useState<WorldLocation[]>([]);
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
   const [visualFxIds, setVisualFxIds] = useState<string[]>([]);
 
@@ -201,6 +227,7 @@ export function NpcsPage() {
     });
 
     void cityService.getCities().then(setCities).catch(() => setCities([]));
+    void locationService.getLocations().then(setLocations).catch(() => setLocations([]));
 
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
 
@@ -235,6 +262,14 @@ export function NpcsPage() {
           setMarkerIds(getQuestMarkers().map((entry) => entry.id));
           refresh();
         }).catch(() => undefined);
+
+        void Promise.all([
+          cityService.getCities().catch(() => []),
+          locationService.getLocations().catch(() => []),
+        ]).then(([nextCities, nextLocations]) => {
+          setCities(nextCities);
+          setLocations(nextLocations);
+        }).catch(() => undefined);
       }
 
       if (payload.scope === 'worldMap' || payload.scope === 'all') {
@@ -257,10 +292,18 @@ export function NpcsPage() {
     () => currentCity?.locations ?? [],
     [currentCity],
   );
+  const groupingContext = useMemo(
+    () => ({ cities, locations, zones }),
+    [cities, locations, zones],
+  );
   const selectedCityLocation = useMemo(() => {
     if (!draft.cityLocationId || !currentCity) return null;
     return currentCity.locations.find((location) => location.id === draft.cityLocationId) ?? null;
   }, [currentCity, draft.cityLocationId]);
+  const selectedWorldLocation = useMemo(
+    () => (draft.locationId ? locations.find((location) => location.id === draft.locationId) ?? null : null),
+    [draft.locationId, locations],
+  );
 
   useEffect(() => {
     setMapBindingsJson(JSON.stringify(draft.mapBindings, null, 2));
@@ -299,12 +342,46 @@ export function NpcsPage() {
   const visibleNpcs = useMemo(() => {
     const q = query.trim().toLowerCase();
     return npcs.filter((entry) => {
-      if (!q) {
-        return true;
+      const searchMatches = !q
+        ? true
+        : entry.id.toLowerCase().includes(q)
+          || entry.name.toLowerCase().includes(q)
+          || (entry.title ?? '').toLowerCase().includes(q);
+      if (!searchMatches) {
+        return false;
       }
-      return entry.id.toLowerCase().includes(q) || entry.name.toLowerCase().includes(q) || (entry.title ?? '').toLowerCase().includes(q);
+
+      const place = resolveNpcPlaceInfo(entry, groupingContext);
+      if (quickFilters.unbound && place.kind !== 'unbound') {
+        return false;
+      }
+      if (quickFilters.traders && !(entry.canTrade || entry.worldSimTrader || entry.traderId)) {
+        return false;
+      }
+      if (quickFilters.quest && !(entry.canGiveQuests || entry.questBindings.length > 0)) {
+        return false;
+      }
+      if (quickFilters.combat && !entry.canFight) {
+        return false;
+      }
+      if (quickFilters.village && place.category !== 'village') {
+        return false;
+      }
+      if (quickFilters.academy && place.category !== 'academy' && place.category !== 'magic_school') {
+        return false;
+      }
+      if (quickFilters.city && place.category !== 'city' && place.category !== 'city_inner_location') {
+        return false;
+      }
+      if (quickFilters.active && entry.status !== 'active') {
+        return false;
+      }
+      if (quickFilters.draft && entry.status !== 'draft') {
+        return false;
+      }
+      return true;
     });
-  }, [npcs, query]);
+  }, [groupingContext, npcs, query, quickFilters]);
 
   const selectedNpc = useMemo(() => (selectedId ? npcs.find((entry) => entry.id === selectedId) ?? null : null), [npcs, selectedId]);
 
@@ -320,7 +397,13 @@ export function NpcsPage() {
     () => zones.find((zone) => zone.id === (primaryMapBinding?.zoneId ?? '').trim()) ?? null,
     [primaryMapBinding?.zoneId, zones],
   );
+  const resolvedDraftPlace = useMemo(() => resolveNpcPlaceInfo(draft, groupingContext), [draft, groupingContext]);
+  const draftCardSummary = useMemo(() => buildNpcCardSummary(draft, groupingContext), [draft, groupingContext]);
   const zoneListText = useMemo(() => zones.map((zone) => buildWorldZoneLabel(zone)).join(', '), [zones]);
+
+  function toggleQuickFilter(filterKey: QuickFilterKey) {
+    setQuickFilters((current) => ({ ...current, [filterKey]: !current[filterKey] }));
+  }
 
   function patchPrimaryMapBinding(next: Partial<NpcMapBinding>) {
     const current = draft.mapBindings[0] ?? { id: `map_${Date.now()}`, mapId: 'worldmap-main', spawnType: 'fixed', visibleToPlayer: true };
@@ -770,13 +853,13 @@ export function NpcsPage() {
           <>
             <div className="admin-form-grid">
               <label>
-                <AdminFieldLabel label="Home City" hint="Родной город NPC. Не обязателен, но полезен для логики появления/диалогов." />
+                <AdminFieldLabel label="Home City" hint="Родной город NPC. Не обязателен, но полезен для логики появления и фоновых связей." />
                 <select value={draft.homeCityId ?? ''} onChange={(event) => patch({ homeCityId: event.target.value || undefined })}>
                   <option value="">Не задано</option>
                   {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
                 </select>
               </label>
-              {draft.homeCityId && !homeCity ? <p className="muted">City not found</p> : null}
+              <p className="muted">{draft.homeCityId ? (homeCity ? `Город найден: ${homeCity.name}` : 'Город не найден') : 'Город не задан'}</p>
 
               <label>
                 <AdminFieldLabel label="Current City" hint="Город, где NPC находится сейчас (для City-сцен). Меняет список локаций ниже." />
@@ -791,10 +874,19 @@ export function NpcsPage() {
                   {cities.map((city) => <option key={city.id} value={city.id}>{city.name} ({city.id})</option>)}
                 </select>
               </label>
-              {draft.currentCityId && !currentCity ? <p className="muted">City not found</p> : null}
+              <p className="muted">{draft.currentCityId ? (currentCity ? `Город найден: ${currentCity.name}` : 'Город не найден') : 'Город не задан'}</p>
 
               <label>
-                <AdminFieldLabel label="City Location" hint="Локация внутри выбранного Current City (ворота, рынок, кузница и т.д.)." />
+                <AdminFieldLabel label="World Location" hint="Мировая локация NPC: деревня, академия, лагерь, шахта и другие точки на world map." />
+                <select value={draft.locationId ?? ''} onChange={(event) => patch({ locationId: event.target.value || undefined })}>
+                  <option value="">Не задано</option>
+                  {locations.map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+                </select>
+              </label>
+              <p className="muted">{draft.locationId ? (selectedWorldLocation ? `World location found: ${selectedWorldLocation.name}` : 'Локация не найдена') : 'Локация не задана'}</p>
+
+              <label>
+                <AdminFieldLabel label="City Inner Location" hint="Локация внутри выбранного Current City: ворота, рынок, кузница, арена и т.д." />
                 <select
                   value={draft.cityLocationId ?? ''}
                   onChange={(event) => patch({ cityLocationId: event.target.value || undefined })}
@@ -804,7 +896,7 @@ export function NpcsPage() {
                   {currentCityLocations.map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
                 </select>
               </label>
-              {draft.cityLocationId && draft.currentCityId && !selectedCityLocation ? <p className="muted">Location not found</p> : null}
+              <p className="muted">{draft.cityLocationId ? (selectedCityLocation ? `Локация найдена: ${selectedCityLocation.name}` : 'Локация не найдена') : 'Локация не задана'}</p>
 
               <label>
                 <AdminFieldLabel label="Allowed Cities (CSV)" hint="Список городов, где NPC может появляться. Введите ids через запятую." />
@@ -842,7 +934,16 @@ export function NpcsPage() {
               }} /><AdminFieldLabel label="Visible to player" hint="Показывать NPC игроку на карте." /></label>
             </div>
 
-            {locationZone ? <p className="muted">Выбрана зона: {buildWorldZoneLabel(locationZone)}</p> : null}
+            <section className="card admin-item-preview npc-location-preview">
+              <h4>Resolved location preview</h4>
+              <p className="muted">Карточка списка: {draftCardSummary.titleLine} {draftCardSummary.placeLine ? `• ${draftCardSummary.placeLine}` : ''}</p>
+              <p className="muted">По месту: {resolvedDraftPlace.label}</p>
+              <p className="muted">Категория: {resolvedDraftPlace.category}</p>
+              <p className="muted">Kingdom: {resolvedDraftPlace.kingdomName || 'не определено'}</p>
+              <p className="muted">Region: {resolvedDraftPlace.regionName || 'не определено'}</p>
+              <p className="muted">Zone: {locationZone ? buildWorldZoneLabel(locationZone) : (primaryMapBinding?.zoneId ? 'Зона не найдена' : 'Зона не задана')}</p>
+              <p className="muted">World location: {selectedWorldLocation ? `${selectedWorldLocation.name} (${selectedWorldLocation.subtype ?? 'location'})` : (draft.locationId ? 'Локация не найдена' : 'Локация не задана')}</p>
+            </section>
 
             <section className="card admin-item-preview">
               <h4>Map bindings JSON</h4>
@@ -1060,7 +1161,7 @@ export function NpcsPage() {
 
           <div className="npc-list-bottom-filters">
             <input
-              placeholder="Поиск по имени, ID или городу..."
+              placeholder="Поиск по имени, титулу или ID..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -1074,13 +1175,26 @@ export function NpcsPage() {
                 ))}
               </select>
             </label>
+            <div className="npc-list-quick-filters">
+              {QUICK_FILTER_OPTIONS.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`npc-filter-chip ${quickFilters[filter.key] ? 'is-active' : ''}`}
+                  onClick={() => toggleQuickFilter(filter.key)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
             <span className="muted">Всего: {visibleNpcs.length}</span>
           </div>
 
           <NpcGroupList
-            groups={groupNpcsByKey(visibleNpcs, groupingKey)}
+            groups={groupNpcsByKey(visibleNpcs, groupingKey, groupingContext)}
             selectedId={selectedId}
             storedImages={storedImages}
+            groupingContext={groupingContext}
             onSelect={selectNpc}
           />
         </div>

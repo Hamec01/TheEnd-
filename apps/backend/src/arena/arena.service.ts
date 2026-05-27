@@ -116,6 +116,7 @@ const CHARACTER_HOTBAR_STORE_KEY = 'character-item-hotbars-v1';
 const CHARACTER_RESOURCES_STORE_KEY = 'character-runtime-resources-v1';
 const CHARACTER_QUEST_STATES_STORE_KEY = 'character-quest-states-v1';
 const HOTBAR_SLOT_COUNT = 10;
+const MERCHANT_STOCK_RESTOCK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 
 @Injectable()
 export class ArenaService implements OnModuleInit {
@@ -2037,22 +2038,170 @@ export class ArenaService implements OnModuleInit {
     return this.getCharacterArenaState(characterId);
   }
 
-  async buyItem(characterId: string, itemId: string, merchantId: string) {
+  async getMerchantStock(characterId: string, merchantId: string): Promise<{
+    merchantId: string;
+    refreshedAt: number;
+    nextRefreshAt: number;
+    stockByItemId: Record<string, number | null>;
+  }> {
+    const snapshot = await this.getOrRefreshMerchantStockState(characterId, merchantId);
+    return {
+      merchantId,
+      refreshedAt: snapshot.lastRefreshAt,
+      nextRefreshAt: snapshot.lastRefreshAt + MERCHANT_STOCK_RESTOCK_INTERVAL_MS,
+      stockByItemId: snapshot.stockByItemId,
+    };
+  }
+
+  private buildMerchantStockCatalog(merchantId: string): {
+    stockByItemId: Record<string, number | null>;
+    finiteBaseStockByItemId: Record<string, number>;
+  } {
+    const stockByItemId: Record<string, number | null> = {};
+    const finiteBaseStockByItemId: Record<string, number> = {};
+    const merchant = this.contentService.getCollectionEntry('merchants', merchantId) as {
+      items?: Array<{ itemId?: string; isEnabled?: boolean; infiniteStock?: boolean; stock?: number }>;
+    } | null;
+    if (!merchant || !Array.isArray(merchant.items)) {
+      return { stockByItemId, finiteBaseStockByItemId };
+    }
+
+    for (const entry of merchant.items) {
+      const itemId = typeof entry?.itemId === 'string' ? entry.itemId.trim() : '';
+      if (!itemId || entry?.isEnabled === false) {
+        continue;
+      }
+
+      if (entry.infiniteStock !== false) {
+        stockByItemId[itemId] = null;
+        continue;
+      }
+
+      const normalizedStock = typeof entry.stock === 'number' && Number.isFinite(entry.stock)
+        ? Math.max(0, Math.floor(entry.stock))
+        : 0;
+      stockByItemId[itemId] = normalizedStock;
+      finiteBaseStockByItemId[itemId] = normalizedStock;
+    }
+
+    return { stockByItemId, finiteBaseStockByItemId };
+  }
+
+  private async getOrRefreshMerchantStockState(characterId: string, merchantId: string): Promise<{
+    lastRefreshAt: number;
+    stockByItemId: Record<string, number | null>;
+  }> {
+    const metadata = await this.metadataStore.get(characterId);
+    const nowMs = Date.now();
+    const { stockByItemId: baseStockByItemId, finiteBaseStockByItemId } = this.buildMerchantStockCatalog(merchantId);
+    const finiteItemIds = Object.keys(finiteBaseStockByItemId);
+    const stockStateMap = { ...(metadata.merchantStockByMerchantId ?? {}) };
+    const existingState = stockStateMap[merchantId];
+    const existingLastRefreshAt = Number(existingState?.lastRefreshAt ?? 0);
+    const normalizedLastRefreshAt = Number.isFinite(existingLastRefreshAt) ? Math.max(0, Math.floor(existingLastRefreshAt)) : 0;
+    const shouldRefresh = normalizedLastRefreshAt <= 0 || (nowMs - normalizedLastRefreshAt) >= MERCHANT_STOCK_RESTOCK_INTERVAL_MS;
+
+    let runtimeFiniteStockByItemId: Record<string, number> = {};
+    let nextLastRefreshAt = normalizedLastRefreshAt;
+    let changed = false;
+
+    if (shouldRefresh) {
+      runtimeFiniteStockByItemId = { ...finiteBaseStockByItemId };
+      nextLastRefreshAt = nowMs;
+      changed = true;
+    } else {
+      const rawRuntimeStock = existingState?.stockByItemId ?? {};
+      for (const itemId of finiteItemIds) {
+        const rawRuntimeQuantity = Number((rawRuntimeStock as Record<string, unknown>)[itemId] ?? finiteBaseStockByItemId[itemId]);
+        const normalizedRuntimeQuantity = Number.isFinite(rawRuntimeQuantity)
+          ? Math.max(0, Math.floor(rawRuntimeQuantity))
+          : finiteBaseStockByItemId[itemId];
+        const clampedQuantity = Math.min(normalizedRuntimeQuantity, finiteBaseStockByItemId[itemId]);
+        runtimeFiniteStockByItemId[itemId] = clampedQuantity;
+      }
+
+      const previousItemIds = Object.keys(rawRuntimeStock as Record<string, unknown>);
+      if (previousItemIds.length !== finiteItemIds.length) {
+        changed = true;
+      } else if (finiteItemIds.some((itemId) => Number((rawRuntimeStock as Record<string, unknown>)[itemId] ?? -1) !== runtimeFiniteStockByItemId[itemId])) {
+        changed = true;
+      }
+    }
+
+    if (shouldRefresh || changed || !stockStateMap[merchantId]) {
+      stockStateMap[merchantId] = {
+        lastRefreshAt: nextLastRefreshAt,
+        stockByItemId: runtimeFiniteStockByItemId,
+      };
+      await this.metadataStore.set(characterId, {
+        ...metadata,
+        merchantStockByMerchantId: stockStateMap,
+      });
+    }
+
+    const mergedStockByItemId: Record<string, number | null> = {
+      ...baseStockByItemId,
+    };
+    for (const itemId of finiteItemIds) {
+      mergedStockByItemId[itemId] = runtimeFiniteStockByItemId[itemId] ?? finiteBaseStockByItemId[itemId] ?? 0;
+    }
+
+    return {
+      lastRefreshAt: nextLastRefreshAt,
+      stockByItemId: mergedStockByItemId,
+    };
+  }
+
+  private async consumeMerchantFiniteStock(characterId: string, merchantId: string, itemId: string, quantity: number): Promise<void> {
+    const safeQuantity = Math.max(1, Math.floor(quantity));
+    const snapshot = await this.getOrRefreshMerchantStockState(characterId, merchantId);
+    const currentStock = snapshot.stockByItemId[itemId];
+    if (typeof currentStock !== 'number') {
+      return;
+    }
+
+    const metadata = await this.metadataStore.get(characterId);
+    const stockStateMap = { ...(metadata.merchantStockByMerchantId ?? {}) };
+    const merchantState = stockStateMap[merchantId];
+    if (!merchantState) {
+      return;
+    }
+
+    merchantState.stockByItemId = {
+      ...merchantState.stockByItemId,
+      [itemId]: Math.max(0, currentStock - safeQuantity),
+    };
+    stockStateMap[merchantId] = merchantState;
+
+    await this.metadataStore.set(characterId, {
+      ...metadata,
+      merchantStockByMerchantId: stockStateMap,
+    });
+  }
+
+  async buyItem(characterId: string, itemId: string, merchantId: string, quantity = 1) {
     if (isFileStorageMode()) {
-      return this.buyItemFileMode(characterId, itemId, merchantId);
+      return this.buyItemFileMode(characterId, itemId, merchantId, quantity);
     }
     this.assertDatabaseEnabled();
+    const safeQuantity = Math.max(1, Math.floor(quantity));
     const state = await this.getCharacterArenaState(characterId);
-    const price = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
+    const unitPrice = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
+    const totalPrice = unitPrice * safeQuantity;
+    const stockState = await this.getOrRefreshMerchantStockState(characterId, merchantId);
+    const finiteStock = stockState.stockByItemId[itemId];
+    if (typeof finiteStock === 'number' && safeQuantity > finiteStock) {
+      throw new BadRequestException(`У торговца доступно только ${finiteStock} шт.`);
+    }
 
-    if (state.inventory.gold < price) {
+    if (state.inventory.gold < totalPrice) {
       throw new BadRequestException('Недостаточно золота.');
     }
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.character.update({
         where: { id: characterId },
-        data: { gold: state.inventory.gold - price },
+        data: { gold: state.inventory.gold - totalPrice },
       });
 
       const existing = await tx.characterInventoryItem.findUnique({
@@ -2062,14 +2211,18 @@ export class ArenaService implements OnModuleInit {
       if (existing) {
         await tx.characterInventoryItem.update({
           where: { id: existing.id },
-          data: { quantity: existing.quantity + 1 },
+          data: { quantity: existing.quantity + safeQuantity },
         });
       } else {
         await tx.characterInventoryItem.create({
-          data: { characterId, itemId, quantity: 1 },
+          data: { characterId, itemId, quantity: safeQuantity },
         });
       }
     });
+
+    if (typeof finiteStock === 'number') {
+      await this.consumeMerchantFiniteStock(characterId, merchantId, itemId, safeQuantity);
+    }
 
     return this.getCharacterArenaState(characterId);
   }
@@ -2362,17 +2515,28 @@ export class ArenaService implements OnModuleInit {
     return Math.max(1, Math.round(basePrice * modifiers.sellMultiplier));
   }
 
-  private async buyItemFileMode(characterId: string, itemId: string, merchantId: string) {
+  private async buyItemFileMode(characterId: string, itemId: string, merchantId: string, quantity = 1) {
     const character = await this.requireRuntimeCharacter(characterId);
-    const price = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
+    const safeQuantity = Math.max(1, Math.floor(quantity));
+    const unitPrice = await this.getAdjustedMerchantBuyPrice(characterId, merchantId, itemId);
+    const totalPrice = unitPrice * safeQuantity;
+    const stockState = await this.getOrRefreshMerchantStockState(characterId, merchantId);
+    const finiteStock = stockState.stockByItemId[itemId];
+    if (typeof finiteStock === 'number' && safeQuantity > finiteStock) {
+      throw new BadRequestException(`У торговца доступно только ${finiteStock} шт.`);
+    }
     const gold = Number((character as { gold?: unknown }).gold ?? 0) || 0;
 
-    if (gold < price) {
+    if (gold < totalPrice) {
       throw new BadRequestException('Недостаточно золота.');
     }
 
-    await this.runtimeStore.updateCharacter(characterId, { gold: gold - price });
-    await this.updateRuntimeInventoryItemQuantity(characterId, itemId, 1);
+    await this.runtimeStore.updateCharacter(characterId, { gold: gold - totalPrice });
+    await this.updateRuntimeInventoryItemQuantity(characterId, itemId, safeQuantity);
+
+    if (typeof finiteStock === 'number') {
+      await this.consumeMerchantFiniteStock(characterId, merchantId, itemId, safeQuantity);
+    }
 
     return this.getCharacterArenaState(characterId);
   }

@@ -78,6 +78,13 @@ export interface ArenaHubState {
   actionSlots: CharacterActionSlot[];
 }
 
+export interface ArenaMerchantStockState {
+  merchantId: string;
+  refreshedAt: number;
+  nextRefreshAt: number;
+  stockByItemId: Record<string, number | null>;
+}
+
 export interface CharacterActionSlot {
   slotId: 'quick1' | 'quick2' | 'quick3' | 'quick4' | 'quick5' | 'quick6' | 'quick7' | 'quick8' | 'quick9' | 'quick10';
   slotIndex: number;
@@ -528,12 +535,20 @@ async function readErrorMessage(res: Response): Promise<string> {
   return raw;
 }
 
-export async function buyArenaItem(characterId: string, itemId: string, merchantId: string): Promise<ArenaHubState> {
+export async function buyArenaItem(characterId: string, itemId: string, merchantId: string, quantity = 1): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/buy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, itemId, merchantId }),
+    body: JSON.stringify({ characterId, itemId, merchantId, quantity }),
   });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function getArenaMerchantStock(characterId: string, merchantId: string): Promise<ArenaMerchantStockState> {
+  const res = await fetch(`${API_BASE}/arena/merchant-stock/${encodeURIComponent(characterId)}/${encodeURIComponent(merchantId)}`);
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }

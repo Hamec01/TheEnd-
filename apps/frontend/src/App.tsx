@@ -42,6 +42,7 @@ import {
   type CustomArenaNpcPayload,
   equipArenaItem,
   getArenaHubState,
+  getArenaMerchantStock,
   grantSkill,
   getSkillLoadout,
   learnSkill,
@@ -1330,6 +1331,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
   const [merchantMode, setMerchantMode] = useState<MerchantMode>('buy');
   const [sellOnlyAvailable, setSellOnlyAvailable] = useState(false);
+  const [merchantStockByMerchantId, setMerchantStockByMerchantId] = useState<Record<string, Record<string, number | null>>>({});
+  const [merchantNextRefreshAtByMerchantId, setMerchantNextRefreshAtByMerchantId] = useState<Record<string, number>>({});
   const [selectedCombatSkillId, setSelectedCombatSkillId] = useState<string | null>(null);
   const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
   const [npcTemplates, setNpcTemplates] = useState<ArenaNpcTemplate[]>([]);
@@ -1526,10 +1529,56 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     () => runtimeAdminMerchants.find((merchant) => merchant.id === selectedMerchantId) ?? null,
     [runtimeAdminMerchants, selectedMerchantId],
   );
+  const refreshMerchantStock = useCallback(async (merchantId: string) => {
+    if (!character) {
+      return null;
+    }
+
+    const snapshot = await getArenaMerchantStock(character.id, merchantId);
+    setMerchantStockByMerchantId((current) => ({
+      ...current,
+      [merchantId]: snapshot.stockByItemId,
+    }));
+    setMerchantNextRefreshAtByMerchantId((current) => ({
+      ...current,
+      [merchantId]: snapshot.nextRefreshAt,
+    }));
+    return snapshot;
+  }, [character]);
   const merchantItems = useMemo<ItemDefinition[]>(
     () => (selectedMerchant ? getRuntimeMerchantItems(selectedMerchant.id, runtimeAdminMerchants, runtimeAdminItems) : []),
     [runtimeAdminItems, runtimeAdminMerchants, selectedMerchant],
   );
+  const selectedMerchantFallbackStockByItemId = useMemo<Record<string, number | null>>(() => {
+    const result: Record<string, number | null> = {};
+    if (!selectedAdminMerchant) {
+      return result;
+    }
+    for (const entry of selectedAdminMerchant.items) {
+      if (!entry.isEnabled) {
+        continue;
+      }
+      if (entry.infiniteStock !== false) {
+        result[entry.itemId] = null;
+        continue;
+      }
+      const normalizedStock = typeof entry.stock === 'number' && Number.isFinite(entry.stock)
+        ? Math.max(0, Math.floor(entry.stock))
+        : 0;
+      result[entry.itemId] = normalizedStock;
+    }
+    return result;
+  }, [selectedAdminMerchant]);
+  const selectedMerchantStockByItemId = useMemo<Record<string, number | null>>(() => {
+    const runtimeStock = merchantStockByMerchantId[selectedMerchantId];
+    if (!runtimeStock) {
+      return selectedMerchantFallbackStockByItemId;
+    }
+    return {
+      ...selectedMerchantFallbackStockByItemId,
+      ...runtimeStock,
+    };
+  }, [merchantStockByMerchantId, selectedMerchantFallbackStockByItemId, selectedMerchantId]);
   const selectedMerchantAllowedSellItemIds = useMemo(() => {
     if (!selectedAdminMerchant?.materialTradingEnabled) {
       return undefined;
@@ -1576,6 +1625,33 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       };
     });
   }, [equippedItemIds, inventory.items, runtimeAdminItems]);
+  useEffect(() => {
+    if (overlayPanel !== 'merchant' || !character || !selectedMerchant) {
+      return;
+    }
+
+    void refreshMerchantStock(selectedMerchant.id);
+  }, [character, overlayPanel, refreshMerchantStock, selectedMerchant]);
+
+  useEffect(() => {
+    if (overlayPanel !== 'merchant' || !character || !selectedMerchant) {
+      return;
+    }
+
+    const nextRefreshAt = merchantNextRefreshAtByMerchantId[selectedMerchant.id];
+    if (!Number.isFinite(nextRefreshAt) || nextRefreshAt <= 0) {
+      return;
+    }
+
+    const delayMs = Math.max(500, nextRefreshAt - Date.now() + 1000);
+    const timer = window.setTimeout(() => {
+      void refreshMerchantStock(selectedMerchant.id);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [character, merchantNextRefreshAtByMerchantId, overlayPanel, refreshMerchantStock, selectedMerchant]);
   const visibleSellEntries = useMemo(
     () => (sellOnlyAvailable ? sellEntries.filter((entry) => !entry.sellLocked) : sellEntries),
     [sellEntries, sellOnlyAvailable],
@@ -5235,21 +5311,24 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             merchantDescription={selectedAdminMerchant?.description}
             merchantLocation={selectedAdminMerchant?.location}
             merchantPortrait={resolveMerchantImage(selectedAdminMerchant)}
+            merchantStockByItemId={selectedMerchantStockByItemId}
             onClose={() => setOverlayPanel(null)}
-            onBuyItem={async (itemId, merchantId) => {
+            onBuyItem={async (itemId, merchantId, quantity) => {
               try {
-                const updated = await buyArenaItem(character.id, itemId, merchantId);
+                const updated = await buyArenaItem(character.id, itemId, merchantId, quantity);
                 setInventory(updated.inventory);
-                setStatus(`Bought ${resolveItem(itemId).name || 'item'}`);
+                await refreshMerchantStock(merchantId);
+                setStatus(`Bought ${resolveItem(itemId).name || 'item'} x${quantity}`);
               } catch (err: any) {
                 setStatus(`Failed to buy: ${err.message}`);
               }
             }}
-            onSellItem={async (itemId) => {
+            onSellItem={async (itemId, quantity) => {
               try {
-                const updated = await sellArenaItem(character.id, itemId);
+                const updated = await sellArenaItem(character.id, itemId, quantity);
                 setInventory(updated.inventory);
-                setStatus(`Sold ${resolveItem(itemId).name || 'item'}`);
+                await refreshMerchantStock(selectedMerchant.id);
+                setStatus(`Sold ${resolveItem(itemId).name || 'item'} x${quantity}`);
               } catch (err: any) {
                 setStatus(`Failed to sell: ${err.message}`);
               }

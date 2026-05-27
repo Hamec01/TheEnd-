@@ -15,9 +15,17 @@ export class ArenaController {
     return this.arenaService.getHubState(characterId);
   }
 
+  @Get('merchant-stock/:characterId/:merchantId')
+  getMerchantStock(
+    @Param('characterId') characterId: string,
+    @Param('merchantId') merchantId: string,
+  ) {
+    return this.arenaService.getMerchantStock(characterId, merchantId);
+  }
+
   @Post('buy')
   buy(@Body() dto: BuyItemDto) {
-    return this.arenaService.buyItem(dto.characterId, dto.itemId, dto.merchantId);
+    return this.arenaService.buyItem(dto.characterId, dto.itemId, dto.merchantId, dto.quantity ?? 1);
   }
 
   @Post('sell')

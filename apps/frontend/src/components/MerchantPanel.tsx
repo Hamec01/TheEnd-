@@ -19,8 +19,9 @@ interface MerchantPanelProps {
   merchantLocation?: string;
   merchantPortrait?: string;
   onClose: () => void;
-  onBuyItem: (itemId: string, merchantId: string) => Promise<void>;
-  onSellItem: (itemId: string) => Promise<void>;
+  merchantStockByItemId?: Record<string, number | null>;
+  onBuyItem: (itemId: string, merchantId: string, quantity: number) => Promise<void>;
+  onSellItem: (itemId: string, quantity: number) => Promise<void>;
 }
 
 export const MerchantPanel: React.FC<MerchantPanelProps> = ({
@@ -35,6 +36,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   merchantDescription,
   merchantLocation,
   merchantPortrait,
+  merchantStockByItemId,
   onClose,
   onBuyItem,
   onSellItem,
@@ -42,6 +44,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   const [mode, setMode] = useState<'buy' | 'sell'>('buy');
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemDefinition | null>(null);
+  const [tradeQuantity, setTradeQuantity] = useState(1);
   const merchantInitial = merchant.name.trim().charAt(0).toUpperCase() || 'Т';
 
   const merchantItems = useMemo(
@@ -76,6 +79,13 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
     },
     [allowedSellItemIds, inventory.items, resolveItemById],
   );
+  const inventoryQuantityByItemId = useMemo(() => {
+    const quantityByItemId = new Map<string, number>();
+    for (const entry of inventory.items) {
+      quantityByItemId.set(entry.itemId, (quantityByItemId.get(entry.itemId) ?? 0) + entry.quantity);
+    }
+    return quantityByItemId;
+  }, [inventory.items]);
   const selectedAdminItem = useMemo(
     () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
     [resolveAdminItemById, selectedItem],
@@ -108,12 +118,57 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
     [equippedItemIdForSelected, resolveAdminItemById],
   );
 
+  const selectedUnitPrice = useMemo(
+    () => (mode === 'buy' ? selectedItem?.price ?? 0 : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : 0),
+    [mode, selectedItem],
+  );
+
+  const maxBuyByGold = useMemo(() => {
+    if (selectedUnitPrice <= 0) {
+      return 999;
+    }
+    return Math.max(0, Math.floor(inventory.gold / selectedUnitPrice));
+  }, [inventory.gold, selectedUnitPrice]);
+
+  const selectedMerchantStock = useMemo(() => {
+    if (!selectedItem || !merchantStockByItemId) {
+      return null;
+    }
+    return merchantStockByItemId[selectedItem.id] ?? null;
+  }, [merchantStockByItemId, selectedItem]);
+
+  const maxBuyQuantity = useMemo(() => {
+    if (typeof selectedMerchantStock === 'number') {
+      return Math.max(0, Math.min(maxBuyByGold, selectedMerchantStock));
+    }
+    return maxBuyByGold;
+  }, [maxBuyByGold, selectedMerchantStock]);
+
+  const maxSellQuantity = useMemo(() => {
+    if (!selectedItem) {
+      return 0;
+    }
+    return Math.max(0, inventoryQuantityByItemId.get(selectedItem.id) ?? 0);
+  }, [inventoryQuantityByItemId, selectedItem]);
+
+  const maxTradeQuantity = mode === 'buy' ? maxBuyQuantity : maxSellQuantity;
+  const merchantStockLabel = useMemo(() => {
+    if (mode !== 'buy') {
+      return undefined;
+    }
+    if (typeof selectedMerchantStock === 'number') {
+      return `${selectedMerchantStock} шт.`;
+    }
+    return 'Бесконечно';
+  }, [mode, selectedMerchantStock]);
+
   const handleBuy = async () => {
     if (selectedItem) {
       try {
-        await onBuyItem(selectedItem.id, merchant.id);
+        await onBuyItem(selectedItem.id, merchant.id, tradeQuantity);
         setTradeModalOpen(false);
         setSelectedItem(null);
+        setTradeQuantity(1);
       } catch (err) {
         console.error('Failed to buy item:', err);
       }
@@ -123,9 +178,10 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   const handleSell = async () => {
     if (selectedItem) {
       try {
-        await onSellItem(selectedItem.id);
+        await onSellItem(selectedItem.id, tradeQuantity);
         setTradeModalOpen(false);
         setSelectedItem(null);
+        setTradeQuantity(1);
       } catch (err) {
         console.error('Failed to sell item:', err);
       }
@@ -214,6 +270,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
                 onItemClick={(item) => {
                   if (!item) return;
                   setSelectedItem(item);
+                  setTradeQuantity(1);
                   setTradeModalOpen(true);
                 }}
               />
@@ -228,6 +285,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
                 onItemClick={(item) => {
                   if (!item) return;
                   setSelectedItem(item);
+                  setTradeQuantity(1);
                   setTradeModalOpen(true);
                 }}
               />
@@ -242,6 +300,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
             onItemClick={(item) => {
               if (!item) return;
               setSelectedItem(item);
+              setTradeQuantity(1);
               setTradeModalOpen(true);
             }}
           />
@@ -257,11 +316,16 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           equippedAdminItem={equippedAdminItemForSelected}
           equippedItemImage={equippedItemForSelected && resolveItemImage ? resolveItemImage(equippedItemForSelected) : undefined}
           playerGold={inventory.gold}
-          price={mode === 'buy' ? selectedItem?.price : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : undefined}
+          price={selectedUnitPrice}
+          quantity={tradeQuantity}
+          maxQuantity={maxTradeQuantity}
+          merchantStockLabel={merchantStockLabel}
+          onQuantityChange={setTradeQuantity}
           onConfirm={mode === 'buy' ? handleBuy : handleSell}
           onCancel={() => {
             setTradeModalOpen(false);
             setSelectedItem(null);
+            setTradeQuantity(1);
           }}
         />
       </section>
