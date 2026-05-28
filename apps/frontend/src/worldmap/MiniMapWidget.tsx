@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { MapDiscoveryMarker } from './worldMapExploration';
+import { getQuestMarkerRuntimeMeta } from './questVisuals';
 
 const MINI_MAP_ZOOM = 2.5;
 
@@ -37,6 +38,7 @@ export function MiniMapWidget({
     () => questMarkers.find((entry) => entry.id === trackedMarkerId) ?? null,
     [questMarkers, trackedMarkerId],
   );
+  const trackedMarkerIcon = trackedMarker ? getQuestMarkerRuntimeMeta(trackedMarker).runtimeQuestIconUrl : undefined;
 
   const view = useMemo(() => {
     const width = 1 / MINI_MAP_ZOOM;
@@ -56,6 +58,7 @@ export function MiniMapWidget({
     <button
       type="button"
       className="wm-mini-map"
+      data-tutorial="mini-map-panel"
       onClick={onOpenViewer}
       aria-label="Открыть большую карту мира"
       title="Открыть карту мира"
@@ -78,10 +81,13 @@ export function MiniMapWidget({
         />
         {trackedMarker ? (
           <span
-            className="wm-mini-map-tracked-marker"
+            className={`wm-mini-map-tracked-marker${trackedMarkerIcon ? ' has-image' : ''}`}
             style={{
               left: `${trackedMarker.x * 100}%`,
               top: `${trackedMarker.y * 100}%`,
+              ...(trackedMarkerIcon
+                ? { backgroundImage: `url("${trackedMarkerIcon}")` }
+                : {}),
             }}
           />
         ) : null}

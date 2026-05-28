@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { StoredImage } from '../services/content/models';
 import type { PlayerQuestState, QuestDefinition, QuestObjective, QuestStep } from '../types/quest';
+import { resolveQuestBanner, resolveQuestIcon, resolveQuestPortrait } from './questVisuals';
 
 type QuestJournalFilter = 'active' | 'completed' | 'failed' | 'all';
 
@@ -69,6 +71,7 @@ export function QuestJournalModal(props: {
   onClose: () => void;
   questDefinitions: QuestDefinition[];
   playerQuestStates: PlayerQuestState[];
+  runtimeImages: StoredImage[];
   trackedQuestId?: string | null;
   trackedObjectiveId?: string | null;
   onTrackQuest?: (questId: string, objectiveId: string | null) => void;
@@ -79,6 +82,7 @@ export function QuestJournalModal(props: {
     onClose,
     questDefinitions,
     playerQuestStates,
+    runtimeImages,
     trackedQuestId = null,
     trackedObjectiveId = null,
     onTrackQuest,
@@ -168,6 +172,7 @@ export function QuestJournalModal(props: {
                 const progress = step ? objectiveProgress(step, state) : null;
                 const progressText = progress ? `${progress.completed}/${progress.total}` : '—';
                 const isSelected = quest.id === selectedQuestId;
+                const cardIcon = resolveQuestIcon(quest, runtimeImages);
                 return (
                   <button
                     key={state.questId}
@@ -185,14 +190,32 @@ export function QuestJournalModal(props: {
                       cursor: 'pointer',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                      <strong style={{ fontWeight: 700 }}>{quest.title}</strong>
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {state.status.toUpperCase()}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <span className="wm-quest-journal-card-icon-wrap" aria-hidden>
+                        {cardIcon ? (
+                          <img
+                            className="wm-quest-journal-card-icon"
+                            src={cardIcon}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <span className="wm-quest-journal-card-icon-fallback" />
+                        )}
                       </span>
-                    </div>
-                    <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                      Прогресс: {progressText}
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                          <strong style={{ fontWeight: 700 }}>{quest.title}</strong>
+                          <span className="muted" style={{ fontSize: 12 }}>
+                            {state.status.toUpperCase()}
+                          </span>
+                        </span>
+                        <span className="muted" style={{ fontSize: 12, marginTop: 6, display: 'block' }}>
+                          Прогресс: {progressText}
+                        </span>
+                      </span>
                     </div>
                   </button>
                 );
@@ -207,7 +230,29 @@ export function QuestJournalModal(props: {
               </p>
             ) : (
               <>
-                <h3 style={{ marginTop: 0, marginBottom: 8 }}>{selectedQuest.title}</h3>
+                {resolveQuestBanner(selectedQuest, runtimeImages) ? (
+                  <img
+                    className="wm-quest-journal-banner"
+                    src={resolveQuestBanner(selectedQuest, runtimeImages)}
+                    alt={selectedQuest.title}
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                <h3 style={{ marginTop: 0, marginBottom: 8 }} className="wm-quest-journal-title-row">
+                  {(resolveQuestPortrait(selectedQuest, runtimeImages) ?? resolveQuestIcon(selectedQuest, runtimeImages)) ? (
+                    <img
+                      className="wm-quest-journal-title-icon"
+                      src={resolveQuestPortrait(selectedQuest, runtimeImages) ?? resolveQuestIcon(selectedQuest, runtimeImages)}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : null}
+                  <span>{selectedQuest.title}</span>
+                </h3>
                 <p className="muted" style={{ marginTop: 0 }}>
                   {selectedQuest.playerDescription || 'Нет описания для игрока.'}
                 </p>

@@ -36,6 +36,7 @@ import type { WorldSceneCommand, WorldSceneSnapshot } from './worldSceneTypes';
 import { resolveWorldClickInteraction } from './worldInteractionCommands';
 import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
 import { findClickedLocationSprite, resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
+import { getQuestMarkerRuntimeMeta } from './questVisuals';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
@@ -46,7 +47,8 @@ const EDITOR_WORLD_MAP_IMAGE_PATH = '/map/world-map.png';
 interface TooltipState {
   x: number;
   y: number;
-  zone: WorldMapZone;
+  zone?: WorldMapZone;
+  marker?: QuestMarkerDefinition;
 }
 
 interface DragStatePan {
@@ -246,6 +248,26 @@ function shouldShowPlayModeHoverTooltip(zone: WorldMapZone): boolean {
   return playerClickable && !hasPassiveEffects(zone);
 }
 
+function markerIconSource(marker: QuestMarkerDefinition): string | undefined {
+  const meta = getQuestMarkerRuntimeMeta(marker);
+  if (meta.runtimeQuestIconUrl) {
+    return meta.runtimeQuestIconUrl;
+  }
+  const raw = marker.imageUrl?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  return /^(\/|data:|https?:\/\/)/i.test(raw) ? raw : undefined;
+}
+
+function markerObjectiveText(marker: QuestMarkerDefinition): string | undefined {
+  return getQuestMarkerRuntimeMeta(marker).runtimeQuestObjectiveText;
+}
+
+function markerTitle(marker: QuestMarkerDefinition): string {
+  return getQuestMarkerRuntimeMeta(marker).runtimeQuestTitle ?? marker.title ?? marker.id;
+}
+
 function cloneDraftWithGeometry(draft: ZoneEditorDraft | null, zone: WorldMapZone): ZoneEditorDraft {
   if (!draft) {
     return createDraftFromZone(zone);
@@ -411,6 +433,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [worldImage, setWorldImage] = useState<HTMLImageElement | null>(null);
   const [locationSpriteImages, setLocationSpriteImages] = useState<Map<string, HTMLImageElement>>(() => new Map());
+  const [questMarkerImages, setQuestMarkerImages] = useState<Map<string, HTMLImageElement>>(() => new Map());
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 780 });
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -672,6 +695,46 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       image.src = source;
     }
   }, [draft?.locationSprite.imageUrl, locationSpriteImages, zones]);
+
+  useEffect(() => {
+    if (mode !== 'play') {
+      return;
+    }
+
+    const markerSources = Array.from(new Set(
+      playQuestMarkers
+        .map((marker) => markerIconSource(marker))
+        .filter((value): value is string => Boolean(value)),
+    ));
+
+    for (const source of markerSources) {
+      if (questMarkerImages.has(source)) {
+        continue;
+      }
+      const image = new Image();
+      image.onload = () => {
+        setQuestMarkerImages((current) => {
+          if (current.has(source)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.set(source, image);
+          return next;
+        });
+      };
+      image.onerror = () => {
+        setQuestMarkerImages((current) => {
+          if (current.has(source)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.set(source, image);
+          return next;
+        });
+      };
+      image.src = source;
+    }
+  }, [mode, playQuestMarkers, questMarkerImages]);
 
   useEffect(() => {
     if (mode !== 'editor' || !worldImage || didInitialFit) {
@@ -1165,12 +1228,35 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (mode === 'play') {
+      const camera = getPlayCamera();
+      let hoveredMarker: QuestMarkerDefinition | null = null;
+      let hoveredMarkerDistance = Number.POSITIVE_INFINITY;
+      for (const marker of playQuestMarkers) {
+        if (marker.mapId !== 'worldmap-main') {
+          continue;
+        }
+        const markerX = ((marker.x - camera.left) / camera.width) * canvasSize.width;
+        const markerY = ((marker.y - camera.top) / camera.height) * canvasSize.height;
+        const distance = Math.hypot(canvasX - markerX, canvasY - markerY);
+        if (distance <= 18 && distance < hoveredMarkerDistance) {
+          hoveredMarker = marker;
+          hoveredMarkerDistance = distance;
+        }
+      }
+
+      if (hoveredMarker) {
+        setTooltip({ x: canvasX, y: canvasY, marker: hoveredMarker });
+      }
+
       const hovered = detectHoverZone(zones as Zone[], point[0], point[1]) as WorldMapZone | null;
       setHoverZone(hovered);
       if (onSceneCommand) {
         onSceneCommand({ type: 'hover_point', point: { x: point[0], y: point[1] } });
       } else {
         onHoverZone?.(hovered as Zone | null);
+      }
+      if (hoveredMarker) {
+        return;
       }
       if (!hovered || !shouldShowPlayModeHoverTooltip(hovered)) {
         setTooltip(null);
@@ -1500,20 +1586,39 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           continue;
         }
 
-        ctx.beginPath();
-        ctx.fillStyle = marker.type === 'quest_finish' ? '#7de59b' : '#f0d68a';
-        ctx.moveTo(markerX, markerY - 9);
-        ctx.lineTo(markerX + 8, markerY + 8);
-        ctx.lineTo(markerX - 8, markerY + 8);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = '#2b2016';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        const iconSrc = markerIconSource(marker);
+        const markerIcon = iconSrc ? questMarkerImages.get(iconSrc) : undefined;
+        if (markerIcon && markerIcon.complete && markerIcon.naturalWidth > 0) {
+          const size = 24;
+          const radius = size / 2;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(markerX, markerY, radius, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(18, 14, 9, 0.92)';
+          ctx.fill();
+          ctx.strokeStyle = marker.type === 'quest_finish' ? '#7de59b' : '#f0d68a';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.clip();
+          ctx.drawImage(markerIcon, markerX - radius + 1, markerY - radius + 1, size - 2, size - 2);
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.fillStyle = marker.type === 'quest_finish' ? '#7de59b' : '#f0d68a';
+          ctx.moveTo(markerX, markerY - 9);
+          ctx.lineTo(markerX + 8, markerY + 8);
+          ctx.lineTo(markerX - 8, markerY + 8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#2b2016';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
 
         ctx.fillStyle = '#f8edd8';
         ctx.font = '600 10px Georgia';
-        ctx.fillText(marker.title || marker.id, markerX + 10, markerY - 6);
+        ctx.fillText(markerTitle(marker), markerX + 14, markerY - 8);
       }
 
       for (const npc of playNpcMarkers) {
@@ -1832,6 +1937,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     mode,
     playNpcMarkers,
     playQuestMarkers,
+    questMarkerImages,
     playerAvatarUrl,
     snapshotPlayerPosition.x,
     snapshotPlayerPosition.y,
@@ -1919,11 +2025,30 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
           />
         ) : null}
 
-        {tooltip && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone)) ? (
-          <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
-            <strong>{tooltip.zone.name}</strong>
-            <p>{tooltip.zone.description}</p>
-          </div>
+        {tooltip ? (
+          tooltip.marker ? (
+            <div className="wm-zone-tooltip wm-quest-marker-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
+              <div className="wm-quest-marker-tooltip-head">
+                {markerIconSource(tooltip.marker) ? (
+                  <img
+                    className="wm-quest-marker-tooltip-icon"
+                    src={markerIconSource(tooltip.marker)}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                <strong>{markerTitle(tooltip.marker)}</strong>
+              </div>
+              {markerObjectiveText(tooltip.marker) ? <p>{markerObjectiveText(tooltip.marker)}</p> : null}
+            </div>
+          ) : (tooltip.zone && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone))) ? (
+            <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
+              <strong>{tooltip.zone.name}</strong>
+              <p>{tooltip.zone.description}</p>
+            </div>
+          ) : null
         ) : null}
 
         {contextMenu ? (

@@ -380,10 +380,16 @@ export function LocationsPage() {
 
   const requirements: LocationEntryRequirements = draft?.entryRequirements ?? {};
   const previewUrl = draft ? resolvePreview(draft, images) : null;
-  const selectedArea = useMemo(
-    () => draft?.areas?.find((area) => area.id === selectedAreaId) ?? draft?.areas?.[0] ?? null,
-    [draft?.areas, selectedAreaId],
-  );
+  const selectedArea = useMemo(() => {
+    const areas = draft?.areas ?? [];
+    if (areas.length === 0) {
+      return null;
+    }
+    if (!selectedAreaId) {
+      return areas[0] ?? null;
+    }
+    return areas.find((area) => area.id === selectedAreaId) ?? null;
+  }, [draft?.areas, selectedAreaId]);
 
   function selectLocation(id: string) {
     const selected = locations.find((entry) => entry.id === id) ?? null;
@@ -415,6 +421,10 @@ export function LocationsPage() {
         updatedAt: nowIso(),
       });
     });
+
+    if (typeof patch.id === 'string' && selectedAreaId === areaId) {
+      setSelectedAreaId(patch.id);
+    }
   }
 
   function patchRequirements(nextRequirements: NonNullable<WorldLocation['entryRequirements']>) {

@@ -16,6 +16,8 @@ import {
 import { resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
 import type { WorldMapZone } from './zoneEditorTypes';
 import { DETERMINISTIC_BANDIT_CANDIDATES, normalizeActorVisualSource, pickDeterministicBanditPortrait } from '../phaser/assets/actorVisualResolver';
+import type { QuestMarkerDefinition } from '../types/quest';
+import { getQuestMarkerRuntimeMeta } from './questVisuals';
 
 const PLAY_WORLD_MAP_IMAGE_PATH = '/map/main_world_map.webp';
 const STATIC_WORLD_ENTITY_TEXTURE_SOURCES = [...DETERMINISTIC_BANDIT_CANDIDATES, '/sprites/actor/human_01.png'] as const;
@@ -118,6 +120,26 @@ function resolveTextureSource(imageSrc: string): string {
     return normalized;
   }
   return `/api/content/images/${encodeURIComponent(normalized)}/raw`;
+}
+
+function markerIconSource(marker: QuestMarkerDefinition): string | undefined {
+  const meta = getQuestMarkerRuntimeMeta(marker);
+  if (meta.runtimeQuestIconUrl) {
+    return meta.runtimeQuestIconUrl;
+  }
+  const raw = marker.imageUrl?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  return /^(\/|data:|https?:\/\/)/i.test(raw) ? raw : undefined;
+}
+
+function markerObjectiveText(marker: QuestMarkerDefinition): string | undefined {
+  return getQuestMarkerRuntimeMeta(marker).runtimeQuestObjectiveText;
+}
+
+function markerTitle(marker: QuestMarkerDefinition): string {
+  return getQuestMarkerRuntimeMeta(marker).runtimeQuestTitle ?? marker.title ?? marker.id;
 }
 
 class PhaserWorldMapScene extends Phaser.Scene {
@@ -413,12 +435,24 @@ class PhaserWorldMapScene extends Phaser.Scene {
       const point = normalizedToScreen({ x: marker.x, y: marker.y }, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
       if (point.x < -20 || point.y < -20 || point.x > snapshot.widthPx + 20 || point.y > snapshot.heightPx + 20) continue;
       const color = marker.type === 'quest_finish' ? 0x7de59b : 0xf0d68a;
-      this.markerGraphics.fillStyle(color, 1);
-      this.markerGraphics.lineStyle(1, 0x2b2016, 1);
-      this.markerGraphics.fillTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
-      this.markerGraphics.strokeTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
+      const iconRef = markerIconSource(marker);
+      const iconTextureKey = iconRef ? this.ensureDynamicTexture(iconRef) : null;
+      if (iconTextureKey && this.textures.exists(iconTextureKey)) {
+        this.markerGraphics.fillStyle(0x1a130d, 0.95);
+        this.markerGraphics.lineStyle(1.4, color, 1);
+        this.markerGraphics.fillCircle(point.x, point.y, 13);
+        this.markerGraphics.strokeCircle(point.x, point.y, 13);
+        const icon = this.add.image(point.x, point.y, iconTextureKey).setDisplaySize(22, 22);
+        icon.setDepth(17);
+        this.labelLayer.add(icon);
+      } else {
+        this.markerGraphics.fillStyle(color, 1);
+        this.markerGraphics.lineStyle(1, 0x2b2016, 1);
+        this.markerGraphics.fillTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
+        this.markerGraphics.strokeTriangle(point.x, point.y - 9, point.x + 8, point.y + 8, point.x - 8, point.y + 8);
+      }
       if (this.shouldRenderWorldLabels(snapshot)) {
-        this.addLabel(marker.title || marker.id, point.x + 10, point.y - 6);
+        this.addLabel(markerTitle(marker), point.x + 14, point.y - 8);
       }
     }
   }
@@ -888,7 +922,7 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
 
   const [size, setSize] = useState({ width: 320, height: 380 });
   const [hoverZone, setHoverZone] = useState<WorldMapZone | null>(null);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; zone: WorldMapZone } | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; zone?: WorldMapZone; marker?: QuestMarkerDefinition } | null>(null);
   const [runtimeSettings, setRuntimeSettings] = useState(() => loadWorldMapRuntimeSettings());
   const snapshotPlayerPosition = sceneSnapshot?.player.position ?? playerStartPosition ?? { x: 0.53, y: 0.83 };
   const currentZone = sceneSnapshot?.currentZoneId
@@ -1081,12 +1115,33 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const point = screenToNormalized(event.clientX, event.clientY);
+    let hoveredMarker: QuestMarkerDefinition | null = null;
+    let hoveredDistance = Number.POSITIVE_INFINITY;
+    for (const marker of playQuestMarkers) {
+      if (marker.mapId !== 'worldmap-main') {
+        continue;
+      }
+      const markerScreen = normalizedToScreen({ x: marker.x, y: marker.y }, camera, size.width, size.height);
+      const distance = Math.hypot(point.localX - markerScreen.x, point.localY - markerScreen.y);
+      if (distance <= 18 && distance < hoveredDistance) {
+        hoveredMarker = marker;
+        hoveredDistance = distance;
+      }
+    }
+
+    if (hoveredMarker) {
+      setTooltip({ x: point.localX, y: point.localY, marker: hoveredMarker });
+    }
+
     const hovered = resolveWorldHoverZone(zones, { x: point.x, y: point.y });
     setHoverZone(hovered);
     if (onSceneCommand) {
       onSceneCommand({ type: 'hover_point', point: { x: point.x, y: point.y } });
     } else {
       onHoverZone?.(hovered as Zone | null);
+    }
+    if (hoveredMarker) {
+      return;
     }
     setTooltip(hovered && shouldShowPlayModeHoverTooltip(hovered) ? { x: point.localX, y: point.localY, zone: hovered } : null);
   }
@@ -1110,10 +1165,29 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       >
         <div className="wm-map-title">Сольеймар: Мир</div>
         {tooltip ? (
-          <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
-            <strong>{tooltip.zone.name}</strong>
-            <p>{tooltip.zone.description}</p>
-          </div>
+          tooltip.marker ? (
+            <div className="wm-zone-tooltip wm-quest-marker-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
+              <div className="wm-quest-marker-tooltip-head">
+                {markerIconSource(tooltip.marker) ? (
+                  <img
+                    className="wm-quest-marker-tooltip-icon"
+                    src={markerIconSource(tooltip.marker)}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                <strong>{markerTitle(tooltip.marker)}</strong>
+              </div>
+              {markerObjectiveText(tooltip.marker) ? <p>{markerObjectiveText(tooltip.marker)}</p> : null}
+            </div>
+          ) : tooltip.zone ? (
+            <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
+              <strong>{tooltip.zone.name}</strong>
+              <p>{tooltip.zone.description}</p>
+            </div>
+          ) : null
         ) : null}
       </div>
       <footer className="wm-map-legend">

@@ -25,6 +25,7 @@ import { getQuestItems } from './questRepository';
 import { ITEMS, isKingdomId } from '@theend/rpg-domain';
 import { playerHasProfessionCompat } from './professionCompat';
 import { applyPlayerReputationChanges } from './playerCivicRuntime';
+import { resolveCharacterScopedStorageKey } from './characterScopedStorage';
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
@@ -147,35 +148,35 @@ function readArray(key: string): string[] {
   if (typeof window === 'undefined') {
     return [];
   }
-  return safeParse<string[]>(window.localStorage.getItem(key), []);
+  return safeParse<string[]>(window.localStorage.getItem(resolveCharacterScopedStorageKey(key)), []);
 }
 
 function writeArray(key: string, values: string[]): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, JSON.stringify(values));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(values));
 }
 
 function readRecord(key: string): Record<string, unknown> {
   if (typeof window === 'undefined') {
     return {};
   }
-  return safeParse<Record<string, unknown>>(window.localStorage.getItem(key), {});
+  return safeParse<Record<string, unknown>>(window.localStorage.getItem(resolveCharacterScopedStorageKey(key)), {});
 }
 
 function writeRecord(key: string, value: Record<string, unknown>): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(value));
 }
 
 function readNumber(key: string, fallback = 0): number {
   if (typeof window === 'undefined') {
     return fallback;
   }
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -184,7 +185,7 @@ function writeNumber(key: string, value: number): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, String(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), String(value));
 }
 
 function nowIso(): string {

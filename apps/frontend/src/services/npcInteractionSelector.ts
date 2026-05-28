@@ -5,6 +5,7 @@ import type { QuestRuntimePlayer } from './questRuntime';
 import { canStartQuest } from './questRuntime';
 import { getQuestById } from './questRepository';
 import { evaluateDialogueConditions, getStartNode } from './dialogueRuntime';
+import { resolveCharacterScopedStorageKey } from './characterScopedStorage';
 
 export type BestNpcInteraction =
   | { kind: 'quest_scene'; npcId: string; questStages: QuestNpcStage[] }
@@ -110,7 +111,7 @@ function readPlayerFlags(): Record<string, unknown> {
     return {};
   }
   try {
-    return JSON.parse(window.localStorage.getItem(PLAYER_FLAGS_KEY) ?? '{}') as Record<string, unknown>;
+    return JSON.parse(window.localStorage.getItem(resolveCharacterScopedStorageKey(PLAYER_FLAGS_KEY)) ?? '{}') as Record<string, unknown>;
   } catch {
     return {};
   }

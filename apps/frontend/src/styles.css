@@ -6120,6 +6120,18 @@ h3 {
   font-size: 0.75rem;
 }
 
+.admin-dialogues-list-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+.admin-dialogues-list-panel .npc-list-bottom-section {
+  margin-top: 0;
+  min-height: 0;
+}
+
 @media (max-width: 900px) {
   .npc-group-item {
     grid-template-columns: auto minmax(0, 1fr);
@@ -6972,6 +6984,17 @@ h3 {
     0 0 16px rgba(255, 213, 128, 0.45);
 }
 
+.wm-viewer-marker.has-image {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(31, 24, 18, 0.95);
+  background-color: rgba(16, 12, 8, 0.95);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 2px rgba(250, 227, 182, 0.38), 0 0 12px rgba(255, 213, 128, 0.38);
+}
+
 .wm-viewer-player-marker {
   width: 14px;
   height: 14px;
@@ -7100,6 +7123,92 @@ h3 {
   border: 1px solid #20160f;
   background: #f4d08f;
   box-shadow: 0 0 0 1px rgba(255, 233, 187, 0.42);
+}
+
+.wm-mini-map-tracked-marker.has-image {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(26, 19, 12, 0.95);
+  background-color: rgba(14, 10, 7, 0.95);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 1px rgba(255, 232, 188, 0.52), 0 0 8px rgba(255, 211, 126, 0.34);
+}
+
+.wm-quest-marker-tooltip {
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.wm-quest-marker-tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wm-quest-marker-tooltip-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: rgba(13, 10, 7, 0.92);
+  border: 1px solid rgba(217, 181, 107, 0.58);
+  flex: 0 0 auto;
+}
+
+.wm-quest-journal-card-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(210, 170, 102, 0.44);
+  background: rgba(21, 14, 10, 0.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.wm-quest-journal-card-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wm-quest-journal-card-icon-fallback {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #d8b370;
+  box-shadow: 0 0 0 1px rgba(248, 235, 213, 0.42);
+}
+
+.wm-quest-journal-banner {
+  width: 100%;
+  max-height: 220px;
+  border-radius: 10px;
+  border: 1px solid rgba(210, 170, 102, 0.36);
+  object-fit: cover;
+  display: block;
+  margin: 0 0 12px;
+  background: rgba(19, 14, 10, 0.94);
+}
+
+.wm-quest-journal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wm-quest-journal-title-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: rgba(16, 12, 8, 0.92);
+  border: 1px solid rgba(210, 170, 102, 0.4);
+  flex: 0 0 auto;
 }
 
 .wm-mini-map-hint {

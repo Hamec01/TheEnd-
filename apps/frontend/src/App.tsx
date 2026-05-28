@@ -31,9 +31,11 @@ import {
   allocateStats,
   buyArenaItem,
   createCharacter,
+  deleteCharacter,
   type CharacterActionBarSlot,
   type CharacterActionSlot,
   type CharacterHotbarSlot,
+  type CharacterSummary,
   getCharacterSkills,
   getCharacterActionBar,
   type ArenaHubState,
@@ -139,7 +141,27 @@ import {
   savePlayerProfessionsState,
 } from './services/playerProfessions';
 import { writePlayerCitizenshipKingdomId, writePlayerReputation } from './services/playerCivicRuntime';
+import {
+  loadCharacterProfile,
+  saveCharacterProfile,
+  updateCharacterProfile,
+  deleteCharacterProfile,
+  type CharacterCreationProfile,
+  type CharacterSavedWorldState,
+} from './services/characterProfileStorage';
+import {
+  markInitialSpawnCompleted,
+  resolveInitialSpawnForNewCharacter,
+  toCharacterWorldStateFromInitialSpawn,
+} from './services/initialSpawn';
 import { fixMojibake } from './utils/fixMojibake';
+import {
+  getActiveCharacterId,
+  migrateLegacyStorageToCharacter,
+  removeCharacterScopedStorage,
+  resolveCharacterScopedStorageKey,
+  setActiveCharacterId,
+} from './services/characterScopedStorage';
 
 const RACES = [Race.Human, Race.WoodElf, Race.HighElf, Race.Dwarf] as const;
 const PROFILE_STATS: PrimaryStat[] = [
@@ -181,21 +203,8 @@ const STAT_HINTS: Record<PrimaryStat, string> = {
   willpower: 'Сопротивление магии/контролю',
 };
 
-interface CharacterCreationProfile {
-  id: string;
-  name: string;
-  gender: CharacterGender;
-  raceId: string;
-  originId: string | null;
-  avatarUrl: string;
-  stats: StatBlock;
-  elements: string[];
-  skills: string[];
-  traits: Record<string, number | boolean>;
-}
-
 type Phase = 'setup' | 'hub';
-type SetupStep = 'account' | 'character';
+type SetupStep = 'account' | 'select' | 'character';
 type OverlayPanel = 'character' | 'stats' | 'inventory' | 'professions' | 'clan' | 'merchant' | 'skills' | 'arenaNpc' | 'arena' | null;
 type ArenaSetupMode = '1v1' | '1v3' | '1v10' | 'random';
 type MerchantMode = 'buy' | 'sell';
@@ -206,6 +215,13 @@ interface HubStatePayload {
   inventory: InventoryState;
   equipment: Equipment;
   actionSlots: CharacterActionSlot[];
+}
+
+interface CharacterSelectEntry extends CharacterSummary {
+  avatarUrl: string | null;
+  kingdomLabel: string | null;
+  locationLabel: string | null;
+  lastPlayedAt: string | null;
 }
 
 interface ArenaNpcTemplate {
@@ -281,7 +297,6 @@ const LAST_CHARACTER_STORAGE_KEY = 'theend.lastCharacterId';
 const LAST_ACCOUNT_ID_STORAGE_KEY = 'theend.lastAccountId';
 const LAST_ACCOUNT_LOGIN_STORAGE_KEY = 'theend.lastAccountLogin';
 const PLAYER_AVATAR_STORAGE_PREFIX = 'theend.playerAvatarUrl';
-const CHARACTER_PROFILE_STORAGE_PREFIX = 'theend.characterProfile';
 const SELECTED_BATTLE_MAP_STORAGE_KEY = 'theend.selectedBattleMapId';
 const PLAYER_SKILLS_STORAGE_KEY = 'theend.player.skills';
 const PENDING_SKILL_GRANT_KEY = 'theend.pendingSkillGrant';
@@ -330,6 +345,35 @@ function normalizeCityName(value: string | null | undefined): string {
     .toLowerCase()
     .replace(/ё/g, 'е')
     .replace(/\s+/g, ' ');
+}
+
+function formatCharacterLocationLabel(locationId: string | null | undefined): string | null {
+  const normalized = String(locationId ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === 'loc_argos_klinogorie_start_village') {
+    return 'Клиногорье';
+  }
+  return normalized
+    .replace(/^loc_/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatLastPlayedLabel(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
 }
 
 function createEmptySkillLoadout(characterId: string): CharacterSkillLoadout {
@@ -423,7 +467,7 @@ function readJsonRecord(key: string): Record<string, unknown> {
     return {};
   }
 
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
   if (!raw) {
     return {};
   }
@@ -443,7 +487,7 @@ function writeJsonRecord(key: string, value: Record<string, unknown>): void {
     return;
   }
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(value));
 }
 
 function normalizeGodmodeInfiniteResourceFlags(value: Record<string, unknown> | null | undefined): GodmodeInfiniteResourceFlags {
@@ -1102,26 +1146,6 @@ function getPlayerRouteFromState(
   return '/map';
 }
 
-function getCharacterProfileStorageKey(characterId: string): string {
-  return `${CHARACTER_PROFILE_STORAGE_PREFIX}.${characterId}`;
-}
-
-function saveCharacterProfile(profile: CharacterCreationProfile): void {
-  window.localStorage.setItem(getCharacterProfileStorageKey(profile.id), JSON.stringify(profile));
-}
-
-function loadCharacterProfile(characterId: string): CharacterCreationProfile | null {
-  const raw = window.localStorage.getItem(getCharacterProfileStorageKey(characterId));
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as CharacterCreationProfile;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeKingdomKey(value: string | null | undefined): KingdomKey | null {
   const normalized = String(value ?? '')
     .trim()
@@ -1300,6 +1324,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const arenaNpcSyncedIdsRef = useRef<Set<string>>(new Set());
   const arenaNpcSkipNextSyncRef = useRef(false);
   const arenaNpcSyncTimerRef = useRef<number | null>(null);
+  const justCreatedCharacterSpawnRef = useRef<{ characterId: string; worldState: CharacterSavedWorldState | null } | null>(null);
   const [phase, setPhase] = useState<Phase>('setup');
   const [setupStep, setSetupStep] = useState<SetupStep>('account');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
@@ -1314,11 +1339,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountCharacters, setAccountCharacters] = useState<CharacterSelectEntry[]>([]);
+  const [pendingDeleteCharacter, setPendingDeleteCharacter] = useState<CharacterSelectEntry | null>(null);
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
 
   const [name, setName] = useState('');
   const [gender, setGender] = useState<CharacterGender>('male');
   const [race, setRace] = useState<Race>(Race.Human);
-  const [originId, setOriginId] = useState<string>('origin_luminor');
+  const [originId, setOriginId] = useState<string>('origin_argos');
   const [setupElements, setSetupElements] = useState<CharacterElement[]>([]);
   const [setupAvatarUrl, setSetupAvatarUrl] = useState<string>('');
   const [setupKingdomZones, setSetupKingdomZones] = useState<WorldMapZone[]>([]);
@@ -1796,16 +1824,60 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     }
   }, []);
 
+  const buildCharacterSelectEntry = useCallback((summary: CharacterSummary): CharacterSelectEntry => {
+    const profile = loadCharacterProfile(summary.id);
+    const origin = profile?.originId
+      ? HUMAN_ORIGINS.find((entry) => entry.id === profile.originId) ?? null
+      : null;
+
+    return {
+      ...summary,
+      avatarUrl: profile?.avatarUrl ?? null,
+      kingdomLabel: origin ? fixMojibake(origin.name) : null,
+      locationLabel: formatCharacterLocationLabel(profile?.worldState?.currentLocationId),
+      lastPlayedAt: profile?.lastPlayedAt ?? null,
+    };
+  }, []);
+
+  const refreshAccountCharacters = useCallback(async (targetAccountId: string): Promise<CharacterSelectEntry[]> => {
+    const characters = await listCharacters(targetAccountId);
+    let mapped = characters.map(buildCharacterSelectEntry);
+    if (mapped.length === 0) {
+      const legacyCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
+      if (legacyCharacterId) {
+        try {
+          const legacyHub = await getArenaHubState(legacyCharacterId);
+          mapped = [buildCharacterSelectEntry({
+            id: legacyHub.character.id,
+            name: legacyHub.character.name || 'Старый персонаж',
+            race: legacyHub.character.race,
+            level: legacyHub.character.level,
+          })];
+        } catch {
+          // Ignore orphaned legacy pointer.
+        }
+      }
+    }
+    setAccountCharacters(mapped);
+    return mapped;
+  }, [buildCharacterSelectEntry]);
+
   useEffect(() => {
     const savedAccountId = window.localStorage.getItem(LAST_ACCOUNT_ID_STORAGE_KEY);
     const savedAccountLogin = window.localStorage.getItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY);
     if (savedAccountId) {
       setAccountId(savedAccountId);
-      setSetupStep('character');
+      setSetupStep('select');
+      void refreshAccountCharacters(savedAccountId).catch(() => {
+        setAccountCharacters([]);
+      });
     }
     if (savedAccountLogin) {
       setLogin(savedAccountLogin);
     }
+
+    setRestoringSession(false);
+    return;
 
     const savedCharacterId = window.localStorage.getItem(LAST_CHARACTER_STORAGE_KEY);
     if (!savedCharacterId) {
@@ -1813,7 +1885,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       return;
     }
 
-    void getArenaHubState(savedCharacterId)
+    const restoredCharacterId = savedCharacterId!;
+    void getArenaHubState(restoredCharacterId)
       .then((hub) => {
         applyHubState(hub);
         setPhase('hub');
@@ -1917,7 +1990,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setCharacterSkills([]);
       setSkillLoadout(null);
       setSelectedCombatSkillId(null);
-      window.localStorage.setItem(PLAYER_SKILLS_STORAGE_KEY, JSON.stringify([]));
+      window.localStorage.setItem(resolveCharacterScopedStorageKey(PLAYER_SKILLS_STORAGE_KEY), JSON.stringify([]));
       return;
     }
 
@@ -1932,7 +2005,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     const skillIds = characterSkills
       .map((entry) => entry.skillId)
       .filter((skillId) => typeof skillId === 'string' && skillId.trim().length > 0);
-    window.localStorage.setItem(PLAYER_SKILLS_STORAGE_KEY, JSON.stringify(skillIds));
+    window.localStorage.setItem(resolveCharacterScopedStorageKey(PLAYER_SKILLS_STORAGE_KEY), JSON.stringify(skillIds));
   }, [characterSkills]);
 
   useEffect(() => {
@@ -2262,7 +2335,19 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     runtimeMerchants,
   ]);
 
-  function applyHubState(hub: HubStatePayload): void {
+function applyHubState(hub: HubStatePayload): void {
+    setActiveCharacterId(hub.character.id);
+    migrateLegacyStorageToCharacter(hub.character.id);
+    const justCreatedSpawn = justCreatedCharacterSpawnRef.current;
+    if (justCreatedSpawn?.characterId === hub.character.id && justCreatedSpawn.worldState) {
+      updateCharacterProfile(hub.character.id, (current) => {
+        if (!current) {
+          return current;
+        }
+        return markInitialSpawnCompleted(current, justCreatedSpawn.worldState ?? current.worldState);
+      });
+      justCreatedCharacterSpawnRef.current = null;
+    }
     const normalizedHubProfessions = normalizePlayerProfessionsState(hub.character.professions);
     const storedProfessions = loadPlayerProfessionsState(hub.character.id);
     const mergedProfessions = mergePlayerProfessionsState(normalizedHubProfessions, storedProfessions);
@@ -2284,6 +2369,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setPlayerAvatarUrl(profile.avatarUrl);
       window.localStorage.setItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${hub.character.id}`, profile.avatarUrl);
     }
+    updateCharacterProfile(hub.character.id, (current) => current ? {
+      ...current,
+      lastPlayedAt: new Date().toISOString(),
+    } : current);
     window.localStorage.setItem(LAST_CHARACTER_STORAGE_KEY, hub.character.id);
   }
 
@@ -2459,19 +2548,10 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
     window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
     setLogin(account.login);
-    const characters = await listCharacters(account.id);
-
-    if (characters.length > 0) {
-      const latestCharacter = characters[0];
-      const hub = await getArenaHubState(latestCharacter.id);
-      applyHubState(hub);
-      setPhase('hub');
-      setStatus(`Welcome back, ${account.login}.`);
-      return;
-    }
-
-    setSetupStep('character');
-    setStatus(`Welcome, ${account.login}. Create your first character.`);
+    setPhase('setup');
+    await refreshAccountCharacters(account.id);
+    setSetupStep('select');
+    setStatus(`Welcome, ${account.login}.`);
   }
 
   async function loginOrProvisionGodmodeAccount(): Promise<void> {
@@ -2516,11 +2596,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     setStatus('Registering account...');
     try {
       const account = await registerAccount({ login, password });
-      setAccountId(account.id);
-      window.localStorage.setItem(LAST_ACCOUNT_ID_STORAGE_KEY, account.id);
-      window.localStorage.setItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY, account.login);
-      setLogin(account.login);
-      setSetupStep('character');
+      await finalizeAccountLogin(account);
       setStatus(`Account created for ${account.login}.`);
     } catch (error) {
       setStatus(`Registration error: ${(error as Error).message}`);
@@ -2574,12 +2650,23 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         allocation: {},
       }, accountId);
 
+      const spawn = resolveInitialSpawnForNewCharacter({
+        raceId: raceConfig.id,
+        originId: race === Race.Human ? originId : null,
+        citizenshipKingdomId: race === Race.Human
+          ? originId.replace(/^origin_/, '')
+          : null,
+      });
+      const initialWorldState = toCharacterWorldStateFromInitialSpawn(spawn);
+
       const profile: CharacterCreationProfile = {
         id: saved.id,
         name: trimmedName,
         gender,
         raceId: raceConfig.id,
         originId: race === Race.Human ? originId : null,
+        kingdomId: spawn.kingdomId ?? null,
+        citizenshipKingdomId: spawn.citizenshipKingdomId ?? null,
         avatarUrl: setupAvatarResolved,
         stats: setupStatsPreview,
         elements: race === Race.Dwarf ? [] : setupElements.map((entry) => entry.id),
@@ -2592,8 +2679,22 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
           canUseMagic: raceConfig.traits.canUseMagic,
           canUseElementalMagic: raceConfig.traits.canUseElementalMagic,
         },
+        ...spawn,
+        worldState: initialWorldState ?? undefined,
+      };
+
+      justCreatedCharacterSpawnRef.current = {
+        characterId: saved.id,
+        worldState: initialWorldState,
       };
       saveCharacterProfile(profile);
+      console.info('[characterCreate] final saved location', {
+        characterId: saved.id,
+        locationId: profile.currentLocationId ?? profile.locationId ?? null,
+        zoneId: profile.currentZoneId ?? profile.zoneId ?? null,
+        mapId: profile.currentMapId ?? profile.mapId ?? null,
+        initialSpawnCompleted: profile.initialSpawnCompleted === true,
+      });
 
       const hub = await getArenaHubState(saved.id);
       applyHubState(hub);
@@ -2605,6 +2706,74 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       setStatus(`${saved.name} вошел в мир.`);
     } catch (error) {
       setStatus(`Character creation error: ${(error as Error).message}`);
+    }
+  }
+
+  async function onPlayCharacter(characterId: string): Promise<void> {
+    setStatus('Loading character...');
+    try {
+      setActiveCharacterId(characterId);
+      migrateLegacyStorageToCharacter(characterId);
+      const hub = await getArenaHubState(characterId);
+      applyHubState(hub);
+      setPhase('hub');
+      setSetupStep('select');
+      setStatus(`${hub.character.name} вошел в мир.`);
+    } catch (error) {
+      setStatus(`Character load error: ${(error as Error).message}`);
+    }
+  }
+
+  async function onDeleteSelectedCharacter(): Promise<void> {
+    if (!pendingDeleteCharacter) {
+      return;
+    }
+
+    const normalizedPassword = deletePasswordInput.trim();
+    if (!normalizedPassword) {
+      setStatus('Введите пароль аккаунта для удаления персонажа.');
+      return;
+    }
+    if (password.trim()) {
+      if (normalizedPassword !== password.trim()) {
+        setStatus('Пароль не совпадает с текущим аккаунтом.');
+        return;
+      }
+    } else if (normalizedPassword !== 'DELETE') {
+      setStatus('Для удаления введите DELETE.');
+      return;
+    }
+
+    setStatus(`Deleting ${pendingDeleteCharacter.name}...`);
+    try {
+      await deleteCharacter(pendingDeleteCharacter.id);
+      deleteCharacterProfile(pendingDeleteCharacter.id);
+      removeCharacterScopedStorage(pendingDeleteCharacter.id);
+      window.localStorage.removeItem(`${PLAYER_AVATAR_STORAGE_PREFIX}.${pendingDeleteCharacter.id}`);
+      window.localStorage.removeItem(`theend.worldMap.playerPosition.${pendingDeleteCharacter.id}`);
+      window.localStorage.removeItem(`theend.loadoutPresets.${pendingDeleteCharacter.id}`);
+      window.localStorage.removeItem(getTrackedQuestStorageKey(pendingDeleteCharacter.id));
+
+      if (getActiveCharacterId() === pendingDeleteCharacter.id) {
+        setActiveCharacterId(null);
+        window.localStorage.removeItem(LAST_CHARACTER_STORAGE_KEY);
+        setCharacter(null);
+        setPhase('setup');
+        setOverlayPanel(null);
+      }
+
+      if (accountId) {
+        await refreshAccountCharacters(accountId);
+      } else {
+        setAccountCharacters((current) => current.filter((entry) => entry.id !== pendingDeleteCharacter.id));
+      }
+
+      setPendingDeleteCharacter(null);
+      setDeletePasswordInput('');
+      setSetupStep('select');
+      setStatus(`Персонаж ${pendingDeleteCharacter.name} удален.`);
+    } catch (error) {
+      setStatus(`Delete error: ${(error as Error).message}`);
     }
   }
 
@@ -4697,6 +4866,128 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       );
     }
 
+    if (setupStep === 'select') {
+      return (
+        <div className="page page--scroll">
+          <main className="shell setup-shell">
+            <section className="card compact-hero setup-hero-card">
+              <div className="setup-hero-copy">
+                <p className="eyebrow">TheEnd RPG</p>
+                <h1>Выбор персонажа</h1>
+                <p className="muted setup-hero-text">Выберите героя для продолжения приключения или создайте нового персонажа.</p>
+              </div>
+              <div className="setup-hero-side">
+                <div className="level-pill">{accountCharacters.length} шт.</div>
+                <p className="muted">{login.trim() ? `Аккаунт: ${login}` : 'Аккаунт подключен.'}</p>
+              </div>
+            </section>
+
+            <section className="setup-grid setup-creation-grid">
+              <section className="card setup-panel setup-panel-primary">
+                <div className="hud-actions setup-actions-row">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setName('');
+                      setSetupAvatarUrl('');
+                      setRace(Race.Human);
+                      setGender('male');
+                      setOriginId('origin_argos');
+                      setSetupStep('character');
+                    }}
+                  >
+                    {accountCharacters.length > 0 ? 'Создать нового персонажа' : 'Создать первого персонажа'}
+                  </button>
+                  <button type="button" onClick={() => setSetupStep('account')}>Сменить аккаунт</button>
+                </div>
+
+                {accountCharacters.length === 0 ? (
+                  <section className="inner-card setup-race-note">
+                    <strong>У вас пока нет персонажей.</strong>
+                    <p>Создайте первого героя, и он появится в этом списке.</p>
+                  </section>
+                ) : (
+                  <div className="setup-avatar-presets" role="list" aria-label="Список персонажей">
+                    {accountCharacters.map((entry) => (
+                      <section key={entry.id} className="inner-card setup-race-note" role="listitem">
+                        <div className="setup-lore-header">
+                          <strong>{entry.name}</strong>
+                          <span>Уровень {Math.max(1, entry.level ?? 1)}</span>
+                        </div>
+                        <div className="setup-avatar-upload">
+                          <img
+                            src={entry.avatarUrl || getDefaultAvatarFor(entry.race, loadCharacterProfile(entry.id)?.gender ?? 'male')}
+                            alt={entry.name}
+                            className="setup-avatar-preview"
+                          />
+                          <div className="setup-avatar-actions" style={{ width: '100%' }}>
+                            <p>{getCharacterCreationRaceConfig(entry.race).name}{entry.kingdomLabel ? ` • ${entry.kingdomLabel}` : ''}</p>
+                            {entry.locationLabel ? <p className="muted">{entry.locationLabel}</p> : null}
+                            {entry.lastPlayedAt ? <p className="muted">Последняя игра: {formatLastPlayedLabel(entry.lastPlayedAt)}</p> : null}
+                          </div>
+                        </div>
+                        <div className="hud-actions setup-actions-row">
+                          <button type="button" onClick={() => void onPlayCharacter(entry.id)}>Играть</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingDeleteCharacter(entry);
+                              setDeletePasswordInput('');
+                            }}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="card setup-panel setup-panel-secondary">
+                <h2>Аккаунт</h2>
+                <p className="muted setup-panel-copy">Один аккаунт может хранить несколько персонажей. Прогресс, инвентарь, квесты и обучение теперь разделяются по `characterId`.</p>
+                <section className="inner-card setup-race-note">
+                  <strong>{login.trim() || 'Текущий аккаунт'}</strong>
+                  <p>После выбора персонажа загрузится его собственное сохранение: локация, флаги, репутация, навыки и активные задания.</p>
+                </section>
+              </section>
+            </section>
+
+            {pendingDeleteCharacter ? (
+              <div className="battle-overlay" role="dialog" aria-modal="true">
+                <section className="card wm-exit-dialog">
+                  <h2>Удалить персонажа</h2>
+                  <p>Вы действительно хотите удалить персонажа {pendingDeleteCharacter.name}? Это действие нельзя отменить.</p>
+                  <div className="row">
+                    <label>{password.trim() ? 'Пароль аккаунта' : 'Введите DELETE'}</label>
+                    <input
+                      type="password"
+                      value={deletePasswordInput}
+                      onChange={(event) => setDeletePasswordInput(event.target.value)}
+                    />
+                  </div>
+                  <div className="wm-exit-actions">
+                    <button type="button" disabled={!deletePasswordInput.trim()} onClick={() => void onDeleteSelectedCharacter()}>
+                      Удалить навсегда
+                    </button>
+                    <button type="button" onClick={() => { setPendingDeleteCharacter(null); setDeletePasswordInput(''); }}>
+                      Отмена
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+
+            <section className="card status-card setup-status-card">
+              <h2>Status</h2>
+              <p>{status}</p>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
     return (
       <div className="page page--scroll">
         <main className="shell setup-shell">
@@ -4713,7 +5004,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
             <div className="setup-hero-side">
                   <div className="level-pill">{setupStep === 'account' ? 'Шаг 1/2' : 'Шаг 2/2'}</div>
                   <p className="muted">
-                    {setupStep === 'account' ? 'После входа откроется создание персонажа.' : 'Люди, Лесные эльфы, Высшие эльфы, Гномы.'}
+                    {setupStep === 'account' ? 'После входа откроется список персонажей.' : 'Люди, Лесные эльфы, Высшие эльфы, Гномы.'}
                   </p>
             </div>
           </section>
@@ -4742,7 +5033,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
                   <section className="card setup-panel setup-panel-secondary">
                     <h2>Дальше</h2>
-                    <p className="muted setup-panel-copy">После успешного входа будет доступно создание персонажа.</p>
+                    <p className="muted setup-panel-copy">После успешного входа откроется экран выбора персонажа.</p>
                     <section className="inner-card setup-race-note">
                       <strong>Сохранение прогресса</strong>
                       <p>Аккаунт и персонажи сохраняются. При следующем входе можно продолжить с последнего персонажа.</p>
@@ -4751,7 +5042,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                       <section className="inner-card setup-race-note">
                         <strong>Аккаунт подключен</strong>
                         <p>Можно переходить к созданию персонажа.</p>
-                        <button type="button" onClick={() => setSetupStep('character')}>Перейти к созданию персонажа</button>
+                        <button type="button" onClick={() => setSetupStep('select')}>Открыть список персонажей</button>
                       </section>
                     ) : null}
                   </section>
@@ -4900,7 +5191,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                     onClick={onCreateCharacter}
                     disabled={!name.trim() || (setupOriginRequired && !originId)}
                   >
-                    Создать персонажа
+                    Подтвердить и создать персонажа
                   </button>
                 </section>
               ) : null}
@@ -5342,7 +5633,21 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
               <h2>Exit?</h2>
               <p>Choose what to do:</p>
               <div className="wm-exit-actions">
-                <button onClick={() => { setOverlayPanel(null); setExitDialogOpen(false); setPhase('setup'); }}>Return to main menu</button>
+                <button onClick={() => {
+                  setOverlayPanel(null);
+                  setExitDialogOpen(false);
+                  setPhase('setup');
+                  setSetupStep(accountId ? 'select' : 'account');
+                  setCharacter(null);
+                  if (accountId) {
+                    void refreshAccountCharacters(accountId).catch(() => {
+                      setAccountCharacters([]);
+                    });
+                  }
+                }}
+                >
+                  К выбору персонажа
+                </button>
                 <button
                   onClick={() => {
                     setOverlayPanel(null);
@@ -5350,6 +5655,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
                     setPhase('setup');
                     setSetupStep('account');
                     setCharacter(null);
+                    setActiveCharacterId(null);
                     setAccountId(null);
                     window.localStorage.removeItem(LAST_ACCOUNT_ID_STORAGE_KEY);
                     window.localStorage.removeItem(LAST_ACCOUNT_LOGIN_STORAGE_KEY);

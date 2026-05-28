@@ -369,6 +369,18 @@ export async function listCharacters(accountId: string): Promise<CharacterSummar
   return res.json();
 }
 
+export async function deleteCharacter(characterId: string): Promise<{ ok: boolean; id: string }> {
+  const res = await fetch(`${API_BASE}/characters/${encodeURIComponent(characterId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+
+  return res.json();
+}
+
 export async function getArenaHubState(characterId: string): Promise<ArenaHubState> {
   const res = await fetch(`${API_BASE}/arena/hub/${encodeURIComponent(characterId)}`);
   if (!res.ok) {

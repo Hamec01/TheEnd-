@@ -1,4 +1,5 @@
 import type { InventoryState } from '@theend/rpg-domain';
+import { resolveCharacterScopedStorageKey } from '../services/characterScopedStorage';
 
 export const PLAYER_GOLD_STORAGE_KEY = 'theend.player.gold';
 export const PLAYER_ITEMS_STORAGE_KEY = 'theend.player.items';
@@ -28,7 +29,7 @@ function parseStorageValue(key: string): unknown {
     return null;
   }
 
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
   if (!raw) {
     return null;
   }
@@ -73,7 +74,7 @@ export function writeStringArrayStorage(key: string, values: string[]): void {
   }
 
   window.localStorage.setItem(
-    key,
+    resolveCharacterScopedStorageKey(key),
     JSON.stringify(values.filter((value) => typeof value === 'string' && value.trim().length > 0)),
   );
 }
@@ -91,7 +92,7 @@ export function writeStringNumberRecordStorage(key: string, values: Record<strin
     }
   }
 
-  window.localStorage.setItem(key, JSON.stringify(next));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(next));
 }
 
 export function readNumberStorage(key: string, fallback = 0): number {
@@ -99,7 +100,7 @@ export function readNumberStorage(key: string, fallback = 0): number {
     return fallback;
   }
 
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
   if (raw === null) {
     return fallback;
   }
@@ -114,7 +115,7 @@ export function writeNumberStorage(key: string, value: number): void {
   }
 
   const numericValue = Number(value);
-  window.localStorage.setItem(key, String(Number.isFinite(numericValue) ? numericValue : 0));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), String(Number.isFinite(numericValue) ? numericValue : 0));
 }
 
 function normalizeStringArray(value: unknown): string[] {

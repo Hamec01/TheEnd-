@@ -101,6 +101,7 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
 
   const movementKeysRef = useRef({ up: false, down: false, left: false, right: false });
   const playerStateRef = useRef<PlayerWorldState>('idle');
+  const latestPlayerPositionRef = useRef<{ x: number; y: number }>({ x: initialPlayer.x, y: initialPlayer.y });
   const prevZoneRef = useRef<WorldMapZone | null>(null);
   const pendingCityEntryRef = useRef<string | null>(null);
   const [player, setPlayer] = useState<MapPlayer>(initialPlayer);
@@ -187,9 +188,11 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
       setPlayer((prev) => {
         if (gameplayPaused || movementLocked) {
           playerStateRef.current = 'idle';
-          return prev.targetX === null && prev.targetY === null
+          const next = prev.targetX === null && prev.targetY === null
             ? prev
             : { ...prev, targetX: null, targetY: null };
+          latestPlayerPositionRef.current = { x: next.x, y: next.y };
+          return next;
         }
 
         const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
@@ -201,9 +204,11 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
           : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveTo, resolveSpeedMultiplier);
 
         playerStateRef.current = tick.state;
-        setCurrentZone(detectCurrentZone(zones as Zone[], tick.player.x, tick.player.y) as WorldMapZone | null);
+        latestPlayerPositionRef.current = { x: tick.player.x, y: tick.player.y };
         return tick.player;
       });
+
+      setCurrentZone(detectCurrentZone(zones as Zone[], latestPlayerPositionRef.current.x, latestPlayerPositionRef.current.y) as WorldMapZone | null);
 
       frameId = window.requestAnimationFrame(animate);
     };

@@ -71,14 +71,14 @@ export function TopStatusBar(props: TopStatusBarProps) {
       </div>
 
       <nav className="wm-nav">
-        <button onClick={onStats}>Статы</button>
-        <button onClick={onInventory}>Инвентарь</button>
+        <button data-tutorial="stats-button" onClick={onStats}>Статы</button>
+        <button data-tutorial="inventory-button" onClick={onInventory}>Инвентарь</button>
         <button onClick={onProfessions}>Профессии</button>
-        <button onClick={onSkills}>Навыки</button>
-        <button onClick={onCharacter}>Персонаж</button>
-        <button onClick={onMap}>Карта (M)</button>
+        <button data-tutorial="skills-button" onClick={onSkills}>Навыки</button>
+        <button data-tutorial="character-button" onClick={onCharacter}>Персонаж</button>
+        <button data-tutorial="world-map-button" onClick={onMap}>Карта (M)</button>
         <button onClick={onToggleMiniMap}>{miniMapVisible ? 'Миникарта: ВКЛ' : 'Миникарта: ВЫКЛ'}</button>
-        <button onClick={onQuests}>Журнал</button>
+        <button data-tutorial="quest-journal-button" onClick={onQuests}>Журнал</button>
         <button onClick={onEquipment}>Настройки</button>
         <button onClick={onClan}>Клан</button>
         <button onClick={onExit}>Выход</button>

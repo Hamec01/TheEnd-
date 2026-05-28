@@ -16,6 +16,8 @@ import { PhaserWorldMapCanvas } from "./PhaserWorldMapCanvas";
 import { readWorldRendererSetting, writeWorldRendererSetting, type WorldRendererKind } from "./worldRendererSettings";
 import { WorldMapViewer } from "./WorldMapViewer";
 import { MiniMapWidget } from "./MiniMapWidget";
+import { TutorialOverlay } from "./TutorialOverlay";
+import { resolveQuestIcon, resolveQuestMarkerObjectiveText } from "./questVisuals";
 import { ZoneEditorPanel } from "./ZoneEditorPanel";
 import { QuestJournalModal } from "./QuestJournalModal";
 import { QuestInteractionModal } from "./QuestInteractionModal";
@@ -213,6 +215,29 @@ import {
   writeNumberStorage,
   writeStringArrayStorage,
 } from "../utils/playerInventory";
+import {
+  loadCharacterProfile,
+  updateCharacterProfile,
+  type CharacterSavedWorldState,
+} from "../services/characterProfileStorage";
+import {
+  markInitialSpawnCompleted,
+  resolveInitialSpawn,
+  shouldResolveInitialSpawn,
+} from "../services/initialSpawn";
+import { getTutorialDefinition, TUTORIAL_ARGOS_INTRO_ID } from "../services/tutorialDefinitions";
+import {
+  ARGOS_INTRO_SEEN_FLAG,
+  ARGOS_INTRO_TUTORIAL_COMPLETED_FLAG,
+  completeTutorial,
+  getCharacterFlag,
+  isHumanArgosProfile,
+  loadTutorialState,
+  nextStep,
+  setCharacterFlag,
+  skipTutorial,
+  startTutorial,
+} from "../services/tutorialManager";
 import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 import { useWorldRuntimeController } from "./useWorldRuntimeController";
 import { resolveNpcReaction, resolveZoneReaction } from "../services/reputationRuntime";
@@ -228,6 +253,12 @@ const HOSTILE_BANDIT_MAX_ENEMIES = 5;
 const BANDIT_TOLL_PERCENT = 0.15;
 const BANDIT_ESCAPE_BASE_PERCENT = 30;
 const BANDIT_ESCAPE_PER_LUCK_PERCENT = 1;
+const BRAN_INTRO_NPC_ID = "npc_klinogorie_bran_legless_soldier";
+const KLINOGORIE_START_LOCATION_ID = "loc_argos_klinogorie_start_village";
+const BRAN_INTRO_DIALOGUE_IDS = new Set([
+  "dlg_klinogorie_bran_intro",
+  "dlg_npc_klinogorie_bran_legless_soldier_yyzx",
+]);
 
 function rollHostileBanditEnemyCount(): number {
   return HOSTILE_BANDIT_MIN_ENEMIES + Math.floor(Math.random() * (HOSTILE_BANDIT_MAX_ENEMIES - HOSTILE_BANDIT_MIN_ENEMIES + 1));
@@ -752,16 +783,16 @@ function getDialogueChoiceKey(choice: {
   return `${text}:${next}:${giveQuest}:${end}`;
 }
 
-function loadPlayerPosition(characterId: string): { x: number; y: number } {
+function loadSavedPlayerPosition(characterId: string): { x: number; y: number } | null {
   if (typeof window === "undefined") {
-    return DEFAULT_PLAYER_POSITION;
+    return null;
   }
 
   const raw = window.localStorage.getItem(
     getPlayerPositionStorageKey(characterId),
   );
   if (!raw) {
-    return DEFAULT_PLAYER_POSITION;
+    return null;
   }
 
   try {
@@ -781,7 +812,42 @@ function loadPlayerPosition(characterId: string): { x: number; y: number } {
     // Ignore broken saved values and fallback to defaults.
   }
 
+  return null;
+}
+
+function loadPlayerPosition(characterId: string): { x: number; y: number } {
+  const saved = loadSavedPlayerPosition(characterId);
+  if (saved) {
+    return saved;
+  }
+
   return DEFAULT_PLAYER_POSITION;
+}
+
+function resolvePlayerPositionFromWorldState(
+  worldState: CharacterSavedWorldState | null | undefined,
+  zones: WorldMapZone[],
+): { x: number; y: number } | null {
+  if (!worldState) {
+    return null;
+  }
+
+  const zoneId = String(worldState.currentZoneId ?? "").trim();
+  const locationId = String(worldState.currentLocationId ?? "").trim();
+  const zone = zones.find((entry) =>
+    entry.id === zoneId
+    || (locationId.length > 0 && (
+      entry.linkedLocationId === locationId
+      || entry.linkedLocation === locationId
+      || entry.id === locationId
+    )),
+  );
+  if (!zone) {
+    return null;
+  }
+
+  const [x, y] = getZoneCenter(zone);
+  return { x, y };
 }
 
 function cloneZones(zones: WorldMapZone[]): WorldMapZone[] {
@@ -1021,6 +1087,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const warnedDialogueVoiceSourcesRef = useRef<Set<string>>(new Set());
   const pendingDialogueVoicePlayRef = useRef(false);
   const dialogueVoiceRetryBoundRef = useRef(false);
+  const restoredWorldContextCharacterRef = useRef<string | null>(null);
+  const initialSpawnResolvedCharacterRef = useRef<string | null>(null);
+  const argosIntroAutoOpenCharacterRef = useRef<string | null>(null);
+  const playerPositionHydratedCharacterRef = useRef<string | null>(null);
   const handlePrimaryWorldInteractionRef = useRef<() => void>(() => undefined);
   const handleRuntimeZoneInteractRef = useRef<((zone: WorldMapZone, point: { x: number; y: number }) => void) | null>(null);
 
@@ -1079,6 +1149,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const [miniMapVisible, setMiniMapVisible] = useState(() =>
     loadUiBoolean(UI_MINI_MAP_VISIBLE_KEY, true),
+  );
+  const [tutorialState, setTutorialState] = useState(() =>
+    loadTutorialState(character.id),
   );
   const [worldRenderer, setWorldRenderer] = useState<WorldRendererKind>(() =>
     readWorldRendererSetting(),
@@ -1669,7 +1742,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const activeStates = playerQuestStates.filter((entry) => entry.status === "active");
     const stateByQuestId = new Map(activeStates.map((state) => [state.questId, state]));
 
-    return questMarkers.filter((marker) => {
+    const visibleMarkers = questMarkers.filter((marker) => {
       if (marker.mapId !== "worldmap-main") {
         return false;
       }
@@ -1728,6 +1801,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
       return false;
     });
+
+    return visibleMarkers.map((marker) => {
+      const linkedQuestId = marker.linkedQuestId?.trim() || null;
+      const linkedQuest = linkedQuestId
+        ? questDefinitions.find((entry) => entry.id === linkedQuestId) ?? null
+        : null;
+      const linkedQuestState = linkedQuestId
+        ? stateByQuestId.get(linkedQuestId) ?? null
+        : null;
+      const runtimeQuestIconUrl = resolveQuestIcon(linkedQuest, runtimeImages)
+        ?? (marker.imageUrl?.trim() || undefined);
+      const runtimeQuestObjectiveText = linkedQuest
+        ? resolveQuestMarkerObjectiveText(marker, linkedQuest, linkedQuestState)
+        : undefined;
+      return {
+        ...marker,
+        runtimeQuestTitle: linkedQuest?.title?.trim() || undefined,
+        runtimeQuestIconUrl,
+        runtimeQuestObjectiveText,
+      };
+    });
   }, [
     character.id,
     character.level,
@@ -1737,6 +1831,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     questRuntimeProfessionCompat,
     questDefinitions,
     questMarkers,
+    runtimeImages,
   ]);
   const trackedQuestMarker = useMemo(
     () => getTrackedQuestMarker({
@@ -2524,7 +2619,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
-    if (!imageId.startsWith("img_")) {
+    if (isDirectLocationImageSource(imageId)) {
       setActiveCityBackgroundUrl(imageId);
       return;
     }
@@ -2551,6 +2646,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (!activeLocationId || !contentSnapshot) return null;
     return contentSnapshot.locations.find((entry) => entry.id === activeLocationId) ?? null;
   }, [activeLocationId, contentSnapshot]);
+  const activeTutorial = useMemo(
+    () => getTutorialDefinition(tutorialState.activeTutorialId),
+    [tutorialState.activeTutorialId],
+  );
+  const zoneLinkedLocation = useMemo(() => {
+    if (!contentSnapshot || currentZone?.type !== "location") {
+      return null;
+    }
+    const linkedLocationId = currentZone.linkedLocationId ?? currentZone.linkedLocation ?? currentZone.id;
+    return contentSnapshot.locations.find((entry) => entry.id === linkedLocationId) ?? null;
+  }, [contentSnapshot, currentZone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2655,10 +2761,200 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.id]);
 
   useEffect(() => {
-    const restored = loadPlayerPosition(character.id);
-    setPlayerPosition(restored);
-    setPlaySpawnPosition(restored);
+    const restored = loadSavedPlayerPosition(character.id);
+    if (restored) {
+      playerPositionHydratedCharacterRef.current = character.id;
+      setPlayerPosition(restored);
+      setPlaySpawnPosition(restored);
+      return;
+    }
+
+    const profile = loadCharacterProfile(character.id);
+    const resolvedFromWorldState = resolvePlayerPositionFromWorldState(profile?.worldState, zones);
+    if (profile?.worldState && !resolvedFromWorldState) {
+      return;
+    }
+
+    const nextPosition = resolvedFromWorldState ?? DEFAULT_PLAYER_POSITION;
+    playerPositionHydratedCharacterRef.current = character.id;
+    setPlayerPosition(nextPosition);
+    setPlaySpawnPosition(nextPosition);
+  }, [character.id, zones]);
+
+  useEffect(() => {
+    setTutorialState(loadTutorialState(character.id));
   }, [character.id]);
+
+  useEffect(() => {
+    restoredWorldContextCharacterRef.current = null;
+    initialSpawnResolvedCharacterRef.current = null;
+    argosIntroAutoOpenCharacterRef.current = null;
+  }, [character.id]);
+
+  useEffect(() => {
+    if (!contentSnapshot || restoredWorldContextCharacterRef.current === character.id) {
+      return;
+    }
+
+    const profile = loadCharacterProfile(character.id);
+    const savedState = profile?.worldState;
+    restoredWorldContextCharacterRef.current = character.id;
+
+    console.info("[worldMap] loaded active character location", {
+      characterId: character.id,
+      locationId: savedState?.currentLocationId ?? profile?.currentLocationId ?? profile?.locationId ?? null,
+      zoneId: savedState?.currentZoneId ?? profile?.currentZoneId ?? profile?.zoneId ?? null,
+      mapId: savedState?.currentMapId ?? profile?.currentMapId ?? profile?.mapId ?? null,
+      initialSpawnCompleted: profile?.initialSpawnCompleted === true,
+    });
+
+    if (!savedState) {
+      return;
+    }
+
+    const savedLocationId = String(savedState.currentLocationId ?? "").trim();
+    const savedCityId = String(savedState.currentCityId ?? "").trim();
+    const savedView = savedState.locationView;
+
+    if (savedView === "city" && savedCityId) {
+      setActiveCityId(savedCityId);
+      setActiveLocationId(null);
+      setActiveWorldModal(null);
+      setLocationView("city");
+      setContextMode("location");
+      setPlayerState("in_city");
+      return;
+    }
+
+    if (savedView === "location" && savedLocationId) {
+      const savedLocation = contentSnapshot.locations.find((entry) => entry.id === savedLocationId) ?? null;
+      if (locationHasLocalMap(savedLocation)) {
+        setActiveLocationId(savedLocationId);
+        setActiveCityId(null);
+        setActiveWorldModal(null);
+        setLocationView("location");
+        setContextMode("location");
+        setPlayerState("in_zone");
+        return;
+      }
+      setActiveLocationId(null);
+      setActiveCityId(null);
+      setActiveWorldModal({
+        type: "location",
+        locationId: savedLocationId,
+      });
+      setLocationView("map");
+      setContextMode("location");
+      setPlayerState("in_zone");
+    }
+  }, [character.id, contentSnapshot]);
+
+  useEffect(() => {
+    if (!contentSnapshot || initialSpawnResolvedCharacterRef.current === character.id) {
+      return;
+    }
+
+    const profile = loadCharacterProfile(character.id);
+    if (!profile || !shouldResolveInitialSpawn(profile)) {
+      initialSpawnResolvedCharacterRef.current = character.id;
+      return;
+    }
+
+    const resolution = resolveInitialSpawn(profile, zones);
+    if (!resolution) {
+      return;
+    }
+    initialSpawnResolvedCharacterRef.current = character.id;
+
+    setPlayerPosition(resolution.position);
+    setPlaySpawnPosition(resolution.position);
+    setCurrentZone(resolution.zone);
+    setActiveCityId(null);
+    setContextMode("location");
+    setPlayerState("in_zone");
+
+    const spawnedLocation = contentSnapshot.locations.find((entry) => entry.id === resolution.rule.locationId) ?? null;
+    if (locationHasLocalMap(spawnedLocation)) {
+      setActiveLocationId(resolution.rule.locationId);
+      setActiveCityId(null);
+      setActiveWorldModal(null);
+      setLocationView("location");
+      setContextMode("location");
+      setPlayerState("in_zone");
+    } else {
+      setActiveLocationId(null);
+      setActiveWorldModal({
+        type: "location",
+        locationId: resolution.rule.locationId,
+      });
+      setLocationView("map");
+    }
+
+    updateCharacterProfile(character.id, (currentProfile) => {
+      if (!currentProfile) {
+        return currentProfile;
+      }
+      return markInitialSpawnCompleted(currentProfile, resolution.worldState);
+    });
+  }, [character.id, contentSnapshot, zones]);
+
+  useEffect(() => {
+    if (!contentSnapshot || dialogueRunner.state.isOpen || argosIntroAutoOpenCharacterRef.current === character.id) {
+      return;
+    }
+
+    const profile = loadCharacterProfile(character.id);
+    if (!isHumanArgosProfile(profile) || profile?.flags?.[ARGOS_INTRO_SEEN_FLAG] === true) {
+      return;
+    }
+
+    const currentLocationId = activeLocationId
+      ?? (activeWorldModal?.type === "location" ? activeWorldModal.locationId : null)
+      ?? profile?.worldState?.currentLocationId
+      ?? null;
+
+    if (currentLocationId !== KLINOGORIE_START_LOCATION_ID) {
+      return;
+    }
+
+    const introPending = profile?.introDialoguePending === true
+      || typeof profile?.introDialoguePending !== "boolean";
+    if (!introPending) {
+      return;
+    }
+
+    const knownDialogueIds = new Set(getAllDialogues().map((entry) => entry.id));
+    const configuredDialogueId = String(profile?.introDialogueId ?? "").trim();
+    const dialogueIdToOpen = [
+      configuredDialogueId,
+      "dlg_klinogorie_bran_intro",
+      "dlg_npc_klinogorie_bran_legless_soldier_yyzx",
+    ].find((candidate) => candidate && (knownDialogueIds.size === 0 || knownDialogueIds.has(candidate)))
+      ?? "dlg_npc_klinogorie_bran_legless_soldier_yyzx";
+
+    argosIntroAutoOpenCharacterRef.current = character.id;
+    updateCharacterProfile(character.id, (current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        introDialoguePending: false,
+      };
+    });
+
+    dialogueRunner.openDialogue(dialogueIdToOpen, {
+      npcId: BRAN_INTRO_NPC_ID,
+      locationId: KLINOGORIE_START_LOCATION_ID,
+      sourceType: "location",
+    });
+  }, [
+    activeLocationId,
+    activeWorldModal,
+    character.id,
+    contentSnapshot,
+    dialogueRunner,
+  ]);
 
   useEffect(() => {
     if (worldMapMode !== "play") {
@@ -2761,12 +3057,77 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (typeof window === "undefined") {
       return;
     }
+    if (playerPositionHydratedCharacterRef.current !== character.id) {
+      return;
+    }
 
     window.localStorage.setItem(
       getPlayerPositionStorageKey(character.id),
       JSON.stringify(playerPosition),
     );
   }, [character.id, playerPosition]);
+
+  useEffect(() => {
+    const profile = loadCharacterProfile(character.id);
+    if (!isHumanArgosProfile(profile)) {
+      return;
+    }
+
+    if (profile?.flags?.[ARGOS_INTRO_SEEN_FLAG] === true && profile.flags?.[ARGOS_INTRO_TUTORIAL_COMPLETED_FLAG] !== true) {
+      setTutorialState(startTutorial(character.id, TUTORIAL_ARGOS_INTRO_ID));
+    }
+  }, [character.id]);
+
+  useEffect(() => {
+    const savedModalType = activeWorldModal?.type === "zone" || activeWorldModal?.type === "location"
+      ? activeWorldModal.type
+      : null;
+    const savedWorldState: CharacterSavedWorldState = {
+      currentLocationId: activeLocation?.id ?? activeLocationId ?? zoneLinkedLocation?.id ?? null,
+      currentZoneId: currentZone?.id ?? null,
+      currentMapId: "worldmap-main",
+      currentCityId: activeCityId ?? null,
+      kingdomId: activeLocation?.kingdomId ?? zoneLinkedLocation?.kingdomId ?? currentZone?.kingdomId ?? null,
+      regionId: activeLocation?.regionId ?? zoneLinkedLocation?.regionId ?? currentZone?.region ?? null,
+      areaId: null,
+      locationView,
+      modalType: savedModalType,
+      modalZoneId: activeWorldModal?.type === "zone" ? activeWorldModal.zoneId : null,
+      modalLocationId: activeWorldModal?.type === "location" ? activeWorldModal.locationId : null,
+    };
+
+    updateCharacterProfile(character.id, (profile) => {
+      if (!profile) {
+        return profile;
+      }
+
+      const currentSerialized = JSON.stringify(profile.worldState ?? {});
+      const nextSerialized = JSON.stringify(savedWorldState);
+      if (currentSerialized === nextSerialized) {
+        return profile;
+      }
+
+      return {
+        ...profile,
+        worldState: savedWorldState,
+      };
+    });
+  }, [
+    activeCityId,
+    activeLocation?.id,
+    activeLocation?.kingdomId,
+    activeLocation?.regionId,
+    activeLocationId,
+    activeWorldModal,
+    character.id,
+    currentZone?.id,
+    currentZone?.kingdomId,
+    currentZone?.region,
+    locationView,
+    zoneLinkedLocation?.id,
+    zoneLinkedLocation?.kingdomId,
+    zoneLinkedLocation?.regionId,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -5521,6 +5882,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const handleSelectDialogueChoice = useCallback(
     async (choiceId: string) => {
       try {
+      const dialogueIdAtChoiceTime =
+        dialogueRunner.state.isOpen ? (dialogueRunner.state.dialogueId ?? null) : null;
       const dialogueNpcId =
         dialogueRunner.state.isOpen ? (dialogueRunner.state.context.npcId ?? null) : null;
       const result = await dialogueRunner.selectChoice(choiceId);
@@ -5734,6 +6097,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
       if (result.ended) {
         dialogueRunner.closeDialogue();
+        const profile = loadCharacterProfile(character.id);
+        const isBranIntroDialogue = Boolean(
+          dialogueIdAtChoiceTime
+          && dialogueNpcId === BRAN_INTRO_NPC_ID
+          && BRAN_INTRO_DIALOGUE_IDS.has(dialogueIdAtChoiceTime),
+        );
+        if (isBranIntroDialogue && isHumanArgosProfile(profile)) {
+          setCharacterFlag(character.id, ARGOS_INTRO_SEEN_FLAG, true);
+          if (getCharacterFlag(character.id, ARGOS_INTRO_TUTORIAL_COMPLETED_FLAG) !== true) {
+            setCharacterFlag(character.id, ARGOS_INTRO_TUTORIAL_COMPLETED_FLAG, false);
+            setTutorialState(startTutorial(character.id, TUTORIAL_ARGOS_INTRO_ID));
+          }
+        }
       }
       const questIntents = result.intents.filter((intent) => (
         intent.type === 'QUEST_STARTED' || intent.type === 'QUEST_ADVANCED' || intent.type === 'QUEST_COMPLETED'
@@ -7994,6 +8370,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       <section className="wm-grid">
         <div
           className={`wm-left-panel ${leftPanelCollapsed ? "is-collapsed" : ""}`}
+          data-tutorial="player-quick-panel"
         >
           <button
             type="button"
@@ -8037,7 +8414,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
         <div className="wm-main-column">
           {locationView === "map" ? (
-            <div className="wm-play-map-wrap">
+            <div className="wm-play-map-wrap" data-tutorial="world-surface">
               <button
                 type="button"
                 className="wm-renderer-toggle"
@@ -8108,7 +8485,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               ) : null}
             </div>
           ) : locationView === "city" ? (
-            <section className="wm-map card">
+            <section className="wm-map card" data-tutorial="world-surface">
               <div
                 className="wm-map-surface wm-city-surface"
                 onWheel={handleCityWheel}
@@ -8188,7 +8565,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               </footer>
             </section>
           ) : (
-            <section className="wm-map card">
+            <section className="wm-map card" data-tutorial="world-surface">
               <div
                 className="wm-map-surface wm-city-surface"
                 onWheel={handleCityWheel}
@@ -8344,6 +8721,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onClose={() => setQuestJournalOpen(false)}
           questDefinitions={questDefinitions}
           playerQuestStates={playerQuestStates}
+          runtimeImages={runtimeImages}
           trackedQuestId={trackedQuestId}
           trackedObjectiveId={trackedObjectiveId}
           onTrackQuest={handleTrackQuest}
@@ -8360,6 +8738,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         />
         <div
           className={`wm-right-panel ${rightPanelCollapsed ? "is-collapsed" : ""}`}
+          data-tutorial="world-context-actions"
         >
           <button
             type="button"
@@ -8551,6 +8930,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           onClose={() => setWorldMapViewerOpen(false)}
         />
       </section>
+      {activeTutorial ? (
+        <TutorialOverlay
+          tutorial={activeTutorial}
+          currentStepIndex={tutorialState.currentStepIndex}
+          onNext={() => setTutorialState(nextStep(character.id))}
+          onSkip={() => setTutorialState(skipTutorial(character.id))}
+          onComplete={() => setTutorialState(completeTutorial(character.id))}
+        />
+      ) : null}
     </>
   );
 

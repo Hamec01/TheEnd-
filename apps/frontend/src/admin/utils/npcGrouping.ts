@@ -163,28 +163,28 @@ function toPlaceCategory(value: string | undefined | null): NpcResolvedPlaceInfo
   }
 }
 
-function findCityByAnyId(cities: City[], cityId: string | undefined): City | null {
+function findCityByAnyId(cities: City[] | undefined, cityId: string | undefined): City | null {
   const normalizedCityId = normalizeText(cityId);
   if (!normalizedCityId) {
     return null;
   }
-  return cities.find((city) => city.id === normalizedCityId) ?? null;
+  return (cities ?? []).find((city) => city.id === normalizedCityId) ?? null;
 }
 
-function findLocationById(locations: WorldLocation[], locationId: string | undefined): WorldLocation | null {
+function findLocationById(locations: WorldLocation[] | undefined, locationId: string | undefined): WorldLocation | null {
   const normalizedLocationId = normalizeText(locationId);
   if (!normalizedLocationId) {
     return null;
   }
-  return locations.find((location) => location.id === normalizedLocationId) ?? null;
+  return (locations ?? []).find((location) => location.id === normalizedLocationId) ?? null;
 }
 
-function findZoneById(zones: WorldMapZone[], zoneId: string | undefined): WorldMapZone | null {
+function findZoneById(zones: WorldMapZone[] | undefined, zoneId: string | undefined): WorldMapZone | null {
   const normalizedZoneId = normalizeText(zoneId);
   if (!normalizedZoneId) {
     return null;
   }
-  return zones.find((zone) => zone.id === normalizedZoneId) ?? null;
+  return (zones ?? []).find((zone) => zone.id === normalizedZoneId) ?? null;
 }
 
 export function resolveNpcPlaceInfo(npc: NpcDefinition, context: NpcGroupingContext): NpcResolvedPlaceInfo {
@@ -202,7 +202,8 @@ export function resolveNpcPlaceInfo(npc: NpcDefinition, context: NpcGroupingCont
 
   const currentCity = findCityByAnyId(context.cities, npc.currentCityId);
   if (currentCity && normalizeText(npc.cityLocationId)) {
-    const cityLocation = currentCity.locations.find((location) => location.id === normalizeText(npc.cityLocationId)) ?? null;
+    const cityLocations = Array.isArray(currentCity.locations) ? currentCity.locations : [];
+    const cityLocation = cityLocations.find((location) => location.id === normalizeText(npc.cityLocationId)) ?? null;
     if (cityLocation) {
       return {
         label: buildCityLocationLabel(currentCity.name, cityLocation.name),
@@ -230,7 +231,7 @@ export function resolveNpcPlaceInfo(npc: NpcDefinition, context: NpcGroupingCont
     };
   }
 
-  const primaryZone = npc.mapBindings[0] ?? null;
+  const primaryZone = (Array.isArray(npc.mapBindings) ? npc.mapBindings : [])[0] ?? null;
   const zone = findZoneById(context.zones, primaryZone?.zoneId);
   if (zone) {
     const linkedLocation = findLocationById(context.locations, zone.linkedLocationId ?? zone.linkedLocation ?? zone.id);

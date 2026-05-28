@@ -7,6 +7,7 @@ import {
   type KingdomId,
   type ReputationDelta,
 } from '@theend/rpg-domain';
+import { resolveCharacterScopedStorageKey } from './characterScopedStorage';
 
 export const PLAYER_REP_KEY = 'theend.player.reputation';
 export const PLAYER_CITIZENSHIP_KEY = 'theend.player.citizenship';
@@ -26,7 +27,7 @@ export function readPlayerReputation(): Record<string, number> {
   if (typeof window === 'undefined') {
     return {};
   }
-  const record = safeParseRecord(window.localStorage.getItem(PLAYER_REP_KEY));
+  const record = safeParseRecord(window.localStorage.getItem(resolveCharacterScopedStorageKey(PLAYER_REP_KEY)));
   const normalized: Record<string, number> = {};
   for (const [key, value] of Object.entries(record)) {
     const amount = Number(value);
@@ -39,14 +40,14 @@ export function writePlayerReputation(value: Record<string, number>): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(PLAYER_REP_KEY, JSON.stringify(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(PLAYER_REP_KEY), JSON.stringify(value));
 }
 
 export function readPlayerCitizenshipKingdomId(): KingdomId | null {
   if (typeof window === 'undefined') {
     return null;
   }
-  const raw = String(window.localStorage.getItem(PLAYER_CITIZENSHIP_KEY) ?? '').trim();
+  const raw = String(window.localStorage.getItem(resolveCharacterScopedStorageKey(PLAYER_CITIZENSHIP_KEY)) ?? '').trim();
   return isKingdomId(raw) ? raw : null;
 }
 
@@ -55,10 +56,10 @@ export function writePlayerCitizenshipKingdomId(value: KingdomId | null): void {
     return;
   }
   if (value) {
-    window.localStorage.setItem(PLAYER_CITIZENSHIP_KEY, value);
+    window.localStorage.setItem(resolveCharacterScopedStorageKey(PLAYER_CITIZENSHIP_KEY), value);
     return;
   }
-  window.localStorage.removeItem(PLAYER_CITIZENSHIP_KEY);
+  window.localStorage.removeItem(resolveCharacterScopedStorageKey(PLAYER_CITIZENSHIP_KEY));
 }
 
 export function readPlayerCitizenshipState(): CharacterCitizenshipState {

@@ -17,6 +17,7 @@ import { skillsService } from '../../services/content/skillsService';
 import { ensureDialoguesLoaded, getAllDialogues } from '../../services/dialogueRepository';
 import { QUEST_SEED_CITIES, QUEST_SEED_FACTIONS, QUEST_SEED_KINGDOMS } from '../../services/questWorldSeed';
 import { cityService } from '../../services/cityRepository';
+import { locationService } from '../../services/locationRepository';
 import {
   deleteQuest,
   duplicateQuest,
@@ -48,6 +49,7 @@ import type {
 import type { StoredImage } from '../../services/content/models';
 import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
+import type { WorldLocation } from '../../types/location';
 
 const QUEST_CATEGORIES: QuestCategory[] = ['global', 'kingdom', 'faction', 'profession', 'lore', 'city', 'npc', 'random', 'hidden', 'repeatable'];
 const QUEST_STATUSES: QuestStatus[] = ['draft', 'active', 'disabled', 'archived'];
@@ -145,6 +147,51 @@ function uniqueId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const DIALOGUE_QUEST_EFFECT_TYPES = new Set([
+  'startQuest',
+  'start_quest',
+  'completeQuest',
+  'complete_quest',
+  'completeObjective',
+  'complete_objective',
+  'completeStep',
+  'complete_step',
+]);
+
+function collectDialogueQuestEffectIds(dialogues: ReturnType<typeof getAllDialogues>): string[] {
+  const ids = new Set<string>();
+
+  for (const dialogue of asArray(dialogues)) {
+    for (const node of asArray(dialogue.nodes)) {
+      for (const choice of asArray(node.choices)) {
+        const giveQuestId = String(choice.giveQuest ?? '').trim();
+        if (giveQuestId) {
+          ids.add(giveQuestId);
+        }
+
+        const completeQuestId = String(choice.completeQuest ?? '').trim();
+        if (completeQuestId) {
+          ids.add(completeQuestId);
+        }
+
+        for (const effect of [...asArray(choice.actions), ...asArray(choice.effects)]) {
+          const effectType = String(effect?.type ?? '').trim();
+          if (!DIALOGUE_QUEST_EFFECT_TYPES.has(effectType)) {
+            continue;
+          }
+
+          const effectQuestId = String(effect?.questId ?? '').trim();
+          if (effectQuestId) {
+            ids.add(effectQuestId);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(ids);
+}
+
 function buildValidationWorldData(input: {
   zones: WorldMapZone[];
   npcIds: string[];
@@ -153,7 +200,7 @@ function buildValidationWorldData(input: {
   skillIds: string[];
   markerIds: string[];
   interactionQuestIds: string[];
-  dialogueCompletableQuestIds: string[];
+  dialogueQuestEffectIds: string[];
   dialogueIds: string[];
 }) {
   return {
@@ -165,7 +212,8 @@ function buildValidationWorldData(input: {
     markerIds: input.markerIds,
     zoneIds: input.zones.map((zone) => zone.id),
     interactionQuestIds: input.interactionQuestIds,
-    dialogueCompletableQuestIds: input.dialogueCompletableQuestIds,
+    dialogueQuestEffectIds: input.dialogueQuestEffectIds,
+    dialogueCompletableQuestIds: input.dialogueQuestEffectIds,
     dialogueIds: input.dialogueIds,
     kingdoms: [...QUEST_SEED_KINGDOMS],
     factions: [...QUEST_SEED_FACTIONS],
@@ -180,7 +228,7 @@ interface ValidationSources {
   skillIds: string[];
   markerIds: string[];
   interactionQuestIds: string[];
-  dialogueCompletableQuestIds: string[];
+  dialogueQuestEffectIds: string[];
   dialogueIds: string[];
 }
 
@@ -188,6 +236,7 @@ export function QuestsPage() {
   const [quests, setQuests] = useState<QuestDefinition[]>([]);
   const [images, setImages] = useState<StoredImage[]>([]);
   const [cities, setCities] = useState<City[]>([]);
+  const [locations, setLocations] = useState<WorldLocation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<QuestDefinition>(emptyQuest());
   const [query, setQuery] = useState('');
@@ -208,7 +257,7 @@ export function QuestsPage() {
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [interactionQuestIds, setInteractionQuestIds] = useState<string[]>([]);
-  const [dialogueCompletableQuestIds, setDialogueCompletableQuestIds] = useState<string[]>([]);
+  const [dialogueQuestEffectIds, setDialogueQuestEffectIds] = useState<string[]>([]);
   const [dialogueIds, setDialogueIds] = useState<string[]>([]);
   const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
 
@@ -282,13 +331,7 @@ export function QuestsPage() {
       skillIds: skills.map((entry) => entry.id.trim()),
       markerIds: getQuestMarkers().map((entry) => entry.id.trim()),
       interactionQuestIds: interactions.map((entry) => (entry.questId ?? '').trim()).filter(Boolean),
-      dialogueCompletableQuestIds: dialogues.flatMap((dialogue) =>
-      asArray(dialogue.nodes).flatMap((node) =>
-        asArray(node.choices)
-          .map((choice) => (choice.completeQuest ?? '').trim())
-          .filter(Boolean),
-      ),
-      ),
+      dialogueQuestEffectIds: collectDialogueQuestEffectIds(dialogues),
       dialogueIds: dialogues.map((entry) => entry.id.trim()),
     };
 
@@ -298,7 +341,7 @@ export function QuestsPage() {
     setSkillIds(nextSources.skillIds);
     setMarkerIds(nextSources.markerIds);
     setInteractionQuestIds(nextSources.interactionQuestIds);
-    setDialogueCompletableQuestIds(nextSources.dialogueCompletableQuestIds);
+    setDialogueQuestEffectIds(nextSources.dialogueQuestEffectIds);
     setDialogueIds(nextSources.dialogueIds);
 
     // Keep quest list current for validation that references active in-memory data.
@@ -328,6 +371,7 @@ export function QuestsPage() {
   useEffect(() => {
     void refresh();
     void cityService.getCities().then(setCities).catch(() => setCities([]));
+    void locationService.getLocations().then(setLocations).catch(() => setLocations([]));
 
     setZones(getAllZones());
     void refreshZonesFromBackend().then(setZones).catch(() => undefined);
@@ -335,6 +379,8 @@ export function QuestsPage() {
     const unsubscribe = subscribeToContentSync((payload) => {
       if (payload.scope === 'content' || payload.scope === 'all') {
         void refresh().catch(() => undefined);
+        void cityService.getCities().then(setCities).catch(() => setCities([]));
+        void locationService.getLocations().then(setLocations).catch(() => setLocations([]));
       }
       if (payload.scope === 'worldMap' || payload.scope === 'all') {
         void refreshZonesFromBackend().then(setZones).catch(() => undefined);
@@ -353,13 +399,21 @@ export function QuestsPage() {
     [cities, draft.targetCityId],
   );
   const startLocation = useMemo(() => {
-    if (!draft.startLocationId || !startCity) return null;
-    return startCity.locations.find((location) => location.id === draft.startLocationId) ?? null;
-  }, [draft.startLocationId, startCity]);
+    if (!draft.startLocationId) return null;
+    const cityLocation = (startCity?.locations ?? []).find((location) => location.id === draft.startLocationId) ?? null;
+    if (cityLocation) {
+      return cityLocation;
+    }
+    return locations.find((location) => location.id === draft.startLocationId) ?? null;
+  }, [draft.startLocationId, locations, startCity]);
   const targetLocation = useMemo(() => {
-    if (!draft.targetLocationId || !targetCity) return null;
-    return targetCity.locations.find((location) => location.id === draft.targetLocationId) ?? null;
-  }, [draft.targetLocationId, targetCity]);
+    if (!draft.targetLocationId) return null;
+    const cityLocation = (targetCity?.locations ?? []).find((location) => location.id === draft.targetLocationId) ?? null;
+    if (cityLocation) {
+      return cityLocation;
+    }
+    return locations.find((location) => location.id === draft.targetLocationId) ?? null;
+  }, [draft.targetLocationId, locations, targetCity]);
 
   useEffect(() => {
     const safeDraft = normalizeQuestDraft(draft);
@@ -377,11 +431,11 @@ export function QuestsPage() {
       skillIds,
       markerIds,
       interactionQuestIds,
-      dialogueCompletableQuestIds,
+      dialogueQuestEffectIds,
       dialogueIds,
     });
     setValidation(validateQuest(safeDraft, worldData));
-  }, [dialogueCompletableQuestIds, dialogueIds, draft, interactionQuestIds, itemIds, markerIds, questItemIds, quests, skillIds, zones]);
+  }, [dialogueIds, dialogueQuestEffectIds, draft, interactionQuestIds, itemIds, markerIds, questItemIds, quests, skillIds, zones]);
 
   const visibleQuests = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -459,7 +513,7 @@ export function QuestsPage() {
       skillIds: sources.skillIds,
       markerIds: sources.markerIds,
       interactionQuestIds: sources.interactionQuestIds,
-      dialogueCompletableQuestIds: sources.dialogueCompletableQuestIds,
+      dialogueQuestEffectIds: sources.dialogueQuestEffectIds,
       dialogueIds: sources.dialogueIds,
     });
     const safeDraft = normalizeQuestDraft(draft);
@@ -657,7 +711,7 @@ export function QuestsPage() {
       skillIds: sources.skillIds,
       markerIds: sources.markerIds,
       interactionQuestIds: sources.interactionQuestIds,
-      dialogueCompletableQuestIds: sources.dialogueCompletableQuestIds,
+      dialogueQuestEffectIds: sources.dialogueQuestEffectIds,
       dialogueIds: sources.dialogueIds,
     });
     const result = validateQuest(normalizeQuestDraft(draft), worldData);
@@ -776,12 +830,21 @@ export function QuestsPage() {
           {draft.startCityId && !startCity ? <p className="muted">City not found</p> : null}
           <label>
             <AdminFieldLabel label="Start Location" hint="Локация внутри Start City." />
-            <select value={draft.startLocationId ?? ''} onChange={(event) => patch({ startLocationId: event.target.value || undefined })} disabled={!draft.startCityId}>
+            <select value={draft.startLocationId ?? ''} onChange={(event) => patch({ startLocationId: event.target.value || undefined })}>
               <option value="">Не задано</option>
-              {(startCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+              {(startCity?.locations?.length ?? 0) > 0 ? (
+                <optgroup label="Локации выбранного города">
+                  {(startCity?.locations ?? []).map((location) => <option key={`start-city-${location.id}`} value={location.id}>{location.name} ({location.id})</option>)}
+                </optgroup>
+              ) : null}
+              {locations.length > 0 ? (
+                <optgroup label="Мировые локации (деревни и др.)">
+                  {locations.map((location) => <option key={`start-world-${location.id}`} value={location.id}>{location.name} ({location.id})</option>)}
+                </optgroup>
+              ) : null}
             </select>
           </label>
-          {draft.startLocationId && draft.startCityId && !startLocation ? <p className="muted">Location not found</p> : null}
+          {draft.startLocationId && !startLocation ? <p className="muted">Location not found</p> : null}
           <label>
             <AdminFieldLabel label="Target City" hint="Город-цель квеста (куда ведёт)." />
             <select value={draft.targetCityId ?? ''} onChange={(event) => patch({ targetCityId: event.target.value || undefined, targetLocationId: undefined })}>
@@ -792,12 +855,21 @@ export function QuestsPage() {
           {draft.targetCityId && !targetCity ? <p className="muted">City not found</p> : null}
           <label>
             <AdminFieldLabel label="Target Location" hint="Локация внутри Target City." />
-            <select value={draft.targetLocationId ?? ''} onChange={(event) => patch({ targetLocationId: event.target.value || undefined })} disabled={!draft.targetCityId}>
+            <select value={draft.targetLocationId ?? ''} onChange={(event) => patch({ targetLocationId: event.target.value || undefined })}>
               <option value="">Не задано</option>
-              {(targetCity?.locations ?? []).map((location) => <option key={location.id} value={location.id}>{location.name} ({location.id})</option>)}
+              {(targetCity?.locations?.length ?? 0) > 0 ? (
+                <optgroup label="Локации выбранного города">
+                  {(targetCity?.locations ?? []).map((location) => <option key={`target-city-${location.id}`} value={location.id}>{location.name} ({location.id})</option>)}
+                </optgroup>
+              ) : null}
+              {locations.length > 0 ? (
+                <optgroup label="Мировые локации (деревни и др.)">
+                  {locations.map((location) => <option key={`target-world-${location.id}`} value={location.id}>{location.name} ({location.id})</option>)}
+                </optgroup>
+              ) : null}
             </select>
           </label>
-          {draft.targetLocationId && draft.targetCityId && !targetLocation ? <p className="muted">Location not found</p> : null}
+          {draft.targetLocationId && !targetLocation ? <p className="muted">Location not found</p> : null}
           <label>
             <AdminFieldLabel label="NPC" hint="ID квестодателя или связанного NPC." />
             <select value={draft.npcId ?? ''} onChange={(event) => patch({ npcId: event.target.value || undefined })}>

@@ -24,15 +24,23 @@ import {
 } from '../../services/dialogueRepository';
 import { ensureNpcsLoaded, getAllNpcs } from '../../services/npcRepository';
 import { ensureQuestsLoaded, getAllQuests, getQuestItems } from '../../services/questRepository';
+import { cityService } from '../../services/cityRepository';
+import { locationService } from '../../services/locationRepository';
+import { getAllZones, refreshZonesFromBackend } from '../../services/worldRepository';
 import { imageService } from '../../services/content/imageService';
 import { itemsService } from '../../services/content/itemsService';
 import { skillsService } from '../../services/content/skillsService';
 import { validateDialogue } from '../../services/dialogueValidator';
 import type { DialogueAction, DialogueDefinition, DialogueNode, DialogueValidationWorldData } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
+import type { QuestDefinition } from '../../types/quest';
+import type { City } from '../../types/city';
+import type { WorldLocation } from '../../types/location';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { StoredImage } from '../../services/content/models';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
+import { resolveNpcPlaceInfo } from '../utils/npcGrouping';
 
 function emptyDialogue(): DialogueDefinition {
   const now = new Date().toISOString();
@@ -79,6 +87,35 @@ function parseJsonArray<T>(raw: string, fallback: T[]): T[] {
   }
 }
 
+function normalizeDialogueNodes(rawNodes: DialogueNode[] | undefined): DialogueNode[] {
+  if (!Array.isArray(rawNodes)) {
+    return [];
+  }
+
+  return rawNodes.map((node, nodeIndex) => {
+    const normalizedChoices = Array.isArray(node?.choices)
+      ? node.choices.map((choice, choiceIndex) => ({
+        ...choice,
+        id: String(choice?.id ?? `choice_${nodeIndex}_${choiceIndex}`).trim() || `choice_${nodeIndex}_${choiceIndex}`,
+        text: String(choice?.text ?? ''),
+        conditions: Array.isArray(choice?.conditions) ? choice.conditions : [],
+        actions: Array.isArray(choice?.actions) ? choice.actions : [],
+        effects: Array.isArray(choice?.effects) ? choice.effects : [],
+      }))
+      : [];
+
+    return {
+      ...node,
+      id: String(node?.id ?? `node_${nodeIndex}`).trim() || `node_${nodeIndex}`,
+      speaker: node?.speaker === 'player' || node?.speaker === 'system' ? node.speaker : 'npc',
+      text: String(node?.text ?? ''),
+      choices: normalizedChoices,
+      conditions: Array.isArray(node?.conditions) ? node.conditions : [],
+      actions: Array.isArray(node?.actions) ? node.actions : [],
+    };
+  });
+}
+
 function dialogueValidation(
   dialogue: DialogueDefinition,
   worldData: DialogueValidationWorldData,
@@ -88,9 +125,459 @@ function dialogueValidation(
 
 type DialogueEffectContainer = 'choice_effects' | 'choice_actions' | 'node_actions';
 
+type DialogueGroupingKey = 'npc' | 'status' | 'location' | 'kingdom' | 'territory' | 'quest' | 'none';
+type DialogueSortKey = 'updatedAt' | 'title' | 'id' | 'npc' | 'status' | 'location' | 'kingdom' | 'territory' | 'quest';
+type SortDirection = 'asc' | 'desc';
+
+interface DialogueWorldContext {
+  locationLabel: string;
+  kingdomLabel: string;
+  territoryLabel: string;
+  questLabels: string[];
+  primaryQuestLabel: string;
+}
+
+interface DialogueGroupNode {
+  id: string;
+  label: string;
+  dialogues: DialogueDefinition[];
+}
+
+const DIALOGUE_GROUPING_OPTIONS: Array<{ value: DialogueGroupingKey; label: string }> = [
+  { value: 'npc', label: 'По NPC' },
+  { value: 'status', label: 'По статусу' },
+  { value: 'location', label: 'По локации' },
+  { value: 'kingdom', label: 'По королевству' },
+  { value: 'territory', label: 'По территории' },
+  { value: 'quest', label: 'По квесту' },
+  { value: 'none', label: 'Без группировки' },
+];
+
+const DIALOGUE_SORT_OPTIONS: Array<{ value: DialogueSortKey; label: string }> = [
+  { value: 'updatedAt', label: 'По обновлению' },
+  { value: 'title', label: 'По названию' },
+  { value: 'id', label: 'По ID' },
+  { value: 'npc', label: 'По NPC' },
+  { value: 'status', label: 'По статусу' },
+  { value: 'location', label: 'По локации' },
+  { value: 'kingdom', label: 'По королевству' },
+  { value: 'territory', label: 'По территории' },
+  { value: 'quest', label: 'По квесту' },
+];
+
+const DIALOGUE_STATUS_ORDER: Record<DialogueDefinition['status'], number> = {
+  active: 0,
+  draft: 1,
+  disabled: 2,
+};
+
+const NO_LOCATION_LABEL = 'Без локации';
+const NO_KINGDOM_LABEL = 'Без королевства';
+const NO_TERRITORY_LABEL = 'Без территории';
+const NO_QUEST_LABEL = 'Без квеста';
+
+function normalizeDialogueLabel(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim();
+  return normalized || fallback;
+}
+
+function getDialogueNpcLabel(entry: DialogueDefinition, npcById: Map<string, NpcDefinition>): string {
+  const npcName = entry.npcId ? npcById.get(entry.npcId)?.name : undefined;
+  return normalizeDialogueLabel(npcName, normalizeDialogueLabel(entry.npcId, 'Без NPC'));
+}
+
+function pushQuestId(bucket: Set<string>, value: unknown): void {
+  if (typeof value !== 'string') {
+    return;
+  }
+  const normalized = value.trim();
+  if (normalized) {
+    bucket.add(normalized);
+  }
+}
+
+function extractDialogueQuestIds(entry: DialogueDefinition): string[] {
+  const questIds = new Set<string>();
+
+  for (const node of normalizeDialogueNodes(entry.nodes)) {
+    for (const condition of node.conditions ?? []) {
+      if (condition.type.includes('quest')) {
+        pushQuestId(questIds, condition.questId ?? condition.value);
+      }
+    }
+
+    for (const action of node.actions ?? []) {
+      pushQuestId(questIds, action.questId);
+    }
+
+    for (const choice of node.choices ?? []) {
+      pushQuestId(questIds, choice.giveQuest);
+      pushQuestId(questIds, choice.completeQuest);
+      if (typeof choice.completeStep === 'object' && choice.completeStep) {
+        pushQuestId(questIds, choice.completeStep.questId);
+      }
+      if (typeof choice.completeObjective === 'object' && choice.completeObjective) {
+        pushQuestId(questIds, choice.completeObjective.questId);
+      }
+
+      for (const condition of choice.conditions ?? []) {
+        if (condition.type.includes('quest')) {
+          pushQuestId(questIds, condition.questId ?? condition.value);
+        }
+      }
+
+      for (const action of choice.actions ?? []) {
+        pushQuestId(questIds, action.questId);
+      }
+
+      for (const effect of choice.effects ?? []) {
+        pushQuestId(questIds, effect.questId);
+      }
+    }
+  }
+
+  return Array.from(questIds);
+}
+
+function resolveDialogueWorldContext(
+  entry: DialogueDefinition,
+  npcById: Map<string, NpcDefinition>,
+  questById: Map<string, QuestDefinition>,
+  context: { cities: City[]; locations: WorldLocation[]; zones: WorldMapZone[] },
+): DialogueWorldContext {
+  const npc = entry.npcId ? npcById.get(entry.npcId) : undefined;
+  const place = npc ? resolveNpcPlaceInfo(npc, context) : null;
+
+  const locationLabel = normalizeDialogueLabel(place?.label, NO_LOCATION_LABEL);
+  const kingdomLabel = normalizeDialogueLabel(place?.kingdomName, NO_KINGDOM_LABEL);
+  const territoryLabel = normalizeDialogueLabel(place?.regionName ?? place?.zoneName, NO_TERRITORY_LABEL);
+
+  const questLabels = extractDialogueQuestIds(entry)
+    .map((questId) => {
+      const quest = questById.get(questId);
+      return normalizeDialogueLabel(quest?.title, questId);
+    })
+    .filter(Boolean);
+
+  return {
+    locationLabel,
+    kingdomLabel,
+    territoryLabel,
+    questLabels,
+    primaryQuestLabel: questLabels[0] ?? NO_QUEST_LABEL,
+  };
+}
+
+function dialogueHasOpenMineAction(entry: DialogueDefinition): boolean {
+  for (const node of normalizeDialogueNodes(entry.nodes)) {
+    for (const action of node.actions ?? []) {
+      if (action.type === 'open_mine') {
+        return true;
+      }
+    }
+
+    for (const choice of node.choices ?? []) {
+      for (const effect of choice.effects ?? []) {
+        if (effect.type === 'open_mine') {
+          return true;
+        }
+      }
+      for (const action of choice.actions ?? []) {
+        if (action.type === 'open_mine') {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function compareDialogues(
+  left: DialogueDefinition,
+  right: DialogueDefinition,
+  sortKey: DialogueSortKey,
+  direction: SortDirection,
+  npcById: Map<string, NpcDefinition>,
+  contextByDialogueId: Map<string, DialogueWorldContext>,
+): number {
+  const directionFactor = direction === 'asc' ? 1 : -1;
+
+  const compareText = (a: string, b: string) => a.localeCompare(b, 'ru', { sensitivity: 'base' });
+
+  let result = 0;
+  if (sortKey === 'updatedAt') {
+    const a = Date.parse(left.updatedAt || left.createdAt || '');
+    const b = Date.parse(right.updatedAt || right.createdAt || '');
+    result = (Number.isFinite(a) ? a : 0) - (Number.isFinite(b) ? b : 0);
+  } else if (sortKey === 'title') {
+    result = compareText(
+      normalizeDialogueLabel(left.title, left.id),
+      normalizeDialogueLabel(right.title, right.id),
+    );
+  } else if (sortKey === 'id') {
+    result = compareText(left.id, right.id);
+  } else if (sortKey === 'npc') {
+    result = compareText(getDialogueNpcLabel(left, npcById), getDialogueNpcLabel(right, npcById));
+  } else if (sortKey === 'status') {
+    result = (DIALOGUE_STATUS_ORDER[left.status] ?? 99) - (DIALOGUE_STATUS_ORDER[right.status] ?? 99);
+  } else if (sortKey === 'location') {
+    result = compareText(
+      contextByDialogueId.get(left.id)?.locationLabel ?? NO_LOCATION_LABEL,
+      contextByDialogueId.get(right.id)?.locationLabel ?? NO_LOCATION_LABEL,
+    );
+  } else if (sortKey === 'kingdom') {
+    result = compareText(
+      contextByDialogueId.get(left.id)?.kingdomLabel ?? NO_KINGDOM_LABEL,
+      contextByDialogueId.get(right.id)?.kingdomLabel ?? NO_KINGDOM_LABEL,
+    );
+  } else if (sortKey === 'territory') {
+    result = compareText(
+      contextByDialogueId.get(left.id)?.territoryLabel ?? NO_TERRITORY_LABEL,
+      contextByDialogueId.get(right.id)?.territoryLabel ?? NO_TERRITORY_LABEL,
+    );
+  } else if (sortKey === 'quest') {
+    result = compareText(
+      contextByDialogueId.get(left.id)?.primaryQuestLabel ?? NO_QUEST_LABEL,
+      contextByDialogueId.get(right.id)?.primaryQuestLabel ?? NO_QUEST_LABEL,
+    );
+  }
+
+  if (result === 0) {
+    result = compareText(left.id, right.id);
+  }
+
+  return result * directionFactor;
+}
+
+function buildDialogueGroups(
+  entries: DialogueDefinition[],
+  groupingKey: DialogueGroupingKey,
+  npcById: Map<string, NpcDefinition>,
+  contextByDialogueId: Map<string, DialogueWorldContext>,
+): DialogueGroupNode[] {
+  if (groupingKey === 'none') {
+    return [{ id: 'all', label: 'Все диалоги', dialogues: entries }];
+  }
+
+  const groupsMap = new Map<string, DialogueGroupNode>();
+
+  for (const entry of entries) {
+    const dialogueContext = contextByDialogueId.get(entry.id);
+
+    if (groupingKey === 'status') {
+      const key = `status:${entry.status}`;
+      const label = entry.status.toUpperCase();
+      const group = groupsMap.get(key) ?? { id: key, label, dialogues: [] };
+      group.dialogues.push(entry);
+      groupsMap.set(key, group);
+      continue;
+    }
+
+    if (groupingKey === 'location') {
+      const label = dialogueContext?.locationLabel ?? NO_LOCATION_LABEL;
+      const key = `location:${label}`;
+      const group = groupsMap.get(key) ?? { id: key, label, dialogues: [] };
+      group.dialogues.push(entry);
+      groupsMap.set(key, group);
+      continue;
+    }
+
+    if (groupingKey === 'kingdom') {
+      const label = dialogueContext?.kingdomLabel ?? NO_KINGDOM_LABEL;
+      const key = `kingdom:${label}`;
+      const group = groupsMap.get(key) ?? { id: key, label, dialogues: [] };
+      group.dialogues.push(entry);
+      groupsMap.set(key, group);
+      continue;
+    }
+
+    if (groupingKey === 'territory') {
+      const label = dialogueContext?.territoryLabel ?? NO_TERRITORY_LABEL;
+      const key = `territory:${label}`;
+      const group = groupsMap.get(key) ?? { id: key, label, dialogues: [] };
+      group.dialogues.push(entry);
+      groupsMap.set(key, group);
+      continue;
+    }
+
+    if (groupingKey === 'quest') {
+      const labels = dialogueContext?.questLabels?.length ? dialogueContext.questLabels : [NO_QUEST_LABEL];
+      for (const label of labels) {
+        const key = `quest:${label}`;
+        const group = groupsMap.get(key) ?? { id: key, label, dialogues: [] };
+        group.dialogues.push(entry);
+        groupsMap.set(key, group);
+      }
+      continue;
+    }
+
+    const npcLabel = getDialogueNpcLabel(entry, npcById);
+    const npcId = normalizeDialogueLabel(entry.npcId, 'without_npc');
+    const key = `npc:${npcId}`;
+    const group = groupsMap.get(key) ?? { id: key, label: npcLabel, dialogues: [] };
+    group.dialogues.push(entry);
+    groupsMap.set(key, group);
+  }
+
+  const groups = Array.from(groupsMap.values());
+  groups.sort((left, right) => {
+    if (left.label === 'Без NPC') {
+      return 1;
+    }
+    if (right.label === 'Без NPC') {
+      return -1;
+    }
+    return left.label.localeCompare(right.label, 'ru', { sensitivity: 'base' });
+  });
+
+  return groups;
+}
+
+function DialogueGroupList({
+  groups,
+  selectedId,
+  npcById,
+  storedImages,
+  onSelect,
+}: {
+  groups: DialogueGroupNode[];
+  selectedId: string | null;
+  npcById: Map<string, NpcDefinition>;
+  storedImages: StoredImage[];
+  onSelect: (dialogue: DialogueDefinition) => void;
+}) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const defaultExpanded = new Set<string>();
+    let count = 0;
+    for (const group of groups) {
+      const hasSelected = group.dialogues.some((entry) => entry.id === selectedId);
+      if (hasSelected || count < 3) {
+        defaultExpanded.add(group.id);
+        count += hasSelected ? 0 : 1;
+      }
+    }
+    return defaultExpanded;
+  });
+
+  useEffect(() => {
+    const nextExpanded = new Set<string>();
+    let count = 0;
+    for (const group of groups) {
+      const hasSelected = group.dialogues.some((entry) => entry.id === selectedId);
+      if (hasSelected || count < 3) {
+        nextExpanded.add(group.id);
+        count += hasSelected ? 0 : 1;
+      }
+    }
+    setExpandedGroups(nextExpanded);
+  }, [groups, selectedId]);
+
+  function toggleGroup(groupId: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }
+
+  async function copyDialogueId(dialogueId: string) {
+    try {
+      await navigator.clipboard.writeText(dialogueId);
+    } catch {
+      // Ignore clipboard errors in unsupported browser contexts.
+    }
+  }
+
+  function renderDialogueRow(entry: DialogueDefinition) {
+    const npc = entry.npcId ? npcById.get(entry.npcId) : undefined;
+    const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
+    const title = normalizeDialogueLabel(entry.title, '(без названия)');
+    const npcLabel = getDialogueNpcLabel(entry, npcById);
+    return (
+      <div
+        key={entry.id}
+        className={`npc-group-item ${selectedId === entry.id ? 'is-active' : ''}`}
+        onClick={() => onSelect(entry)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelect(entry);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        title={`${title} (${entry.id})`}
+      >
+        <span className="admin-catalog-thumb npc-group-item-thumb">
+          {imageSrc ? (
+            <img src={imageSrc} alt={npc?.name ?? entry.id} />
+          ) : (
+            getAdminInitials(npc?.name ?? title, 'DLG')
+          )}
+        </span>
+        <span className="npc-group-item-copy">
+          <strong className="npc-group-item-name">{title}</strong>
+          <span className="npc-group-item-meta">{npcLabel} • {entry.status}</span>
+          <span className="npc-group-item-place">{entry.id}</span>
+        </span>
+        <span className="npc-group-item-actions">
+          <span className={`npc-group-item-status is-${entry.status}`}>{entry.status}</span>
+          <button
+            type="button"
+            className="npc-group-copy-btn"
+            onClick={(event) => {
+              event.stopPropagation();
+              void copyDialogueId(entry.id);
+            }}
+            title={`Скопировать ID: ${entry.id}`}
+          >
+            ID
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="npc-group-list">
+      {groups.map((group) => {
+        const isExpanded = expandedGroups.has(group.id);
+        return (
+          <div key={group.id} className="npc-group">
+            <button
+              className={`npc-group-header ${isExpanded ? 'is-expanded' : ''}`}
+              onClick={() => toggleGroup(group.id)}
+            >
+              <span className="npc-group-toggle">{isExpanded ? '▼' : '▶'}</span>
+              <span className="npc-group-title">{group.label}</span>
+              <span className="npc-group-count">({group.dialogues.length})</span>
+            </button>
+            {isExpanded ? <div className="npc-group-items">{group.dialogues.map(renderDialogueRow)}</div> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DialoguesPage() {
   const [dialogues, setDialogues] = useState<DialogueDefinition[]>([]);
   const [query, setQuery] = useState('');
+  const [groupingKey, setGroupingKey] = useState<DialogueGroupingKey>('npc');
+  const [sortKey, setSortKey] = useState<DialogueSortKey>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [statusFilter, setStatusFilter] = useState<'all' | DialogueDefinition['status']>('all');
+  const [npcBindingFilter, setNpcBindingFilter] = useState<'all' | 'withNpc' | 'withoutNpc'>('all');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const [kingdomFilter, setKingdomFilter] = useState('all');
+  const [territoryFilter, setTerritoryFilter] = useState('all');
+  const [questFilter, setQuestFilter] = useState('all');
+  const [requireMineAction, setRequireMineAction] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DialogueDefinition>(emptyDialogue());
   const [statusText, setStatusText] = useState('Готово');
@@ -113,6 +600,10 @@ export function DialoguesPage() {
   const [questItemIds, setQuestItemIds] = useState<string[]>([]);
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [npcDefinitions, setNpcDefinitions] = useState<NpcDefinition[]>([]);
+  const [questDefinitions, setQuestDefinitions] = useState<QuestDefinition[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [locations, setLocations] = useState<WorldLocation[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>(() => getAllZones());
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
 
   async function refreshReferences() {
@@ -122,10 +613,13 @@ export function DialoguesPage() {
       ensureQuestsLoaded(),
     ]);
 
-    const [items, skills, images] = await Promise.all([
+    const [items, skills, images, nextCities, nextLocations, nextZones] = await Promise.all([
       itemsService.getAll().catch(() => []),
       skillsService.getAll().catch(() => []),
       imageService.getAll().catch(() => []),
+      cityService.getCities().catch(() => []),
+      locationService.getLocations().catch(() => []),
+      refreshZonesFromBackend().catch(() => getAllZones()),
     ]);
 
     setItemIds(items.map((entry) => entry.id));
@@ -134,8 +628,13 @@ export function DialoguesPage() {
     setNpcDefinitions(allNpcs);
     setStoredImages(images);
     setNpcIds(allNpcs.map((entry) => entry.id));
-    setQuestIds(getAllQuests().map((entry) => entry.id));
+    const allQuests = getAllQuests();
+    setQuestDefinitions(allQuests);
+    setQuestIds(allQuests.map((entry) => entry.id));
     setQuestItemIds(getQuestItems().map((entry) => entry.id));
+    setCities(nextCities as City[]);
+    setLocations(nextLocations as WorldLocation[]);
+    setZones(nextZones as WorldMapZone[]);
   }
 
   function refresh() {
@@ -168,7 +667,7 @@ export function DialoguesPage() {
   }, [draft]);
 
   const parsedNodes = useMemo(
-    () => parseJsonArray<DialogueNode>(nodesJson, draft.nodes),
+    () => normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)),
     [draft.nodes, nodesJson],
   );
 
@@ -182,7 +681,7 @@ export function DialoguesPage() {
     if (!node) {
       return null;
     }
-    return node.choices.find((entry) => entry.id === mineActionChoiceId) ?? null;
+    return (node.choices ?? []).find((entry) => entry.id === mineActionChoiceId) ?? null;
   }, [mineActionChoiceId, mineActionNodeId, parsedNodes]);
 
   const selectedContainerActions = useMemo<DialogueAction[]>(() => {
@@ -287,17 +786,121 @@ export function DialoguesPage() {
 
   const validation = useMemo(() => dialogueValidation(draft, worldData), [draft, worldData]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return dialogues.filter((entry) => {
-      if (!q) {
-        return true;
-      }
-      return entry.id.toLowerCase().includes(q) || entry.title.toLowerCase().includes(q) || (entry.npcId ?? '').toLowerCase().includes(q);
-    });
-  }, [dialogues, query]);
-
   const npcById = useMemo(() => new Map(npcDefinitions.map((npc) => [npc.id, npc])), [npcDefinitions]);
+  const questById = useMemo(() => new Map(questDefinitions.map((quest) => [quest.id, quest])), [questDefinitions]);
+  const groupingContext = useMemo(() => ({ cities, locations, zones }), [cities, locations, zones]);
+
+  const dialogueContextById = useMemo(() => {
+    const result = new Map<string, DialogueWorldContext>();
+    for (const entry of dialogues) {
+      result.set(entry.id, resolveDialogueWorldContext(entry, npcById, questById, groupingContext));
+    }
+    return result;
+  }, [dialogues, groupingContext, npcById, questById]);
+
+  const locationFilterOptions = useMemo(() => {
+    return Array.from(new Set(dialogues.map((entry) => dialogueContextById.get(entry.id)?.locationLabel ?? NO_LOCATION_LABEL)))
+      .sort((left, right) => left.localeCompare(right, 'ru', { sensitivity: 'base' }));
+  }, [dialogueContextById, dialogues]);
+
+  const kingdomFilterOptions = useMemo(() => {
+    return Array.from(new Set(dialogues.map((entry) => dialogueContextById.get(entry.id)?.kingdomLabel ?? NO_KINGDOM_LABEL)))
+      .sort((left, right) => left.localeCompare(right, 'ru', { sensitivity: 'base' }));
+  }, [dialogueContextById, dialogues]);
+
+  const territoryFilterOptions = useMemo(() => {
+    return Array.from(new Set(dialogues.map((entry) => dialogueContextById.get(entry.id)?.territoryLabel ?? NO_TERRITORY_LABEL)))
+      .sort((left, right) => left.localeCompare(right, 'ru', { sensitivity: 'base' }));
+  }, [dialogueContextById, dialogues]);
+
+  const questFilterOptions = useMemo(() => {
+    const bucket = new Set<string>();
+    for (const entry of dialogues) {
+      const labels = dialogueContextById.get(entry.id)?.questLabels ?? [];
+      if (labels.length === 0) {
+        bucket.add(NO_QUEST_LABEL);
+        continue;
+      }
+      labels.forEach((label) => bucket.add(label));
+    }
+    return Array.from(bucket).sort((left, right) => left.localeCompare(right, 'ru', { sensitivity: 'base' }));
+  }, [dialogueContextById, dialogues]);
+
+  const visibleDialogues = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = dialogues.filter((entry) => {
+      const dialogueContext = dialogueContextById.get(entry.id);
+      const npcLabel = getDialogueNpcLabel(entry, npcById).toLowerCase();
+      const matchesQuery = !q
+        || entry.id.toLowerCase().includes(q)
+        || entry.title.toLowerCase().includes(q)
+        || (entry.npcId ?? '').toLowerCase().includes(q)
+        || npcLabel.includes(q)
+        || (entry.description ?? '').toLowerCase().includes(q);
+
+      if (!matchesQuery) {
+        return false;
+      }
+
+      if (statusFilter !== 'all' && entry.status !== statusFilter) {
+        return false;
+      }
+
+      if (npcBindingFilter === 'withNpc' && !entry.npcId) {
+        return false;
+      }
+
+      if (npcBindingFilter === 'withoutNpc' && entry.npcId) {
+        return false;
+      }
+
+      if (requireMineAction && !dialogueHasOpenMineAction(entry)) {
+        return false;
+      }
+
+      if (locationFilter !== 'all' && (dialogueContext?.locationLabel ?? NO_LOCATION_LABEL) !== locationFilter) {
+        return false;
+      }
+
+      if (kingdomFilter !== 'all' && (dialogueContext?.kingdomLabel ?? NO_KINGDOM_LABEL) !== kingdomFilter) {
+        return false;
+      }
+
+      if (territoryFilter !== 'all' && (dialogueContext?.territoryLabel ?? NO_TERRITORY_LABEL) !== territoryFilter) {
+        return false;
+      }
+
+      if (questFilter !== 'all') {
+        const labels = dialogueContext?.questLabels?.length ? dialogueContext.questLabels : [NO_QUEST_LABEL];
+        if (!labels.includes(questFilter)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    return filtered.sort((left, right) => compareDialogues(left, right, sortKey, sortDirection, npcById, dialogueContextById));
+  }, [
+    dialogueContextById,
+    dialogues,
+    kingdomFilter,
+    locationFilter,
+    npcBindingFilter,
+    npcById,
+    query,
+    questFilter,
+    requireMineAction,
+    sortDirection,
+    sortKey,
+    statusFilter,
+    territoryFilter,
+  ]);
+
+  const groupedDialogues = useMemo(
+    () => buildDialogueGroups(visibleDialogues, groupingKey, npcById, dialogueContextById),
+    [dialogueContextById, groupingKey, npcById, visibleDialogues],
+  );
 
   function patch(next: Partial<DialogueDefinition>) {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
@@ -327,7 +930,7 @@ export function DialoguesPage() {
       startNodeId: draft.startNodeId.trim(),
         introVoiceAssetId: sanitizeAudioAssetRef(draft.introVoiceAssetId),
         introMusicAssetId: sanitizeAudioAssetRef(draft.introMusicAssetId),
-      nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes),
+      nodes: normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)),
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
     };
@@ -736,55 +1339,122 @@ export function DialoguesPage() {
 
   return (
     <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <input placeholder="Поиск диалога" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={createDialogue}>СОЗДАТЬ</button>
-          <button disabled={!selectedId} onClick={duplicateSelectedDialogue}>ДУБЛИРОВАТЬ</button>
-          <button disabled={!selectedId} onClick={deleteSelectedDialogue}>УДАЛИТЬ</button>
-          <button onClick={exportJson}>ЭКСПОРТ JSON</button>
-          <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'ИМПОРТ...' : 'ИМПОРТ JSON'}</button>
-          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
-        </div>
+      <section className="admin-list-panel admin-dialogues-list-panel">
+        <div className="npc-list-bottom-section">
+          <h3>ВСЕ ДИАЛОГИ</h3>
+          <div className="npc-list-bottom-controls">
+            <button onClick={createDialogue}>+ СОЗДАТЬ</button>
+            <button disabled={!selectedId} onClick={duplicateSelectedDialogue}>ДУБЛИРОВАТЬ</button>
+            <button disabled={!selectedId} onClick={deleteSelectedDialogue}>УДАЛИТЬ</button>
+            <button onClick={exportJson}>ЭКСПОРТ JSON</button>
+            <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>
+              {isImporting ? 'ИМПОРТ...' : 'ИМПОРТ JSON'}
+            </button>
+            <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+          </div>
 
-        {draft.npcId ? (
-          <section className="card admin-item-preview">
-            <div className="admin-selected-visual">
-              <span className="admin-catalog-thumb admin-catalog-thumb-lg">
-                {(() => {
-                  const npc = npcById.get(draft.npcId ?? '');
-                  const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
-                  return imageSrc
-                    ? <img src={imageSrc} alt={npc?.name ?? draft.npcId} />
-                    : getAdminInitials(npc?.name ?? draft.npcId, 'NPC');
-                })()}
-              </span>
-              <div>
-                <h4>{npcById.get(draft.npcId)?.name ?? draft.npcId}</h4>
-                <p>{draft.title || draft.id || 'Dialogue'}</p>
-                <p className="muted">{draft.npcId}</p>
+          {draft.npcId ? (
+            <section className="card admin-item-preview">
+              <div className="admin-selected-visual">
+                <span className="admin-catalog-thumb admin-catalog-thumb-lg">
+                  {(() => {
+                    const npc = npcById.get(draft.npcId ?? '');
+                    const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
+                    return imageSrc
+                      ? <img src={imageSrc} alt={npc?.name ?? draft.npcId} />
+                      : getAdminInitials(npc?.name ?? draft.npcId, 'NPC');
+                  })()}
+                </span>
+                <div>
+                  <h4>{npcById.get(draft.npcId)?.name ?? draft.npcId}</h4>
+                  <p>{draft.title || draft.id || 'Dialogue'}</p>
+                  <p className="muted">{draft.npcId}</p>
+                </div>
               </div>
-            </div>
-          </section>
-        ) : null}
+            </section>
+          ) : null}
 
-        <div className="admin-scroll-list admin-visual-list">
-          {visible.map((entry) => {
-            const npc = entry.npcId ? npcById.get(entry.npcId) : null;
-            const imageSrc = resolveAdminImageSource(getNpcPreviewImageKey(npc), storedImages);
-            return (
-              <button key={entry.id} className={`admin-entity-card ${selectedId === entry.id ? 'is-active' : ''}`} onClick={() => selectDialogue(entry)}>
-                <span className="admin-catalog-thumb">
-                  {imageSrc ? <img src={imageSrc} alt={npc?.name ?? entry.npcId ?? entry.id} /> : getAdminInitials(npc?.name ?? entry.title ?? entry.id, 'DLG')}
-                </span>
-                <span className="admin-entity-copy">
-                  <strong>{entry.title || '(без названия)'}</strong>
-                  <span>{npc?.name ?? entry.npcId ?? 'без NPC'}</span>
-                  <span>{entry.id} | {entry.status}</span>
-                </span>
-              </button>
-            );
-          })}
+          <div className="npc-list-bottom-filters">
+            <input placeholder="Поиск по ID, title, NPC..." value={query} onChange={(event) => setQuery(event.target.value)} />
+
+            <label className="npc-list-grouping">
+              <strong>Группировать:</strong>
+              <select value={groupingKey} onChange={(event) => setGroupingKey(event.target.value as DialogueGroupingKey)}>
+                {DIALOGUE_GROUPING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="npc-list-grouping">
+              <strong>Сортировать:</strong>
+              <select value={sortKey} onChange={(event) => setSortKey(event.target.value as DialogueSortKey)}>
+                {DIALOGUE_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              className={`npc-filter-chip ${sortDirection === 'desc' ? 'is-active' : ''}`}
+              onClick={() => setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
+              title="Переключить направление сортировки"
+            >
+              {sortDirection === 'asc' ? 'ASC ↑' : 'DESC ↓'}
+            </button>
+
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | DialogueDefinition['status'])}>
+              <option value="all">Все статусы</option>
+              <option value="active">Active</option>
+              <option value="draft">Draft</option>
+              <option value="disabled">Disabled</option>
+            </select>
+
+            <select value={npcBindingFilter} onChange={(event) => setNpcBindingFilter(event.target.value as 'all' | 'withNpc' | 'withoutNpc')}>
+              <option value="all">Все привязки NPC</option>
+              <option value="withNpc">Только с NPC</option>
+              <option value="withoutNpc">Только без NPC</option>
+            </select>
+
+            <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
+              <option value="all">Все локации</option>
+              {locationFilterOptions.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+
+            <select value={kingdomFilter} onChange={(event) => setKingdomFilter(event.target.value)}>
+              <option value="all">Все королевства</option>
+              {kingdomFilterOptions.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+
+            <select value={territoryFilter} onChange={(event) => setTerritoryFilter(event.target.value)}>
+              <option value="all">Все территории</option>
+              {territoryFilterOptions.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+
+            <select value={questFilter} onChange={(event) => setQuestFilter(event.target.value)}>
+              <option value="all">Все квесты</option>
+              {questFilterOptions.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+
+            <button
+              type="button"
+              className={`npc-filter-chip ${requireMineAction ? 'is-active' : ''}`}
+              onClick={() => setRequireMineAction((current) => !current)}
+            >
+              open_mine
+            </button>
+
+            <span className="muted">Всего: {visibleDialogues.length}</span>
+          </div>
+
+          <DialogueGroupList
+            groups={groupedDialogues}
+            selectedId={selectedId}
+            npcById={npcById}
+            storedImages={storedImages}
+            onSelect={selectDialogue}
+          />
         </div>
       </section>
 
@@ -839,7 +1509,7 @@ export function DialoguesPage() {
             <button type="button" onClick={addNode}>Добавить ноду</button>
             <button type="button" onClick={applyMineDialogueTemplate}>Шаблон: Вход в шахту</button>
           </div>
-          <textarea rows={20} value={nodesJson} onChange={(event) => setNodesJson(event.target.value)} onBlur={() => patch({ nodes: parseJsonArray<DialogueNode>(nodesJson, draft.nodes) })} />
+          <textarea rows={20} value={nodesJson} onChange={(event) => setNodesJson(event.target.value)} onBlur={() => patch({ nodes: normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)) })} />
           <p className="muted" style={{ marginTop: 8 }}>Actions внутри choice/node поддерживают `addReputation`, массив `reputationChanges` и `changeCitizenship` с `kingdomId`.</p>
           <div className="admin-form-grid" style={{ marginTop: 12 }}>
             <label>

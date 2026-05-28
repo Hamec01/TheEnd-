@@ -517,6 +517,7 @@ export interface QuestValidationWorldData {
   markerIds: string[];
   zoneIds: string[];
   interactionQuestIds?: string[];
+  dialogueQuestEffectIds?: string[];
   dialogueCompletableQuestIds?: string[];
   dialogueIds: string[];
   kingdoms: string[];

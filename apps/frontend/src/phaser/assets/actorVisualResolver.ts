@@ -69,6 +69,15 @@ export function normalizeActorVisualSource(value: string | undefined): string | 
     return toContentImageRawUrl(slashNormalized);
   }
 
+  // Preserve known local sprite aliases, but route other opaque IDs to content image API.
+  if (/^(human_01|dwarf_01|high_elf_01|drogan|mirel|selene)$/i.test(slashNormalized)) {
+    return `/sprites/actor/${slashNormalized}.png`;
+  }
+
+  if (/^[a-z0-9][a-z0-9_\-]*$/i.test(slashNormalized)) {
+    return toContentImageRawUrl(slashNormalized);
+  }
+
   if (/\.(png|jpg|jpeg|webp|gif)$/i.test(slashNormalized)) {
     return slashNormalized.startsWith('sprites/actor/')
       ? `/${slashNormalized}`

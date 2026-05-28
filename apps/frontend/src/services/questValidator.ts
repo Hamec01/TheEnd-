@@ -88,7 +88,10 @@ export function validateQuest(quest: QuestDefinition, worldData: QuestValidation
   }
   if (quest.status === 'active' && triggers.length === 0) {
     const completableByInteraction = Boolean(worldData.interactionQuestIds?.includes(quest.id));
-    const completableByDialogue = Boolean(worldData.dialogueCompletableQuestIds?.includes(quest.id));
+    const completableByDialogue = Boolean(
+      worldData.dialogueQuestEffectIds?.includes(quest.id)
+      || worldData.dialogueCompletableQuestIds?.includes(quest.id),
+    );
     if (!completableByInteraction && !completableByDialogue) {
       errors.push('Active quest must have at least one trigger or a completion path via interaction/dialogue effects.');
     }

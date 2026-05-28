@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { PlayerQuestState } from '../types/quest';
 import { WORLD_MAP_EXPLORATION_GRID_SIZE, type MapDiscoveryMarker } from './worldMapExploration';
+import { getQuestMarkerRuntimeMeta } from './questVisuals';
 
 interface WorldMapViewerProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export function WorldMapViewer({
     () => questMarkers.find((marker) => marker.id === trackedMarkerId && marker.mapId === 'worldmap-main') ?? null,
     [questMarkers, trackedMarkerId],
   );
+  const trackedMarkerIcon = trackedMarker ? getQuestMarkerRuntimeMeta(trackedMarker).runtimeQuestIconUrl : undefined;
 
   useEffect(() => {
     if (!isOpen) {
@@ -283,10 +285,13 @@ export function WorldMapViewer({
                 ))}
                 {trackedMarker ? (
                   <span
-                    className="wm-viewer-marker is-tracked"
+                    className={`wm-viewer-marker is-tracked${trackedMarkerIcon ? ' has-image' : ''}`}
                     style={{
                       left: `${trackedMarker.x * 100}%`,
                       top: `${trackedMarker.y * 100}%`,
+                      ...(trackedMarkerIcon
+                        ? { backgroundImage: `url("${trackedMarkerIcon}")` }
+                        : {}),
                     }}
                     title={trackedMarker.title || trackedMarker.id}
                   />

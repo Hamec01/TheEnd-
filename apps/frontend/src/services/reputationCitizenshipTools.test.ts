@@ -191,4 +191,63 @@ describe('reputation/citizenship admin tools', () => {
     expect(dialogueValidation.errors).toEqual([]);
     expect(questValidation.errors).toEqual([]);
   });
+
+  it('accepts active triggerless quests when dialogue effects can start them', () => {
+    const result = validateQuest(
+      {
+        id: 'argos_quest_klinogorie_first_steps',
+        title: 'Кто я?',
+        adminDescription: '',
+        playerDescription: '',
+        category: 'global',
+        status: 'active',
+        isRepeatable: false,
+        isHidden: false,
+        steps: [
+          {
+            id: 'step_1',
+            questId: 'argos_quest_klinogorie_first_steps',
+            title: 'Путь в Омтару',
+            journalText: 'Доберитесь до города.',
+            order: 1,
+            objectives: [
+              {
+                id: 'obj_enter_omtara',
+                type: 'enter_zone',
+                text: 'Войти в Омтару',
+                zoneId: 'city_omtara',
+                required: true,
+                hidden: false,
+                order: 1,
+              },
+            ],
+          },
+        ],
+        triggers: [],
+        conditions: [],
+        rewards: [],
+        failureConsequences: [],
+        flags: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        npcIds: [],
+        itemIds: [],
+        questItemIds: [],
+        skillIds: [],
+        professionIds: [],
+        markerIds: [],
+        zoneIds: ['city_omtara'],
+        interactionQuestIds: [],
+        dialogueQuestEffectIds: ['argos_quest_klinogorie_first_steps'],
+        dialogueIds: [],
+        kingdoms: ['luminor', 'artalon', 'kriantar', 'terimia', 'argos'],
+        factions: ['free_cities'],
+        cities: [],
+      },
+    );
+
+    expect(result.errors).not.toContain('Active quest must have at least one trigger or a completion path via interaction/dialogue effects.');
+  });
 });

@@ -1,5 +1,6 @@
 import type { AdminSkillDefinition } from '@theend/rpg-domain';
 import { getPlayerQuestState } from '../../services/questRuntime';
+import { resolveCharacterScopedStorageKey } from '../../services/characterScopedStorage';
 
 const PLAYER_ITEMS_KEY = 'theend.player.items';
 const PLAYER_QUEST_ITEMS_KEY = 'theend.player.questItems';
@@ -62,7 +63,7 @@ export interface TrainerSkillCandidate {
 
 function readArray(key: string): string[] {
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

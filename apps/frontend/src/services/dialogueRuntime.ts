@@ -18,6 +18,7 @@ import {
 import { getQuestById } from './questRepository';
 import { playerHasProfessionCompat } from './professionCompat';
 import { applyPlayerCitizenshipCommand, applyPlayerReputationChanges, PLAYER_REP_KEY } from './playerCivicRuntime';
+import { resolveCharacterScopedStorageKey } from './characterScopedStorage';
 import { isKingdomId } from '@theend/rpg-domain';
 import type { DialogueAction, DialogueChoice, DialogueCondition, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
@@ -49,7 +50,7 @@ function readNumber(key: string, fallback = 0): number {
   if (typeof window === 'undefined') {
     return fallback;
   }
-  const raw = window.localStorage.getItem(key);
+  const raw = window.localStorage.getItem(resolveCharacterScopedStorageKey(key));
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -58,7 +59,7 @@ function writeNumber(key: string, value: number): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, String(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), String(value));
 }
 
 function readArray(key: string): string[] {
@@ -66,7 +67,7 @@ function readArray(key: string): string[] {
     return [];
   }
   try {
-    return JSON.parse(window.localStorage.getItem(key) ?? '[]') as string[];
+    return JSON.parse(window.localStorage.getItem(resolveCharacterScopedStorageKey(key)) ?? '[]') as string[];
   } catch {
     return [];
   }
@@ -88,7 +89,7 @@ function writeArray(key: string, values: string[]): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, JSON.stringify(values));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(values));
 }
 
 function readRecord(key: string): Record<string, unknown> {
@@ -96,7 +97,7 @@ function readRecord(key: string): Record<string, unknown> {
     return {};
   }
   try {
-    return JSON.parse(window.localStorage.getItem(key) ?? '{}') as Record<string, unknown>;
+    return JSON.parse(window.localStorage.getItem(resolveCharacterScopedStorageKey(key)) ?? '{}') as Record<string, unknown>;
   } catch {
     return {};
   }
@@ -106,7 +107,7 @@ function writeRecord(key: string, value: Record<string, unknown>): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(resolveCharacterScopedStorageKey(key), JSON.stringify(value));
 }
 
 export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcDefinition | null, conditions: DialogueCondition[] = []): boolean {
