@@ -6,6 +6,14 @@ function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
 
+function withCacheBuster(url: string, updatedAt?: string): string {
+  const stamp = updatedAt?.trim();
+  if (!stamp) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(stamp)}`;
+}
+
 export async function loadRuntimeImages(): Promise<StoredImage[]> {
   return imageService.getAll();
 }
@@ -21,7 +29,7 @@ export function resolveStoredImageSource(imageKey: string | undefined, images: S
   }
 
   const stored = images.find((image) => image.id === normalized);
-  return stored?.dataUrl;
+  return stored ? withCacheBuster(stored.dataUrl, stored.updatedAt) : undefined;
 }
 
 export function resolveItemImageSource(item: ItemDefinition | null | undefined, images: StoredImage[]): string | undefined {

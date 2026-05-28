@@ -22,6 +22,14 @@ function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
 
+function withCacheBuster(url: string, updatedAt?: string): string {
+  const stamp = updatedAt?.trim();
+  if (!stamp) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(stamp)}`;
+}
+
 export function AdminImageField({
   value,
   onChange,
@@ -53,6 +61,10 @@ export function AdminImageField({
       if (!disposed) {
         setStoredImage(image);
       }
+    }).catch(() => {
+      if (!disposed) {
+        setStoredImage(null);
+      }
     });
 
     return () => {
@@ -65,10 +77,10 @@ export function AdminImageField({
     if (!normalized) {
       return null;
     }
-    if (isDirectImageSource(normalized)) {
+    if (normalized && isDirectImageSource(normalized)) {
       return normalized;
     }
-    return storedImage?.dataUrl ?? null;
+    return storedImage ? withCacheBuster(storedImage.dataUrl, storedImage.updatedAt) : null;
   }, [storedImage, value]);
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -81,13 +93,24 @@ export function AdminImageField({
     setUploading(true);
     try {
       const normalizedValue = value?.trim() || '';
-      const isReplace = Boolean(normalizedValue) && !isDirectImageSource(normalizedValue);
-      const uploaded = isReplace
-        ? await imageService.replacePreset(normalizedValue, file, presetId, {
+      const fallbackId = suggestedId?.trim() || '';
+      let replaceId = '';
+
+      if (normalizedValue && !isDirectImageSource(normalizedValue)) {
+        replaceId = normalizedValue;
+      } else if (fallbackId) {
+        const existing = await imageService.get(fallbackId);
+        if (existing) {
+          replaceId = fallbackId;
+        }
+      }
+
+      const uploaded = replaceId
+        ? await imageService.replacePreset(replaceId, file, presetId, {
           name: suggestedName?.trim() || file.name,
         })
         : await imageService.uploadPreset(file, presetId, {
-          id: suggestedId?.trim() || undefined,
+          id: fallbackId || undefined,
           name: suggestedName?.trim() || file.name,
           folder: resolvedUploadFolder,
         });

@@ -212,6 +212,10 @@ async function requestJson<T>(path: string, init?: RequestInit, options?: { time
   return JSON.parse(raw) as T;
 }
 
+function stringifyUpdatePayload(payload: unknown): string {
+  return JSON.stringify(payload, (_key, value) => (value === undefined ? null : value));
+}
+
 async function getContentSnapshotRaw(): Promise<ContentSnapshot> {
   return requestJson<ContentSnapshot>('/content/snapshot');
 }
@@ -332,7 +336,7 @@ export async function updateContentEntry<T>(collection: ContentCollectionName, i
   await ensureContentBackendReady();
   const entry = await requestJson<T>(`/content/${collection}/${encodeURIComponent(id)}`, {
     method: 'PUT',
-    body: JSON.stringify(payload),
+    body: stringifyUpdatePayload(payload),
   });
   notifyContentSync('content');
   return entry;

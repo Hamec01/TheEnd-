@@ -424,11 +424,28 @@ export function NpcsPage() {
     setBulkImageUploading(true);
     try {
       const baseName = draft.id.trim() || 'npc';
+
+      const uploadOrReplaceNpcImage = async (
+        imageId: string,
+        preset: 'merchant-portrait' | 'item-icon',
+        imageName: string,
+      ) => {
+        const existing = await imageService.get(imageId);
+        if (existing) {
+          return imageService.replacePreset(imageId, file, preset, { name: imageName });
+        }
+        return imageService.uploadPreset(file, preset, {
+          id: imageId,
+          name: imageName,
+          folder: buildUploadFolder('images', 'npcs', baseName),
+        });
+      };
+
       const [portrait, fullImage, combatImage, icon] = await Promise.all([
-        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_portrait`, name: `${baseName}-portrait`, folder: buildUploadFolder('images', 'npcs', baseName) }),
-        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_full`, name: `${baseName}-full`, folder: buildUploadFolder('images', 'npcs', baseName) }),
-        imageService.uploadPreset(file, 'merchant-portrait', { id: `${baseName}_combat`, name: `${baseName}-combat`, folder: buildUploadFolder('images', 'npcs', baseName) }),
-        imageService.uploadPreset(file, 'item-icon', { id: `${baseName}_icon`, name: `${baseName}-icon`, folder: buildUploadFolder('images', 'npcs', baseName) }),
+        uploadOrReplaceNpcImage(`${baseName}_portrait`, 'merchant-portrait', `${baseName}-portrait`),
+        uploadOrReplaceNpcImage(`${baseName}_full`, 'merchant-portrait', `${baseName}-full`),
+        uploadOrReplaceNpcImage(`${baseName}_combat`, 'merchant-portrait', `${baseName}-combat`),
+        uploadOrReplaceNpcImage(`${baseName}_icon`, 'item-icon', `${baseName}-icon`),
       ]);
 
       patch({
@@ -842,10 +859,10 @@ export function NpcsPage() {
                 Система автоматически подготовит изображения под нужные размеры интерфейса. При необходимости любой слот можно заменить вручную ниже.
               </p>
             </section>
-            <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-portrait`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Портрет NPC" hint="Главный портрет персонажа." />
-            <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-full`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
-            <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-combat`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Боевой портрет" hint="Изображение для боя." />
-            <AdminImageField value={draft.iconUrl} onChange={(next) => patch({ iconUrl: next || undefined })} onStatus={setStatusText} presetId="item-icon" suggestedId={draft.id || undefined} suggestedName={`${draft.id || 'npc'}-icon`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Иконка NPC" hint="Иконка маркера NPC на карте." />
+            <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_portrait` : undefined} suggestedName={`${draft.id || 'npc'}-portrait`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Портрет NPC" hint="Главный портрет персонажа." />
+            <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_full` : undefined} suggestedName={`${draft.id || 'npc'}-full`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
+            <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_combat` : undefined} suggestedName={`${draft.id || 'npc'}-combat`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Боевой портрет" hint="Изображение для боя." />
+            <AdminImageField value={draft.iconUrl} onChange={(next) => patch({ iconUrl: next || undefined })} onStatus={setStatusText} presetId="item-icon" suggestedId={draft.id ? `${draft.id}_icon` : undefined} suggestedName={`${draft.id || 'npc'}-icon`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Иконка NPC" hint="Иконка маркера NPC на карте." />
           </>
         ) : null}
 

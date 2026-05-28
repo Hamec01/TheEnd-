@@ -8,6 +8,14 @@ export function isDirectAdminImageSource(value: string | null | undefined): bool
     || normalized.startsWith('https://');
 }
 
+function withCacheBuster(url: string, updatedAt?: string): string {
+  const stamp = updatedAt?.trim();
+  if (!stamp) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(stamp)}`;
+}
+
 export function resolveAdminImageSource(value: string | null | undefined, images: StoredImage[]): string | undefined {
   const normalized = value?.trim();
   if (!normalized) {
@@ -16,7 +24,8 @@ export function resolveAdminImageSource(value: string | null | undefined, images
   if (isDirectAdminImageSource(normalized)) {
     return normalized;
   }
-  return images.find((image) => image.id === normalized)?.dataUrl;
+  const stored = images.find((image) => image.id === normalized);
+  return stored ? withCacheBuster(stored.dataUrl, stored.updatedAt) : undefined;
 }
 
 export function getNpcPreviewImageKey(npc: {
