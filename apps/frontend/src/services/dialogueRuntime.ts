@@ -139,6 +139,8 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         return 'has_flag';
       case 'flagEquals':
         return 'flag_equals';
+      case 'missingFlag':
+        return 'missing_flag';
       case 'raceIs':
         return 'race_is';
       case 'classIs':
@@ -288,15 +290,23 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
         break;
       case 'has_flag': {
         const flags = readRecord(PLAYER_FLAGS_KEY);
-        const key = String(condition.key ?? value ?? '');
+        const key = String((condition.key ?? (condition as { flagKey?: unknown }).flagKey ?? value) ?? '').trim();
         if (!key || !Object.prototype.hasOwnProperty.call(flags, key)) {
+          return false;
+        }
+        break;
+      }
+      case 'missing_flag': {
+        const flags = readRecord(PLAYER_FLAGS_KEY);
+        const key = String((condition.key ?? (condition as { flagKey?: unknown }).flagKey ?? value) ?? '').trim();
+        if (!key || Object.prototype.hasOwnProperty.call(flags, key)) {
           return false;
         }
         break;
       }
       case 'flag_equals': {
         const flags = readRecord(PLAYER_FLAGS_KEY);
-        const key = String(condition.key ?? '');
+        const key = String((condition.key ?? (condition as { flagKey?: unknown }).flagKey) ?? '').trim();
         if (!key || flags[key] !== value) {
           return false;
         }
@@ -368,10 +378,11 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
       case 'global_flag':
       case 'quest_flag': {
         const flags = readRecord(PLAYER_FLAGS_KEY);
-        if (!condition.key) {
+        const key = String((condition.key ?? (condition as { flagKey?: unknown }).flagKey) ?? '').trim();
+        if (!key) {
           return false;
         }
-        if (flags[condition.key] !== value) {
+        if (flags[key] !== value) {
           return false;
         }
         break;
@@ -462,6 +473,8 @@ function normalizeActionType(type: DialogueAction['type']): DialogueAction['type
       return 'giveRewards';
     case 'set_flag':
       return 'setQuestFlag';
+    case 'set_global_flag':
+      return 'setGlobalFlag';
     case 'give_item':
       return 'giveItem';
     case 'take_item':
@@ -538,11 +551,20 @@ function normalizeActions(actions: DialogueAction[]): DialogueAction[] {
       ? action.mineId
       : (typeof payload?.mineId === 'string' ? payload.mineId : undefined);
 
+    const rawKey = typeof (action as { key?: unknown }).key === 'string'
+      ? String((action as { key?: string }).key)
+      : undefined;
+    const rawFlagKey = typeof (action as { flagKey?: unknown }).flagKey === 'string'
+      ? String((action as { flagKey?: string }).flagKey)
+      : undefined;
+    const normalizedKey = rawKey?.trim() || rawFlagKey?.trim() || undefined;
+
     return {
       ...(payload as Record<string, unknown> | undefined),
       ...action,
       id: action.id ?? `dialogue_action_${index}`,
       type: normalizeActionType(rawType as DialogueAction['type']),
+      ...(normalizedKey ? { key: normalizedKey } : {}),
       ...(mineId ? { mineId } : {}),
     } as DialogueAction;
   });
@@ -765,6 +787,11 @@ export function executeDialogueActions(
         if (action.questId && action.key) {
           setQuestFlag(playerId, action.questId, action.key, action.value ?? true);
           logs.push(`Quest flag set: ${action.key}`);
+        } else if (action.key) {
+          const flags = readRecord(PLAYER_FLAGS_KEY);
+          flags[action.key] = action.value ?? true;
+          writeRecord(PLAYER_FLAGS_KEY, flags);
+          logs.push(`Global flag set via set_flag: ${action.key}`);
         }
         break;
       case 'giveItem':

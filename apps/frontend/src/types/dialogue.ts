@@ -84,6 +84,7 @@ export interface DialogueCondition {
     | 'has_skill'
     | 'missing_skill'
     | 'has_flag'
+    | 'missing_flag'
     | 'flag_equals'
     | 'race_is'
     | 'class_is'
@@ -102,6 +103,7 @@ export interface DialogueCondition {
     | 'global_flag'
     | 'quest_flag';
   key?: string;
+  flagKey?: string;
   operator?: '==' | '!=' | '>' | '>=' | '<' | '<=';
   value?: string | number | boolean;
 
@@ -131,6 +133,7 @@ export interface DialogueAction {
     | 'give_rewards'
     | 'setQuestFlag'
     | 'set_flag'
+    | 'set_global_flag'
     | 'giveItem'
     | 'give_item'
     | 'takeItem'
@@ -186,6 +189,7 @@ export interface DialogueAction {
   kingdomId?: string;
   locationId?: string;
   key?: string;
+  flagKey?: string;
   value?: string | number | boolean;
   amount?: number;
   mode?: string;

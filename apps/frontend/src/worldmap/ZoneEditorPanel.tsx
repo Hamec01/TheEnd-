@@ -1453,8 +1453,24 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <input disabled={!draft} value={draft?.requiredItemId ?? ''} onChange={(event) => updateDraft({ requiredItemId: event.target.value })} />
         </label>
         <label>
+          <span>Required Quest Item Id</span>
+          <input disabled={!draft} value={draft?.requiredQuestItemId ?? ''} onChange={(event) => updateDraft({ requiredQuestItemId: event.target.value })} />
+        </label>
+        <label>
           <span>Required Faction</span>
           <input disabled={!draft} value={draft?.requiredFaction ?? ''} onChange={(event) => updateDraft({ requiredFaction: event.target.value })} />
+        </label>
+        <label>
+          <span>Blocked Entry Dialogue Id</span>
+          <input disabled={!draft} value={draft?.blockedEntryDialogueId ?? ''} onChange={(event) => updateDraft({ blockedEntryDialogueId: event.target.value })} />
+        </label>
+        <label>
+          <span>Blocked Entry NPC Id</span>
+          <input disabled={!draft} value={draft?.blockedEntryNpcId ?? ''} onChange={(event) => updateDraft({ blockedEntryNpcId: event.target.value })} />
+        </label>
+        <label>
+          <span>Blocked Entry Message</span>
+          <input disabled={!draft} value={draft?.blockedEntryMessage ?? ''} onChange={(event) => updateDraft({ blockedEntryMessage: event.target.value })} />
         </label>
         <label className="zone-editor-checkbox">
           <input disabled={!draft} type="checkbox" checked={draft?.allowPvP ?? false} onChange={(event) => updateDraft({ allowPvP: event.target.checked })} />

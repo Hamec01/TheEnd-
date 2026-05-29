@@ -298,6 +298,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
       const image = this.add.image(sprite.screenX, sprite.screenY, textureKey)
         .setOrigin(sprite.originX, sprite.originY)
         .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+        .setScrollFactor(0)
         .setDepth(sprite.zIndex);
       this.locationSpriteLayer.add(image);
 
@@ -307,6 +308,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
           const banner = this.add.image(sprite.screenX, sprite.screenY, bannerTextureKey)
             .setOrigin(sprite.originX, sprite.originY)
             .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+            .setScrollFactor(0)
             .setAlpha(0.42)
             .setDepth(sprite.zIndex + 0.1);
           this.locationSpriteLayer.add(banner);

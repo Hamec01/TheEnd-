@@ -1471,6 +1471,9 @@ function normalizeQuestInteractionInput(input: QuestInteractionDefinition): Ques
     requiredObjectiveId: normalizeText(input.requiredObjectiveId),
     requiredItemId: normalizeText(input.requiredItemId),
     requiredQuestItemId: normalizeText(input.requiredQuestItemId),
+    blockedEntryDialogueId: normalizeText(input.blockedEntryDialogueId),
+    blockedEntryNpcId: normalizeText(input.blockedEntryNpcId),
+    blockedEntryMessage: normalizeText(input.blockedEntryMessage),
   };
 }
 

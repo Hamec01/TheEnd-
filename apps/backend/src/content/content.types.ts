@@ -642,7 +642,11 @@ export interface WorldMapZone {
   requiredLevel?: number;
   requiredQuestId?: string;
   requiredItemId?: string;
+  requiredQuestItemId?: string;
   requiredFaction?: string;
+  blockedEntryDialogueId?: string;
+  blockedEntryNpcId?: string;
+  blockedEntryMessage?: string;
   targetScene?: string;
   isDiscovered: boolean;
   isVisibleToPlayer: boolean;

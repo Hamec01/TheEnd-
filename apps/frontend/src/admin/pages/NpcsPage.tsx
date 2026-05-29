@@ -50,6 +50,11 @@ const NPC_KINDS: NpcKind[] = ['civilian', 'quest_giver', 'trader', 'trainer', 'g
 const NPC_RACES: NpcRace[] = ['human', 'high_elf', 'forest_elf', 'ancient_elf', 'dwarf', 'orc', 'dark_elf', 'arin_fellar', 'monster', 'beast', 'undead', 'spirit', 'other'];
 const NPC_DISPOSITIONS: NpcDispositionMode[] = ['friendly', 'neutral', 'hostile', 'fearful', 'aggressive_on_sight', 'quest_locked', 'hidden'];
 const MAP_SPAWN_TYPES: NpcMapBinding['spawnType'][] = ['fixed', 'random_in_zone', 'quest_spawn', 'event_spawn'];
+const NPC_GENDER_OPTIONS = [
+  { value: 'male', label: 'муж.' },
+  { value: 'female', label: 'жен.' },
+  { value: 'agender', label: 'бесполый' },
+] as const;
 const QUICK_FILTER_OPTIONS = [
   { key: 'unbound', label: 'Только без привязки' },
   { key: 'traders', label: 'Только торговцы' },
@@ -441,12 +446,11 @@ export function NpcsPage() {
         });
       };
 
-      const [portrait, fullImage, combatImage, icon] = await Promise.all([
-        uploadOrReplaceNpcImage(`${baseName}_portrait`, 'merchant-portrait', `${baseName}-portrait`),
-        uploadOrReplaceNpcImage(`${baseName}_full`, 'merchant-portrait', `${baseName}-full`),
-        uploadOrReplaceNpcImage(`${baseName}_combat`, 'merchant-portrait', `${baseName}-combat`),
-        uploadOrReplaceNpcImage(`${baseName}_icon`, 'item-icon', `${baseName}-icon`),
-      ]);
+      // Upload sequentially to avoid intermittent race effects in local content persistence.
+      const portrait = await uploadOrReplaceNpcImage(`${baseName}_portrait`, 'merchant-portrait', `${baseName}-portrait`);
+      const fullImage = await uploadOrReplaceNpcImage(`${baseName}_full`, 'merchant-portrait', `${baseName}-full`);
+      const combatImage = await uploadOrReplaceNpcImage(`${baseName}_combat`, 'merchant-portrait', `${baseName}-combat`);
+      const icon = await uploadOrReplaceNpcImage(`${baseName}_icon`, 'item-icon', `${baseName}-icon`);
 
       patch({
         portraitUrl: portrait.id,
@@ -804,7 +808,16 @@ export function NpcsPage() {
             <label><AdminFieldLabel label="Статус" hint="Draft/active/disabled/archived." /><select value={draft.status} onChange={(event) => patch({ status: event.target.value as NpcStatus })}>{NPC_STATUSES.map((entry) => <option key={entry} value={entry}>{formatLabel(entry)}</option>)}</select></label>
             <label><AdminFieldLabel label="Тип NPC" hint="Роль персонажа в мире." /><select value={draft.kind} onChange={(event) => patch({ kind: event.target.value as NpcKind })}>{NPC_KINDS.map((entry) => <option key={entry} value={entry}>{formatLabel(entry)}</option>)}</select></label>
             <label><AdminFieldLabel label="Раса" hint="Раса NPC." /><select value={draft.race} onChange={(event) => patch({ race: event.target.value as NpcRace })}>{NPC_RACES.map((entry) => <option key={entry} value={entry}>{formatLabel(entry)}</option>)}</select></label>
-            <label><AdminFieldLabel label="Пол" hint="Текстовое поле пола." /><input value={draft.gender ?? ''} onChange={(event) => patch({ gender: event.target.value || undefined })} /></label>
+            <label>
+              <AdminFieldLabel label="Пол" hint="Выбор пола NPC из фиксированных значений." />
+              <select value={draft.gender ?? ''} onChange={(event) => patch({ gender: event.target.value || undefined })}>
+                <option value="">Не задан</option>
+                {NPC_GENDER_OPTIONS.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+                {draft.gender && !NPC_GENDER_OPTIONS.some((entry) => entry.value === draft.gender) ? (
+                  <option value={draft.gender}>{draft.gender}</option>
+                ) : null}
+              </select>
+            </label>
             <label><AdminFieldLabel label="Возраст" hint="Возраст или возрастной текст." /><input value={draft.age ?? ''} onChange={(event) => patch({ age: event.target.value || undefined })} /></label>
             <label><AdminFieldLabel label="Королевство" hint="Привязка к королевству." /><input value={draft.kingdomId ?? ''} onChange={(event) => patch({ kingdomId: event.target.value || undefined })} /></label>
             <label><AdminFieldLabel label="Фракция" hint="Привязка к фракции." /><input value={draft.factionId ?? ''} onChange={(event) => patch({ factionId: event.target.value || undefined })} /></label>

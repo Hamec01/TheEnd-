@@ -948,6 +948,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       locationSpriteImageSizes,
       new Set(candidates.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
       new Set(candidates.map((zone) => zone.id)),
+      { screenScale: Math.max(editorSettings.zoom, 0.01) },
     );
   }
 
@@ -1421,7 +1422,9 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
-      if (event.shiftKey && selectedZone?.locationSprite) {
+      const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
+
+      if (isZoomIntent && event.shiftKey && selectedZone?.locationSprite) {
         event.preventDefault();
         event.stopPropagation();
         const factor = event.deltaY < 0 ? 1.08 : 0.92;
@@ -1430,7 +1433,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         return;
       }
 
-      const isZoomIntent = event.altKey || event.ctrlKey || event.metaKey;
       if (!isZoomIntent) {
         return;
       }
@@ -1785,6 +1787,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         locationSpriteImageSizes,
         new Set(editorSpriteZones.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
         new Set(editorSpriteZones.map((zone) => zone.id)),
+        { screenScale: Math.max(editorSettings.zoom, 0.01) },
       );
       for (const sprite of editorLocationSprites) {
         const image = locationSpriteImages.get(sprite.imageSrc);

@@ -72,6 +72,11 @@ export function QuestItemsPage() {
     return items.filter((item) => !q || item.id.toLowerCase().includes(q) || item.name.toLowerCase().includes(q));
   }, [items, query]);
 
+  const selectedItem = useMemo(
+    () => (selectedId ? items.find((item) => item.id === selectedId) ?? null : null),
+    [items, selectedId],
+  );
+
   function patch(next: Partial<QuestItemDefinition>) {
     setDraft((current) => ({ ...current, ...next }));
   }
@@ -230,6 +235,10 @@ export function QuestItemsPage() {
     return resolveStoredImageSource(imageKey, images);
   }
 
+  function resolveQuestItemImage(item: QuestItemDefinition): string | undefined {
+    return resolveImage(item.iconUrl) ?? resolveImage(item.imageUrl);
+  }
+
   useAdminSaveShortcut({
     enabled: true,
     isSaving,
@@ -237,21 +246,50 @@ export function QuestItemsPage() {
   });
 
   return (
-    <div className="admin-two-col">
-      <section className="admin-list-panel">
-        <div className="admin-list-tools">
+    <div className="admin-items-page admin-page-grid">
+      <section className="admin-items-catalog card">
+        <div className="admin-catalog-header">
+          <div>
+            <p className="admin-catalog-kicker">Asset Library</p>
+            <h3>Квестовые предметы</h3>
+            <p className="muted">Тот же режим каталога, что и у обычных предметов: иконки, активный элемент, быстрый выбор.</p>
+          </div>
+          <div className="admin-catalog-metrics">
+            <span>{visibleItems.length} в выдаче</span>
+            <span>{items.length} всего</span>
+          </div>
+        </div>
+
+        <div className="admin-list-tools admin-catalog-toolbar">
           <input placeholder="Поиск предмета" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <button onClick={createNew}>Новый квестовый предмет</button>
           <button onClick={exportJson}>Экспорт JSON</button>
           <button disabled={isImporting || isSaving} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
           <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+          <button onClick={createNew}>Новый квестовый предмет</button>
         </div>
 
-        <div className="admin-scroll-list">
+        {selectedItem ? (
+          <section className="admin-items-selected-row">
+            <strong>Сейчас редактируется:</strong>
+            <span>{selectedItem.name || '(без названия)'} ({selectedItem.id || 'id не задан'})</span>
+          </section>
+        ) : null}
+
+        <div className="admin-items-icons-grid">
           {visibleItems.map((item) => (
-            <button key={item.id} className={selectedId === item.id ? 'is-active' : ''} onClick={() => select(item)}>
+            <button
+              key={item.id}
+              className={`admin-item-icon-card ${selectedId === item.id ? 'is-active' : ''}`}
+              onClick={() => select(item)}
+              title={`${item.name || '(без названия)'} (${item.id})`}
+            >
+              <div className="admin-catalog-thumb admin-catalog-thumb-lg">
+                {resolveQuestItemImage(item)
+                  ? <img src={resolveQuestItemImage(item)} alt={item.name || 'quest-item'} />
+                  : (item.name.trim() || 'Q').charAt(0).toUpperCase()}
+              </div>
               <strong>{item.name || '(без названия)'}</strong>
-              <span>{item.id} | {item.linkedQuestId || 'без привязки'}</span>
+              <span>{item.id || 'ID ещё не задан'}</span>
             </button>
           ))}
         </div>

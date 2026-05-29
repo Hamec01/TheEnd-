@@ -210,12 +210,15 @@ import { buildWorldSceneSnapshot } from "./worldSceneAdapter";
 import { resolveRenderedWorldEntities } from "./worldEntityVisualResolver";
 import {
   PLAYER_GOLD_STORAGE_KEY,
+  PLAYER_FLAGS_STORAGE_KEY,
   PLAYER_ITEMS_STORAGE_KEY,
+  PLAYER_QUEST_ITEMS_STORAGE_KEY,
   readNumberStorage,
   readStringArrayStorage,
   writeNumberStorage,
   writeStringArrayStorage,
 } from "../utils/playerInventory";
+import { resolveCharacterScopedStorageKey } from "../services/characterScopedStorage";
 import {
   loadCharacterProfile,
   updateCharacterProfile,
@@ -510,6 +513,18 @@ function isDirectLocationImageSource(value: string): boolean {
     || value.startsWith("data:")
     || value.startsWith("http://")
     || value.startsWith("https://");
+}
+
+function withCacheBust(url: string, version?: string): string {
+  const normalized = String(url ?? "").trim();
+  if (!normalized || normalized.startsWith("data:")) {
+    return normalized;
+  }
+  const stamp = String(version ?? "").trim();
+  if (!stamp) {
+    return normalized;
+  }
+  return `${normalized}${normalized.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp)}`;
 }
 
 function getAreaPercent(area: { shapeType?: string; shape?: any }): { left: string; top: string; width: string; height: string } {
@@ -2788,7 +2803,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       .get(imageId)
       .then((image) => {
         if (!cancelled) {
-          setActiveCityBackgroundUrl(image?.dataUrl ?? fallbackUrl);
+          setActiveCityBackgroundUrl(withCacheBust(image?.dataUrl ?? fallbackUrl, image?.updatedAt));
         }
       })
       .catch(() => {
@@ -3926,6 +3941,46 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const cityId = normalizeCitySceneId(
         targetScene && isCitySceneId(targetScene) ? targetScene : locationId,
       );
+      const requiredQuestItemId = zone?.requiredQuestItemId?.trim();
+      if (requiredQuestItemId) {
+        const rawFlags = typeof window === "undefined"
+          ? null
+          : window.localStorage.getItem(resolveCharacterScopedStorageKey(PLAYER_FLAGS_STORAGE_KEY));
+        const flags = (() => {
+          if (!rawFlags) {
+            return {} as Record<string, unknown>;
+          }
+          try {
+            const parsed = JSON.parse(rawFlags) as Record<string, unknown>;
+            return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+              ? parsed
+              : {};
+          } catch {
+            return {} as Record<string, unknown>;
+          }
+        })();
+        const hasTemporaryCityPass = zone?.id === "city_omtara"
+          && flags.city_entry_omtara_guard_pass === true;
+        const hasQuestItem = readStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY)
+          .some((itemId) => itemId === requiredQuestItemId);
+        if (!hasQuestItem && !hasTemporaryCityPass) {
+          const blockedDialogueId = zone?.blockedEntryDialogueId?.trim();
+          const blockedNpcId = zone?.blockedEntryNpcId?.trim();
+          const blockedMessage = fixMojibake(
+            zone?.blockedEntryMessage,
+            `Доступ закрыт: нужен квестовый предмет ${requiredQuestItemId}.`,
+          );
+          onStatus(blockedMessage);
+          if (blockedDialogueId) {
+            dialogueRunner.openDialogue(blockedDialogueId, {
+              npcId: blockedNpcId || undefined,
+              cityId,
+              sourceType: "zone",
+            });
+          }
+          return;
+        }
+      }
       const zoneReaction = zone ? resolveZoneReaction(zone) : null;
       if (zoneReaction && !zoneReaction.allowed) {
         onStatus(fixMojibake(zoneReaction.summary, "Вас не впускают в город."));
@@ -3944,7 +3999,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setPlayerState("in_city");
       onStatus(`\u0412\u044b \u0432\u043e\u0448\u043b\u0438 \u0432 ${zone?.name ?? "\u0433\u043e\u0440\u043e\u0434"}.`);
     },
-    [contentSnapshot, discoverMapEntity, onStartCombat, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
+    [contentSnapshot, dialogueRunner, discoverMapEntity, onStartCombat, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
   );
 
   const handleZoneEnterMemoized = useCallback(
@@ -4085,6 +4140,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           );
           if (!hasItem) {
             onStatus(`\u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043a\u0440\u044b\u0442: \u043d\u0443\u0436\u0435\u043d \u043f\u0440\u0435\u0434\u043c\u0435\u0442 ${requiredItemId}.`);
+            lastZoneTransitionRef.current = { zoneId: worldZone.id, at: now };
+            return;
+          }
+        }
+
+        if (worldZone.requiredQuestItemId) {
+          const requiredQuestItemId = worldZone.requiredQuestItemId.trim();
+          const hasQuestItem = readStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY)
+            .some((itemId) => itemId === requiredQuestItemId);
+          if (!hasQuestItem) {
+            onStatus(`Доступ закрыт: нужен квестовый предмет ${requiredQuestItemId}.`);
             lastZoneTransitionRef.current = { zoneId: worldZone.id, at: now };
             return;
           }

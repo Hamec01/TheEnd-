@@ -63,11 +63,12 @@ export const imageService = {
     return getContentEntry<StoredImage>('images', id);
   },
 
-  async upload(file: File, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
+  async upload(file: File, options?: { id?: string; name?: string; folder?: string; replaceIfExists?: boolean }): Promise<StoredImage> {
     const dataUrl = await fileToDataUrl(file);
     const image = await loadImage(dataUrl);
-    return uploadContentImage({
-      id: options?.id?.trim() || undefined,
+    const normalizedId = options?.id?.trim() || undefined;
+    const payload = {
+      ...(normalizedId ? { id: normalizedId } : {}),
       name: file.name,
       ...(options?.name?.trim() ? { name: options.name.trim() } : {}),
       ...(options?.folder?.trim() ? { folder: options.folder.trim() } : {}),
@@ -75,7 +76,29 @@ export const imageService = {
       width: image.width,
       height: image.height,
       dataUrl,
-    });
+    };
+
+    try {
+      return await uploadContentImage(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const shouldReplace = Boolean(
+        options?.replaceIfExists
+        && normalizedId
+        && message.toLowerCase().includes('duplicate images id'),
+      );
+      if (!shouldReplace || !normalizedId) {
+        throw error;
+      }
+
+      return replaceContentImage(normalizedId, {
+        name: payload.name,
+        mimeType: payload.mimeType,
+        width: payload.width,
+        height: payload.height,
+        dataUrl: payload.dataUrl,
+      });
+    }
   },
 
   async uploadResized(file: File, width: number, height: number, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {

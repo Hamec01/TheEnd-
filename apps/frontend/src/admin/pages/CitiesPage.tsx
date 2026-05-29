@@ -30,6 +30,26 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function withCacheBust(url: string, version?: string): string {
+  const normalized = String(url ?? '').trim();
+  if (!normalized || normalized.startsWith('data:')) {
+    return normalized;
+  }
+  const stamp = String(version ?? '').trim();
+  if (!stamp) {
+    return normalized;
+  }
+  return `${normalized}${normalized.includes('?') ? '&' : '?'}v=${encodeURIComponent(stamp)}`;
+}
+
+function getLocationLabelScale(location: CityLocation): number {
+  const shape = location.shape;
+  const minSize = location.shapeType === 'circle'
+    ? (shape.radius ?? 40) * 2
+    : Math.min(shape.width ?? 120, shape.height ?? 80);
+  return clamp(minSize / 80, 0.5, 1);
+}
+
 function createNewCity(): City {
   const createdAt = nowIso();
   return {
@@ -139,7 +159,7 @@ export function CitiesPage() {
     if (imageId) {
       const stored = images.find((image) => image.id === imageId);
       if (stored) {
-        return stored.dataUrl;
+        return withCacheBust(stored.dataUrl, stored.updatedAt);
       }
       if (!imageId.startsWith('img_')) {
         return imageId;
@@ -172,6 +192,9 @@ export function CitiesPage() {
   }
 
   function patchSelectedLocation(patch: Partial<CityLocation>) {
+    if (typeof patch.id === 'string') {
+      setSelectedLocationId(patch.id);
+    }
     setDraft((current) => {
       if (!current || !selectedLocation) return current;
       return {
@@ -286,6 +309,7 @@ export function CitiesPage() {
         id: draft.id ? `${draft.id}_background` : undefined,
         name: `${draft.id || 'city'}-background`,
         folder: buildUploadFolder('images', 'cities', draft.id || draft.name || undefined),
+        replaceIfExists: true,
       });
       setImages((current) => [stored, ...current.filter((image) => image.id !== stored.id)]);
       patchCity({ backgroundImageId: stored.id, backgroundImageUrl: '' });
@@ -451,9 +475,11 @@ export function CitiesPage() {
               {draft?.locations.map((location) => {
                 const selected = location.id === selectedLocation?.id;
                 const shape = location.shape;
-                const common: React.CSSProperties = {
+                const labelScale = getLocationLabelScale(location).toFixed(3);
+                const common: React.CSSProperties & Record<'--city-location-label-scale', string> = {
                   left: `${shape.x ?? 0}px`,
                   top: `${shape.y ?? 0}px`,
+                  '--city-location-label-scale': labelScale,
                 };
 
                 if (location.shapeType === 'circle') {

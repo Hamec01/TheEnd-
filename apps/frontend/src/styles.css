@@ -7812,7 +7812,14 @@ h3 {
   width: 360px;
   max-width: 360px;
   min-width: 320px;
+  padding-right: 12px;
+  scrollbar-gutter: stable both-edges;
   overscroll-behavior: contain;
+}
+
+.wm-editor-sidebar .zone-editor-section,
+.wm-editor-sidebar .zone-editor-section > * {
+  min-width: 0;
 }
 
 .zone-editor-section {
@@ -8468,7 +8475,8 @@ body:has(.page.page--scroll) {
   max-width: 360px;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
+  padding-right: 12px;
   padding-bottom: 14px;
 }
 
@@ -11591,7 +11599,8 @@ body:has(.page.page--scroll) {
 
 .city-location-label {
   max-width: 100%;
-  padding: 0 4px;
+  padding: 0 calc(4px * var(--city-location-label-scale, 1));
+  font-size: clamp(0.34rem, calc(0.62rem * var(--city-location-label-scale, 1)), 0.62rem);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

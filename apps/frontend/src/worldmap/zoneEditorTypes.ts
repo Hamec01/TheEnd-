@@ -124,7 +124,11 @@ export interface WorldMapZone {
   requiredLevel?: number;
   requiredQuestId?: string;
   requiredItemId?: string;
+  requiredQuestItemId?: string;
   requiredFaction?: string;
+  blockedEntryDialogueId?: string;
+  blockedEntryNpcId?: string;
+  blockedEntryMessage?: string;
   targetScene?: string;
   isDiscovered: boolean;
   isVisibleToPlayer: boolean;
@@ -182,7 +186,11 @@ export interface ZoneEditorDraft {
   requiredLevel: number | null;
   requiredQuestId: string;
   requiredItemId: string;
+  requiredQuestItemId: string;
   requiredFaction: string;
+  blockedEntryDialogueId: string;
+  blockedEntryNpcId: string;
+  blockedEntryMessage: string;
   targetScene: string;
   isDiscovered: boolean;
   isVisibleToPlayer: boolean;
@@ -277,7 +285,11 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     requiredLevel: null,
     requiredQuestId: '',
     requiredItemId: '',
+    requiredQuestItemId: '',
     requiredFaction: '',
+    blockedEntryDialogueId: '',
+    blockedEntryNpcId: '',
+    blockedEntryMessage: '',
     targetScene: '',
     isDiscovered: true,
     isVisibleToPlayer: true,
@@ -358,7 +370,11 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     requiredLevel: zone.requiredLevel ?? null,
     requiredQuestId: zone.requiredQuestId ?? '',
     requiredItemId: zone.requiredItemId ?? '',
+    requiredQuestItemId: zone.requiredQuestItemId ?? '',
     requiredFaction: zone.requiredFaction ?? '',
+    blockedEntryDialogueId: zone.blockedEntryDialogueId ?? '',
+    blockedEntryNpcId: zone.blockedEntryNpcId ?? '',
+    blockedEntryMessage: zone.blockedEntryMessage ?? '',
     targetScene: zone.targetScene ?? '',
     isDiscovered: zone.isDiscovered,
     isVisibleToPlayer: zone.isVisibleToPlayer,
@@ -477,7 +493,11 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     requiredLevel: draft.requiredLevel ?? undefined,
     requiredQuestId: draft.requiredQuestId.trim() || undefined,
     requiredItemId: draft.requiredItemId.trim() || undefined,
+    requiredQuestItemId: draft.requiredQuestItemId.trim() || undefined,
     requiredFaction: draft.requiredFaction.trim() || undefined,
+    blockedEntryDialogueId: draft.blockedEntryDialogueId.trim() || undefined,
+    blockedEntryNpcId: draft.blockedEntryNpcId.trim() || undefined,
+    blockedEntryMessage: draft.blockedEntryMessage.trim() || undefined,
     targetScene: draft.targetScene.trim() || undefined,
     isDiscovered: draft.isDiscovered,
     isVisibleToPlayer: draft.isVisibleToPlayer,

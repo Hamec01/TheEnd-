@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useReducer } from 'react';
 import type { DialogueChoice, DialogueDefinition, DialogueNode } from '../types/dialogue';
 import type { NpcDefinition } from '../types/npc';
-import { handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
+import { getPlayerQuestState, handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
 import { getDialogueById, getDialoguesByNpc } from './dialogueRepository';
 import { getNpcById } from './npcRepository';
 import {
@@ -152,6 +152,229 @@ function pickNpcDialogue(player: QuestRuntimePlayer, npc: NpcDefinition): Dialog
   return null;
 }
 
+function asArray<T>(value: T[] | undefined | null): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeQuestConditionType(rawType: string): string {
+  switch (rawType) {
+    case 'questActive':
+      return 'quest_active';
+    case 'questCompleted':
+      return 'quest_completed';
+    case 'questNotStarted':
+      return 'quest_not_started';
+    case 'questFailed':
+      return 'quest_failed';
+    default:
+      return rawType;
+  }
+}
+
+function extractQuestIdsFromConditions(conditions: Array<{ type?: unknown; questId?: unknown; value?: unknown }> | undefined): string[] {
+  const ids: string[] = [];
+  for (const condition of asArray(conditions)) {
+    const normalizedType = normalizeQuestConditionType(String(condition?.type ?? '').trim());
+    const isQuestCondition = normalizedType.includes('quest') || normalizedType === 'objective_completed' || normalizedType === 'objective_not_completed';
+    if (!isQuestCondition) {
+      continue;
+    }
+    const questId = String(condition?.questId ?? condition?.value ?? '').trim();
+    if (questId) {
+      ids.push(questId);
+    }
+  }
+  return ids;
+}
+
+function collectDialogueQuestIds(dialogue: DialogueDefinition): string[] {
+  const questIds = new Set<string>();
+  for (const node of asArray(dialogue.nodes)) {
+    for (const questId of extractQuestIdsFromConditions(node.conditions as Array<{ type?: unknown; questId?: unknown; value?: unknown }> | undefined)) {
+      questIds.add(questId);
+    }
+    for (const action of asArray(node.actions as Array<{ questId?: unknown }> | undefined)) {
+      const questId = String(action?.questId ?? '').trim();
+      if (questId) {
+        questIds.add(questId);
+      }
+    }
+    for (const choice of asArray(node.choices)) {
+      const giveQuestId = String(choice.giveQuest ?? '').trim();
+      if (giveQuestId) {
+        questIds.add(giveQuestId);
+      }
+      const completeQuestId = String(choice.completeQuest ?? '').trim();
+      if (completeQuestId) {
+        questIds.add(completeQuestId);
+      }
+      const completeObjectiveQuestId = typeof choice.completeObjective === 'object'
+        ? String(choice.completeObjective.questId ?? '').trim()
+        : '';
+      if (completeObjectiveQuestId) {
+        questIds.add(completeObjectiveQuestId);
+      }
+      const completeStepQuestId = typeof choice.completeStep === 'object'
+        ? String(choice.completeStep.questId ?? '').trim()
+        : '';
+      if (completeStepQuestId) {
+        questIds.add(completeStepQuestId);
+      }
+      for (const questId of extractQuestIdsFromConditions(choice.conditions as Array<{ type?: unknown; questId?: unknown; value?: unknown }> | undefined)) {
+        questIds.add(questId);
+      }
+      for (const action of [...asArray(choice.actions as Array<{ questId?: unknown }> | undefined), ...asArray(choice.effects as Array<{ questId?: unknown }> | undefined)]) {
+        const questId = String(action?.questId ?? '').trim();
+        if (questId) {
+          questIds.add(questId);
+        }
+      }
+    }
+  }
+  return Array.from(questIds);
+}
+
+function hasQuestCompletedAwareNode(dialogue: DialogueDefinition): boolean {
+  return asArray(dialogue.nodes).some((node) => {
+    const nodeConditions = asArray(node.conditions as Array<{ type?: unknown }> | undefined);
+    if (nodeConditions.some((condition) => normalizeQuestConditionType(String(condition?.type ?? '').trim()) === 'quest_completed')) {
+      return true;
+    }
+    return asArray(node.choices).some((choice) => asArray(choice.conditions as Array<{ type?: unknown }> | undefined)
+      .some((condition) => normalizeQuestConditionType(String(condition?.type ?? '').trim()) === 'quest_completed'));
+  });
+}
+
+function areAllDialogueQuestsCompleted(playerId: string, dialogue: DialogueDefinition): boolean {
+  const relatedQuestIds = collectDialogueQuestIds(dialogue);
+  if (relatedQuestIds.length === 0) {
+    return false;
+  }
+  return relatedQuestIds.every((questId) => getPlayerQuestState(playerId, questId)?.status === 'completed');
+}
+
+function buildCompletedQuestFallbackDialogue(dialogue: DialogueDefinition, npc: NpcDefinition | null): DialogueDefinition {
+  if (npc?.id === 'npc_argos_king_gramar_fireblade') {
+    return {
+      ...dialogue,
+      id: `${dialogue.id}__completed_fallback`,
+      startNodeId: 'post_quest_start',
+      nodes: [
+        {
+          id: 'post_quest_start',
+          speaker: 'npc',
+          text: 'Грамар Огненный Клинок стоит над разложенными картами, и даже в походном шатре держится так, будто перед ним весь Аргос.\n\n— Запомни: корона не для того, чтобы прятаться за каменными стенами.\n— Пока мои солдаты стоят в пыли, крови и холоде, моё место рядом с армией, а не в праздных залах.',
+          choices: [
+            {
+              id: 'ask_why_not_in_city',
+              text: 'Почему ты не в городах?',
+              nextNodeId: 'post_quest_explain',
+            },
+            {
+              id: 'ask_about_field_of_battle_service',
+              text: 'Ты говорил о службе Аргосу. Что за поручение?',
+              nextNodeId: 'post_quest_field_of_battle_offer',
+              conditions: [
+                {
+                  type: 'quest_not_started',
+                  questId: 'argos_quest_field_of_battle'
+                }
+              ]
+            },
+            {
+              id: 'leave_after_completed',
+              text: 'Понял. Уйти.',
+              nextNodeId: 'post_quest_disrespect_warning',
+            },
+          ],
+        },
+        {
+          id: 'post_quest_explain',
+          speaker: 'npc',
+          text: '— Замки удерживают стены. Королевство удерживают люди в строю.\n— Я король Аргоса, а не смотритель дворцовых окон. Пока идёт война, я обязан быть там, где решается судьба моего знамени и моей земли.',
+          choices: [
+            {
+              id: 'leave_after_explain',
+              text: 'Я понял, ваше величество.',
+              endsDialogue: true,
+            },
+          ],
+        },
+        {
+          id: 'post_quest_field_of_battle_offer',
+          speaker: 'npc',
+          text: '— Поручение называется «Поле Брани».\n\n— Клиногорье и южная дорога всё ещё несут на себе след недавней бойни. Мне нужен не болтун, а человек, который посмотрит на кровь, пепел и страх своими глазами и не дрогнет.\n\n— Отправишься в Клиногорье, поговоришь с Браном Камышом и узнаешь, что осталось после резни у южного тракта. Потом Аргос решит, чего ты стоишь дальше.',
+          choices: [
+            {
+              id: 'accept_field_of_battle_service',
+              text: 'Я возьму это поручение.',
+              endsDialogue: true,
+              giveQuest: 'argos_quest_field_of_battle',
+              actions: [
+                {
+                  id: 'act_start_field_of_battle',
+                  type: 'startQuest',
+                  questId: 'argos_quest_field_of_battle'
+                }
+              ]
+            },
+            {
+              id: 'delay_field_of_battle_service',
+              text: 'Я вернусь, когда буду готов.',
+              endsDialogue: true
+            }
+          ]
+        },
+        {
+          id: 'post_quest_disrespect_warning',
+          speaker: 'npc',
+          text: 'Взгляд Грамара тяжелеет.\n\n— Не забывай, с кем говоришь. Даже тот, кому дарована милость Аргоса, обязан помнить почтение к своему королю.\n— За такую вольность ты теряешь часть доверия Аргоса.',
+          choices: [
+            {
+              id: 'leave_after_warning',
+              text: 'Склонить голову и уйти.',
+              endsDialogue: true,
+              actions: [
+                {
+                  id: 'act_lose_argos_reputation_for_disrespect',
+                  type: 'addReputation',
+                  reputationChanges: [
+                    {
+                      targetType: 'kingdom',
+                      targetId: 'argos',
+                      amount: -5
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+      ],
+    };
+  }
+
+  return {
+    ...dialogue,
+    id: `${dialogue.id}__completed_fallback`,
+    startNodeId: 'post_quest_start',
+    nodes: [
+      {
+        id: 'post_quest_start',
+        speaker: 'npc',
+        text: `${npc?.name ?? 'Собеседник'} уже обсудил с тобой всё по завершённому делу. Если появятся новые приказы или квесты, он скажет об этом первым.`,
+        choices: [
+          {
+            id: 'leave_post_quest',
+            text: 'Понял. Уйти.',
+            endsDialogue: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export interface DialogueChoiceResult {
   ended: boolean;
   movedToNodeId: string | null;
@@ -225,15 +448,28 @@ export function useDialogueRunner(params: {
       return;
     }
     const npc = context.npcId ? getNpcById(context.npcId) : null;
-    const start = getStartNode(definition, params.player, npc);
+    const shouldUseCompletedQuestFallback = (
+      areAllDialogueQuestsCompleted(params.player.id, definition)
+      && !hasQuestCompletedAwareNode(definition)
+    );
+    const effectiveDefinition = shouldUseCompletedQuestFallback
+      ? buildCompletedQuestFallbackDialogue(definition, npc)
+      : definition;
+    const start = getStartNode(effectiveDefinition, params.player, npc);
     if (!start) {
-      dispatch({ type: 'OPEN', dialogueId, nodeId: definition.startNodeId || 'missing', context: { ...context, sourceType: context.sourceType ?? 'system' } });
-      dispatch({ type: 'ERROR', text: `Start node not found: ${definition.startNodeId}` });
+      dispatch({ type: 'OPEN', dialogueId, nodeId: effectiveDefinition.startNodeId || 'missing', context: { ...context, sourceType: context.sourceType ?? 'system' } });
+      dispatch({ type: 'ERROR', text: `Start node not found: ${effectiveDefinition.startNodeId}` });
       return;
     }
 
-    dispatch({ type: 'OPEN', dialogueId, nodeId: start.id, context: { ...context, sourceType: context.sourceType ?? 'system' } });
-  }, [state.context, state.dialogueId, state.isOpen]);
+    dispatch({
+      type: 'OPEN',
+      dialogueId,
+      nodeId: start.id,
+      context: { ...context, sourceType: context.sourceType ?? 'system' },
+      dialogueOverride: shouldUseCompletedQuestFallback ? effectiveDefinition : null,
+    });
+  }, [params.player.id, state.context, state.dialogueId, state.isOpen]);
 
   const openDialogueForNpc = useCallback((npcId: string, context: Omit<DialogueContext, 'npcId' | 'sourceType'> = {}) => {
     const npc = getNpcById(npcId);

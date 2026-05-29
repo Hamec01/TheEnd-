@@ -13,6 +13,10 @@ export interface WorldSpriteViewport {
   height: number;
 }
 
+export interface ResolveLocationSpritesOptions {
+  screenScale?: number;
+}
+
 export interface ResolvedLocationSprite {
   zone: WorldMapZone;
   imageSrc: string;
@@ -124,8 +128,10 @@ export function resolveLocationSpritesForViewport(
   imageSizes: Map<string, { width: number; height: number }>,
   discoveredLocationIds?: Set<string>,
   discoveredZoneIds?: Set<string>,
+  options?: ResolveLocationSpritesOptions,
 ): ResolvedLocationSprite[] {
   const sprites: ResolvedLocationSprite[] = [];
+  const screenScale = Math.max(0.01, Number(options?.screenScale ?? 1));
   for (const zone of zones) {
     if (!isZoneSpriteVisible(zone, discoveredLocationIds, discoveredZoneIds) || !zone.locationSprite) {
       continue;
@@ -139,8 +145,8 @@ export function resolveLocationSpritesForViewport(
     const screenX = ((worldX - camera.left) / camera.width) * viewport.width + zone.locationSprite.offsetX;
     const screenY = ((worldY - camera.top) / camera.height) * viewport.height + zone.locationSprite.offsetY;
     const scale = Math.max(0.01, zone.locationSprite.scale);
-    const displayWidth = Math.max(1, imageSize.width * scale);
-    const displayHeight = Math.max(1, imageSize.height * scale);
+    const displayWidth = Math.max(1, imageSize.width * scale * screenScale);
+    const displayHeight = Math.max(1, imageSize.height * scale * screenScale);
     const originX = 0.5;
     const originY = zone.locationSprite.anchor === 'center' ? 0.5 : 1;
 
@@ -179,8 +185,9 @@ export function findClickedLocationSprite(
   imageSizes: Map<string, { width: number; height: number }>,
   discoveredLocationIds?: Set<string>,
   discoveredZoneIds?: Set<string>,
+  options?: ResolveLocationSpritesOptions,
 ): WorldMapZone | null {
-  const sprites = resolveLocationSpritesForViewport(zones, camera, viewport, imageSizes, discoveredLocationIds, discoveredZoneIds);
+  const sprites = resolveLocationSpritesForViewport(zones, camera, viewport, imageSizes, discoveredLocationIds, discoveredZoneIds, options);
   for (const sprite of [...sprites].sort((left, right) => right.zIndex - left.zIndex)) {
     const left = sprite.screenX - sprite.displayWidth * sprite.originX;
     const top = sprite.screenY - sprite.displayHeight * sprite.originY;
