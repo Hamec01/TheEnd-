@@ -142,7 +142,7 @@ import {
   startMineRun,
   toPublicMineRun,
   retreatMineRun,
-  useMineActiveSkill,
+  useMineActiveSkill as applyMineActiveSkill,
 } from "../services/miningRuntime";
 import { recordMiningCareerRun } from '../services/miningCareerStats';
 import { MiningScreen } from "./MiningScreen";
@@ -162,6 +162,7 @@ import type {
   QuestInteractionChoice,
   QuestInteractionDefinition,
   QuestMarkerDefinition,
+  QuestStep,
 } from "../types/quest";
 import {
   ensureNpcsLoaded,
@@ -747,6 +748,58 @@ function mergeQuestMarkerLists(
   return Array.from(merged.values());
 }
 
+function getQuestCurrentStep(quest: QuestDefinition, state: PlayerQuestState): QuestStep | null {
+  const steps = Array.isArray(quest.steps) ? quest.steps : [];
+  if (steps.length === 0) {
+    return null;
+  }
+  if (state.currentStepId) {
+    return steps.find((step) => step.id === state.currentStepId) ?? steps[0] ?? null;
+  }
+  return steps.find((step) => !state.completedStepIds.includes(step.id)) ?? steps[0] ?? null;
+}
+
+function getObjectiveAutoMarkerTargetId(objective: QuestDefinition['steps'][number]['objectives'][number]): string {
+  return String(
+    objective.markerTargetId
+    ?? objective.targetCityId
+    ?? objective.targetLocationId
+    ?? objective.zoneId
+    ?? '',
+  ).trim();
+}
+
+function findAutoQuestMarkerTargetZone(targetId: string, zones: WorldMapZone[]): WorldMapZone | null {
+  const normalized = targetId.trim();
+  if (!normalized) {
+    return null;
+  }
+  const lower = normalized.toLowerCase();
+  const withoutCityPrefix = lower.startsWith('city_') ? lower.slice(5) : lower;
+  const withCityPrefix = lower.startsWith('city_') ? lower : `city_${lower}`;
+
+  return zones.find((zone) => {
+    const candidates = [
+      zone.id,
+      zone.cityId,
+      zone.targetScene,
+      zone.linkedLocationId,
+      zone.linkedLocation,
+    ].map((value) => String(value ?? '').trim().toLowerCase()).filter(Boolean);
+    return candidates.some((candidate) => (
+      candidate === lower
+      || candidate === withoutCityPrefix
+      || candidate === withCityPrefix
+    ));
+  }) ?? null;
+}
+
+function getManualQuestObjectiveMarkerKey(marker: QuestMarkerDefinition): string | null {
+  const questId = String(marker.linkedQuestId ?? (marker as QuestMarkerDefinition & { questId?: string }).questId ?? '').trim();
+  const objectiveId = String(marker.linkedObjectiveId ?? marker.objectiveId ?? '').trim();
+  return questId && objectiveId ? `${questId}:${objectiveId}` : null;
+}
+
 function loadUiBoolean(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") {
     return fallback;
@@ -1090,6 +1143,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const restoredWorldContextCharacterRef = useRef<string | null>(null);
   const initialSpawnResolvedCharacterRef = useRef<string | null>(null);
   const argosIntroAutoOpenCharacterRef = useRef<string | null>(null);
+  const argosStartRecoveryCharacterRef = useRef<string | null>(null);
   const playerPositionHydratedCharacterRef = useRef<string | null>(null);
   const handlePrimaryWorldInteractionRef = useRef<() => void>(() => undefined);
   const handleRuntimeZoneInteractRef = useRef<((zone: WorldMapZone, point: { x: number; y: number }) => void) | null>(null);
@@ -1738,11 +1792,114 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => nearbyNpcs.map((entry) => ({ ...entry, reaction: resolveNpcReaction(entry.npc) })),
     [nearbyNpcs],
   );
+  const automaticQuestMarkers = useMemo(() => {
+    const manualObjectiveMarkerKeys = new Set(
+      questMarkers
+        .map(getManualQuestObjectiveMarkerKey)
+        .filter((entry): entry is string => Boolean(entry)),
+    );
+    const markers: QuestMarkerDefinition[] = [];
+
+    for (const state of playerQuestStates) {
+      if (state.status !== 'active') {
+        continue;
+      }
+
+      const quest = questDefinitions.find((entry) => entry.id === state.questId) ?? null;
+      if (!quest) {
+        continue;
+      }
+
+      const currentStep = getQuestCurrentStep(quest, state);
+      if (!currentStep) {
+        continue;
+      }
+
+      for (const objective of currentStep.objectives ?? []) {
+        if (state.completedObjectiveIds.includes(objective.id)) {
+          continue;
+        }
+        if (objective.autoMarker === false) {
+          continue;
+        }
+
+        const objectiveMarkerKey = `${quest.id}:${objective.id}`;
+        if (manualObjectiveMarkerKeys.has(objectiveMarkerKey)) {
+          continue;
+        }
+
+        const targetId = getObjectiveAutoMarkerTargetId(objective);
+        if (!targetId) {
+          continue;
+        }
+
+        const targetZone = findAutoQuestMarkerTargetZone(targetId, zones);
+        if (!targetZone) {
+          if (import.meta.env.DEV) {
+            console.warn('[QuestMarkers] target zone not found for objective', {
+              questId: quest.id,
+              stepId: currentStep.id,
+              objectiveId: objective.id,
+              targetId,
+            });
+          }
+          continue;
+        }
+
+        const [x, y] = getZoneCenter(targetZone);
+        const markerType = String(objective.markerType ?? '').trim() || 'quest_objective';
+        const objectiveDescription = String(
+          objective.markerDescription
+          ?? objective.description
+          ?? currentStep.journalText
+          ?? '',
+        ).trim();
+        const title = String(objective.markerLabel ?? quest.title ?? '').trim() || quest.id;
+
+        markers.push({
+          id: `auto_marker_${quest.id}_${objective.id}`,
+          mapId: 'worldmap-main',
+          x,
+          y,
+          type: markerType as QuestMarkerDefinition['type'],
+          title,
+          description: objectiveDescription || undefined,
+          targetId,
+          zoneId: targetZone.id,
+          linkedQuestId: quest.id,
+          linkedStepId: currentStep.id,
+          linkedObjectiveId: objective.id,
+          objectiveId: objective.id,
+          visibleToPlayer: true,
+          conditionIds: [],
+          isActive: true,
+          hideAfterQuestCompleted: true,
+          hideAfterObjectiveCompleted: objective.hideMarkerWhenCompleted !== false,
+          hideAfterStepCompleted: false,
+          showOnWorldMap: true,
+          showOnMiniMap: true,
+          worldMapVisibility: 'always',
+          miniMapVisibility: 'always',
+          runtimeQuestTitle: title,
+          runtimeQuestIconUrl: resolveQuestIcon(quest, runtimeImages),
+          runtimeQuestObjectiveText: objectiveDescription || undefined,
+        } as QuestMarkerDefinition);
+      }
+    }
+
+    return markers;
+  }, [playerQuestStates, questDefinitions, questMarkers, runtimeImages, zones]);
+
+  const runtimeQuestMarkers = useMemo(
+    () => mergeQuestMarkerLists(questMarkers, automaticQuestMarkers),
+    [automaticQuestMarkers, questMarkers],
+  );
+
   const playQuestMarkers = useMemo(() => {
     const activeStates = playerQuestStates.filter((entry) => entry.status === "active");
     const stateByQuestId = new Map(activeStates.map((state) => [state.questId, state]));
 
-    const visibleMarkers = questMarkers.filter((marker) => {
+    const visibleMarkers = runtimeQuestMarkers.filter((marker) => {
       if (marker.mapId !== "worldmap-main") {
         return false;
       }
@@ -1812,12 +1969,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         : null;
       const runtimeQuestIconUrl = resolveQuestIcon(linkedQuest, runtimeImages)
         ?? (marker.imageUrl?.trim() || undefined);
-      const runtimeQuestObjectiveText = linkedQuest
-        ? resolveQuestMarkerObjectiveText(marker, linkedQuest, linkedQuestState)
-        : undefined;
+      const runtimeQuestObjectiveText = String((marker as QuestMarkerDefinition & { runtimeQuestObjectiveText?: string }).runtimeQuestObjectiveText ?? '').trim()
+        || marker.description?.trim()
+        || (linkedQuest ? resolveQuestMarkerObjectiveText(marker, linkedQuest, linkedQuestState) : undefined);
       return {
         ...marker,
-        runtimeQuestTitle: linkedQuest?.title?.trim() || undefined,
+        runtimeQuestTitle: String((marker as QuestMarkerDefinition & { runtimeQuestTitle?: string }).runtimeQuestTitle ?? '').trim()
+          || marker.title?.trim()
+          || linkedQuest?.title?.trim()
+          || undefined,
         runtimeQuestIconUrl,
         runtimeQuestObjectiveText,
       };
@@ -1830,7 +1990,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     playerQuestStates,
     questRuntimeProfessionCompat,
     questDefinitions,
-    questMarkers,
+    runtimeQuestMarkers,
     runtimeImages,
   ]);
   const trackedQuestMarker = useMemo(
@@ -2761,16 +2921,44 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.id]);
 
   useEffect(() => {
+    const profile = loadCharacterProfile(character.id);
     const restored = loadSavedPlayerPosition(character.id);
+    const resolvedFromWorldState = resolvePlayerPositionFromWorldState(profile?.worldState, zones);
+
     if (restored) {
-      playerPositionHydratedCharacterRef.current = character.id;
-      setPlayerPosition(restored);
-      setPlaySpawnPosition(restored);
-      return;
+      const expectedZoneId = String(profile?.worldState?.currentZoneId ?? '').trim();
+      const expectedLocationId = String(profile?.worldState?.currentLocationId ?? '').trim();
+      const restoredZone = detectHoverZone(zones as Zone[], restored.x, restored.y);
+      const restoredMatchesExpectedZone = !restoredZone
+        ? false
+        : (
+          (expectedZoneId.length > 0 && restoredZone.id === expectedZoneId)
+          || (expectedLocationId.length > 0 && (
+            restoredZone.linkedLocationId === expectedLocationId
+            || restoredZone.linkedLocation === expectedLocationId
+            || restoredZone.id === expectedLocationId
+          ))
+        );
+      const hasExpectedSpawnTarget = expectedZoneId.length > 0 || expectedLocationId.length > 0;
+
+      if (!hasExpectedSpawnTarget || restoredMatchesExpectedZone) {
+        playerPositionHydratedCharacterRef.current = character.id;
+        setPlayerPosition(restored);
+        setPlaySpawnPosition(restored);
+        return;
+      }
+
+      console.info('[worldMap] drop stale saved playerPosition', {
+        characterId: character.id,
+        restored,
+        expectedZoneId: expectedZoneId || null,
+        expectedLocationId: expectedLocationId || null,
+      });
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(getPlayerPositionStorageKey(character.id));
+      }
     }
 
-    const profile = loadCharacterProfile(character.id);
-    const resolvedFromWorldState = resolvePlayerPositionFromWorldState(profile?.worldState, zones);
     if (profile?.worldState && !resolvedFromWorldState) {
       return;
     }
@@ -2789,6 +2977,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     restoredWorldContextCharacterRef.current = null;
     initialSpawnResolvedCharacterRef.current = null;
     argosIntroAutoOpenCharacterRef.current = null;
+    argosStartRecoveryCharacterRef.current = null;
   }, [character.id]);
 
   useEffect(() => {
@@ -2896,6 +3085,95 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
       return markInitialSpawnCompleted(currentProfile, resolution.worldState);
     });
+  }, [character.id, contentSnapshot, zones]);
+
+  useEffect(() => {
+    if (!contentSnapshot || argosStartRecoveryCharacterRef.current === character.id) {
+      return;
+    }
+
+    const profile = loadCharacterProfile(character.id);
+    if (!profile || !isHumanArgosProfile(profile)) {
+      return;
+    }
+    const activeProfile = profile;
+
+    const expectedLocationId = String(
+      activeProfile.worldState?.currentLocationId
+      ?? activeProfile.currentLocationId
+      ?? activeProfile.locationId
+      ?? '',
+    ).trim();
+    if (expectedLocationId !== KLINOGORIE_START_LOCATION_ID) {
+      return;
+    }
+
+    const resolution = resolveInitialSpawn(activeProfile, zones);
+    if (!resolution) {
+      return;
+    }
+
+    const currentZoneAtPlayer = detectHoverZone(zones as Zone[], playerPosition.x, playerPosition.y);
+    const isAlreadyAtExpectedZone = Boolean(
+      currentZoneAtPlayer
+      && (
+        currentZoneAtPlayer.id === resolution.rule.zoneId
+        || currentZoneAtPlayer.linkedLocationId === resolution.rule.locationId
+        || currentZoneAtPlayer.linkedLocation === resolution.rule.locationId
+      ),
+    );
+
+    if (isAlreadyAtExpectedZone) {
+      argosStartRecoveryCharacterRef.current = character.id;
+      return;
+    }
+
+    console.info('[worldMap] force teleport to argos start', {
+      characterId: character.id,
+      from: { x: playerPosition.x, y: playerPosition.y },
+      to: resolution.position,
+      zoneId: resolution.rule.zoneId,
+      locationId: resolution.rule.locationId,
+    });
+
+    setPlayerPosition(resolution.position);
+    setPlaySpawnPosition(resolution.position);
+    setCurrentZone(resolution.zone);
+    setActiveCityId(null);
+    setContextMode('location');
+    setPlayerState('in_zone');
+
+    const spawnedLocation = contentSnapshot.locations.find((entry) => entry.id === resolution.rule.locationId) ?? null;
+    if (locationHasLocalMap(spawnedLocation)) {
+      setActiveLocationId(resolution.rule.locationId);
+      setActiveWorldModal(null);
+      setLocationView('location');
+    } else {
+      setActiveLocationId(null);
+      setActiveWorldModal({
+        type: 'location',
+        locationId: resolution.rule.locationId,
+      });
+      setLocationView('map');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        getPlayerPositionStorageKey(character.id),
+        JSON.stringify(resolution.position),
+      );
+    }
+
+    updateCharacterProfile(character.id, (current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...markInitialSpawnCompleted(current, resolution.worldState),
+        introDialoguePending: current.introDialoguePending !== false,
+      };
+    });
+    argosStartRecoveryCharacterRef.current = character.id;
   }, [character.id, contentSnapshot, zones]);
 
   useEffect(() => {
@@ -5852,7 +6130,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     if (!activeMineRun || !activeMineEffects) {
       return 'Спуск не активен.';
     }
-    const result = useMineActiveSkill(activeMineRun, activeMineEffects, skillId, blockIndex);
+    const result = applyMineActiveSkill(activeMineRun, activeMineEffects, skillId, blockIndex);
     if (result.changed) {
       setActiveMineRun(result.run);
     }

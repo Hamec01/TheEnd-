@@ -2336,6 +2336,12 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   ]);
 
 function applyHubState(hub: HubStatePayload): void {
+    console.info('[characterFlow] hub loaded', {
+      characterId: hub.character.id,
+      name: hub.character.name,
+      race: hub.character.race,
+      kingdomId: hub.character.citizenshipKingdomId ?? null,
+    });
     setActiveCharacterId(hub.character.id);
     migrateLegacyStorageToCharacter(hub.character.id);
     const justCreatedSpawn = justCreatedCharacterSpawnRef.current;
@@ -2687,6 +2693,20 @@ function applyHubState(hub: HubStatePayload): void {
         characterId: saved.id,
         worldState: initialWorldState,
       };
+        console.info('[characterCreate] prepared profile', {
+          characterId: saved.id,
+          name: trimmedName,
+          race: raceConfig.id,
+          kingdomId: spawn.kingdomId ?? null,
+          citizenshipKingdomId: spawn.citizenshipKingdomId ?? null,
+          locationId: profile.locationId ?? null,
+          currentLocationId: profile.currentLocationId ?? null,
+          zoneId: profile.zoneId ?? null,
+          currentZoneId: profile.currentZoneId ?? null,
+          currentX: null,
+          currentY: null,
+          initialSpawnCompleted: profile.initialSpawnCompleted === true,
+        });
       saveCharacterProfile(profile);
       console.info('[characterCreate] final saved location', {
         characterId: saved.id,
@@ -2712,6 +2732,7 @@ function applyHubState(hub: HubStatePayload): void {
   async function onPlayCharacter(characterId: string): Promise<void> {
     setStatus('Loading character...');
     try {
+      console.info('[characterFlow] play selected', { characterId });
       setActiveCharacterId(characterId);
       migrateLegacyStorageToCharacter(characterId);
       const hub = await getArenaHubState(characterId);

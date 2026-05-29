@@ -40,6 +40,7 @@ import type {
   QuestCategory,
   QuestCondition,
   QuestDefinition,
+  QuestObjective,
   QuestReward,
   QuestStatus,
   QuestStep,
@@ -53,6 +54,7 @@ import type { WorldLocation } from '../../types/location';
 
 const QUEST_CATEGORIES: QuestCategory[] = ['global', 'kingdom', 'faction', 'profession', 'lore', 'city', 'npc', 'random', 'hidden', 'repeatable'];
 const QUEST_STATUSES: QuestStatus[] = ['draft', 'active', 'disabled', 'archived'];
+const AUTO_MARKER_OBJECTIVE_TYPES = new Set(['enter_zone', 'reach_marker', 'inspect_object', 'talk_to_npc']);
 
 type QuestStepJson = QuestStep & {
   description?: string;
@@ -732,12 +734,16 @@ export function QuestsPage() {
   }
 
   function updateObjectiveZone(stepIndex: number, objectiveIndex: number, zoneId: string) {
+    patchObjective(stepIndex, objectiveIndex, { zoneId: zoneId || undefined });
+  }
+
+  function patchObjective(stepIndex: number, objectiveIndex: number, objectivePatch: Partial<QuestObjective>) {
     patch({
       steps: asArray(draft.steps).map((step, currentStepIndex) => currentStepIndex === stepIndex
         ? {
             ...step,
             objectives: asArray(step.objectives).map((objective, currentObjectiveIndex) => currentObjectiveIndex === objectiveIndex
-              ? { ...objective, zoneId: zoneId || undefined }
+              ? { ...objective, ...objectivePatch }
               : objective),
           }
         : step),
@@ -963,9 +969,12 @@ export function QuestsPage() {
           <p className="muted">Доступные zoneId: {zoneListText || '-'}</p>
           {objectiveZoneEntries.length > 0 ? (
             <div className="admin-zone-reference-stack">
-              {objectiveZoneEntries.map(({ step, objective, stepIndex, objectiveIndex }) => (
+              {objectiveZoneEntries.map(({ step, objective, stepIndex, objectiveIndex }) => {
+                const autoMarkerDefault = AUTO_MARKER_OBJECTIVE_TYPES.has(objective.type);
+                const autoMarkerChecked = objective.autoMarker ?? autoMarkerDefault;
+                return (
+                  <div key={`${step.id}:${objective.id}`} className="card admin-item-preview">
                 <ZoneReferenceInput
-                  key={`${step.id}:${objective.id}`}
                   label={`Objective ${objective.id}`}
                   hint={`Шаг ${step.title || step.id}. Для objective можно выбрать существующую зону или ввести zoneId вручную.`}
                   listId={`quest-objective-zone-${step.id}-${objective.id}`}
@@ -974,7 +983,41 @@ export function QuestsPage() {
                   onChange={(value) => updateObjectiveZone(stepIndex, objectiveIndex, value)}
                   emptyOptionLabel="Зона objective"
                 />
-              ))}
+                    <label>
+                      <AdminFieldLabel label="Auto marker on world map" hint="Creates a runtime quest marker above the target zone while this objective is active." />
+                      <input
+                        type="checkbox"
+                        checked={autoMarkerChecked}
+                        onChange={(event) => patchObjective(stepIndex, objectiveIndex, { autoMarker: event.target.checked })}
+                      />
+                    </label>
+                    <ZoneReferenceInput
+                      label="Marker target ID"
+                      hint="Target zone/city/location id. Empty uses targetCityId, targetLocationId, then zoneId."
+                      listId={`quest-objective-marker-target-${step.id}-${objective.id}`}
+                      value={objective.markerTargetId ?? ''}
+                      zones={zones}
+                      onChange={(value) => patchObjective(stepIndex, objectiveIndex, { markerTargetId: value || undefined })}
+                      emptyOptionLabel="Use objective target"
+                    />
+                    <label>
+                      <AdminFieldLabel label="Marker label" hint="Optional title shown on hover. Empty uses quest title." />
+                      <input
+                        value={objective.markerLabel ?? ''}
+                        onChange={(event) => patchObjective(stepIndex, objectiveIndex, { markerLabel: event.target.value || undefined })}
+                      />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Marker description" hint="Optional hover text. Empty uses objective description or step journal." />
+                      <textarea
+                        rows={2}
+                        value={objective.markerDescription ?? ''}
+                        onChange={(event) => patchObjective(stepIndex, objectiveIndex, { markerDescription: event.target.value || undefined })}
+                      />
+                    </label>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </section>

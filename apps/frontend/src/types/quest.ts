@@ -141,7 +141,8 @@ export interface QuestStep {
 export interface QuestObjective {
   id: string;
   type: QuestObjectiveType;
-  description: string;
+  description?: string;
+  text?: string;
 
   targetId?: string;
   targetName?: string;
@@ -150,7 +151,15 @@ export interface QuestObjective {
 
   mapId?: string;
   markerId?: string;
+  autoMarker?: boolean;
+  markerTargetId?: string;
+  markerType?: string;
+  markerLabel?: string;
+  markerDescription?: string;
+  hideMarkerWhenCompleted?: boolean;
   zoneId?: string;
+  targetCityId?: string;
+  targetLocationId?: string;
   itemId?: string;
   questItemId?: string;
   npcId?: string;
@@ -158,6 +167,9 @@ export interface QuestObjective {
   dialogueChoiceId?: string;
 
   isOptional?: boolean;
+  required?: boolean;
+  hidden?: boolean;
+  order?: number;
 }
 
 export interface QuestCondition {
@@ -456,6 +468,9 @@ export interface QuestMarkerDefinition {
   linkedStepId?: string;
   linkedObjectiveId?: string;
   objectiveId?: string;
+  targetId?: string;
+  zoneId?: string;
+  description?: string;
   linkedNpcId?: string;
   icon?: string;
   visibleToPlayer: boolean;

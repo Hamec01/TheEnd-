@@ -7186,10 +7186,11 @@ h3 {
 
 .wm-quest-journal-banner {
   width: 100%;
-  max-height: 220px;
+  height: 160px;
   border-radius: 10px;
   border: 1px solid rgba(210, 170, 102, 0.36);
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   display: block;
   margin: 0 0 12px;
   background: rgba(19, 14, 10, 0.94);

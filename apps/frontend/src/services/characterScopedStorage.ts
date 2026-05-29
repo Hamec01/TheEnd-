@@ -42,9 +42,11 @@ export function setActiveCharacterId(characterId: string | null): void {
     return;
   }
   if (characterId && characterId.trim()) {
+    console.info('[characterScopedStorage] setActiveCharacterId', { characterId: characterId.trim() });
     window.localStorage.setItem(ACTIVE_CHARACTER_ID_STORAGE_KEY, characterId.trim());
     return;
   }
+  console.info('[characterScopedStorage] clearActiveCharacterId');
   window.localStorage.removeItem(ACTIVE_CHARACTER_ID_STORAGE_KEY);
 }
 
