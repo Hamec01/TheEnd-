@@ -3812,10 +3812,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [onOpenInventory],
   );
 
-  // Memoize callbacks to prevent infinite loops in animation frames
+  // Keep the live player position in sync without feeding it back into the
+  // runtime controller's spawn/start position on every animation frame.
   const handlePlayerPosition = useCallback((x: number, y: number) => {
-    setPlayerPosition({ x, y });
-    setPlaySpawnPosition((current) => {
+    setPlayerPosition((current) => {
       if (Math.abs(current.x - x) < 0.0005 && Math.abs(current.y - y) < 0.0005) {
         return current;
       }
