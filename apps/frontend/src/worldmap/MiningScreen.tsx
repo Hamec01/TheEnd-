@@ -6,6 +6,11 @@ import { itemsService } from '../services/content/itemsService';
 import { materialsService } from '../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
 import type { StoredImage } from '../services/content/models';
+import {
+  loadWorldAudioSettings,
+  WORLD_AUDIO_SETTINGS_EVENT,
+  type WorldAudioSettings,
+} from './worldAudioSettings';
 
 const SLOT_ICON_FALLBACK = '/assets/mining/cell_opened.png';
 const MINING_MUSIC_TRACKS = [
@@ -229,6 +234,7 @@ export function MiningScreen({
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [activeSkillHint, setActiveSkillHint] = useState<string | null>(null);
   const [musicStatus, setMusicStatus] = useState<string>('Музыка: инициализация...');
+  const [worldAudioSettings, setWorldAudioSettings] = useState<WorldAudioSettings>(() => loadWorldAudioSettings());
   const mineMusicRef = React.useRef<HTMLAudioElement | null>(null);
   const visibleSlotIdsKey = useMemo(
     () => visibleSlots.slots.map((entry) => `${entry.slotIndex}:${entry.itemId ?? ''}:${entry.quantity}`).join('|'),
@@ -254,6 +260,27 @@ export function MiningScreen({
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAudioSettingsChanged = (event: Event) => {
+      if (event instanceof StorageEvent) {
+        setWorldAudioSettings(loadWorldAudioSettings());
+        return;
+      }
+
+      const nextValue = (event as CustomEvent<WorldAudioSettings>).detail;
+      if (nextValue && typeof nextValue === 'object') {
+        setWorldAudioSettings(nextValue);
+      }
+    };
+
+    window.addEventListener('storage', handleAudioSettingsChanged);
+    window.addEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleAudioSettingsChanged);
+      window.removeEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
     };
   }, []);
 
@@ -318,7 +345,19 @@ export function MiningScreen({
     mineMusicRef.current = audio;
     audio.preload = 'auto';
     audio.loop = false;
-    audio.volume = 0.28;
+    const effectiveMusicVolume = worldAudioSettings.musicEnabled
+      ? Math.max(0, Math.min(1, 0.28 * worldAudioSettings.musicVolume))
+      : 0;
+    audio.volume = effectiveMusicVolume;
+
+    if (effectiveMusicVolume <= 0) {
+      audio.pause();
+      audio.currentTime = 0;
+      setMusicStatus('Музыка: выключена в настройках.');
+      return () => {
+        stopped = true;
+      };
+    }
 
     const pickNextTrack = (exclude: number | null): number | null => {
       const available = MINING_MUSIC_TRACKS.map((_, index) => index)
@@ -415,7 +454,7 @@ export function MiningScreen({
       audio.currentTime = 0;
       setMusicStatus('Музыка: остановлена.');
     };
-  }, []);
+  }, [worldAudioSettings]);
 
   useEffect(() => {
     let cancelled = false;

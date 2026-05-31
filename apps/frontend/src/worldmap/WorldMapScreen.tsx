@@ -205,6 +205,11 @@ import {
   type MovementControlScheme,
 } from "./playerMovementSettings";
 import { loadWorldMapRuntimeSettings } from "./worldMapRuntimeSettings";
+import {
+  loadWorldAudioSettings,
+  WORLD_AUDIO_SETTINGS_EVENT,
+  type WorldAudioSettings,
+} from "./worldAudioSettings";
 import { useWorldSnapshot } from "../services/useWorldSimulation";
 import { buildWorldSceneSnapshot } from "./worldSceneAdapter";
 import { resolveRenderedWorldEntities } from "./worldEntityVisualResolver";
@@ -263,6 +268,34 @@ const BRAN_INTRO_DIALOGUE_IDS = new Set([
   "dlg_klinogorie_bran_intro",
   "dlg_npc_klinogorie_bran_legless_soldier_yyzx",
 ]);
+const FOOTSTEP_SOUND_BY_SURFACE = {
+  field: [
+    "/assets/audio/footsteps/field/step_1.ogg",
+    "/assets/audio/footsteps/field/step_2.ogg",
+    "/assets/audio/footsteps/field/step_3.ogg",
+  ],
+  road: [
+    "/assets/audio/footsteps/road/step_1.ogg",
+    "/assets/audio/footsteps/road/step_2.ogg",
+    "/assets/audio/footsteps/road/step_3.ogg",
+  ],
+  sand: [
+    "/assets/audio/footsteps/sand/step_1.ogg",
+    "/assets/audio/footsteps/sand/step_2.ogg",
+    "/assets/audio/footsteps/sand/step_3.ogg",
+  ],
+  swamp: [
+    "/assets/audio/footsteps/swamp/step_1.ogg",
+    "/assets/audio/footsteps/swamp/step_2.ogg",
+    "/assets/audio/footsteps/swamp/step_3.ogg",
+  ],
+  snow: [
+    "/assets/audio/footsteps/snow/step_1.ogg",
+    "/assets/audio/footsteps/snow/step_2.ogg",
+    "/assets/audio/footsteps/snow/step_3.ogg",
+  ],
+} as const;
+type FootstepSurface = keyof typeof FOOTSTEP_SOUND_BY_SURFACE;
 
 function rollHostileBanditEnemyCount(): number {
   return HOSTILE_BANDIT_MIN_ENEMIES + Math.floor(Math.random() * (HOSTILE_BANDIT_MAX_ENEMIES - HOSTILE_BANDIT_MIN_ENEMIES + 1));
@@ -572,16 +605,37 @@ function isLikelyWindowsLocalPath(value: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(value);
 }
 
-function getGlobalAudioVolume(): number {
-  if (typeof window === "undefined") {
-    return 1;
+function resolveMusicVolume(settings: WorldAudioSettings, cueVolume: number): number {
+  if (!settings.musicEnabled) {
+    return 0;
   }
-  const volumeKeys = ["theend.audio.volume", "theend.sound.volume"];
-  const rawVolume = volumeKeys
-    .map((key) => window.localStorage.getItem(key))
-    .find((value) => value !== null);
-  const parsed = rawVolume ? Number(rawVolume) : 1;
-  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
+  return Math.max(0, Math.min(1, cueVolume * settings.musicVolume));
+}
+
+function resolveSfxVolume(settings: WorldAudioSettings, base = 1): number {
+  if (!settings.sfxEnabled) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, base * settings.sfxVolume));
+}
+
+function resolveFootstepSurface(regionType: RegionType | undefined, kingdomArea: WorldMapZone | null): FootstepSurface {
+  if (regionType === 'road') {
+    return 'road';
+  }
+  if (regionType === 'sand') {
+    return 'sand';
+  }
+  if (regionType === 'swamp' || regionType === 'water') {
+    return 'swamp';
+  }
+
+  const snowProbe = `${kingdomArea?.id ?? ''} ${kingdomArea?.name ?? ''} ${kingdomArea?.tooltip ?? ''}`.toLowerCase();
+  if (snowProbe.includes('snow') || snowProbe.includes('снег')) {
+    return 'snow';
+  }
+
+  return 'field';
 }
 
 function resolveWorldAudioSource(value: string | undefined | null): string | null {
@@ -1151,6 +1205,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const worldMusicFadeRafRef = useRef<number | null>(null);
   const worldMusicCurrentKingdomRef = useRef<string | null>(null);
   const worldMusicLastTrackByKingdomRef = useRef<Map<string, string>>(new Map());
+  const footstepAudioPoolRef = useRef<HTMLAudioElement[]>([]);
+  const footstepFailedSourcesRef = useRef<Set<string>>(new Set());
+  const footstepLastPlayedAtRef = useRef(0);
+  const footstepLastSourceRef = useRef<string | null>(null);
   const lastDialogueVoiceKeyRef = useRef<string | null>(null);
   const warnedDialogueVoiceSourcesRef = useRef<Set<string>>(new Set());
   const pendingDialogueVoicePlayRef = useRef(false);
@@ -1227,6 +1285,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   );
   const [movementControlScheme, setMovementControlScheme] = useState<MovementControlScheme>(() =>
     loadMovementControlScheme(),
+  );
+  const [worldAudioSettings, setWorldAudioSettings] = useState<WorldAudioSettings>(() =>
+    loadWorldAudioSettings(),
   );
   const [shiftPressed, setShiftPressed] = useState(false);
   const [playCameraFocusPoint, setPlayCameraFocusPoint] = useState<{ x: number; y: number } | null>(null);
@@ -1382,6 +1443,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         worldMusicIdleAudioRef.current.pause();
         worldMusicIdleAudioRef.current.currentTime = 0;
       }
+      for (const audio of footstepAudioPoolRef.current) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+      footstepAudioPoolRef.current = [];
       worldMusicCurrentKingdomRef.current = null;
       pendingDialogueVoicePlayRef.current = false;
       dialogueVoiceRetryBoundRef.current = false;
@@ -1471,6 +1537,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     return () => {
       window.removeEventListener("storage", handleControlSchemeChanged);
       window.removeEventListener(PLAYER_MOVEMENT_CONTROL_SCHEME_EVENT, handleControlSchemeChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAudioSettingsChanged = (event: Event) => {
+      if (event instanceof StorageEvent) {
+        setWorldAudioSettings(loadWorldAudioSettings());
+        return;
+      }
+
+      const nextValue = (event as CustomEvent<WorldAudioSettings>).detail;
+      if (nextValue && typeof nextValue === 'object') {
+        setWorldAudioSettings(nextValue);
+      }
+    };
+
+    window.addEventListener('storage', handleAudioSettingsChanged);
+    window.addEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleAudioSettingsChanged);
+      window.removeEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
     };
   }, []);
 
@@ -1662,7 +1749,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const kingdomKey = (kingdomArea?.kingdomId || kingdomArea?.id || '').trim() || null;
     const cue = kingdomArea?.music;
     const sources = getWorldAudioCueSources(cue);
-    const targetVolume = Math.max(0, Math.min(1, (cue?.volume ?? 0.45) * getGlobalAudioVolume()));
+    const targetVolume = resolveMusicVolume(worldAudioSettings, cue?.volume ?? 0.35);
     const fadeOutMs = Math.max(250, cue?.fadeOutMs ?? 1200);
     const fadeInMs = Math.max(250, cue?.fadeInMs ?? 1200);
 
@@ -1721,7 +1808,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return sourcePool[Math.max(0, Math.min(sourcePool.length - 1, randomIndex))]!;
     };
 
-    if (!kingdomKey || sources.length === 0) {
+    if (!kingdomKey || sources.length === 0 || targetVolume <= 0) {
       worldMusicCurrentKingdomRef.current = null;
       fadeOutAndStop(worldMusicActiveAudioRef.current, fadeOutMs);
       return;
@@ -1792,7 +1879,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         // Ignore autoplay restrictions silently; audio starts after next user interaction.
       });
     }
-  }, [currentPassiveContexts.currentKingdomArea]);
+  }, [currentPassiveContexts.currentKingdomArea, worldAudioSettings]);
   const nearbyNpcs = useMemo(
     () =>
       getNearbyMappedNpcs(
@@ -2135,7 +2222,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       audio.currentTime = 0;
       audio.preload = "auto";
       audio.src = source;
-      audio.volume = getGlobalAudioVolume();
+      audio.volume = resolveSfxVolume(worldAudioSettings);
       void audio.play()
         .then(() => {
           pendingDialogueVoicePlayRef.current = false;
@@ -2160,7 +2247,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               if (!pendingAudio) {
                 return;
               }
-              pendingAudio.volume = getGlobalAudioVolume();
+              pendingAudio.volume = resolveSfxVolume(worldAudioSettings);
               void pendingAudio.play()
                 .then(() => {
                   pendingDialogueVoicePlayRef.current = false;
@@ -2175,7 +2262,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     } catch {
       // Ignore audio setup failures to avoid breaking dialogue flow.
     }
-  }, [dialogueRunner.dialogue, dialogueRunner.state.context, dialogueRunner.state.isOpen, onStatus, resolveNpcById]);
+  }, [dialogueRunner.dialogue, dialogueRunner.state.context, dialogueRunner.state.isOpen, onStatus, resolveNpcById, worldAudioSettings]);
   const npcQuestMarkerPlayer = useMemo<QuestRuntimePlayer>(() => {
     const activeQuestIds = playerQuestStates
       .filter((entry) => entry.playerId === character.id && entry.status === "active")
@@ -2351,12 +2438,99 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const cell = paintedCellMap.get(`${cellX}:${cellY}`);
     return cell ? getRegionMoveSpeedMultiplier(cell.regionType) : 1;
   }, [paintedCellMap]);
+  const currentRegionType = useMemo<RegionType | undefined>(() => {
+    const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.x * REGION_GRID_SIZE)));
+    const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.y * REGION_GRID_SIZE)));
+    const cell = paintedCellMap.get(`${cellX}:${cellY}`);
+    return cell?.regionType;
+  }, [paintedCellMap, playerPosition.x, playerPosition.y]);
+  const footstepSurface = useMemo<FootstepSurface>(
+    () => resolveFootstepSurface(currentRegionType, currentPassiveContexts.currentKingdomArea),
+    [currentPassiveContexts.currentKingdomArea, currentRegionType],
+  );
   useEffect(() => {
     const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.x * REGION_GRID_SIZE)));
     const cellY = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(playerPosition.y * REGION_GRID_SIZE)));
     const cell = paintedCellMap.get(`${cellX}:${cellY}`);
     setTerrainStaminaDrainMultiplier(cell ? getRegionStaminaCostMultiplier(cell.regionType) : 1);
   }, [paintedCellMap, playerPosition.x, playerPosition.y]);
+  useEffect(() => {
+    if (!worldAudioSettings.sfxEnabled) {
+      for (const audio of footstepAudioPoolRef.current) {
+        audio.pause();
+      }
+      return;
+    }
+
+    if (worldMapMode !== 'play' || locationView !== 'map' || playerState !== 'moving') {
+      return;
+    }
+
+    const movementSpeedMultiplier = Math.max(0.2, currentRegionType ? getRegionMoveSpeedMultiplier(currentRegionType) : 1);
+    const baseInterval = sprintActive ? 280 : 370;
+    const stepIntervalMs = Math.max(140, Math.round(baseInterval / movementSpeedMultiplier));
+    const sources = FOOTSTEP_SOUND_BY_SURFACE[footstepSurface];
+
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - footstepLastPlayedAtRef.current < stepIntervalMs) {
+        return;
+      }
+
+      const candidates = sources
+        .filter((source) => !footstepFailedSourcesRef.current.has(source))
+        .filter((source) => source !== footstepLastSourceRef.current);
+      const pool = candidates.length > 0 ? candidates : sources;
+      if (pool.length === 0) {
+        return;
+      }
+
+      const source = pool[Math.floor(Math.random() * pool.length)] ?? pool[0];
+      if (!source) {
+        return;
+      }
+
+      let audio = footstepAudioPoolRef.current.find((entry) => entry.dataset.source === source) ?? null;
+      if (!audio) {
+        audio = new Audio(source);
+        audio.preload = 'auto';
+        audio.dataset.source = source;
+        footstepAudioPoolRef.current.push(audio);
+      }
+
+      const playVolume = resolveSfxVolume(worldAudioSettings, sprintActive ? 0.4 : 0.32);
+      if (playVolume <= 0) {
+        return;
+      }
+
+      try {
+        audio.volume = playVolume;
+        audio.currentTime = 0;
+        void audio.play().catch((error) => {
+          const name = String((error as { name?: string } | null)?.name ?? '').toLowerCase();
+          if (!name.includes('aborterror')) {
+            footstepFailedSourcesRef.current.add(source);
+          }
+        });
+        footstepLastPlayedAtRef.current = now;
+        footstepLastSourceRef.current = source;
+      } catch {
+        footstepFailedSourcesRef.current.add(source);
+      }
+    }, 120);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    currentRegionType,
+    footstepSurface,
+    locationView,
+    playerState,
+    sprintActive,
+    worldAudioSettings,
+    worldMapMode,
+  ]);
   const mapDiscoveryMarkers = useMemo<MapDiscoveryMarker[]>(() => {
     const cityIds = new Set(mapDiscoveryState.discoveredCityIds);
     const locationIds = new Set(mapDiscoveryState.discoveredLocationIds);

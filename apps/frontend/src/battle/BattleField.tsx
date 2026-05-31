@@ -745,6 +745,48 @@ export function BattleField({
     return () => window.removeEventListener('pointerdown', handlePointerDown);
   }, [contextMenu.show]);
 
+  const tileByCoord = useMemo(
+    () => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile])),
+    [battlefieldTiles],
+  );
+
+  const visibleTrapByCoord = useMemo(() => {
+    const traps = new Map<string, BattlefieldTrapState>();
+    const trapById = new Map(battlefieldTraps.map((trap) => [trap.id, trap]));
+    for (const tile of battlefieldTiles) {
+      if (!tile.trapId) {
+        continue;
+      }
+      const trap = trapById.get(tile.trapId);
+      if (!trap || trap.isActive === false) {
+        continue;
+      }
+      traps.set(`${tile.x}:${tile.y}`, trap);
+    }
+    return traps;
+  }, [battlefieldTiles, battlefieldTraps]);
+
+  const exitZoneByCoord = useMemo(() => {
+    const zones = new Map<string, ExitZone>();
+    for (const zone of exitZones) {
+      for (const cell of zone.cells ?? []) {
+        zones.set(`${cell.x}:${cell.y}`, zone);
+      }
+    }
+    return zones;
+  }, [exitZones]);
+
+  const lootByCoord = useMemo(() => {
+    const loot = new Map<string, CombatLootContainer>();
+    for (const container of lootContainers) {
+      if (container.claimed) {
+        continue;
+      }
+      loot.set(`${container.x}:${container.y}`, container);
+    }
+    return loot;
+  }, [lootContainers]);
+
   if (!player || !selectedEnemy) {
     return <div className="battle-field tactical-field">Battlefield not ready</div>;
   }
@@ -770,44 +812,6 @@ export function BattleField({
   const fullMapPixelHeight = gridOffsetY * 2 + battleMapHeight * sceneCellSize;
   const backgroundOffsetX = gridOffsetX - viewport.offsetX * sceneCellSize;
   const backgroundOffsetY = gridOffsetY - viewport.offsetY * sceneCellSize;
-  const tileByCoord = useMemo(
-    () => new Map(battlefieldTiles.map((tile) => [`${tile.x}:${tile.y}`, tile])),
-    [battlefieldTiles],
-  );
-  const visibleTrapByCoord = useMemo(() => {
-    const traps = new Map<string, BattlefieldTrapState>();
-    const trapById = new Map(battlefieldTraps.map((trap) => [trap.id, trap]));
-    for (const tile of battlefieldTiles) {
-      if (!tile.trapId) {
-        continue;
-      }
-      const trap = trapById.get(tile.trapId);
-      if (!trap || trap.isActive === false) {
-        continue;
-      }
-      traps.set(`${tile.x}:${tile.y}`, trap);
-    }
-    return traps;
-  }, [battlefieldTiles, battlefieldTraps]);
-  const exitZoneByCoord = useMemo(() => {
-    const zones = new Map<string, ExitZone>();
-    for (const zone of exitZones) {
-      for (const cell of zone.cells ?? []) {
-        zones.set(`${cell.x}:${cell.y}`, zone);
-      }
-    }
-    return zones;
-  }, [exitZones]);
-  const lootByCoord = useMemo(() => {
-    const loot = new Map<string, CombatLootContainer>();
-    for (const container of lootContainers) {
-      if (container.claimed) {
-        continue;
-      }
-      loot.set(`${container.x}:${container.y}`, container);
-    }
-    return loot;
-  }, [lootContainers]);
 
   return (
     <div className="battle-field tactical-field">

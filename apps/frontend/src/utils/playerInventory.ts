@@ -24,6 +24,22 @@ export interface NormalizedPlayerInventory {
   resources: Record<string, number>;
 }
 
+const LEGACY_ITEM_ID_MIGRATIONS: Record<string, string> = {
+  // Older mining/material ids that were stored as standalone "item_*" entries.
+  item_raw_stone: 'mat_raw_stone',
+  item_iron_ore: 'mat_iron_ore',
+  item_small_gold_nugget: 'mat_gold_nugget',
+  item_cracked_crystal: 'mat_cracked_crystal',
+  item_zeptyrite_trace: 'mat_zeptyrite_trace',
+  item_rune_fragment_weak: 'mat_weak_rune_fragment',
+  item_rune_dust: 'mat_rune_dust',
+};
+
+function migrateLegacyItemId(itemId: string): string {
+  const normalized = itemId.trim();
+  return LEGACY_ITEM_ID_MIGRATIONS[normalized] ?? normalized;
+}
+
 function parseStorageValue(key: string): unknown {
   if (typeof window === 'undefined') {
     return null;
@@ -166,7 +182,8 @@ export function normalizeInventoryState(rawInventory: unknown): InventoryState {
         return null;
       }
       const record = entry as Record<string, unknown>;
-      const itemId = typeof record.itemId === 'string' ? record.itemId.trim() : '';
+      const rawItemId = typeof record.itemId === 'string' ? record.itemId : '';
+      const itemId = migrateLegacyItemId(rawItemId);
       const quantity = Number(record.quantity);
       if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
         return null;
@@ -185,7 +202,7 @@ export function normalizeInventoryState(rawInventory: unknown): InventoryState {
 
 export function mergeInventoryWithRuntimeOverlay(baseInventory: InventoryState): InventoryState {
   const normalizedBase = normalizeInventoryState(baseInventory);
-  const runtimeItemIds = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+  const runtimeItemIds = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY).map(migrateLegacyItemId);
   const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
 
   const quantityByItemId = new Map<string, number>();

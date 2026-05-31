@@ -50,6 +50,17 @@ export type NpcCombatRole =
   | 'support'
   | 'beast';
 
+export type GameImageRef =
+  | {
+    type: 'image';
+    src: string;
+  }
+  | {
+    type: 'tileset';
+    sheetId: string;
+    frame: number;
+  };
+
 export interface NpcDefinition {
   id: string;
   name: string;
@@ -75,9 +86,13 @@ export interface NpcDefinition {
   adminNotes?: string;
 
   portraitUrl?: string;
+  portraitImageRef?: GameImageRef;
   fullImageUrl?: string;
+  fullImageRef?: GameImageRef;
   combatImageUrl?: string;
+  combatImageRef?: GameImageRef;
   iconUrl?: string;
+  iconImageRef?: GameImageRef;
   battleSpriteAssetId?: string;
   deathEffectId?: string;
   hitEffectPreset?: string;

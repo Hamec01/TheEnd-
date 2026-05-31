@@ -378,7 +378,7 @@ export function MineEditor({ onSave }: MineEditorProps) {
             <input
               value={(draft.knownResourceItemIds ?? []).join(', ')}
               onChange={(event) => setDraft((current) => ({ ...current, knownResourceItemIds: splitCsv(event.target.value) }))}
-              placeholder="item_raw_stone, item_iron_ore"
+              placeholder="mat_raw_stone, mat_iron_ore"
             />
             <select
               defaultValue=""

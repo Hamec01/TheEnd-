@@ -4,6 +4,7 @@ import type { NpcDefinition } from '../types/npc';
 import { getPlayerQuestState, handleQuestEvent, type QuestRuntimePlayer } from './questRuntime';
 import { getDialogueById, getDialoguesByNpc } from './dialogueRepository';
 import { getNpcById } from './npcRepository';
+import { getQuestById } from './questRepository';
 import {
   choiceShorthandToActions,
   evaluateDialogueConditions,
@@ -16,6 +17,7 @@ import {
 } from './dialogueRuntime';
 import { markDialogueCompleted } from './dialogueProgressStore';
 import { selectBestInteractionForNpc } from './npcInteractionSelector';
+import { loadCharacterProfile } from './characterProfileStorage';
 
 export type DialogueSourceType = 'npc' | 'location' | 'location_place' | 'quest' | 'item' | 'zone' | 'system';
 
@@ -112,6 +114,210 @@ function reducer(state: DialogueRunnerState, action: DialogueRunnerAction): Dial
     default:
       return state;
   }
+}
+
+function normalizeRaceId(value: string | null | undefined): string {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^race_/, '');
+  if (normalized === 'high_elf' || normalized === 'forest_elf' || normalized === 'wood_elf' || normalized === 'ancient_elf' || normalized === 'dark_elf') {
+    return 'elf';
+  }
+  return normalized;
+}
+
+function normalizeKingdomId(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^origin_/, '')
+    .replace(/^kingdom_/, '')
+    .replace(/_kingdom$/, '')
+    .replace(/\s+/g, '_');
+}
+
+function resolvePlayerOriginKingdomId(characterId: string): string {
+  const profile = loadCharacterProfile(characterId);
+  if (!profile) {
+    return '';
+  }
+  const fromOrigin = normalizeKingdomId(profile.originId);
+  if (fromOrigin) {
+    return fromOrigin;
+  }
+  const fromKingdom = normalizeKingdomId(profile.kingdomId);
+  if (fromKingdom) {
+    return fromKingdom;
+  }
+  return normalizeKingdomId(profile.citizenshipKingdomId);
+}
+
+function getRaceAddress(characterId: string): string {
+  const race = normalizeRaceId(loadCharacterProfile(characterId)?.raceId);
+  if (race === 'dwarf') {
+    return 'гном';
+  }
+  if (race === 'elf') {
+    return 'эльф';
+  }
+  if (race === 'human') {
+    return 'человек';
+  }
+  return 'путник';
+}
+
+function getRaceDisplay(characterId: string): string {
+  const raceRaw = String(loadCharacterProfile(characterId)?.raceId ?? '').trim().toLowerCase().replace(/^race_/, '');
+  if (raceRaw === 'high_elf') {
+    return 'Высший эльф';
+  }
+  const race = normalizeRaceId(raceRaw);
+  if (race === 'elf') {
+    return 'Эльф';
+  }
+  if (race === 'dwarf') {
+    return 'Гном';
+  }
+  if (race === 'human') {
+    return 'Человек';
+  }
+  return 'Путник';
+}
+
+function getKingdomLabelRu(kingdomId: string): string {
+  const normalized = normalizeKingdomId(kingdomId);
+  switch (normalized) {
+    case 'terimia':
+      return 'Теримии';
+    case 'artalon':
+      return 'Арталона';
+    case 'luminor':
+      return 'Люминора';
+    case 'kriantar':
+      return 'Криантара';
+    case 'argos':
+      return 'Аргоса';
+    default:
+      return normalized || 'чужих земель';
+  }
+}
+
+function resolveNpcKingdomId(npc: NpcDefinition | null | undefined): string {
+  if (!npc) {
+    return '';
+  }
+
+  const directKingdomId = normalizeKingdomId(npc.kingdomId);
+  if (directKingdomId) {
+    return directKingdomId;
+  }
+
+  const bindings = Array.isArray(npc.questBindings) ? npc.questBindings : [];
+  if (bindings.length === 0) {
+    return '';
+  }
+
+  const boundKingdomIds = Array.from(new Set(
+    bindings
+      .map((binding) => getQuestById(String(binding.questId ?? '').trim()))
+      .map((quest) => normalizeKingdomId(quest?.kingdomId))
+      .filter((kingdomId) => Boolean(kingdomId)),
+  ));
+
+  return boundKingdomIds.length === 1 ? boundKingdomIds[0] : '';
+}
+
+function buildArgosOutsiderIntro(playerId: string): string {
+  const raceLabel = getRaceDisplay(playerId);
+  const raceAddress = getRaceAddress(playerId);
+  const playerKingdomId = resolvePlayerOriginKingdomId(playerId);
+
+  if (raceAddress === 'человек' && playerKingdomId && playerKingdomId !== 'argos') {
+    return `— Что тут забыл человек из ${getKingdomLabelRu(playerKingdomId)}? В Аргосе чужаков замечают сразу.`;
+  }
+
+  return `— О! ${raceLabel}? В нашем городе? Ладно, говори, что тебе нужно.`;
+}
+
+function withIntroOnStartNode(dialogue: DialogueDefinition, introText: string): DialogueDefinition {
+  if (!introText.trim()) {
+    return dialogue;
+  }
+
+  const nodes = Array.isArray(dialogue.nodes) ? dialogue.nodes : [];
+  const startNodeIndex = nodes.findIndex((node) => node.id === dialogue.startNodeId);
+  if (startNodeIndex < 0) {
+    return dialogue;
+  }
+
+  const startNode = nodes[startNodeIndex];
+  const currentText = String(startNode.text ?? '');
+  if (currentText.includes(introText)) {
+    return dialogue;
+  }
+
+  const nextNodes = nodes.slice();
+  nextNodes[startNodeIndex] = {
+    ...startNode,
+    text: `${introText}\n\n${currentText}`.trim(),
+  };
+
+  return {
+    ...dialogue,
+    id: `${dialogue.id}__outsider_intro`,
+    nodes: nextNodes,
+  };
+}
+
+function collectChoiceQuestStartIds(choice: DialogueChoice): string[] {
+  const questIds = new Set<string>();
+  const giveQuestId = String(choice.giveQuest ?? '').trim();
+  if (giveQuestId) {
+    questIds.add(giveQuestId);
+  }
+
+  const actionPool = [
+    ...(Array.isArray(choice.actions) ? choice.actions : []),
+    ...(Array.isArray(choice.effects) ? choice.effects : []),
+  ] as Array<{ type?: unknown; questId?: unknown }>;
+
+  for (const action of actionPool) {
+    const type = String(action?.type ?? '').trim().toLowerCase();
+    if (type !== 'startquest' && type !== 'start_quest') {
+      continue;
+    }
+    const questId = String(action?.questId ?? '').trim();
+    if (questId) {
+      questIds.add(questId);
+    }
+  }
+
+  return Array.from(questIds);
+}
+
+function isKingdomQuestLockedForPlayer(questId: string, playerId: string): boolean {
+  const quest = getQuestById(questId);
+  if (!quest) {
+    return false;
+  }
+
+  const isKingdomQuest = String(quest.category ?? '').trim().toLowerCase() === 'kingdom';
+  if (!isKingdomQuest) {
+    return false;
+  }
+
+  const questKingdomId = normalizeKingdomId(quest.kingdomId);
+  if (!questKingdomId) {
+    return false;
+  }
+
+  const playerKingdomId = resolvePlayerOriginKingdomId(playerId);
+  if (!playerKingdomId) {
+    return false;
+  }
+
+  return playerKingdomId !== questKingdomId;
 }
 
 function pickNpcDialogue(player: QuestRuntimePlayer, npc: NpcDefinition): DialogueDefinition | null {
@@ -276,8 +482,9 @@ function buildCompletedQuestFallbackDialogue(dialogue: DialogueDefinition, npc: 
               nextNodeId: 'post_quest_field_of_battle_offer',
               conditions: [
                 {
+                  id: 'cond_field_of_battle_not_started',
                   type: 'quest_not_started',
-                  questId: 'argos_quest_field_of_battle'
+                  questId: 'argos_quest_field_of_battle',
                 }
               ]
             },
@@ -478,6 +685,7 @@ export function useDialogueRunner(params: {
       dispatch({ type: 'ERROR', text: `NPC not found: ${npcId}` });
       return;
     }
+
     const picked = pickNpcDialogue(params.player, npc);
     if (!picked) {
       const systemDialogue: DialogueDefinition = {
@@ -509,8 +717,42 @@ export function useDialogueRunner(params: {
       return;
     }
 
-    openDialogue(picked.id, { ...context, npcId, sourceType: 'npc' });
-  }, [openDialogue, params.player]);
+    const npcKingdomId = resolveNpcKingdomId(npc);
+    const playerKingdomId = resolvePlayerOriginKingdomId(params.player.id);
+    const shouldInjectArgosOutsiderIntro = npcKingdomId === 'argos'
+      && Boolean(playerKingdomId)
+      && playerKingdomId !== 'argos';
+
+    if (!shouldInjectArgosOutsiderIntro) {
+      openDialogue(picked.id, { ...context, npcId, sourceType: 'npc' });
+      return;
+    }
+
+    const shouldUseCompletedQuestFallback = (
+      areAllDialogueQuestsCompleted(params.player.id, picked)
+      && !hasQuestCompletedAwareNode(picked)
+    );
+    const effectiveDefinition = shouldUseCompletedQuestFallback
+      ? buildCompletedQuestFallbackDialogue(picked, npc)
+      : picked;
+
+    const intro = buildArgosOutsiderIntro(params.player.id);
+    const dialogueWithIntro = withIntroOnStartNode(effectiveDefinition, intro);
+    const start = getStartNode(dialogueWithIntro, params.player, npc);
+    if (!start) {
+      dispatch({ type: 'OPEN', dialogueId: dialogueWithIntro.id, nodeId: dialogueWithIntro.startNodeId || 'missing', context: { ...context, npcId, sourceType: 'npc' } });
+      dispatch({ type: 'ERROR', text: `Start node not found: ${dialogueWithIntro.startNodeId}` });
+      return;
+    }
+
+    dispatch({
+      type: 'OPEN',
+      dialogueId: dialogueWithIntro.id,
+      nodeId: start.id,
+      context: { ...context, npcId, sourceType: 'npc' },
+      dialogueOverride: dialogueWithIntro,
+    });
+  }, [openDialogue, params.player, params.player.id]);
 
   const closeDialogue = useCallback(() => {
     dispatch({ type: 'CLOSE' });
@@ -547,6 +789,16 @@ export function useDialogueRunner(params: {
     const conditionsOk = evaluateDialogueConditions(params.player, npc, choice.conditions ?? []);
     if (!conditionsOk) {
       dispatch({ type: 'NOTICE', text: 'Условие не выполнено.' });
+      return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
+    }
+
+    const blockedKingdomQuestIds = collectChoiceQuestStartIds(choice)
+      .filter((questId) => isKingdomQuestLockedForPlayer(questId, params.player.id));
+    if (blockedKingdomQuestIds.length > 0) {
+      dispatch({
+        type: 'NOTICE',
+        text: 'Этот квест относится к другому королевству и недоступен вашему происхождению.',
+      });
       return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
     }
 

@@ -948,7 +948,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       locationSpriteImageSizes,
       new Set(candidates.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
       new Set(candidates.map((zone) => zone.id)),
-      { screenScale: Math.max(editorSettings.zoom, 0.01) },
     );
   }
 
@@ -1787,7 +1786,6 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         locationSpriteImageSizes,
         new Set(editorSpriteZones.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
         new Set(editorSpriteZones.map((zone) => zone.id)),
-        { screenScale: Math.max(editorSettings.zoom, 0.01) },
       );
       for (const sprite of editorLocationSprites) {
         const image = locationSpriteImages.get(sprite.imageSrc);

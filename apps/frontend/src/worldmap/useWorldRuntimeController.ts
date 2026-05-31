@@ -100,12 +100,32 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
   } = options;
 
   const movementKeysRef = useRef({ up: false, down: false, left: false, right: false });
+  const zonesRef = useRef<WorldMapZone[]>(zones);
+  const gameplayPausedRef = useRef(gameplayPaused);
+  const movementLockedRef = useRef(movementLocked);
+  const playerSpeedRef = useRef(playerSpeed);
+  const sprintActiveRef = useRef(sprintActive);
+  const resolveCanMoveToRef = useRef(resolveCanMoveTo);
+  const resolveSpeedMultiplierRef = useRef(resolveSpeedMultiplier);
   const playerStateRef = useRef<PlayerWorldState>('idle');
   const latestPlayerPositionRef = useRef<{ x: number; y: number }>({ x: initialPlayer.x, y: initialPlayer.y });
   const prevZoneRef = useRef<WorldMapZone | null>(null);
   const pendingCityEntryRef = useRef<string | null>(null);
   const [player, setPlayer] = useState<MapPlayer>(initialPlayer);
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
+
+  useEffect(() => {
+    zonesRef.current = zones;
+  }, [zones]);
+
+  useEffect(() => {
+    gameplayPausedRef.current = gameplayPaused;
+    movementLockedRef.current = movementLocked;
+    playerSpeedRef.current = playerSpeed;
+    sprintActiveRef.current = sprintActive;
+    resolveCanMoveToRef.current = resolveCanMoveTo;
+    resolveSpeedMultiplierRef.current = resolveSpeedMultiplier;
+  }, [gameplayPaused, movementLocked, playerSpeed, resolveCanMoveTo, resolveSpeedMultiplier, sprintActive]);
 
   const resolveReportedState = useCallback((zone: WorldMapZone | null): PlayerWorldState => {
     return resolveWorldRuntimeReportedState(playerStateRef.current, zone);
@@ -186,7 +206,7 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
 
     const animate = () => {
       setPlayer((prev) => {
-        if (gameplayPaused || movementLocked) {
+        if (gameplayPausedRef.current || movementLockedRef.current) {
           playerStateRef.current = 'idle';
           const next = prev.targetX === null && prev.targetY === null
             ? prev
@@ -197,25 +217,30 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
 
         const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
         const inputY = (movementKeysRef.current.down ? 1 : 0) - (movementKeysRef.current.up ? 1 : 0);
-        const effectiveSpeed = (playerSpeed ?? prev.speed) * (sprintActive ? 1.45 : 1);
+        const effectiveSpeed = (playerSpeedRef.current ?? prev.speed) * (sprintActiveRef.current ? 1.45 : 1);
         const nextPlayer = prev.speed === effectiveSpeed ? prev : { ...prev, speed: effectiveSpeed };
         const tick = (inputX !== 0 || inputY !== 0)
-          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveTo, resolveSpeedMultiplier)
-          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveTo, resolveSpeedMultiplier);
+          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current)
+          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current);
 
         playerStateRef.current = tick.state;
         latestPlayerPositionRef.current = { x: tick.player.x, y: tick.player.y };
         return tick.player;
       });
 
-      setCurrentZone(detectCurrentZone(zones as Zone[], latestPlayerPositionRef.current.x, latestPlayerPositionRef.current.y) as WorldMapZone | null);
+      const nextZone = detectCurrentZone(
+        zonesRef.current as Zone[],
+        latestPlayerPositionRef.current.x,
+        latestPlayerPositionRef.current.y,
+      ) as WorldMapZone | null;
+      setCurrentZone((prev) => (prev?.id === nextZone?.id ? prev : nextZone));
 
       frameId = window.requestAnimationFrame(animate);
     };
 
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [enabled, gameplayPaused, movementLocked, playerSpeed, resolveCanMoveTo, resolveSpeedMultiplier, sprintActive, zones]);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {

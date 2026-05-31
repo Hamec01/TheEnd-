@@ -26,9 +26,55 @@ import { ITEMS, isKingdomId } from '@theend/rpg-domain';
 import { playerHasProfessionCompat } from './professionCompat';
 import { applyPlayerReputationChanges } from './playerCivicRuntime';
 import { resolveCharacterScopedStorageKey } from './characterScopedStorage';
+import { loadCharacterProfile } from './characterProfileStorage';
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeKingdomId(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^origin_/, '')
+    .replace(/^kingdom_/, '')
+    .replace(/_kingdom$/, '')
+    .replace(/\s+/g, '_');
+}
+
+function resolvePlayerOriginKingdomId(characterId: string): string {
+  const profile = loadCharacterProfile(characterId);
+  if (!profile) {
+    return '';
+  }
+  const fromOrigin = normalizeKingdomId(profile.originId);
+  if (fromOrigin) {
+    return fromOrigin;
+  }
+  const fromKingdom = normalizeKingdomId(profile.kingdomId);
+  if (fromKingdom) {
+    return fromKingdom;
+  }
+  return normalizeKingdomId(profile.citizenshipKingdomId);
+}
+
+function isKingdomQuestLockedForPlayer(quest: QuestDefinition, characterId: string): boolean {
+  const isKingdomQuest = String(quest.category ?? '').trim().toLowerCase() === 'kingdom';
+  if (!isKingdomQuest) {
+    return false;
+  }
+
+  const questKingdomId = normalizeKingdomId(quest.kingdomId);
+  if (!questKingdomId) {
+    return false;
+  }
+
+  const playerKingdomId = resolvePlayerOriginKingdomId(characterId);
+  if (!playerKingdomId) {
+    return false;
+  }
+
+  return playerKingdomId !== questKingdomId;
 }
 
 export interface QuestRuntimePlayer {
@@ -376,6 +422,11 @@ export function canStartQuest(player: QuestRuntimePlayer, quest: QuestDefinition
 }
 
 function canStartQuestDetailed(player: QuestRuntimePlayer, quest: QuestDefinition): { canStart: boolean; reason?: string } {
+  if (isKingdomQuestLockedForPlayer(quest, player.id)) {
+    const questKingdomId = normalizeKingdomId(quest.kingdomId);
+    return { canStart: false, reason: `Quest is restricted to ${questKingdomId} origin profiles.` };
+  }
+
   if (quest.status !== 'active' && quest.status !== 'draft') {
     return { canStart: false, reason: `Quest status is '${quest.status}'.` };
   }

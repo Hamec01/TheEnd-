@@ -4,8 +4,11 @@ import { itemsService } from '../../services/content/itemsService';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { extractRawMaterialsFromImportJson, importMaterialsFromJsonEntries, materialsService, validateMaterial } from '../../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { normalizeGameImageRef, toLegacyImagePath, validateGameImageRef } from '../../services/content/gameImageRefs';
 import { uid } from '../../services/content/storage';
-import { AdminImageField } from '../AdminImageField';
+import { GameImageView } from '../components/GameImageView';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import {
   AdminFieldLabel,
@@ -31,6 +34,7 @@ function emptyMaterial(): Material {
     gameplayDescription: '',
     loreDescription: '',
     imagePath: '',
+    imageRef: undefined,
     isEnabled: true,
     createdAt: now,
     updatedAt: now,
@@ -45,6 +49,11 @@ export function MaterialsPage() {
   const [draft, setDraft] = useState<Material>(emptyMaterial());
   const [status, setStatus] = useState('Готово');
   const [isImporting, setIsImporting] = useState(false);
+  const [catalogGroupMode, setCatalogGroupMode] = useState<'category' | 'rarity' | 'none'>('category');
+  const [catalogSortMode, setCatalogSortMode] = useState<'name' | 'id' | 'category' | 'rarity'>('name');
+  const [catalogFilterMode, setCatalogFilterMode] = useState<'none' | 'category' | 'rarity'>('none');
+  const [catalogFilterValue, setCatalogFilterValue] = useState<string>('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -60,6 +69,32 @@ export function MaterialsPage() {
     void refresh();
     void loadRuntimeImages().then(setImages).catch(() => setImages([]));
   }, []);
+
+  useEffect(() => {
+    // Keep sort defaults aligned with grouping for faster scanning.
+    if (catalogGroupMode === 'rarity' && catalogSortMode === 'name') {
+      setCatalogSortMode('category');
+    }
+    if (catalogGroupMode === 'category' && catalogSortMode === 'name') {
+      setCatalogSortMode('rarity');
+    }
+    if (catalogGroupMode === 'none' && (catalogSortMode === 'category' || catalogSortMode === 'rarity')) {
+      setCatalogSortMode('name');
+    }
+  }, [catalogGroupMode, catalogSortMode]);
+
+  useEffect(() => {
+    if (catalogFilterMode === 'none') {
+      setCatalogFilterValue('');
+      return;
+    }
+    if (catalogFilterMode === 'category' && catalogFilterValue && !MATERIAL_CATEGORIES.includes(catalogFilterValue as any)) {
+      setCatalogFilterValue('');
+    }
+    if (catalogFilterMode === 'rarity' && catalogFilterValue && !MATERIAL_RARITIES.includes(catalogFilterValue as any)) {
+      setCatalogFilterValue('');
+    }
+  }, [catalogFilterMode, catalogFilterValue]);
 
   function exportJson() {
     downloadCollectionJson({
@@ -100,6 +135,16 @@ export function MaterialsPage() {
   const visibleMaterials = useMemo(() => {
     const q = query.trim().toLowerCase();
     return materials.filter((entry) => {
+      if (catalogFilterMode === 'category' && catalogFilterValue) {
+        if (entry.category !== catalogFilterValue) {
+          return false;
+        }
+      }
+      if (catalogFilterMode === 'rarity' && catalogFilterValue) {
+        if (entry.rarity !== catalogFilterValue) {
+          return false;
+        }
+      }
       if (!q) {
         return true;
       }
@@ -107,12 +152,113 @@ export function MaterialsPage() {
         || entry.name.toLowerCase().includes(q)
         || entry.region.toLowerCase().includes(q);
     });
-  }, [materials, query]);
+  }, [catalogFilterMode, catalogFilterValue, materials, query]);
 
   const selectedMaterial = useMemo(
     () => (selectedId ? materials.find((entry) => entry.id === selectedId) ?? null : null),
     [materials, selectedId],
   );
+
+  const rarityRank = useMemo(() => {
+    return Object.fromEntries(MATERIAL_RARITIES.map((entry, index) => [entry, index])) as Record<Material['rarity'], number>;
+  }, []);
+  const categoryRank = useMemo(() => {
+    return Object.fromEntries(MATERIAL_CATEGORIES.map((entry, index) => [entry, index])) as Record<Material['category'], number>;
+  }, []);
+
+  const groupedMaterials = useMemo(() => {
+    const groups = new Map<string, Material[]>();
+
+    const groupKeyFor = (material: Material): string => {
+      if (catalogGroupMode === 'category') {
+        return `category:${material.category}`;
+      }
+      if (catalogGroupMode === 'rarity') {
+        return `rarity:${material.rarity}`;
+      }
+      return 'all';
+    };
+
+    for (const material of visibleMaterials) {
+      const key = groupKeyFor(material);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.push(material);
+      } else {
+        groups.set(key, [material]);
+      }
+    }
+
+    const collator = new Intl.Collator('ru', { sensitivity: 'base' });
+    const sortItems = (items: Material[]) => {
+      const sorted = [...items];
+      sorted.sort((a, b) => {
+        const compareCategory = () => (categoryRank[a.category] ?? 999) - (categoryRank[b.category] ?? 999);
+        const compareRarity = () => (rarityRank[a.rarity] ?? 999) - (rarityRank[b.rarity] ?? 999);
+
+        if (catalogSortMode === 'category') {
+          const categoryDelta = compareCategory();
+          if (categoryDelta !== 0) return categoryDelta;
+          const rarityDelta = compareRarity();
+          if (rarityDelta !== 0) return rarityDelta;
+        } else if (catalogSortMode === 'rarity') {
+          const rarityDelta = compareRarity();
+          if (rarityDelta !== 0) return rarityDelta;
+          const categoryDelta = compareCategory();
+          if (categoryDelta !== 0) return categoryDelta;
+        } else {
+          // Default behavior: if grouping by rarity, keep categories clustered for fast scanning.
+          if (catalogGroupMode === 'rarity') {
+            const categoryDelta = compareCategory();
+            if (categoryDelta !== 0) return categoryDelta;
+          }
+          const rarityDelta = compareRarity();
+          if (rarityDelta !== 0) return rarityDelta;
+        }
+
+        if (catalogSortMode === 'id') {
+          const idDelta = collator.compare(a.id, b.id);
+          if (idDelta !== 0) return idDelta;
+        }
+
+        const nameDelta = collator.compare(a.name || '', b.name || '');
+        if (nameDelta !== 0) return nameDelta;
+        return collator.compare(a.id, b.id);
+      });
+      return sorted;
+    };
+
+    const orderedKeys: string[] = (() => {
+      if (catalogGroupMode === 'category') {
+        const expected = MATERIAL_CATEGORIES.map((entry) => `category:${entry}`);
+        const extras = [...groups.keys()].filter((key) => !expected.includes(key)).sort();
+        return [...expected.filter((key) => groups.has(key)), ...extras];
+      }
+      if (catalogGroupMode === 'rarity') {
+        const expected = MATERIAL_RARITIES.map((entry) => `rarity:${entry}`);
+        const extras = [...groups.keys()].filter((key) => !expected.includes(key)).sort();
+        return [...expected.filter((key) => groups.has(key)), ...extras];
+      }
+      return groups.has('all') ? ['all'] : [];
+    })();
+
+    return orderedKeys.map((key) => ({
+      key,
+      title: (() => {
+        if (key === 'all') return 'Все';
+        if (key.startsWith('category:')) {
+          const category = key.slice('category:'.length) as Material['category'];
+          return translateMaterialCategory(category);
+        }
+        if (key.startsWith('rarity:')) {
+          const rarity = key.slice('rarity:'.length) as Material['rarity'];
+          return translateRarity(rarity);
+        }
+        return key;
+      })(),
+      items: sortItems(groups.get(key) ?? []),
+    }));
+  }, [catalogGroupMode, catalogSortMode, categoryRank, rarityRank, visibleMaterials]);
 
   function getMaterialCardAccent(material: Material): string {
     if (!material.isEnabled) {
@@ -129,11 +275,21 @@ export function MaterialsPage() {
 
   async function createOrUpdate() {
     const id = draft.id.trim() || uid('mat');
+    const normalizedImageRef = normalizeGameImageRef(draft.imageRef, draft.imagePath);
     const normalized: Material = {
       ...draft,
       id,
+      imageRef: normalizedImageRef,
+      imagePath: toLegacyImagePath(normalizedImageRef),
       updatedAt: new Date().toISOString(),
     };
+
+    const imageErrors = validateGameImageRef(normalized.imageRef);
+    if (imageErrors.length > 0) {
+      setStatus(`Проверка изображения: ${translateAdminErrorMessage(imageErrors.join(', '))}`);
+      return;
+    }
+
     const errors = validateMaterial(normalized);
     if (errors.length > 0) {
       setStatus(`Проверка: ${translateAdminErrorMessage(errors.join(', '))}`);
@@ -179,7 +335,8 @@ export function MaterialsPage() {
         maxStack: 999,
         gameplayDescription: draft.gameplayDescription || `Материал: ${draft.name}`,
         loreDescription: draft.loreDescription || draft.gameplayDescription || '',
-        imagePath: draft.imagePath,
+        imagePath: toLegacyImagePath(normalizeGameImageRef(draft.imageRef, draft.imagePath)) ?? draft.imagePath,
+        imageRef: normalizeGameImageRef(draft.imageRef, draft.imagePath),
         isEnabled: true,
       });
       setStatus(`Создан связанный предмет-материал: ${itemId}`);
@@ -248,11 +405,13 @@ export function MaterialsPage() {
           </label>
           <label>
             <AdminFieldLabel label="Свойства" hint="Список ключевых свойств через запятую: например 'гибкий, жаростойкий, редкий'." />
-            <input value={draft.properties.join(', ')} onChange={(event) => setDraft((current) => ({ ...current, properties: event.target.value.split(',').map((v) => v.trim()).filter(Boolean) }))} />
-          </label>
-          <label>
-            <AdminFieldLabel label="Путь / ID изображения" hint="Ссылка на картинку или ID изображения из раздела картинок." />
-            <input value={draft.imagePath ?? ''} onChange={(event) => setDraft((current) => ({ ...current, imagePath: event.target.value }))} />
+            <input
+              value={draft.properties.join(', ')}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                properties: event.target.value.split(',').map((v) => v.trim()).filter(Boolean) as Material['properties'],
+              }))}
+            />
           </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.isEnabled} onChange={(event) => setDraft((current) => ({ ...current, isEnabled: event.target.checked }))} />
@@ -260,14 +419,25 @@ export function MaterialsPage() {
           </label>
         </div>
 
-        <AdminImageField
-          value={draft.imagePath}
-          onChange={(nextValue) => setDraft((current) => ({ ...current, imagePath: nextValue }))}
+        <ImageSheetPicker
+          label="Изображение материала"
+          hint="Загрузите файл: система сама сохранит его и подставит ID. Для тайлсета можно выбрать frame."
+          category="materials"
+          value={draft.imageRef}
+          legacyImagePath={draft.imagePath}
+          runtimeImages={images}
+          showUploadForImage
+          disableManualImageInput
+          uploadPresetId="item-icon"
+          uploadSuggestedId={draft.id || undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'material'}-icon`}
+          uploadFolder={buildUploadFolder('images', 'materials', draft.id || draft.name || undefined)}
           onStatus={setStatus}
-          presetId="item-icon"
-          suggestedName={`${draft.id || draft.name || 'material'}-icon`}
-          label="Картинка материала"
-          hint="Загружает иконку материала и сразу уменьшает её до рабочего размера для интерфейса."
+          onChange={(next) => setDraft((current) => ({
+            ...current,
+            imageRef: next,
+            imagePath: toLegacyImagePath(next),
+          }))}
         />
 
         <label>
@@ -295,7 +465,7 @@ export function MaterialsPage() {
           <div>
             <p className="admin-catalog-kicker">Crafting Assets</p>
             <h3>Все материалы</h3>
-            <p className="muted">Список материалов перенесен вниз: выбирай материал как значок и редактируй его в форме выше.</p>
+            <p className="muted">Материалы — это сырье и торговые единицы мира: еда, зерно, кожа, ткань, дерево, руда, камни, кристаллы, масла, рунные компоненты. Готовые предметы с эффектами, экипировка, руны-вставки и магические камни-вставки создаются в разделе «Предметы».</p>
           </div>
           <div className="admin-catalog-metrics">
             <span>{visibleMaterials.length} в выдаче</span>
@@ -305,6 +475,39 @@ export function MaterialsPage() {
 
       <div className="admin-list-tools admin-catalog-toolbar">
         <input placeholder="Поиск по id, имени или региону" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <select value={catalogGroupMode} onChange={(event) => setCatalogGroupMode(event.target.value as typeof catalogGroupMode)}>
+          <option value="category">Группа: Категория</option>
+          <option value="rarity">Группа: Редкость</option>
+          <option value="none">Группа: Нет</option>
+        </select>
+        <select value={catalogSortMode} onChange={(event) => setCatalogSortMode(event.target.value as typeof catalogSortMode)}>
+          <option value="name">Сорт: Имя</option>
+          <option value="id">Сорт: ID</option>
+          {catalogGroupMode === 'rarity' ? <option value="category">Сорт: Категория</option> : null}
+          {catalogGroupMode === 'category' ? <option value="rarity">Сорт: Редкость</option> : null}
+        </select>
+        <select value={catalogFilterMode} onChange={(event) => setCatalogFilterMode(event.target.value as typeof catalogFilterMode)}>
+          <option value="none">Фильтр: Нет</option>
+          <option value="category">Фильтр: Категория</option>
+          <option value="rarity">Фильтр: Редкость</option>
+        </select>
+        <select
+          disabled={catalogFilterMode === 'none'}
+          value={catalogFilterValue}
+          onChange={(event) => setCatalogFilterValue(event.target.value)}
+        >
+          <option value="">Все</option>
+          {catalogFilterMode === 'category'
+            ? MATERIAL_CATEGORIES.map((category) => (
+              <option key={category} value={category}>{translateMaterialCategory(category)}</option>
+            ))
+            : null}
+          {catalogFilterMode === 'rarity'
+            ? MATERIAL_RARITIES.map((rarity) => (
+              <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>
+            ))
+            : null}
+        </select>
         <button onClick={exportJson}>Экспорт JSON</button>
         <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
         <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
@@ -316,26 +519,67 @@ export function MaterialsPage() {
           <span>{selectedMaterial ? `${selectedMaterial.name} (${selectedMaterial.id})` : 'новый материал'}</span>
         </div>
 
-        <div className="admin-items-icons-grid">
-          {visibleMaterials.map((material) => {
-              const image = resolveStoredImageSource(material.imagePath, images);
-              return (
-                <button
-                  key={material.id}
-                  className={`admin-item-icon-card ${selectedId === material.id ? 'is-active' : ''}`}
-                  onClick={() => { setSelectedId(material.id); setDraft(material); }}
-                  title={`${material.name} (${material.id})`}
-                >
-                  <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMaterialCardAccent(material)}`}>
-                    {image ? <img src={image} alt={material.name} /> : (material.name.trim() || material.category).charAt(0).toUpperCase()}
+        <div style={{ display: 'grid', gap: 14 }}>
+          {groupedMaterials.map((group) => {
+            const collapsed = collapsedGroups.has(group.key);
+            return (
+              <div key={group.key}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                    <strong>{group.title}</strong>
+                    <span className="muted">{group.items.length}</span>
                   </div>
-                  <strong>{material.name || '(без названия)'}</strong>
-                  <span>{material.id || 'ID ещё не задан'}</span>
-                  <span>{translateMaterialCategory(material.category)} | {translateRarity(material.rarity)}</span>
-                  <span>{translateEnabledState(material.isEnabled)}</span>
-                </button>
-              );
-            })}
+                  <button
+                    type="button"
+                    onClick={() => setCollapsedGroups((current) => {
+                      const next = new Set(current);
+                      if (next.has(group.key)) {
+                        next.delete(group.key);
+                      } else {
+                        next.add(group.key);
+                      }
+                      return next;
+                    })}
+                  >
+                    {collapsed ? 'Развернуть' : 'Свернуть'}
+                  </button>
+                </div>
+
+                {collapsed ? null : (
+                  <div className="admin-items-icons-grid">
+                    {group.items.map((material) => {
+                      const image = resolveStoredImageSource(material.imagePath, images);
+                      const imageRef = normalizeGameImageRef(material.imageRef, material.imagePath);
+                      return (
+                        <button
+                          key={material.id}
+                          className={`admin-item-icon-card ${selectedId === material.id ? 'is-active' : ''}`}
+                          onClick={() => { setSelectedId(material.id); setDraft(material); }}
+                          title={`${material.name} (${material.id})`}
+                        >
+                          <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getMaterialCardAccent(material)}`}>
+                            {imageRef ? (
+                              <GameImageView
+                                imageRef={imageRef}
+                                runtimeImages={images}
+                                alt={material.name}
+                                size={64}
+                                fallbackText={(material.name.trim() || material.category).charAt(0).toUpperCase()}
+                              />
+                            ) : image ? <img src={image} alt={material.name} /> : (material.name.trim() || material.category).charAt(0).toUpperCase()}
+                          </div>
+                          <strong>{material.name || '(без названия)'}</strong>
+                          <span>{material.id || 'ID ещё не задан'}</span>
+                          <span>{translateMaterialCategory(material.category)} | {translateRarity(material.rarity)}</span>
+                          <span>{translateEnabledState(material.isEnabled)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

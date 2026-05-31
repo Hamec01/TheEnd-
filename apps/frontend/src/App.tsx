@@ -62,8 +62,8 @@ import {
   updateSkillLoadout,
   sellArenaItem,
   unequipArenaItem,
-  useArenaItem,
-  useSkillOutOfCombat,
+  useArenaItem as arenaUseItem,
+  useSkillOutOfCombat as arenaUseSkillOutOfCombat,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -3374,7 +3374,7 @@ function applyHubState(hub: HubStatePayload): void {
         return;
       }
 
-      const updatedHub = await useArenaItem(character.id, itemId);
+      const updatedHub = await arenaUseItem(character.id, itemId);
       applyHubState(updatedHub);
       setStatus(`${resolveItem(itemId).name} used.`);
     } catch (error) {
@@ -3389,7 +3389,7 @@ function applyHubState(hub: HubStatePayload): void {
         return;
       }
 
-      const result = await useSkillOutOfCombat(character.id, skillId);
+      const result = await arenaUseSkillOutOfCombat(character.id, skillId);
       const updatedHub = await getArenaHubState(character.id);
       applyHubState(updatedHub);
       setStatus(result.message || 'Skill used.');

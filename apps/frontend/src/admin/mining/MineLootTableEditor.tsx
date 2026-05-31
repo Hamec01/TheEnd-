@@ -169,7 +169,7 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
               <button onClick={() => removeEntry(index)}>Убрать</button>
               <label>
                 <AdminFieldLabel label="Item ID" />
-                <input value={entry.itemId} onChange={(event) => patchEntry(index, { itemId: event.target.value })} placeholder="item_iron_ore" />
+                <input value={entry.itemId} onChange={(event) => patchEntry(index, { itemId: event.target.value })} placeholder="mat_iron_ore" />
               </label>
               <label>
                 <AdminFieldLabel label="Вес" />

@@ -174,17 +174,17 @@ function computeLootXp(stacks: MineLootStack[]): number {
   let xp = 0;
   for (const stack of stacks) {
     const quantity = Math.max(1, Math.floor(stack.quantity));
-    if (stack.itemId === 'item_raw_stone') {
+    if (stack.itemId === 'mat_raw_stone') {
       xp += quantity;
-    } else if (stack.itemId === 'item_iron_ore') {
+    } else if (stack.itemId === 'mat_iron_ore') {
       xp += 3 * quantity;
-    } else if (stack.itemId === 'item_small_gold_nugget') {
+    } else if (stack.itemId === 'mat_gold_nugget') {
       xp += 5 * quantity + 10;
-    } else if (stack.itemId === 'item_cracked_crystal') {
+    } else if (stack.itemId === 'mat_cracked_crystal') {
       xp += 10 * quantity;
-    } else if (stack.itemId === 'item_zeptyrite_trace') {
+    } else if (stack.itemId === 'mat_zeptyrite_trace') {
       xp += 10 * quantity + 10;
-    } else if (stack.itemId === 'item_rune_fragment_weak' || stack.itemId === 'item_rune_dust') {
+    } else if (stack.itemId === 'mat_weak_rune_fragment' || stack.itemId === 'mat_rune_dust') {
       xp += 10 * quantity + 10;
     } else {
       xp += quantity;
@@ -609,9 +609,9 @@ function maybeApplyFragileLootDamage(params: {
     run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'Кристалл треснул.' : 'Самоцвет раскололся.');
     return [{ ...first, quantity: first.quantity - 1 }, ...rest];
   }
-  if (blockType === 'crystal' && first.itemId !== 'item_cracked_crystal') {
+  if (blockType === 'crystal' && first.itemId !== 'mat_cracked_crystal') {
     run.eventLog = pushLog(run.eventLog, 'Кристалл треснул, но часть сердцевины уцелела.');
-    return [{ itemId: 'item_cracked_crystal', quantity: 1 }, ...rest];
+    return [{ itemId: 'mat_cracked_crystal', quantity: 1 }, ...rest];
   }
   run.eventLog = pushLog(run.eventLog, blockType === 'crystal' ? 'Кристалл рассыпался в пыль.' : 'Самоцвет оказался испорчен.');
   return rest;
@@ -685,8 +685,8 @@ function maybeAddDynamicRuneTrace(
   if (rng() > chance) {
     return [];
   }
-  const itemId = rng() <= 0.4 ? 'item_rune_dust' : 'item_rune_fragment_weak';
-  run.eventLog = pushLog(run.eventLog, itemId === 'item_rune_dust' ? 'В камне осталась рунная пыль.' : 'Вы нашли слабый рунный осколок.');
+  const itemId = rng() <= 0.4 ? 'mat_rune_dust' : 'mat_weak_rune_fragment';
+  run.eventLog = pushLog(run.eventLog, itemId === 'mat_rune_dust' ? 'В камне осталась рунная пыль.' : 'Вы нашли слабый рунный осколок.');
   run.skillEffectLog = pushSkillEffectLog(run.skillEffectLog, 'Следы древних: найден рунный след.');
   return [buildLoot(itemId, 1)];
 }
@@ -705,10 +705,10 @@ function resolveMineEvent(
       return [];
     case 'dwarf_cart':
       run.eventLog = pushLog(run.eventLog, 'В завале уцелела старая гномья тележка.');
-      return [buildLoot(rng() <= 0.3 ? 'item_small_gold_nugget' : 'item_iron_ore', 1)];
+      return [buildLoot(rng() <= 0.3 ? 'mat_gold_nugget' : 'mat_iron_ore', 1)];
     case 'hidden_cache':
       run.eventLog = pushLog(run.eventLog, 'Вы нашли скрытый тайник шахтёров.');
-      return [buildLoot(rng() <= 0.5 ? 'item_iron_ore' : 'item_cracked_crystal', 1)];
+      return [buildLoot(rng() <= 0.5 ? 'mat_iron_ore' : 'mat_cracked_crystal', 1)];
     case 'spirit_whisper': {
       run.eventLog = pushLog(run.eventLog, 'Шёпот в стенах предупреждает об опасности.');
       const hazard = findMineHazardById('hazard_spirit_attack');
@@ -1280,7 +1280,16 @@ function resolveBlockOpen(
         block.visibleType = 'loot';
         return;
       } else if (payload.type === 'rune_trace' || payload.type === 'loot_item' || payload.type === 'loot_material') {
-        const itemId = payload.itemId || payload.materialId || (payload.type === 'rune_trace' ? 'item_rune_fragment_weak' : '');
+        let itemId = payload.itemId || '';
+        if (!itemId && payload.materialId) {
+          const normalizedMaterialId = String(payload.materialId).trim();
+          itemId = normalizedMaterialId.startsWith('mat_')
+            ? normalizedMaterialId
+            : `mat_${normalizedMaterialId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+        }
+        if (!itemId && payload.type === 'rune_trace') {
+          itemId = 'mat_weak_rune_fragment';
+        }
         if (!itemId) {
           run.eventLog = pushLog(run.eventLog, 'Неизвестная добыча: пустой itemId.');
           return;
@@ -2069,45 +2078,58 @@ export function toPublicMineRun(run: InternalMineRunState): MineRunState {
   return toFrontendRun(run);
 }
 
-const MINING_PLACEHOLDER_ITEMS = [
+const MINING_PLACEHOLDER_ITEMS: Array<{
+  id: string;
+  materialId: string;
+  name: string;
+  gameplayDescription: string;
+  loreDescription: string;
+}> = [
   {
-    id: 'item_raw_stone',
+    id: 'mat_raw_stone',
+    materialId: 'raw_stone',
     name: 'Необработанный камень',
     gameplayDescription: 'Кусок обычной породы из шахты.',
     loreDescription: 'Грубый камень, который шахтёры выносят мешками.',
   },
   {
-    id: 'item_iron_ore',
+    id: 'mat_iron_ore',
+    materialId: 'iron_ore',
     name: 'Железная руда',
     gameplayDescription: 'Жила железа, пригодная для выплавки.',
     loreDescription: 'Обычная железная руда с глубин Терамора.',
   },
   {
-    id: 'item_small_gold_nugget',
+    id: 'mat_gold_nugget',
+    materialId: 'gold_nugget',
     name: 'Маленький золотой самородок',
     gameplayDescription: 'Небольшой, но ценный кусок золота.',
     loreDescription: 'Редкая находка, за которую торговцы охотно платят.',
   },
   {
-    id: 'item_cracked_crystal',
+    id: 'mat_cracked_crystal',
+    materialId: 'cracked_crystal',
     name: 'Треснувший кристалл',
     gameplayDescription: 'Хрупкий кристалл с остаточной ценностью.',
     loreDescription: 'Неидеальный, но всё ещё красивый шахтный кристалл.',
   },
   {
-    id: 'item_zeptyrite_trace',
+    id: 'mat_zeptyrite_trace',
+    materialId: 'zeptyrite_trace',
     name: 'Зептиритовый след',
     gameplayDescription: 'Редкий след загадочного минерала.',
     loreDescription: 'Слабый зептиритовый след, по которому охотятся мастера и алхимики.',
   },
   {
-    id: 'item_rune_fragment_weak',
+    id: 'mat_weak_rune_fragment',
+    materialId: 'weak_rune_fragment',
     name: 'Слабый рунный осколок',
     gameplayDescription: 'Осколок древней руны, найденный в глубокой породе.',
     loreDescription: 'Хрупкий рунный фрагмент, ещё хранящий эхо старой силы.',
   },
   {
-    id: 'item_rune_dust',
+    id: 'mat_rune_dust',
+    materialId: 'rune_dust',
     name: 'Рунная пыль',
     gameplayDescription: 'Мелкая рунная пыль, осевшая в трещинах камня.',
     loreDescription: 'Остаток древних знаков, стёртых временем и обвалами.',
@@ -2120,13 +2142,13 @@ const MINING_PLACEHOLDER_MARKET: Record<string, {
   averageMarketPrice: number;
   category: 'stone' | 'metal' | 'crystal' | 'other';
 }> = {
-  item_raw_stone: { rarity: 'common', itemPrice: 6, averageMarketPrice: 6, category: 'stone' },
-  item_iron_ore: { rarity: 'common', itemPrice: 14, averageMarketPrice: 14, category: 'metal' },
-  item_small_gold_nugget: { rarity: 'rare', itemPrice: 48, averageMarketPrice: 48, category: 'metal' },
-  item_cracked_crystal: { rarity: 'rare', itemPrice: 32, averageMarketPrice: 32, category: 'crystal' },
-  item_zeptyrite_trace: { rarity: 'rare', itemPrice: 120, averageMarketPrice: 120, category: 'other' },
-  item_rune_fragment_weak: { rarity: 'rare', itemPrice: 35, averageMarketPrice: 35, category: 'other' },
-  item_rune_dust: { rarity: 'common', itemPrice: 12, averageMarketPrice: 12, category: 'other' },
+  mat_raw_stone: { rarity: 'common', itemPrice: 6, averageMarketPrice: 6, category: 'stone' },
+  mat_iron_ore: { rarity: 'common', itemPrice: 14, averageMarketPrice: 14, category: 'metal' },
+  mat_gold_nugget: { rarity: 'rare', itemPrice: 48, averageMarketPrice: 48, category: 'metal' },
+  mat_cracked_crystal: { rarity: 'rare', itemPrice: 32, averageMarketPrice: 32, category: 'crystal' },
+  mat_zeptyrite_trace: { rarity: 'rare', itemPrice: 120, averageMarketPrice: 120, category: 'other' },
+  mat_weak_rune_fragment: { rarity: 'rare', itemPrice: 35, averageMarketPrice: 35, category: 'other' },
+  mat_rune_dust: { rarity: 'common', itemPrice: 12, averageMarketPrice: 12, category: 'other' },
 };
 
 let miningItemsEnsured = false;
@@ -2186,7 +2208,7 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
         });
       }
 
-      const existingMaterial = await materialsService.getById(entry.id);
+      const existingMaterial = await materialsService.getById(entry.materialId);
       if (existingMaterial) {
         if (
           fixMojibake(existingMaterial.name) !== normalizedName
@@ -2195,7 +2217,7 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
           || (existingMaterial.averageMarketPrice ?? 0) !== market.averageMarketPrice
           || existingMaterial.rarity !== market.rarity
         ) {
-          await materialsService.update(entry.id, {
+          await materialsService.update(entry.materialId, {
             name: normalizedName,
             rarity: market.rarity,
             averageMarketPrice: market.averageMarketPrice,
@@ -2209,7 +2231,7 @@ export async function ensureMiningPlaceholderItems(): Promise<void> {
         }
       } else {
         await materialsService.create({
-          id: entry.id,
+          id: entry.materialId,
           name: normalizedName,
           rarity: market.rarity,
           category: market.category,

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminAudioField } from '../AdminAudioField';
-import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { ZoneReferenceInput } from '../ZoneReferenceInput';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
@@ -9,6 +8,7 @@ import { getAdminInitials, getNpcPreviewImageKey, resolveAdminImageSource } from
 import { subscribeToContentSync } from '../../services/content/contentSync';
 import { ensureDialoguesLoaded, getAllDialogues, saveDialogue } from '../../services/dialogueRepository';
 import { imageService } from '../../services/content/imageService';
+import { normalizeGameImageRef, toLegacyImagePath, validateGameImageRef } from '../../services/content/gameImageRefs';
 import { itemsService } from '../../services/content/itemsService';
 import { lootTablesService } from '../../services/content/lootTablesService';
 import { merchantsService } from '../../services/content/merchantsService';
@@ -40,6 +40,7 @@ import type { StoredImage } from '../../services/content/models';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { NpcGroupList } from '../components/NpcGroupList';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import { buildNpcCardSummary, groupNpcsByKey, getGroupingLabel, resolveNpcPlaceInfo, type GroupingKey } from '../utils/npcGrouping';
 import { AdminSectionErrorBoundary } from '../components/AdminSectionErrorBoundary';
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
@@ -454,9 +455,13 @@ export function NpcsPage() {
 
       patch({
         portraitUrl: portrait.id,
+        portraitImageRef: { type: 'image', src: portrait.id },
         fullImageUrl: fullImage.id,
+        fullImageRef: { type: 'image', src: fullImage.id },
         combatImageUrl: combatImage.id,
+        combatImageRef: { type: 'image', src: combatImage.id },
         iconUrl: icon.id,
+        iconImageRef: { type: 'image', src: icon.id },
       });
       setStatusText(`Загружены все варианты изображений для NPC: ${baseName}.`);
     } catch (error) {
@@ -494,10 +499,34 @@ export function NpcsPage() {
       return;
     }
 
+    const portraitImageRef = normalizeGameImageRef(draft.portraitImageRef, draft.portraitUrl);
+    const fullImageRef = normalizeGameImageRef(draft.fullImageRef, draft.fullImageUrl);
+    const combatImageRef = normalizeGameImageRef(draft.combatImageRef, draft.combatImageUrl);
+    const iconImageRef = normalizeGameImageRef(draft.iconImageRef, draft.iconUrl);
+
+    const imageErrors = [
+      ...validateGameImageRef(portraitImageRef),
+      ...validateGameImageRef(fullImageRef),
+      ...validateGameImageRef(combatImageRef),
+      ...validateGameImageRef(iconImageRef),
+    ];
+    if (imageErrors.length > 0) {
+      setStatusText(`Проверка изображения: ${translateAdminErrorMessage(imageErrors.join(', '))}`);
+      return;
+    }
+
     const prepared: NpcDefinition = {
       ...draft,
       id: draft.id.trim() || `npc_${Math.random().toString(36).slice(2, 8)}`,
       name: draft.name.trim(),
+      portraitImageRef,
+      fullImageRef,
+      combatImageRef,
+      iconImageRef,
+      portraitUrl: toLegacyImagePath(portraitImageRef),
+      fullImageUrl: toLegacyImagePath(fullImageRef),
+      combatImageUrl: toLegacyImagePath(combatImageRef),
+      iconUrl: toLegacyImagePath(iconImageRef),
       dialogueStartVoiceAssetId: sanitizeAudioAssetRef(draft.dialogueStartVoiceAssetId),
       mapBindings: parseJsonArray<NpcMapBinding>(mapBindingsJson, draft.mapBindings),
       dialogues: parseJsonArray(draft.dialogues ? dialogueBindingsJson : '[]', draft.dialogues),
@@ -859,9 +888,13 @@ export function NpcsPage() {
                   disabled={isBulkImageUploading || (!draft.portraitUrl && !draft.fullImageUrl && !draft.combatImageUrl && !draft.iconUrl)}
                   onClick={() => patch({
                     portraitUrl: undefined,
+                    portraitImageRef: undefined,
                     fullImageUrl: undefined,
+                    fullImageRef: undefined,
                     combatImageUrl: undefined,
+                    combatImageRef: undefined,
                     iconUrl: undefined,
+                    iconImageRef: undefined,
                   })}
                 >
                   Очистить все
@@ -872,10 +905,70 @@ export function NpcsPage() {
                 Система автоматически подготовит изображения под нужные размеры интерфейса. При необходимости любой слот можно заменить вручную ниже.
               </p>
             </section>
-            <AdminImageField value={draft.portraitUrl} onChange={(next) => patch({ portraitUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_portrait` : undefined} suggestedName={`${draft.id || 'npc'}-portrait`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Портрет NPC" hint="Главный портрет персонажа." />
-            <AdminImageField value={draft.fullImageUrl} onChange={(next) => patch({ fullImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_full` : undefined} suggestedName={`${draft.id || 'npc'}-full`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Полное изображение" hint="Полноразмерное изображение для карточек." />
-            <AdminImageField value={draft.combatImageUrl} onChange={(next) => patch({ combatImageUrl: next || undefined })} onStatus={setStatusText} presetId="merchant-portrait" suggestedId={draft.id ? `${draft.id}_combat` : undefined} suggestedName={`${draft.id || 'npc'}-combat`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Боевой портрет" hint="Изображение для боя." />
-            <AdminImageField value={draft.iconUrl} onChange={(next) => patch({ iconUrl: next || undefined })} onStatus={setStatusText} presetId="item-icon" suggestedId={draft.id ? `${draft.id}_icon` : undefined} suggestedName={`${draft.id || 'npc'}-icon`} uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)} label="Иконка NPC" hint="Иконка маркера NPC на карте." />
+            <ImageSheetPicker
+              label="Портрет NPC"
+              hint="Загрузите файл: система сама сохранит его и подставит ID."
+              category="npcs"
+              value={draft.portraitImageRef}
+              legacyImagePath={draft.portraitUrl}
+              runtimeImages={storedImages}
+              showUploadForImage
+              disableManualImageInput
+              uploadPresetId="merchant-portrait"
+              uploadSuggestedId={draft.id ? `${draft.id}_portrait` : undefined}
+              uploadSuggestedName={`${draft.id || 'npc'}-portrait`}
+              uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)}
+              onStatus={setStatusText}
+              onChange={(next) => patch({ portraitImageRef: next, portraitUrl: toLegacyImagePath(next) })}
+            />
+            <ImageSheetPicker
+              label="Полное изображение NPC"
+              hint="Загрузите файл: система сама сохранит его и подставит ID."
+              category="npcs"
+              value={draft.fullImageRef}
+              legacyImagePath={draft.fullImageUrl}
+              runtimeImages={storedImages}
+              showUploadForImage
+              disableManualImageInput
+              uploadPresetId="merchant-portrait"
+              uploadSuggestedId={draft.id ? `${draft.id}_full` : undefined}
+              uploadSuggestedName={`${draft.id || 'npc'}-full`}
+              uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)}
+              onStatus={setStatusText}
+              onChange={(next) => patch({ fullImageRef: next, fullImageUrl: toLegacyImagePath(next) })}
+            />
+            <ImageSheetPicker
+              label="Боевой портрет NPC"
+              hint="Загрузите файл: система сама сохранит его и подставит ID."
+              category="npcs"
+              value={draft.combatImageRef}
+              legacyImagePath={draft.combatImageUrl}
+              runtimeImages={storedImages}
+              showUploadForImage
+              disableManualImageInput
+              uploadPresetId="merchant-portrait"
+              uploadSuggestedId={draft.id ? `${draft.id}_combat` : undefined}
+              uploadSuggestedName={`${draft.id || 'npc'}-combat`}
+              uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)}
+              onStatus={setStatusText}
+              onChange={(next) => patch({ combatImageRef: next, combatImageUrl: toLegacyImagePath(next) })}
+            />
+            <ImageSheetPicker
+              label="Иконка NPC"
+              hint="Загрузите файл: система сама сохранит его и подставит ID."
+              category="npcs"
+              value={draft.iconImageRef}
+              legacyImagePath={draft.iconUrl}
+              runtimeImages={storedImages}
+              showUploadForImage
+              disableManualImageInput
+              uploadPresetId="item-icon"
+              uploadSuggestedId={draft.id ? `${draft.id}_icon` : undefined}
+              uploadSuggestedName={`${draft.id || 'npc'}-icon`}
+              uploadFolder={buildUploadFolder('images', 'npcs', draft.id || draft.name || undefined)}
+              onStatus={setStatusText}
+              onChange={(next) => patch({ iconImageRef: next, iconUrl: toLegacyImagePath(next) })}
+            />
           </>
         ) : null}
 

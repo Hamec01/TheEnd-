@@ -167,6 +167,12 @@ export function updateCharacterProfile(
       }
     : next;
 
+  if (effectiveNext === current) {
+    // Prevent noisy localStorage writes (and React update loops in callers that poll storage)
+    // when the updater decides no changes are needed.
+    return current;
+  }
+
   if (effectiveNext !== next) {
     console.info('[characterProfile] preserved initial worldState', {
       characterId,

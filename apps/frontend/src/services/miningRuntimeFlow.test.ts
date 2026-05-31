@@ -82,13 +82,13 @@ function seedMineForPayload(payloadType: 'loot_item' | 'gold' | 'hazard_ref'): v
   }];
 
   const entries: MineBlockTable['entries'] = payloadType === 'loot_item'
-    ? [{ type: 'stone', weight: 100, payloads: [{ type: 'loot_item', weight: 100, itemId: 'item_iron_ore', minQuantity: 1, maxQuantity: 1 }] }]
+    ? [{ type: 'stone', weight: 100, payloads: [{ type: 'loot_item', weight: 100, itemId: 'mat_iron_ore', minQuantity: 1, maxQuantity: 1 }] }]
     : payloadType === 'gold'
       ? [{ type: 'stone', weight: 100, payloads: [{ type: 'gold', weight: 100, goldMin: 7, goldMax: 7 }] }]
       : [{ type: 'hazard', weight: 100, payloads: [{ type: 'hazard_ref', weight: 100, hazardId }] }];
 
   const blockTables: MineBlockTable[] = [{ id: blockTableId, name: 'Blocks', entries }];
-  const lootTables: MineLootTable[] = [{ id: lootTableId, name: 'Loot', entries: [{ itemId: 'item_iron_ore', weight: 1, minQuantity: 1, maxQuantity: 1 }] }];
+  const lootTables: MineLootTable[] = [{ id: lootTableId, name: 'Loot', entries: [{ itemId: 'mat_iron_ore', weight: 1, minQuantity: 1, maxQuantity: 1 }] }];
   const hazards: MineHazard[] = [{
     id: hazardId,
     name: 'Deadly',
@@ -187,8 +187,8 @@ function seedCustomMine(params: {
     id: lootTableId,
     name: 'Custom loot',
     entries: [
-      { itemId: 'item_cracked_crystal', weight: 1, minQuantity: 1, maxQuantity: 1, rarity: 'rare' },
-      { itemId: 'item_rune_fragment_weak', weight: 1, minQuantity: 1, maxQuantity: 1, rarity: 'rare' },
+      { itemId: 'mat_cracked_crystal', weight: 1, minQuantity: 1, maxQuantity: 1, rarity: 'rare' },
+      { itemId: 'mat_weak_rune_fragment', weight: 1, minQuantity: 1, maxQuantity: 1, rarity: 'rare' },
     ],
   }]);
   saveMineHazardsToStorage([hazard]);
@@ -221,7 +221,7 @@ describe('mining runtime flow', () => {
 
     expect(result.changed).toBe(true);
     expect(result.run.temporaryLoot.length).toBe(1);
-    expect(result.run.temporaryLoot[0]?.itemId).toBe('item_iron_ore');
+    expect(result.run.temporaryLoot[0]?.itemId).toBe('mat_iron_ore');
     expect(readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY)).toHaveLength(0);
   });
 
@@ -240,7 +240,7 @@ describe('mining runtime flow', () => {
     seedMineForPayload('loot_item');
     const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
     run.currentDepthLevel = 2;
-    run.temporaryLoot = [{ itemId: 'item_iron_ore', quantity: 10 }];
+    run.temporaryLoot = [{ itemId: 'mat_iron_ore', quantity: 10 }];
 
     const retreated = retreatMineRun(run, []);
     expect(retreated.status).toBe('retreated');
@@ -257,7 +257,7 @@ describe('mining runtime flow', () => {
   it('hazard death loses loot by default', () => {
     seedMineForPayload('hazard_ref');
     const run = startMineRun({ mineId: 'mine_test', playerHp: 10, playerStamina: 50, rng: () => 0 });
-    run.temporaryLoot = [{ itemId: 'item_iron_ore', quantity: 3 }];
+    run.temporaryLoot = [{ itemId: 'mat_iron_ore', quantity: 3 }];
 
     const dead = hitMineBlock(run, 0, [], () => 0).run;
     expect(dead.status).toBe('dead');
@@ -279,7 +279,7 @@ describe('mining runtime flow', () => {
   it('can force a failure outcome for GODMODE testing', () => {
     seedMineForPayload('loot_item');
     const run = startMineRun({ mineId: 'mine_test', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
-    run.temporaryLoot = [{ itemId: 'item_iron_ore', quantity: 4 }];
+    run.temporaryLoot = [{ itemId: 'mat_iron_ore', quantity: 4 }];
 
     const failed = forceMineRunOutcome(run, 'failed', []);
 
@@ -291,7 +291,7 @@ describe('mining runtime flow', () => {
   it('fragile loot can break and skill can reduce the break chance', () => {
     seedCustomMine({
       blockType: 'crystal',
-      payloads: [{ type: 'loot_item', weight: 100, itemId: 'item_cracked_crystal', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
+      payloads: [{ type: 'loot_item', weight: 100, itemId: 'mat_cracked_crystal', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
     });
     const run = startMineRun({ mineId: 'mine_custom', playerHp: 100, playerStamina: 50, rng: () => 0 });
     const broken = hitMineBlock(run, 0, [], () => 0).run;
@@ -299,7 +299,7 @@ describe('mining runtime flow', () => {
 
     const protectedRun = startMineRun({ mineId: 'mine_custom', playerHp: 100, playerStamina: 50, rng: () => 0.99 });
     const reduced = hitMineBlock(protectedRun, 0, [effect('mine_fragile_loot_break_chance_modifier', { value: -100 })], () => 0.99).run;
-    expect(reduced.temporaryLoot[0]?.itemId).toBe('item_cracked_crystal');
+    expect(reduced.temporaryLoot[0]?.itemId).toBe('mat_cracked_crystal');
   });
 
   it('sell value effect adds bonus gold on escape', () => {
@@ -315,7 +315,7 @@ describe('mining runtime flow', () => {
   it('special property can be attached to crystal loot', () => {
     seedCustomMine({
       blockType: 'crystal',
-      payloads: [{ type: 'loot_item', weight: 100, itemId: 'item_cracked_crystal', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
+      payloads: [{ type: 'loot_item', weight: 100, itemId: 'mat_cracked_crystal', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
     });
     const run = startMineRun({ mineId: 'mine_custom', playerHp: 100, playerStamina: 50, rng: () => 0.99 });
     const next = hitMineBlock(run, 0, [effect('mine_loot_special_property_chance', { value: 100 })], () => 0.99).run;
@@ -325,11 +325,11 @@ describe('mining runtime flow', () => {
   it('rune trace payload can drop rune fragment and modifier affects it', () => {
     seedCustomMine({
       blockType: 'rich_ore',
-      payloads: [{ type: 'rune_trace', weight: 100, itemId: 'item_rune_fragment_weak', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
+      payloads: [{ type: 'rune_trace', weight: 100, itemId: 'mat_weak_rune_fragment', minQuantity: 1, maxQuantity: 1, rarity: 'rare' }],
     });
     const run = startMineRun({ mineId: 'mine_custom', playerHp: 100, playerStamina: 50, rng: () => 0.5 });
     const next = hitMineBlock(run, 0, [effect('mine_rune_fragment_chance_modifier', { value: 50 })], () => 0.5).run;
-    expect(next.temporaryLoot.some((entry) => entry.itemId === 'item_rune_fragment_weak')).toBe(true);
+    expect(next.temporaryLoot.some((entry) => entry.itemId === 'mat_weak_rune_fragment')).toBe(true);
   });
 
   it('event block resolves a visible event', () => {

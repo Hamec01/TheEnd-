@@ -38,6 +38,12 @@ import {
   saveMovementControlScheme,
   type MovementControlScheme,
 } from '../worldmap/playerMovementSettings';
+import {
+  loadWorldAudioSettings,
+  saveWorldAudioSettings,
+  WORLD_AUDIO_SETTINGS_EVENT,
+  type WorldAudioSettings,
+} from '../worldmap/worldAudioSettings';
 import { buildProfileStandings, getCitizenshipBanner } from '../services/reputationRuntime';
 import { readPlayerCitizenshipKingdomId } from '../services/playerCivicRuntime';
 
@@ -431,6 +437,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const [itemSets, setItemSets] = useState<ItemSet[]>([]);
   const [activeCharacterModal, setActiveCharacterModal] = useState<CharacterModalKind>(null);
   const [movementControlScheme, setMovementControlScheme] = useState<MovementControlScheme>(() => loadMovementControlScheme());
+  const [worldAudioSettings, setWorldAudioSettings] = useState<WorldAudioSettings>(() => loadWorldAudioSettings());
 
   const leftColumnRef = useRef<HTMLElement | null>(null);
   const centerColumnRef = useRef<HTMLElement | null>(null);
@@ -1079,7 +1086,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
   }
 
-  async function useSelectedItem(): Promise<void> {
+  async function handleUseSelectedItem(): Promise<void> {
     if (!selectedItem || !onUseItem) {
       onStatus('Использование предмета недоступно.');
       return;
@@ -1347,6 +1354,27 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return () => {
       window.removeEventListener('storage', handleControlSchemeChanged);
       window.removeEventListener('theend:worldMapControlSchemeChanged', handleControlSchemeChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAudioSettingsChanged = (event: Event) => {
+      if (event instanceof StorageEvent) {
+        setWorldAudioSettings(loadWorldAudioSettings());
+        return;
+      }
+
+      const nextValue = (event as CustomEvent<WorldAudioSettings>).detail;
+      if (nextValue && typeof nextValue === 'object') {
+        setWorldAudioSettings(nextValue);
+      }
+    };
+
+    window.addEventListener('storage', handleAudioSettingsChanged);
+    window.addEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleAudioSettingsChanged);
+      window.removeEventListener(WORLD_AUDIO_SETTINGS_EVENT, handleAudioSettingsChanged as EventListener);
     };
   }, []);
 
@@ -1823,7 +1851,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               {renderSelectedItemSetDetails()}
               <div className="character-item-actions">
                 {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
-                  <button type="button" onClick={() => void useSelectedItem()}>
+                  <button type="button" onClick={() => void handleUseSelectedItem()}>
                     Использовать
                   </button>
                 ) : null}
@@ -2273,7 +2301,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             </div>
             <div className="character-item-actions">
               {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
-                <button type="button" onClick={() => void useSelectedItem()}>
+                <button type="button" onClick={() => void handleUseSelectedItem()}>
                   Использовать
                 </button>
               ) : null}
@@ -3074,6 +3102,68 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   />
                 </label>
               </div>
+            </section>
+            <section className="character-meta-card">
+              <h3>Звук</h3>
+              <div className="character-stats-list">
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">Музыка</span>
+                  <input
+                    type="checkbox"
+                    checked={worldAudioSettings.musicEnabled}
+                    onChange={(event) => {
+                      const next = saveWorldAudioSettings({ musicEnabled: event.target.checked });
+                      setWorldAudioSettings(next);
+                      onStatus(event.target.checked ? 'Музыка включена.' : 'Музыка выключена.');
+                    }}
+                  />
+                </label>
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">Громкость музыки</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round(worldAudioSettings.musicVolume * 100)}
+                    onChange={(event) => {
+                      const next = saveWorldAudioSettings({ musicVolume: Number(event.target.value) / 100 });
+                      setWorldAudioSettings(next);
+                    }}
+                    aria-label="Громкость музыки"
+                  />
+                  <strong>{Math.round(worldAudioSettings.musicVolume * 100)}%</strong>
+                </label>
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">Звуковые эффекты</span>
+                  <input
+                    type="checkbox"
+                    checked={worldAudioSettings.sfxEnabled}
+                    onChange={(event) => {
+                      const next = saveWorldAudioSettings({ sfxEnabled: event.target.checked });
+                      setWorldAudioSettings(next);
+                      onStatus(event.target.checked ? 'Звуковые эффекты включены.' : 'Звуковые эффекты выключены.');
+                    }}
+                  />
+                </label>
+                <label className="character-stat-row" style={{ alignItems: 'center', gap: 12 }}>
+                  <span className="character-stat-label">Громкость эффектов</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round(worldAudioSettings.sfxVolume * 100)}
+                    onChange={(event) => {
+                      const next = saveWorldAudioSettings({ sfxVolume: Number(event.target.value) / 100 });
+                      setWorldAudioSettings(next);
+                    }}
+                    aria-label="Громкость эффектов"
+                  />
+                  <strong>{Math.round(worldAudioSettings.sfxVolume * 100)}%</strong>
+                </label>
+              </div>
+              <p className="muted">Музыка: фоновая музыка мира и локаций. Эффекты: шаги, голоса диалогов и другие игровые звуки.</p>
             </section>
             <section className="character-meta-card">
               <h3>Подсказки</h3>

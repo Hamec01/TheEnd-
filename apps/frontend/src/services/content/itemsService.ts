@@ -21,6 +21,7 @@ export function createAdminItemDefaults(): AdminItem {
     gameplayDescription: '',
     loreDescription: '',
     imagePath: '',
+    imageRef: undefined,
     isEnabled: true,
     createdAt: now,
     updatedAt: now,

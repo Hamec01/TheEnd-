@@ -83,6 +83,17 @@ export type QuestConditionType =
   | 'flag_false'
   | 'gold_at_least';
 
+export type GameImageRef =
+  | {
+    type: 'image';
+    src: string;
+  }
+  | {
+    type: 'tileset';
+    sheetId: string;
+    frame: number;
+  };
+
 export interface QuestDefinition {
   id: string;
   title: string;
@@ -109,7 +120,9 @@ export interface QuestDefinition {
   isHidden: boolean;
 
   portraitUrl?: string;
+  portraitImageRef?: GameImageRef;
   imageUrl?: string;
+  imageRef?: GameImageRef;
   bannerUrl?: string;
 
   steps: QuestStep[];
@@ -136,6 +149,7 @@ export interface QuestStep {
   failureStepId?: string;
   branchId?: string;
   imageUrl?: string;
+  imageRef?: GameImageRef;
 }
 
 export interface QuestObjective {
@@ -246,7 +260,9 @@ export interface QuestItemDefinition {
   description: string;
 
   iconUrl?: string;
+  iconImageRef?: GameImageRef;
   imageUrl?: string;
+  imageRef?: GameImageRef;
 
   linkedQuestId?: string;
 
@@ -473,9 +489,11 @@ export interface QuestMarkerDefinition {
   description?: string;
   linkedNpcId?: string;
   icon?: string;
+  iconImageRef?: GameImageRef;
   visibleToPlayer: boolean;
   conditionIds: string[];
   imageUrl?: string;
+  imageRef?: GameImageRef;
   isActive?: boolean;
   requirements?: QuestInteractionRequirement[];
   hideAfterQuestCompleted?: boolean;

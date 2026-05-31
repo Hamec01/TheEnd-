@@ -1,4 +1,4 @@
-import type { Material } from './models';
+import { MATERIAL_PROPERTY_TAGS, type Material, type MaterialPropertyKeyValuePrefix } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
@@ -13,6 +13,23 @@ export function validateMaterial(material: Material): string[] {
   }
   if (!material.region.trim()) {
     errors.push('region is required');
+  }
+  const allowedTags = new Set<string>(MATERIAL_PROPERTY_TAGS as readonly string[]);
+  const allowedPrefixes = new Set<MaterialPropertyKeyValuePrefix>(['origin', 'demand', 'depth', 'recommended_mine']);
+  for (const prop of material.properties ?? []) {
+    const text = String(prop ?? '').trim();
+    if (!text) {
+      continue;
+    }
+    const colonIndex = text.indexOf(':');
+    if (colonIndex >= 0) {
+      const prefix = text.slice(0, colonIndex) as MaterialPropertyKeyValuePrefix;
+      if (!allowedPrefixes.has(prefix)) {
+        errors.push(`unknown material property prefix: ${prefix}`);
+      }
+    } else if (!allowedTags.has(text)) {
+      errors.push(`unknown material property tag: ${text}`);
+    }
   }
   return errors;
 }
@@ -33,6 +50,7 @@ export async function importMaterialsFromJsonEntries(entries: unknown[]): Promis
     gameplayDescription: '',
     loreDescription: '',
     imagePath: '',
+    imageRef: undefined,
     isEnabled: true,
     createdAt: nowIso(),
     updatedAt: nowIso(),

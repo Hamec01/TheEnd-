@@ -36,6 +36,7 @@ import type {
   ContentImportMode,
   ContentImportResult,
   DialogueDefinition,
+  GameImageRef,
   ItemEffect,
   ItemSet,
   ItemRarity,
@@ -951,6 +952,7 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
   const maxAugmentSlots = typeof input.maxAugmentSlots === 'number' && Number.isFinite(input.maxAugmentSlots)
     ? Math.max(0, Math.round(input.maxAugmentSlots))
     : undefined;
+  const imageRef = normalizeGameImageRefInput(input.imageRef, input.imagePath);
 
   return {
     ...input,
@@ -997,7 +999,8 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
     splashOuterMultiplier,
     gameplayDescription: input.gameplayDescription ?? '',
     loreDescription: input.loreDescription ?? '',
-    imagePath: input.imagePath?.trim() || undefined,
+    imagePath: toLegacyImagePath(imageRef, input.imagePath),
+    imageRef,
     isEnabled: input.isEnabled !== false,
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
@@ -1179,8 +1182,49 @@ function normalizeDialogueInput(input: DialogueDefinition): DialogueDefinition {
   };
 }
 
+function normalizeGameImageRefInput(input: unknown, legacyImagePath?: string | null): GameImageRef | undefined {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const ref = input as Record<string, unknown>;
+    const type = String(ref.type ?? '').trim();
+    if (type === 'image') {
+      const src = String(ref.src ?? '').trim();
+      if (src) {
+        return { type: 'image', src };
+      }
+    }
+    if (type === 'tileset') {
+      const sheetId = String(ref.sheetId ?? '').trim();
+      const frame = Number(ref.frame);
+      if (sheetId && Number.isInteger(frame) && frame >= 0) {
+        return { type: 'tileset', sheetId, frame };
+      }
+    }
+  }
+
+  const fallback = typeof legacyImagePath === 'string' ? legacyImagePath.trim() : '';
+  if (fallback) {
+    return { type: 'image', src: fallback };
+  }
+  return undefined;
+}
+
+function toLegacyImagePath(imageRef: GameImageRef | undefined, legacyImagePath?: string | null): string | undefined {
+  if (imageRef?.type === 'image') {
+    return imageRef.src.trim() || undefined;
+  }
+  if (imageRef) {
+    return undefined;
+  }
+  const fallback = typeof legacyImagePath === 'string' ? legacyImagePath.trim() : '';
+  return fallback || undefined;
+}
+
 function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
   const now = nowIso();
+  const portraitImageRef = normalizeGameImageRefInput(input.portraitImageRef, input.portraitUrl);
+  const fullImageRef = normalizeGameImageRefInput(input.fullImageRef, input.fullImageUrl);
+  const combatImageRef = normalizeGameImageRefInput(input.combatImageRef, input.combatImageUrl);
+  const iconImageRef = normalizeGameImageRefInput(input.iconImageRef, input.iconUrl);
   return {
     ...input,
     id: String(input.id ?? '').trim(),
@@ -1198,9 +1242,14 @@ function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
     canTrade: input.canTrade === true,
     traderId: input.traderId ? String(input.traderId).trim() : undefined,
     dialogueId: input.dialogueId ? String(input.dialogueId).trim() : undefined,
-    portraitUrl: input.portraitUrl ? String(input.portraitUrl).trim() : undefined,
-    fullImageUrl: input.fullImageUrl ? String(input.fullImageUrl).trim() : undefined,
-    iconUrl: input.iconUrl ? String(input.iconUrl).trim() : undefined,
+    portraitUrl: toLegacyImagePath(portraitImageRef, input.portraitUrl),
+    portraitImageRef,
+    fullImageUrl: toLegacyImagePath(fullImageRef, input.fullImageUrl),
+    fullImageRef,
+    combatImageUrl: toLegacyImagePath(combatImageRef, input.combatImageUrl),
+    combatImageRef,
+    iconUrl: toLegacyImagePath(iconImageRef, input.iconUrl),
+    iconImageRef,
     battleSpriteAssetId: input.battleSpriteAssetId ? String(input.battleSpriteAssetId).trim() : undefined,
     deathEffectId: input.deathEffectId ? String(input.deathEffectId).trim() : undefined,
     hitEffectPreset: input.hitEffectPreset ? String(input.hitEffectPreset).trim() : undefined,
@@ -1218,6 +1267,7 @@ function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
 
 function normalizeMaterialInput(input: Material): Material {
   const now = nowIso();
+  const imageRef = normalizeGameImageRefInput(input.imageRef, input.imagePath);
   return {
     ...input,
     id: String(input.id ?? '').trim(),
@@ -1225,13 +1275,18 @@ function normalizeMaterialInput(input: Material): Material {
     category: input.category,
     region: String(input.region ?? '').trim(),
     rarity: input.rarity,
-    properties: Array.isArray(input.properties) ? input.properties.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [],
+    properties: Array.isArray(input.properties)
+      ? (input.properties
+          .map((entry) => String(entry ?? '').trim())
+          .filter(Boolean) as Material['properties'])
+      : [],
     averageMarketPrice: typeof input.averageMarketPrice === 'number' && Number.isFinite(input.averageMarketPrice)
       ? Math.max(0, Math.round(input.averageMarketPrice))
       : undefined,
     gameplayDescription: String(input.gameplayDescription ?? '').trim(),
     loreDescription: String(input.loreDescription ?? '').trim(),
-    imagePath: input.imagePath?.trim() || undefined,
+    imagePath: toLegacyImagePath(imageRef, input.imagePath),
+    imageRef,
     isEnabled: input.isEnabled !== false,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
@@ -1239,13 +1294,17 @@ function normalizeMaterialInput(input: Material): Material {
 }
 
 function normalizeQuestItemInput(input: QuestItemDefinition): QuestItemDefinition {
+  const iconImageRef = normalizeGameImageRefInput(input.iconImageRef, input.iconUrl);
+  const imageRef = normalizeGameImageRefInput(input.imageRef, input.imageUrl);
   return {
     ...input,
     id: String(input.id ?? '').trim(),
     name: String(input.name ?? '').trim(),
     description: String(input.description ?? '').trim(),
-    iconUrl: input.iconUrl ? String(input.iconUrl).trim() : undefined,
-    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+    iconUrl: toLegacyImagePath(iconImageRef, input.iconUrl),
+    iconImageRef,
+    imageUrl: toLegacyImagePath(imageRef, input.imageUrl),
+    imageRef,
     linkedQuestId: input.linkedQuestId ? String(input.linkedQuestId).trim() : undefined,
     canDrop: input.canDrop !== false,
     canSell: input.canSell !== false,
@@ -1257,6 +1316,8 @@ function normalizeQuestItemInput(input: QuestItemDefinition): QuestItemDefinitio
 
 function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
   const marker = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+  const iconImageRef = normalizeGameImageRefInput(marker.iconImageRef, marker.icon as string | undefined);
+  const imageRef = normalizeGameImageRefInput(marker.imageRef, marker.imageUrl as string | undefined);
 
   const linkedQuestId = marker.linkedQuestId ?? marker.questId;
   const linkedObjectiveId = marker.linkedObjectiveId ?? marker.objectiveId;
@@ -1284,10 +1345,12 @@ function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
     linkedStepId: linkedStepId ? String(linkedStepId).trim() : undefined,
     linkedObjectiveId: linkedObjectiveId ? String(linkedObjectiveId).trim() : undefined,
     linkedNpcId: linkedNpcId ? String(linkedNpcId).trim() : undefined,
-    icon: marker.icon ? String(marker.icon).trim() : undefined,
+    icon: toLegacyImagePath(iconImageRef, marker.icon as string | undefined),
+    iconImageRef,
     visibleToPlayer: marker.visibleToPlayer !== false,
     conditionIds: Array.isArray(marker.conditionIds) ? marker.conditionIds.map((id) => String(id).trim()).filter(Boolean) : [],
-    imageUrl: marker.imageUrl ? String(marker.imageUrl).trim() : undefined,
+    imageUrl: toLegacyImagePath(imageRef, marker.imageUrl as string | undefined),
+    imageRef,
     isActive: marker.isActive === false ? false : undefined,
     requirements: Array.isArray(marker.requirements) ? marker.requirements as QuestInteractionRequirement[] : undefined,
     hideAfterQuestCompleted: marker.hideAfterQuestCompleted === true ? true : undefined,
@@ -1302,6 +1365,8 @@ function normalizeQuestMarkerInput(input: unknown): QuestMarkerDefinition {
 
 function normalizeQuestInput(input: QuestDefinition): QuestDefinition {
   const now = nowIso();
+  const portraitImageRef = normalizeGameImageRefInput(input.portraitImageRef, input.portraitUrl);
+  const imageRef = normalizeGameImageRefInput(input.imageRef, input.imageUrl);
   return {
     ...input,
     id: String(input.id ?? '').trim(),
@@ -1321,8 +1386,10 @@ function normalizeQuestInput(input: QuestDefinition): QuestDefinition {
     maxLevel: typeof input.maxLevel === 'number' && Number.isFinite(input.maxLevel) ? Math.max(1, Math.round(input.maxLevel)) : undefined,
     isRepeatable: Boolean(input.isRepeatable),
     isHidden: Boolean(input.isHidden),
-    portraitUrl: input.portraitUrl ? String(input.portraitUrl).trim() : undefined,
-    imageUrl: input.imageUrl ? String(input.imageUrl).trim() : undefined,
+    portraitUrl: toLegacyImagePath(portraitImageRef, input.portraitUrl),
+    portraitImageRef,
+    imageUrl: toLegacyImagePath(imageRef, input.imageUrl),
+    imageRef,
     bannerUrl: input.bannerUrl ? String(input.bannerUrl).trim() : undefined,
     steps: Array.isArray(input.steps) ? clone(input.steps) : [],
     triggers: Array.isArray(input.triggers) ? clone(input.triggers) : [],

@@ -18,6 +18,11 @@ import type {
 import { imageService } from '../../services/content/imageService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import {
+  normalizeGameImageRef,
+  toLegacyImagePath,
+  validateGameImageRef,
+} from '../../services/content/gameImageRefs';
+import {
   createAdminItemDefaults,
   extractRawItemsFromImportJson,
   importItemsFromJsonEntries,
@@ -26,8 +31,9 @@ import {
 } from '../../services/content/itemsService';
 import { uid } from '../../services/content/storage';
 import { AdminAudioField } from '../AdminAudioField';
-import { AdminImageField } from '../AdminImageField';
 import { ItemEffectEditor } from '../components/ItemEffectEditor';
+import { GameImageView } from '../components/GameImageView';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import type { ItemEffectJson } from '../itemEffectConstants';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '../../services/content/contentApi';
@@ -255,7 +261,9 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   );
 
   function resolveItemImage(item: AdminItem): string | undefined {
-    return resolveStoredImageSource(item.imagePath?.trim(), runtimeImages);
+    const imageRef = normalizeGameImageRef(item.imageRef, item.imagePath);
+    const legacyPath = toLegacyImagePath(imageRef) ?? item.imagePath;
+    return resolveStoredImageSource(legacyPath?.trim(), runtimeImages);
   }
 
   function getItemCardAccent(item: AdminItem): string {
@@ -493,17 +501,6 @@ export function ItemsPage(props: ItemsPageProps = {}) {
     };
   }, [draft.imagePath]);
 
-  const draftImageSrc = useMemo(() => {
-    const normalized = draft.imagePath?.trim();
-    if (!normalized) {
-      return null;
-    }
-    if (isDirectImageSource(normalized)) {
-      return normalized;
-    }
-    return resolveStoredImageSource(normalized, previewImage ? [previewImage] : []) ?? null;
-  }, [draft.imagePath, previewImage]);
-
   const draftPreviewLabel = useMemo(() => {
     const source = draft.name.trim() || draft.subtype?.trim() || draft.type;
     return source.charAt(0).toUpperCase() || '?';
@@ -515,13 +512,22 @@ export function ItemsPage(props: ItemsPageProps = {}) {
     }
 
     const id = draft.id.trim() || uid('item');
+    const normalizedImageRef = normalizeGameImageRef(draft.imageRef, draft.imagePath);
     const normalized: AdminItem = {
       ...draft,
       id,
+      imageRef: normalizedImageRef,
+      imagePath: toLegacyImagePath(normalizedImageRef),
       handsRequired: draft.type === 'weapon' && draft.handsRequired === 2 ? 2 : 1,
       maxStack: draft.stackable ? Math.max(2, draft.maxStack ?? 2) : 1,
       updatedAt: new Date().toISOString(),
     };
+
+    const imageErrors = validateGameImageRef(normalized.imageRef);
+    if (imageErrors.length > 0) {
+      setStatus(`Проверка изображения: ${translateAdminErrorMessage(imageErrors.join(', '))}`);
+      return;
+    }
 
     const errors = validateItem(normalized);
     if (errors.length > 0) {
@@ -917,26 +923,30 @@ export function ItemsPage(props: ItemsPageProps = {}) {
             <AdminFieldLabel label="Броня" hint="Плоское значение защиты, которое даёт предмет." />
             <input type="number" value={draft.armorValue ?? ''} onChange={(event) => patch({ armorValue: parseNumber(event.target.value) })} />
           </label>
-        <label>
-          <AdminFieldLabel label="Путь / ID изображения" hint="Ссылка на изображение или ID загруженной картинки, которое будет использоваться в интерфейсе." />
-          <input value={draft.imagePath ?? ''} onChange={(event) => patch({ imagePath: event.target.value })} />
-        </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={draft.isEnabled} onChange={(event) => patch({ isEnabled: event.target.checked })} />
             <AdminFieldLabel label="Включён" hint="Если выключить, предмет останется в базе, но не будет использоваться в игровом контенте." />
           </label>
         </div>
 
-        <AdminImageField
-          value={draft.imagePath}
-          onChange={(nextValue) => patch({ imagePath: nextValue })}
-          onStatus={setStatus}
-          presetId="item-icon"
-          suggestedId={draft.id || undefined}
-          suggestedName={`${draft.id || draft.name || 'item'}-icon`}
+        <ImageSheetPicker
+          label="Изображение предмета"
+          hint="Загрузите файл: система сама сохранит его и подставит ID. Для тайлсета можно выбрать frame."
+          category="items"
+          value={draft.imageRef}
+          legacyImagePath={draft.imagePath}
+          runtimeImages={runtimeImages}
+          showUploadForImage
+          disableManualImageInput
+          uploadPresetId="item-icon"
+          uploadSuggestedId={draft.id || undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'item'}-icon`}
           uploadFolder={buildUploadFolder('images', 'items', draft.type, draft.subtype || undefined)}
-          label="Картинка предмета"
-          hint="Загружает иконку предмета и автоматически подгоняет её под единый квадратный размер для магазина, инвентаря и слотов."
+          onStatus={setStatus}
+          onChange={(next) => patch({
+            imageRef: next,
+            imagePath: toLegacyImagePath(next),
+          })}
         />
 
         <section className="card">
@@ -1375,17 +1385,19 @@ export function ItemsPage(props: ItemsPageProps = {}) {
         <section className="card admin-item-preview">
           <div className="admin-item-preview-layout">
             <div className="admin-item-preview-icon-shell" aria-hidden="true">
-              {draftImageSrc ? (
-                <img className="admin-item-preview-icon" src={draftImageSrc} alt={draft.name || 'preview'} />
-              ) : (
-                <div className="admin-item-preview-icon admin-item-preview-icon-fallback">
-                  {draftPreviewLabel}
-                </div>
-              )}
+              <GameImageView
+                className="admin-item-preview-icon"
+                imageRef={normalizeGameImageRef(draft.imageRef, draft.imagePath)}
+                legacyImagePath={draft.imagePath}
+                runtimeImages={previewImage ? [previewImage] : runtimeImages}
+                alt={draft.name || 'preview'}
+                size={88}
+                fallbackText={draftPreviewLabel}
+              />
             </div>
           </div>
           <h4>Предпросмотр предмета</h4>
-          {draft.imagePath ? <p className="muted">Иконка: {draft.imagePath}</p> : null}
+          {draft.imagePath ? <p className="muted">Legacy icon: {draft.imagePath}</p> : null}
           <p><strong>{draft.name || '(без названия)'}</strong> ({draft.id || 'ID ещё не задан'})</p>
           <p>{translateItemType(draft.type)} / {draft.subtype || 'без подтипа'} / {translateRarity(draft.rarity)}</p>
           <p>Цена: {draft.price}</p>
@@ -1506,7 +1518,16 @@ export function ItemsPage(props: ItemsPageProps = {}) {
               title={`${item.name} (${item.id})`}
             >
               <div className={`admin-catalog-thumb admin-catalog-thumb-lg ${getItemCardAccent(item)}`}>
-                {resolveItemImage(item) ? <img src={resolveItemImage(item)} alt={item.name} /> : (item.name.trim() || item.type).charAt(0).toUpperCase()}
+                {normalizeGameImageRef(item.imageRef, item.imagePath) ? (
+                  <GameImageView
+                    imageRef={normalizeGameImageRef(item.imageRef, item.imagePath)}
+                    legacyImagePath={item.imagePath}
+                    runtimeImages={runtimeImages}
+                    alt={item.name}
+                    size={64}
+                    fallbackText={(item.name.trim() || item.type).charAt(0).toUpperCase()}
+                  />
+                ) : resolveItemImage(item) ? <img src={resolveItemImage(item)} alt={item.name} /> : (item.name.trim() || item.type).charAt(0).toUpperCase()}
               </div>
               <strong>{item.name || '(без названия)'}</strong>
               <span>{item.id || 'ID ещё не задан'}</span>

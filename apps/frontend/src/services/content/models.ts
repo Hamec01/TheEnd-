@@ -36,6 +36,30 @@ export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' |
 
 export type DamageCategory = 'physical' | 'elemental' | 'magic' | 'shamanic' | 'runic' | 'poison' | 'bleed' | 'true';
 
+export type ImageSheetCategory = 'materials' | 'items' | 'npcs' | 'quests' | 'ui' | 'other';
+
+export interface ImageSheetDefinition {
+  id: string;
+  name: string;
+  category: ImageSheetCategory;
+  src: string;
+  frameWidth: number;
+  frameHeight: number;
+  columns: number;
+  rows: number;
+}
+
+export type GameImageRef =
+  | {
+    type: 'image';
+    src: string;
+  }
+  | {
+    type: 'tileset';
+    sheetId: string;
+    frame: number;
+  };
+
 export type PhysicalType = 'slash' | 'pierce' | 'blunt' | 'cleave' | 'unarmed';
 
 export type ElementType = 'fire' | 'water' | 'earth' | 'air' | 'light' | 'dark';
@@ -127,6 +151,7 @@ export interface ItemSet {
   createdAt: string;
   updatedAt: string;
   imagePath?: string;
+  imageRef?: GameImageRef;
   gameplayDescription?: string;
   loreDescription?: string;
 }
@@ -200,6 +225,7 @@ export interface AdminItem {
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
+  imageRef?: GameImageRef;
   battleVisuals?: ActorBattleVisualConfig;
   isEnabled: boolean;
   createdAt: string;
@@ -255,6 +281,190 @@ export interface AdminMerchant {
 
 export type MaterialCategory = 'metal' | 'wood' | 'leather' | 'cloth' | 'herb' | 'stone' | 'crystal' | 'bone' | 'other';
 
+export const MATERIAL_PROPERTY_TAGS = [
+  'alchemy',
+  'alloy_component',
+  'amplification',
+  'amplifier',
+  'ancient',
+  'aquarion',
+  'armor',
+  'armor_part',
+  'artifact',
+  'ash',
+  'astarion',
+  'astarion_related',
+  'baking',
+  'basic',
+  'bind',
+  'black_flame',
+  'blacksmithing',
+  'blood',
+  'blue',
+  'blue_metal',
+  'building',
+  'caravan',
+  'ceremonial',
+  'coal',
+  'construction',
+  'cooking',
+  'corrosion_resistant',
+  'cracked',
+  'crafting',
+  'crystal',
+  'curse',
+  'dangerous',
+  'dark',
+  'death',
+  'demon',
+  'dense',
+  'desert',
+  'document',
+  'dust',
+  'dwarf',
+  'dwarf_engineering',
+  'earth',
+  'engineering',
+  'epic',
+  'felendar',
+  'feralas',
+  'fire',
+  'fire_core',
+  'fire_resistant',
+  'flint',
+  'flour_source',
+  'focus',
+  'food',
+  'forbidden',
+  'forbidden_component',
+  'fragment',
+  'fuel',
+  'full_rune',
+  'gem',
+  'glass_tree',
+  'glowing',
+  'gold',
+  'golemcraft',
+  'grain',
+  'gravity',
+  'gravity_core',
+  'green',
+  'green_metal',
+  'healing',
+  'heat',
+  'heat_storage',
+  'heavy',
+  'heavy_metal',
+  'herb',
+  'hot_burning',
+  'ice',
+  'ice_core',
+  'illusion',
+  'ingredient',
+  'ink',
+  'jewelcrafting',
+  'kelerite',
+  'leather',
+  'legendary',
+  'life',
+  'light',
+  'living_vein',
+  'lumeare',
+  'luminium',
+  'lunaan',
+  'magic_stone_raw',
+  'magic_weapon',
+  'mana_storage',
+  'mechanism',
+  'medicine',
+  'metal',
+  'meteor',
+  'military_supply',
+  'mining',
+  'miridian',
+  'moss_trace',
+  'mythic',
+  'nature',
+  'night',
+  'no_porter_save',
+  'nocturna',
+  'obsidian',
+  'ocean',
+  'oil',
+  'orcish',
+  'ore',
+  'plate',
+  'poison',
+  'preservation',
+  'preserved_food',
+  'pure',
+  'pure_core',
+  'pure_vein',
+  'purification',
+  'quest',
+  'rare',
+  'rare_mineral',
+  'rare_trade',
+  'ration',
+  'requires_identification',
+  'resonance',
+  'rich',
+  'ritual',
+  'rune',
+  'rune_candidate',
+  'rune_complex',
+  'rune_component',
+  'rune_stabilizer',
+  'runecrafting',
+  'salt',
+  'shadow',
+  'shamanic',
+  'shape_memory',
+  'sharp',
+  'silver',
+  'slag',
+  'soft',
+  'solarite',
+  'soul',
+  'soulbound',
+  'spirit',
+  'stabilize',
+  'stone',
+  'sulfur',
+  'sun',
+  'support',
+  'technology',
+  'terragons_trace',
+  'textile',
+  'tool',
+  'tool_part',
+  'trace',
+  'trade',
+  'trade_good',
+  'transforming_weapon',
+  'unidentified',
+  'utility',
+  'verdantin',
+  'vintarion',
+  'volatile',
+  'volcanic',
+  'water',
+  'water_reflection',
+  'weak',
+  'weapon_part',
+  'wind',
+  'wood',
+  'zeptyrite',
+] as const;
+
+export type MaterialPropertyTag = (typeof MATERIAL_PROPERTY_TAGS)[number];
+
+export type MaterialPropertyKeyValuePrefix = 'origin' | 'demand' | 'depth' | 'recommended_mine';
+
+export type MaterialProperty =
+  | MaterialPropertyTag
+  | `${MaterialPropertyKeyValuePrefix}:${string}`;
+
 export interface Material {
   id: string;
   name: string;
@@ -262,10 +472,11 @@ export interface Material {
   region: string;
   rarity: ItemRarity;
   averageMarketPrice?: number;
-  properties: string[];
+  properties: MaterialProperty[];
   gameplayDescription: string;
   loreDescription: string;
   imagePath?: string;
+  imageRef?: GameImageRef;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

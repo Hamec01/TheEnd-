@@ -509,7 +509,10 @@ export function MerchantsPage() {
           </label>
           <label className="zone-editor-checkbox">
             <input type="checkbox" checked={Boolean(draft.materialTradingEnabled)} onChange={(event) => patch({ materialTradingEnabled: event.target.checked })} />
-            <AdminFieldLabel label="Торговля материалами" hint="Открывает выбор материалов, которыми торговец торгует." />
+            <AdminFieldLabel
+              label="Торговля материалами"
+              hint="Если включено, торговец может продавать материалы из справочника Materials: зерно, кожу, руду, кристаллы, масла, рунные компоненты и другие экономические товары. Это не то же самое, что торговля обычными предметами."
+            />
           </label>
         </div>
 
