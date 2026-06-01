@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { AdminImageField } from '../AdminImageField';
 import { AdminFieldLabel } from '../adminUi';
 import { itemsService } from '../../services/content/itemsService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { loadRuntimeImages } from '../../services/content/runtimeImageService';
+import type { StoredImage } from '../../services/content/models';
 import { loadMiningToolsFromStorage, saveMiningToolsToStorage } from '../../services/miningRepository';
 import type { MiningToolDefinition, MiningToolEffectType, MiningToolType } from '../../types/mining';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { materializeTilesetFrameToPreset } from '../../services/content/materializeTilesetFrame';
+import { normalizeGameImageRef, toLegacyImagePath } from '../../services/content/gameImageRefs';
 
 interface MiningToolEditorProps {
   onSave?: (tools: MiningToolDefinition[]) => void;
@@ -23,6 +27,7 @@ function emptyTool(): MiningToolDefinition {
     description: '',
     effectType: 'extra_hits',
     effectValue: 0,
+    spriteRef: undefined,
     spriteAssetId: '',
     spriteUrl: '',
     isConsumable: false,
@@ -36,6 +41,7 @@ export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
   const [draft, setDraft] = useState<MiningToolDefinition>(emptyTool());
   const [status, setStatus] = useState('Ready');
   const [knownItems, setKnownItems] = useState<Array<{ id: string; name: string }>>([]);
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
 
   useEffect(() => {
     const loaded = loadMiningToolsFromStorage();
@@ -53,6 +59,12 @@ export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
         setKnownItems(filtered);
       })
       .catch(() => setKnownItems([]));
+  }, []);
+
+  useEffect(() => {
+    void loadRuntimeImages()
+      .then((images) => setRuntimeImages(images))
+      .catch(() => setRuntimeImages([]));
   }, []);
 
   function persist(next: MiningToolDefinition[], nextStatus: string) {
@@ -77,14 +89,16 @@ export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
   }
 
   function saveDraft() {
+    const normalizedSpriteRef = normalizeGameImageRef(draft.spriteRef, draft.spriteUrl);
     const normalized: MiningToolDefinition = {
       ...draft,
       id: draft.id.trim(),
       itemId: draft.itemId.trim(),
       name: draft.name.trim(),
       description: draft.description?.trim() || undefined,
-      spriteAssetId: draft.spriteAssetId?.trim() || undefined,
-      spriteUrl: draft.spriteUrl?.trim() || undefined,
+      spriteRef: normalizedSpriteRef,
+      spriteAssetId: (toLegacyImagePath(normalizedSpriteRef) ?? draft.spriteAssetId)?.trim() || undefined,
+      spriteUrl: (toLegacyImagePath(normalizedSpriteRef) ?? draft.spriteUrl)?.trim() || undefined,
       effectValue: Number.isFinite(Number(draft.effectValue)) ? Number(draft.effectValue) : 0,
     };
 
@@ -193,17 +207,49 @@ export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
           </label>
         </div>
 
-        <AdminImageField
-          value={draft.spriteUrl ?? ''}
-          onChange={(nextValue) => setDraft((current) => ({ ...current, spriteUrl: nextValue, spriteAssetId: nextValue }))}
-          onUploaded={(image) => setStatus(`Tool image uploaded to ${uploadFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
-          onStatus={setStatus}
-          presetId="mining-tool-icon"
-          suggestedId={draft.id ? `${draft.id}-icon` : undefined}
-          suggestedName={`${draft.id || draft.name || 'mining-tool'}-icon`}
-          uploadFolder={uploadFolder}
+        <ImageSheetPicker
           label="Tool icon / sprite"
-          hint="Always use upload. The file will be saved into the correct folder and resized to PNG 128x128."
+          hint="128x128. Можно загрузить отдельную картинку или выбрать frame из tileset (кадр 128x128)."
+          category="items"
+          value={draft.spriteRef}
+          legacyImagePath={draft.spriteUrl}
+          runtimeImages={runtimeImages}
+          showUploadForImage
+          uploadPresetId="mining-tool-icon"
+          uploadSuggestedId={draft.id ? `${draft.id}-icon` : undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'mining-tool'}-icon`}
+          uploadFolder={uploadFolder}
+          defaultTilesetFrameWidth={128}
+          defaultTilesetFrameHeight={128}
+          onStatus={setStatus}
+          onChange={(next) => {
+            setDraft((current) => ({
+              ...current,
+              spriteRef: next,
+              spriteUrl: next?.type === 'image' ? next.src : current.spriteUrl,
+              spriteAssetId: next?.type === 'image' ? next.src : current.spriteAssetId,
+            }));
+            if (next?.type !== 'tileset' || !draft.id) {
+              return;
+            }
+            void materializeTilesetFrameToPreset(next, {
+              presetId: 'mining-tool-icon',
+              runtimeImages,
+              folder: uploadFolder,
+              id: `${draft.id}-icon`,
+              name: `${draft.id || draft.name || 'mining-tool'}-icon`,
+            }).then((result) => {
+              if (!result) {
+                return;
+              }
+              setDraft((current) => ({
+                ...current,
+                spriteUrl: result.imageId,
+                spriteAssetId: result.imageId,
+              }));
+              setStatus(`Tool icon frame materialized as ${result.imageId} (128x128 PNG).`);
+            }).catch((error) => setStatus(String((error as Error).message ?? error)));
+          }}
         />
 
         <label>

@@ -25,6 +25,8 @@ export interface ImageSheetPickerProps {
   runtimeImages?: StoredImage[];
   showUploadForImage?: boolean;
   disableManualImageInput?: boolean;
+  defaultTilesetFrameWidth?: number;
+  defaultTilesetFrameHeight?: number;
   uploadPresetId?: ImagePresetId;
   uploadSuggestedId?: string;
   uploadSuggestedName?: string;
@@ -55,6 +57,8 @@ export function ImageSheetPicker({
   runtimeImages = [],
   showUploadForImage = false,
   disableManualImageInput = false,
+  defaultTilesetFrameWidth,
+  defaultTilesetFrameHeight,
   uploadPresetId,
   uploadSuggestedId,
   uploadSuggestedName,
@@ -66,8 +70,14 @@ export function ImageSheetPicker({
   const [isUploadingTileset, setIsUploadingTileset] = useState(false);
   const [inlineStatus, setInlineStatus] = useState('');
   const [sheetsVersion, setSheetsVersion] = useState(0);
-  const [tilesetFrameWidth, setTilesetFrameWidth] = useState(128);
-  const [tilesetFrameHeight, setTilesetFrameHeight] = useState(128);
+  const [tilesetFrameWidth, setTilesetFrameWidth] = useState(() => {
+    const value = Number(defaultTilesetFrameWidth);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 128;
+  });
+  const [tilesetFrameHeight, setTilesetFrameHeight] = useState(() => {
+    const value = Number(defaultTilesetFrameHeight);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 128;
+  });
   const [tilesetName, setTilesetName] = useState('');
 
   const normalized = useMemo(

@@ -1,3 +1,4 @@
+import type { GameImageRef } from '../services/content/models';
 import type { ProfessionSkillEffect } from './profession';
 
 export type MineDangerLevel = 'low' | 'medium' | 'high' | 'deadly';
@@ -54,12 +55,15 @@ export interface MineDepth {
   isFinalDepth: boolean;
   requiredMiningLevel: number;
   backgroundImage?: string;
+  blockSpriteRef?: GameImageRef;
   blockSpriteAssetId?: string;
   blockSpriteUrl?: string;
+  blockCrackSpriteRef?: GameImageRef;
   blockCrackSpriteAssetId?: string;
   blockCrackSpriteUrl?: string;
   blockBreakSpriteSheetAssetId?: string;
   blockBreakSpriteSheetUrl?: string;
+  particleTextureRef?: GameImageRef;
   particleTextureAssetId?: string;
   particleTextureUrl?: string;
   isEnabled: boolean;
@@ -93,6 +97,7 @@ export interface MiningToolDefinition {
   toolType: MiningToolType;
   name: string;
   description?: string;
+  spriteRef?: GameImageRef;
   spriteAssetId?: string;
   spriteUrl?: string;
   effectType?: MiningToolEffectType;

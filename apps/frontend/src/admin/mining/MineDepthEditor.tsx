@@ -3,6 +3,11 @@ import { AdminImageField } from '../AdminImageField';
 import type { MineDepth } from '../../types/mining';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { loadRuntimeImages } from '../../services/content/runtimeImageService';
+import type { StoredImage } from '../../services/content/models';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { materializeTilesetFrameToPreset } from '../../services/content/materializeTilesetFrame';
+import { normalizeGameImageRef, toLegacyImagePath } from '../../services/content/gameImageRefs';
 import {
   loadMineDepthsFromStorage,
   loadMinesFromStorage,
@@ -35,12 +40,15 @@ function emptyDepth(defaultMineId = ''): MineDepth {
     isFinalDepth: false,
     requiredMiningLevel: 1,
     backgroundImage: '',
+    blockSpriteRef: undefined,
     blockSpriteAssetId: '',
     blockSpriteUrl: '',
+    blockCrackSpriteRef: undefined,
     blockCrackSpriteAssetId: '',
     blockCrackSpriteUrl: '',
     blockBreakSpriteSheetAssetId: '',
     blockBreakSpriteSheetUrl: '',
+    particleTextureRef: undefined,
     particleTextureAssetId: '',
     particleTextureUrl: '',
     isEnabled: true,
@@ -53,6 +61,7 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
   const [selectedMineId, setSelectedMineId] = useState<string>('');
   const [draft, setDraft] = useState<MineDepth>(emptyDepth());
   const [status, setStatus] = useState('Ready');
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
   const mines = useMemo(() => loadMinesFromStorage(), []);
 
   useEffect(() => {
@@ -67,6 +76,12 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
       setDraft(emptyDepth(firstMineId));
     }
   }, [mines]);
+
+  useEffect(() => {
+    void loadRuntimeImages()
+      .then((images) => setRuntimeImages(images))
+      .catch(() => setRuntimeImages([]));
+  }, []);
 
   const filteredDepths = useMemo(
     () => depths
@@ -105,6 +120,9 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
   }
 
   function saveDraft() {
+    const normalizedBlockSpriteRef = normalizeGameImageRef(draft.blockSpriteRef, draft.blockSpriteUrl);
+    const normalizedCrackSpriteRef = normalizeGameImageRef(draft.blockCrackSpriteRef, draft.blockCrackSpriteUrl);
+    const normalizedParticleTextureRef = normalizeGameImageRef(draft.particleTextureRef, draft.particleTextureUrl);
     const normalized: MineDepth = {
       ...draft,
       id: draft.id.trim(),
@@ -115,14 +133,17 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
       blockTableId: draft.blockTableId.trim(),
       hazardTableId: draft.hazardTableId.trim(),
       backgroundImage: draft.backgroundImage?.trim() || undefined,
-      blockSpriteAssetId: draft.blockSpriteAssetId?.trim() || undefined,
-      blockSpriteUrl: draft.blockSpriteUrl?.trim() || undefined,
-      blockCrackSpriteAssetId: draft.blockCrackSpriteAssetId?.trim() || undefined,
-      blockCrackSpriteUrl: draft.blockCrackSpriteUrl?.trim() || undefined,
+      blockSpriteRef: normalizedBlockSpriteRef,
+      blockSpriteAssetId: (toLegacyImagePath(normalizedBlockSpriteRef) ?? draft.blockSpriteAssetId)?.trim() || undefined,
+      blockSpriteUrl: (toLegacyImagePath(normalizedBlockSpriteRef) ?? draft.blockSpriteUrl)?.trim() || undefined,
+      blockCrackSpriteRef: normalizedCrackSpriteRef,
+      blockCrackSpriteAssetId: (toLegacyImagePath(normalizedCrackSpriteRef) ?? draft.blockCrackSpriteAssetId)?.trim() || undefined,
+      blockCrackSpriteUrl: (toLegacyImagePath(normalizedCrackSpriteRef) ?? draft.blockCrackSpriteUrl)?.trim() || undefined,
       blockBreakSpriteSheetAssetId: draft.blockBreakSpriteSheetAssetId?.trim() || undefined,
       blockBreakSpriteSheetUrl: draft.blockBreakSpriteSheetUrl?.trim() || undefined,
-      particleTextureAssetId: draft.particleTextureAssetId?.trim() || undefined,
-      particleTextureUrl: draft.particleTextureUrl?.trim() || undefined,
+      particleTextureRef: normalizedParticleTextureRef,
+      particleTextureAssetId: (toLegacyImagePath(normalizedParticleTextureRef) ?? draft.particleTextureAssetId)?.trim() || undefined,
+      particleTextureUrl: (toLegacyImagePath(normalizedParticleTextureRef) ?? draft.particleTextureUrl)?.trim() || undefined,
       depthLevel: Math.max(1, Math.floor(Number(draft.depthLevel || 1))),
       rows: Math.max(1, Math.floor(Number(draft.rows || 1))),
       columns: Math.max(1, Math.floor(Number(draft.columns || 1))),
@@ -290,30 +311,94 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
           hint="Only needed as a fallback. The main background should now be set on the mine."
         />
 
-        <AdminImageField
-          value={draft.blockSpriteUrl ?? ''}
-          onChange={(nextValue) => setDraft((current) => ({ ...current, blockSpriteUrl: nextValue, blockSpriteAssetId: nextValue }))}
-          onUploaded={(image) => setStatus(`Block sprite uploaded to ${blockFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
-          onStatus={setStatus}
-          presetId="mining-block"
-          suggestedId={draft.id ? `${draft.id}-block` : undefined}
-          suggestedName={`${draft.id || draft.name || 'depth'}-block`}
-          uploadFolder={blockFolder}
+        <ImageSheetPicker
           label="Block sprite"
-          hint="Use upload. The image will be resized to PNG 256x256."
+          hint="256x256. Можно загрузить отдельную картинку или выбрать frame из tileset (кадр 256x256)."
+          category="ui"
+          value={draft.blockSpriteRef}
+          legacyImagePath={draft.blockSpriteUrl}
+          runtimeImages={runtimeImages}
+          showUploadForImage
+          uploadPresetId="mining-block"
+          uploadSuggestedId={draft.id ? `${draft.id}-block` : undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'depth'}-block`}
+          uploadFolder={blockFolder}
+          defaultTilesetFrameWidth={256}
+          defaultTilesetFrameHeight={256}
+          onStatus={setStatus}
+          onChange={(next) => {
+            setDraft((current) => ({
+              ...current,
+              blockSpriteRef: next,
+              blockSpriteUrl: next?.type === 'image' ? next.src : current.blockSpriteUrl,
+              blockSpriteAssetId: next?.type === 'image' ? next.src : current.blockSpriteAssetId,
+            }));
+            if (next?.type !== 'tileset' || !draft.id) {
+              return;
+            }
+            void materializeTilesetFrameToPreset(next, {
+              presetId: 'mining-block',
+              runtimeImages,
+              folder: blockFolder,
+              id: `${draft.id}-block`,
+              name: `${draft.id || draft.name || 'depth'}-block`,
+            }).then((result) => {
+              if (!result) {
+                return;
+              }
+              setDraft((current) => ({
+                ...current,
+                blockSpriteUrl: result.imageId,
+                blockSpriteAssetId: result.imageId,
+              }));
+              setStatus(`Block frame materialized as ${result.imageId} (256x256 PNG).`);
+            }).catch((error) => setStatus(String((error as Error).message ?? error)));
+          }}
         />
 
-        <AdminImageField
-          value={draft.blockCrackSpriteUrl ?? ''}
-          onChange={(nextValue) => setDraft((current) => ({ ...current, blockCrackSpriteUrl: nextValue, blockCrackSpriteAssetId: nextValue }))}
-          onUploaded={(image) => setStatus(`Crack sprite uploaded to ${crackFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
-          onStatus={setStatus}
-          presetId="mining-block"
-          suggestedId={draft.id ? `${draft.id}-crack` : undefined}
-          suggestedName={`${draft.id || draft.name || 'depth'}-crack`}
-          uploadFolder={crackFolder}
+        <ImageSheetPicker
           label="Crack sprite"
-          hint="Rendered over the block when it is hit."
+          hint="256x256. Рендерится поверх блока при ударах."
+          category="ui"
+          value={draft.blockCrackSpriteRef}
+          legacyImagePath={draft.blockCrackSpriteUrl}
+          runtimeImages={runtimeImages}
+          showUploadForImage
+          uploadPresetId="mining-block"
+          uploadSuggestedId={draft.id ? `${draft.id}-crack` : undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'depth'}-crack`}
+          uploadFolder={crackFolder}
+          defaultTilesetFrameWidth={256}
+          defaultTilesetFrameHeight={256}
+          onStatus={setStatus}
+          onChange={(next) => {
+            setDraft((current) => ({
+              ...current,
+              blockCrackSpriteRef: next,
+              blockCrackSpriteUrl: next?.type === 'image' ? next.src : current.blockCrackSpriteUrl,
+              blockCrackSpriteAssetId: next?.type === 'image' ? next.src : current.blockCrackSpriteAssetId,
+            }));
+            if (next?.type !== 'tileset' || !draft.id) {
+              return;
+            }
+            void materializeTilesetFrameToPreset(next, {
+              presetId: 'mining-block',
+              runtimeImages,
+              folder: crackFolder,
+              id: `${draft.id}-crack`,
+              name: `${draft.id || draft.name || 'depth'}-crack`,
+            }).then((result) => {
+              if (!result) {
+                return;
+              }
+              setDraft((current) => ({
+                ...current,
+                blockCrackSpriteUrl: result.imageId,
+                blockCrackSpriteAssetId: result.imageId,
+              }));
+              setStatus(`Crack frame materialized as ${result.imageId} (256x256 PNG).`);
+            }).catch((error) => setStatus(String((error as Error).message ?? error)));
+          }}
         />
 
         <AdminImageField
@@ -329,17 +414,49 @@ export function MineDepthEditor({ onSave }: MineDepthEditorProps) {
           hint="For the first version a regular PNG placeholder of the same size is fine."
         />
 
-        <AdminImageField
-          value={draft.particleTextureUrl ?? ''}
-          onChange={(nextValue) => setDraft((current) => ({ ...current, particleTextureUrl: nextValue, particleTextureAssetId: nextValue }))}
-          onUploaded={(image) => setStatus(`Particle texture uploaded to ${particleFolder} as ${image.id} (${image.width}x${image.height}, PNG).`)}
-          onStatus={setStatus}
-          presetId="mining-block"
-          suggestedId={draft.id ? `${draft.id}-particle` : undefined}
-          suggestedName={`${draft.id || draft.name || 'depth'}-particle`}
-          uploadFolder={particleFolder}
+        <ImageSheetPicker
           label="Particle texture"
-          hint="Leave empty if you do not have a dedicated particle texture yet."
+          hint="256x256. Можно оставить пустым, если пока нет текстуры."
+          category="ui"
+          value={draft.particleTextureRef}
+          legacyImagePath={draft.particleTextureUrl}
+          runtimeImages={runtimeImages}
+          showUploadForImage
+          uploadPresetId="mining-block"
+          uploadSuggestedId={draft.id ? `${draft.id}-particle` : undefined}
+          uploadSuggestedName={`${draft.id || draft.name || 'depth'}-particle`}
+          uploadFolder={particleFolder}
+          defaultTilesetFrameWidth={256}
+          defaultTilesetFrameHeight={256}
+          onStatus={setStatus}
+          onChange={(next) => {
+            setDraft((current) => ({
+              ...current,
+              particleTextureRef: next,
+              particleTextureUrl: next?.type === 'image' ? next.src : current.particleTextureUrl,
+              particleTextureAssetId: next?.type === 'image' ? next.src : current.particleTextureAssetId,
+            }));
+            if (next?.type !== 'tileset' || !draft.id) {
+              return;
+            }
+            void materializeTilesetFrameToPreset(next, {
+              presetId: 'mining-block',
+              runtimeImages,
+              folder: particleFolder,
+              id: `${draft.id}-particle`,
+              name: `${draft.id || draft.name || 'depth'}-particle`,
+            }).then((result) => {
+              if (!result) {
+                return;
+              }
+              setDraft((current) => ({
+                ...current,
+                particleTextureUrl: result.imageId,
+                particleTextureAssetId: result.imageId,
+              }));
+              setStatus(`Particle frame materialized as ${result.imageId} (256x256 PNG).`);
+            }).catch((error) => setStatus(String((error as Error).message ?? error)));
+          }}
         />
 
         <div className="admin-form-grid">
