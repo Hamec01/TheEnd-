@@ -109,7 +109,9 @@ export function resolveRenderedWorldEntities(
     npcById.set(npc.id, npc);
   }
 
-  return entities.map((entity) => {
+  return entities
+    .filter((entity) => entity.renderOnWorldMap !== false)
+    .map((entity) => {
     const npc = entity.npcTemplateId ? npcById.get(entity.npcTemplateId) : undefined;
     const spriteSrc = resolveSpriteSource(entity.spriteId, runtimeImages);
     const portraitSrc = resolvePortraitSource(entity.portraitId, npc, runtimeImages);
@@ -150,5 +152,5 @@ export function resolveRenderedWorldEntities(
       label,
       title,
     };
-  });
+    });
 }

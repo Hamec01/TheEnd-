@@ -19,6 +19,7 @@ import { DialoguesPage } from './pages/DialoguesPage';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
 import { CitiesPage } from './pages/CitiesPage';
 import { BackupPage } from './pages/BackupPage';
+import { CraftingRecipesPage } from './pages/CraftingRecipesPage';
 import { ItemSetsPage } from './pages/ItemSetsPage';
 import { LocationsPage } from './pages/LocationsPage';
 import { WorldSimulationAdmin } from './pages/WorldSimulationAdmin';
@@ -29,12 +30,13 @@ interface AdminAppProps {
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/skills' | '/admin/visual-fx' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim' | '/admin/professions';
+type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/crafting-recipes' | '/admin/skills' | '/admin/visual-fx' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim' | '/admin/professions';
 
 function normalizeAdminPath(path: string): AdminRoute {
   if (
     path === '/admin/items'
     || path === '/admin/item-sets'
+    || path === '/admin/crafting-recipes'
     || path === '/admin/skills'
     || path === '/admin/visual-fx'
     || path === '/admin/quests'
@@ -69,6 +71,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Предметы';
       case '/admin/item-sets':
         return 'Сеты предметов';
+      case '/admin/crafting-recipes':
+        return 'Рецепты / Производство';
       case '/admin/skills':
         return 'Skills';
       case '/admin/visual-fx':
@@ -132,6 +136,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/item-sets':
       page = <ItemSetsPage onNavigate={onNavigate} />;
+      break;
+    case '/admin/crafting-recipes':
+      page = <CraftingRecipesPage />;
       break;
     case '/admin/skills':
       page = <SkillsPage />;

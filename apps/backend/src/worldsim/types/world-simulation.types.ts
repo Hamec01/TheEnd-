@@ -141,6 +141,7 @@ export interface ActiveWorldEntity {
   
   // Когда будет следующее событие (например, прибытие в город)
   nextEventAt?: string; // ISO timestamp
+  currentCityId?: string;
   
   // Участники группы (NPC ID)
   members: string[]; // ['npc_merchant_01', 'npc_guard_arklein_01', ...]
@@ -226,6 +227,9 @@ export interface WorldSimulationSnapshot {
     state: string;
     spriteId: string;
     portraitId?: string;
+    cityId?: string;
+    renderOnWorldMap?: boolean;
+    renderInCityMap?: boolean;
     memberCount: number;
     zoneId: string;
     coordinates: { x: number; y: number };

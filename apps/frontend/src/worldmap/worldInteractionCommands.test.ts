@@ -193,6 +193,54 @@ describe('world interaction command mapping', () => {
     expect(resolution.moveTarget).toBeNull();
   });
 
+  it('does not interact with entities hidden from the world map and lets the city click win', () => {
+    const city = createCircleZone({
+      id: 'city_arklein',
+      name: 'Arklein',
+      type: 'city',
+      x: 0.44,
+      y: 0.5,
+      radius: 0.04,
+      editorLayer: 'locations',
+      interactionMode: 'enter',
+      playerClickable: true,
+      blocksClick: true,
+    });
+
+    const resolution = resolveWorldClickInteraction({
+      point: { x: 0.44, y: 0.5 },
+      screenPointPx: { x: 440, y: 500 },
+      viewportPx: { width: 1000, height: 1000 },
+      camera: { left: 0, top: 0, width: 1, height: 1 },
+      zones: [city],
+      activeEntities: [{
+        id: 'entity_city_merchant',
+        archetypeId: 'merchant_arklein',
+        kind: 'merchant',
+        state: 'in_city',
+        spriteId: 'trader_world_sprite',
+        cityId: 'city_arklein',
+        renderOnWorldMap: false,
+        renderInCityMap: true,
+        memberCount: 1,
+        zoneId: 'city_arklein',
+        coordinates: { x: 0.44, y: 0.5 },
+        isHostile: false,
+        hasQuest: false,
+        updatedAt: 'now',
+        sourceTick: 1,
+      }],
+      renderedEntities: [],
+    });
+
+    expect(resolution.clickedEntity).toBeNull();
+    expect(resolution.clickedZone?.id).toBe('city_arklein');
+    expect(resolution.commands).toEqual([
+      { type: 'interact_zone', zoneId: 'city_arklein', point: { x: 0.44, y: 0.5 } },
+      { type: 'move_to_point', point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein' },
+    ]);
+  });
+
   it('maps exact entity marker clicks to interact_world_entity in screen space', () => {
     const resolution = resolveWorldClickInteraction({
       point: { x: 0.5, y: 0.5 },

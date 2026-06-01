@@ -2,7 +2,9 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { BuyItemDto } from './dto.buy-item.dto';
 import { EquipItemDto } from './dto.equip-item.dto';
 import { SellItemDto } from './dto.sell-item.dto';
+import { SocketAugmentDto } from './dto.socket-augment.dto';
 import { UnequipItemDto } from './dto.unequip-item.dto';
+import { UnsocketAugmentDto } from './dto.unsocket-augment.dto';
 import { UseItemDto } from './dto.use-item.dto';
 import { ArenaService } from './arena.service';
 
@@ -46,5 +48,24 @@ export class ArenaController {
   @Post('use-item')
   useItem(@Body() dto: UseItemDto) {
     return this.arenaService.useItem(dto.characterId, dto.itemId);
+  }
+
+  @Post('socket-augment')
+  socketAugment(@Body() dto: SocketAugmentDto) {
+    return this.arenaService.socketAugment(
+      dto.characterId,
+      dto.itemInstanceId,
+      dto.socketId,
+      dto.augmentItemId,
+    );
+  }
+
+  @Post('unsocket-augment')
+  unsocketAugment(@Body() dto: UnsocketAugmentDto) {
+    return this.arenaService.unsocketAugment(
+      dto.characterId,
+      dto.itemInstanceId,
+      dto.socketId,
+    );
   }
 }

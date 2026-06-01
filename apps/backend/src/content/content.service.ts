@@ -28,6 +28,7 @@ import type {
   AdminMerchant,
   City,
   CityLocation,
+  CraftingRecipe,
   WorldLocation,
   ContentBackupEnvelope,
   ContentCollectionMap,
@@ -76,6 +77,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'questItems',
   'questMarkers',
   'battleMaps',
+  'craftingRecipes',
   'itemSets',
   'runeComplexes',
 ];
@@ -149,6 +151,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
     questItems: db.questItems.length,
     questMarkers: db.questMarkers.length,
     battleMaps: db.battleMaps.length,
+    craftingRecipes: (db.craftingRecipes ?? []).length,
     itemSets: (db.itemSets ?? []).length,
     runeComplexes: (db.runeComplexes ?? []).length,
     maps: db.battleMaps.length,
@@ -500,6 +503,7 @@ function createEmptyDatabase(): ContentDatabase {
     questItems: [],
     questMarkers: [],
     battleMaps: [],
+    craftingRecipes: [],
     itemSets: [],
     runeComplexes: [],
     worldMap: {
@@ -531,6 +535,7 @@ function createSeedDatabase(): ContentDatabase {
     questItems: [],
     questMarkers: [],
     battleMaps: [],
+    craftingRecipes: [],
     itemSets: [],
     runeComplexes: [],
     worldMap: {
@@ -606,6 +611,130 @@ function toFiniteNumber(value: unknown): number | undefined {
 function toInteger(value: unknown): number | undefined {
   const num = toFiniteNumber(value);
   return typeof num === 'number' ? Math.round(num) : undefined;
+}
+
+const CRAFTING_RECIPE_STATUSES = new Set(['draft', 'active', 'disabled', 'archived']);
+const CRAFTING_RECIPE_TYPES = new Set([
+  'material_processing',
+  'smelting',
+  'grinding',
+  'cutting',
+  'tanning',
+  'weaving',
+  'cooking',
+  'baking',
+  'alchemy',
+  'jewelcrafting',
+  'blacksmith_craft',
+  'carpentry_craft',
+  'leatherworking_craft',
+  'runecrafting',
+  'rune_identification',
+  'enchantment',
+  'add_socket',
+  'temporary_item_buff',
+  'permanent_item_upgrade',
+  'dismantling',
+]);
+const CRAFTING_PROFESSION_IDS = new Set([
+  'mining',
+  'blacksmithing',
+  'carpentry',
+  'leatherworking',
+  'jewelcrafting',
+  'runecrafting',
+  'fishing',
+  'cooking',
+  'hunting',
+  'alchemy',
+  'herbalism',
+]);
+const CRAFTING_STATION_TYPES = new Set([
+  'none',
+  'forge',
+  'furnace',
+  'anvil',
+  'workbench',
+  'sawmill',
+  'tanning_rack',
+  'cooking_fire',
+  'oven',
+  'cauldron',
+  'alchemy_table',
+  'jewelcrafting_table',
+  'rune_table',
+  'enchanting_table',
+  'drying_rack',
+  'fishing_spot',
+  'hunting_camp',
+  'millstone',
+]);
+const CRAFTING_FAILURE_MODES = new Set([
+  'none',
+  'lose_inputs',
+  'lose_partial_inputs',
+  'damaged_item',
+  'cursed_result',
+  'random_lower_quality',
+]);
+const CRAFTING_RESULT_MODES = new Set(['fixed', 'random_from_pool']);
+
+function normalizeCraftingMaterialStackInput(value: unknown): NonNullable<CraftingRecipe['inputMaterials']>[number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const materialId = String(raw.materialId ?? '').trim();
+  if (!materialId) {
+    return null;
+  }
+
+  return {
+    materialId,
+    quantity: Math.max(1, toInteger(raw.quantity) ?? 1),
+  };
+}
+
+function normalizeCraftingItemStackInput(
+  value: unknown,
+  options?: { keepConsume?: boolean },
+): NonNullable<CraftingRecipe['inputItems']>[number] | NonNullable<CraftingRecipe['outputItems']>[number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const itemId = String(raw.itemId ?? '').trim();
+  if (!itemId) {
+    return null;
+  }
+
+  return {
+    itemId,
+    quantity: Math.max(1, toInteger(raw.quantity) ?? 1),
+    consume: options?.keepConsume ? raw.consume !== false : undefined,
+  };
+}
+
+function normalizeCraftingMaterialStacksInput(value: unknown): CraftingRecipe['inputMaterials'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeCraftingMaterialStackInput(entry))
+    .filter((entry): entry is NonNullable<CraftingRecipe['inputMaterials']>[number] => Boolean(entry));
+}
+
+function normalizeCraftingItemStacksInput(value: unknown, options?: { keepConsume?: boolean }): CraftingRecipe['inputItems'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeCraftingItemStackInput(entry, options))
+    .filter((entry): entry is NonNullable<CraftingRecipe['inputItems']>[number] => Boolean(entry));
 }
 
 function normalizeItemEffectInput(input: unknown): ItemEffect | null {
@@ -836,6 +965,127 @@ function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
   };
+}
+
+function normalizeCraftingRecipeInput(input: CraftingRecipe): CraftingRecipe {
+  const statusRaw = String(input.status ?? '').trim();
+  const recipeTypeRaw = String(input.recipeType ?? '').trim();
+  const stationTypeRaw = String(input.stationType ?? '').trim();
+  const failureModeRaw = String(input.failureMode ?? '').trim();
+  const resultModeRaw = String(input.resultMode ?? '').trim();
+
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    status: CRAFTING_RECIPE_STATUSES.has(statusRaw) ? statusRaw as CraftingRecipe['status'] : 'draft',
+    recipeType: CRAFTING_RECIPE_TYPES.has(recipeTypeRaw) ? recipeTypeRaw as CraftingRecipe['recipeType'] : 'material_processing',
+    professionId: String(input.professionId ?? '').trim(),
+    stationType: CRAFTING_STATION_TYPES.has(stationTypeRaw) ? stationTypeRaw as CraftingRecipe['stationType'] : 'none',
+    requiredProfessionLevel: Math.max(0, toInteger(input.requiredProfessionLevel) ?? 0) || undefined,
+    requiredSkillIds: normalizeStringList(input.requiredSkillIds),
+    requiredBlueprintItemId: typeof input.requiredBlueprintItemId === 'string' && input.requiredBlueprintItemId.trim()
+      ? input.requiredBlueprintItemId.trim()
+      : undefined,
+    requiredQuestId: typeof input.requiredQuestId === 'string' && input.requiredQuestId.trim()
+      ? input.requiredQuestId.trim()
+      : undefined,
+    inputMaterials: normalizeCraftingMaterialStacksInput(input.inputMaterials),
+    inputItems: normalizeCraftingItemStacksInput(input.inputItems, { keepConsume: true }),
+    outputMaterials: normalizeCraftingMaterialStacksInput(input.outputMaterials),
+    outputItems: normalizeCraftingItemStacksInput(input.outputItems),
+    resultMode: CRAFTING_RESULT_MODES.has(resultModeRaw) ? resultModeRaw as CraftingRecipe['resultMode'] : 'fixed',
+    resultPoolId: typeof input.resultPoolId === 'string' && input.resultPoolId.trim() ? input.resultPoolId.trim() : undefined,
+    goldCost: Math.max(0, toInteger(input.goldCost) ?? 0) || undefined,
+    staminaCost: Math.max(0, toInteger(input.staminaCost) ?? 0) || undefined,
+    timeSeconds: Math.max(0, toInteger(input.timeSeconds) ?? 0) || undefined,
+    successChance: toFiniteNumber(input.successChance) !== undefined
+      ? Math.max(0, Math.min(100, toFiniteNumber(input.successChance) ?? 100))
+      : undefined,
+    failureMode: CRAFTING_FAILURE_MODES.has(failureModeRaw) ? failureModeRaw as CraftingRecipe['failureMode'] : 'none',
+    isRepeatable: input.isRepeatable !== false,
+    isEnabled: input.isEnabled !== false,
+    tags: normalizeStringList(input.tags),
+    createdAt: input.createdAt || nowIso(),
+    updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
+export function collectMissingCraftingRecipeReferenceWarnings(db: ContentDatabase): string[] {
+  const materialIds = new Set((db.materials ?? []).map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+  const itemIds = new Set((db.items ?? []).map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+  const skillIds = new Set((db.skills ?? []).map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+  const questIds = new Set((db.quests ?? []).map((entry) => String(entry?.id ?? '').trim()).filter(Boolean));
+  const warnings: string[] = [];
+
+  for (const recipe of db.craftingRecipes ?? []) {
+    if (!recipe || typeof recipe !== 'object') {
+      continue;
+    }
+
+    const missingInputMaterials = Array.from(new Set(
+      (recipe.inputMaterials ?? [])
+        .map((entry) => String(entry?.materialId ?? '').trim())
+        .filter((id) => id && !materialIds.has(id)),
+    ));
+    if (missingInputMaterials.length > 0) {
+      warnings.push(`Crafting recipe '${recipe.id}' has missing input materials: ${missingInputMaterials.join(', ')}`);
+    }
+
+    const missingOutputMaterials = Array.from(new Set(
+      (recipe.outputMaterials ?? [])
+        .map((entry) => String(entry?.materialId ?? '').trim())
+        .filter((id) => id && !materialIds.has(id)),
+    ));
+    if (missingOutputMaterials.length > 0) {
+      warnings.push(`Crafting recipe '${recipe.id}' has missing output materials: ${missingOutputMaterials.join(', ')}`);
+    }
+
+    const missingInputItems = Array.from(new Set(
+      (recipe.inputItems ?? [])
+        .map((entry) => String(entry?.itemId ?? '').trim())
+        .filter((id) => id && !itemIds.has(id)),
+    ));
+    if (missingInputItems.length > 0) {
+      warnings.push(`Crafting recipe '${recipe.id}' has missing input items: ${missingInputItems.join(', ')}`);
+    }
+
+    const missingOutputItems = Array.from(new Set(
+      (recipe.outputItems ?? [])
+        .map((entry) => String(entry?.itemId ?? '').trim())
+        .filter((id) => id && !itemIds.has(id)),
+    ));
+    if (missingOutputItems.length > 0) {
+      warnings.push(`Crafting recipe '${recipe.id}' has missing output items: ${missingOutputItems.join(', ')}`);
+    }
+
+    const missingSkillIds = Array.from(new Set(
+      (recipe.requiredSkillIds ?? [])
+        .map((entry) => String(entry ?? '').trim())
+        .filter((id) => id && !skillIds.has(id)),
+    ));
+    if (missingSkillIds.length > 0) {
+      warnings.push(`Crafting recipe '${recipe.id}' has missing required skills: ${missingSkillIds.join(', ')}`);
+    }
+
+    const blueprintItemId = String(recipe.requiredBlueprintItemId ?? '').trim();
+    if (blueprintItemId && !itemIds.has(blueprintItemId)) {
+      warnings.push(`Crafting recipe '${recipe.id}' references missing blueprint item '${blueprintItemId}'.`);
+    }
+
+    const questId = String(recipe.requiredQuestId ?? '').trim();
+    if (questId && !questIds.has(questId)) {
+      warnings.push(`Crafting recipe '${recipe.id}' references missing quest '${questId}'.`);
+    }
+
+    const professionId = String(recipe.professionId ?? '').trim();
+    if (professionId && !CRAFTING_PROFESSION_IDS.has(professionId)) {
+      warnings.push(`Crafting recipe '${recipe.id}' uses unknown profession '${professionId}'.`);
+    }
+  }
+
+  return warnings;
 }
 
 function normalizeVisualFxInput(input: VisualFxDefinition): VisualFxDefinition {
@@ -2186,6 +2436,11 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       errors.push(`Duplicate quest marker ids: ${duplicateQuestMarkers.join(', ')}`);
     }
 
+    const duplicateCraftingRecipes = findDuplicateIds(db.craftingRecipes ?? []);
+    if (duplicateCraftingRecipes.length > 0) {
+      errors.push(`Duplicate crafting recipe ids: ${duplicateCraftingRecipes.join(', ')}`);
+    }
+
     const duplicateItemSets = findDuplicateIds(db.itemSets ?? []);
     if (duplicateItemSets.length > 0) {
       errors.push(`Duplicate item set ids: ${duplicateItemSets.join(', ')}`);
@@ -2263,6 +2518,29 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
 
     for (const warning of collectMissingItemSetReferenceWarnings(db)) {
+      warnings.add(warning);
+    }
+
+    for (const recipe of db.craftingRecipes ?? []) {
+      if (!recipe || typeof recipe !== 'object') {
+        errors.push(`Crafting recipe entry is null or invalid`);
+        continue;
+      }
+
+      const totalInputs = (recipe.inputMaterials?.length ?? 0) + (recipe.inputItems?.length ?? 0);
+      const totalOutputs = (recipe.outputMaterials?.length ?? 0) + (recipe.outputItems?.length ?? 0);
+      if (totalInputs <= 0) {
+        errors.push(`Crafting recipe '${recipe.id}' must have at least one input.`);
+      }
+      if ((recipe.resultMode ?? 'fixed') !== 'random_from_pool' && totalOutputs <= 0) {
+        warnings.add(`Crafting recipe '${recipe.id}' has no outputs in fixed mode.`);
+      }
+      if ((recipe.resultMode ?? 'fixed') === 'random_from_pool' && !String(recipe.resultPoolId ?? '').trim()) {
+        errors.push(`Crafting recipe '${recipe.id}' uses random_from_pool without resultPoolId.`);
+      }
+    }
+
+    for (const warning of collectMissingCraftingRecipeReferenceWarnings(db)) {
       warnings.add(warning);
     }
 
@@ -2480,6 +2758,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questItems: sanitizeIdObjectArray<QuestItemDefinition>(raw.questItems).map((entry) => normalizeQuestItemInput(entry)).filter((q) => Boolean(q.id)),
       questMarkers: sanitizeIdObjectArray<QuestMarkerDefinition>(raw.questMarkers).map((entry) => normalizeQuestMarkerInput(entry)).filter((m) => Boolean(m.id)),
       battleMaps: clone(sanitizeIdObjectArray<BattleMapDefinition>(raw.battleMaps)).filter((map) => Boolean(map.id)),
+      craftingRecipes: sanitizeIdObjectArray<CraftingRecipe>(raw.craftingRecipes).map((entry) => normalizeCraftingRecipeInput(entry)).filter((entry) => Boolean(entry.id)),
       itemSets: sanitizeIdObjectArray<ItemSet>(raw.itemSets).map((entry) => normalizeItemSetInput(entry)).filter((set) => Boolean(set.id)),
       runeComplexes: sanitizeIdObjectArray<RuneComplex>(raw.runeComplexes).map((entry) => normalizeRuneComplexInput(entry)).filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
@@ -2573,6 +2852,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questItems: mergeById(existing.questItems, incoming.questItems),
       questMarkers: mergeById(existing.questMarkers, incoming.questMarkers),
       battleMaps: mergeById(existing.battleMaps, incoming.battleMaps),
+      craftingRecipes: mergeById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
       itemSets: mergeById(existing.itemSets ?? [], incoming.itemSets ?? []),
       runeComplexes: mergeById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
       worldMap: {
@@ -2607,6 +2887,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questItems: addMissingById(existing.questItems, incoming.questItems),
       questMarkers: addMissingById(existing.questMarkers, incoming.questMarkers),
       battleMaps: addMissingById(existing.battleMaps, incoming.battleMaps),
+      craftingRecipes: addMissingById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
       itemSets: addMissingById(existing.itemSets ?? [], incoming.itemSets ?? []),
       runeComplexes: addMissingById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
       worldMap: {
@@ -2684,6 +2965,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         questItems: filterCollection('questItems', incoming.questItems, existing.questItems) as QuestItemDefinition[] | undefined,
         questMarkers: filterCollection('questMarkers', incoming.questMarkers, existing.questMarkers) as QuestMarkerDefinition[] | undefined,
         battleMaps: filterCollection('battleMaps', incoming.battleMaps, existing.battleMaps) as BattleMapDefinition[] | undefined,
+        craftingRecipes: filterCollection('craftingRecipes', incoming.craftingRecipes, existing.craftingRecipes ?? []) as CraftingRecipe[] | undefined,
         itemSets: filterCollection('itemSets', incoming.itemSets, existing.itemSets ?? []) as ItemSet[] | undefined,
         runeComplexes: filterCollection('runeComplexes', incoming.runeComplexes, existing.runeComplexes ?? []) as RuneComplex[] | undefined,
         worldMap,
@@ -2743,6 +3025,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
+
+    warnings.push(...collectMissingCraftingRecipeReferenceWarnings(db));
 
     for (const item of db.items) {
       for (const socket of item.augmentSlots ?? []) {
@@ -3071,6 +3355,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeQuestItemInput(payload as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       nextEntry = normalizeQuestMarkerInput(payload as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'craftingRecipes') {
+      nextEntry = normalizeCraftingRecipeInput(payload as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'itemSets') {
       nextEntry = normalizeItemSetInput(payload as unknown as ItemSet) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'runeComplexes') {
@@ -3123,6 +3409,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeQuestItemInput(mergedBase as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       merged = normalizeQuestMarkerInput(mergedBase as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'craftingRecipes') {
+      merged = normalizeCraftingRecipeInput(mergedBase as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'itemSets') {
       merged = normalizeItemSetInput(mergedBase as unknown as ItemSet) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'runeComplexes') {
@@ -3218,6 +3506,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
     if (Array.isArray(payload.battleMaps) && payload.battleMaps.length > 0) {
       db.battleMaps = mergeById(db.battleMaps, clone(payload.battleMaps as BattleMapDefinition[]));
+    }
+    if (Array.isArray(payload.craftingRecipes) && payload.craftingRecipes.length > 0) {
+      const normalized = payload.craftingRecipes.map((entry) => normalizeCraftingRecipeInput(entry as CraftingRecipe));
+      db.craftingRecipes = mergeById(db.craftingRecipes ?? [], normalized);
     }
     if (Array.isArray(payload.itemSets) && payload.itemSets.length > 0) {
       const normalized = payload.itemSets.map((entry) => normalizeItemSetInput(entry as ItemSet));

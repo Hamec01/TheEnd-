@@ -87,6 +87,7 @@ export interface ActiveWorldEntity {
   currentStamina?: number;
   staminaRegenPerTick?: number;
   nextEventAt?: string;
+  currentCityId?: string;
   members: string[];
   cargo?: {
     goodsId: string;
@@ -150,6 +151,9 @@ export interface WorldSimulationSnapshot {
     state: string;
     spriteId: string;
     portraitId?: string;
+    cityId?: string;
+    renderOnWorldMap?: boolean;
+    renderInCityMap?: boolean;
     memberCount: number;
     zoneId: string;
     coordinates: { x: number; y: number };

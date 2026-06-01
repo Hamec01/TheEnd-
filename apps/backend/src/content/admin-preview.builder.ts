@@ -2,11 +2,18 @@
  * admin-preview.builder.ts
  *
  * Чистые builder-функции для генерации preview-ответов.
- * Нет зависимостей от NestJS, Prisma или БД — только входные данные и типы.
+ * Нет зависимостей от NestJS, Prisma или БД - только входные данные и типы.
  */
 
 import { formatItemEffect } from './item-effects.formatter';
 import type { AdminItem, ItemEffect, ItemSet, ItemSocket, RuneComplex } from './content.types';
+import { matchActivationContexts, normalizeActivationContextList } from './activation-contexts';
+import {
+  augmentContextMismatchReason,
+  augmentMissingOrDisabledReason,
+  augmentMissingPayloadReason,
+  augmentTypeMismatchReason,
+} from './augment-inactive-reasons';
 import type {
   InactiveAugmentPreview,
   InstanceSocketStateEntry,
@@ -39,16 +46,22 @@ function formatEffects(effects: ItemEffect[] | undefined): string[] {
 }
 
 function contextsCompatible(
-  effectContexts: string[] | undefined,
+  requiredContexts: string[] | undefined,
   activationContexts: string[] | undefined,
-): boolean {
-  if (!effectContexts || effectContexts.length === 0) {
-    return true;
+): { ok: boolean; required: string[] } {
+  const normalizedRequired = normalizeActivationContextList(requiredContexts);
+  if (normalizedRequired.length === 0) {
+    return { ok: true, required: [] };
   }
-  if (!activationContexts || activationContexts.length === 0) {
-    return false;
-  }
-  return effectContexts.some((ctx) => activationContexts.includes(ctx));
+
+  const match = matchActivationContexts(
+    normalizedRequired,
+    normalizeActivationContextList(activationContexts),
+  );
+  return {
+    ok: match.ok,
+    required: normalizedRequired,
+  };
 }
 
 function buildSocketStatus(
@@ -57,7 +70,6 @@ function buildSocketStatus(
   activationContexts: string[] | undefined,
   augmentItem: AdminItem | undefined,
 ): { status: SocketPreviewStatus; inactiveReason?: string } {
-  // Locked takes priority
   const isLocked = instanceEntry?.isLocked ?? socketDef.isLocked ?? false;
   if (isLocked) {
     return { status: 'locked' };
@@ -69,29 +81,36 @@ function buildSocketStatus(
   }
 
   if (!augmentItem || !augmentItem.isEnabled) {
-    return { status: 'occupied_inactive', inactiveReason: 'Предмет-аугмент не найден или отключён' };
+    return { status: 'occupied_inactive', inactiveReason: augmentMissingOrDisabledReason() };
   }
 
-  const augmentContexts = augmentItem.augment?.activationContexts;
-  const socketContexts = instanceEntry
-    ? socketDef.activationContexts
-    : socketDef.activationContexts;
-
-  // Check augment activationContexts vs provided activationContexts
-  if (!contextsCompatible(augmentContexts, activationContexts) && augmentContexts && augmentContexts.length > 0) {
-    const needed = augmentContexts.join(', ');
+  const augment = augmentItem.augment;
+  if (!augment) {
     return {
       status: 'occupied_inactive',
-      inactiveReason: `${augmentItem.name} вставлен, но не активен (требуется контекст: ${needed})`,
+      inactiveReason: augmentMissingPayloadReason(augmentItem.name),
     };
   }
 
-  // Check socket-level activationContexts
-  if (!contextsCompatible(socketContexts, activationContexts) && socketContexts && socketContexts.length > 0) {
-    const needed = socketContexts.join(', ');
+  if (
+    socketDef.allowedAugmentTypes &&
+    socketDef.allowedAugmentTypes.length > 0 &&
+    !socketDef.allowedAugmentTypes.includes(augment.type)
+  ) {
     return {
       status: 'occupied_inactive',
-      inactiveReason: `${augmentItem.name} вставлен, но не активен (сокет требует контекст: ${needed})`,
+      inactiveReason: augmentTypeMismatchReason(augmentItem.name, augment.type),
+    };
+  }
+
+  const contextMatch = contextsCompatible(
+    [...(augment.activationContexts ?? []), ...(socketDef.activationContexts ?? [])],
+    activationContexts,
+  );
+  if (!contextMatch.ok) {
+    return {
+      status: 'occupied_inactive',
+      inactiveReason: augmentContextMismatchReason(augmentItem.name, contextMatch.required),
     };
   }
 
@@ -105,17 +124,17 @@ function buildSocketStatus(
 export interface BuildItemPreviewOptions {
   /** Контексты активации для фильтрации аугментов (например ['weapon', 'melee']). */
   activationContexts?: string[];
-  /** Состояние сокетов конкретного инстанса. Если не передано — берётся из базового шаблона. */
+  /** Состояние сокетов конкретного инстанса. Если не передано - берётся из базового шаблона. */
   instanceSocketState?: InstanceSocketStateEntry[];
 }
 
 /**
  * Строит полный preview предмета.
  *
- * @param item        — record AdminItem из ContentDatabase
- * @param allItems    — весь список предметов (нужен для lookup аугментов)
- * @param allSets     — весь список сетов (нужен для setPreview)
- * @param options     — контексты + опциональный instanceSocketState
+ * @param item        - record AdminItem из ContentDatabase
+ * @param allItems    - весь список предметов (нужен для lookup аугментов)
+ * @param allSets     - весь список сетов (нужен для setPreview)
+ * @param options     - контексты + опциональный instanceSocketState
  */
 export function buildItemPreview(
   item: AdminItem,
@@ -128,12 +147,10 @@ export function buildItemPreview(
   const instanceState = options?.instanceSocketState ?? [];
   const instanceStateById = new Map(instanceState.map((e) => [e.socketId, e]));
 
-  // --- humanReadableEffects ---
   const humanReadableEffects: string[] = [
     ...formatEffects(item.equipmentEffects),
   ];
 
-  // --- socketsPreview + inactiveAugments ---
   const socketsPreview: SocketPreview[] = [];
   const inactiveAugments: InactiveAugmentPreview[] = [];
 
@@ -178,7 +195,6 @@ export function buildItemPreview(
     }
   }
 
-  // --- setPreview ---
   let setPreview: SetPreview | undefined;
   if (item.setId) {
     const foundSet = allSets.find((s) => s.id === item.setId);
@@ -229,10 +245,10 @@ function buildSetPreview(set: ItemSet, allItems?: ReadonlyArray<AdminItem>): Set
 }
 
 /**
- * Строит полное превью сета для страницы редактора в админке.
+ * Строит полное preview сета для страницы редактора в админке.
  *
- * @param set       — record ItemSet из ContentDatabase
- * @param allItems  — весь список предметов (для lookup названий piece-предметов)
+ * @param set       - record ItemSet из ContentDatabase
+ * @param allItems  - весь список предметов (для lookup названий piece-предметов)
  */
 export function buildItemSetPreview(
   set: ItemSet,
@@ -264,8 +280,8 @@ export function buildItemSetPreview(
 /**
  * Строит превью рунного комплекса для страницы редактора в админке.
  *
- * @param complex   — record RuneComplex из ContentDatabase
- * @param allItems  — весь список предметов (для lookup рун)
+ * @param complex   - record RuneComplex из ContentDatabase
+ * @param allItems  - весь список предметов (для lookup рун)
  */
 export function buildRuneComplexPreview(
   complex: RuneComplex,

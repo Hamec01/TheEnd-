@@ -1,5 +1,12 @@
 import type { Equipment, StatBlock } from '@theend/rpg-domain';
 import type { AdminItem, ItemEffect, ItemSet } from './content.types';
+import { matchActivationContexts, normalizeActivationContextList } from './activation-contexts';
+import {
+  augmentContextMismatchReason,
+  augmentMissingOrDisabledReason,
+  augmentMissingPayloadReason,
+  augmentTypeMismatchReason,
+} from './augment-inactive-reasons';
 
 /**
  * Технический тип источника эффекта, чтобы потребители (arena/combat/admin)
@@ -146,7 +153,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
         slot,
         effect,
         isActive: true,
-        requiredActivationContexts: normalizeContextList(effect.activationContexts),
+        requiredActivationContexts: normalizeActivationContextList(effect.activationContexts),
       });
     }
 
@@ -167,7 +174,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
           itemId: socketedAugmentItemId,
           slot,
           isActive: false,
-          inactiveReason: 'Socketed augment item is missing or disabled.',
+          inactiveReason: augmentMissingOrDisabledReason(),
         });
         continue;
       }
@@ -180,7 +187,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
           itemId: augmentItem.id,
           slot,
           isActive: false,
-          inactiveReason: 'Socketed item has no augment payload.',
+          inactiveReason: augmentMissingPayloadReason(augmentItem.name),
         });
         continue;
       }
@@ -194,12 +201,12 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
           itemId: augmentItem.id,
           slot,
           isActive: false,
-          inactiveReason: `Augment type "${augment.type}" is not allowed in socket "${socket.id}".`,
+          inactiveReason: augmentTypeMismatchReason(augmentItem.name, augment.type),
         });
         continue;
       }
 
-      const requiredContexts = normalizeContextList([...(augment.activationContexts ?? []), ...(socket.activationContexts ?? [])]);
+      const requiredContexts = normalizeActivationContextList([...(augment.activationContexts ?? []), ...(socket.activationContexts ?? [])]);
       const contextMatch = matchActivationContexts(requiredContexts, equipmentContexts);
 
       const augmentEffects = sanitizeEffects(augment.effects);
@@ -212,7 +219,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
             itemId: augmentItem.id,
             slot,
             isActive: false,
-            inactiveReason: contextMatch.reason,
+            inactiveReason: augmentContextMismatchReason(augmentItem.name, requiredContexts),
             requiredActivationContexts: requiredContexts,
             matchedActivationContexts: contextMatch.matched,
           });
@@ -228,7 +235,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
             slot,
             effect,
             isActive: false,
-            inactiveReason: contextMatch.reason,
+            inactiveReason: augmentContextMismatchReason(augmentItem.name, requiredContexts),
             requiredActivationContexts: requiredContexts,
             matchedActivationContexts: contextMatch.matched,
           });
@@ -412,14 +419,14 @@ function resolveActiveStatusSources(
   activationContexts: string[] | undefined,
 ): ResolvedEffectSource[] {
   const result: ResolvedEffectSource[] = [];
-  const runtimeContexts = normalizeContextList(activationContexts);
+  const runtimeContexts = normalizeActivationContextList(activationContexts);
 
   for (const status of statuses ?? []) {
     if (!status || status.isActive === false) {
       continue;
     }
 
-    const requiredContexts = normalizeContextList(status.activationContexts);
+    const requiredContexts = normalizeActivationContextList(status.activationContexts);
     const contextMatch = matchActivationContexts(requiredContexts, runtimeContexts);
     if (!contextMatch.ok) {
       continue;
@@ -481,51 +488,7 @@ function buildEquipmentContexts(item: AdminItem, slot: string, runtimeContexts: 
     ...(item.tags ?? []).map((tag) => `tag:${tag}`),
   ];
 
-  return normalizeContextList([...(runtimeContexts ?? []), ...derived]);
-}
-
-/**
- * Совместимость activationContexts:
- * - если requiredContexts пуст, эффект считается активным;
- * - иначе нужен хотя бы один матч required с available.
- */
-function matchActivationContexts(requiredContexts: string[], availableContexts: string[]): {
-  ok: boolean;
-  matched: string[];
-  reason?: string;
-} {
-  if (requiredContexts.length === 0) {
-    return { ok: true, matched: [] };
-  }
-
-  const availableSet = new Set(availableContexts);
-  const matched = requiredContexts.filter((entry) => availableSet.has(entry));
-  if (matched.length > 0) {
-    return { ok: true, matched };
-  }
-
-  return {
-    ok: false,
-    matched: [],
-    reason: `Activation context mismatch: required one of [${requiredContexts.join(', ')}].`,
-  };
-}
-
-function normalizeContextList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const unique = new Set<string>();
-  for (const entry of value) {
-    const normalized = normalizeString(entry);
-    if (!normalized) {
-      continue;
-    }
-    unique.add(normalized.toLowerCase());
-  }
-
-  return [...unique];
+  return normalizeActivationContextList([...(runtimeContexts ?? []), ...derived]);
 }
 
 function normalizeString(value: unknown): string {

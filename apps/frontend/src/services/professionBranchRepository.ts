@@ -138,11 +138,170 @@ function createDefaultMiningBranches(): ProfessionBranch[] {
   ];
 }
 
+function createDefaultBlacksmithBranches(): ProfessionBranch[] {
+  const now = new Date().toISOString();
+  const branch = (params: {
+    id: string;
+    name: string;
+    description?: string;
+    exclusiveGroupId?: string;
+    requiredSkillIds?: string[];
+    requiredBranchIds?: string[];
+    locksBranchIds?: string[];
+    isFinalBranch?: boolean;
+  }): ProfessionBranch => ({
+    id: params.id,
+    professionId: 'blacksmithing',
+    name: params.name,
+    description: params.description ?? params.name,
+    exclusiveGroupId: params.exclusiveGroupId,
+    requiredSkillIds: params.requiredSkillIds ?? [],
+    requiredBranchIds: params.requiredBranchIds ?? [],
+    locksBranchIds: params.locksBranchIds ?? [],
+    isFinalBranch: params.isFinalBranch ?? false,
+    isEnabled: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return [
+    branch({
+      id: 'blacksmith_branch_weaponsmith',
+      name: 'Оружейник',
+      description: 'Путь кузнеца, который сосредоточен на клинках, рукоятях, балансе оружия и боевых заготовках.',
+      exclusiveGroupId: 'blacksmith_first_path',
+      requiredSkillIds: [
+        'blacksmith_basic_forging',
+        'blacksmith_metal_knowledge',
+        'blacksmith_even_blank',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_armorer',
+        'blacksmith_branch_precision_smith',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_armorer',
+      name: 'Бронник',
+      description: 'Путь кузнеца, который работает с пластинами, щитами, сборкой доспехов и выверенной защитой.',
+      exclusiveGroupId: 'blacksmith_first_path',
+      requiredSkillIds: [
+        'blacksmith_basic_forging',
+        'blacksmith_metal_knowledge',
+        'blacksmith_even_blank',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_weaponsmith',
+        'blacksmith_branch_precision_smith',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_precision_smith',
+      name: 'Точный кузнец',
+      description: 'Путь кузнеца точной работы: оправы, посадка вставок, подготовка металла под будущие камни и руны.',
+      exclusiveGroupId: 'blacksmith_first_path',
+      requiredSkillIds: [
+        'blacksmith_basic_forging',
+        'blacksmith_metal_knowledge',
+        'blacksmith_even_blank',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_weaponsmith',
+        'blacksmith_branch_armorer',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_weapon_master',
+      name: 'Мастер оружия',
+      description: 'Вторая ступень оружейной ветки: сильная заточка, ударные формы, подгонка под бойца и второй оружейный слот.',
+      requiredBranchIds: ['blacksmith_branch_weaponsmith'],
+      requiredSkillIds: [
+        'blacksmith_weapon_blades',
+        'blacksmith_weapon_balance',
+        'blacksmith_sharp_edge',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_armor_master',
+      name: 'Мастер брони',
+      description: 'Вторая ступень защитной ветки: усиленная сборка, гашение удара, стойка железа и второй защитный слот.',
+      requiredBranchIds: ['blacksmith_branch_armorer'],
+      requiredSkillIds: [
+        'blacksmith_armor_forging',
+        'blacksmith_reinforced_plates',
+        'blacksmith_shield_brace',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_setting_master',
+      name: 'Мастер оправы',
+      description: 'Вторая ступень точной ветки: крепкие оправы, рунная разметка, тонкая работа и базовая герметизация.',
+      requiredBranchIds: ['blacksmith_branch_precision_smith'],
+      requiredSkillIds: [
+        'blacksmith_fine_work',
+        'blacksmith_metal_setting',
+        'blacksmith_insert_mounting',
+      ],
+    }),
+    branch({
+      id: 'blacksmith_branch_jewelcrafter',
+      name: 'Ювелир',
+      description: 'Финальная специализация на кольцах, амулетах, огранке камней и пассивной силе украшений.',
+      exclusiveGroupId: 'blacksmith_final_path',
+      requiredSkillIds: [
+        'blacksmith_razor_steel',
+        'blacksmith_firm_armor_fit',
+        'blacksmith_gem_settings',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_runecrafter',
+        'blacksmith_branch_forge_master',
+      ],
+      isFinalBranch: true,
+    }),
+    branch({
+      id: 'blacksmith_branch_runecrafter',
+      name: 'Рунорез',
+      description: 'Финальная специализация на рунах, рунных камнях, чтении знаков и рунных комплексах.',
+      exclusiveGroupId: 'blacksmith_final_path',
+      requiredSkillIds: [
+        'blacksmith_razor_steel',
+        'blacksmith_firm_armor_fit',
+        'blacksmith_gem_settings',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_jewelcrafter',
+        'blacksmith_branch_forge_master',
+      ],
+      isFinalBranch: true,
+    }),
+    branch({
+      id: 'blacksmith_branch_forge_master',
+      name: 'Мастер Горна',
+      description: 'Финальная специализация чистой ковки: лучшая немагическая сталь, баффы, форма и легендарные изделия.',
+      exclusiveGroupId: 'blacksmith_final_path',
+      requiredSkillIds: [
+        'blacksmith_razor_steel',
+        'blacksmith_firm_armor_fit',
+        'blacksmith_gem_settings',
+      ],
+      locksBranchIds: [
+        'blacksmith_branch_jewelcrafter',
+        'blacksmith_branch_runecrafter',
+      ],
+      isFinalBranch: true,
+    }),
+  ];
+}
+
 function mergeWithMiningDefaults(branches: ProfessionBranch[]): ProfessionBranch[] {
-  const defaults = createDefaultMiningBranches();
+  const defaults = [
+    ...createDefaultMiningBranches(),
+    ...createDefaultBlacksmithBranches(),
+  ];
   const defaultIds = new Set(defaults.map((entry) => entry.id));
   const existingById = new Map(branches.map((entry) => [entry.id, entry]));
-  const preserved = branches.filter((entry) => entry.professionId !== 'mining' || !defaultIds.has(entry.id));
+  const preserved = branches.filter((entry) => !defaultIds.has(entry.id));
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
     if (!existing) {
@@ -159,7 +318,10 @@ function mergeWithMiningDefaults(branches: ProfessionBranch[]): ProfessionBranch
 }
 
 function readStorage(): ProfessionBranch[] {
-  const defaults = createDefaultMiningBranches();
+  const defaults = [
+    ...createDefaultMiningBranches(),
+    ...createDefaultBlacksmithBranches(),
+  ];
   if (typeof window === 'undefined') {
     return defaults;
   }

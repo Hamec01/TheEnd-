@@ -52,6 +52,9 @@ export function findClickedWorldEntity(
   lockedWorldEntityCoordinates?: { x: number; y: number } | null,
 ): ActiveWorldEntity | null {
   return entities.find((entity) => {
+    if (entity.renderOnWorldMap === false) {
+      return false;
+    }
     const coordinates = lockedWorldEntityId === entity.id && lockedWorldEntityCoordinates
       ? lockedWorldEntityCoordinates
       : entity.coordinates;
@@ -60,9 +63,10 @@ export function findClickedWorldEntity(
 }
 
 export function resolveWorldClickInteraction(input: ResolveWorldClickInteractionInput): WorldClickInteractionResolution {
+  const interactableEntities = input.activeEntities.filter((entity) => entity.renderOnWorldMap !== false);
   const clickedEntity = input.screenPointPx && input.viewportPx && input.camera
     ? findClickedWorldEntityInScreenSpace({
-      entities: input.activeEntities,
+      entities: interactableEntities,
       renderedEntities: input.renderedEntities,
       screenPointPx: input.screenPointPx,
       viewportPx: input.viewportPx,
@@ -71,7 +75,7 @@ export function resolveWorldClickInteraction(input: ResolveWorldClickInteraction
       lockedWorldEntityCoordinates: input.lockedWorldEntityCoordinates,
     })
     : findClickedWorldEntity(
-      input.activeEntities,
+      interactableEntities,
       input.point,
       input.lockedWorldEntityId,
       input.lockedWorldEntityCoordinates,

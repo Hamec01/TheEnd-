@@ -2,7 +2,7 @@
  * item-instance-states.spec.ts
  *
  * Tests for:
- * - normalizeCharacterItemInstanceState — safe parsing from DB JSONB
+ * - normalizeCharacterItemInstanceState - safe parsing from DB JSONB
  * - Two identical swords with different instance states (sockets, locks)
  * - buildItemPreview with instanceSocketState override
  */
@@ -105,33 +105,31 @@ describe('two identical swords with different instance states', () => {
 
   const allItems = [baseSword, runeItem];
 
-  it('instance A — empty slot, no augment effects in humanReadable', () => {
+  it('instance A - empty slot, no augment effects in humanReadable', () => {
     const preview = buildItemPreview(baseSword, allItems, [], {
       instanceSocketState: [{ socketId: 'slot-base' }],
     });
     expect(preview.socketsPreview[0].status).toBe('empty');
-    // Only the base equipmentEffect
     expect(preview.humanReadableEffects).toHaveLength(1);
   });
 
-  it('instance B — rune inserted and active (no context restriction)', () => {
+  it('instance B - rune inserted and active (no context restriction)', () => {
     const preview = buildItemPreview(baseSword, allItems, [], {
       instanceSocketState: [{ socketId: 'slot-base', socketedAugmentItemId: 'rune-fire' }],
     });
     expect(preview.socketsPreview[0].status).toBe('occupied_active');
-    // equipmentEffect + rune effect
     expect(preview.humanReadableEffects).toHaveLength(2);
     expect(preview.inactiveAugments).toHaveLength(0);
   });
 
-  it('instance C — rune inserted but locked socket', () => {
+  it('instance C - rune inserted but locked socket', () => {
     const preview = buildItemPreview(baseSword, allItems, [], {
       instanceSocketState: [{ socketId: 'slot-base', socketedAugmentItemId: 'rune-fire', isLocked: true }],
     });
     expect(preview.socketsPreview[0].status).toBe('locked');
   });
 
-  it('instance D — rune inactive (context mismatch: weapon-only rune on armor context)', () => {
+  it('instance D - rune inactive when augment context does not match', () => {
     const armorRune: AdminItem = {
       ...runeItem,
       id: 'rune-armor',
@@ -152,6 +150,69 @@ describe('two identical swords with different instance states', () => {
     expect(preview.inactiveAugments[0].inactiveReason).toContain('armor');
   });
 
+  it('instance E - rune inactive when socket does not allow its augment type', () => {
+    const armorRune: AdminItem = {
+      ...runeItem,
+      id: 'stone-guard',
+      name: 'Guard Stone',
+      augment: {
+        type: 'magic_stone',
+        effects: [{ type: 'incoming_damage_modifier', percent: -10 }],
+      },
+    };
+
+    const swordWithTypedSocket: AdminItem = {
+      ...baseSword,
+      augmentSlots: [{ id: 'slot-base', isLocked: false, allowedAugmentTypes: ['rune'] }],
+    };
+
+    const preview = buildItemPreview(swordWithTypedSocket, [swordWithTypedSocket, armorRune], [], {
+      instanceSocketState: [{ socketId: 'slot-base', socketedAugmentItemId: 'stone-guard' }],
+    });
+
+    expect(preview.socketsPreview[0].status).toBe('occupied_inactive');
+    expect(preview.inactiveAugments[0].inactiveReason).toContain('несовместим');
+  });
+
+  it('instance F - activation contexts are matched case-insensitively across augment and socket requirements', () => {
+    const combatRune: AdminItem = {
+      ...runeItem,
+      id: 'rune-combat',
+      augment: {
+        type: 'rune',
+        activationContexts: ['Weapon'],
+        effects: [{ type: 'outgoing_damage_modifier', percent: 7 }],
+      },
+    };
+
+    const combatSword: AdminItem = {
+      ...baseSword,
+      augmentSlots: [{ id: 'slot-base', isLocked: false, activationContexts: ['Combat'] }],
+    };
+
+    const preview = buildItemPreview(combatSword, [combatSword, combatRune], [], {
+      activationContexts: ['weapon', 'combat'],
+      instanceSocketState: [{ socketId: 'slot-base', socketedAugmentItemId: 'rune-combat' }],
+    });
+
+    expect(preview.socketsPreview[0].status).toBe('occupied_active');
+  });
+
+  it('instance G - item without augment payload is shown as inactive socket content', () => {
+    const fakeRune: AdminItem = {
+      ...runeItem,
+      id: 'fake-rune',
+      augment: undefined,
+    };
+
+    const preview = buildItemPreview(baseSword, [baseSword, fakeRune], [], {
+      instanceSocketState: [{ socketId: 'slot-base', socketedAugmentItemId: 'fake-rune' }],
+    });
+
+    expect(preview.socketsPreview[0].status).toBe('occupied_inactive');
+    expect(preview.inactiveAugments[0].inactiveReason).toContain('augment');
+  });
+
   it('two swords: same template, different instance states are independent', () => {
     const swordA = buildItemPreview(baseSword, allItems, [], {
       instanceSocketState: [],
@@ -162,7 +223,6 @@ describe('two identical swords with different instance states', () => {
 
     expect(swordA.socketsPreview[0].status).toBe('empty');
     expect(swordB.socketsPreview[0].status).toBe('occupied_active');
-    // They share the same itemId but have different preview results
     expect(swordA.humanReadableEffects).not.toEqual(swordB.humanReadableEffects);
   });
 });
@@ -171,9 +231,8 @@ describe('two identical swords with different instance states', () => {
 // Legacy consumables unaffected
 // ---------------------------------------------------------------------------
 
-describe('legacy consumables — normalizeItemInput preserves useEffect', () => {
-  it('normalizeCharacterItemInstanceState — consumable state without augmentSlots', () => {
-    // A legacy potion that was stored without any augment state
+describe('legacy consumables - normalizeItemInput preserves useEffect', () => {
+  it('normalizeCharacterItemInstanceState - consumable state without augmentSlots', () => {
     const raw = { version: 1, qualityTier: undefined, metadata: { source: 'loot' } };
     const state = normalizeCharacterItemInstanceState(raw);
     expect(state?.augmentSlots).toBeUndefined();

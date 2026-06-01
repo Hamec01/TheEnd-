@@ -35,8 +35,8 @@ describe('resolveRenderedWorldEntities', () => {
 
     expect(entities[0]).toMatchObject({
       renderMode: 'sprite',
-      spriteSrc: 'data:image/png;base64,sprite',
-      imageSrc: 'data:image/png;base64,sprite',
+      spriteSrc: 'data:image/png;base64,sprite?v=now',
+      imageSrc: 'data:image/png;base64,sprite?v=now',
       hasQuest: true,
       memberCount: 2,
     });
@@ -150,5 +150,32 @@ describe('resolveRenderedWorldEntities', () => {
       isHostile: true,
       memberCount: 3,
     });
+  });
+
+  it('hides in-city entities from the world-map render list', () => {
+    const entities = resolveRenderedWorldEntities(
+      [{
+        id: 'merchant_hidden_in_city',
+        archetypeId: 'merchant',
+        kind: 'merchant',
+        state: 'in_city',
+        spriteId: 'trader_world_sprite',
+        portraitId: 'merchant_portrait',
+        cityId: 'city_arklein',
+        renderOnWorldMap: false,
+        renderInCityMap: true,
+        memberCount: 1,
+        zoneId: 'city_arklein',
+        coordinates: { x: 0.5, y: 0.5 },
+        isHostile: false,
+        hasQuest: false,
+        updatedAt: 'now',
+        sourceTick: 1,
+      }],
+      [],
+      [],
+    );
+
+    expect(entities).toHaveLength(0);
   });
 });

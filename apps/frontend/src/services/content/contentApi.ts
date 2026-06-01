@@ -14,6 +14,7 @@ import type {
   AdminQuestMarker,
   AdminSkill,
   AdminVisualFx,
+  CraftingRecipe,
   ItemSet,
   LootTable,
   Material,
@@ -45,6 +46,7 @@ export type ContentCollectionName =
   | 'questItems'
   | 'questMarkers'
   | 'battleMaps'
+  | 'craftingRecipes'
   | 'itemSets'
   | 'runeComplexes';
 
@@ -117,6 +119,7 @@ export interface ContentSnapshot {
   questItems: AdminQuestItem[];
   questMarkers: AdminQuestMarker[];
   battleMaps: BattleMapDefinition[];
+  craftingRecipes: CraftingRecipe[];
   itemSets: ItemSet[];
   runeComplexes: RuneComplex[];
   worldMap: WorldMapContent;

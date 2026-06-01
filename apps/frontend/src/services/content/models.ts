@@ -167,6 +167,114 @@ export interface RuneComplex {
   updatedAt: string;
 }
 
+export type CraftingRecipeStatus = 'draft' | 'active' | 'disabled' | 'archived';
+
+export type CraftingRecipeType =
+  | 'material_processing'
+  | 'smelting'
+  | 'grinding'
+  | 'cutting'
+  | 'tanning'
+  | 'weaving'
+  | 'cooking'
+  | 'baking'
+  | 'alchemy'
+  | 'jewelcrafting'
+  | 'blacksmith_craft'
+  | 'carpentry_craft'
+  | 'leatherworking_craft'
+  | 'runecrafting'
+  | 'rune_identification'
+  | 'enchantment'
+  | 'add_socket'
+  | 'temporary_item_buff'
+  | 'permanent_item_upgrade'
+  | 'dismantling';
+
+export type CraftingProfessionId =
+  | 'mining'
+  | 'blacksmithing'
+  | 'carpentry'
+  | 'leatherworking'
+  | 'jewelcrafting'
+  | 'runecrafting'
+  | 'fishing'
+  | 'cooking'
+  | 'hunting'
+  | 'alchemy'
+  | 'herbalism';
+
+export type CraftingStationType =
+  | 'none'
+  | 'forge'
+  | 'furnace'
+  | 'anvil'
+  | 'workbench'
+  | 'sawmill'
+  | 'tanning_rack'
+  | 'cooking_fire'
+  | 'oven'
+  | 'cauldron'
+  | 'alchemy_table'
+  | 'jewelcrafting_table'
+  | 'rune_table'
+  | 'enchanting_table'
+  | 'drying_rack'
+  | 'fishing_spot'
+  | 'hunting_camp'
+  | 'millstone';
+
+export type CraftingFailureMode =
+  | 'none'
+  | 'lose_inputs'
+  | 'lose_partial_inputs'
+  | 'damaged_item'
+  | 'cursed_result'
+  | 'random_lower_quality';
+
+export type CraftingRecipeResultMode = 'fixed' | 'random_from_pool';
+
+export interface CraftingMaterialStack {
+  materialId: string;
+  quantity: number;
+}
+
+export interface CraftingItemStack {
+  itemId: string;
+  quantity: number;
+  consume?: boolean;
+}
+
+export interface CraftingRecipe {
+  id: string;
+  name: string;
+  description?: string;
+  status: CraftingRecipeStatus;
+  recipeType: CraftingRecipeType;
+  professionId: CraftingProfessionId | string;
+  stationType: CraftingStationType;
+  requiredProfessionLevel?: number;
+  requiredSkillIds?: string[];
+  requiredBlueprintItemId?: string;
+  requiredQuestId?: string;
+  inputMaterials: CraftingMaterialStack[];
+  inputItems: CraftingItemStack[];
+  outputMaterials: CraftingMaterialStack[];
+  outputItems: CraftingItemStack[];
+  resultMode?: CraftingRecipeResultMode;
+  resultPoolId?: string;
+  goldCost?: number;
+  staminaCost?: number;
+  timeSeconds?: number;
+  successChance?: number;
+  failureMode?: CraftingFailureMode;
+  isRepeatable?: boolean;
+  isEnabled?: boolean;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminItem {
   id: string;
   name: string;

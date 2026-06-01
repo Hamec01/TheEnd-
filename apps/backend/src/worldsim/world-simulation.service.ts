@@ -241,11 +241,13 @@ export class WorldSimulationService {
     if (stopMax <= 0) {
       entity.state = 'traveling';
       entity.nextEventAt = undefined;
+      entity.currentCityId = undefined;
       return;
     }
 
     const stopDuration = stopMin + Math.random() * Math.max(0, stopMax - stopMin);
-    entity.state = 'resting';
+    entity.state = waypoint?.cityId && !isBandit ? 'in_city' : 'resting';
+    entity.currentCityId = waypoint?.cityId && !isBandit ? waypoint.cityId : undefined;
     entity.nextEventAt = new Date(this.simulationTime.getTime() + stopDuration * 60 * 1000).toISOString();
   }
 
@@ -773,11 +775,20 @@ export class WorldSimulationService {
    */
   private updateRouteProgress(deltaSeconds: number): void {
     for (const entity of this.activeEntities.values()) {
-      if (entity.state === 'resting') {
+      if (entity.state === 'resting' || entity.state === 'in_city') {
         this.applyIdleRegen(entity);
         if (entity.nextEventAt && new Date(entity.nextEventAt) <= this.simulationTime) {
+          if (entity.state === 'in_city' && entity.currentCityId) {
+            this.addEconomicEvent({
+              type: 'merchant_departure',
+              cityId: entity.currentCityId,
+              entityId: entity.id,
+              timestamp: this.simulationTime.toISOString(),
+            } as EconomicEvent);
+          }
           entity.state = 'traveling';
           entity.nextEventAt = undefined;
+          entity.currentCityId = undefined;
           entity.routePolyline = undefined;
           entity.routePolylineIndex = undefined;
         }
@@ -1088,6 +1099,9 @@ export class WorldSimulationService {
               ? archetype.restingWorldSpriteId
               : (archetype?.worldSpriteId ?? 'unknown'),
           portraitId: archetype?.portraitId,
+          cityId: e.currentCityId,
+          renderOnWorldMap: e.state !== 'in_city',
+          renderInCityMap: e.state === 'in_city' && Boolean(e.currentCityId),
           memberCount: e.members.length,
           zoneId: e.visibility.anchorZoneId ?? 'unknown',
           coordinates: e.visibility.anchorCoordinates ?? { x: 0, y: 0 },

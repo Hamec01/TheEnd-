@@ -391,6 +391,16 @@ type ActiveWorldModal =
     demandLine: string;
   }
   | null;
+
+function getCityVisitorAnchor(index: number): { left: string; top: string } {
+  const column = Math.floor(index / 4);
+  const row = index % 4;
+  return {
+    left: `${84 + column * 6}%`,
+    top: `${18 + row * 16}%`,
+  };
+}
+
 type SidePanelKey =
   | "adminEditor"
   | "adminBattle"
@@ -2363,6 +2373,34 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       ),
     [activeCity?.locations],
   );
+  const worldSimCityVisitors = useMemo(() => {
+    if (!activeCity?.id || !worldSnapshot) {
+      return [];
+    }
+
+    const staticMerchantIds = new Set(
+      visibleCityLocations.flatMap((location) => location.shopIds ?? []).filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
+    );
+
+    return worldSnapshot.activeEntities
+      .filter((entity) =>
+        entity.renderInCityMap === true
+        && entity.cityId === activeCity.id
+        && !!entity.merchantId?.trim()
+        && !staticMerchantIds.has(entity.merchantId.trim()),
+      )
+      .map((entity) => {
+        const merchantId = entity.merchantId!.trim();
+        const merchant = merchantById.get(merchantId) ?? null;
+        const image = merchant && resolveMerchantImage ? resolveMerchantImage(merchant) : undefined;
+        return {
+          entity,
+          merchantId,
+          merchant,
+          image,
+        };
+      });
+  }, [activeCity?.id, merchantById, resolveMerchantImage, visibleCityLocations, worldSnapshot]);
   const selectedCityLocation = useMemo(
     () =>
       locationView === "city" && selectedCityLocationId && activeCity?.locations
@@ -5370,6 +5408,30 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     });
   }, [activeCity?.id, openNpcDialogue, selectedNpcForInteraction]);
 
+  const getAvailablePlayerGold = useCallback(() => {
+    const baseGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+    const runtimeGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)));
+    return {
+      baseGold,
+      runtimeGold,
+      totalGold: baseGold + runtimeGold,
+    };
+  }, [inventory.gold]);
+
+  const spendAvailablePlayerGold = useCallback((goldAmount: number) => {
+    const normalized = Math.max(0, Math.floor(Number(goldAmount ?? 0)));
+    if (normalized <= 0) {
+      return true;
+    }
+    const { baseGold, totalGold } = getAvailablePlayerGold();
+    if (totalGold < normalized) {
+      return false;
+    }
+    const remainingTotalGold = Math.max(0, totalGold - normalized);
+    writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, Math.max(0, remainingTotalGold - baseGold));
+    return true;
+  }, [getAvailablePlayerGold]);
+
   const openBanditEncounter = useCallback((
     entity: WorldSimulationSnapshot['activeEntities'][number],
     options?: { ambush?: boolean },
@@ -5382,7 +5444,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const customEnemies = npc
       ? buildWorldEntityCombatEnemies(npc, enemyCount)
       : undefined;
-    const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+    const { totalGold: currentGold } = getAvailablePlayerGold();
     const demandGold = currentGold > 0
       ? Math.max(1, Math.ceil(currentGold * BANDIT_TOLL_PERCENT))
       : 0;
@@ -5401,16 +5463,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       customEnemies,
       introLine: options?.ambush
         ? 'Бандиты бросаются за вами с дороги: "Стоять! Добыча сама пришла."'
-        : 'Р“Р»Р°РІР°СЂСЊ Р±Р°РЅРґРёС‚РѕРІ РїРµСЂРµРєСЂС‹РІР°РµС‚ РґРѕСЂРѕРіСѓ: "РЎС‚РѕР№. Р”Р°Р»СЊС€Рµ РёРґС‘С‚ С‚РѕР»СЊРєРѕ С‚РѕС‚, РєС‚Рѕ РїР»Р°С‚РёС‚ Р·Р° С‚РёС€РёРЅСѓ."',
+        : 'Главарь бандитов перегораживает дорогу: "Стой. Дальше идёт только тот, кто платит за тишину."',
       demandLine: demandGold > 0
-        ? `"РџР»Р°С‚Рё ${demandGold} Р·РѕР»РѕС‚С‹С…, Рё СЃРµРіРѕРґРЅСЏ РјС‹ С‚РµР±СЏ РЅРµ С‚СЂРѕРЅРµРј."`
-        : '"Р—РѕР»РѕС‚Р° Сѓ С‚РµР±СЏ РЅРµС‚... С‚РѕРіРґР° РїР»Р°С‚Рё РєСЂРѕРІСЊСЋ РёР»Рё Р±РµРіРё, РїРѕРєР° РјРѕР¶РµС€СЊ."',
+        ? `"Плати ${demandGold} золотых, и сегодня мы тебя не тронем."`
+        : '"Золота у тебя нет... тогда плати кровью или беги, пока можешь."',
     });
     setContextMode('npc');
     onStatus(options?.ambush
       ? 'Бандиты заметили вас и бросились в погоню.'
-      : 'Р‘Р°РЅРґРёС‚С‹ С‚СЂРµР±СѓСЋС‚ РїР»Р°С‚Сѓ Р·Р° РїСЂРѕС…РѕРґ.');
-  }, [character.activeStats?.luck, inventory.gold, onStatus, resolveNpcById]);
+      : 'Бандиты требуют плату за проход.');
+  }, [character.activeStats?.luck, getAvailablePlayerGold, onStatus, resolveNpcById]);
 
   const interactWithWorldEntity = useCallback((entity: WorldSimulationSnapshot['activeEntities'][number]) => {
     const npcId = entity.npcTemplateId?.trim();
@@ -5428,7 +5490,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             ? buildWorldEntityCombatEnemies(npc, enemyCount)
             : undefined;
 
-          const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+          const { totalGold: currentGold } = getAvailablePlayerGold();
           const demandGold = currentGold > 0
             ? Math.max(1, Math.ceil(currentGold * BANDIT_TOLL_PERCENT))
             : 0;
@@ -5477,7 +5539,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     onStatus(`У сущности ${entity.id} не задан NPC или merchant source.`);
-  }, [activeCity?.id, character.activeStats?.luck, inventory.gold, onOpenMerchant, onStartCombat, onStatus, openNpcDialogue, resolveNpcById]);
+  }, [activeCity?.id, character.activeStats?.luck, getAvailablePlayerGold, onOpenMerchant, onStartCombat, onStatus, openNpcDialogue, resolveNpcById]);
 
   const pendingWorldEntityInteraction = useMemo(() => {
     if (!pendingWorldEntityInteractionId) {
@@ -5973,6 +6035,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const currentGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)));
     writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, currentGold + normalized);
   }, []);
+
 
   const resolveMineItemName = useCallback((itemId: string) => {
     const item = resolveItemById?.(itemId);
@@ -7648,8 +7711,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </>
       );
     } else if (activeWorldModal.type === "bandit_encounter") {
-      title = "Засада бандитов";
+      title = 'Засада бандитов';
       subtitle = `${activeWorldModal.enemyCount} противников`;
+      const encounterNpc = selectedWorldEntity?.npcTemplateId?.trim()
+        ? resolveNpcById(selectedWorldEntity.npcTemplateId.trim())
+        : null;
+      portrait = resolveNpcPortrait(encounterNpc);
       description = `${activeWorldModal.introLine} ${activeWorldModal.demandLine}`;
 
       const startBanditCombat = () => {
@@ -7673,14 +7740,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       buttons = (
         <>
           <button
-            disabled={Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, inventory.gold ?? 0))) < activeWorldModal.demandGold}
+            disabled={getAvailablePlayerGold().totalGold < activeWorldModal.demandGold}
             onClick={() => {
-              const currentGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, inventory.gold ?? 0)));
-              if (currentGold < activeWorldModal.demandGold) {
+              const paid = spendAvailablePlayerGold(activeWorldModal.demandGold);
+              if (!paid) {
                 onStatus('У вас недостаточно золота, чтобы откупиться.');
                 return;
               }
-              writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, Math.max(0, currentGold - activeWorldModal.demandGold));
               onRuntimeInventoryChanged?.();
               closeModal();
               onStatus(`Вы заплатили ${activeWorldModal.demandGold} золота. Бандиты пропустили вас без боя.`);
@@ -9062,7 +9128,86 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                         </button>
                       );
                     })}
-                    {activeCity && visibleCityLocations.length === 0 ? (
+                    {worldSimCityVisitors.map(({ entity, merchantId, merchant, image }, index) => {
+                      const anchor = getCityVisitorAnchor(index);
+                      return (
+                        <button
+                          key={`city-visitor-${entity.id}`}
+                          type="button"
+                          className="city-world-visitor-marker"
+                          style={{
+                            position: "absolute",
+                            left: anchor.left,
+                            top: anchor.top,
+                            width: "84px",
+                            minHeight: "72px",
+                            transform: "translate(-50%, -50%)",
+                            display: "grid",
+                            gap: "6px",
+                            justifyItems: "center",
+                            alignContent: "start",
+                            padding: "8px 6px",
+                            borderRadius: "14px",
+                            border: "1px solid rgba(216, 177, 90, 0.72)",
+                            background: "linear-gradient(180deg, rgba(27, 18, 12, 0.88), rgba(16, 11, 8, 0.82))",
+                            boxShadow: "0 8px 18px rgba(0, 0, 0, 0.28)",
+                            zIndex: 4,
+                          }}
+                          title={`${merchant?.name ?? merchantId} в городе`}
+                          onClick={() => {
+                            dialogueRunner.closeDialogue();
+                            setNpcQuestSceneModal(null);
+                            setActiveWorldModal({
+                              type: "merchant",
+                              locationId: activeCity?.id ?? "",
+                              merchantId,
+                            });
+                            setContextMode("location");
+                            onStatus(`Торговец прибыл в город: ${merchant?.name ?? merchantId}`);
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: "999px",
+                              overflow: "hidden",
+                              border: "2px solid rgba(216, 177, 90, 0.95)",
+                              background: "rgba(33, 22, 15, 0.92)",
+                              display: "grid",
+                              placeItems: "center",
+                              color: "#f2d6a3",
+                              fontWeight: 700,
+                              fontSize: 14,
+                            }}
+                          >
+                            {image ? (
+                              <img
+                                src={image}
+                                alt={merchant?.name ?? merchantId}
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : (
+                              (merchant?.name ?? merchantId).charAt(0).toUpperCase()
+                            )}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              lineHeight: 1.1,
+                              color: "#f6e1b9",
+                              textAlign: "center",
+                              textShadow: "0 1px 2px rgba(0,0,0,0.75)",
+                              maxWidth: "72px",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {merchant?.name ?? merchantId}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {activeCity && visibleCityLocations.length === 0 && worldSimCityVisitors.length === 0 ? (
                       <div className="wm-city-empty-note">
                         {"\u0412 \u044d\u0442\u043e\u043c \u0433\u043e\u0440\u043e\u0434\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0435\u0432 \u0438\u0437 \u0430\u0434\u043c\u0438\u043d\u043a\u0438. \u041f\u0440\u0438\u0432\u044f\u0436\u0438\u0442\u0435"}
                         {"\u0442\u043e\u0440\u0433\u043e\u0432\u0446\u0430 \u043a cityId \u0438\u043b\u0438 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044e \u0433\u043e\u0440\u043e\u0434\u0430."}

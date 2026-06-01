@@ -122,6 +122,49 @@ export interface CharacterResourceState {
   hpRegenPerTurn: number;
 }
 
+export interface ArenaItemInstanceState {
+  version: 1;
+  augmentSlots?: Array<{
+    socketId: string;
+    socketedAugmentItemId?: string | null;
+    isLocked?: boolean;
+    source?: 'base' | 'blacksmith_added' | 'scripted';
+  }>;
+  qualityTier?: number;
+  forgedAtIso?: string;
+  ownerTag?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ArenaItemInstanceRecord {
+  id: string;
+  characterId: string;
+  itemId: string;
+  state: ArenaItemInstanceState | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArenaSocketState {
+  socketId: string;
+  socketedAugmentItemId?: string | null;
+  isLocked?: boolean;
+  source?: 'base' | 'blacksmith_added' | 'scripted';
+}
+
+export interface SocketAugmentResponse {
+  itemInstance: ArenaItemInstanceRecord;
+  socket: ArenaSocketState;
+  status: 'active' | 'inactive';
+  reason?: string;
+}
+
+export interface UnsocketAugmentResponse {
+  itemInstance: ArenaItemInstanceRecord;
+  socket: ArenaSocketState;
+  returnedAugmentItemId: string;
+}
+
 export interface CombatActionResult {
   state: ArenaBattleState;
   hubState?: ArenaHubState;
@@ -615,6 +658,39 @@ export async function unequipArenaItem(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ characterId, slot }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function socketArenaAugment(
+  characterId: string,
+  itemInstanceId: string,
+  socketId: string,
+  augmentItemId: string,
+): Promise<SocketAugmentResponse> {
+  const res = await fetch(`${API_BASE}/arena/socket-augment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemInstanceId, socketId, augmentItemId }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function unsocketArenaAugment(
+  characterId: string,
+  itemInstanceId: string,
+  socketId: string,
+): Promise<UnsocketAugmentResponse> {
+  const res = await fetch(`${API_BASE}/arena/unsocket-augment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemInstanceId, socketId }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
