@@ -403,8 +403,8 @@ export function ItemSetsPage({ onNavigate }: ItemSetsPageProps) {
       }
 
       await refresh();
-      setStatus(`?????? ????? ????????: ??????? ${created}, ????????? ???????????? ${skippedExisting}.`);
-      setSaveState({ state: 'saved', message: `?????? set: +${created} / =${skippedExisting}` });
+      setStatus(`Импорт набора предметов: создано ${created}, пропущено существующих ${skippedExisting}.`);
+      setSaveState({ state: 'saved', message: `Импорт set: +${created} / =${skippedExisting}` });
     } catch (error) {
       const message = translateAdminErrorMessage((error as Error).message);
       setStatus(message);

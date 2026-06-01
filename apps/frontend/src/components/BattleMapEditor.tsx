@@ -401,9 +401,9 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
       }
       setUndoStack([]);
       setRedoStack([]);
-      onStatusMessage?.(`?????? battle maps ????????: ??????? ${createdMaps.length}, ????????? ???????????? ${skippedExisting}.`);
+      onStatusMessage?.(`Импорт battle maps завершён: создано ${createdMaps.length}, пропущено существующих ${skippedExisting}.`);
     } catch (error) {
-      onStatusMessage?.(`?????? battle maps: ${(error as Error).message}`);
+      onStatusMessage?.(`Импорт battle maps: ${(error as Error).message}`);
     } finally {
       setIsImporting(false);
     }

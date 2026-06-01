@@ -121,7 +121,7 @@ export function MaterialsPage() {
       await refresh();
       const parts = [
         result.created.length ? `создано: ${result.created.length}` : null,
-        result.skippedExisting.length ? `????????? ????????????: ${result.skippedExisting.length}` : null,
+        result.skippedExisting.length ? `пропущено существующих: ${result.skippedExisting.length}` : null,
         result.errors.length ? `ошибок: ${result.errors.length}` : null,
       ].filter(Boolean);
       setStatus(`Импорт материалов: ${parts.join(', ') || 'нет изменений'}`);

@@ -217,8 +217,8 @@ export function QuestItemsPage() {
         existingIds.add(id);
       }
 
-      setStatus(`?????? ????????: ??????? ${created}, ????????? ???????????? ${skippedExisting}.`);
-      setSaveState({ state: 'saved', message: `?????? questItems: +${created} / =${skippedExisting}` });
+      setStatus(`Импорт завершён: создано ${created}, пропущено существующих ${skippedExisting}.`);
+      setSaveState({ state: 'saved', message: `Импорт questItems: +${created} / =${skippedExisting}` });
     } catch (error) {
       const message = translateAdminErrorMessage((error as Error).message);
       setStatus(message);

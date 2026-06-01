@@ -610,8 +610,8 @@ export function QuestInteractionsPage() {
         existingIds.add(normalized.id);
       }
 
-      setStatus(`?????? ????????: ??????? ${created}, ????????? ???????????? ${skippedExisting}.`);
-      setSaveState({ state: 'saved', message: `?????? interactions: +${created} / =${skippedExisting}` });
+      setStatus(`Импорт завершён: создано ${created}, пропущено существующих ${skippedExisting}.`);
+      setSaveState({ state: 'saved', message: `Импорт interactions: +${created} / =${skippedExisting}` });
     } catch (error) {
       const message = translateAdminErrorMessage((error as Error).message);
       setStatus(message);
