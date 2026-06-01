@@ -42,6 +42,16 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function firstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
 function mergeById<T extends { id: string }>(current: T[], defaults: T[]): T[] {
   const seen = new Set(current.map((entry) => entry.id));
   return [...current, ...defaults.filter((entry) => !seen.has(entry.id))];
@@ -116,9 +126,9 @@ function normalizeMine(raw: unknown): MineDefinition | null {
     dangerLevel,
     visualTheme,
     region: fixMojibake(String(row.region ?? '').trim(), fallback?.region) || undefined,
-    locationId: String(row.locationId ?? '').trim() || fallback?.locationId || undefined,
-    backgroundImageAssetId: String(row.backgroundImageAssetId ?? '').trim() || fallback?.backgroundImageAssetId || undefined,
-    backgroundImageUrl: String(row.backgroundImageUrl ?? '').trim() || fallback?.backgroundImageUrl || undefined,
+    locationId: firstNonEmpty(row.locationId as string | undefined, fallback?.locationId),
+    backgroundImageAssetId: firstNonEmpty(row.backgroundImageAssetId as string | undefined, fallback?.backgroundImageAssetId),
+    backgroundImageUrl: firstNonEmpty(row.backgroundImageUrl as string | undefined, fallback?.backgroundImageUrl),
     depthIds: Array.isArray(row.depthIds) ? row.depthIds.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [],
     knownResources: Array.isArray(row.knownResources)
       ? row.knownResources
@@ -151,26 +161,20 @@ function normalizeDepth(raw: unknown): MineDepth | null {
   }
 
   const fallback = DEFAULT_DEPTH_BY_ID.get(id);
+  const blockSpriteFallback = firstNonEmpty(row.blockSpriteUrl as string | undefined, row.blockSpriteAssetId as string | undefined, fallback?.blockSpriteUrl, fallback?.blockSpriteAssetId);
+  const blockCrackSpriteFallback = firstNonEmpty(row.blockCrackSpriteUrl as string | undefined, row.blockCrackSpriteAssetId as string | undefined, fallback?.blockCrackSpriteUrl, fallback?.blockCrackSpriteAssetId);
+  const particleTextureFallback = firstNonEmpty(row.particleTextureUrl as string | undefined, row.particleTextureAssetId as string | undefined, fallback?.particleTextureUrl, fallback?.particleTextureAssetId);
   const normalizedBlockSpriteRef = normalizeGameImageRef(
     row.blockSpriteRef,
-    String(row.blockSpriteUrl ?? row.blockSpriteAssetId ?? '').trim()
-      || fallback?.blockSpriteUrl
-      || fallback?.blockSpriteAssetId
-      || undefined,
+    blockSpriteFallback,
   );
   const normalizedCrackSpriteRef = normalizeGameImageRef(
     row.blockCrackSpriteRef,
-    String(row.blockCrackSpriteUrl ?? row.blockCrackSpriteAssetId ?? '').trim()
-      || fallback?.blockCrackSpriteUrl
-      || fallback?.blockCrackSpriteAssetId
-      || undefined,
+    blockCrackSpriteFallback,
   );
   const normalizedParticleTextureRef = normalizeGameImageRef(
     row.particleTextureRef,
-    String(row.particleTextureUrl ?? row.particleTextureAssetId ?? '').trim()
-      || fallback?.particleTextureUrl
-      || fallback?.particleTextureAssetId
-      || undefined,
+    particleTextureFallback,
   );
 
   return {
@@ -194,19 +198,16 @@ function normalizeDepth(raw: unknown): MineDepth | null {
     requiredMiningLevel: Math.max(1, Math.floor(Number(row.requiredMiningLevel ?? 1))),
     backgroundImage: fixMojibake(String(row.backgroundImage ?? '').trim(), fallback?.backgroundImage) || undefined,
     blockSpriteRef: normalizedBlockSpriteRef,
-    blockSpriteAssetId: String(row.blockSpriteAssetId ?? '').trim() || fallback?.blockSpriteAssetId || undefined,
-    blockSpriteUrl: toLegacyImagePath(normalizedBlockSpriteRef)
-      ?? (String(row.blockSpriteUrl ?? '').trim() || fallback?.blockSpriteUrl || undefined),
+    blockSpriteAssetId: firstNonEmpty(row.blockSpriteAssetId as string | undefined, fallback?.blockSpriteAssetId),
+    blockSpriteUrl: toLegacyImagePath(normalizedBlockSpriteRef) ?? firstNonEmpty(row.blockSpriteUrl as string | undefined, fallback?.blockSpriteUrl),
     blockCrackSpriteRef: normalizedCrackSpriteRef,
-    blockCrackSpriteAssetId: String(row.blockCrackSpriteAssetId ?? '').trim() || fallback?.blockCrackSpriteAssetId || undefined,
-    blockCrackSpriteUrl: toLegacyImagePath(normalizedCrackSpriteRef)
-      ?? (String(row.blockCrackSpriteUrl ?? '').trim() || fallback?.blockCrackSpriteUrl || undefined),
-    blockBreakSpriteSheetAssetId: String(row.blockBreakSpriteSheetAssetId ?? '').trim() || fallback?.blockBreakSpriteSheetAssetId || undefined,
-    blockBreakSpriteSheetUrl: String(row.blockBreakSpriteSheetUrl ?? '').trim() || fallback?.blockBreakSpriteSheetUrl || undefined,
+    blockCrackSpriteAssetId: firstNonEmpty(row.blockCrackSpriteAssetId as string | undefined, fallback?.blockCrackSpriteAssetId),
+    blockCrackSpriteUrl: toLegacyImagePath(normalizedCrackSpriteRef) ?? firstNonEmpty(row.blockCrackSpriteUrl as string | undefined, fallback?.blockCrackSpriteUrl),
+    blockBreakSpriteSheetAssetId: firstNonEmpty(row.blockBreakSpriteSheetAssetId as string | undefined, fallback?.blockBreakSpriteSheetAssetId),
+    blockBreakSpriteSheetUrl: firstNonEmpty(row.blockBreakSpriteSheetUrl as string | undefined, fallback?.blockBreakSpriteSheetUrl),
     particleTextureRef: normalizedParticleTextureRef,
-    particleTextureAssetId: String(row.particleTextureAssetId ?? '').trim() || fallback?.particleTextureAssetId || undefined,
-    particleTextureUrl: toLegacyImagePath(normalizedParticleTextureRef)
-      ?? (String(row.particleTextureUrl ?? '').trim() || fallback?.particleTextureUrl || undefined),
+    particleTextureAssetId: firstNonEmpty(row.particleTextureAssetId as string | undefined, fallback?.particleTextureAssetId),
+    particleTextureUrl: toLegacyImagePath(normalizedParticleTextureRef) ?? firstNonEmpty(row.particleTextureUrl as string | undefined, fallback?.particleTextureUrl),
     isEnabled: row.isEnabled !== false,
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : undefined,
     updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : undefined,
@@ -225,12 +226,10 @@ function normalizeTool(raw: unknown): MiningToolDefinition | null {
     return null;
   }
   const fallback = DEFAULT_TOOL_BY_ID.get(id);
+  const spriteFallback = firstNonEmpty(row.spriteUrl as string | undefined, row.spriteAssetId as string | undefined, fallback?.spriteUrl, fallback?.spriteAssetId);
   const normalizedSpriteRef = normalizeGameImageRef(
     row.spriteRef,
-    String(row.spriteUrl ?? row.spriteAssetId ?? '').trim()
-      || fallback?.spriteUrl
-      || fallback?.spriteAssetId
-      || undefined,
+    spriteFallback,
   );
   return {
     id,
@@ -240,9 +239,8 @@ function normalizeTool(raw: unknown): MiningToolDefinition | null {
     name: fixMojibake(name, fallback?.name),
     description: fixMojibake(String(row.description ?? '').trim(), fallback?.description) || undefined,
     spriteRef: normalizedSpriteRef,
-    spriteAssetId: String(row.spriteAssetId ?? '').trim() || fallback?.spriteAssetId || undefined,
-    spriteUrl: toLegacyImagePath(normalizedSpriteRef)
-      ?? (String(row.spriteUrl ?? '').trim() || fallback?.spriteUrl || undefined),
+    spriteAssetId: firstNonEmpty(row.spriteAssetId as string | undefined, fallback?.spriteAssetId),
+    spriteUrl: toLegacyImagePath(normalizedSpriteRef) ?? firstNonEmpty(row.spriteUrl as string | undefined, fallback?.spriteUrl),
     effectType: (String(row.effectType ?? fallback?.effectType ?? '').trim() || undefined) as MiningToolDefinition['effectType'],
     effectValue: Number.isFinite(Number(row.effectValue)) ? Number(row.effectValue) : fallback?.effectValue,
     isConsumable: row.isConsumable === true,

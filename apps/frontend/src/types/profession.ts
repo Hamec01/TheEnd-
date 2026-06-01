@@ -119,6 +119,16 @@ export interface ProfessionSkill {
   skillPointCost: number;
   effects?: ProfessionSkillEffect[];
   icon?: string;
+  iconImageRef?:
+    | {
+      type: 'image';
+      src: string;
+    }
+    | {
+      type: 'tileset';
+      sheetId: string;
+      frame: number;
+    };
   positionX?: number;
   positionY?: number;
   isEnabled: boolean;

@@ -166,128 +166,103 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
 
   return [
     branch({
-      id: 'blacksmith_branch_weaponsmith',
+      id: 'blacksmith_start',
+      name: 'Кузня',
+      description: 'Начальная кузнечная ветка: основа работы с горном, заготовками и первичной сборкой.',
+    }),
+    branch({
+      id: 'blacksmith_weapon_path',
       name: 'Оружейник',
-      description: 'Путь кузнеца, который сосредоточен на клинках, рукоятях, балансе оружия и боевых заготовках.',
-      exclusiveGroupId: 'blacksmith_first_path',
+      description: 'Путь ковки оружия: клинки, баланс, рукояти и оружейные гнезда.',
+      requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
         'blacksmith_metal_knowledge',
         'blacksmith_even_blank',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_armorer',
-        'blacksmith_branch_precision_smith',
+        'blacksmith_simple_tempering',
+        'blacksmith_rough_socket',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_armorer',
+      id: 'blacksmith_armor_path',
       name: 'Бронник',
-      description: 'Путь кузнеца, который работает с пластинами, щитами, сборкой доспехов и выверенной защитой.',
-      exclusiveGroupId: 'blacksmith_first_path',
+      description: 'Путь ковки брони и щитов: пластины, усиление защиты и подгонка доспехов.',
+      requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
         'blacksmith_metal_knowledge',
         'blacksmith_even_blank',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_weaponsmith',
-        'blacksmith_branch_precision_smith',
+        'blacksmith_simple_tempering',
+        'blacksmith_rough_socket',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_precision_smith',
+      id: 'blacksmith_precision_path',
       name: 'Точный кузнец',
-      description: 'Путь кузнеца точной работы: оправы, посадка вставок, подготовка металла под будущие камни и руны.',
-      exclusiveGroupId: 'blacksmith_first_path',
+      description: 'Путь точной работы: оправы, посадка вставок и подготовка поверхности под руны.',
+      requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
         'blacksmith_metal_knowledge',
         'blacksmith_even_blank',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_weaponsmith',
-        'blacksmith_branch_armorer',
+        'blacksmith_simple_tempering',
+        'blacksmith_rough_socket',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_weapon_master',
+      id: 'blacksmith_weapon_master_path',
       name: 'Мастер оружия',
-      description: 'Вторая ступень оружейной ветки: сильная заточка, ударные формы, подгонка под бойца и второй оружейный слот.',
-      requiredBranchIds: ['blacksmith_branch_weaponsmith'],
+      description: 'Верхняя ступень оружейного пути: точная форма, усиленная режущая кромка и глубокая подгонка оружия.',
+      requiredBranchIds: ['blacksmith_weapon_path'],
       requiredSkillIds: [
         'blacksmith_weapon_blades',
         'blacksmith_weapon_balance',
         'blacksmith_sharp_edge',
+        'blacksmith_combat_grip',
+        'blacksmith_weapon_socket',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_armor_master',
+      id: 'blacksmith_armor_master_path',
       name: 'Мастер брони',
-      description: 'Вторая ступень защитной ветки: усиленная сборка, гашение удара, стойка железа и второй защитный слот.',
-      requiredBranchIds: ['blacksmith_branch_armorer'],
+      description: 'Верхняя ступень защитного пути: стойкость, противоударная сборка и продвинутая работа по броне.',
+      requiredBranchIds: ['blacksmith_armor_path'],
       requiredSkillIds: [
         'blacksmith_armor_forging',
         'blacksmith_reinforced_plates',
         'blacksmith_shield_brace',
+        'blacksmith_armor_fitting',
+        'blacksmith_armor_socket',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_setting_master',
+      id: 'blacksmith_setting_master_path',
       name: 'Мастер оправы',
-      description: 'Вторая ступень точной ветки: крепкие оправы, рунная разметка, тонкая работа и базовая герметизация.',
-      requiredBranchIds: ['blacksmith_branch_precision_smith'],
+      description: 'Верхняя ступень точной ветки: стабильные оправы, рунная подготовка и герметизация посадок.',
+      requiredBranchIds: ['blacksmith_precision_path'],
       requiredSkillIds: [
         'blacksmith_fine_work',
         'blacksmith_metal_setting',
         'blacksmith_insert_mounting',
+        'blacksmith_minor_rune_surface',
+        'blacksmith_clean_setting',
       ],
     }),
     branch({
-      id: 'blacksmith_branch_jewelcrafter',
-      name: 'Ювелир',
-      description: 'Финальная специализация на кольцах, амулетах, огранке камней и пассивной силе украшений.',
-      exclusiveGroupId: 'blacksmith_final_path',
+      id: 'final_blacksmith_trial',
+      name: 'Финальное испытание кузнеца',
+      description: 'Узел перехода к отдельным профессиям после завершения ключевых ветвей кузнеца.',
+      requiredBranchIds: [
+        'blacksmith_weapon_master_path',
+        'blacksmith_armor_master_path',
+        'blacksmith_setting_master_path',
+      ],
       requiredSkillIds: [
         'blacksmith_razor_steel',
         'blacksmith_firm_armor_fit',
         'blacksmith_gem_settings',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_runecrafter',
-        'blacksmith_branch_forge_master',
-      ],
-      isFinalBranch: true,
-    }),
-    branch({
-      id: 'blacksmith_branch_runecrafter',
-      name: 'Рунорез',
-      description: 'Финальная специализация на рунах, рунных камнях, чтении знаков и рунных комплексах.',
-      exclusiveGroupId: 'blacksmith_final_path',
-      requiredSkillIds: [
-        'blacksmith_razor_steel',
-        'blacksmith_firm_armor_fit',
-        'blacksmith_gem_settings',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_jewelcrafter',
-        'blacksmith_branch_forge_master',
-      ],
-      isFinalBranch: true,
-    }),
-    branch({
-      id: 'blacksmith_branch_forge_master',
-      name: 'Мастер Горна',
-      description: 'Финальная специализация чистой ковки: лучшая немагическая сталь, баффы, форма и легендарные изделия.',
-      exclusiveGroupId: 'blacksmith_final_path',
-      requiredSkillIds: [
-        'blacksmith_razor_steel',
-        'blacksmith_firm_armor_fit',
-        'blacksmith_gem_settings',
-      ],
-      locksBranchIds: [
-        'blacksmith_branch_jewelcrafter',
-        'blacksmith_branch_runecrafter',
+        'blacksmith_rune_marking',
+        'blacksmith_base_seal',
       ],
       isFinalBranch: true,
     }),
@@ -301,7 +276,7 @@ function mergeWithMiningDefaults(branches: ProfessionBranch[]): ProfessionBranch
   ];
   const defaultIds = new Set(defaults.map((entry) => entry.id));
   const existingById = new Map(branches.map((entry) => [entry.id, entry]));
-  const preserved = branches.filter((entry) => !defaultIds.has(entry.id));
+  const preserved = branches.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing');
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
     if (!existing) {

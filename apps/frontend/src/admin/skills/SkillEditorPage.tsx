@@ -6,6 +6,7 @@ import type { StoredImage } from '../../services/content/models';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { extractRawSkillsFromImportJson, importSkillsFromJsonEntries, skillsService, emptySkill, normalizeSkill, validateSkill } from '../../services/content/skillsService';
 import { resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { resolveGameImageRefSource } from '../../services/content/gameImageRefs';
 import { SkillForm } from './SkillForm';
 import { SkillListPage } from './SkillListPage';
 import { clampLevel, normalizeSkillDraft } from './skillAdminUtils';
@@ -86,7 +87,7 @@ export function SkillEditorPage() {
   }
 
   function resolveSkillIcon(skill: AdminSkillDefinition): string | undefined {
-    return resolveStoredImageSource(skill.iconUrl?.trim(), images);
+    return resolveGameImageRefSource(skill.iconImageRef as never, images) ?? resolveStoredImageSource(skill.iconUrl?.trim(), images);
   }
 
   async function saveSkill() {
@@ -245,6 +246,7 @@ export function SkillEditorPage() {
         selectedId={selectedId}
         previewLevel={clampLevel(previewLevel, draft.maxLevel)}
         iconSrc={resolveSkillIcon(draft)}
+        images={images}
         status={status}
         saveState={saveState}
         isSaving={isSaving}

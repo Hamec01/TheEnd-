@@ -21,6 +21,7 @@ export const RESOURCE_STATS: PrimaryStat[] = ['hp', 'mp', 'stamina'];
 export const RESOURCE_POINT_MULTIPLIER = 10;
 
 export const STARTING_FREE_POINTS = 5;
+export const LEVEL_UP_FREE_POINTS = 4;
 
 export function getAllocationCost(allocation: StatAllocation): number {
   return Object.values(allocation).reduce((sum, value) => sum + Math.max(0, value ?? 0), 0);

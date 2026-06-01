@@ -2,7 +2,6 @@ import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisi
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminAudioField } from '../AdminAudioField';
-import { AdminImageField } from '../AdminImageField';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 import type { AdminSaveViewModel } from '../adminSaveTools';
@@ -16,6 +15,9 @@ import { clampLevel, formatCommaList, formatEnumLabel, parseCommaList, SKILL_CAS
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
 import { visualFxService } from '../../services/content/visualFxService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import type { GameImageRef, StoredImage } from '../../services/content/models';
+import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 
 type SkillTab = 'basic' | 'levels' | 'costs' | 'effects' | 'visuals' | 'target' | 'requirements' | 'acquisition' | 'classes' | 'races' | 'runes' | 'shamanism' | 'risks' | 'preview';
 
@@ -24,6 +26,7 @@ interface SkillFormProps {
   selectedId: string | null;
   previewLevel: number;
   iconSrc?: string;
+  images: StoredImage[];
   status: string;
   saveState: AdminSaveViewModel;
   isSaving: boolean;
@@ -53,7 +56,7 @@ const TABS: Array<{ id: SkillTab; label: string }> = [
 ];
 
 export function SkillForm(props: SkillFormProps) {
-  const { draft, selectedId, previewLevel, iconSrc, status, saveState, isSaving, onChange, onPreviewLevelChange, onSave, onDuplicate, onDelete, onTogglePublish } = props;
+  const { draft, selectedId, previewLevel, iconSrc, images, status, saveState, isSaving, onChange, onPreviewLevelChange, onSave, onDuplicate, onDelete, onTogglePublish } = props;
   const [activeTab, setActiveTab] = useState<SkillTab>('basic');
   const [visualFxIds, setVisualFxIds] = useState<string[]>([]);
 
@@ -170,16 +173,26 @@ export function SkillForm(props: SkillFormProps) {
         </label>
       </div>
 
-      <AdminImageField
-        value={draft.iconUrl}
-        onChange={(nextValue) => patch({ iconUrl: nextValue })}
-        onStatus={() => undefined}
-        presetId="item-icon"
-        suggestedId={draft.id || undefined}
-        suggestedName={`${draft.id || draft.name || 'skill'}-icon`}
-        uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
+      <ImageSheetPicker
         label="Иконка навыка"
-        hint="Загружает иконку навыка в тот же content image store, что и предметы, поэтому preview и экспорт работают одинаково."
+        hint="Загружает обычную картинку или tileset. Для tileset можно выбрать frame."
+        category="other"
+        value={(draft.iconImageRef as GameImageRef | undefined) ?? null}
+        legacyImagePath={draft.iconUrl}
+        runtimeImages={images}
+        showUploadForImage
+        disableManualImageInput
+        defaultTilesetFrameWidth={128}
+        defaultTilesetFrameHeight={128}
+        uploadPresetId="item-icon"
+        uploadSuggestedId={draft.id || undefined}
+        uploadSuggestedName={`${draft.id || draft.name || 'skill'}-icon`}
+        uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
+        onStatus={() => undefined}
+        onChange={(next) => patch({
+          iconImageRef: next,
+          iconUrl: toLegacyImagePath(next) ?? '',
+        })}
       />
 
       <div className="admin-tabbar" role="tablist" aria-label="Skill editor tabs">

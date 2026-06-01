@@ -95,7 +95,7 @@ function calculateCritChance(stats, equipment) {
     return Number((5 + luckPart + equipmentLuck).toFixed(1));
 }
 function calculateInitiative(stats) {
-    return stats.perception + Math.floor(stats.dexterity * 0.5);
+    return Math.floor(stats.perception * 0.7 + stats.dexterity * 0.8);
 }
 function calculateDerivedStats(stats, equipment) {
     const totalDefense = calculateTotalDefense(stats, equipment);
@@ -103,11 +103,11 @@ function calculateDerivedStats(stats, equipment) {
     const maxDamage = calculateMaxDamage(stats, equipment);
     const critChance = calculateCritChance(stats, equipment);
     const initiative = calculateInitiative(stats);
-    const hitChance = Number((65 + stats.perception * 0.9 + stats.dexterity * 0.35).toFixed(1));
-    const evasion = Number((stats.dexterity * 0.85 + stats.luck * 0.25).toFixed(1));
-    const blockChance = Number((stats.constitution * 0.35 + getShieldDefenseFromEquipment(equipment) * 1.8).toFixed(1));
-    const physicalResistance = Number((stats.constitution * 1.2 + totalDefense * 0.35).toFixed(1));
-    const magicResistance = Number((stats.willpower * 1.3 + getBonusFromEquipment(equipment, 'willpower') * 0.7).toFixed(1));
+    const hitChance = Number((58 + stats.perception * 0.65 + stats.dexterity * 0.5 + stats.luck * 0.2).toFixed(1));
+    const evasion = Number((stats.dexterity * 0.9 + stats.luck * 0.35 + stats.perception * 0.15).toFixed(1));
+    const blockChance = Number((stats.constitution * 0.22 + getShieldDefenseFromEquipment(equipment) * 1.6).toFixed(1));
+    const physicalResistance = Number((stats.constitution * 0.8 + totalDefense * 0.22).toFixed(1));
+    const magicResistance = Number((stats.willpower * 1.05 + getBonusFromEquipment(equipment, 'willpower') * 0.55).toFixed(1));
     const staminaLoad = Math.max(0, Math.round(stats.stamina * 0.15 + getArmorDefenseFromEquipment(equipment) * 0.7));
     return {
         totalDefense,

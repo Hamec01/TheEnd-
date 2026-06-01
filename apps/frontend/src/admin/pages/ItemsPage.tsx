@@ -175,6 +175,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | ItemType>('all');
   const [rarityFilter, setRarityFilter] = useState<'all' | ItemRarity>('all');
+  const [showLegacyMaterials, setShowLegacyMaterials] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
@@ -242,6 +243,9 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   const visibleItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
+      if (!showLegacyMaterials && item.type === 'material') {
+        return false;
+      }
       if (q && !item.id.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) {
         return false;
       }
@@ -253,7 +257,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       }
       return true;
     });
-  }, [items, query, rarityFilter, typeFilter]);
+  }, [items, query, rarityFilter, showLegacyMaterials, typeFilter]);
 
   const selectedItem = useMemo(
     () => (selectedId ? items.find((item) => item.id === selectedId) ?? null : null),
@@ -1476,6 +1480,17 @@ export function ItemsPage(props: ItemsPageProps = {}) {
             <option value="all">Любая редкость</option>
             {RARITIES.map((rarity) => <option key={rarity} value={rarity}>{translateRarity(rarity)}</option>)}
           </select>
+          <label
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+            title="Показывает legacy item-записи типа 'Материал'. Новые ресурсы и сырьё создавайте в разделе 'Материалы'."
+          >
+            <input
+              type="checkbox"
+              checked={showLegacyMaterials}
+              onChange={(event) => setShowLegacyMaterials(event.target.checked)}
+            />
+            <span>Показывать материалы</span>
+          </label>
           <button type="button" disabled={isImporting} onClick={exportItemsJson}>
             Экспорт JSON
           </button>

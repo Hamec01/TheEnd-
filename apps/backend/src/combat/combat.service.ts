@@ -44,6 +44,7 @@ import {
   getAttackerHitChanceDeltaFromStatuses,
   syncControlFlagsFromActiveStatuses,
   effectNumericPercent,
+  LEVEL_UP_FREE_POINTS,
   type TryApplyCombatStatusResult,
   type ArenaBattleState,
   type ArenaCombatAction,
@@ -139,7 +140,7 @@ const DEFAULT_TURN_SECONDS = 60;
 const DEFAULT_ROUND_DURATION_SECONDS = DEFAULT_TURN_SECONDS;
 const ACTIVE_TURN_DURATION_SECONDS = 30;
 const MAX_AUTOMATED_TURN_LOOPS = 24;
-const ARENA_GOLD_PER_DEFEATED_ENEMY = 18;
+const ARENA_GOLD_PER_DEFEATED_ENEMY = 9;
 const PVP_LOOT_CONFIG = {
   maxDroppedItems: 2,
   itemDropChance: 0.15,
@@ -2886,7 +2887,12 @@ export class CombatService {
           syncControlFlagsFromActiveStatuses(target);
 
           const hitChance = clampHitChance(
-            85
+            56
+              + actor.perception * 2
+              + actor.dexterity
+              + Math.floor(actor.luck * 0.5)
+              - Math.round(target.dexterity * 1.5)
+              - Math.floor(target.luck * 0.3)
               + (actor.combatModifiers?.hitChancePercent ?? 0)
               - (target.combatModifiers?.dodgeChancePercent ?? 0)
               + getAttackerHitChanceDeltaFromStatuses(actor),
@@ -2917,7 +2923,10 @@ export class CombatService {
               weaponDamageBonus = baseByRarity + Math.floor(bonusSum * 0.5);
             }
           }
-          let base = Math.max(1, Math.round(actor.strength * (command.type === 'heavy_attack' ? 1.25 : 0.9) + weaponDamageBonus));
+          let base = Math.max(
+            1,
+            Math.round((actor.strength + actor.dexterity * 0.25) * (command.type === 'heavy_attack' ? 1.2 : 0.9) + weaponDamageBonus),
+          );
           const outPct = actor.combatModifiers?.outgoingDamagePercent ?? 0;
           if (outPct !== 0) {
             base = Math.max(1, Math.round(base * (1 + outPct / 100)));
@@ -2927,7 +2936,11 @@ export class CombatService {
             0,
             Math.min(
               95,
-              5 + (actor.combatModifiers?.critChancePercent ?? 0) - (target.combatModifiers?.critChanceTakenPercent ?? 0),
+              3
+                + Math.floor(actor.luck * 0.7)
+                + Math.floor(actor.perception * 0.45)
+                + (actor.combatModifiers?.critChancePercent ?? 0)
+                - (target.combatModifiers?.critChanceTakenPercent ?? 0),
             ),
           );
           const critRoll = this.rollUniform01() * 100;
@@ -4010,7 +4023,7 @@ export class CombatService {
           orderIndex: 0,
           type: 'round_end',
           actorId: session.playerId,
-          message: `${playerEntity?.name ?? 'Player'} levels up! +${rewards.progression.levelsGained * 5} free stat points`,
+          message: `${playerEntity?.name ?? 'Player'} levels up! +${rewards.progression.levelsGained * LEVEL_UP_FREE_POINTS} free stat points`,
           data: { levelsGained: rewards.progression.levelsGained },
         });
       }
@@ -4299,8 +4312,21 @@ export class CombatService {
   }
 
   private calculateCombatGoldReward(state: ArenaBattleState): number {
-    const defeatedEnemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive).length;
-    return defeatedEnemies * ARENA_GOLD_PER_DEFEATED_ENEMY;
+    const defeatedEnemies = state.entities.filter((entity) => entity.team === TeamSide.Right && !entity.isAlive);
+    if (defeatedEnemies.length === 0) {
+      return 0;
+    }
+
+    const threatScore = defeatedEnemies.reduce(
+      (sum, enemy) => sum
+        + Math.max(0, enemy.strength)
+        + Math.max(0, enemy.constitution)
+        + Math.floor(Math.max(0, enemy.dexterity) * 0.8)
+        + Math.floor(Math.max(0, enemy.perception) * 0.6),
+      0,
+    );
+
+    return defeatedEnemies.length * ARENA_GOLD_PER_DEFEATED_ENEMY + Math.max(0, Math.floor(threatScore / 8));
   }
 
   private rollCombatDrop(state: ArenaBattleState): string | null {
@@ -4389,7 +4415,7 @@ export class CombatService {
         data: {
           exp: nextExp,
           level: nextLevel,
-          freePoints: character.freePoints + levelsGained * 5,
+          freePoints: character.freePoints + levelsGained * LEVEL_UP_FREE_POINTS,
           gold: {
             increment: gainedGold,
           },
@@ -4460,7 +4486,7 @@ export class CombatService {
     const updated = await this.runtimeStore.updateCharacter(characterId, {
       exp: nextExp,
       level: nextLevel,
-      freePoints: currentFreePoints + levelsGained * 5,
+      freePoints: currentFreePoints + levelsGained * LEVEL_UP_FREE_POINTS,
       gold: currentGold + gainedGold,
     });
 
@@ -5896,7 +5922,7 @@ export class CombatService {
           round: nextState.roundNumber,
           actorId: playerId,
           type: 'INFO' as const,
-          text: `${playerEntity.name} levels up! +${rewards.progression.levelsGained * 5} free stat points`,
+          text: `${playerEntity.name} levels up! +${rewards.progression.levelsGained * LEVEL_UP_FREE_POINTS} free stat points`,
         };
         nextState.logs.push(levelLog);
         if (nextState.lastRound) {

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AdminImageField } from '../AdminImageField';
 import { AdminFieldLabel } from '../adminUi';
 import {
   getProfessionSkillsByProfessionId,
@@ -7,6 +6,11 @@ import {
   resetProfessionSkillsToDefaults,
   saveProfessionSkillsToStorage,
 } from '../../services/professionSkillRepository';
+import { loadRuntimeImages } from '../../services/content/runtimeImageService';
+import type { GameImageRef, StoredImage } from '../../services/content/models';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { loadProfessionBranchesFromStorage } from '../../services/professionBranchRepository';
 import { validateMiningSkillConnectivity } from '../../services/miningSkillValidation';
 import type {
@@ -179,6 +183,7 @@ function parseParams(value: string): Record<string, unknown> | undefined {
 
 export function ProfessionSkillEditor({ professions = [], filterByProfession, onSave }: ProfessionSkillEditorProps) {
   const [skills, setSkills] = useState<ProfessionSkill[]>([]);
+  const [images, setImages] = useState<StoredImage[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProfessionSkill>(emptySkill(filterByProfession || ''));
   const [filterProfession, setFilterProfession] = useState<string>(filterByProfession || '');
@@ -186,6 +191,7 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
 
   useEffect(() => {
     setSkills(loadProfessionSkillsFromStorage());
+    void loadRuntimeImages().then(setImages).catch(() => setImages([]));
   }, []);
 
   useEffect(() => {
@@ -399,13 +405,27 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
             </label>
           </div>
 
-          <AdminImageField
-            value={draft.icon}
-            onChange={(nextValue) => setDraft((current) => ({ ...current, icon: nextValue || undefined }))}
-            presetId="item-icon"
-            suggestedName={`${draft.id || draft.name || 'profession-skill'}-icon`}
+          <ImageSheetPicker
             label="Иконка навыка"
-            hint="Квадратная иконка навыка 128x128."
+            hint="Можно загрузить обычную картинку или tileset."
+            category="other"
+            value={(draft.iconImageRef as GameImageRef | undefined) ?? null}
+            legacyImagePath={draft.icon}
+            runtimeImages={images}
+            showUploadForImage
+            disableManualImageInput
+            defaultTilesetFrameWidth={128}
+            defaultTilesetFrameHeight={128}
+            uploadPresetId="item-icon"
+            uploadSuggestedId={draft.id || undefined}
+            uploadSuggestedName={`${draft.id || draft.name || 'profession-skill'}-icon`}
+            uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
+            onStatus={() => undefined}
+            onChange={(next) => setDraft((current) => ({
+              ...current,
+              iconImageRef: next,
+              icon: toLegacyImagePath(next) ?? '',
+            }))}
           />
 
           <div className="profession-skill-effects-head">

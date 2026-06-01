@@ -18,7 +18,7 @@ import {
 } from '@theend/rpg-domain';
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
@@ -131,6 +131,14 @@ function isTruthyEnv(value: string | undefined): boolean {
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function getFileMtimeMs(filePath: string): number {
+  try {
+    return existsSync(filePath) ? statSync(filePath).mtimeMs : 0;
+  } catch {
+    return 0;
+  }
 }
 
 function countContent(db: ContentDatabase): Record<string, number> {
@@ -2242,6 +2250,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
   private backupSlot = 0;
   private readonly storageMode: ContentStorageMode = resolveStorageMode();
   private dbCache: ContentDatabase | null = null;
+  private fileCacheMtimeMs = 0;
   private initPromise: Promise<void> | null = null;
   private extraContent: Record<string, unknown> = {};
   private imageAssetsMaterialized = 0;
@@ -2356,6 +2365,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       this.extraContent = extractExtraContent(raw);
       const materializedBefore = this.imageAssetsMaterialized;
       const normalized = this.normalizeDatabase(contentFromMaybeEnvelope(raw));
+      this.fileCacheMtimeMs = getFileMtimeMs(this.runtimeFile);
       if (this.imageAssetsMaterialized > materializedBefore) {
         this.logger.log(`Materialized ${this.imageAssetsMaterialized - materializedBefore} embedded image(s) into Resurse/assets/upload.`);
         this.persistToFile(normalized);
@@ -2798,6 +2808,13 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
   }
 
   private ensureLoaded(): ContentDatabase {
+    if (this.storageMode === 'file') {
+      const currentMtimeMs = getFileMtimeMs(this.runtimeFile);
+      if (!this.dbCache || (currentMtimeMs > 0 && currentMtimeMs !== this.fileCacheMtimeMs)) {
+        this.dbCache = this.loadFromFileStorage();
+      }
+    }
+
     return this.ensureCache();
   }
 
@@ -3071,6 +3088,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     const tmpFile = `${this.runtimeFile}.tmp`;
     writeFileSync(tmpFile, JSON.stringify(this.createBackupEnvelope(this.dbCache), null, 2), 'utf8');
     renameSync(tmpFile, this.runtimeFile);
+    this.fileCacheMtimeMs = getFileMtimeMs(this.runtimeFile);
     return clone(this.dbCache);
   }
 
@@ -3703,8 +3721,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (totalArmorValue > 0) {
-      modifiers.incomingPhysical.flat -= Math.max(1, Math.floor(totalArmorValue * 0.6));
-      modifiers.incomingMagic.flat -= Math.floor(totalArmorValue * 0.15);
+      modifiers.incomingPhysical.flat -= Math.max(1, Math.floor(totalArmorValue * 0.35));
+      modifiers.incomingMagic.flat -= Math.floor(totalArmorValue * 0.1);
     }
 
     if (equipment.shield) {

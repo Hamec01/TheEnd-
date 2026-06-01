@@ -264,6 +264,17 @@ export interface SkillTransformationComponent {
   riskOnExpire?: SkillRiskComponent[];
 }
 
+export type SkillImageRef =
+  | {
+    type: 'image';
+    src: string;
+  }
+  | {
+    type: 'tileset';
+    sheetId: string;
+    frame: number;
+  };
+
 export interface SkillDefinition {
   id: string;
   name: string;
@@ -271,6 +282,7 @@ export interface SkillDefinition {
   type: SkillType;
   subtypes: SkillSubtype[];
   iconUrl?: string;
+  iconImageRef?: SkillImageRef;
   visuals?: SkillVisualConfig;
   shortDescription: string;
   gameplayDescription: string;

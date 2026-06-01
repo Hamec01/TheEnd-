@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { GameImageRef, ImageSheetCategory, StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
@@ -79,13 +78,14 @@ export function ImageSheetPicker({
     return Number.isFinite(value) && value > 0 ? Math.floor(value) : 128;
   });
   const [tilesetName, setTilesetName] = useState('');
+  const [uiSourceType, setUiSourceType] = useState<'image' | 'tileset'>(() => (value?.type === 'tileset' ? 'tileset' : 'image'));
 
   const normalized = useMemo(
     () => normalizeGameImageRef(value, legacyImagePath),
     [value, legacyImagePath],
   );
 
-  const sourceType = normalized?.type === 'tileset' ? 'tileset' : 'image';
+  const sourceType = uiSourceType;
   const sheets = useMemo(() => getImageSheetsByCategory(category), [category, sheetsVersion]);
   const activeSheet = useMemo(
     () => getImageSheet(normalized?.type === 'tileset' ? normalized.sheetId : sheets[0]?.id),
@@ -94,6 +94,16 @@ export function ImageSheetPicker({
   const totalFrames = activeSheet ? getImageSheetTotalFrames(activeSheet) : 0;
   const quickFrameLimit = Math.min(480, totalFrames);
   const imageSrc = normalized?.type === 'image' ? toLegacyImagePath(normalized) ?? '' : '';
+
+  useEffect(() => {
+    if (normalized?.type === 'tileset') {
+      setUiSourceType('tileset');
+      return;
+    }
+    if (normalized?.type === 'image') {
+      setUiSourceType('image');
+    }
+  }, [normalized]);
 
   const canUpload = showUploadForImage && Boolean(uploadPresetId);
 
@@ -213,6 +223,8 @@ export function ImageSheetPicker({
           <select
             value={sourceType}
             onChange={(event) => {
+              const nextType = event.target.value === 'tileset' ? 'tileset' : 'image';
+              setUiSourceType(nextType);
               if (event.target.value === 'tileset') {
                 const defaultSheet = sheets[0];
                 if (!defaultSheet) {
@@ -265,6 +277,7 @@ export function ImageSheetPicker({
               <span className="muted">Лист</span>
               <select
                 value={activeSheet?.id ?? ''}
+                disabled={!sheets.length}
                 onChange={(event) => {
                   const nextSheet = getImageSheet(event.target.value);
                   if (!nextSheet) {
@@ -273,6 +286,7 @@ export function ImageSheetPicker({
                   onChange({ type: 'tileset', sheetId: nextSheet.id, frame: 0 });
                 }}
               >
+                {!sheets.length ? <option value="">Сначала загрузите tilesheet</option> : null}
                 {sheets.map((sheet) => (
                   <option key={sheet.id} value={sheet.id}>{sheet.name} ({sheet.id})</option>
                 ))}

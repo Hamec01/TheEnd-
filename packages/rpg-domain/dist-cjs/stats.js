@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STARTING_FREE_POINTS = exports.RESOURCE_POINT_MULTIPLIER = exports.RESOURCE_STATS = exports.PRIMARY_STATS = void 0;
+exports.LEVEL_UP_FREE_POINTS = exports.STARTING_FREE_POINTS = exports.RESOURCE_POINT_MULTIPLIER = exports.RESOURCE_STATS = exports.PRIMARY_STATS = void 0;
 exports.getAllocationCost = getAllocationCost;
 exports.validateAllocation = validateAllocation;
 exports.applyAllocation = applyAllocation;
@@ -19,6 +19,7 @@ exports.PRIMARY_STATS = [
 exports.RESOURCE_STATS = ['hp', 'mp', 'stamina'];
 exports.RESOURCE_POINT_MULTIPLIER = 10;
 exports.STARTING_FREE_POINTS = 5;
+exports.LEVEL_UP_FREE_POINTS = 4;
 function getAllocationCost(allocation) {
     return Object.values(allocation).reduce((sum, value) => sum + Math.max(0, value ?? 0), 0);
 }

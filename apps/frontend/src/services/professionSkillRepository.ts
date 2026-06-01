@@ -5,6 +5,7 @@ import type {
   ProfessionSkillEffectCondition,
   ProfessionSkillEffectValueType,
 } from '../types/profession';
+import type { GameImageRef } from './content/models';
 
 const STORAGE_KEY = 'theend.professionSkills.v2';
 
@@ -196,6 +197,7 @@ function normalizeSkill(skill: unknown): ProfessionSkill | null {
     skillPointCost,
     effects,
     icon: raw.icon === undefined ? undefined : String(raw.icon ?? '').trim() || undefined,
+    iconImageRef: raw.iconImageRef && typeof raw.iconImageRef === 'object' ? raw.iconImageRef as GameImageRef : undefined,
     positionX: Number.isFinite(Number(raw.positionX)) ? Number(raw.positionX) : undefined,
     positionY: Number.isFinite(Number(raw.positionY)) ? Number(raw.positionY) : undefined,
     isEnabled: raw.isEnabled !== false,
@@ -712,6 +714,7 @@ function createDefaultBlacksmithSkills(): ProfessionSkill[] {
     branchId?: string;
     requiredSkillIds?: string[];
     requiredBranchIds?: string[];
+    effects?: ProfessionSkillEffect[];
     positionX: number;
     positionY: number;
   }): ProfessionSkill => ({
@@ -724,7 +727,7 @@ function createDefaultBlacksmithSkills(): ProfessionSkill[] {
     requiredBranchIds: params.requiredBranchIds ?? [],
     branchId: params.branchId,
     skillPointCost: params.skillPointCost,
-    effects: [],
+    effects: params.effects ?? [],
     positionX: params.positionX,
     positionY: params.positionY,
     isEnabled: true,
@@ -732,66 +735,196 @@ function createDefaultBlacksmithSkills(): ProfessionSkill[] {
     updatedAt: now,
   });
 
+  const fx = (id: string, type: string, value?: number, valueType: ProfessionSkillEffectValueType = 'flat', params?: Record<string, unknown>): ProfessionSkillEffect => ({
+    id,
+    type,
+    value,
+    valueType,
+    params,
+  });
+
   return [
-    skill({ id: 'blacksmith_basic_forging', name: 'Основы ковки', description: 'Кузнец учится работать с горном, молотом и наковальней. Открывает базовые кузнечные действия и простые рецепты ковки.', requiredLevel: 1, skillPointCost: 1, positionX: 120, positionY: 40 }),
-    skill({ id: 'blacksmith_metal_knowledge', name: 'Знание металла', description: 'Даёт понимание разницы между рудой, слитком, пластиной, заготовкой и готовым изделием. Это фундамент всей кузнечной профессии.', requiredLevel: 1, skillPointCost: 1, positionX: 330, positionY: 40 }),
-    skill({ id: 'blacksmith_even_blank', name: 'Ровная заготовка', description: 'Позволяет делать стабильные заготовки для оружия, брони и щитов. Снижает шанс брака на ранних компонентах.', requiredLevel: 2, skillPointCost: 1, positionX: 540, positionY: 40 }),
-    skill({ id: 'blacksmith_simple_tempering', name: 'Простая закалка', description: 'Открывает первые временные кузнечные баффы для оружия и брони через нагрев, охлаждение и простую обработку металла.', requiredLevel: 2, skillPointCost: 1, positionX: 750, positionY: 40 }),
-    skill({ id: 'blacksmith_rough_socket', name: 'Грубое гнездо', description: 'Даёт возможность добавить первый обычный слот в простой предмет, если сам предмет поддерживает сокеты.', requiredLevel: 3, skillPointCost: 1, positionX: 960, positionY: 40 }),
+    skill({
+      id: 'blacksmith_basic_forging',
+      name: 'Основы ковки',
+      description: 'Базовая работа с молотом, горном и раскалённой заготовкой.',
+      requiredLevel: 1,
+      skillPointCost: 1,
+      branchId: 'blacksmith_start',
+      requiredBranchIds: ['blacksmith_start'],
+      effects: [
+        fx('blacksmith_basic_forging_unlock', 'unlock_forge_action', undefined, 'boolean', { action: 'basic_forging' }),
+        fx('blacksmith_basic_forging_success', 'craft_success_bonus', 3, 'percent', { appliesToRecipeTypes: ['smelting', 'blacksmith_craft'] }),
+      ],
+      positionX: 220,
+      positionY: 1240,
+    }),
+    skill({
+      id: 'blacksmith_metal_knowledge',
+      name: 'Знание металла',
+      description: 'Кузнец лучше понимает руду, слитки, заготовки и свойства металлов.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'blacksmith_start',
+      requiredBranchIds: ['blacksmith_start'],
+      requiredSkillIds: ['blacksmith_basic_forging'],
+      effects: [
+        fx('blacksmith_metal_knowledge_tier', 'unlock_material_tier', undefined, 'boolean', { tier: 'common_metals' }),
+        fx('blacksmith_metal_knowledge_success', 'material_processing_success_bonus', 5, 'percent', { appliesToMaterialTags: ['metal', 'ore', 'ingot'] }),
+      ],
+      positionX: 430,
+      positionY: 1240,
+    }),
+    skill({
+      id: 'blacksmith_even_blank',
+      name: 'Ровная заготовка',
+      description: 'Кузнец умеет делать ровные заготовки клинков и бронных пластин.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'blacksmith_start',
+      requiredBranchIds: ['blacksmith_start'],
+      requiredSkillIds: ['blacksmith_metal_knowledge'],
+      effects: [
+        fx('blacksmith_even_blank_unlock', 'unlock_forge_action', undefined, 'boolean', { action: 'create_basic_blank' }),
+        fx('blacksmith_even_blank_failure', 'failure_chance_reduction', 5, 'percent', { appliesToRecipeTypes: ['material_processing', 'blacksmith_craft'] }),
+      ],
+      positionX: 640,
+      positionY: 1240,
+    }),
+    skill({
+      id: 'blacksmith_simple_tempering',
+      name: 'Простая закалка',
+      description: 'Базовая закалка металла водой и паром.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'blacksmith_start',
+      requiredBranchIds: ['blacksmith_start'],
+      requiredSkillIds: ['blacksmith_even_blank'],
+      effects: [
+        fx('blacksmith_simple_tempering_action', 'unlock_forge_action', undefined, 'boolean', { action: 'temporary_item_buff' }),
+        fx('blacksmith_simple_tempering_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'simple_tempering', temporaryBuffDurationHours: 24 }),
+      ],
+      positionX: 850,
+      positionY: 1240,
+    }),
+    skill({
+      id: 'blacksmith_rough_socket',
+      name: 'Грубое гнездо',
+      description: 'Кузнец умеет сделать первое грубое место под вставку.',
+      requiredLevel: 5,
+      skillPointCost: 1,
+      branchId: 'blacksmith_start',
+      requiredBranchIds: ['blacksmith_start'],
+      requiredSkillIds: ['blacksmith_simple_tempering'],
+      effects: [
+        fx('blacksmith_rough_socket_action', 'unlock_forge_action', undefined, 'boolean', { action: 'add_socket' }),
+        fx('blacksmith_rough_socket_cap', 'max_socket_unlock', 1, 'flat', { allowedItemGroups: ['weapon', 'armor', 'shield'] }),
+      ],
+      positionX: 1060,
+      positionY: 1240,
+    }),
 
-    skill({ id: 'blacksmith_weapon_blades', name: 'Ковка клинков', description: 'Открывает простые мечи, топоры, копья и базовые оружейные заготовки для ветки Оружейника.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_weaponsmith', requiredBranchIds: ['blacksmith_branch_weaponsmith'], positionX: 90, positionY: 260 }),
-    skill({ id: 'blacksmith_weapon_balance', name: 'Баланс оружия', description: 'Позволяет делать более удобное и стабильное оружие, улучшая баланс, точность и выносливость при обращении.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_weaponsmith', requiredBranchIds: ['blacksmith_branch_weaponsmith'], positionX: 260, positionY: 260 }),
-    skill({ id: 'blacksmith_sharp_edge', name: 'Острая кромка', description: 'Усиливает режущие баффы и открывает более сильную заточку оружия на ограниченное время.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_weaponsmith', requiredBranchIds: ['blacksmith_branch_weaponsmith'], positionX: 430, positionY: 260 }),
-    skill({ id: 'blacksmith_combat_grip', name: 'Боевой хват', description: 'Даёт доступ к рукоятям, гардам и подгонке оружия под конкретный стиль боя.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_weaponsmith', requiredBranchIds: ['blacksmith_branch_weaponsmith'], positionX: 600, positionY: 260 }),
-    skill({ id: 'blacksmith_weapon_socket', name: 'Гнездо оружия', description: 'Позволяет уверенно добавлять слот в оружие и подготавливать клинок под будущие вставки.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_branch_weaponsmith', requiredBranchIds: ['blacksmith_branch_weaponsmith'], positionX: 770, positionY: 260 }),
+    skill({ id: 'blacksmith_weapon_blades', name: 'Ковка клинков', description: 'Оружейная ковка базового оружия.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_weapon_path', requiredBranchIds: ['blacksmith_weapon_path'], effects: [fx('blacksmith_weapon_blades_group', 'unlock_recipe_group', undefined, 'boolean', { group: 'basic_weapons' }), fx('blacksmith_weapon_blades_success', 'craft_success_bonus', 5, 'percent', { allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 920 }),
+    skill({ id: 'blacksmith_weapon_balance', name: 'Баланс оружия', description: 'Баланс и удобство оружия.', requiredLevel: 7, skillPointCost: 1, branchId: 'blacksmith_weapon_path', requiredBranchIds: ['blacksmith_weapon_path'], requiredSkillIds: ['blacksmith_weapon_blades'], effects: [fx('blacksmith_weapon_balance_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'weapon_balance', durationHours: 24, temporaryItemBuff: [{ stat: 'hit_chance', value: 5 }, { stat: 'stamina_cost_modifier', value: -3, valueType: 'percent' }], allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 860 }),
+    skill({ id: 'blacksmith_sharp_edge', name: 'Острая кромка', description: 'Усиленная режущая обработка.', requiredLevel: 8, skillPointCost: 1, branchId: 'blacksmith_weapon_path', requiredBranchIds: ['blacksmith_weapon_path'], requiredSkillIds: ['blacksmith_weapon_balance'], effects: [fx('blacksmith_sharp_edge_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'sharp_edge', durationHours: 24, temporaryItemBuff: [{ stat: 'slash_damage', value: 10 }], allowedItemGroups: ['sword', 'dagger', 'axe', 'spear'] })], positionX: 280, positionY: 800 }),
+    skill({ id: 'blacksmith_combat_grip', name: 'Боевой хват', description: 'Подгонка хвата и рукояти.', requiredLevel: 9, skillPointCost: 1, branchId: 'blacksmith_weapon_path', requiredBranchIds: ['blacksmith_weapon_path'], requiredSkillIds: ['blacksmith_sharp_edge'], effects: [fx('blacksmith_combat_grip_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'combat_grip', durationHours: 24, temporaryItemBuff: [{ stat: 'agility', value: 5 }, { stat: 'hit_chance', value: 3 }], allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 740 }),
+    skill({ id: 'blacksmith_weapon_socket', name: 'Гнездо оружия', description: 'Первое оружейное гнездо.', requiredLevel: 10, skillPointCost: 1, branchId: 'blacksmith_weapon_path', requiredBranchIds: ['blacksmith_weapon_path'], requiredSkillIds: ['blacksmith_combat_grip'], effects: [fx('blacksmith_weapon_socket_action', 'unlock_forge_action', undefined, 'boolean', { action: 'add_weapon_socket' }), fx('blacksmith_weapon_socket_cap', 'max_weapon_socket_unlock', 1, 'flat', { allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 680 }),
 
-    skill({ id: 'blacksmith_armor_forging', name: 'Ковка доспехов', description: 'Открывает базовую броню, щиты и защитные заготовки для ветки Бронника.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_armorer', requiredBranchIds: ['blacksmith_branch_armorer'], positionX: 90, positionY: 560 }),
-    skill({ id: 'blacksmith_reinforced_plates', name: 'Усиленные пластины', description: 'Даёт доступ к более крепким пластинам и временным баффам защиты через усиленную сборку доспеха.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_armorer', requiredBranchIds: ['blacksmith_branch_armorer'], positionX: 260, positionY: 560 }),
-    skill({ id: 'blacksmith_shield_brace', name: 'Щитовой упор', description: 'Улучшает щиты, ремни и крепления, позволяя увереннее держать удар и повышать шанс блока.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_armorer', requiredBranchIds: ['blacksmith_branch_armorer'], positionX: 430, positionY: 560 }),
-    skill({ id: 'blacksmith_armor_fitting', name: 'Подгонка брони', description: 'Позволяет лучше подгонять броню под носителя и вытаскивать из неё больше stamina и удобства.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_armorer', requiredBranchIds: ['blacksmith_branch_armorer'], positionX: 600, positionY: 560 }),
-    skill({ id: 'blacksmith_armor_socket', name: 'Гнездо защиты', description: 'Открывает уверенное добавление сокета в броню и щиты без попытки менять тип самого слота.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_branch_armorer', requiredBranchIds: ['blacksmith_branch_armorer'], positionX: 770, positionY: 560 }),
+    skill({ id: 'blacksmith_razor_steel', name: 'Бритвенная сталь', description: 'Продвинутая режущая обработка.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_weapon_master_path', requiredBranchIds: ['blacksmith_weapon_master_path'], requiredSkillIds: ['blacksmith_weapon_socket'], effects: [fx('blacksmith_razor_steel_upgrade', 'upgrade_temporary_buff', undefined, 'boolean', { buffId: 'sharp_edge', durationHours: 24, temporaryItemBuffBonus: [{ stat: 'slash_damage', value: 20 }, { stat: 'crit_chance', value: 3 }], allowedItemGroups: ['sword', 'dagger', 'axe'] })], positionX: 280, positionY: 600 }),
+    skill({ id: 'blacksmith_heavy_impact', name: 'Тяжёлый удар', description: 'Сильный пробивной стиль ковки.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_weapon_master_path', requiredBranchIds: ['blacksmith_weapon_master_path'], requiredSkillIds: ['blacksmith_weapon_socket'], effects: [fx('blacksmith_heavy_impact_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'heavy_impact', durationHours: 24, temporaryItemBuff: [{ stat: 'armor_penetration', value: 5 }, { stat: 'blunt_damage', value: 10 }], allowedItemGroups: ['hammer', 'axe', 'two_handed_weapon'] })], positionX: 280, positionY: 540 }),
+    skill({ id: 'blacksmith_personal_weapon_fit', name: 'Личная подгонка оружия', description: 'Точная персональная настройка оружия.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_weapon_master_path', requiredBranchIds: ['blacksmith_weapon_master_path'], requiredSkillIds: ['blacksmith_heavy_impact'], effects: [fx('blacksmith_personal_weapon_fit_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'personal_weapon_fit', durationHours: 24, temporaryItemBuff: [{ stat: 'stamina_cost_modifier', value: -8, valueType: 'percent' }, { stat: 'hit_chance', value: 5 }], allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 480 }),
+    skill({ id: 'blacksmith_clean_weapon_profile', name: 'Чистый профиль оружия', description: 'Постоянная точность формы оружия.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_weapon_master_path', requiredBranchIds: ['blacksmith_weapon_master_path'], requiredSkillIds: ['blacksmith_personal_weapon_fit'], effects: [fx('blacksmith_clean_weapon_profile_success', 'permanent_upgrade_success_bonus', 5, 'percent', { allowedItemGroups: ['weapon'] }), fx('blacksmith_clean_weapon_profile_quality', 'quality_bonus', 1, 'flat', { allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 420 }),
+    skill({ id: 'blacksmith_second_weapon_socket', name: 'Второе оружейное гнездо', description: 'Второй слот для оружия.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_weapon_master_path', requiredBranchIds: ['blacksmith_weapon_master_path'], requiredSkillIds: ['blacksmith_clean_weapon_profile'], effects: [fx('blacksmith_second_weapon_socket_action', 'unlock_forge_action', undefined, 'boolean', { action: 'add_second_weapon_socket' }), fx('blacksmith_second_weapon_socket_cap', 'max_weapon_socket_unlock', 2, 'flat', { allowedItemGroups: ['weapon'] })], positionX: 280, positionY: 360 }),
 
-    skill({ id: 'blacksmith_fine_work', name: 'Тонкая работа', description: 'Открывает точную ковку, мелкие детали, чистые посадки и первые аккуратные оправы.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_precision_smith', requiredBranchIds: ['blacksmith_branch_precision_smith'], positionX: 90, positionY: 860 }),
-    skill({ id: 'blacksmith_metal_setting', name: 'Оправа металла', description: 'Даёт доступ к базовым оправам и подготовке металла под будущие вставки и магические камни.', requiredLevel: 4, skillPointCost: 1, branchId: 'blacksmith_branch_precision_smith', requiredBranchIds: ['blacksmith_branch_precision_smith'], positionX: 260, positionY: 860 }),
-    skill({ id: 'blacksmith_insert_mounting', name: 'Посадка вставки', description: 'Позволяет крепить заготовленные оправы и собирать элементы для будущих ювелирных и рунных веток.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_precision_smith', requiredBranchIds: ['blacksmith_branch_precision_smith'], positionX: 430, positionY: 860 }),
-    skill({ id: 'blacksmith_minor_rune_surface', name: 'Малая рунная поверхность', description: 'Подготавливает металл под первые рунные знаки, но не создаёт саму руну и не делает магический камень.', requiredLevel: 5, skillPointCost: 1, branchId: 'blacksmith_branch_precision_smith', requiredBranchIds: ['blacksmith_branch_precision_smith'], positionX: 600, positionY: 860 }),
-    skill({ id: 'blacksmith_clean_setting', name: 'Чистая посадка', description: 'Улучшает стабильность оправы и уменьшает риск брака при точной работе по металлу.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_branch_precision_smith', requiredBranchIds: ['blacksmith_branch_precision_smith'], positionX: 770, positionY: 860 }),
+    skill({ id: 'blacksmith_armor_forging', name: 'Ковка доспехов', description: 'Базовая ковка брони и щитов.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_armor_path', requiredBranchIds: ['blacksmith_armor_path'], effects: [fx('blacksmith_armor_forging_group', 'unlock_recipe_group', undefined, 'boolean', { group: 'basic_armor' }), fx('blacksmith_armor_forging_success', 'craft_success_bonus', 5, 'percent', { allowedItemGroups: ['armor'] })], positionX: 640, positionY: 920 }),
+    skill({ id: 'blacksmith_reinforced_plates', name: 'Усиленные пластины', description: 'Усиление пластин и щитов.', requiredLevel: 7, skillPointCost: 1, branchId: 'blacksmith_armor_path', requiredBranchIds: ['blacksmith_armor_path'], requiredSkillIds: ['blacksmith_armor_forging'], effects: [fx('blacksmith_reinforced_plates_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'reinforced_plates', durationHours: 24, temporaryItemBuff: [{ stat: 'armor', value: 10 }], allowedItemGroups: ['armor', 'shield'] })], positionX: 640, positionY: 860 }),
+    skill({ id: 'blacksmith_shield_brace', name: 'Щитовой упор', description: 'Усиление работы щитом.', requiredLevel: 8, skillPointCost: 1, branchId: 'blacksmith_armor_path', requiredBranchIds: ['blacksmith_armor_path'], requiredSkillIds: ['blacksmith_reinforced_plates'], effects: [fx('blacksmith_shield_brace_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'shield_brace', durationHours: 24, temporaryItemBuff: [{ stat: 'block_chance', value: 5 }], allowedItemGroups: ['shield'] })], positionX: 640, positionY: 800 }),
+    skill({ id: 'blacksmith_armor_fitting', name: 'Подгонка брони', description: 'Подгонка брони под носителя.', requiredLevel: 9, skillPointCost: 1, branchId: 'blacksmith_armor_path', requiredBranchIds: ['blacksmith_armor_path'], requiredSkillIds: ['blacksmith_shield_brace'], effects: [fx('blacksmith_armor_fitting_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'armor_fitting', durationHours: 24, temporaryItemBuff: [{ stat: 'endurance', value: 5 }, { stat: 'stamina', value: 10 }], allowedItemGroups: ['armor'] })], positionX: 640, positionY: 740 }),
+    skill({ id: 'blacksmith_armor_socket', name: 'Гнездо защиты', description: 'Первое защитное гнездо.', requiredLevel: 10, skillPointCost: 1, branchId: 'blacksmith_armor_path', requiredBranchIds: ['blacksmith_armor_path'], requiredSkillIds: ['blacksmith_armor_fitting'], effects: [fx('blacksmith_armor_socket_action', 'unlock_forge_action', undefined, 'boolean', { action: 'add_defense_socket' }), fx('blacksmith_armor_socket_cap', 'max_defense_socket_unlock', 1, 'flat', { allowedItemGroups: ['armor', 'shield'] })], positionX: 640, positionY: 680 }),
 
-    skill({ id: 'blacksmith_razor_steel', name: 'Бритвенная сталь', description: 'Вторая ступень оружейной ветки: сильная заточка, более точный профиль и заметно более опасное оружие.', requiredLevel: 7, skillPointCost: 2, branchId: 'blacksmith_branch_weapon_master', requiredBranchIds: ['blacksmith_branch_weapon_master'], requiredSkillIds: ['blacksmith_weapon_blades', 'blacksmith_weapon_balance', 'blacksmith_sharp_edge'], positionX: 120, positionY: 1180 }),
-    skill({ id: 'blacksmith_heavy_impact', name: 'Тяжёлый удар', description: 'Даёт доступ к оружию с мощным пробитием, тяжёлым ударом и более грубой, но страшной формой.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_weapon_master', requiredBranchIds: ['blacksmith_branch_weapon_master'], requiredSkillIds: ['blacksmith_weapon_blades', 'blacksmith_weapon_balance', 'blacksmith_sharp_edge'], positionX: 340, positionY: 1180 }),
-    skill({ id: 'blacksmith_personal_weapon_fit', name: 'Личная подгонка оружия', description: 'Позволяет сильнее подгонять оружие под конкретного носителя, повышая удобство и расход stamina в его пользу.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_weapon_master', requiredBranchIds: ['blacksmith_branch_weapon_master'], requiredSkillIds: ['blacksmith_weapon_blades', 'blacksmith_weapon_balance', 'blacksmith_sharp_edge'], positionX: 560, positionY: 1180 }),
-    skill({ id: 'blacksmith_clean_weapon_profile', name: 'Чистый профиль оружия', description: 'Даёт кузнецу более аккуратную форму клинка и снижает риск брака при серьёзной оружейной работе.', requiredLevel: 9, skillPointCost: 2, branchId: 'blacksmith_branch_weapon_master', requiredBranchIds: ['blacksmith_branch_weapon_master'], requiredSkillIds: ['blacksmith_weapon_blades', 'blacksmith_weapon_balance', 'blacksmith_sharp_edge'], positionX: 780, positionY: 1180 }),
-    skill({ id: 'blacksmith_second_weapon_socket', name: 'Второе оружейное гнездо', description: 'Открывает добавление второго сокета в оружие, если предмет допускает ещё один слот.', requiredLevel: 10, skillPointCost: 2, branchId: 'blacksmith_branch_weapon_master', requiredBranchIds: ['blacksmith_branch_weapon_master'], requiredSkillIds: ['blacksmith_weapon_blades', 'blacksmith_weapon_balance', 'blacksmith_sharp_edge'], positionX: 1000, positionY: 1180 }),
+    skill({ id: 'blacksmith_firm_armor_fit', name: 'Жёсткая подгонка брони', description: 'Продвинутая подгонка брони.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_armor_master_path', requiredBranchIds: ['blacksmith_armor_master_path'], requiredSkillIds: ['blacksmith_armor_socket'], effects: [fx('blacksmith_firm_armor_fit_upgrade', 'upgrade_temporary_buff', undefined, 'boolean', { buffId: 'armor_fitting', durationHours: 24, temporaryItemBuffBonus: [{ stat: 'endurance', value: 10 }, { stat: 'stamina', value: 15 }], allowedItemGroups: ['armor'] })], positionX: 640, positionY: 600 }),
+    skill({ id: 'blacksmith_dampening_layer', name: 'Гасительный слой', description: 'Снижение тупого входящего урона.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_armor_master_path', requiredBranchIds: ['blacksmith_armor_master_path'], requiredSkillIds: ['blacksmith_armor_socket'], effects: [fx('blacksmith_dampening_layer_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'dampening_layer', durationHours: 24, temporaryItemBuff: [{ stat: 'incoming_blunt_damage_modifier', value: -10, valueType: 'percent' }], allowedItemGroups: ['armor', 'shield'] })], positionX: 640, positionY: 540 }),
+    skill({ id: 'blacksmith_iron_stance', name: 'Железная стойка', description: 'Усиленная защитная стойка.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_armor_master_path', requiredBranchIds: ['blacksmith_armor_master_path'], requiredSkillIds: ['blacksmith_dampening_layer'], effects: [fx('blacksmith_iron_stance_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'iron_stance', durationHours: 24, temporaryItemBuff: [{ stat: 'block_chance', value: 8 }, { stat: 'endurance', value: 10 }], allowedItemGroups: ['shield', 'heavy_armor'] })], positionX: 640, positionY: 480 }),
+    skill({ id: 'blacksmith_anti_stun_assembly', name: 'Противоударная сборка', description: 'Защита от оглушения и контузии.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_armor_master_path', requiredBranchIds: ['blacksmith_armor_master_path'], requiredSkillIds: ['blacksmith_iron_stance'], effects: [fx('blacksmith_anti_stun_assembly_buff', 'unlock_temporary_buff', undefined, 'boolean', { buffId: 'anti_stun_assembly', durationHours: 24, temporaryItemBuff: [{ stat: 'status_resistance_stunned', value: 15 }, { stat: 'status_resistance_concussed', value: 15 }], allowedItemGroups: ['helmet', 'armor', 'shield'] })], positionX: 640, positionY: 420 }),
+    skill({ id: 'blacksmith_second_defense_socket', name: 'Второе защитное гнездо', description: 'Второй слот защиты.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_armor_master_path', requiredBranchIds: ['blacksmith_armor_master_path'], requiredSkillIds: ['blacksmith_anti_stun_assembly'], effects: [fx('blacksmith_second_defense_socket_action', 'unlock_forge_action', undefined, 'boolean', { action: 'add_second_defense_socket' }), fx('blacksmith_second_defense_socket_cap', 'max_defense_socket_unlock', 2, 'flat', { allowedItemGroups: ['armor', 'shield'] })], positionX: 640, positionY: 360 }),
 
-    skill({ id: 'blacksmith_firm_armor_fit', name: 'Жёсткая подгонка брони', description: 'Вторая ступень защитной ветки: крепче посадка, выше стойкость и лучшее распределение веса доспеха.', requiredLevel: 7, skillPointCost: 2, branchId: 'blacksmith_branch_armor_master', requiredBranchIds: ['blacksmith_branch_armor_master'], requiredSkillIds: ['blacksmith_armor_forging', 'blacksmith_reinforced_plates', 'blacksmith_shield_brace'], positionX: 120, positionY: 1480 }),
-    skill({ id: 'blacksmith_dampening_layer', name: 'Гасительный слой', description: 'Позволяет лучше принимать тяжёлые удары и смягчать часть оглушающего давления по броне.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_armor_master', requiredBranchIds: ['blacksmith_branch_armor_master'], requiredSkillIds: ['blacksmith_armor_forging', 'blacksmith_reinforced_plates', 'blacksmith_shield_brace'], positionX: 340, positionY: 1480 }),
-    skill({ id: 'blacksmith_iron_stance', name: 'Железная стойка', description: 'Укрепляет стойку носителя, повышает уверенность блока и делает защитную сборку более надёжной.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_armor_master', requiredBranchIds: ['blacksmith_branch_armor_master'], requiredSkillIds: ['blacksmith_armor_forging', 'blacksmith_reinforced_plates', 'blacksmith_shield_brace'], positionX: 560, positionY: 1480 }),
-    skill({ id: 'blacksmith_anti_stun_assembly', name: 'Противоударная сборка', description: 'Уменьшает риск тяжёлой раскачки и краткого оглушения при хорошем защитном комплекте.', requiredLevel: 9, skillPointCost: 2, branchId: 'blacksmith_branch_armor_master', requiredBranchIds: ['blacksmith_branch_armor_master'], requiredSkillIds: ['blacksmith_armor_forging', 'blacksmith_reinforced_plates', 'blacksmith_shield_brace'], positionX: 780, positionY: 1480 }),
-    skill({ id: 'blacksmith_second_defense_socket', name: 'Второе защитное гнездо', description: 'Открывает добавление второго сокета в броню или щит, если предмет допускает расширение.', requiredLevel: 10, skillPointCost: 2, branchId: 'blacksmith_branch_armor_master', requiredBranchIds: ['blacksmith_branch_armor_master'], requiredSkillIds: ['blacksmith_armor_forging', 'blacksmith_reinforced_plates', 'blacksmith_shield_brace'], positionX: 1000, positionY: 1480 }),
+    skill({ id: 'blacksmith_fine_work', name: 'Тонкая работа', description: 'Точная кузнечная обработка.', requiredLevel: 6, skillPointCost: 1, branchId: 'blacksmith_precision_path', requiredBranchIds: ['blacksmith_precision_path'], effects: [fx('blacksmith_fine_work_success', 'fine_work_success_bonus', 5, 'percent', { allowedRecipeGroups: ['settings', 'socket_preparation', 'rune_surface'] }), fx('blacksmith_fine_work_failure', 'failure_chance_reduction', 5, 'percent', { allowedRecipeGroups: ['settings', 'socket_preparation', 'rune_surface'] })], positionX: 1000, positionY: 920 }),
+    skill({ id: 'blacksmith_metal_setting', name: 'Оправа металла', description: 'Создание базовых металлических оправ.', requiredLevel: 7, skillPointCost: 1, branchId: 'blacksmith_precision_path', requiredBranchIds: ['blacksmith_precision_path'], requiredSkillIds: ['blacksmith_fine_work'], effects: [fx('blacksmith_metal_setting_group', 'unlock_recipe_group', undefined, 'boolean', { group: 'basic_settings' }), fx('blacksmith_metal_setting_action', 'unlock_forge_action', undefined, 'boolean', { action: 'create_metal_setting', allowedItemGroups: ['jewelry_base', 'socket_base'] })], positionX: 1000, positionY: 860 }),
+    skill({ id: 'blacksmith_insert_mounting', name: 'Посадка вставки', description: 'Стабильная посадка вставок.', requiredLevel: 8, skillPointCost: 1, branchId: 'blacksmith_precision_path', requiredBranchIds: ['blacksmith_precision_path'], requiredSkillIds: ['blacksmith_metal_setting'], effects: [fx('blacksmith_insert_mounting_stability', 'insert_stability_bonus', 5, 'percent', { allowedItemGroups: ['jewelry', 'weapon', 'armor', 'shield'] }), fx('blacksmith_insert_mounting_socket', 'socket_preparation_success_bonus', 5, 'percent', { allowedItemGroups: ['jewelry', 'weapon', 'armor', 'shield'] })], positionX: 1000, positionY: 800 }),
+    skill({ id: 'blacksmith_minor_rune_surface', name: 'Малая рунная поверхность', description: 'Подготовка поверхности под руну.', requiredLevel: 9, skillPointCost: 1, branchId: 'blacksmith_precision_path', requiredBranchIds: ['blacksmith_precision_path'], requiredSkillIds: ['blacksmith_insert_mounting'], effects: [fx('blacksmith_minor_rune_surface_action', 'unlock_forge_action', undefined, 'boolean', { action: 'prepare_minor_rune_surface', allowedAugmentKind: 'rune' }), fx('blacksmith_minor_rune_surface_success', 'rune_preparation_success_bonus', 5, 'percent')], positionX: 1000, positionY: 740 }),
+    skill({ id: 'blacksmith_clean_setting', name: 'Чистая посадка', description: 'Чистая и безопасная посадка.', requiredLevel: 10, skillPointCost: 1, branchId: 'blacksmith_precision_path', requiredBranchIds: ['blacksmith_precision_path'], requiredSkillIds: ['blacksmith_minor_rune_surface'], effects: [fx('blacksmith_clean_setting_socket', 'socket_preparation_success_bonus', 8, 'percent', { allowedItemGroups: ['jewelry', 'weapon', 'armor', 'shield'] }), fx('blacksmith_clean_setting_failure', 'failure_chance_reduction', 5, 'percent', { allowedItemGroups: ['jewelry', 'weapon', 'armor', 'shield'] })], positionX: 1000, positionY: 680 }),
 
-    skill({ id: 'blacksmith_gem_settings', name: 'Ювелирные оправы', description: 'Вторая ступень точной ветки: открывает прочные оправы под камни и аккуратную работу с малыми вставками.', requiredLevel: 7, skillPointCost: 2, branchId: 'blacksmith_branch_setting_master', requiredBranchIds: ['blacksmith_branch_setting_master'], requiredSkillIds: ['blacksmith_fine_work', 'blacksmith_metal_setting', 'blacksmith_insert_mounting'], positionX: 120, positionY: 1780 }),
-    skill({ id: 'blacksmith_rune_marking', name: 'Рунная разметка', description: 'Даёт чистую разметку под будущую резьбу и подготавливает металл для работы Рунореза.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_setting_master', requiredBranchIds: ['blacksmith_branch_setting_master'], requiredSkillIds: ['blacksmith_fine_work', 'blacksmith_metal_setting', 'blacksmith_insert_mounting'], positionX: 340, positionY: 1780 }),
-    skill({ id: 'blacksmith_stable_mount', name: 'Стабильная посадка', description: 'Улучшает надёжность крепления вставок и уменьшает шанс ошибки при тонкой работе.', requiredLevel: 8, skillPointCost: 2, branchId: 'blacksmith_branch_setting_master', requiredBranchIds: ['blacksmith_branch_setting_master'], requiredSkillIds: ['blacksmith_fine_work', 'blacksmith_metal_setting', 'blacksmith_insert_mounting'], positionX: 560, positionY: 1780 }),
-    skill({ id: 'blacksmith_thin_metalwork', name: 'Тонкая металлика', description: 'Позволяет делать более лёгкие и чистые оправы без потери формы для поздних вставок и украшений.', requiredLevel: 9, skillPointCost: 2, branchId: 'blacksmith_branch_setting_master', requiredBranchIds: ['blacksmith_branch_setting_master'], requiredSkillIds: ['blacksmith_fine_work', 'blacksmith_metal_setting', 'blacksmith_insert_mounting'], positionX: 780, positionY: 1780 }),
-    skill({ id: 'blacksmith_base_seal', name: 'Базовая герметизация', description: 'Укрепляет тонкие крепления и завершает мастерскую подготовку предмета под магические ветки.', requiredLevel: 10, skillPointCost: 2, branchId: 'blacksmith_branch_setting_master', requiredBranchIds: ['blacksmith_branch_setting_master'], requiredSkillIds: ['blacksmith_fine_work', 'blacksmith_metal_setting', 'blacksmith_insert_mounting'], positionX: 1000, positionY: 1780 }),
+    skill({ id: 'blacksmith_gem_settings', name: 'Ювелирные оправы', description: 'Продвинутые оправы для украшений.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_setting_master_path', requiredBranchIds: ['blacksmith_setting_master_path'], requiredSkillIds: ['blacksmith_clean_setting'], effects: [fx('blacksmith_gem_settings_path', 'unlock_path_requirement', undefined, 'boolean', { profession: 'jewelcrafting' }), fx('blacksmith_gem_settings_group', 'unlock_recipe_group', undefined, 'boolean', { group: 'advanced_gem_settings', allowedItemGroups: ['ring', 'amulet', 'jewelry'] })], positionX: 1000, positionY: 600 }),
+    skill({ id: 'blacksmith_rune_marking', name: 'Рунная разметка', description: 'Точная разметка под руны.', requiredLevel: 11, skillPointCost: 2, branchId: 'blacksmith_setting_master_path', requiredBranchIds: ['blacksmith_setting_master_path'], requiredSkillIds: ['blacksmith_clean_setting'], effects: [fx('blacksmith_rune_marking_path', 'unlock_path_requirement', undefined, 'boolean', { profession: 'runecrafting' }), fx('blacksmith_rune_marking_action', 'unlock_forge_action', undefined, 'boolean', { action: 'rune_marking' }), fx('blacksmith_rune_marking_bonus', 'rune_preparation_success_bonus', 10, 'percent')], positionX: 1000, positionY: 540 }),
+    skill({ id: 'blacksmith_stable_mount', name: 'Стабильная посадка', description: 'Продвинутая стабильность вставки.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_setting_master_path', requiredBranchIds: ['blacksmith_setting_master_path'], requiredSkillIds: ['blacksmith_rune_marking'], effects: [fx('blacksmith_stable_mount_insert', 'insert_stability_bonus', 10, 'percent'), fx('blacksmith_stable_mount_socket', 'socket_failure_chance_reduction', 10, 'percent')], positionX: 1000, positionY: 480 }),
+    skill({ id: 'blacksmith_thin_metalwork', name: 'Тонкая металлика', description: 'Работа с тонкими и драгоценными металлами.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_setting_master_path', requiredBranchIds: ['blacksmith_setting_master_path'], requiredSkillIds: ['blacksmith_stable_mount'], effects: [fx('blacksmith_thin_metalwork_unlock', 'unlock_material_work', undefined, 'boolean', { materials: ['thin_metal', 'precious_metal'] }), fx('blacksmith_thin_metalwork_success', 'fine_work_success_bonus', 10, 'percent', { allowedRecipeGroups: ['jewelry_base', 'rune_base'] })], positionX: 1000, positionY: 420 }),
+    skill({ id: 'blacksmith_base_seal', name: 'Базовая герметизация', description: 'Финальная герметизация посадки.', requiredLevel: 12, skillPointCost: 2, branchId: 'blacksmith_setting_master_path', requiredBranchIds: ['blacksmith_setting_master_path'], requiredSkillIds: ['blacksmith_thin_metalwork'], effects: [fx('blacksmith_base_seal_action', 'unlock_forge_action', undefined, 'boolean', { action: 'base_seal' }), fx('blacksmith_base_seal_socket', 'socket_preparation_success_bonus', 10, 'percent'), fx('blacksmith_base_seal_rune', 'rune_preparation_success_bonus', 10, 'percent')], positionX: 1000, positionY: 360 }),
 
-    skill({ id: 'jewelcrafter_crystal_cutting', name: 'Огранка кристалла', description: 'Открывает финальный путь Ювелира: огранку камней, чистые поверхности и стабильные вставки.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_jewelcrafter', requiredBranchIds: ['blacksmith_branch_jewelcrafter'], positionX: 120, positionY: 2140 }),
-    skill({ id: 'jewelcrafter_rings_of_power', name: 'Кольца силы', description: 'Позволяет создавать более сильные кольца с устойчивыми пассивными бонусами.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_jewelcrafter', requiredBranchIds: ['blacksmith_branch_jewelcrafter'], positionX: 340, positionY: 2140 }),
-    skill({ id: 'jewelcrafter_amulet_setting', name: 'Посадка амулета', description: 'Даёт доступ к амулетам, сложным оправам и более ценным вариантам ювелирной сборки.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_jewelcrafter', requiredBranchIds: ['blacksmith_branch_jewelcrafter'], positionX: 560, positionY: 2140 }),
-    skill({ id: 'jewelcrafter_pure_stone', name: 'Чистый камень', description: 'Позволяет лучше работать с редкими камнями и сохранять в них больше полезной силы.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_jewelcrafter', requiredBranchIds: ['blacksmith_branch_jewelcrafter'], positionX: 780, positionY: 2140 }),
-    skill({ id: 'jewelcrafter_jewel_seal', name: 'Печать ювелира', description: 'Финализирует путь Ювелира и закрепляет силу украшений, камней и пассивных вставок.', requiredLevel: 13, skillPointCost: 3, branchId: 'blacksmith_branch_jewelcrafter', requiredBranchIds: ['blacksmith_branch_jewelcrafter'], positionX: 1000, positionY: 2140 }),
-
-    skill({ id: 'runecrafter_rune_reading', name: 'Чтение рун', description: 'Открывает финальный путь Рунореза: понимание знаков, чтение символов и работу с рунными следами.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_runecrafter', requiredBranchIds: ['blacksmith_branch_runecrafter'], positionX: 120, positionY: 2440 }),
-    skill({ id: 'runecrafter_rune_identification', name: 'Опознание руны', description: 'Позволяет безопаснее разбирать найденные рунные камни и лучше понимать их класс.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_runecrafter', requiredBranchIds: ['blacksmith_branch_runecrafter'], positionX: 340, positionY: 2440 }),
-    skill({ id: 'runecrafter_rune_carving', name: 'Резьба руны', description: 'Даёт доступ к созданию простых рунных знаков и базовых рунных форм.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_runecrafter', requiredBranchIds: ['blacksmith_branch_runecrafter'], positionX: 560, positionY: 2440 }),
-    skill({ id: 'runecrafter_binding_line', name: 'Связующая линия', description: 'Улучшает стабильность рунной формы и помогает безопаснее закреплять знак на носителе.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_runecrafter', requiredBranchIds: ['blacksmith_branch_runecrafter'], positionX: 780, positionY: 2440 }),
-    skill({ id: 'runecrafter_minor_rune_complex', name: 'Малый рунный комплекс', description: 'Финализирует путь Рунореза и открывает составные рунные схемы малой силы.', requiredLevel: 13, skillPointCost: 3, branchId: 'blacksmith_branch_runecrafter', requiredBranchIds: ['blacksmith_branch_runecrafter'], positionX: 1000, positionY: 2440 }),
-
-    skill({ id: 'forge_master_pure_steel', name: 'Чистая сталь', description: 'Открывает финальный путь Мастера Горна: лучшая сталь, меньше брака и более сильная обычная ковка.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_forge_master', requiredBranchIds: ['blacksmith_branch_forge_master'], positionX: 120, positionY: 2740 }),
-    skill({ id: 'forge_master_perfect_tempering', name: 'Совершенная закалка', description: 'Усиливает временные кузнечные баффы и делает оружейные и защитные улучшения заметно сильнее.', requiredLevel: 11, skillPointCost: 3, branchId: 'blacksmith_branch_forge_master', requiredBranchIds: ['blacksmith_branch_forge_master'], positionX: 340, positionY: 2740 }),
-    skill({ id: 'forge_master_flawless_shape', name: 'Безупречная форма', description: 'Повышает качество постоянных улучшений и уменьшает риск неудачи при серьёзной ковке.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_forge_master', requiredBranchIds: ['blacksmith_branch_forge_master'], positionX: 560, positionY: 2740 }),
-    skill({ id: 'forge_master_material_saving', name: 'Экономия мастера', description: 'Снижает расход материалов и иногда позволяет сохранить часть редких компонентов при успешной работе.', requiredLevel: 12, skillPointCost: 3, branchId: 'blacksmith_branch_forge_master', requiredBranchIds: ['blacksmith_branch_forge_master'], positionX: 780, positionY: 2740 }),
-    skill({ id: 'forge_master_legendary_forging', name: 'Легендарная ковка', description: 'Финализирует путь Мастера Горна и открывает лучшие немагические предметы из редких металлов.', requiredLevel: 13, skillPointCost: 3, branchId: 'blacksmith_branch_forge_master', requiredBranchIds: ['blacksmith_branch_forge_master'], positionX: 1000, positionY: 2740 }),
+    skill({
+      id: 'blacksmith_unlock_jewelcrafting',
+      name: 'Ювелир',
+      description: 'Кузнец завершает путь точной работы и получает право открыть профессию Ювелира.',
+      requiredLevel: 20,
+      skillPointCost: 3,
+      branchId: 'final_blacksmith_trial',
+      requiredBranchIds: ['final_blacksmith_trial'],
+      requiredSkillIds: [
+        'blacksmith_gem_settings',
+        'blacksmith_stable_mount',
+        'blacksmith_thin_metalwork',
+        'blacksmith_base_seal',
+      ],
+      effects: [fx('blacksmith_unlock_jewelcrafting_prof', 'unlock_profession', undefined, 'boolean', { professionId: 'jewelcrafting', requiredQuestId: 'quest_unlock_jewelcrafting' })],
+      positionX: 460,
+      positionY: 120,
+    }),
+    skill({
+      id: 'blacksmith_unlock_runecrafting',
+      name: 'Рунорез',
+      description: 'Кузнец завершает путь рунной основы и получает право открыть профессию Рунореза.',
+      requiredLevel: 20,
+      skillPointCost: 3,
+      branchId: 'final_blacksmith_trial',
+      requiredBranchIds: ['final_blacksmith_trial'],
+      requiredSkillIds: [
+        'blacksmith_rune_marking',
+        'blacksmith_minor_rune_surface',
+        'blacksmith_stable_mount',
+        'blacksmith_base_seal',
+      ],
+      effects: [fx('blacksmith_unlock_runecrafting_prof', 'unlock_profession', undefined, 'boolean', { professionId: 'runecrafting', requiredQuestId: 'quest_unlock_runecrafting' })],
+      positionX: 640,
+      positionY: 120,
+    }),
+    skill({
+      id: 'blacksmith_unlock_forge_engineering',
+      name: 'Инженер Горна',
+      description: 'Кузнец завершает путь тяжёлой конструкции и получает право открыть профессию Инженера Горна.',
+      requiredLevel: 20,
+      skillPointCost: 3,
+      branchId: 'final_blacksmith_trial',
+      requiredBranchIds: ['final_blacksmith_trial'],
+      requiredSkillIds: [
+        'blacksmith_razor_steel',
+        'blacksmith_heavy_impact',
+        'blacksmith_clean_weapon_profile',
+        'blacksmith_second_weapon_socket',
+        'blacksmith_firm_armor_fit',
+        'blacksmith_iron_stance',
+        'blacksmith_anti_stun_assembly',
+        'blacksmith_second_defense_socket',
+      ],
+      effects: [fx('blacksmith_unlock_forge_engineering_prof', 'unlock_profession', undefined, 'boolean', {
+        professionId: 'forge_engineering',
+        requiredQuestId: 'quest_unlock_forge_engineering',
+        requiredAnySkillPath: {
+          path_1: ['blacksmith_razor_steel', 'blacksmith_heavy_impact', 'blacksmith_clean_weapon_profile', 'blacksmith_second_weapon_socket'],
+          path_2: ['blacksmith_firm_armor_fit', 'blacksmith_iron_stance', 'blacksmith_anti_stun_assembly', 'blacksmith_second_defense_socket'],
+        },
+      })],
+      positionX: 820,
+      positionY: 120,
+    }),
   ];
 }
 
@@ -802,7 +935,7 @@ function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
   ];
   const defaultIds = new Set(defaults.map((entry) => entry.id));
   const existingById = new Map(skills.map((entry) => [entry.id, entry]));
-  const preserved = skills.filter((entry) => !defaultIds.has(entry.id));
+  const preserved = skills.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing');
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
     const defaultIcon = DEFAULT_MINING_SKILL_ICON_BY_NAME[entry.name];
@@ -810,12 +943,14 @@ function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
       return {
         ...entry,
         icon: entry.icon?.trim() ? entry.icon : defaultIcon,
+        iconImageRef: entry.iconImageRef,
       };
     }
     return {
       ...existing,
       ...entry,
       icon: existing.icon?.trim() ? existing.icon : (entry.icon?.trim() ? entry.icon : defaultIcon),
+      iconImageRef: existing.iconImageRef ?? entry.iconImageRef,
       positionX: existing.positionX ?? entry.positionX,
       positionY: existing.positionY ?? entry.positionY,
       createdAt: existing.createdAt ?? entry.createdAt,

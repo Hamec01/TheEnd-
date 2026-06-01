@@ -378,7 +378,7 @@ function getBattlefieldTilePlacements(entities, distance, width = exports.BATTLE
     }));
 }
 function calculateInitiative(entity) {
-    return entity.perception + Math.floor(entity.dexterity * 0.5);
+    return Math.floor(entity.perception * 0.7 + entity.dexterity * 0.8);
 }
 function clampHitChance(chance) {
     return Math.max(25, Math.min(95, chance));
@@ -691,7 +691,10 @@ function resolveOpportunityAttacks(params) {
         if (!enemy.isAlive || !spendStamina(enemy, combat_costs_1.COMBAT_ACTION_COSTS.basic_attack.stamina ?? 0)) {
             continue;
         }
-        const hitChance = clampHitChance(55 + enemy.perception * 2 - mover.dexterity);
+        const hitChance = clampHitChance(52
+            + Math.floor(enemy.perception * 1.4)
+            + Math.floor(enemy.dexterity * 0.6)
+            - Math.floor(mover.dexterity * 1.1));
         const roll = Math.floor(random() * 100) + 1;
         if (roll > hitChance) {
             logs.push({
@@ -703,7 +706,10 @@ function resolveOpportunityAttacks(params) {
             });
             continue;
         }
-        const damage = Math.max(1, Math.round((enemy.strength + Math.floor(enemy.perception * 0.4)) * 0.6 * getIncomingDamageMultiplier(guardMode) - Math.floor(mover.constitution * 0.35)));
+        const damage = Math.max(1, Math.round((enemy.strength + Math.floor(enemy.dexterity * 0.25) + Math.floor(enemy.perception * 0.2))
+            * 0.55
+            * getIncomingDamageMultiplier(guardMode)
+            - Math.floor(mover.constitution * 0.22)));
         mover.currentHp = Math.max(0, mover.currentHp - damage);
         mover.isAlive = mover.currentHp > 0;
         logs.push({
@@ -778,10 +784,12 @@ function resolveAttack(params) {
                 : actualBand === DistanceBand.Near
                     ? 0
                     : 2;
-    const hitChance = clampHitChance(58
-        + actor.perception * 3
-        + actor.luck
-        - target.dexterity * 2
+    const hitChance = clampHitChance(56
+        + actor.perception * 2
+        + actor.dexterity
+        + Math.floor(actor.luck * 0.5)
+        - Math.round(target.dexterity * 1.5)
+        - Math.floor(target.luck * 0.3)
         - distancePenalty
         + getHitChanceBonus(actorGuardMode)
         + (actor.combatModifiers?.hitChancePercent ?? 0)
@@ -798,13 +806,13 @@ function resolveAttack(params) {
         return;
     }
     const baseDamage = combatStyle === 'MAGIC'
-        ? actor.intelligence + Math.floor(actor.willpower * 0.4) + actorAction.attackPointsSpent
+        ? actor.intelligence + Math.floor(actor.willpower * 0.5) + actorAction.attackPointsSpent
         : combatStyle === 'RANGED'
-            ? actor.dexterity + Math.floor(actor.perception * 0.4) + actorAction.attackPointsSpent
-            : actor.strength + actorAction.attackPointsSpent;
-    const criticalChance = clampHitChance(actor.luck
-        + (combatStyle === 'MAGIC' ? actor.intelligence : actor.perception)
-        + (actorAction.attackZone === TargetZone.Head ? 18 : 4)
+            ? actor.dexterity + Math.floor(actor.perception * 0.25) + Math.floor(actor.luck * 0.15) + actorAction.attackPointsSpent
+            : actor.strength + Math.floor(actor.dexterity * 0.25) + actorAction.attackPointsSpent;
+    const criticalChance = clampHitChance(Math.floor(actor.luck * 0.7)
+        + Math.floor((combatStyle === 'MAGIC' ? actor.intelligence : actor.perception) * 0.6)
+        + (actorAction.attackZone === TargetZone.Head ? 12 : 3)
         + getCritChanceBonus(actorGuardMode)
         + getEnemyCritBonusAgainst(targetGuardMode)
         + (actor.combatModifiers?.critChancePercent ?? 0)
@@ -817,17 +825,21 @@ function resolveAttack(params) {
     let finalDamage = 0;
     let blocked = 0;
     if (matchedDefense) {
-        const mitigation = Math.round((combatStyle === 'MAGIC' ? target.willpower : target.constitution) + targetAction.defensePointsSpent * 1.5);
+        const mitigation = combatStyle === 'MAGIC'
+            ? Math.round(target.willpower * 0.7 + targetAction.defensePointsSpent * 1.2)
+            : Math.round(target.constitution * 0.65 + targetAction.defensePointsSpent * 1.2);
         finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier * outgoingMultiplier * incomingMultiplier) - mitigation);
         blocked = Math.max(0, Math.round(baseDamage * criticalMultiplier) - finalDamage);
     }
     else {
-        const mitigation = Math.floor((combatStyle === 'MAGIC' ? target.willpower : target.constitution) * 0.5);
+        const mitigation = combatStyle === 'MAGIC'
+            ? Math.floor(target.willpower * 0.35)
+            : Math.floor(target.constitution * 0.3);
         finalDamage = Math.max(1, Math.round(baseDamage * criticalMultiplier * outgoingMultiplier * incomingMultiplier) - mitigation);
         blocked = Math.max(0, Math.round(baseDamage * criticalMultiplier) - finalDamage);
     }
     if (actorAction.attackZone === TargetZone.Head && finalDamage > 0) {
-        finalDamage += Math.max(1, Math.floor(actor.perception * 0.3));
+        finalDamage += Math.max(1, Math.floor(actor.perception * 0.2 + actor.dexterity * 0.1));
     }
     if ((actorAction.attackZone === TargetZone.LeftArm || actorAction.attackZone === TargetZone.RightArm) && finalDamage > 0) {
         target.strength = Math.max(1, target.strength - 1);

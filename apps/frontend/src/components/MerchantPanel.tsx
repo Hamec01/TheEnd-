@@ -119,7 +119,7 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   );
 
   const selectedUnitPrice = useMemo(
-    () => (mode === 'buy' ? selectedItem?.price ?? 0 : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.6)) : 0),
+    () => (mode === 'buy' ? selectedItem?.price ?? 0 : selectedItem ? Math.max(1, Math.floor(selectedItem.price * 0.55)) : 0),
     [mode, selectedItem],
   );
 

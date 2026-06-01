@@ -384,8 +384,6 @@ export function CraftingRecipesPage() {
                 onClick={() => selectRecipe(entry)}
               >
                 <strong>{entry.name || entry.id}</strong>
-                <span>{entry.id}</span>
-                <span>{entry.recipeType} • {entry.professionId}</span>
               </button>
             ))}
           </div>
@@ -628,8 +626,22 @@ export function CraftingRecipesPage() {
         }
         .recipe-list-item {
           display: grid;
-          gap: 4px;
+          gap: 2px;
           text-align: left;
+          font-size: 0.82rem;
+          line-height: 1.15;
+          overflow: hidden;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          white-space: normal;
+          padding: 8px 10px;
+        }
+        .recipe-list-item strong {
+          display: block;
+          font-size: 0.82rem;
+          line-height: 1.15;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
         .recipe-list-item.is-active {
           outline: 2px solid rgba(255, 255, 255, 0.35);

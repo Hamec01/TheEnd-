@@ -2492,7 +2492,7 @@ export class ArenaService implements OnModuleInit {
 
   private async getAdjustedMerchantSellPrice(characterId: string, merchantId: string | null, itemId: string): Promise<number> {
     const item = this.contentService.resolveItemById(itemId);
-    const basePrice = Math.max(1, Math.floor(item.price * 0.6));
+    const basePrice = Math.max(1, Math.floor(item.price * 0.55));
     const metadata = await this.metadataStore.get(characterId);
     if (!merchantId) {
       const modifiers = getMerchantPriceModifiers({

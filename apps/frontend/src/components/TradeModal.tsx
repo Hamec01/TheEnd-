@@ -125,7 +125,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       ? price
       : action === 'buy'
         ? itemPrice
-        : Math.max(1, Math.floor(itemPrice * 0.6));
+        : Math.max(1, Math.floor(itemPrice * 0.55));
   const clampedQuantity = Math.max(1, Math.floor(quantity || 1));
   const canTradeByQuantity = maxQuantity >= 1;
   const totalPrice = unitPrice * clampedQuantity;

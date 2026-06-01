@@ -9,6 +9,41 @@ import {
 } from '../../services/content/gameImageRefs';
 import { imageService } from '../../services/content/imageService';
 
+const imageDataUrlCache = new Map<string, string>();
+const imageDataUrlPending = new Map<string, Promise<string>>();
+
+async function resolveImageDataUrl(imageId: string): Promise<string> {
+  const normalizedId = imageId.trim();
+  if (!normalizedId) {
+    return '';
+  }
+
+  const cached = imageDataUrlCache.get(normalizedId);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const pending = imageDataUrlPending.get(normalizedId);
+  if (pending) {
+    return pending;
+  }
+
+  const request = imageService
+    .get(normalizedId)
+    .then((entry) => {
+      const dataUrl = entry?.dataUrl ?? '';
+      imageDataUrlCache.set(normalizedId, dataUrl);
+      return dataUrl;
+    })
+    .catch(() => '')
+    .finally(() => {
+      imageDataUrlPending.delete(normalizedId);
+    });
+
+  imageDataUrlPending.set(normalizedId, request);
+  return request;
+}
+
 export interface GameImageViewProps {
   imageRef?: GameImageRef | null;
   legacyImagePath?: string | null;
@@ -61,9 +96,9 @@ export function GameImageView({
       try {
         if (normalized.type === 'image') {
           const imageId = resolved || normalized.src;
-          const fetched = await imageService.get(imageId);
+          const dataUrl = await resolveImageDataUrl(imageId);
           if (!cancelled) {
-            setFallbackSrc(fetched?.dataUrl ?? '');
+            setFallbackSrc(dataUrl);
           }
           return;
         }
@@ -77,9 +112,9 @@ export function GameImageView({
           return;
         }
 
-        const fetched = await imageService.get(imageId);
+        const dataUrl = await resolveImageDataUrl(imageId);
         if (!cancelled) {
-          setFallbackSrc(fetched?.dataUrl ?? '');
+          setFallbackSrc(dataUrl);
         }
       } catch {
         if (!cancelled) {

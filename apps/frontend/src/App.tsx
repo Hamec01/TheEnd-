@@ -1643,7 +1643,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const sellEntries = useMemo(() => {
     return inventory.items.map((entry) => {
       const item = resolveItem(entry.itemId);
-      const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
+      const sellPrice = Math.max(1, Math.floor(item.price * 0.55));
       const sellLocked = equippedItemIds.has(entry.itemId) && entry.quantity <= 1;
       return {
         item,
@@ -2949,7 +2949,7 @@ function applyHubState(hub: HubStatePayload): void {
       const hub = await sellArenaItem(character.id, itemId, 1);
       applyHubState(hub);
       const item = resolveItem(itemId);
-      const sellPrice = Math.max(1, Math.floor(item.price * 0.6));
+      const sellPrice = Math.max(1, Math.floor(item.price * 0.55));
       setStatus(`Продано: ${item.name} (+${sellPrice} золота)`);
     } catch (error) {
       setStatus(`Ошибка продажи: ${(error as Error).message}`);
