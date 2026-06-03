@@ -6,6 +6,19 @@ function isDirectImageSource(value: string): boolean {
   return value.startsWith('data:') || value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
 }
 
+function isBrokenPlaceholderSource(value: string): boolean {
+  const probe = value.trim().toLowerCase();
+  if (!probe) {
+    return true;
+  }
+  return probe === 'unknown'
+    || probe === '/unknown'
+    || probe.includes('unknown_placeholder')
+    || probe.endsWith('/unknown.png')
+    || probe.endsWith('/unknown.jpg')
+    || probe.endsWith('/unknown.jpeg');
+}
+
 function withCacheBuster(url: string, updatedAt?: string): string {
   const stamp = updatedAt?.trim();
   if (!stamp) {
@@ -20,16 +33,19 @@ export async function loadRuntimeImages(): Promise<StoredImage[]> {
 
 export function resolveStoredImageSource(imageKey: string | undefined, images: StoredImage[]): string | undefined {
   const normalized = imageKey?.trim();
-  if (!normalized) {
+  if (!normalized || isBrokenPlaceholderSource(normalized)) {
     return undefined;
   }
 
   if (isDirectImageSource(normalized)) {
-    return normalized;
+    return isBrokenPlaceholderSource(normalized) ? undefined : normalized;
   }
 
   const stored = images.find((image) => image.id === normalized);
-  return stored ? withCacheBuster(stored.dataUrl, stored.updatedAt) : undefined;
+  if (!stored || isBrokenPlaceholderSource(stored.dataUrl)) {
+    return undefined;
+  }
+  return withCacheBuster(stored.dataUrl, stored.updatedAt);
 }
 
 export function resolveItemImageSource(item: ItemDefinition | null | undefined, images: StoredImage[]): string | undefined {

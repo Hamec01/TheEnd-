@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ItemDefinition } from '@theend/rpg-domain';
-import type { AdminItem } from '../services/content/models';
+import { GameImageView } from '../admin/components/GameImageView';
+import type { AdminItem, GameImageRef, StoredImage } from '../services/content/models';
 
 const STAT_LABELS: Record<string, string> = {
   strength: 'Сила',
@@ -63,9 +64,14 @@ interface TradeModalProps {
   item: ItemDefinition | null;
   adminItem?: AdminItem | null;
   itemImage?: string;
+  itemImageRef?: GameImageRef;
+  itemLegacyImagePath?: string;
+  runtimeImages?: StoredImage[];
   equippedItem?: ItemDefinition | null;
   equippedAdminItem?: AdminItem | null;
   equippedItemImage?: string;
+  equippedItemImageRef?: GameImageRef;
+  equippedItemLegacyImagePath?: string;
   playerGold: number;
   price?: number;
   quantity: number;
@@ -82,9 +88,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   item,
   adminItem,
   itemImage,
+  itemImageRef,
+  itemLegacyImagePath,
+  runtimeImages = [],
   equippedItem,
   equippedAdminItem,
   equippedItemImage,
+  equippedItemImageRef,
+  equippedItemLegacyImagePath,
   playerGold,
   price,
   quantity,
@@ -193,6 +204,31 @@ export const TradeModal: React.FC<TradeModalProps> = ({
     ? selectedArmorValue - equippedArmorValue
     : null;
 
+  const renderTradeIcon = (
+    label: string,
+    imageRef?: GameImageRef,
+    legacyImagePath?: string,
+    imageUrl?: string,
+  ) => {
+    if (imageRef) {
+      return (
+        <GameImageView
+          imageRef={imageRef}
+          legacyImagePath={legacyImagePath}
+          runtimeImages={runtimeImages}
+          alt={label}
+          size={72}
+          fit="contain"
+          fallbackText={label.charAt(0).toUpperCase() || '?'}
+        />
+      );
+    }
+    if (imageUrl) {
+      return <img src={imageUrl} alt={label} />;
+    }
+    return <span aria-hidden="true">{label.charAt(0).toUpperCase() || '?'}</span>;
+  };
+
   return (
     <div className="trade-modal" onClick={onCancel}>
       <div className={`trade-modal-content rarity-${rarityClass}`} onClick={(e) => e.stopPropagation()}>
@@ -203,11 +239,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
         <section className="trade-modal-item-card">
           <div className="trade-modal-item-media">
-            {itemImage ? (
-              <img src={itemImage} alt={itemName} />
-            ) : (
-              <span aria-hidden="true">{itemName.charAt(0).toUpperCase() || '?'}</span>
-            )}
+            {renderTradeIcon(itemName, itemImageRef, itemLegacyImagePath, itemImage)}
           </div>
 
           <div className="trade-modal-item-main">
@@ -235,7 +267,12 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                 <div className="trade-modal-compare-items">
                   <div className="trade-modal-compare-item current">
                     <div className="trade-modal-compare-item-media">
-                      {equippedItemImage ? <img src={equippedItemImage} alt={safeText(equippedItem?.name, 'Экипированный предмет')} /> : <span aria-hidden="true">{safeText(equippedItem?.name, 'Экипированный предмет').charAt(0).toUpperCase() || '?'}</span>}
+                      {renderTradeIcon(
+                        safeText(equippedItem?.name, 'Экипированный предмет'),
+                        equippedItemImageRef,
+                        equippedItemLegacyImagePath,
+                        equippedItemImage,
+                      )}
                     </div>
                     <div>
                       <strong>Сейчас</strong>
@@ -245,7 +282,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
                   <div className="trade-modal-compare-item next">
                     <div className="trade-modal-compare-item-media">
-                      {itemImage ? <img src={itemImage} alt={itemName} /> : <span aria-hidden="true">{itemName.charAt(0).toUpperCase() || '?'}</span>}
+                      {renderTradeIcon(itemName, itemImageRef, itemLegacyImagePath, itemImage)}
                     </div>
                     <div>
                       <strong>После покупки</strong>

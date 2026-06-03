@@ -5,10 +5,11 @@ import type { AdminItem, AdminMerchant, Material, MerchantType, StoredImage } fr
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
 import { materialsService } from '../../services/content/materialsService';
-import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { loadRuntimeImages } from '../../services/content/runtimeImageService';
 import { extractRawMerchantsFromImportJson, importMerchantsFromJsonEntries, merchantsService, validateMerchant } from '../../services/content/merchantsService';
 import { cityService } from '../../services/cityRepository';
 import { uid } from '../../services/content/storage';
+import { normalizeGameImageRef } from '../../services/content/gameImageRefs';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -17,6 +18,7 @@ import {
   translateMerchantType,
 } from '../adminUi';
 import type { City } from '../../types/city';
+import { GameImageView } from '../components/GameImageView';
 
 const MERCHANT_TYPES: MerchantType[] = ['blacksmith', 'alchemist', 'general', 'rune_master', 'material_trader', 'rare_goods', 'other'];
 
@@ -306,7 +308,13 @@ export function MerchantsPage() {
           gameplayDescription: material.gameplayDescription || `Материал: ${material.name}`,
           loreDescription: material.loreDescription || material.gameplayDescription || '',
           imagePath: material.imagePath,
+          imageRef: material.imageRef,
           isEnabled: true,
+        });
+      } else if (existingItem.imagePath !== material.imagePath || JSON.stringify(existingItem.imageRef ?? null) !== JSON.stringify(material.imageRef ?? null)) {
+        await itemsService.update(itemId, {
+          imagePath: material.imagePath,
+          imageRef: material.imageRef,
         });
       }
 
@@ -585,12 +593,19 @@ export function MerchantsPage() {
               {visibleMaterials.map((material) => {
                 const trade = (draft.materialTrades ?? []).find((entry) => entry.materialId === material.id);
                 const assigned = Boolean(trade?.isEnabled);
-                const image = resolveStoredImageSource(material.imagePath, images);
+                const imageRef = normalizeGameImageRef(material.imageRef, material.imagePath);
                 return (
                   <div key={material.id} className={`admin-linked-card ${assigned ? 'is-active' : ''}`}>
                     <button type="button" onClick={() => toggleMaterial(material.id)} title={assigned ? 'Убрать материал' : 'Добавить материал'}>
                       <div className="admin-linked-thumb">
-                        {image ? <img src={image} alt={material.name} /> : material.name.slice(0, 2).toUpperCase()}
+                        <GameImageView
+                          imageRef={imageRef}
+                          legacyImagePath={material.imagePath}
+                          runtimeImages={images}
+                          alt={material.name}
+                          size={56}
+                          fallbackText={material.name.slice(0, 2).toUpperCase()}
+                        />
                       </div>
                       <strong>{material.name}</strong>
                       <small>{material.id}</small>
@@ -618,7 +633,7 @@ export function MerchantsPage() {
           <div className="admin-linked-grid merchant-item-pick">
             {visibleItems.map((item) => {
               const assigned = selectedItemIds.has(item.id);
-              const image = resolveStoredImageSource(item.imagePath, images);
+              const imageRef = normalizeGameImageRef(item.imageRef, item.imagePath);
 
               return (
                 <button
@@ -629,7 +644,14 @@ export function MerchantsPage() {
                   title={assigned ? 'Убрать у торговца' : 'Добавить торговцу'}
                 >
                   <div className="admin-linked-thumb">
-                    {image ? <img src={image} alt={item.name} /> : getItemThumbLabel(item)}
+                    <GameImageView
+                      imageRef={imageRef}
+                      legacyImagePath={item.imagePath}
+                      runtimeImages={images}
+                      alt={item.name}
+                      size={56}
+                      fallbackText={getItemThumbLabel(item)}
+                    />
                   </div>
                   <strong>{item.name}</strong>
                   <small>{item.id}</small>

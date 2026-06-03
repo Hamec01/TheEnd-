@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { getItemById, getMerchantItems, type Equipment, type InventoryState, type Merchant } from '@theend/rpg-domain';
 import type { ItemDefinition } from '@theend/rpg-domain';
-import type { AdminItem } from '../services/content/models';
+import type { AdminItem, GameImageRef, StoredImage } from '../services/content/models';
 import { InventoryGrid } from './InventoryGrid';
 import { TradeModal } from './TradeModal';
 import { resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
@@ -15,6 +15,9 @@ interface MerchantPanelProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition) => string | undefined;
+  resolveItemImageRef?: (item: ItemDefinition) => GameImageRef | undefined;
+  resolveItemLegacyImagePath?: (item: ItemDefinition) => string | undefined;
+  runtimeImages?: StoredImage[];
   merchantDescription?: string;
   merchantLocation?: string;
   merchantPortrait?: string;
@@ -33,6 +36,9 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   resolveItemById,
   resolveAdminItemById,
   resolveItemImage,
+  resolveItemImageRef,
+  resolveItemLegacyImagePath,
+  runtimeImages = [],
   merchantDescription,
   merchantLocation,
   merchantPortrait,
@@ -267,6 +273,9 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
                 items={merchantRegularItems}
                 columns={5}
                 resolveItemImage={resolveItemImage}
+                resolveItemImageRef={resolveItemImageRef}
+                resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+                runtimeImages={runtimeImages}
                 onItemClick={(item) => {
                   if (!item) return;
                   setSelectedItem(item);
@@ -282,6 +291,9 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
                 items={merchantMaterialItems}
                 columns={5}
                 resolveItemImage={resolveItemImage}
+                resolveItemImageRef={resolveItemImageRef}
+                resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+                runtimeImages={runtimeImages}
                 onItemClick={(item) => {
                   if (!item) return;
                   setSelectedItem(item);
@@ -297,6 +309,9 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
             items={inventoryItems}
             columns={5}
             resolveItemImage={resolveItemImage}
+            resolveItemImageRef={resolveItemImageRef}
+            resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+            runtimeImages={runtimeImages}
             onItemClick={(item) => {
               if (!item) return;
               setSelectedItem(item);
@@ -311,10 +326,15 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           action={mode}
           item={selectedItem}
           adminItem={selectedAdminItem}
-          itemImage={selectedItem && resolveItemImage ? resolveItemImage(selectedItem) : undefined}
+          itemImage={selectedItem && resolveItemImageRef?.(selectedItem) ? undefined : (selectedItem && resolveItemImage ? resolveItemImage(selectedItem) : undefined)}
+          itemImageRef={selectedItem ? resolveItemImageRef?.(selectedItem) : undefined}
+          itemLegacyImagePath={selectedItem ? resolveItemLegacyImagePath?.(selectedItem) : undefined}
+          runtimeImages={runtimeImages}
           equippedItem={equippedItemForSelected}
           equippedAdminItem={equippedAdminItemForSelected}
-          equippedItemImage={equippedItemForSelected && resolveItemImage ? resolveItemImage(equippedItemForSelected) : undefined}
+          equippedItemImage={equippedItemForSelected && resolveItemImageRef?.(equippedItemForSelected) ? undefined : (equippedItemForSelected && resolveItemImage ? resolveItemImage(equippedItemForSelected) : undefined)}
+          equippedItemImageRef={equippedItemForSelected ? resolveItemImageRef?.(equippedItemForSelected) : undefined}
+          equippedItemLegacyImagePath={equippedItemForSelected ? resolveItemLegacyImagePath?.(equippedItemForSelected) : undefined}
           playerGold={inventory.gold}
           price={selectedUnitPrice}
           quantity={tradeQuantity}

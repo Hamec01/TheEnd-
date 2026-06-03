@@ -1,9 +1,32 @@
 import React, { useState } from 'react';
+import { BlacksmithBalanceEditor } from '../blacksmith/BlacksmithBalanceEditor';
+import { BlacksmithForgeTierEditor } from '../blacksmith/BlacksmithForgeTierEditor';
+import { BlacksmithModuleEditor } from '../blacksmith/BlacksmithModuleEditor';
+import { BlacksmithQualityEditor } from '../blacksmith/BlacksmithQualityEditor';
+import { BlacksmithStageConfigEditor } from '../blacksmith/BlacksmithStageConfigEditor';
+import { BlacksmithToolEditor } from '../blacksmith/BlacksmithToolEditor';
+import { BlacksmithVisualEditor } from '../blacksmith/BlacksmithVisualEditor';
 import { MiningBlocksTab, MiningDepthsTab, MiningHazardsTab, MiningLootTab, MiningMinesTab, MiningToolsTab } from '../mining/MiningTabPlaceholders';
 import { ProfessionBranchEditor } from './ProfessionBranchEditor';
 import { ProfessionSkillEditor } from './ProfessionSkillEditor';
 
-type TabType = 'general' | 'skills' | 'branches' | 'mines' | 'depths' | 'blocks' | 'hazards' | 'loot' | 'tools';
+type TabType =
+  | 'general'
+  | 'skills'
+  | 'branches'
+  | 'mines'
+  | 'depths'
+  | 'blocks'
+  | 'hazards'
+  | 'loot'
+  | 'tools'
+  | 'forgeTiers'
+  | 'modules'
+  | 'blacksmithTools'
+  | 'stages'
+  | 'quality'
+  | 'visual'
+  | 'balance';
 
 interface ProfessionEditorTabsProps {
   professionId: string;
@@ -19,6 +42,15 @@ const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: TabType; label: strin
     { id: 'hazards', label: 'Опасности' },
     { id: 'loot', label: 'Добыча' },
     { id: 'tools', label: 'Инструменты' },
+  ],
+  blacksmithing: [
+    { id: 'forgeTiers', label: 'Кузни' },
+    { id: 'modules', label: 'Модули' },
+    { id: 'blacksmithTools', label: 'Инструменты' },
+    { id: 'stages', label: 'Этапы' },
+    { id: 'quality', label: 'Качество' },
+    { id: 'visual', label: 'Визуал' },
+    { id: 'balance', label: 'XP / Баланс' },
   ],
 };
 
@@ -79,6 +111,14 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           {professionId === 'mining' && activeTab === 'hazards' ? <div className="tab-pane"><MiningHazardsTab professionName={professionName} /></div> : null}
           {professionId === 'mining' && activeTab === 'loot' ? <div className="tab-pane"><MiningLootTab professionName={professionName} /></div> : null}
           {professionId === 'mining' && activeTab === 'tools' ? <div className="tab-pane"><MiningToolsTab professionName={professionName} /></div> : null}
+
+          {professionId === 'blacksmithing' && activeTab === 'forgeTiers' ? <div className="tab-pane"><BlacksmithForgeTierEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'modules' ? <div className="tab-pane"><BlacksmithModuleEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'blacksmithTools' ? <div className="tab-pane"><BlacksmithToolEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'stages' ? <div className="tab-pane"><BlacksmithStageConfigEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'quality' ? <div className="tab-pane"><BlacksmithQualityEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'visual' ? <div className="tab-pane"><BlacksmithVisualEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'balance' ? <div className="tab-pane"><BlacksmithBalanceEditor /></div> : null}
         </div>
       </div>
 

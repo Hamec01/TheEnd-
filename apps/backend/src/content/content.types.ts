@@ -160,6 +160,126 @@ export interface RuneComplex {
   updatedAt: string;
 }
 
+export interface BlacksmithForgeTier {
+  id: string;
+  name: string;
+  description?: string;
+  tier: number;
+  requiredBlacksmithLevel: number;
+  requiredSkillIds: string[];
+  allowedRecipeTypes: string[];
+  allowedRecipeGroups: string[];
+  allowedMaterialTiers: string[];
+  heatControlBonus: number;
+  qualityCapBonus: number;
+  failureChanceReduction: number;
+  moduleSlotLimits: Record<string, number>;
+  visualPresetId?: string;
+  isEnabled: boolean;
+}
+
+export interface BlacksmithModule {
+  id: string;
+  name: string;
+  moduleType: string;
+  tier: number;
+  description?: string;
+  bonuses: Record<string, number | boolean | string>;
+  requiredBlacksmithLevel: number;
+  requiredSkillIds: string[];
+  compatibleForgeTierIds: string[];
+  imageRef?: string;
+  isEnabled: boolean;
+}
+
+export interface BlacksmithTool {
+  id: string;
+  name: string;
+  toolType: string;
+  tier: number;
+  description?: string;
+  bonuses: Record<string, number | boolean | string>;
+  minResultFloor: number;
+  specialRules: string[];
+  imageRef?: string;
+  isEnabled: boolean;
+}
+
+export interface BlacksmithQualityTier {
+  id: string;
+  name: string;
+  minScore: number;
+  maxScore: number;
+  priceMultiplier: number;
+  xpMultiplier: number;
+  statMultiplier: number;
+  frameImageRef?: string;
+  isFailureTier: boolean;
+}
+
+export interface BlacksmithVisualPreset {
+  id: string;
+  name: string;
+  backgroundImageRef?: string;
+  anvilImageRef?: string;
+  furnaceImageRef?: string;
+  hammerImageRefs: string[];
+  defectOverlayRefs: string[];
+  blankImageRefs: string[];
+  qualityFrameRefs: string[];
+}
+
+export interface BlacksmithBalance {
+  id: string;
+  baseXpByRecipeType: Record<string, number>;
+  xpByMaterialTier: Record<string, number>;
+  qualityBonuses: Record<string, number>;
+  qualityPenalties: Record<string, number>;
+  repeatCraftDiminishingReturns: {
+    startAfter: number;
+    floorMultiplier: number;
+    decayPerCraft: number;
+  };
+  heatRanges: Record<string, { min: number; max: number }>;
+  baseDefectChances: Record<string, number>;
+  quenchProfiles: Record<string, Record<string, number>>;
+  strikeProfiles: Record<string, Record<string, number>>;
+  finishProfiles: Record<string, Record<string, number>>;
+}
+
+export type RecipeVisualMaterialFamily =
+  | 'metal'
+  | 'wood'
+  | 'cloth'
+  | 'leather'
+  | 'food'
+  | 'alchemy'
+  | 'rune'
+  | 'alloy'
+  | 'generic';
+
+export type RecipeVisualStyle =
+  | 'smelting'
+  | 'processing'
+  | 'forging'
+  | 'cooking'
+  | 'alchemy'
+  | 'refinement';
+
+export interface RecipeVisualProfile {
+  id: string;
+  name: string;
+  description?: string;
+  recipeTypes: string[];
+  materialFamilies: RecipeVisualMaterialFamily[];
+  coverImageRef?: string;
+  iconImageRef?: string;
+  animationImageRef?: string;
+  backgroundStyle?: string;
+  accentColor?: string;
+  isEnabled: boolean;
+}
+
 export type CraftingRecipeStatus = 'draft' | 'active' | 'disabled' | 'archived';
 
 export type CraftingRecipeType =
@@ -264,6 +384,12 @@ export interface CraftingRecipe {
   isRepeatable?: boolean;
   isEnabled?: boolean;
   tags?: string[];
+  visualProfileId?: string;
+  visualImageRef?: string;
+  visualIconRef?: string;
+  visualAnimationRef?: string | null;
+  visualMaterialFamily?: RecipeVisualMaterialFamily;
+  visualStyle?: RecipeVisualStyle;
   createdAt: string;
   updatedAt: string;
 }
@@ -1194,8 +1320,15 @@ export interface ContentDatabase {
   questMarkers: QuestMarkerDefinition[];
   battleMaps: BattleMapDefinition[];
   craftingRecipes?: CraftingRecipe[];
+  recipeVisualProfiles?: RecipeVisualProfile[];
   itemSets?: ItemSet[];
   runeComplexes?: RuneComplex[];
+  blacksmithForgeTiers?: BlacksmithForgeTier[];
+  blacksmithModules?: BlacksmithModule[];
+  blacksmithTools?: BlacksmithTool[];
+  blacksmithQualityTiers?: BlacksmithQualityTier[];
+  blacksmithVisualPresets?: BlacksmithVisualPreset[];
+  blacksmithBalance?: BlacksmithBalance[];
   worldMap: WorldMapContent;
 }
 
@@ -1257,8 +1390,15 @@ export type ContentCollectionName =
   | 'questMarkers'
   | 'battleMaps'
   | 'craftingRecipes'
+  | 'recipeVisualProfiles'
   | 'itemSets'
-  | 'runeComplexes';
+  | 'runeComplexes'
+  | 'blacksmithForgeTiers'
+  | 'blacksmithModules'
+  | 'blacksmithTools'
+  | 'blacksmithQualityTiers'
+  | 'blacksmithVisualPresets'
+  | 'blacksmithBalance';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1278,8 +1418,15 @@ export interface ContentCollectionMap {
   questMarkers: QuestMarkerDefinition;
   battleMaps: BattleMapDefinition;
   craftingRecipes: CraftingRecipe;
+  recipeVisualProfiles: RecipeVisualProfile;
   itemSets: ItemSet;
   runeComplexes: RuneComplex;
+  blacksmithForgeTiers: BlacksmithForgeTier;
+  blacksmithModules: BlacksmithModule;
+  blacksmithTools: BlacksmithTool;
+  blacksmithQualityTiers: BlacksmithQualityTier;
+  blacksmithVisualPresets: BlacksmithVisualPreset;
+  blacksmithBalance: BlacksmithBalance;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

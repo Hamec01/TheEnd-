@@ -101,6 +101,33 @@ export class WorldSimulationService {
     return { x, y };
   }
 
+  private resolveCanonicalCitySceneId(value: string | undefined): string | undefined {
+    const probe = String(value ?? '').trim();
+    if (!probe) {
+      return undefined;
+    }
+
+    const worldMap = this.contentService.getWorldMap();
+    const loweredProbe = probe.toLowerCase();
+    for (const zone of worldMap.zones ?? []) {
+      if (String(zone?.type ?? '').trim().toLowerCase() !== 'city') {
+        continue;
+      }
+
+      const zoneId = String(zone?.id ?? '').trim();
+      const sceneId = String((zone as any)?.targetScene ?? zoneId).trim();
+      const cityId = String((zone as any)?.cityId ?? '').trim();
+      const candidates = [zoneId, sceneId, cityId].filter(Boolean);
+      if (!candidates.some((candidate) => candidate.toLowerCase() === loweredProbe)) {
+        continue;
+      }
+
+      return sceneId || zoneId || undefined;
+    }
+
+    return loweredProbe.startsWith('city_') ? probe : undefined;
+  }
+
   private getRouteCoordinates(route: WorldRoute, progress: number): { x: number; y: number } {
     if (!route.waypoints.length) {
       return { x: 0.5, y: 0.5 };
@@ -148,8 +175,7 @@ export class WorldSimulationService {
     return Math.max(0.001, distance);
   }
 
-  private resolveWaypointCursor(entity: ActiveWorldEntity, route: WorldRoute): { fromIndex: number; toIndex: number } {
-    const waypointCount = route.waypoints.length;
+  private resolveWaypointCursor(entity: ActiveWorldEntity, waypointCount: number): { fromIndex: number; toIndex: number } {
     if (waypointCount <= 1) {
       return { fromIndex: 0, toIndex: 0 };
     }
@@ -162,12 +188,12 @@ export class WorldSimulationService {
   }
 
   private buildEntityRoutePolyline(
-    route: WorldRoute,
+    waypoints: WorldRoute['waypoints'],
     fromIndex: number,
     toIndex: number,
   ): Array<{ x: number; y: number }> | null {
-    const start = this.getZoneAnchorCoordinates(route.waypoints[fromIndex]?.zoneId);
-    const end = this.getZoneAnchorCoordinates(route.waypoints[toIndex]?.zoneId);
+    const start = this.getZoneAnchorCoordinates(waypoints[fromIndex]?.zoneId);
+    const end = this.getZoneAnchorCoordinates(waypoints[toIndex]?.zoneId);
 
     if (!this.worldPathAdapter) {
       return [start, end];
@@ -175,6 +201,25 @@ export class WorldSimulationService {
 
     const polyline = this.worldPathAdapter.buildPolyline(start, end);
     return polyline;
+  }
+
+  private resolveBanditWaypoints(waypoints: WorldRoute['waypoints']): WorldRoute['waypoints'] {
+    return waypoints.map((waypoint, index) => {
+      const { cityId: _cityId, ...rest } = waypoint;
+      void _cityId;
+      return {
+        ...rest,
+        zoneId: this.toBanditRoadsideZoneId(rest.zoneId, index),
+      };
+    });
+  }
+
+  private resolveEntityWaypoints(route: WorldRoute, entity: ActiveWorldEntity): WorldRoute['waypoints'] {
+    const archetype = this.archetypes.get(entity.archetypeId);
+    if (archetype?.kind !== 'bandit') {
+      return route.waypoints;
+    }
+    return this.resolveBanditWaypoints(route.waypoints);
   }
 
   private resolveRegionTypeAtPoint(point: { x: number; y: number }): RegionType {
@@ -214,6 +259,9 @@ export class WorldSimulationService {
   ): void {
     const archetype = this.archetypes.get(entity.archetypeId);
     const isBandit = archetype?.kind === 'bandit';
+    const citySceneId = !isBandit
+      ? this.resolveCanonicalCitySceneId(waypoint?.cityId ?? waypoint?.zoneId)
+      : undefined;
 
     if (waypoint?.cityId && !isBandit) {
       if (entity.cargo && entity.cargo.length > 0) {
@@ -246,13 +294,14 @@ export class WorldSimulationService {
     }
 
     const stopDuration = stopMin + Math.random() * Math.max(0, stopMax - stopMin);
-    entity.state = waypoint?.cityId && !isBandit ? 'in_city' : 'resting';
-    entity.currentCityId = waypoint?.cityId && !isBandit ? waypoint.cityId : undefined;
+    entity.state = citySceneId ? 'in_city' : 'resting';
+    entity.currentCityId = citySceneId;
     entity.nextEventAt = new Date(this.simulationTime.getTime() + stopDuration * 60 * 1000).toISOString();
   }
 
   private moveEntityAlongRoute(entity: ActiveWorldEntity, route: WorldRoute, deltaSeconds: number): void {
-    const waypointCount = route.waypoints.length;
+    const waypoints = this.resolveEntityWaypoints(route, entity);
+    const waypointCount = waypoints.length;
     if (waypointCount <= 1) {
       entity.state = 'resting';
       return;
@@ -281,9 +330,9 @@ export class WorldSimulationService {
       return;
     }
 
-    const cursor = this.resolveWaypointCursor(entity, route);
+    const cursor = this.resolveWaypointCursor(entity, waypointCount);
     if (!entity.routePolyline || entity.routePolyline.length < 2) {
-      const nextPolyline = this.buildEntityRoutePolyline(route, cursor.fromIndex, cursor.toIndex);
+      const nextPolyline = this.buildEntityRoutePolyline(waypoints, cursor.fromIndex, cursor.toIndex);
       if (!nextPolyline || nextPolyline.length < 2) {
         entity.state = 'blocked_waiting';
         return;
@@ -294,7 +343,7 @@ export class WorldSimulationService {
         x: nextPolyline[0].x,
         y: nextPolyline[0].y,
       };
-      entity.visibility.anchorZoneId = route.waypoints[cursor.fromIndex]?.zoneId;
+      entity.visibility.anchorZoneId = waypoints[cursor.fromIndex]?.zoneId;
     }
 
     const travelTimeSeconds = this.resolveTravelTimeSeconds(route);
@@ -368,11 +417,11 @@ export class WorldSimulationService {
 
     entity.routeWaypointIndex = cursor.toIndex;
     entity.routeProgress = cursor.toIndex / Math.max(1, waypointCount - 1);
-    entity.visibility.anchorZoneId = route.waypoints[cursor.toIndex]?.zoneId;
+    entity.visibility.anchorZoneId = waypoints[cursor.toIndex]?.zoneId;
     entity.routePolyline = undefined;
     entity.routePolylineIndex = undefined;
 
-    const arrivedWaypoint = route.waypoints[cursor.toIndex];
+    const arrivedWaypoint = waypoints[cursor.toIndex];
     this.enterRestingState(entity, arrivedWaypoint, route);
   }
 
@@ -413,7 +462,8 @@ export class WorldSimulationService {
 
   private sanitizeRouteForBanditPolicy(route: WorldRoute): WorldRoute {
     const hasBandits = route.allowedArchetypes.some((archetypeId) => this.isBanditArchetypeId(archetypeId));
-    if (!hasBandits) {
+    const hasNonBandits = route.allowedArchetypes.some((archetypeId) => !this.isBanditArchetypeId(archetypeId));
+    if (!hasBandits || hasNonBandits) {
       return route;
     }
 
@@ -944,7 +994,10 @@ export class WorldSimulationService {
       return;
     }
 
-    const firstWaypoint = route.waypoints[0];
+    const simulatedWaypoints = archetype.kind === 'bandit'
+      ? this.resolveBanditWaypoints(route.waypoints)
+      : route.waypoints;
+    const firstWaypoint = simulatedWaypoints[0];
     const start = this.getZoneAnchorCoordinates(firstWaypoint?.zoneId);
     const staminaDefaults = resolveWorldEntityStaminaDefaults(
       {},
@@ -1073,6 +1126,10 @@ export class WorldSimulationService {
       .filter((e) => e.visibility.isVisibleToPlayer)
       .map((e) => {
         const archetype = this.archetypes.get(e.archetypeId);
+        const citySceneId = this.resolveCanonicalCitySceneId(e.currentCityId ?? e.visibility.anchorZoneId);
+        const stoppedInCity = archetype?.kind === 'merchant'
+          && Boolean(citySceneId)
+          && (e.state === 'in_city' || e.state === 'resting');
         const stamina = resolveWorldEntityStaminaDefaults(
           {
             maxStamina: e.maxStamina,
@@ -1099,9 +1156,9 @@ export class WorldSimulationService {
               ? archetype.restingWorldSpriteId
               : (archetype?.worldSpriteId ?? 'unknown'),
           portraitId: archetype?.portraitId,
-          cityId: e.currentCityId,
-          renderOnWorldMap: e.state !== 'in_city',
-          renderInCityMap: e.state === 'in_city' && Boolean(e.currentCityId),
+          cityId: citySceneId,
+          renderOnWorldMap: !stoppedInCity && e.state !== 'in_city',
+          renderInCityMap: stoppedInCity || (e.state === 'in_city' && Boolean(citySceneId)),
           memberCount: e.members.length,
           zoneId: e.visibility.anchorZoneId ?? 'unknown',
           coordinates: e.visibility.anchorCoordinates ?? { x: 0, y: 0 },

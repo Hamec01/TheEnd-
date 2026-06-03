@@ -1,5 +1,17 @@
 import { getMerchantItems, MERCHANTS, type ItemDefinition, type Merchant } from '@theend/rpg-domain';
-import type { AdminItem, AdminMerchant, AdminSkill } from './models';
+import type {
+  AdminItem,
+  AdminMerchant,
+  AdminSkill,
+  BlacksmithBalance,
+  BlacksmithForgeTier,
+  BlacksmithModule,
+  BlacksmithQualityTier,
+  BlacksmithTool,
+  BlacksmithVisualPreset,
+  RecipeVisualProfile,
+} from './models';
+import { getContentSnapshot } from './contentApi';
 import { itemsService } from './itemsService';
 import { merchantsService } from './merchantsService';
 import { skillsService } from './skillsService';
@@ -23,6 +35,36 @@ export async function loadRuntimeAdminContent(): Promise<{ items: AdminItem[]; m
     items: items.filter((item) => item.isEnabled),
     merchants: merchants.filter((merchant) => merchant.isEnabled),
     skills: skills.filter((skill) => skill.isPublished && !skill.isHidden),
+  };
+}
+
+export interface RuntimeBlacksmithContent {
+  forgeTiers: BlacksmithForgeTier[];
+  modules: BlacksmithModule[];
+  tools: BlacksmithTool[];
+  qualityTiers: BlacksmithQualityTier[];
+  visualPresets: BlacksmithVisualPreset[];
+  recipeVisualProfiles: RecipeVisualProfile[];
+  balance: BlacksmithBalance | null;
+}
+
+export async function loadRuntimeBlacksmithContent(): Promise<RuntimeBlacksmithContent> {
+  const snapshot = await getContentSnapshot();
+  const forgeTiers = (snapshot.blacksmithForgeTiers ?? []).filter((entry) => entry.isEnabled);
+  const modules = (snapshot.blacksmithModules ?? []).filter((entry) => entry.isEnabled);
+  const tools = (snapshot.blacksmithTools ?? []).filter((entry) => entry.isEnabled);
+  const qualityTiers = snapshot.blacksmithQualityTiers ?? [];
+  const visualPresets = snapshot.blacksmithVisualPresets ?? [];
+  const recipeVisualProfiles = (snapshot.recipeVisualProfiles ?? []).filter((entry) => entry.isEnabled !== false);
+  const balance = (snapshot.blacksmithBalance ?? [])[0] ?? null;
+  return {
+    forgeTiers,
+    modules,
+    tools,
+    qualityTiers,
+    visualPresets,
+    recipeVisualProfiles,
+    balance,
   };
 }
 

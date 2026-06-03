@@ -12,10 +12,13 @@ import type {
   CraftingRecipeType,
   CraftingStationType,
   Material,
+  RecipeVisualMaterialFamily,
+  RecipeVisualProfile,
+  RecipeVisualStyle,
 } from '../../services/content/models';
 import { craftingRecipesService, normalizeCraftingRecipe, validateCraftingRecipe } from '../../services/content/craftingRecipesService';
 import { downloadCollectionJson, extractRawCollectionFromImportJson, importCollectionFromJsonEntries } from '../../services/content/adminJsonImportExport';
-import { getContentCollection } from '../../services/content/contentApi';
+import { createContentEntry, deleteContentEntry, getContentCollection, updateContentEntry } from '../../services/content/contentApi';
 import { uid } from '../../services/content/storage';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
 
@@ -84,6 +87,8 @@ const FAILURE_MODES: CraftingFailureMode[] = [
   'random_lower_quality',
 ];
 const RESULT_MODES: CraftingRecipeResultMode[] = ['fixed', 'random_from_pool'];
+const VISUAL_MATERIAL_FAMILIES: RecipeVisualMaterialFamily[] = ['metal', 'wood', 'cloth', 'leather', 'food', 'alchemy', 'rune', 'alloy', 'generic'];
+const VISUAL_STYLES: RecipeVisualStyle[] = ['smelting', 'processing', 'forging', 'cooking', 'alchemy', 'refinement'];
 
 function emptyRecipe(): CraftingRecipe {
   const now = new Date().toISOString();
@@ -113,8 +118,30 @@ function emptyRecipe(): CraftingRecipe {
     isRepeatable: true,
     isEnabled: true,
     tags: [],
+    visualProfileId: '',
+    visualImageRef: '',
+    visualIconRef: '',
+    visualAnimationRef: '',
+    visualMaterialFamily: 'generic',
+    visualStyle: 'processing',
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function emptyVisualProfile(): RecipeVisualProfile {
+  return {
+    id: '',
+    name: '',
+    description: '',
+    recipeTypes: [],
+    materialFamilies: ['generic'],
+    coverImageRef: '',
+    iconImageRef: '',
+    animationImageRef: '',
+    backgroundStyle: 'processing',
+    accentColor: '#b68046',
+    isEnabled: true,
   };
 }
 
@@ -144,6 +171,9 @@ export function CraftingRecipesPage() {
   const [status, setStatus] = useState('Готово');
   const [rawJson, setRawJson] = useState(toPrettyJson(emptyRecipe(), '{}'));
   const [isImporting, setIsImporting] = useState(false);
+  const [visualProfiles, setVisualProfiles] = useState<RecipeVisualProfile[]>([]);
+  const [selectedVisualProfileId, setSelectedVisualProfileId] = useState<string | null>(null);
+  const [visualProfileDraft, setVisualProfileDraft] = useState<RecipeVisualProfile>(emptyVisualProfile());
   const importFileRef = useRef<HTMLInputElement>(null);
 
   function syncJson(next: CraftingRecipe) {
@@ -157,15 +187,22 @@ export function CraftingRecipesPage() {
       getContentCollection<AdminItem>('items').catch(() => []),
       getContentCollection<AdminSkill>('skills').catch(() => []),
     ]);
+    const allVisualProfiles = await getContentCollection<RecipeVisualProfile>('recipeVisualProfiles').catch(() => []);
     setRecipes(allRecipes);
     setMaterials(allMaterials);
     setItems(allItems);
     setSkills(allSkills);
+    setVisualProfiles(allVisualProfiles);
     if (selectedId && !allRecipes.some((entry) => entry.id === selectedId)) {
       const next = emptyRecipe();
       setSelectedId(null);
       setDraft(next);
       syncJson(next);
+    }
+
+    if (selectedVisualProfileId && !allVisualProfiles.some((entry) => entry.id === selectedVisualProfileId)) {
+      setSelectedVisualProfileId(null);
+      setVisualProfileDraft(emptyVisualProfile());
     }
   }
 
@@ -341,6 +378,82 @@ export function CraftingRecipesPage() {
   }
 
   const selectedProfessionLabel = PROFESSION_OPTIONS.find((entry) => entry.id === draft.professionId)?.label ?? draft.professionId;
+  const selectedVisualProfile = useMemo(
+    () => visualProfiles.find((entry) => entry.id === (draft.visualProfileId ?? '').trim()) ?? null,
+    [draft.visualProfileId, visualProfiles],
+  );
+  const recipePreviewImageRef = (draft.visualImageRef || selectedVisualProfile?.coverImageRef || '').trim();
+  const recipePreviewIconRef = (draft.visualIconRef || selectedVisualProfile?.iconImageRef || '').trim();
+
+  function patchVisualProfileDraft(patch: Partial<RecipeVisualProfile>) {
+    setVisualProfileDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function selectVisualProfile(entry: RecipeVisualProfile) {
+    setSelectedVisualProfileId(entry.id);
+    setVisualProfileDraft({ ...entry });
+  }
+
+  function resetVisualProfileDraft() {
+    setSelectedVisualProfileId(null);
+    setVisualProfileDraft(emptyVisualProfile());
+  }
+
+  async function saveVisualProfile() {
+    const normalized: RecipeVisualProfile = {
+      ...visualProfileDraft,
+      id: visualProfileDraft.id.trim() || uid('recipe_visual_profile'),
+      name: visualProfileDraft.name.trim(),
+      description: visualProfileDraft.description?.trim() || undefined,
+      recipeTypes: (visualProfileDraft.recipeTypes ?? []).map((entry) => String(entry).trim()).filter(Boolean),
+      materialFamilies: (visualProfileDraft.materialFamilies ?? []).map((entry) => String(entry).trim()).filter(Boolean) as RecipeVisualMaterialFamily[],
+      coverImageRef: visualProfileDraft.coverImageRef?.trim() || undefined,
+      iconImageRef: visualProfileDraft.iconImageRef?.trim() || undefined,
+      animationImageRef: visualProfileDraft.animationImageRef?.trim() || undefined,
+      backgroundStyle: visualProfileDraft.backgroundStyle?.trim() || undefined,
+      accentColor: visualProfileDraft.accentColor?.trim() || undefined,
+      isEnabled: visualProfileDraft.isEnabled !== false,
+    };
+
+    if (!normalized.id) {
+      setStatus('Профиль визуала: id обязателен.');
+      return;
+    }
+    if (!normalized.name) {
+      setStatus('Профиль визуала: name обязателен.');
+      return;
+    }
+
+    try {
+      if (selectedVisualProfileId) {
+        const updated = await updateContentEntry<RecipeVisualProfile>('recipeVisualProfiles', selectedVisualProfileId, normalized);
+        setSelectedVisualProfileId(updated.id);
+        setVisualProfileDraft(updated);
+        setStatus(`Профиль визуала обновлён: ${updated.id}`);
+      } else {
+        const created = await createContentEntry<RecipeVisualProfile>('recipeVisualProfiles', normalized);
+        setSelectedVisualProfileId(created.id);
+        setVisualProfileDraft(created);
+        setStatus(`Профиль визуала создан: ${created.id}`);
+      }
+      await refresh();
+    } catch (error) {
+      setStatus(`Профиль визуала: ${translateAdminErrorMessage((error as Error).message)}`);
+    }
+  }
+
+  async function deleteVisualProfile() {
+    if (!selectedVisualProfileId) {
+      return;
+    }
+    if (!window.confirm(`Удалить visual profile "${selectedVisualProfileId}"?`)) {
+      return;
+    }
+    await deleteContentEntry('recipeVisualProfiles', selectedVisualProfileId);
+    resetVisualProfileDraft();
+    await refresh();
+    setStatus(`Профиль визуала удалён: ${selectedVisualProfileId}`);
+  }
 
   return (
     <div className="crafting-page">
@@ -493,6 +606,53 @@ export function CraftingRecipesPage() {
             </label>
           </div>
 
+          <h3>Визуал рецепта</h3>
+          <div className="grid">
+            <label>
+              <AdminFieldLabel label="visualProfileId" hint="Если visualImageRef пустой, обложка берётся из выбранного профиля." />
+              <select value={draft.visualProfileId ?? ''} onChange={(event) => patchDraft({ visualProfileId: event.target.value })}>
+                <option value="">—</option>
+                {visualProfiles.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.id})</option>)}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="visualMaterialFamily" hint="Контентный тип материала для визуального выбора/фильтра." />
+              <select value={draft.visualMaterialFamily ?? ''} onChange={(event) => patchDraft({ visualMaterialFamily: (event.target.value || undefined) as RecipeVisualMaterialFamily | undefined })}>
+                <option value="">—</option>
+                {VISUAL_MATERIAL_FAMILIES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="visualStyle" hint="Стиль визуала рецепта." />
+              <select value={draft.visualStyle ?? ''} onChange={(event) => patchDraft({ visualStyle: (event.target.value || undefined) as RecipeVisualStyle | undefined })}>
+                <option value="">—</option>
+                {VISUAL_STYLES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              </select>
+            </label>
+            <label>
+              <AdminFieldLabel label="visualImageRef" hint="Явная обложка рецепта. При пустом значении берётся из visualProfileId." />
+              <input value={draft.visualImageRef ?? ''} onChange={(event) => patchDraft({ visualImageRef: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="visualIconRef" hint="Иконка карточки рецепта." />
+              <input value={draft.visualIconRef ?? ''} onChange={(event) => patchDraft({ visualIconRef: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="visualAnimationRef" hint="Опциональная анимационная картинка/оверлей." />
+              <input value={draft.visualAnimationRef ?? ''} onChange={(event) => patchDraft({ visualAnimationRef: event.target.value })} />
+            </label>
+            <div className="span-2 crafting-visual-preview-grid">
+              <div className="crafting-visual-preview-card">
+                <strong>Preview cover</strong>
+                {recipePreviewImageRef ? <img src={recipePreviewImageRef} alt="Recipe cover preview" /> : <p className="muted">Нет обложки</p>}
+              </div>
+              <div className="crafting-visual-preview-card">
+                <strong>Preview icon</strong>
+                {recipePreviewIconRef ? <img src={recipePreviewIconRef} alt="Recipe icon preview" /> : <p className="muted">Нет иконки</p>}
+              </div>
+            </div>
+          </div>
+
           <h3>Вход</h3>
           <div className="io-block">
             <div className="io-head">
@@ -592,6 +752,92 @@ export function CraftingRecipesPage() {
 
           <p className="muted">{status}</p>
         </section>
+
+        <aside className="card recipe-visual-profiles">
+          <h3>Recipe visual profiles</h3>
+          <p className="muted">{visualProfiles.length} профилей</p>
+          <div className="recipe-list-scroll">
+            {visualProfiles.map((entry) => (
+              <button
+                key={entry.id}
+                className={`recipe-list-item ${selectedVisualProfileId === entry.id ? 'is-active' : ''}`}
+                onClick={() => selectVisualProfile(entry)}
+              >
+                <strong>{entry.name}</strong>
+                <span>{entry.id}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="grid" style={{ marginTop: 10 }}>
+            <label>
+              <AdminFieldLabel label="ID" hint="Стабильный id visual profile." />
+              <input value={visualProfileDraft.id} onChange={(event) => patchVisualProfileDraft({ id: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="Название" hint="Человеко-читаемое имя профиля." />
+              <input value={visualProfileDraft.name} onChange={(event) => patchVisualProfileDraft({ name: event.target.value })} />
+            </label>
+            <label className="span-2">
+              <AdminFieldLabel label="Описание" hint="Короткое пояснение назначения профиля." />
+              <input value={visualProfileDraft.description ?? ''} onChange={(event) => patchVisualProfileDraft({ description: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="recipeTypes" hint="Через запятую." />
+              <input
+                value={(visualProfileDraft.recipeTypes ?? []).join(', ')}
+                onChange={(event) => patchVisualProfileDraft({ recipeTypes: event.target.value.split(',').map((entry) => entry.trim()).filter(Boolean) })}
+              />
+            </label>
+            <label>
+              <AdminFieldLabel label="materialFamilies" hint="Через запятую." />
+              <input
+                value={(visualProfileDraft.materialFamilies ?? []).join(', ')}
+                onChange={(event) => patchVisualProfileDraft({ materialFamilies: event.target.value.split(',').map((entry) => entry.trim()).filter(Boolean) as RecipeVisualMaterialFamily[] })}
+              />
+            </label>
+            <label>
+              <AdminFieldLabel label="coverImageRef" hint="Путь/ID изображения обложки." />
+              <input value={visualProfileDraft.coverImageRef ?? ''} onChange={(event) => patchVisualProfileDraft({ coverImageRef: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="iconImageRef" hint="Путь/ID иконки." />
+              <input value={visualProfileDraft.iconImageRef ?? ''} onChange={(event) => patchVisualProfileDraft({ iconImageRef: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="animationImageRef" hint="Путь/ID анимационного изображения." />
+              <input value={visualProfileDraft.animationImageRef ?? ''} onChange={(event) => patchVisualProfileDraft({ animationImageRef: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="backgroundStyle" hint="Например: forging / smelting / alchemy." />
+              <input value={visualProfileDraft.backgroundStyle ?? ''} onChange={(event) => patchVisualProfileDraft({ backgroundStyle: event.target.value })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="accentColor" hint="Цвет акцента профиля (#RRGGBB)." />
+              <input value={visualProfileDraft.accentColor ?? ''} onChange={(event) => patchVisualProfileDraft({ accentColor: event.target.value })} />
+            </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={visualProfileDraft.isEnabled !== false} onChange={(event) => patchVisualProfileDraft({ isEnabled: event.target.checked })} />
+              <span>Enabled</span>
+            </label>
+            <div className="span-2 crafting-visual-preview-grid">
+              <div className="crafting-visual-preview-card">
+                <strong>Profile cover</strong>
+                {visualProfileDraft.coverImageRef ? <img src={visualProfileDraft.coverImageRef} alt="Visual profile cover" /> : <p className="muted">Нет обложки</p>}
+              </div>
+              <div className="crafting-visual-preview-card">
+                <strong>Profile icon</strong>
+                {visualProfileDraft.iconImageRef ? <img src={visualProfileDraft.iconImageRef} alt="Visual profile icon" /> : <p className="muted">Нет иконки</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="toolbar toolbar-inline">
+            <button onClick={resetVisualProfileDraft}>Новый профиль</button>
+            <button onClick={() => void saveVisualProfile()}>Сохранить профиль</button>
+            <button onClick={() => void deleteVisualProfile()} disabled={!selectedVisualProfileId}>Удалить профиль</button>
+          </div>
+        </aside>
       </div>
 
       <style>{`
@@ -610,8 +856,15 @@ export function CraftingRecipesPage() {
         }
         .layout {
           display: grid;
-          grid-template-columns: 320px minmax(0, 1fr);
+          grid-template-columns: 320px minmax(0, 1fr) 360px;
           gap: 16px;
+        }
+        .recipe-visual-profiles {
+          display: grid;
+          gap: 8px;
+          align-self: start;
+          max-height: 80vh;
+          overflow: auto;
         }
         .recipe-list {
           display: grid;
@@ -688,6 +941,25 @@ export function CraftingRecipesPage() {
         }
         .io-row-wide {
           grid-template-columns: minmax(0, 1fr) 120px 120px 110px;
+        }
+        .crafting-visual-preview-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .crafting-visual-preview-card {
+          border: 1px solid rgba(120, 120, 120, 0.25);
+          border-radius: 8px;
+          padding: 8px;
+          display: grid;
+          gap: 8px;
+          background: rgba(16, 16, 16, 0.35);
+        }
+        .crafting-visual-preview-card img {
+          width: 100%;
+          max-height: 180px;
+          object-fit: cover;
+          border-radius: 6px;
         }
         @media (max-width: 1100px) {
           .layout {

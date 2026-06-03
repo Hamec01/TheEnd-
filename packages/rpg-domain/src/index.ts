@@ -23,6 +23,7 @@ export * from './merchants';
 export * from './inventory';
 export * from './equipment';
 export * from './professions';
+export * from './blacksmith-session';
 export * from './shop';
 export * from './battle-map';
 export * from './visual-effects';

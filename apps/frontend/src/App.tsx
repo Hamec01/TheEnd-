@@ -96,6 +96,7 @@ import {
 } from './config/characterCreation';
 import type { PlayerPath } from './RootApp';
 import { subscribeToContentSync } from './services/content/contentSync';
+import { normalizeGameImageRef, resolveGameImageRefSource, resolveItemIdGameImageRef } from './services/content/gameImageRefs';
 import {
   getRuntimeMerchantItems,
   getRuntimeMerchants,
@@ -121,8 +122,10 @@ import {
   PLAYER_FLAGS_STORAGE_KEY,
   PLAYER_GOLD_STORAGE_KEY,
   PLAYER_ITEMS_STORAGE_KEY,
+  PLAYER_MATERIAL_IDS_STORAGE_KEY,
   PLAYER_MATERIALS_STORAGE_KEY,
   PLAYER_QUEST_ITEMS_STORAGE_KEY,
+  PLAYER_RESOURCE_IDS_STORAGE_KEY,
   PLAYER_RESOURCES_STORAGE_KEY,
   PLAYER_UNLOCKED_DIALOGUES_STORAGE_KEY,
   PLAYER_UNLOCKED_LOCATIONS_STORAGE_KEY,
@@ -176,6 +179,28 @@ const PROFILE_STATS: PrimaryStat[] = [
   'perception',
   'willpower',
 ];
+
+function toMerchantMaterialItemId(materialId: string): string {
+  return `mat_${String(materialId ?? '').replace(/[^a-zA-Z0-9_]/g, '_')}`;
+}
+
+function getMaterialLikeCandidates(id: string): string[] {
+  const probe = String(id ?? '').trim();
+  if (!probe) {
+    return [];
+  }
+  const strippedItem = probe.replace(/^item_/, '');
+  const strippedMaterial = probe.replace(/^mat_/, '');
+  const base = strippedItem.replace(/^mat_/, '') || strippedMaterial.replace(/^item_/, '') || probe;
+  return Array.from(new Set([
+    probe,
+    strippedItem,
+    strippedMaterial,
+    base,
+    `item_${base}`,
+    `mat_${base}`,
+  ])).filter(Boolean);
+}
 
 const STAT_LABELS: Record<PrimaryStat, string> = {
   hp: 'HP',
@@ -1480,8 +1505,72 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   );
 
   const resolveItemImage = useCallback(
-    (item: ItemDefinition | null | undefined) => resolveItemImageSource(item, runtimeImages),
-    [runtimeImages],
+    (item: ItemDefinition | null | undefined) => {
+      if (!item) {
+        return undefined;
+      }
+      const direct = resolveItemImageSource(item, runtimeImages);
+      if (direct) {
+        return direct;
+      }
+
+      const probeIds = Array.from(new Set([
+        item.id,
+        item.id.replace(/^item_/, ''),
+        item.id.replace(/^mat_/, ''),
+        `mat_${item.id.replace(/^item_/, '').replace(/^mat_/, '')}`,
+        `item_${item.id.replace(/^item_/, '').replace(/^mat_/, '')}`,
+      ])).filter(Boolean);
+
+      for (const probeId of probeIds) {
+        const adminItem = runtimeAdminItems.find((entry) => entry.id === probeId);
+        if (!adminItem) {
+          continue;
+        }
+        const normalized = normalizeGameImageRef(adminItem.imageRef, adminItem.imagePath);
+        if (normalized?.type === 'tileset') {
+          continue;
+        }
+        const src = resolveGameImageRefSource(normalized, runtimeImages);
+        if (src) {
+          return src;
+        }
+      }
+
+      return undefined;
+    },
+    [runtimeAdminItems, runtimeImages],
+  );
+  const resolveItemImageRef = useCallback(
+    (item: ItemDefinition | null | undefined) => {
+      if (!item) {
+        return undefined;
+      }
+      return resolveItemIdGameImageRef(item.id, runtimeAdminItems);
+    },
+    [runtimeAdminItems],
+  );
+  const resolveItemLegacyImagePath = useCallback(
+    (item: ItemDefinition | null | undefined) => {
+      if (!item) {
+        return undefined;
+      }
+      const probeIds = Array.from(new Set([
+        item.id,
+        item.id.replace(/^item_/, ''),
+        item.id.replace(/^mat_/, ''),
+        `mat_${item.id.replace(/^item_/, '').replace(/^mat_/, '')}`,
+        `item_${item.id.replace(/^item_/, '').replace(/^mat_/, '')}`,
+      ])).filter(Boolean);
+      for (const probeId of probeIds) {
+        const adminItem = runtimeAdminItems.find((entry) => entry.id === probeId);
+        if (adminItem?.imagePath?.trim()) {
+          return adminItem.imagePath.trim();
+        }
+      }
+      return undefined;
+    },
+    [runtimeAdminItems],
   );
   const resolveSkillIcon = useCallback(
     (skill: AdminSkillDefinition | null | undefined) => {
@@ -1492,7 +1581,27 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     [runtimeImages],
   );
   const resolveMerchantImage = useCallback(
-    (merchant: AdminMerchant | null | undefined) => resolveMerchantImageSource(merchant, runtimeImages),
+    (merchant: AdminMerchant | null | undefined) => {
+      const direct = resolveMerchantImageSource(merchant, runtimeImages);
+      if (direct) {
+        return direct;
+      }
+      const linkedNpc = getAllNpcs().find((npc) => npc.traderId === merchant?.id);
+      if (!linkedNpc) {
+        return undefined;
+      }
+      return resolveStoredImageSource(
+        linkedNpc.portraitUrl
+          ?? linkedNpc.iconUrl
+          ?? linkedNpc.fullImageUrl
+          ?? linkedNpc.combatImageUrl,
+        runtimeImages,
+      ) ?? linkedNpc.portraitUrl
+        ?? linkedNpc.iconUrl
+        ?? linkedNpc.fullImageUrl
+        ?? linkedNpc.combatImageUrl
+        ?? undefined;
+    },
     [runtimeImages],
   );
   const enabledRuntimeMerchants = useMemo(
@@ -1614,8 +1723,83 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     return (selectedAdminMerchant.materialTrades ?? [])
       .filter((entry) => entry.isEnabled && entry.buys)
-      .map((entry) => `mat_${entry.materialId.replace(/[^a-zA-Z0-9_]/g, '_')}`);
+      .map((entry) => toMerchantMaterialItemId(entry.materialId));
   }, [selectedAdminMerchant]);
+  const selectedMerchantBuyableMaterialIdsByItemId = useMemo(() => {
+    const result = new Map<string, string>();
+    if (!selectedAdminMerchant?.materialTradingEnabled) {
+      return result;
+    }
+    for (const entry of selectedAdminMerchant.materialTrades ?? []) {
+      if (!entry.isEnabled || !entry.buys) {
+        continue;
+      }
+      result.set(toMerchantMaterialItemId(entry.materialId), entry.materialId);
+    }
+    return result;
+  }, [selectedAdminMerchant]);
+  const selectedMerchantStoredMaterialQuantityByItemId = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!selectedAdminMerchant?.materialTradingEnabled) {
+      return result;
+    }
+
+    const materialIds = readStringArrayStorage(PLAYER_MATERIAL_IDS_STORAGE_KEY);
+    const resourceIds = readStringArrayStorage(PLAYER_RESOURCE_IDS_STORAGE_KEY);
+    const materialMap = readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY);
+    const resourceMap = readStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY);
+
+    const countByCandidate = new Map<string, number>();
+    const increment = (id: string, qty: number) => {
+      const normalized = String(id ?? '').trim();
+      if (!normalized || qty <= 0) {
+        return;
+      }
+      countByCandidate.set(normalized, (countByCandidate.get(normalized) ?? 0) + qty);
+    };
+
+    for (const id of materialIds) {
+      increment(id, 1);
+    }
+    for (const id of resourceIds) {
+      increment(id, 1);
+    }
+    for (const [id, qty] of Object.entries(materialMap)) {
+      increment(id, qty);
+    }
+    for (const [id, qty] of Object.entries(resourceMap)) {
+      increment(id, qty);
+    }
+
+    for (const [itemId, materialId] of selectedMerchantBuyableMaterialIdsByItemId.entries()) {
+      const quantity = getMaterialLikeCandidates(materialId)
+        .reduce((total, candidate) => total + (countByCandidate.get(candidate) ?? 0), 0);
+      if (quantity > 0) {
+        result.set(itemId, quantity);
+      }
+    }
+    return result;
+  }, [runtimeInventoryRevision, selectedAdminMerchant, selectedMerchantBuyableMaterialIdsByItemId]);
+  const selectedMerchantSellInventory = useMemo<InventoryState>(() => {
+    if (selectedMerchantStoredMaterialQuantityByItemId.size === 0) {
+      return inventory;
+    }
+
+    const quantityByItemId = new Map<string, number>();
+    for (const entry of inventory.items) {
+      quantityByItemId.set(entry.itemId, (quantityByItemId.get(entry.itemId) ?? 0) + entry.quantity);
+    }
+    for (const [itemId, quantity] of selectedMerchantStoredMaterialQuantityByItemId.entries()) {
+      quantityByItemId.set(itemId, (quantityByItemId.get(itemId) ?? 0) + quantity);
+    }
+
+    return {
+      ...inventory,
+      items: Array.from(quantityByItemId.entries())
+        .filter(([, quantity]) => quantity > 0)
+        .map(([itemId, quantity]) => ({ itemId, quantity })),
+    };
+  }, [inventory, selectedMerchantStoredMaterialQuantityByItemId]);
   const selectedMerchantItem = useMemo<ItemDefinition | null>(
     () => merchantItems.find((item) => item.id === selectedMerchantItemId) ?? merchantItems[0] ?? null,
     [merchantItems, selectedMerchantItemId],
@@ -4139,9 +4323,20 @@ function applyHubState(hub: HubStatePayload): void {
           if (missingRequiredBranchId) {
             throw new Error(`Branch ${branch.name} requires branch ${missingRequiredBranchId}.`);
           }
-          const lockedByBranchId = (branch.locksBranchIds ?? []).find((lockedBranchId) => (professionState.selectedBranchIds ?? []).includes(lockedBranchId));
+          const lockedByBranchId = (branch.locksBranchIds ?? []).find((lockedBranchId: string) => (professionState.selectedBranchIds ?? []).includes(lockedBranchId));
           if (lockedByBranchId) {
             throw new Error(`Branch ${branch.name} is locked by ${lockedByBranchId}.`);
+          }
+          const exclusiveGroupId = branch.exclusiveGroupId?.trim();
+          if (exclusiveGroupId) {
+            const groupMax = Math.max(1, branch.exclusiveGroupMax ?? 1);
+            const selectedInGroup = loadProfessionBranchesFromStorage().filter((candidate) => (
+              candidate.exclusiveGroupId === exclusiveGroupId
+              && (professionState.selectedBranchIds ?? []).includes(candidate.id)
+            ));
+            if (selectedInGroup.length >= groupMax) {
+              throw new Error(`Branch group ${exclusiveGroupId} already has ${groupMax} selected branches.`);
+            }
           }
           const nextProfessions = {
             professions: unlocked.professions.map((entry) => {
@@ -4149,14 +4344,6 @@ function applyHubState(hub: HubStatePayload): void {
                 return entry;
               }
               const nextBranchIds = new Set(entry.selectedBranchIds ?? []);
-              if (branch.exclusiveGroupId) {
-                for (const selectedBranchId of Array.from(nextBranchIds)) {
-                  const selectedBranch = loadProfessionBranchesFromStorage().find((candidate) => candidate.id === selectedBranchId && candidate.professionId === targetDefinition.id && candidate.isEnabled) ?? null;
-                  if (selectedBranch?.exclusiveGroupId === branch.exclusiveGroupId) {
-                    nextBranchIds.delete(selectedBranchId);
-                  }
-                }
-              }
               nextBranchIds.add(branch.id);
               return {
                 ...entry,
@@ -5613,13 +5800,16 @@ function applyHubState(hub: HubStatePayload): void {
         {overlayPanel === 'merchant' && character && selectedMerchant ? (
           <MerchantPanel
             merchant={selectedMerchant}
-            inventory={inventory}
+            inventory={selectedMerchantSellInventory}
             equipment={equipment}
             merchantItems={merchantItems}
             allowedSellItemIds={selectedMerchantAllowedSellItemIds}
             resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
             resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
             resolveItemImage={resolveItemImage}
+            resolveItemImageRef={resolveItemImageRef}
+            resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+            runtimeImages={runtimeImages}
             merchantDescription={selectedAdminMerchant?.description}
             merchantLocation={selectedAdminMerchant?.location}
             merchantPortrait={resolveMerchantImage(selectedAdminMerchant)}
@@ -5637,10 +5827,75 @@ function applyHubState(hub: HubStatePayload): void {
             }}
             onSellItem={async (itemId, quantity) => {
               try {
-                const updated = await sellArenaItem(character.id, itemId, quantity);
-                setInventory(updated.inventory);
+                const safeQuantity = Math.max(1, Math.floor(quantity));
+                const linkedMaterialId = selectedMerchantBuyableMaterialIdsByItemId.get(itemId) ?? null;
+                const storedMaterialQuantity = selectedMerchantStoredMaterialQuantityByItemId.get(itemId) ?? 0;
+                let remainingQuantity = safeQuantity;
+
+                if (linkedMaterialId && storedMaterialQuantity > 0) {
+                  const localSellQuantity = Math.min(remainingQuantity, storedMaterialQuantity);
+                  if (localSellQuantity > 0) {
+                    const materialIds = readStringArrayStorage(PLAYER_MATERIAL_IDS_STORAGE_KEY);
+                    const resourceIds = readStringArrayStorage(PLAYER_RESOURCE_IDS_STORAGE_KEY);
+                    const materialMap = { ...readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY) };
+                    const resourceMap = { ...readStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY) };
+                    const candidates = new Set(getMaterialLikeCandidates(linkedMaterialId));
+
+                    let remainingLocal = localSellQuantity;
+                    const consumeFromRecord = (record: Record<string, number>) => {
+                      for (const candidate of candidates) {
+                        if (remainingLocal <= 0) {
+                          return;
+                        }
+                        const current = record[candidate] ?? 0;
+                        if (current <= 0) {
+                          continue;
+                        }
+                        const used = Math.min(current, remainingLocal);
+                        const next = current - used;
+                        if (next > 0) {
+                          record[candidate] = next;
+                        } else {
+                          delete record[candidate];
+                        }
+                        remainingLocal -= used;
+                      }
+                    };
+                    const consumeFromArray = (values: string[]) => {
+                      for (let index = values.length - 1; index >= 0 && remainingLocal > 0; index -= 1) {
+                        if (!candidates.has(values[index])) {
+                          continue;
+                        }
+                        values.splice(index, 1);
+                        remainingLocal -= 1;
+                      }
+                    };
+
+                    consumeFromRecord(materialMap);
+                    consumeFromRecord(resourceMap);
+                    consumeFromArray(materialIds);
+                    consumeFromArray(resourceIds);
+
+                    writeStringArrayStorage(PLAYER_MATERIAL_IDS_STORAGE_KEY, materialIds);
+                    writeStringArrayStorage(PLAYER_RESOURCE_IDS_STORAGE_KEY, resourceIds);
+                    writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, materialMap);
+                    writeStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY, resourceMap);
+
+                    const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+                    const soldItem = resolveItem(itemId);
+                    const unitSellPrice = Math.max(1, Math.floor((soldItem.price || 0) * 0.55));
+                    writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, runtimeGold + (unitSellPrice * (localSellQuantity - remainingLocal)));
+                    remainingQuantity -= (localSellQuantity - remainingLocal);
+                    handleRuntimeInventoryChanged();
+                  }
+                }
+
+                if (remainingQuantity > 0) {
+                  const updated = await sellArenaItem(character.id, itemId, remainingQuantity);
+                  setInventory(updated.inventory);
+                }
                 await refreshMerchantStock(selectedMerchant.id);
-                setStatus(`Sold ${resolveItem(itemId).name || 'item'} x${quantity}`);
+                setStatus(`Sold ${resolveItem(itemId).name || 'item'} x${safeQuantity}`);
               } catch (err: any) {
                 setStatus(`Failed to sell: ${err.message}`);
               }

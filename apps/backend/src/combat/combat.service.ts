@@ -3242,6 +3242,7 @@ export class CombatService {
           cameraShake: skillVisuals.cameraShakePreset,
           castSoundId: skillVisuals.castSoundId,
           impactSoundId: skillVisuals.impactSoundId,
+          movementBehavior: skillVisuals.movementBehavior,
         }];
 
         for (const target of targets) {
@@ -3291,6 +3292,7 @@ export class CombatService {
                 cameraShake: skillVisuals.cameraShakePreset,
                 castSoundId: skillVisuals.castSoundId,
                 impactSoundId: skillVisuals.impactSoundId,
+                movementBehavior: skillVisuals.movementBehavior,
                 value: damage,
                 damage,
               },
@@ -3311,6 +3313,7 @@ export class CombatService {
                 cameraShakePreset: skillVisuals.cameraShakePreset,
                 cameraShake: skillVisuals.cameraShakePreset,
                 impactSoundId: skillVisuals.impactSoundId,
+                movementBehavior: skillVisuals.movementBehavior,
                 value: damage,
                 damage,
               }];

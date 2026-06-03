@@ -5,6 +5,8 @@ import { PhaserVisualFxPlayer } from '../../phaser/effects/PhaserVisualFxPlayer'
 
 interface FxBattlePreviewProps {
   fx: VisualFxDefinition;
+  registry?: VisualFxDefinition[];
+  selectedStageId?: string;
 }
 
 class FxBattlePreviewScene extends Phaser.Scene {
@@ -24,9 +26,9 @@ class FxBattlePreviewScene extends Phaser.Scene {
     this.enemy = this.createActor(430, 175, 0x8f3333, 'EN');
   }
 
-  setFx(fx: VisualFxDefinition) {
+  setFx(fx: VisualFxDefinition, registry?: VisualFxDefinition[]) {
     this.fx = fx;
-    this.fxPlayer?.setRegistry([fx]);
+    this.fxPlayer?.setRegistry(registry && registry.length > 0 ? registry : [fx]);
   }
 
   play(mode?: VisualFxPlayOn) {
@@ -59,6 +61,22 @@ class FxBattlePreviewScene extends Phaser.Scene {
     }
 
     this.fxPlayer.playFxAt(this.fx, { ...playerPoint });
+  }
+
+  playSequence(startStageId?: string) {
+    if (!this.fx || !this.fxPlayer || !this.player || !this.enemy) {
+      return;
+    }
+    this.fxPlayer.playEffect(this.fx, this.fxPlayer.createSequenceContext({
+      casterPosition: { x: this.player.x, y: this.player.y },
+      targetPosition: { x: this.enemy.x, y: this.enemy.y },
+      groundPosition: { x: this.enemy.x, y: this.enemy.y },
+      additionalTargetPositions: [
+        { x: this.enemy.x + 56, y: this.enemy.y - 34 },
+        { x: this.enemy.x + 88, y: this.enemy.y + 26 },
+      ],
+      result: 'hit',
+    }), startStageId);
   }
 
   resetFx() {
@@ -102,7 +120,7 @@ class FxBattlePreviewScene extends Phaser.Scene {
   }
 }
 
-export function FxBattlePreview({ fx }: FxBattlePreviewProps) {
+export function FxBattlePreview({ fx, registry, selectedStageId }: FxBattlePreviewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<FxBattlePreviewScene | null>(null);
@@ -141,8 +159,8 @@ export function FxBattlePreview({ fx }: FxBattlePreviewProps) {
   }, []);
 
   useEffect(() => {
-    sceneRef.current?.setFx(fx);
-  }, [fx]);
+    sceneRef.current?.setFx(fx, registry);
+  }, [fx, registry]);
 
   return (
     <section className="card visual-fx-preview">
@@ -157,6 +175,8 @@ export function FxBattlePreview({ fx }: FxBattlePreviewProps) {
           <button type="button" disabled={!isReady} onClick={() => sceneRef.current?.play('projectile')}>Projectile</button>
           <button type="button" disabled={!isReady} onClick={() => sceneRef.current?.play('area')}>Area</button>
           <button type="button" disabled={!isReady} onClick={() => sceneRef.current?.play()}>Default</button>
+          <button type="button" disabled={!isReady} onClick={() => sceneRef.current?.playSequence()}>Play Sequence</button>
+          <button type="button" disabled={!isReady || !selectedStageId} onClick={() => sceneRef.current?.playSequence(selectedStageId)}>Play From Stage</button>
           <button type="button" disabled={!isReady} onClick={() => sceneRef.current?.resetFx()}>Reset</button>
         </div>
       </div>

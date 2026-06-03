@@ -26,6 +26,7 @@ function normalizeItemStacks(value: CraftingItemStack[] | undefined, options?: {
 }
 
 export function normalizeCraftingRecipe(recipe: CraftingRecipe): CraftingRecipe {
+  const visualAnimationRefRaw = String(recipe.visualAnimationRef ?? '').trim();
   return {
     ...recipe,
     id: String(recipe.id ?? '').trim(),
@@ -55,6 +56,16 @@ export function normalizeCraftingRecipe(recipe: CraftingRecipe): CraftingRecipe 
     isRepeatable: recipe.isRepeatable !== false,
     isEnabled: recipe.isEnabled !== false,
     tags: Array.isArray(recipe.tags) ? recipe.tags.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [],
+    visualProfileId: typeof recipe.visualProfileId === 'string' && recipe.visualProfileId.trim() ? recipe.visualProfileId.trim() : undefined,
+    visualImageRef: typeof recipe.visualImageRef === 'string' && recipe.visualImageRef.trim() ? recipe.visualImageRef.trim() : undefined,
+    visualIconRef: typeof recipe.visualIconRef === 'string' && recipe.visualIconRef.trim() ? recipe.visualIconRef.trim() : undefined,
+    visualAnimationRef: visualAnimationRefRaw ? visualAnimationRefRaw : null,
+    visualMaterialFamily: typeof recipe.visualMaterialFamily === 'string' && recipe.visualMaterialFamily.trim()
+      ? recipe.visualMaterialFamily
+      : undefined,
+    visualStyle: typeof recipe.visualStyle === 'string' && recipe.visualStyle.trim()
+      ? recipe.visualStyle
+      : undefined,
     createdAt: recipe.createdAt || nowIso(),
     updatedAt: recipe.updatedAt || nowIso(),
   };

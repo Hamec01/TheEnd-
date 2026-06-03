@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-01T21:19:05.694Z",
+  "exportedAt": "2026-06-03T21:49:27.118Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
-    "items": 147,
+    "items": 174,
     "skills": 17,
     "visualFx": 3,
     "merchants": 5,
@@ -13,7 +13,7 @@
     "locations": 4,
     "materials": 130,
     "lootTables": 0,
-    "images": 271,
+    "images": 274,
     "dialogues": 24,
     "npcs": 30,
     "quests": 10,
@@ -22,8 +22,15 @@
     "questMarkers": 1,
     "battleMaps": 4,
     "craftingRecipes": 41,
+    "recipeVisualProfiles": 9,
     "itemSets": 1,
     "runeComplexes": 0,
+    "blacksmithForgeTiers": 2,
+    "blacksmithModules": 2,
+    "blacksmithTools": 3,
+    "blacksmithQualityTiers": 4,
+    "blacksmithVisualPresets": 1,
+    "blacksmithBalance": 1,
     "maps": 4,
     "zones": 14,
     "markers": 3,
@@ -4113,6 +4120,546 @@
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
         "updatedAt": "2026-05-31T23:19:36Z"
+      },
+      {
+        "id": "mat_bronze_ingot",
+        "name": "Бронзовый слиток",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 48,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Классический сплав для литых деталей, знаков, чаш, оправ и оружейной фурнитуры.",
+        "loreDescription": "Бронза пережила не одну эпоху, потому что мастера ценят не только силу, но и послушание металла.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:29.709Z",
+        "updatedAt": "2026-06-02T23:57:29.709Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_vintarion_ingot",
+        "name": "Винтарионовый слиток",
+        "type": "material",
+        "rarity": "epic",
+        "price": 340,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Переплавленный магопроводящий слиток для клинков, оправ и деталей, удерживающих энергию.",
+        "loreDescription": "Винтарион в слитке выглядит скромнее руды, но маги платят именно за эту тихую дисциплину металла.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:30.296Z",
+        "updatedAt": "2026-06-02T23:57:30.296Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_wooden_shaft",
+        "name": "Деревянное древко",
+        "type": "material",
+        "rarity": "common",
+        "price": 4,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Короткие деревянные заготовки для копий, рукоятей, учебного оружия и хозяйственных изделий.",
+        "loreDescription": "Хорошее древко должно быть прямым, сухим и послушным руке мастера.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:30.623Z",
+        "updatedAt": "2026-06-02T23:57:30.623Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_iron_bloom",
+        "name": "Железная крица",
+        "type": "material",
+        "rarity": "common",
+        "price": 14,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Пористая железная крица после первой плавки. Использование: очистка до слитков, базовые кузнечные заготовки.",
+        "loreDescription": "В крице ещё живут дым и шлак, но опытный кузнец уже слышит в ней будущее железо.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:30.933Z",
+        "updatedAt": "2026-06-02T23:57:30.934Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_iron_plate",
+        "name": "Железная пластина",
+        "type": "material",
+        "rarity": "common",
+        "price": 30,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Прокатанная пластина для шлемов, налокотников, щитовых кромок и ремонтных наборов.",
+        "loreDescription": "Пластина кажется простой только тем, кто ни разу не пытался вывести её без волн и трещин.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:31.262Z",
+        "updatedAt": "2026-06-02T23:57:31.262Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_iron_rivets",
+        "name": "Железные заклёпки",
+        "type": "material",
+        "rarity": "common",
+        "price": 16,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Мелкая крепёжная партия для доспехов, инструментов, сундуков и полевых починок.",
+        "loreDescription": "Кузню часто судят не по мечам, а по заклёпкам: они выдают небрежность быстрее любой героики.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:31.843Z",
+        "updatedAt": "2026-06-02T23:57:31.843Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_tempered_steel_bar",
+        "name": "Закалённая стальная шина",
+        "type": "material",
+        "rarity": "rare",
+        "price": 110,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Закалённая полоса для клинков, осей, усилителей доспеха и тяжёлых кузнечных рецептов.",
+        "loreDescription": "После верной закалки сталь запоминает удар и уже не отдаёт форму без борьбы.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:32.242Z",
+        "updatedAt": "2026-06-02T23:57:32.242Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_zeptyrite_plate",
+        "name": "Зептиритовая пластина",
+        "type": "material",
+        "rarity": "epic",
+        "price": 420,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Мастерская пластина для тяжёлых лат, башенных щитов, элитных доспешных вставок и механизмов.",
+        "loreDescription": "Зептиритовую пластину не прощают ни молот, ни ошибку: малейший просчёт стоит целой недели работы.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:32.584Z",
+        "updatedAt": "2026-06-02T23:57:32.584Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_zeptyrite_ingot",
+        "name": "Зептиритовый слиток",
+        "type": "material",
+        "rarity": "rare",
+        "price": 220,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Очищенный тяжёлый слиток для щитов, кирок, лат и гномьих инженерных узлов.",
+        "loreDescription": "После переплавки Зептирит словно густеет; его вес ощущается раньше, чем его берут в ладонь.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:32.899Z",
+        "updatedAt": "2026-06-02T23:57:32.899Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_gold_wire",
+        "name": "Золотая проволока",
+        "type": "material",
+        "rarity": "rare",
+        "price": 145,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Драгоценная вытяжка для корон, печатей, украшений, магических оправ и статусных работ.",
+        "loreDescription": "Золото тянут в нить не для войны, а для власти, памяти и дорогих обещаний.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:33.270Z",
+        "updatedAt": "2026-06-02T23:57:33.270Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_gold_ingot",
+        "name": "Золотой слиток",
+        "type": "material",
+        "rarity": "rare",
+        "price": 120,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Переплавленное золото для дорогих оправ, проволоки, печатей и церемониальных заказов.",
+        "loreDescription": "В слитке золото теряет случайную форму удачи и принимает форму намерения мастера.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:33.843Z",
+        "updatedAt": "2026-06-02T23:57:33.843Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_wrought_iron_ingot",
+        "name": "Кованое железо",
+        "type": "material",
+        "rarity": "common",
+        "price": 18,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Плотный промежуточный металл для цепей, крюков и грубой фурнитуры.",
+        "loreDescription": "Кованое железо легче поддаётся повторному нагреву, чем обычный слиток, и потому ценится в мастерских.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:34.155Z",
+        "updatedAt": "2026-06-02T23:57:34.155Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_chain_links",
+        "name": "Кованые звенья",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 34,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Набор звеньев для цепей, плетёных доспехов, подвесов, ворот и тяжёлых ремесленных узлов.",
+        "loreDescription": "Каждое звено должно помнить форму под нагрузкой, иначе цепь подведёт в самый тихий миг.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:34.470Z",
+        "updatedAt": "2026-06-02T23:57:34.470Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_leather_straps",
+        "name": "Кожаные ремни",
+        "type": "material",
+        "rarity": "common",
+        "price": 6,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Короткие ремни для рукоятей, креплений, ремесленной сборки и полевых починок.",
+        "loreDescription": "Крепкий ремень не бросается в глаза, но именно он держит вместе половину кузнечной работы.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:34.780Z",
+        "updatedAt": "2026-06-02T23:57:34.780Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_copper_ingot",
+        "name": "Медный слиток",
+        "type": "material",
+        "rarity": "common",
+        "price": 22,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Очищенный мягкий металл для фурнитуры, оправ, застёжек и ранних ремесленных рецептов.",
+        "loreDescription": "Медь не любит грубой спешки: она лучше служит тем, кто умеет гнуть металл, а не только бить по нему.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:35.154Z",
+        "updatedAt": "2026-06-02T23:57:35.154Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_forging_flux",
+        "name": "Кузнечный флюс",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 24,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Сухая смесь для очистки металла от шлака, повышения выхода слитков и тяжёлых сплавов.",
+        "loreDescription": "Старые мастера спорят о составе флюса до драки, но каждый молчит о своей лучшей пропорции.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:35.730Z",
+        "updatedAt": "2026-06-02T23:57:35.730Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_tin_ingot",
+        "name": "Оловянный слиток",
+        "type": "material",
+        "rarity": "common",
+        "price": 20,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Лёгкий слиток для сплавов, пайки, накладок и вспомогательных кузнечных смесей.",
+        "loreDescription": "Сам по себе оловянный слиток скромен, но хороший сплав начинается именно с таких тихих металлов.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:36.045Z",
+        "updatedAt": "2026-06-02T23:57:36.045Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_treated_wooden_shaft",
+        "name": "Пропитанное древко",
+        "type": "material",
+        "rarity": "common",
+        "price": 7,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Прожаренная и пропитанная заготовка для оружейных древков и усиленных рукоятей.",
+        "loreDescription": "Такое древко не коробит от жара кузни и не ведёт в бою при первом ударе.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:36.353Z",
+        "updatedAt": "2026-06-02T23:57:36.353Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_silver_ingot",
+        "name": "Серебряный слиток",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 78,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Очищенное серебро для амулетов, проволоки, оправ, печатей и светлых ремесленных работ.",
+        "loreDescription": "Слиток лунного серебра холоден на ощупь даже рядом с горном.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:36.678Z",
+        "updatedAt": "2026-06-02T23:57:36.678Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_silver_wire",
+        "name": "Серебряная проволока",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 92,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Тонкая вытяжка для амулетов, оправ, символов защиты и дорогой фурнитуры.",
+        "loreDescription": "Хорошую серебряную проволоку тянут медленно: поспешишь и получишь ломкость вместо песни.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:36.984Z",
+        "updatedAt": "2026-06-02T23:57:36.984Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_weapon_hilt_core",
+        "name": "Сердцевина рукояти",
+        "type": "material",
+        "rarity": "common",
+        "price": 8,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Основа для рукоятей мечей, кинжалов и короткого оружия.",
+        "loreDescription": "Хорошая сердцевина рукояти не скрипит и не гуляет в ладони, даже если клинок тяжёлый.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:37.559Z",
+        "updatedAt": "2026-06-02T23:57:37.559Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_steel_rivets",
+        "name": "Стальные заклёпки",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 22,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Тяжёлый крепёж для усиленных доспехов, щитов и сложных кузнечных сборок.",
+        "loreDescription": "Стальная заклёпка держит там, где обычная уже начинает сдавать жар и нагрузку.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:37.868Z",
+        "updatedAt": "2026-06-02T23:57:37.868Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_steel_ingot",
+        "name": "Стальной слиток",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 55,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Упрочнённый слиток для оружия, брони, инструментов и сложных кузнечных деталей.",
+        "loreDescription": "Хорошая сталь рождается не из силы удара, а из терпения, жара и правильного угля.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:38.254Z",
+        "updatedAt": "2026-06-02T23:57:38.254Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_steel_plate",
+        "name": "Стальная пластина",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 78,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Тяжёлая пластина для панцирей, кирас, латных сегментов и боевых щитов.",
+        "loreDescription": "Настоящая стальная пластина должна звучать чисто, словно колокол в глубине горна.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:38.571Z",
+        "updatedAt": "2026-06-02T23:57:38.571Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_felendar_ingot",
+        "name": "Фелендаровый слиток",
+        "type": "material",
+        "rarity": "rare",
+        "price": 280,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Огнестойкий слиток для лавовых кузниц, жаропрочного оружия и брони против пламени.",
+        "loreDescription": "Фелендар после очистки будто держит в себе красный отсвет горна, даже когда металл остыл.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:38.884Z",
+        "updatedAt": "2026-06-02T23:57:38.884Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_felendar_plate",
+        "name": "Фелендаровая пластина",
+        "type": "material",
+        "rarity": "epic",
+        "price": 520,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Жаростойкая пластина для огневой брони, щитов караулов лавовых проходов и раскалённых кузниц.",
+        "loreDescription": "Орочьи мастера любят Фелендар за одно: он не боится жара так, как люди боятся его цвета.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:39.227Z",
+        "updatedAt": "2026-06-02T23:57:39.227Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_shield_boss",
+        "name": "Щитовой умбон",
+        "type": "material",
+        "rarity": "common",
+        "price": 12,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Центральная накладка для деревянных щитов и защитных кругов.",
+        "loreDescription": "Без умбона щит быстро теряет и форму, и честь, если по нему часто бьют клинком.",
+        "isEnabled": true,
+        "createdAt": "2026-06-02T23:57:39.805Z",
+        "updatedAt": "2026-06-02T23:57:39.805Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
       }
     ],
     "skills": [
@@ -6793,10 +7340,12 @@
         },
         "placement": {
           "defaultPlayOn": "projectile",
+          "mode": "once",
           "anchor": "center",
           "offsetX": 0,
           "offsetY": 0,
-          "rotateToDirection": true
+          "rotateToDirection": true,
+          "lingerDurationMs": 900
         },
         "render": {
           "scale": 0.25,
@@ -6825,7 +7374,9 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-01T21:01:45.793Z"
+        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "kind": "single",
+        "stages": []
       },
       {
         "id": "projectile_fireball",
@@ -6848,10 +7399,12 @@
         },
         "placement": {
           "defaultPlayOn": "projectile",
+          "mode": "once",
           "anchor": "center",
           "offsetX": 0,
           "offsetY": 0,
-          "rotateToDirection": true
+          "rotateToDirection": true,
+          "lingerDurationMs": 900
         },
         "render": {
           "scale": 0.1,
@@ -6877,7 +7430,9 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-01T21:01:45.793Z"
+        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "kind": "single",
+        "stages": []
       },
       {
         "id": "impact_fire_burn",
@@ -6887,27 +7442,29 @@
         "element": "fire",
         "type": "sprite_sheet",
         "asset": {
-          "url": "/assets/upload/images/fx/impact/fire/impact_fire_explosion/impact_fire_explosion_sprite-impact_fire_explosion-sprite.png",
+          "url": "/assets/upload/images/fx/impact/fire/impact_fire_burn/impact_fire_burn_sprite-impact_fire_burn-sprite.png",
           "key": "impact_fire_explosion",
-          "frameWidth": 256,
-          "frameHeight": 256,
-          "frameCount": 6
+          "frameWidth": 443,
+          "frameHeight": 443,
+          "frameCount": 8
         },
         "animation": {
-          "frameRate": 12,
-          "repeat": 0,
-          "durationMs": 700
+          "frameRate": 6,
+          "repeat": -1,
+          "durationMs": 400
         },
         "placement": {
           "defaultPlayOn": "target",
-          "anchor": "center",
+          "mode": "linger",
+          "anchor": "head",
           "offsetX": 0,
-          "offsetY": 0,
-          "rotateToDirection": false
+          "offsetY": -40,
+          "rotateToDirection": false,
+          "lingerDurationMs": 1600
         },
         "render": {
-          "scale": 0.81,
-          "alpha": 1,
+          "scale": 0.31,
+          "alpha": 0.9,
           "rotation": 0,
           "blendMode": "ADD",
           "originX": 0.5,
@@ -6925,9 +7482,16 @@
         "audio": {
           "volume": 1
         },
-        "tags": [],
+        "tags": [
+          "fire",
+          "burn",
+          "target",
+          "linger"
+        ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-01T21:01:45.793Z"
+        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "kind": "single",
+        "stages": []
       }
     ],
     "merchants": [
@@ -7363,12 +7927,1690 @@
             "infiniteStock": false,
             "priceMultiplier": 1.2,
             "isEnabled": true
+          },
+          {
+            "itemId": "mat_aquarion_nodule",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_luminium_white_vein",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_rich_iron_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_bronze_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_verdantin_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_vintarion_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_vintarion_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_military_rations",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_war_chains",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_dried_beef",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_deep_frost_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_nocturna_deep_eye",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_deep_coal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_dwarf_tools",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_dwarf_binding_mark",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_golem_gear",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_mountain_sapphire",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_felendar_hot_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_astarion_gravity_heart",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_granite_block",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_demon_fused_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_wooden_shaft",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_cart_wheel_parts",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_tanned_leather",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_oak_timber",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_iron_bloom",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_iron_plate",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_iron_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_iron_rivets",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_iron_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_verdantin_living_vein",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_tempered_steel_bar",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_vintarion_star_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_zeptyrite_plate",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_zeptyrite_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_zeptyrite_trace",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_zeptyrite_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_gold_wire",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_gold_nugget",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_gold_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_coal_lumps",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_wrought_iron_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_chain_links",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_leather_straps",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_terragons_root_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_blood_garnet",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_poison_vein_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_fire_heart_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_life_spring_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_gravity_tear_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_storm_resonance_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_aurishel_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_flint_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_bone_ash",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_astarion_meteor_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_copper_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_copper_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_green_flame_oil",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_full_minor_rune_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_forest_emerald",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_coal_chunk",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_forging_flux",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_large_gold_nugget",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_miridian_splinter",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_luminium_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_kvarrilite_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_mirror_lake_opal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_tin_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_tin_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_raw_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_death_obsidian",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_frost_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_field_healing_herbs",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_cave_salt",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_mercenary_contract_seal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_ember_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_feralas_cinder_rune_flake",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_soul_ash",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_orcish_rune_chisel_chip",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_night_rune_splinter",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_night_glass_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_glowing_cave_moss_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_light_shard",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_rune_chalk",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_rune_dust",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_spirit_trace_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_rye_grain",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_millet",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_desert_topaz",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_treated_wooden_shaft",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_solarite_dust",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_lumeares_teardrop_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_weak_rune_fragment",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_sulfur_crust",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_silver_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_silver_wire",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_silver_vein_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_weapon_hilt_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_arrowheads_bundle",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_hard_cheese",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_lunaan_glass_splinter",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_black_flame_glass",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_steel_rivets",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_steel_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_steel_plate",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_morgul_salt",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_solarite_sun_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_solarite_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_black_leather_roll",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_kelerite_fragment",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_felendar_ingot",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_felendar_ore",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_felendar_plate",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_cracked_crystal",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_cracked_rune_plate",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_stone_blocks",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_hard_stone",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_clear_quartz",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_pure_zeptyrite_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_miridian_pure_thread",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_pure_aquarion_pearl",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_black_onyx",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_soulbound_black_slag",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_black_basalt",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_black_iron_blank",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_necromancer_ink",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_wool_cloth",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_shield_boss",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "mat_kelerite_memory_core",
+            "stock": 25,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
           }
         ],
         "createdAt": "2026-05-20T12:20:00.000Z",
-        "updatedAt": "2026-05-20T12:20:00.000Z",
-        "materialTradingEnabled": false,
-        "materialTrades": []
+        "updatedAt": "2026-06-02T23:57:40.268Z",
+        "materialTradingEnabled": true,
+        "materialTrades": [
+          {
+            "materialId": "aquarion_nodule",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "luminium_white_vein",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "rich_iron_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "bronze_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "verdantin_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "vintarion_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "vintarion_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "military_rations",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "war_chains",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "dried_beef",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "deep_frost_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "nocturna_deep_eye",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "deep_coal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "dwarf_tools",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "dwarf_binding_mark",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "golem_gear",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "mountain_sapphire",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "felendar_hot_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "astarion_gravity_heart",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "granite_block",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "demon_fused_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "wooden_shaft",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "cart_wheel_parts",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "tanned_leather",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "oak_timber",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "iron_bloom",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "iron_plate",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "iron_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "iron_rivets",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "iron_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "verdantin_living_vein",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "tempered_steel_bar",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "vintarion_star_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "zeptyrite_plate",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "zeptyrite_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "zeptyrite_trace",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "zeptyrite_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "gold_wire",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "gold_nugget",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "gold_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "coal_lumps",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "wrought_iron_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "chain_links",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "leather_straps",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "terragons_root_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "blood_garnet",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "poison_vein_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "fire_heart_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "life_spring_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "gravity_tear_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "storm_resonance_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "aurishel_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "flint_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "bone_ash",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "astarion_meteor_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "copper_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "copper_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "green_flame_oil",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "full_minor_rune_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "forest_emerald",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "coal_chunk",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "forging_flux",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "large_gold_nugget",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "miridian_splinter",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "luminium_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "kvarrilite_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "mirror_lake_opal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "tin_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "tin_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "raw_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "death_obsidian",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "frost_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "field_healing_herbs",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "cave_salt",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "mercenary_contract_seal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "ember_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "feralas_cinder_rune_flake",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "soul_ash",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "orcish_rune_chisel_chip",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "night_rune_splinter",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "night_glass_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "glowing_cave_moss_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "light_shard",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "rune_chalk",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "rune_dust",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "spirit_trace_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "rye_grain",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "millet",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "desert_topaz",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "treated_wooden_shaft",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "solarite_dust",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "lumeares_teardrop_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "weak_rune_fragment",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "sulfur_crust",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "silver_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "silver_wire",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "silver_vein_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "weapon_hilt_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "arrowheads_bundle",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "hard_cheese",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "lunaan_glass_splinter",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "black_flame_glass",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "steel_rivets",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "steel_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "steel_plate",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "morgul_salt",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "solarite_sun_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "solarite_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "black_leather_roll",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "kelerite_fragment",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "felendar_ingot",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "felendar_ore",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "felendar_plate",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "cracked_crystal",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "cracked_rune_plate",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "stone_blocks",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "hard_stone",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "clear_quartz",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "pure_zeptyrite_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "miridian_pure_thread",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "pure_aquarion_pearl",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "black_onyx",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "soulbound_black_slag",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "black_basalt",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "black_iron_blank",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "necromancer_ink",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "wool_cloth",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "shield_boss",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          },
+          {
+            "materialId": "kelerite_memory_core",
+            "buys": true,
+            "sells": true,
+            "isEnabled": true
+          }
+        ]
       },
       {
         "id": "merchant_brainhold_selene",
@@ -10410,10 +12652,14 @@
         ],
         "gameplayDescription": "Готовый кузнечный материал для оружия, брони, инструментов и крафта.",
         "loreDescription": "Слитки Гранкора клеймят знаком клана. За такое железо платят больше, потому что в нём меньше пустой породы.",
-        "imagePath": "",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:16.955Z",
-        "updatedAt": "2026-05-31T23:20:32Z"
+        "updatedAt": "2026-06-03T21:43:00.650Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 33
+        }
       },
       {
         "id": "dwarf_tools",
@@ -10577,10 +12823,14 @@
         ],
         "gameplayDescription": "Заготовка для оружия, цепей, наконечников, замков и тяжёлых деталей.",
         "loreDescription": "Черножелезо Брейнхольда темнеет даже рядом с чистым огнём. Кузнецы спорят, металл это или привычка города.",
-        "imagePath": "",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:43.309Z",
-        "updatedAt": "2026-05-31T23:20:32Z"
+        "updatedAt": "2026-06-03T21:47:13.417Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 45
+        }
       },
       {
         "id": "war_chains",
@@ -12655,7 +14905,12 @@
         "loreDescription": "В крице ещё живут дым и шлак, но опытный кузнец уже слышит в ней будущее железо.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:42:27.116Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 30
+        }
       },
       {
         "id": "copper_ingot",
@@ -12675,7 +14930,12 @@
         "loreDescription": "Медь не любит грубой спешки: она лучше служит тем, кто умеет гнуть металл, а не только бить по нему.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:45:29.278Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 35
+        }
       },
       {
         "id": "tin_ingot",
@@ -12695,7 +14955,12 @@
         "loreDescription": "Сам по себе оловянный слиток скромен, но хороший сплав начинается именно с таких тихих металлов.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:45:39.630Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 36
+        }
       },
       {
         "id": "bronze_ingot",
@@ -12715,7 +14980,12 @@
         "loreDescription": "Бронза пережила не одну эпоху, потому что мастера ценят не только силу, но и послушание металла.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:09.910Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 38
+        }
       },
       {
         "id": "silver_ingot",
@@ -12735,7 +15005,12 @@
         "loreDescription": "Слиток лунного серебра холоден на ощупь даже рядом с горном.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:36.430Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 41
+        }
       },
       {
         "id": "gold_ingot",
@@ -12755,7 +15030,12 @@
         "loreDescription": "В слитке золото теряет случайную форму удачи и принимает форму намерения мастера.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:48:28.166Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 49
+        }
       },
       {
         "id": "forging_flux",
@@ -12795,7 +15075,12 @@
         "loreDescription": "Хорошая сталь рождается не из силы удара, а из терпения, жара и правильного угля.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:52.846Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 43
+        }
       },
       {
         "id": "iron_plate",
@@ -12815,7 +15100,12 @@
         "loreDescription": "Пластина кажется простой только тем, кто ни разу не пытался вывести её без волн и трещин.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:42:41.926Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 31
+        }
       },
       {
         "id": "steel_plate",
@@ -12835,7 +15125,12 @@
         "loreDescription": "Настоящая стальная пластина должна звучать чисто, словно колокол в глубине горна.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:46.400Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 42
+        }
       },
       {
         "id": "iron_rivets",
@@ -12855,7 +15150,12 @@
         "loreDescription": "Кузню часто судят не по мечам, а по заклёпкам: они выдают небрежность быстрее любой героики.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:42:51.387Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 32
+        }
       },
       {
         "id": "steel_rivets",
@@ -12876,7 +15176,12 @@
         "loreDescription": "Стальная заклёпка держит там, где обычная уже начинает сдавать жар и нагрузку.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:59.870Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 44
+        }
       },
       {
         "id": "chain_links",
@@ -12896,7 +15201,12 @@
         "loreDescription": "Каждое звено должно помнить форму под нагрузкой, иначе цепь подведёт в самый тихий миг.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:18.716Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 39
+        }
       },
       {
         "id": "weapon_hilt_core",
@@ -12927,16 +15237,19 @@
         "averageMarketPrice": 12,
         "properties": [
           "metal",
-          "shield_part",
           "crafting",
           "blacksmithing"
         ],
         "gameplayDescription": "Центральная накладка для деревянных щитов и защитных кругов.",
         "loreDescription": "Без умбона щит быстро теряет и форму, и честь, если по нему часто бьют клинком.",
-        "imagePath": "",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:01.449Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 37
+        }
       },
       {
         "id": "wrought_iron_ingot",
@@ -12948,16 +15261,19 @@
         "properties": [
           "metal",
           "ingot",
-          "wrought",
           "crafting",
           "blacksmithing"
         ],
         "gameplayDescription": "Плотный промежуточный металл для цепей, крюков и грубой фурнитуры.",
         "loreDescription": "Кованое железо легче поддаётся повторному нагреву, чем обычный слиток, и потому ценится в мастерских.",
-        "imagePath": "",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:44:38.894Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 34
+        }
       },
       {
         "id": "silver_wire",
@@ -12977,7 +15293,12 @@
         "loreDescription": "Хорошую серебряную проволоку тянут медленно: поспешишь и получишь ломкость вместо песни.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:46:28.841Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 40
+        }
       },
       {
         "id": "gold_wire",
@@ -12997,7 +15318,12 @@
         "loreDescription": "Золото тянут в нить не для войны, а для власти, памяти и дорогих обещаний.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:48:10.110Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 48
+        }
       },
       {
         "id": "zeptyrite_ingot",
@@ -13018,7 +15344,12 @@
         "loreDescription": "После переплавки Зептирит словно густеет; его вес ощущается раньше, чем его берут в ладонь.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:47:51.372Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 47
+        }
       },
       {
         "id": "zeptyrite_plate",
@@ -13039,7 +15370,12 @@
         "loreDescription": "Зептиритовую пластину не прощают ни молот, ни ошибку: малейший просчёт стоит целой недели работы.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:49:09.148Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 52
+        }
       },
       {
         "id": "felendar_ingot",
@@ -13060,7 +15396,12 @@
         "loreDescription": "Фелендар после очистки будто держит в себе красный отсвет горна, даже когда металл остыл.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:48:45.245Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 50
+        }
       },
       {
         "id": "felendar_plate",
@@ -13081,7 +15422,12 @@
         "loreDescription": "Орочьи мастера любят Фелендар за одно: он не боится жара так, как люди боятся его цвета.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:49:26.790Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 53
+        }
       },
       {
         "id": "vintarion_ingot",
@@ -13102,7 +15448,12 @@
         "loreDescription": "Винтарион в слитке выглядит скромнее руды, но маги платят именно за эту тихую дисциплину металла.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:48:58.630Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 51
+        }
       },
       {
         "id": "tempered_steel_bar",
@@ -13123,7 +15474,12 @@
         "loreDescription": "После верной закалки сталь запоминает удар и уже не отдаёт форму без борьбы.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-01T18:30:00.000Z"
+        "updatedAt": "2026-06-03T21:47:36.039Z",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_iron_bloom",
+          "frame": 46
+        }
       }
     ],
     "lootTables": [],
@@ -15837,6 +18193,36 @@
         "dataUrl": "/assets/upload/images/skills/blacksmith_basic_forging/img_1780348745654_97f0b126-blacksmith_basic_forging-icon.png",
         "createdAt": "2026-06-01T21:19:05.654Z",
         "updatedAt": "2026-06-01T21:19:05.654Z"
+      },
+      {
+        "id": "img_1780386631138_612915fe",
+        "name": "blacksmith_unlock_runecrafting-icon",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 1024,
+        "dataUrl": "/assets/upload/images/skills/blacksmith_unlock_runecrafting/img_1780386631138_612915fe-blacksmith_unlock_runecrafting-icon.png",
+        "createdAt": "2026-06-02T07:50:31.138Z",
+        "updatedAt": "2026-06-02T07:50:31.138Z"
+      },
+      {
+        "id": "impact_fire_burn_sprite",
+        "name": "impact_fire_burn-sprite",
+        "mimeType": "image/png",
+        "width": 1774,
+        "height": 887,
+        "dataUrl": "/assets/upload/images/fx/impact/fire/impact_fire_burn/impact_fire_burn_sprite-impact_fire_burn-sprite.png",
+        "createdAt": "2026-06-03T04:33:33.497Z",
+        "updatedAt": "2026-06-03T04:33:33.497Z"
+      },
+      {
+        "id": "img_1780522933536_4fa9cfa7",
+        "name": "iron_bloom-icon",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 1024,
+        "dataUrl": "/assets/upload/images/materials/iron_bloom/img_1780522933536_4fa9cfa7-iron_bloom-icon.png",
+        "createdAt": "2026-06-03T21:42:13.537Z",
+        "updatedAt": "2026-06-03T21:42:13.537Z"
       }
     ],
     "dialogues": [
@@ -29177,7 +31563,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_refine_iron_ingot",
@@ -29221,7 +31613,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_copper_ingot",
@@ -29265,7 +31663,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_smelting_tin_ingot",
@@ -29309,7 +31713,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_smelting_forging_flux",
@@ -29357,7 +31767,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_alloy_bronze_ingot",
@@ -29401,7 +31817,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_forge_steel_ingot",
@@ -29449,7 +31871,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_shape_iron_plate",
@@ -29489,7 +31917,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_steel_plate",
@@ -29533,7 +31967,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_iron_rivets",
@@ -29573,7 +32013,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_iron_ingot_direct",
@@ -29617,7 +32063,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_shape_wooden_shaft",
@@ -29657,7 +32109,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_treat_wooden_shaft",
@@ -29701,7 +32159,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_leather_straps",
@@ -29741,7 +32205,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_weapon_hilt_core",
@@ -29781,7 +32251,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_shield_boss",
@@ -29821,7 +32297,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_armor",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_wrought_iron_ingot",
@@ -29865,7 +32347,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_shape_chain_links_wrought",
@@ -29905,7 +32393,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_steel_plate_raw",
@@ -29949,7 +32443,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_training_sword_wood_01",
@@ -29993,7 +32493,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_wpn_axe_wood_01",
@@ -30041,7 +32547,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_wpn_spear_wood_01",
@@ -30085,7 +32597,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_shd_wood_01",
@@ -30137,7 +32655,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_wpn_spear_iron_01",
@@ -30185,7 +32709,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_starter_sword_01",
@@ -30233,7 +32763,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_shield_argos_private_01",
@@ -30289,7 +32825,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_armor",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_spear_argos_private_01",
@@ -30337,7 +32879,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_helmet_argos_private_01",
@@ -30385,7 +32933,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_armor",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_blacksmith_chainmail_argos_private_01",
@@ -30434,7 +32988,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_forge_black_iron_blank",
@@ -30482,7 +33042,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_shape_chain_links",
@@ -30522,7 +33088,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_draw_silver_wire",
@@ -30562,7 +33134,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_draw_gold_wire",
@@ -30602,7 +33180,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_silver_ingot",
@@ -30646,7 +33230,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_smelting_gold_ingot",
@@ -30690,7 +33280,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_smelting_zeptyrite_ingot",
@@ -30738,7 +33334,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_shape_zeptyrite_plate",
@@ -30782,7 +33384,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_felendar_ingot",
@@ -30830,7 +33438,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_shape_felendar_plate",
@@ -30874,7 +33488,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
       },
       {
         "id": "recipe_smelting_vintarion_ingot",
@@ -30922,7 +33542,13 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "smelting_metal",
+        "visualImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "smelting"
       },
       {
         "id": "recipe_temper_steel_bar",
@@ -30970,7 +33596,178 @@
         ],
         "createdAt": "2026-06-01T18:30:00.000Z",
         "updatedAt": "2026-06-01T18:30:00.000Z",
-        "requiredSkillIds": []
+        "requiredSkillIds": [],
+        "visualProfileId": "forging_weapon",
+        "visualImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualIconRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualAnimationRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "visualMaterialFamily": "metal",
+        "visualStyle": "forging"
+      }
+    ],
+    "recipeVisualProfiles": [
+      {
+        "id": "smelting_metal",
+        "name": "лавка металла",
+        "description": "рофиль обложки для плавки и металлургии.",
+        "recipeTypes": [
+          "smelting",
+          "material_processing"
+        ],
+        "materialFamilies": [
+          "metal",
+          "alloy"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_smelting_metal.png",
+        "backgroundStyle": "smelting",
+        "accentColor": "#b0682f",
+        "isEnabled": true
+      },
+      {
+        "id": "material_wood",
+        "name": "бработка дерева",
+        "description": "рофиль для деревообработки.",
+        "recipeTypes": [
+          "material_processing",
+          "carpentry_craft"
+        ],
+        "materialFamilies": [
+          "wood"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_material_wood.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_material_wood.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_material_wood.png",
+        "backgroundStyle": "processing",
+        "accentColor": "#7a5a2d",
+        "isEnabled": true
+      },
+      {
+        "id": "material_cloth",
+        "name": "бработка ткани",
+        "description": "рофиль для ткацких и швейных рецептов.",
+        "recipeTypes": [
+          "weaving",
+          "material_processing"
+        ],
+        "materialFamilies": [
+          "cloth",
+          "leather"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_material_cloth.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_material_cloth.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_material_cloth.png",
+        "backgroundStyle": "processing",
+        "accentColor": "#927552",
+        "isEnabled": true
+      },
+      {
+        "id": "food_basic",
+        "name": "азовая кулинария",
+        "description": "рофиль для простых пищевых рецептов.",
+        "recipeTypes": [
+          "cooking",
+          "baking"
+        ],
+        "materialFamilies": [
+          "food"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_food_basic.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_food_basic.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_food_basic.png",
+        "backgroundStyle": "cooking",
+        "accentColor": "#b37f42",
+        "isEnabled": true
+      },
+      {
+        "id": "alchemy_basic",
+        "name": "азовая алхимия",
+        "description": "рофиль для алхимических рецептов.",
+        "recipeTypes": [
+          "alchemy"
+        ],
+        "materialFamilies": [
+          "alchemy"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_alchemy_basic.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_alchemy_basic.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_alchemy_basic.png",
+        "backgroundStyle": "alchemy",
+        "accentColor": "#4f8d7a",
+        "isEnabled": true
+      },
+      {
+        "id": "forging_weapon",
+        "name": "овка оружия",
+        "description": "рофиль для оружейных рецептов кузнеца.",
+        "recipeTypes": [
+          "blacksmith_craft"
+        ],
+        "materialFamilies": [
+          "metal"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_forging_weapon.png",
+        "backgroundStyle": "forging",
+        "accentColor": "#b35a39",
+        "isEnabled": true
+      },
+      {
+        "id": "forging_armor",
+        "name": "овка доспеха",
+        "description": "рофиль для бронных рецептов кузнеца.",
+        "recipeTypes": [
+          "blacksmith_craft"
+        ],
+        "materialFamilies": [
+          "metal"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_forging_armor.png",
+        "backgroundStyle": "forging",
+        "accentColor": "#8f6c4d",
+        "isEnabled": true
+      },
+      {
+        "id": "rare_alloy",
+        "name": "едкие сплавы",
+        "description": "рофиль для рецептов редких сплавов.",
+        "recipeTypes": [
+          "smelting",
+          "blacksmith_craft"
+        ],
+        "materialFamilies": [
+          "alloy",
+          "metal"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_rare_alloy.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_rare_alloy.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_rare_alloy.png",
+        "backgroundStyle": "refinement",
+        "accentColor": "#8792a6",
+        "isEnabled": true
+      },
+      {
+        "id": "rune_work",
+        "name": "унная обработка",
+        "description": "рофиль для рунических и зачаровательных работ.",
+        "recipeTypes": [
+          "runecrafting",
+          "enchantment"
+        ],
+        "materialFamilies": [
+          "rune",
+          "alchemy"
+        ],
+        "coverImageRef": "/art/crafting/recipes/recipe_rune_work.png",
+        "iconImageRef": "/art/crafting/recipes/recipe_rune_work.png",
+        "animationImageRef": "/art/crafting/recipes/recipe_rune_work.png",
+        "backgroundStyle": "refinement",
+        "accentColor": "#7a62b5",
+        "isEnabled": true
       }
     ],
     "itemSets": [
@@ -31026,6 +33823,317 @@
       }
     ],
     "runeComplexes": [],
+    "blacksmithForgeTiers": [
+      {
+        "id": "forge_tier_apprentice",
+        "name": "Ученический горн",
+        "description": "Базовый горн для простой ковки и обработки.",
+        "tier": 1,
+        "requiredBlacksmithLevel": 1,
+        "requiredSkillIds": [],
+        "allowedRecipeTypes": [
+          "material_processing",
+          "smelting",
+          "blacksmith_craft"
+        ],
+        "allowedRecipeGroups": [
+          "starter",
+          "basic_weapons",
+          "basic_armor"
+        ],
+        "allowedMaterialTiers": [
+          "common"
+        ],
+        "heatControlBonus": 2,
+        "qualityCapBonus": 0,
+        "failureChanceReduction": 0,
+        "moduleSlotLimits": {
+          "airflow": 1,
+          "support": 1,
+          "quench": 1
+        },
+        "visualPresetId": "blacksmith_visual_default",
+        "isEnabled": true
+      },
+      {
+        "id": "forge_tier_master",
+        "name": "Мастерский горн",
+        "description": "Усиленный горн для точной и сложной работы.",
+        "tier": 2,
+        "requiredBlacksmithLevel": 10,
+        "requiredSkillIds": [
+          "blacksmith_fine_work"
+        ],
+        "allowedRecipeTypes": [
+          "material_processing",
+          "smelting",
+          "blacksmith_craft",
+          "runecrafting"
+        ],
+        "allowedRecipeGroups": [
+          "advanced_weapons",
+          "advanced_armor",
+          "settings",
+          "rune_surface"
+        ],
+        "allowedMaterialTiers": [
+          "common",
+          "uncommon",
+          "rare"
+        ],
+        "heatControlBonus": 5,
+        "qualityCapBonus": 8,
+        "failureChanceReduction": 4,
+        "moduleSlotLimits": {
+          "airflow": 2,
+          "support": 2,
+          "quench": 2,
+          "precision": 1
+        },
+        "visualPresetId": "blacksmith_visual_default",
+        "isEnabled": true
+      }
+    ],
+    "blacksmithModules": [
+      {
+        "id": "module_airflow_bellows_basic",
+        "name": "Простые меха",
+        "moduleType": "airflow",
+        "tier": 1,
+        "description": "Стабилизируют подачу воздуха к печи.",
+        "bonuses": {
+          "heatControlBonus": 3,
+          "overheatChanceReduction": 2
+        },
+        "requiredBlacksmithLevel": 2,
+        "requiredSkillIds": [
+          "blacksmith_basic_forging"
+        ],
+        "compatibleForgeTierIds": [
+          "forge_tier_apprentice",
+          "forge_tier_master"
+        ],
+        "imageRef": "unknown",
+        "isEnabled": true
+      },
+      {
+        "id": "module_quench_trough_reinforced",
+        "name": "Усиленная ванна закалки",
+        "moduleType": "quench",
+        "tier": 2,
+        "description": "Снижает риск дефектов при закалке.",
+        "bonuses": {
+          "defectChanceReduction": 5,
+          "quenchStabilityBonus": 8
+        },
+        "requiredBlacksmithLevel": 8,
+        "requiredSkillIds": [
+          "blacksmith_simple_tempering"
+        ],
+        "compatibleForgeTierIds": [
+          "forge_tier_master"
+        ],
+        "imageRef": "unknown",
+        "isEnabled": true
+      }
+    ],
+    "blacksmithTools": [
+      {
+        "id": "tool_hammer_apprentice",
+        "name": "Молот ученика",
+        "toolType": "hammer",
+        "tier": 1,
+        "description": "Базовый молот для ровного темпа ударов.",
+        "bonuses": {
+          "strikePrecisionBonus": 4
+        },
+        "minResultFloor": 10,
+        "specialRules": [
+          "safe_start_window"
+        ],
+        "imageRef": "unknown",
+        "isEnabled": true
+      },
+      {
+        "id": "tool_tongs_balanced",
+        "name": "Балансные щипцы",
+        "toolType": "tongs",
+        "tier": 1,
+        "description": "Повышают контроль заготовки.",
+        "bonuses": {
+          "heatDriftReduction": 5
+        },
+        "minResultFloor": 8,
+        "specialRules": [
+          "reduced_slip_chance"
+        ],
+        "imageRef": "unknown",
+        "isEnabled": true
+      },
+      {
+        "id": "tool_quench_ladle_master",
+        "name": "Мастерский ковш закалки",
+        "toolType": "quench",
+        "tier": 2,
+        "description": "Даёт точный контроль на этапе закалки.",
+        "bonuses": {
+          "quenchControlBonus": 10,
+          "crackChanceReduction": 4
+        },
+        "minResultFloor": 15,
+        "specialRules": [
+          "quench_sweetspot_bonus"
+        ],
+        "imageRef": "unknown",
+        "isEnabled": true
+      }
+    ],
+    "blacksmithQualityTiers": [
+      {
+        "id": "quality_failed",
+        "name": "Брак",
+        "minScore": 0,
+        "maxScore": 29,
+        "priceMultiplier": 0.35,
+        "xpMultiplier": 0.4,
+        "statMultiplier": 0.5,
+        "frameImageRef": "unknown",
+        "isFailureTier": true
+      },
+      {
+        "id": "quality_normal",
+        "name": "Нормальное",
+        "minScore": 30,
+        "maxScore": 59,
+        "priceMultiplier": 1,
+        "xpMultiplier": 1,
+        "statMultiplier": 1,
+        "frameImageRef": "unknown",
+        "isFailureTier": false
+      },
+      {
+        "id": "quality_fine",
+        "name": "Качественное",
+        "minScore": 60,
+        "maxScore": 84,
+        "priceMultiplier": 1.35,
+        "xpMultiplier": 1.2,
+        "statMultiplier": 1.12,
+        "frameImageRef": "unknown",
+        "isFailureTier": false
+      },
+      {
+        "id": "quality_masterwork",
+        "name": "Шедевр",
+        "minScore": 85,
+        "maxScore": 100,
+        "priceMultiplier": 1.8,
+        "xpMultiplier": 1.45,
+        "statMultiplier": 1.25,
+        "frameImageRef": "unknown",
+        "isFailureTier": false
+      }
+    ],
+    "blacksmithVisualPresets": [
+      {
+        "id": "blacksmith_visual_default",
+        "name": "Стандартная кузница",
+        "backgroundImageRef": "unknown",
+        "anvilImageRef": "unknown",
+        "furnaceImageRef": "unknown",
+        "hammerImageRefs": [
+          "unknown"
+        ],
+        "defectOverlayRefs": [
+          "unknown"
+        ],
+        "blankImageRefs": [
+          "unknown"
+        ],
+        "qualityFrameRefs": [
+          "unknown"
+        ]
+      }
+    ],
+    "blacksmithBalance": [
+      {
+        "id": "blacksmith_balance_default",
+        "baseXpByRecipeType": {
+          "material_processing": 12,
+          "smelting": 18,
+          "blacksmith_craft": 30,
+          "runecrafting": 34
+        },
+        "xpByMaterialTier": {
+          "common": 0,
+          "uncommon": 6,
+          "rare": 14,
+          "epic": 24
+        },
+        "qualityBonuses": {
+          "quality_normal": 0,
+          "quality_fine": 8,
+          "quality_masterwork": 16
+        },
+        "qualityPenalties": {
+          "quality_failed": -12
+        },
+        "repeatCraftDiminishingReturns": {
+          "startAfter": 3,
+          "floorMultiplier": 0.35,
+          "decayPerCraft": 0.12
+        },
+        "heatRanges": {
+          "low": {
+            "min": 0,
+            "max": 33
+          },
+          "medium": {
+            "min": 34,
+            "max": 70
+          },
+          "high": {
+            "min": 71,
+            "max": 100
+          }
+        },
+        "baseDefectChances": {
+          "crack": 12,
+          "slag": 8,
+          "warp": 10
+        },
+        "quenchProfiles": {
+          "water": {
+            "stability": 45,
+            "crackRisk": 18
+          },
+          "oil": {
+            "stability": 62,
+            "crackRisk": 10
+          }
+        },
+        "strikeProfiles": {
+          "light": {
+            "progress": 8,
+            "precision": 14
+          },
+          "heavy": {
+            "progress": 16,
+            "precision": -8
+          }
+        },
+        "finishProfiles": {
+          "grind": {
+            "sharpness": 12,
+            "polish": 4
+          },
+          "polish": {
+            "sharpness": 4,
+            "polish": 14
+          }
+        }
+      }
+    ],
     "worldMap": {
       "zones": [
         {

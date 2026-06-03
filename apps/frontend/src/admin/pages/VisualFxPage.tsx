@@ -5,10 +5,20 @@ import { audioService } from '../../services/content/audioService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import {
   emptyVisualFx,
+  emptyVisualFxStage,
   normalizeVisualFx,
   visualFxService,
   VISUAL_FX_CATEGORIES,
   VISUAL_FX_ELEMENTS,
+  VISUAL_FX_KINDS,
+  VISUAL_FX_PLACEMENT_MODES,
+  VISUAL_FX_STAGE_CONDITIONS,
+  VISUAL_FX_STAGE_FOLLOW_MODES,
+  VISUAL_FX_STAGE_MOVEMENT_BEHAVIORS,
+  VISUAL_FX_STAGE_PLAY_ON,
+  VISUAL_FX_STAGE_TARGET_MODES,
+  VISUAL_FX_STAGE_TRIGGERS,
+  VISUAL_FX_STAGE_TYPES,
 } from '../../services/content/visualFxService';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminFieldLabel, translateAdminErrorMessage } from '../adminUi';
@@ -49,10 +59,12 @@ function createFireCircleDraft(): VisualFxDefinition {
     },
     placement: {
       defaultPlayOn: 'caster',
+      mode: 'ground_persist',
       anchor: 'feet',
       offsetX: 0,
       offsetY: 12,
       rotateToDirection: false,
+      lingerDurationMs: 900,
     },
     render: {
       scale: 1.4,
@@ -69,6 +81,62 @@ function createFireCircleDraft(): VisualFxDefinition {
   });
 }
 
+function validateVisualFxDraft(draft: VisualFxDefinition, library: VisualFxDefinition[]): string[] {
+  if (draft.kind !== 'composite') {
+    return [];
+  }
+  const errors: string[] = [];
+  const stages = draft.stages ?? [];
+  const stageIds = new Set(stages.map((stage) => stage.id.trim()).filter(Boolean));
+  const singleFxIds = new Set(
+    library
+      .filter((entry) => entry.kind !== 'composite')
+      .map((entry) => entry.id),
+  );
+
+  if (stages.length === 0) {
+    errors.push('Composite FX must contain at least one stage.');
+  }
+
+  for (const stage of stages) {
+    if (!stage.id.trim()) {
+      errors.push('Every stage must have an id.');
+    }
+    const needsFxRef = stage.stageType === 'cast'
+      || stage.stageType === 'projectile'
+      || stage.stageType === 'impact'
+      || stage.stageType === 'linger';
+    const hasAnyFx = Boolean(stage.fxRefId?.trim()) || (stage.fxVariantIds?.length ?? 0) > 0;
+    if (needsFxRef && !hasAnyFx) {
+      errors.push(`Stage '${stage.id}' requires an FX ref or variant FX refs.`);
+    }
+    if (stage.stageType === 'linger' && !(stage.persistMs && stage.persistMs > 0)) {
+      errors.push(`Stage '${stage.id}' is linger and needs persistMs > 0.`);
+    }
+    if ((stage.stageType === 'projectile' || stage.stageType === 'movement') && !stage.movementBehavior) {
+      errors.push(`Stage '${stage.id}' needs movementBehavior.`);
+    }
+    if (stage.fxRefId && !singleFxIds.has(stage.fxRefId)) {
+      errors.push(`Stage '${stage.id}' references missing single FX '${stage.fxRefId}'.`);
+    }
+    for (const variantId of stage.fxVariantIds ?? []) {
+      if (!singleFxIds.has(variantId)) {
+        errors.push(`Stage '${stage.id}' references missing variant FX '${variantId}'.`);
+      }
+    }
+    for (const branchId of stage.branchToStageIds ?? []) {
+      if (!stageIds.has(branchId)) {
+        errors.push(`Stage '${stage.id}' branches to missing stage '${branchId}'.`);
+      }
+      if (branchId === stage.id) {
+        errors.push(`Stage '${stage.id}' cannot branch directly to itself.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
 export function VisualFxPage() {
   const [entries, setEntries] = useState<VisualFxDefinition[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -79,6 +147,8 @@ export function VisualFxPage() {
   const [isSaving, setSaving] = useState(false);
   const [isUploading, setUploading] = useState(false);
   const [isAudioUploading, setAudioUploading] = useState(false);
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
+  const [dragStageId, setDragStageId] = useState<string | null>(null);
 
   async function reload(nextSelectedId = selectedId) {
     try {
@@ -155,15 +225,97 @@ export function VisualFxPage() {
     setDraft((current) => normalizeVisualFx({ ...current, audio: { ...(current.audio ?? {}), ...nextPatch } }));
   }
 
+  function patchStage(stageId: string, nextPatch: Partial<NonNullable<VisualFxDefinition['stages']>[number]>) {
+    setDraft((current) => normalizeVisualFx({
+      ...current,
+      stages: (current.stages ?? []).map((stage) => (stage.id === stageId ? { ...stage, ...nextPatch } : stage)),
+    }));
+  }
+
+  function addStage() {
+    setDraft((current) => {
+      const nextStage = emptyVisualFxStage((current.stages ?? []).length);
+      setSelectedStageId(nextStage.id);
+      return normalizeVisualFx({
+        ...current,
+        kind: 'composite',
+        stages: [...(current.stages ?? []), nextStage],
+      });
+    });
+  }
+
+  function duplicateStage(stageId: string) {
+    setDraft((current) => {
+      const stages = [...(current.stages ?? [])];
+      const index = stages.findIndex((stage) => stage.id === stageId);
+      if (index < 0) {
+        return current;
+      }
+      const source = stages[index]!;
+      const copy = {
+        ...source,
+        id: `${source.id}_copy`,
+        name: source.name ? `${source.name} Copy` : undefined,
+      };
+      stages.splice(index + 1, 0, copy);
+      setSelectedStageId(copy.id);
+      return normalizeVisualFx({ ...current, stages });
+    });
+  }
+
+  function removeStage(stageId: string) {
+    setDraft((current) => normalizeVisualFx({
+      ...current,
+      stages: (current.stages ?? []).filter((stage) => stage.id !== stageId),
+    }));
+    setSelectedStageId((current) => (current === stageId ? null : current));
+  }
+
+  function moveStage(stageId: string, direction: -1 | 1) {
+    setDraft((current) => {
+      const stages = [...(current.stages ?? [])];
+      const index = stages.findIndex((stage) => stage.id === stageId);
+      if (index < 0) {
+        return current;
+      }
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= stages.length) {
+        return current;
+      }
+      const [stage] = stages.splice(index, 1);
+      stages.splice(nextIndex, 0, stage!);
+      return normalizeVisualFx({ ...current, stages });
+    });
+  }
+
+  function reorderStage(fromId: string, toId: string) {
+    if (!fromId || !toId || fromId === toId) {
+      return;
+    }
+    setDraft((current) => {
+      const stages = [...(current.stages ?? [])];
+      const fromIndex = stages.findIndex((stage) => stage.id === fromId);
+      const toIndex = stages.findIndex((stage) => stage.id === toId);
+      if (fromIndex < 0 || toIndex < 0) {
+        return current;
+      }
+      const [stage] = stages.splice(fromIndex, 1);
+      stages.splice(toIndex, 0, stage!);
+      return normalizeVisualFx({ ...current, stages });
+    });
+  }
+
   function selectEntry(entry: VisualFxDefinition) {
     setSelectedId(entry.id);
     setDraft(entry);
+    setSelectedStageId(entry.stages?.[0]?.id ?? null);
     setStatus('');
   }
 
   function newEntry(template: 'blank' | 'fire' = 'blank') {
     setSelectedId(null);
     setDraft(template === 'fire' ? createFireCircleDraft() : emptyVisualFx());
+    setSelectedStageId(null);
     setStatus('New Visual FX draft.');
   }
 
@@ -172,6 +324,10 @@ export function VisualFxPage() {
     setSaveState({ state: 'saving', message: 'Saving...' });
     try {
       const normalized = normalizeVisualFx(draft);
+      const validationErrors = validateVisualFxDraft(normalized, entries.some((entry) => entry.id === normalized.id) ? entries : [...entries, normalized]);
+      if (validationErrors.length > 0) {
+        throw new Error(validationErrors[0]!);
+      }
       const saved = selectedId
         ? selectedId === normalized.id
           ? await visualFxService.update(selectedId, normalized)
@@ -330,6 +486,12 @@ export function VisualFxPage() {
               <option value="static_image">static_image</option>
             </select>
           </label>
+          <label>
+            <AdminFieldLabel label="Effect kind" hint="single = one FX as before. composite = full sequence with stages, branching, parallel groups and movement." />
+            <select value={draft.kind ?? 'single'} onChange={(event) => patch({ kind: event.target.value as NonNullable<VisualFxDefinition['kind']> })}>
+              {VISUAL_FX_KINDS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </label>
         </div>
 
         <label className="admin-form-grid full-width">
@@ -337,6 +499,163 @@ export function VisualFxPage() {
           <textarea rows={2} value={draft.description ?? ''} onChange={(event) => patch({ description: event.target.value || undefined })} />
         </label>
 
+        {draft.kind === 'composite' ? (
+          <section className="card visual-fx-section">
+            <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <h3>Sequence Stages</h3>
+                <p className="muted">Build a full combat script here: cast, projectile, impact, linger, sounds, camera, dash, teleports, branches and parallel groups.</p>
+              </div>
+              <button type="button" onClick={addStage}>Add Stage</button>
+            </div>
+            <div className="visual-fx-list" style={{ display: 'grid', gap: 12 }}>
+              {(draft.stages ?? []).map((stage, index) => (
+                <section
+                  key={stage.id}
+                  className={`card ${selectedStageId === stage.id ? 'is-active' : ''}`}
+                  draggable
+                  onDragStart={() => setDragStageId(stage.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (dragStageId) {
+                      reorderStage(dragStageId, stage.id);
+                      setDragStageId(null);
+                    }
+                  }}
+                  style={{ padding: 12, border: selectedStageId === stage.id ? '1px solid rgba(243, 204, 120, 0.95)' : undefined }}
+                >
+                  <div className="admin-actions-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <button type="button" onClick={() => setSelectedStageId(stage.id)} style={{ fontWeight: 700 }}>
+                      {index + 1}. {stage.name || stage.id}
+                    </button>
+                    <div className="admin-actions-row">
+                      <button type="button" onClick={() => moveStage(stage.id, -1)}>Up</button>
+                      <button type="button" onClick={() => moveStage(stage.id, 1)}>Down</button>
+                      <button type="button" onClick={() => duplicateStage(stage.id)}>Duplicate</button>
+                      <button type="button" onClick={() => removeStage(stage.id)}>Remove</button>
+                    </div>
+                  </div>
+                  <div className="admin-form-grid" style={{ marginTop: 12 }}>
+                    <label>
+                      <AdminFieldLabel label="Stage ID" hint="Stable stage identifier used for branching and preview." />
+                      <input value={stage.id} onChange={(event) => patchStage(stage.id, { id: event.target.value })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Name" hint="Readable label for the timeline/editor." />
+                      <input value={stage.name ?? ''} onChange={(event) => patchStage(stage.id, { name: event.target.value || undefined })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Stage type" hint="Gameplay-neutral phase type understood by the runtime." />
+                      <select value={stage.stageType} onChange={(event) => patchStage(stage.id, { stageType: event.target.value as typeof stage.stageType })}>
+                        {VISUAL_FX_STAGE_TYPES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label className="zone-editor-checkbox">
+                      <input type="checkbox" checked={stage.enabled !== false} onChange={(event) => patchStage(stage.id, { enabled: event.target.checked })} />
+                      <AdminFieldLabel label="Enabled" hint="Disabled stages stay in the timeline but do not execute." />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Trigger" hint="When this stage starts: immediately, after previous, after delay, on hit, or after previous complete." />
+                      <select value={stage.trigger} onChange={(event) => patchStage(stage.id, { trigger: event.target.value as typeof stage.trigger })}>
+                        {VISUAL_FX_STAGE_TRIGGERS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Delay ms" hint="Extra wait before this stage starts." />
+                      <input type="number" min={0} value={stage.delayMs ?? 0} onChange={(event) => patchStage(stage.id, { delayMs: Number(event.target.value) || 0 })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="FX ref ID" hint="Usually points to a saved single FX. Movement/sound/camera stages may work without it." />
+                      <input value={stage.fxRefId ?? ''} onChange={(event) => patchStage(stage.id, { fxRefId: event.target.value || undefined })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Variant FX refs" hint="Comma-separated alternatives. Enable randomize to pick one variant each run." />
+                      <input value={(stage.fxVariantIds ?? []).join(', ')} onChange={(event) => patchStage(stage.id, { fxVariantIds: asTags(event.target.value) })} />
+                    </label>
+                    <label className="zone-editor-checkbox">
+                      <input type="checkbox" checked={stage.randomizeFxVariant === true} onChange={(event) => patchStage(stage.id, { randomizeFxVariant: event.target.checked })} />
+                      <AdminFieldLabel label="Randomize variants" hint="Choose a random variant FX when the stage runs." />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Play on" hint="Where this stage anchors visually." />
+                      <select value={stage.playOn ?? 'target'} onChange={(event) => patchStage(stage.id, { playOn: event.target.value as typeof stage.playOn })}>
+                        {VISUAL_FX_STAGE_PLAY_ON.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Follow mode" hint="What the stage should stay attached to while it persists." />
+                      <select value={stage.followMode ?? 'none'} onChange={(event) => patchStage(stage.id, { followMode: event.target.value as typeof stage.followMode })}>
+                        {VISUAL_FX_STAGE_FOLLOW_MODES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Movement behavior" hint="Projectile paths, dashes and teleports can be driven directly from the stage." />
+                      <select value={stage.movementBehavior ?? 'none'} onChange={(event) => patchStage(stage.id, { movementBehavior: event.target.value as typeof stage.movementBehavior })}>
+                        {VISUAL_FX_STAGE_MOVEMENT_BEHAVIORS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Condition" hint="Optional runtime gate: always, only on hit, only on crit, or only on miss." />
+                      <select value={stage.condition ?? 'always'} onChange={(event) => patchStage(stage.id, { condition: event.target.value as typeof stage.condition })}>
+                        {VISUAL_FX_STAGE_CONDITIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Target mode" hint="Primary target, all targets, AoE targets, or chained targets for lightning/beam style stages." />
+                      <select value={stage.targetMode ?? 'primary_target'} onChange={(event) => patchStage(stage.id, { targetMode: event.target.value as typeof stage.targetMode })}>
+                        {VISUAL_FX_STAGE_TARGET_MODES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Parallel group" hint="Stages with the same non-empty parallel group can run together." />
+                      <input value={stage.parallelGroup ?? ''} onChange={(event) => patchStage(stage.id, { parallelGroup: event.target.value || undefined })} placeholder="impact_bundle_a" />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Branch to stages" hint="Comma-separated stage ids to jump to after this stage. Useful for branching and custom follow-ups." />
+                      <input value={(stage.branchToStageIds ?? []).join(', ')} onChange={(event) => patchStage(stage.id, { branchToStageIds: asTags(event.target.value) })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Duration ms" hint="Optional stage-level duration override." />
+                      <input type="number" min={0} value={stage.durationMs ?? 0} onChange={(event) => patchStage(stage.id, { durationMs: Number(event.target.value) || 0 })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Persist ms" hint="How long lingering and attached stages stay alive." />
+                      <input type="number" min={0} value={stage.persistMs ?? 0} onChange={(event) => patchStage(stage.id, { persistMs: Number(event.target.value) || 0 })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Audio refs" hint="Comma-separated layered audio sources or ids. All of them can fire together." />
+                      <input value={(stage.audioRefIds ?? []).join(', ')} onChange={(event) => patchStage(stage.id, { audioRefIds: asTags(event.target.value) })} />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Camera shake" hint="Optional stage-local shake preset." />
+                      <select value={stage.cameraShakePreset ?? 'none'} onChange={(event) => patchStage(stage.id, { cameraShakePreset: event.target.value as typeof stage.cameraShakePreset })}>
+                        <option value="none">none</option>
+                        <option value="small">small</option>
+                        <option value="medium">medium</option>
+                        <option value="heavy">heavy</option>
+                      </select>
+                    </label>
+                    <label className="zone-editor-checkbox">
+                      <input type="checkbox" checked={stage.stopSequenceOnFailure === true} onChange={(event) => patchStage(stage.id, { stopSequenceOnFailure: event.target.checked })} />
+                      <AdminFieldLabel label="Stop on failure" hint="If the stage cannot execute, stop the rest of the sequence." />
+                    </label>
+                    <label className="zone-editor-checkbox">
+                      <input type="checkbox" checked={stage.chainFromPrevious === true} onChange={(event) => patchStage(stage.id, { chainFromPrevious: event.target.checked })} />
+                      <AdminFieldLabel label="Chain from previous" hint="Useful for chain lightning / beam hops; the next target starts from the previous resolved impact point." />
+                    </label>
+                    <label>
+                      <AdminFieldLabel label="Max chain targets" hint="Maximum number of extra targets used by chain target mode." />
+                      <input type="number" min={1} value={stage.maxChainTargets ?? 3} onChange={(event) => patchStage(stage.id, { maxChainTargets: Number(event.target.value) || 1 })} />
+                    </label>
+                  </div>
+                </section>
+              ))}
+              {(draft.stages ?? []).length === 0 ? <p className="muted">No stages yet. Add a stage to begin building a composite FX.</p> : null}
+            </div>
+          </section>
+        ) : null}
+
+        {draft.kind !== 'composite' ? (
         <section className="card visual-fx-section">
           <h3>Asset</h3>
           <div className="admin-form-grid">
@@ -371,7 +690,9 @@ export function VisualFxPage() {
             </label>
           </div>
         </section>
+        ) : null}
 
+        {draft.kind !== 'composite' ? (
         <section className="card visual-fx-section">
           <h3>Animation / Placement / Render</h3>
           <div className="admin-form-grid">
@@ -394,6 +715,15 @@ export function VisualFxPage() {
               </select>
             </label>
             <label>
+              <AdminFieldLabel label="Placement mode" hint="once: разовый FX. linger/follow_target: горение или аура на цели. ground_persist: стоит на месте у ног/на земле." />
+              <select
+                value={draft.placement.mode ?? 'once'}
+                onChange={(event) => patchPlacement({ mode: event.target.value as NonNullable<VisualFxDefinition['placement']['mode']> })}
+              >
+                {VISUAL_FX_PLACEMENT_MODES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              </select>
+            </label>
+            <label>
               <AdminFieldLabel label="Anchor" hint="Semantic anchor for future placement refinements." />
               <select value={draft.placement.anchor ?? 'center'} onChange={(event) => patchPlacement({ anchor: event.target.value as NonNullable<VisualFxDefinition['placement']['anchor']> })}>
                 {ANCHORS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
@@ -410,6 +740,15 @@ export function VisualFxPage() {
             <label>
               <AdminFieldLabel label="Offset Y" hint="Positive moves the FX down." />
               <input type="number" value={draft.placement.offsetY ?? 0} onChange={(event) => patchPlacement({ offsetY: Number(event.target.value) || 0 })} />
+            </label>
+            <label>
+              <AdminFieldLabel label="Linger ms" hint="Сколько держать FX на месте/на цели для режимов linger/follow_target/follow_caster/ground_persist." />
+              <input
+                type="number"
+                min={80}
+                value={draft.placement.lingerDurationMs ?? 900}
+                onChange={(event) => patchPlacement({ lingerDurationMs: Number(event.target.value) || 900 })}
+              />
             </label>
             <label>
               <AdminFieldLabel label="Scale" hint="Visual scale only; gameplay radius still comes from skill targeting." />
@@ -443,7 +782,9 @@ export function VisualFxPage() {
             </label>
           </div>
         </section>
+        ) : null}
 
+        {draft.kind !== 'composite' ? (
         <section className="card visual-fx-section">
           <h3>Projectile / Camera / Audio</h3>
           <div className="admin-form-grid">
@@ -489,8 +830,9 @@ export function VisualFxPage() {
             </label>
           </div>
         </section>
+        ) : null}
 
-        <FxBattlePreview fx={draft} />
+        <FxBattlePreview fx={draft} registry={entries.some((entry) => entry.id === draft.id) ? entries.map((entry) => entry.id === draft.id ? draft : entry) : [...entries, draft]} selectedStageId={selectedStageId ?? undefined} />
 
         <section className="card visual-fx-section">
           <h3>JSON</h3>
@@ -533,7 +875,7 @@ export function VisualFxPage() {
             >
               <strong>{entry.name || entry.id}</strong>
               <span>{entry.id}</span>
-              <span>{entry.category} / {entry.element ?? 'none'} / {entry.status}</span>
+              <span>{entry.kind ?? 'single'} / {entry.category} / {entry.element ?? 'none'} / {entry.status}</span>
             </button>
           ))}
           {visibleEntries.length === 0 ? <p className="muted">No Visual FX entries.</p> : null}

@@ -1,4 +1,4 @@
-import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisitionConfig, type SkillRequirementConfig } from '@theend/rpg-domain';
+import { CastType, SkillTargetType, type AdminSkillDefinition, type SkillAcquisitionConfig, type SkillMovementBehavior, type SkillRequirementConfig } from '@theend/rpg-domain';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { AdminAudioField } from '../AdminAudioField';
@@ -20,6 +20,13 @@ import type { GameImageRef, StoredImage } from '../../services/content/models';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 
 type SkillTab = 'basic' | 'levels' | 'costs' | 'effects' | 'visuals' | 'target' | 'requirements' | 'acquisition' | 'classes' | 'races' | 'runes' | 'shamanism' | 'risks' | 'preview';
+
+const SKILL_MOVEMENT_BEHAVIORS: SkillMovementBehavior[] = [
+  'none',
+  'dash_to_target',
+  'teleport_to_target',
+  'teleport_there_and_back',
+];
 
 interface SkillFormProps {
   draft: AdminSkillDefinition;
@@ -370,6 +377,15 @@ export function SkillForm(props: SkillFormProps) {
                   <option value="small">small</option>
                   <option value="medium">medium</option>
                   <option value="heavy">heavy</option>
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Movement behavior" hint="dash_to_target: быстрый рывок к врагу с ударом. teleport_to_target: резкий blink к цели. teleport_there_and_back: blink к цели и возврат." />
+                <select
+                  value={draft.visuals?.movementBehavior ?? 'none'}
+                  onChange={(event) => patchVisuals({ movementBehavior: event.target.value as SkillMovementBehavior })}
+                >
+                  {SKILL_MOVEMENT_BEHAVIORS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                 </select>
               </label>
               <label>

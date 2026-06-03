@@ -52,6 +52,7 @@ export interface GameImageViewProps {
   className?: string;
   size?: number;
   fallbackText?: string;
+  fit?: 'cover' | 'contain';
 }
 
 export function GameImageView({
@@ -62,9 +63,23 @@ export function GameImageView({
   className,
   size = 72,
   fallbackText = '?',
+  fit = 'cover',
 }: GameImageViewProps) {
   function isDirectImageSource(valueToCheck: string): boolean {
     return valueToCheck.startsWith('data:') || valueToCheck.startsWith('/') || valueToCheck.startsWith('http://') || valueToCheck.startsWith('https://');
+  }
+
+  function isBrokenPlaceholderSource(valueToCheck: string): boolean {
+    const probe = valueToCheck.trim().toLowerCase();
+    if (!probe) {
+      return true;
+    }
+    return probe === 'unknown'
+      || probe === '/unknown'
+      || probe.includes('unknown_placeholder')
+      || probe.endsWith('/unknown.png')
+      || probe.endsWith('/unknown.jpg')
+      || probe.endsWith('/unknown.jpeg');
   }
 
   const normalized = useMemo(
@@ -130,7 +145,11 @@ export function GameImageView({
     };
   }, [baseResolvedSrc, normalized]);
 
-  const src = (baseResolvedSrc && isDirectImageSource(baseResolvedSrc)) ? baseResolvedSrc : (fallbackSrc || '');
+  const directSrc = (baseResolvedSrc && isDirectImageSource(baseResolvedSrc) && !isBrokenPlaceholderSource(baseResolvedSrc))
+    ? baseResolvedSrc
+    : '';
+  const safeFallbackSrc = !isBrokenPlaceholderSource(fallbackSrc) ? fallbackSrc : '';
+  const src = directSrc || safeFallbackSrc;
 
   const baseStyle: CSSProperties = {
     width: size,
@@ -156,7 +175,7 @@ export function GameImageView({
         className={className}
         src={src}
         alt={alt}
-        style={{ ...baseStyle, objectFit: 'cover' }}
+        style={{ ...baseStyle, objectFit: fit }}
       />
     );
   }

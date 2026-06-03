@@ -1,12 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PROFESSION_DEFINITIONS = exports.EMPTY_PLAYER_PROFESSIONS_STATE = void 0;
+exports.PROFESSION_DEFINITIONS = exports.EMPTY_PLAYER_PROFESSIONS_STATE = exports.BLACKSMITH_STATS_KEYS = void 0;
 exports.getProfessionDefinition = getProfessionDefinition;
 exports.normalizePlayerProfessionsState = normalizePlayerProfessionsState;
 exports.getPlayerProfession = getPlayerProfession;
 exports.hasProfession = hasProfession;
 exports.unlockProfession = unlockProfession;
 exports.addProfessionXp = addProfessionXp;
+exports.computeBlacksmithXpReward = computeBlacksmithXpReward;
+exports.applyBlacksmithCraftResult = applyBlacksmithCraftResult;
+exports.BLACKSMITH_STATS_KEYS = {
+    totalCrafts: 'blacksmithTotalCrafts',
+    successfulCrafts: 'blacksmithSuccessfulCrafts',
+    failedCrafts: 'blacksmithFailedCrafts',
+    bestScore: 'blacksmithBestScore',
+    averageQuality: 'blacksmithAverageQuality',
+    qualityCrafts: 'blacksmithQualityCrafts',
+    masterworkCrafts: 'blacksmithMasterworkCrafts',
+    lastScore: 'blacksmithLastScore',
+};
 exports.EMPTY_PLAYER_PROFESSIONS_STATE = {
     professions: [],
 };
@@ -245,5 +257,55 @@ function addProfessionXp(playerProfessions, professionId, amount) {
     };
     return {
         professions: playerProfessions.professions.map((entry, entryIndex) => (entryIndex === index ? updated : entry)),
+    };
+}
+function computeBlacksmithXpReward(input) {
+    const baseXp = Math.max(0, Math.floor(Number(input.baseXp) || 0));
+    const materialTierXp = Math.max(0, Math.floor(Number(input.materialTierXp ?? 0) || 0));
+    const qualityBonus = Math.floor(Number(input.qualityBonus ?? 0) || 0);
+    const qualityPenalty = Math.floor(Number(input.qualityPenalty ?? 0) || 0);
+    const startAfter = Math.max(0, Math.floor(Number(input.diminishingStartAfter ?? 3) || 0));
+    const repeatCraftCount = Math.max(0, Math.floor(Number(input.repeatCraftCount ?? 0) || 0));
+    const floorMultiplier = Math.max(0, Math.min(1, Number(input.diminishingFloorMultiplier ?? 0.35)));
+    const decayPerCraft = Math.max(0, Math.min(1, Number(input.diminishingDecayPerCraft ?? 0.12)));
+    const bonusPercent = Number(input.successBonusPercent ?? 0) - Number(input.failureReductionPercent ?? 0);
+    const bonusMultiplier = Math.max(0.1, 1 + bonusPercent / 100);
+    const craftsOverCap = Math.max(0, repeatCraftCount - startAfter);
+    const diminishingMultiplier = craftsOverCap > 0
+        ? Math.max(floorMultiplier, 1 - craftsOverCap * decayPerCraft)
+        : 1;
+    const raw = Math.round((baseXp + materialTierXp + qualityBonus + qualityPenalty) * bonusMultiplier * diminishingMultiplier);
+    return Math.max(1, raw);
+}
+function applyBlacksmithCraftResult(playerProfessions, professionId, payload) {
+    const withXp = addProfessionXp(playerProfessions, professionId, payload.xpReward);
+    return {
+        professions: withXp.professions.map((entry) => {
+            if (entry.professionId !== professionId) {
+                return entry;
+            }
+            const stats = { ...(entry.stats ?? {}) };
+            const totalCrafts = Math.max(0, Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.totalCrafts] ?? 0))) + 1;
+            const successfulCrafts = Math.max(0, Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.successfulCrafts] ?? 0))) + (payload.success ? 1 : 0);
+            const failedCrafts = Math.max(0, Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.failedCrafts] ?? 0))) + (payload.success ? 0 : 1);
+            const previousAverage = Math.max(0, Number(stats[exports.BLACKSMITH_STATS_KEYS.averageQuality] ?? 0));
+            const nextAverage = ((previousAverage * Math.max(0, totalCrafts - 1)) + payload.score) / totalCrafts;
+            const qualityCrafts = Math.max(0, Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.qualityCrafts] ?? 0))) + (payload.isQualityCraft ? 1 : 0);
+            const masterworkCrafts = Math.max(0, Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.masterworkCrafts] ?? 0))) + (payload.isMasterwork ? 1 : 0);
+            return {
+                ...entry,
+                stats: {
+                    ...stats,
+                    [exports.BLACKSMITH_STATS_KEYS.totalCrafts]: totalCrafts,
+                    [exports.BLACKSMITH_STATS_KEYS.successfulCrafts]: successfulCrafts,
+                    [exports.BLACKSMITH_STATS_KEYS.failedCrafts]: failedCrafts,
+                    [exports.BLACKSMITH_STATS_KEYS.bestScore]: Math.max(Math.round(Number(stats[exports.BLACKSMITH_STATS_KEYS.bestScore] ?? 0)), payload.score),
+                    [exports.BLACKSMITH_STATS_KEYS.averageQuality]: Number(nextAverage.toFixed(2)),
+                    [exports.BLACKSMITH_STATS_KEYS.qualityCrafts]: qualityCrafts,
+                    [exports.BLACKSMITH_STATS_KEYS.masterworkCrafts]: masterworkCrafts,
+                    [exports.BLACKSMITH_STATS_KEYS.lastScore]: payload.score,
+                },
+            };
+        }),
     };
 }

@@ -40,6 +40,7 @@ __exportStar(require("./merchants"), exports);
 __exportStar(require("./inventory"), exports);
 __exportStar(require("./equipment"), exports);
 __exportStar(require("./professions"), exports);
+__exportStar(require("./blacksmith-session"), exports);
 __exportStar(require("./shop"), exports);
 __exportStar(require("./battle-map"), exports);
 __exportStar(require("./visual-effects"), exports);

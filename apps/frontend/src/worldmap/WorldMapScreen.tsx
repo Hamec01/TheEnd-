@@ -1215,6 +1215,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const worldMusicFadeRafRef = useRef<number | null>(null);
   const worldMusicCurrentKingdomRef = useRef<string | null>(null);
   const worldMusicLastTrackByKingdomRef = useRef<Map<string, string>>(new Map());
+  const worldMusicRecentTracksByKingdomRef = useRef<Map<string, string[]>>(new Map());
+  const worldMusicCurrentSourcesRef = useRef<string[]>([]);
+  const worldMusicTargetVolumeRef = useRef(0);
   const footstepAudioPoolRef = useRef<HTMLAudioElement[]>([]);
   const footstepFailedSourcesRef = useRef<Set<string>>(new Set());
   const footstepLastPlayedAtRef = useRef(0);
@@ -1763,6 +1766,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const fadeOutMs = Math.max(250, cue?.fadeOutMs ?? 1200);
     const fadeInMs = Math.max(250, cue?.fadeInMs ?? 1200);
 
+    worldMusicCurrentSourcesRef.current = sources;
+    worldMusicTargetVolumeRef.current = targetVolume;
+
     const ensureAudioPair = () => {
       if (!worldMusicActiveAudioRef.current) {
         const active = new Audio();
@@ -1789,6 +1795,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (!audio) {
         return;
       }
+      audio.onended = null;
       clearFade();
       const startAt = performance.now();
       const fromVolume = Number.isFinite(audio.volume) ? audio.volume : targetVolume;
@@ -1808,18 +1815,54 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       worldMusicFadeRafRef.current = window.requestAnimationFrame(step);
     };
 
-    const pickRandomSource = (pool: string[], previous: string | null): string => {
+    const pickRandomSource = (pool: string[], previous: string | null, key: string): string => {
       if (pool.length <= 1) {
         return pool[0]!;
       }
-      const candidates = pool.filter((entry) => entry !== previous);
+      const recent = worldMusicRecentTracksByKingdomRef.current.get(key) ?? [];
+      const memorySize = Math.max(1, Math.min(3, pool.length - 1));
+      const recentSet = new Set(recent.slice(-memorySize));
+      const candidates = pool.filter((entry) => entry !== previous && !recentSet.has(entry));
       const sourcePool = candidates.length > 0 ? candidates : pool;
       const randomIndex = Math.floor(Math.random() * sourcePool.length);
       return sourcePool[Math.max(0, Math.min(sourcePool.length - 1, randomIndex))]!;
     };
 
+    const rememberPlayedTrack = (key: string, source: string, poolSize: number) => {
+      const previous = worldMusicRecentTracksByKingdomRef.current.get(key) ?? [];
+      const deduped = [...previous.filter((entry) => entry !== source), source];
+      const maxRecent = Math.max(1, Math.min(3, Math.max(1, poolSize - 1)));
+      worldMusicRecentTracksByKingdomRef.current.set(key, deduped.slice(-maxRecent));
+    };
+
+    const bindContinuousRandomPlayback = (audio: HTMLAudioElement, key: string) => {
+      audio.loop = false;
+      audio.onended = () => {
+        if (worldMusicCurrentKingdomRef.current !== key) {
+          return;
+        }
+        const pool = worldMusicCurrentSourcesRef.current;
+        if (pool.length === 0) {
+          return;
+        }
+        const previousTrack = worldMusicLastTrackByKingdomRef.current.get(key) ?? null;
+        const nextSource = pickRandomSource(pool, previousTrack, key);
+        worldMusicLastTrackByKingdomRef.current.set(key, nextSource);
+        rememberPlayedTrack(key, nextSource, pool.length);
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = nextSource;
+        audio.volume = worldMusicTargetVolumeRef.current;
+        void audio.play().catch(() => {
+          // Ignore autoplay restrictions silently; playback resumes after user interaction.
+        });
+      };
+    };
+
     if (!kingdomKey || sources.length === 0 || targetVolume <= 0) {
       worldMusicCurrentKingdomRef.current = null;
+      worldMusicCurrentSourcesRef.current = [];
+      worldMusicTargetVolumeRef.current = 0;
       fadeOutAndStop(worldMusicActiveAudioRef.current, fadeOutMs);
       return;
     }
@@ -1828,6 +1871,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const activeAudio = worldMusicActiveAudioRef.current;
     const currentlyPlaying = Boolean(activeAudio && !activeAudio.paused && activeAudio.currentSrc);
     if (sameKingdom && currentlyPlaying) {
+      if (activeAudio) {
+        bindContinuousRandomPlayback(activeAudio, kingdomKey);
+        activeAudio.volume = targetVolume;
+      }
       return;
     }
 
@@ -1840,14 +1887,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const previousTrack = worldMusicLastTrackByKingdomRef.current.get(kingdomKey) ?? null;
-    const nextSource = pickRandomSource(sources, previousTrack);
+    const nextSource = pickRandomSource(sources, previousTrack, kingdomKey);
     worldMusicLastTrackByKingdomRef.current.set(kingdomKey, nextSource);
+    rememberPlayedTrack(kingdomKey, nextSource, sources.length);
     worldMusicCurrentKingdomRef.current = kingdomKey;
 
     incoming.pause();
     incoming.currentTime = 0;
     incoming.src = nextSource;
-    incoming.loop = true;
+    bindContinuousRandomPlayback(incoming, kingdomKey);
     incoming.volume = 0;
 
     const playPromise = incoming.play();
@@ -1870,6 +1918,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           if (elapsed >= durationMs) {
             incoming.volume = targetVolume;
             if (outgoing) {
+              outgoing.onended = null;
               outgoing.pause();
               outgoing.currentTime = 0;
               outgoing.removeAttribute('src');
@@ -2382,13 +2431,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       visibleCityLocations.flatMap((location) => location.shopIds ?? []).filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
     );
 
-    return worldSnapshot.activeEntities
-      .filter((entity) =>
-        entity.renderInCityMap === true
-        && entity.cityId === activeCity.id
-        && !!entity.merchantId?.trim()
-        && !staticMerchantIds.has(entity.merchantId.trim()),
-      )
+  return worldSnapshot.activeEntities
+    .filter((entity) =>
+      entity.renderInCityMap === true
+      && normalizeCitySceneId(entity.cityId) === activeCity.id
+      && !!entity.merchantId?.trim()
+      && !staticMerchantIds.has(entity.merchantId.trim()),
+    )
       .map((entity) => {
         const merchantId = entity.merchantId!.trim();
         const merchant = merchantById.get(merchantId) ?? null;
@@ -7603,11 +7652,42 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     if (activeWorldModal.type === "merchant") {
       const merchant = merchantById.get(activeWorldModal.merchantId) ?? null;
+      const linkedNpc = merchant?.id
+        ? (npcs.find((entry) => entry.traderId === merchant.id) ?? null)
+        : null;
       portrait = resolveMerchantImage?.(merchant);
+      if (!portrait && linkedNpc) {
+        portrait = resolveNpcPortrait(linkedNpc);
+      }
       title = merchant?.name ?? activeWorldModal.merchantId;
+      subtitle = linkedNpc?.title;
       description = merchant?.description ?? modalLocation?.description;
+      const canOpenDialogue = Boolean(
+        linkedNpc && (
+          linkedNpc.canTalk ||
+          linkedNpc.canGiveQuests ||
+          linkedNpc.questBindings.length ||
+          linkedNpc.dialogues.length
+        ),
+      );
       buttons = (
         <>
+          {canOpenDialogue ? (
+            <button
+              onClick={() => {
+                if (!linkedNpc) {
+                  return;
+                }
+                closeModal();
+                openNpcDialogue(linkedNpc.id, {
+                  cityId: activeCity?.id,
+                  locationId: activeWorldModal.locationId,
+                });
+              }}
+            >
+              {"\u0417\u0430\u0433\u043e\u0432\u043e\u0440\u0438\u0442\u044c"}
+            </button>
+          ) : null}
           <button
             onClick={() => {
               closeModal();

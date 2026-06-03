@@ -31,6 +31,9 @@ function normalizeBranch(value: unknown): ProfessionBranch | null {
     name,
     description: String(raw.description ?? '').trim(),
     exclusiveGroupId: String(raw.exclusiveGroupId ?? '').trim() || undefined,
+    exclusiveGroupMax: Number.isFinite(Number(raw.exclusiveGroupMax)) && Number(raw.exclusiveGroupMax) > 0
+      ? Math.floor(Number(raw.exclusiveGroupMax))
+      : undefined,
     requiredSkillIds: normalizeStringArray(raw.requiredSkillIds),
     requiredBranchIds: normalizeStringArray(raw.requiredBranchIds),
     locksBranchIds: normalizeStringArray(raw.locksBranchIds),
@@ -145,6 +148,7 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
     name: string;
     description?: string;
     exclusiveGroupId?: string;
+    exclusiveGroupMax?: number;
     requiredSkillIds?: string[];
     requiredBranchIds?: string[];
     locksBranchIds?: string[];
@@ -155,6 +159,7 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
     name: params.name,
     description: params.description ?? params.name,
     exclusiveGroupId: params.exclusiveGroupId,
+    exclusiveGroupMax: params.exclusiveGroupMax,
     requiredSkillIds: params.requiredSkillIds ?? [],
     requiredBranchIds: params.requiredBranchIds ?? [],
     locksBranchIds: params.locksBranchIds ?? [],
@@ -174,6 +179,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_weapon_path',
       name: 'Оружейник',
       description: 'Путь ковки оружия: клинки, баланс, рукояти и оружейные гнезда.',
+      exclusiveGroupId: 'blacksmith_specialization_path',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
@@ -187,6 +194,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_armor_path',
       name: 'Бронник',
       description: 'Путь ковки брони и щитов: пластины, усиление защиты и подгонка доспехов.',
+      exclusiveGroupId: 'blacksmith_specialization_path',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
@@ -200,6 +209,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_precision_path',
       name: 'Точный кузнец',
       description: 'Путь точной работы: оправы, посадка вставок и подготовка поверхности под руны.',
+      exclusiveGroupId: 'blacksmith_specialization_path',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_start'],
       requiredSkillIds: [
         'blacksmith_basic_forging',
@@ -213,6 +224,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_weapon_master_path',
       name: 'Мастер оружия',
       description: 'Верхняя ступень оружейного пути: точная форма, усиленная режущая кромка и глубокая подгонка оружия.',
+      exclusiveGroupId: 'blacksmith_master_specialization',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_weapon_path'],
       requiredSkillIds: [
         'blacksmith_weapon_blades',
@@ -226,6 +239,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_armor_master_path',
       name: 'Мастер брони',
       description: 'Верхняя ступень защитного пути: стойкость, противоударная сборка и продвинутая работа по броне.',
+      exclusiveGroupId: 'blacksmith_master_specialization',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_armor_path'],
       requiredSkillIds: [
         'blacksmith_armor_forging',
@@ -239,6 +254,8 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
       id: 'blacksmith_setting_master_path',
       name: 'Мастер оправы',
       description: 'Верхняя ступень точной ветки: стабильные оправы, рунная подготовка и герметизация посадок.',
+      exclusiveGroupId: 'blacksmith_master_specialization',
+      exclusiveGroupMax: 2,
       requiredBranchIds: ['blacksmith_precision_path'],
       requiredSkillIds: [
         'blacksmith_fine_work',
@@ -251,19 +268,9 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
     branch({
       id: 'final_blacksmith_trial',
       name: 'Финальное испытание кузнеца',
-      description: 'Узел перехода к отдельным профессиям после завершения ключевых ветвей кузнеца.',
-      requiredBranchIds: [
-        'blacksmith_weapon_master_path',
-        'blacksmith_armor_master_path',
-        'blacksmith_setting_master_path',
-      ],
-      requiredSkillIds: [
-        'blacksmith_razor_steel',
-        'blacksmith_firm_armor_fit',
-        'blacksmith_gem_settings',
-        'blacksmith_rune_marking',
-        'blacksmith_base_seal',
-      ],
+      description: 'Узел перехода к отдельным профессиям после завершения двух мастерских ветвей.',
+      requiredBranchIds: ['blacksmith_start'],
+      requiredSkillIds: [],
       isFinalBranch: true,
     }),
   ];

@@ -1,6 +1,7 @@
 import type { ArenaBattleState, ArenaCombatEntity, TargetZone } from './arena-battle';
 import { syncControlFlagsFromActiveStatuses } from './combat-status-sync';
 import { resolveCombatCommandCost, type CombatActionCostKey } from './combat-costs';
+import type { SkillMovementBehavior } from './visual-effects';
 
 export const DEFAULT_MAX_COMMANDS_PER_ROUND = 3;
 export const HARD_MAX_COMMANDS_PER_ROUND = 4;
@@ -241,6 +242,7 @@ export interface CombatAnimationEvent {
   castSoundId?: string;
   impactSoundId?: string;
   soundId?: string;
+  movementBehavior?: SkillMovementBehavior;
   statusApplied?: string[];
   statusRemoved?: string[];
   persistentVfx?: string[];

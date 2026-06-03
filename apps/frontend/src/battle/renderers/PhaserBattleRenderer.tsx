@@ -1069,6 +1069,205 @@ class PhaserBattleScene extends Phaser.Scene {
     });
   }
 
+  private playSkillMovementBehavior(
+    behavior: CombatAnimationEvent['movementBehavior'],
+    actorToken: Phaser.GameObjects.Container,
+    targetToken: Phaser.GameObjects.Container,
+  ): boolean {
+    if (!behavior || behavior === 'none') {
+      return false;
+    }
+
+    const originX = actorToken.x;
+    const originY = actorToken.y;
+    const dx = targetToken.x - originX;
+    const dy = targetToken.y - originY;
+    const distance = Phaser.Math.Distance.Between(originX, originY, targetToken.x, targetToken.y);
+    const stopShort = Math.min(32, distance * 0.22);
+    const travelRatio = distance <= 0 ? 1 : Math.max(0, (distance - stopShort) / distance);
+    const strikeX = originX + dx * travelRatio;
+    const strikeY = originY + dy * travelRatio;
+
+    if (behavior === 'dash_to_target') {
+      this.tweens.add({
+        targets: actorToken,
+        x: strikeX,
+        y: strikeY,
+        duration: 110,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.playMeleeSlashEffect({ fromX: strikeX, fromY: strikeY, toX: targetToken.x, toY: targetToken.y, effectId: 'default_melee_hit' });
+          this.tweens.add({
+            targets: actorToken,
+            x: originX,
+            y: originY,
+            duration: 110,
+            ease: 'Quad.easeIn',
+          });
+        },
+      });
+      return true;
+    }
+
+    const blinkOut = () => {
+      this.tweens.add({
+        targets: actorToken,
+        alpha: 0,
+        duration: 60,
+        onComplete: () => {
+          actorToken.setPosition(strikeX, strikeY);
+          this.playImpactEffect(targetToken.x, targetToken.y, 'impact_arcane');
+          this.tweens.add({
+            targets: actorToken,
+            alpha: 1,
+            duration: 60,
+            onComplete: () => {
+              this.playMeleeSlashEffect({ fromX: strikeX, fromY: strikeY, toX: targetToken.x, toY: targetToken.y, effectId: 'default_melee_hit' });
+              const returnDelay = behavior === 'teleport_there_and_back' ? 120 : 20;
+              this.time.delayedCall(returnDelay, () => {
+                this.tweens.add({
+                  targets: actorToken,
+                  alpha: 0,
+                  duration: 60,
+                  onComplete: () => {
+                    actorToken.setPosition(originX, originY);
+                    this.tweens.add({
+                      targets: actorToken,
+                      alpha: 1,
+                      duration: 60,
+                    });
+                  },
+                });
+              });
+            },
+          });
+        },
+      });
+    };
+
+    blinkOut();
+    return true;
+  }
+
+  private playSkillMovementBehaviorAsync(
+    behavior: CombatAnimationEvent['movementBehavior'],
+    actorToken: Phaser.GameObjects.Container,
+    targetToken: Phaser.GameObjects.Container,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!behavior || behavior === 'none') {
+        resolve(false);
+        return;
+      }
+
+      const originX = actorToken.x;
+      const originY = actorToken.y;
+      const dx = targetToken.x - originX;
+      const dy = targetToken.y - originY;
+      const distance = Phaser.Math.Distance.Between(originX, originY, targetToken.x, targetToken.y);
+      const stopShort = Math.min(32, distance * 0.22);
+      const travelRatio = distance <= 0 ? 1 : Math.max(0, (distance - stopShort) / distance);
+      const strikeX = originX + dx * travelRatio;
+      const strikeY = originY + dy * travelRatio;
+
+      if (behavior === 'dash_to_target') {
+        this.tweens.add({
+          targets: actorToken,
+          x: strikeX,
+          y: strikeY,
+          duration: 110,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            this.playMeleeSlashEffect({ fromX: strikeX, fromY: strikeY, toX: targetToken.x, toY: targetToken.y, effectId: 'default_melee_hit' });
+            this.tweens.add({
+              targets: actorToken,
+              x: originX,
+              y: originY,
+              duration: 110,
+              ease: 'Quad.easeIn',
+              onComplete: () => resolve(true),
+            });
+          },
+        });
+        return;
+      }
+
+      this.tweens.add({
+        targets: actorToken,
+        alpha: 0,
+        duration: 60,
+        onComplete: () => {
+          actorToken.setPosition(strikeX, strikeY);
+          this.playImpactEffect(targetToken.x, targetToken.y, 'impact_arcane');
+          this.tweens.add({
+            targets: actorToken,
+            alpha: 1,
+            duration: 60,
+            onComplete: () => {
+              this.playMeleeSlashEffect({ fromX: strikeX, fromY: strikeY, toX: targetToken.x, toY: targetToken.y, effectId: 'default_melee_hit' });
+              const returnDelay = behavior === 'teleport_there_and_back' ? 120 : 20;
+              this.time.delayedCall(returnDelay, () => {
+                this.tweens.add({
+                  targets: actorToken,
+                  alpha: 0,
+                  duration: 60,
+                  onComplete: () => {
+                    actorToken.setPosition(originX, originY);
+                    this.tweens.add({
+                      targets: actorToken,
+                      alpha: 1,
+                      duration: 60,
+                      onComplete: () => resolve(true),
+                    });
+                  },
+                });
+              });
+            },
+          });
+        },
+      });
+    });
+  }
+
+  private playCompositeVisualEffect(event: CombatAnimationEvent, effectId: string, actorToken?: Phaser.GameObjects.Container, targetToken?: Phaser.GameObjects.Container): boolean {
+    if (!this.visualFxPlayer || !actorToken) {
+      return false;
+    }
+    const targetPosition = targetToken
+      ? { x: targetToken.x, y: targetToken.y }
+      : event.to
+        ? this.getAdapter()?.getCellCenter(event.to.x, event.to.y)
+        : { x: actorToken.x, y: actorToken.y };
+    if (!targetPosition) {
+      return false;
+    }
+
+    const additionalTargetPositions = targetToken
+      ? [...this.tokenById.entries()]
+        .filter(([id, token]) => id !== event.actorId && id !== event.targetId && token.visible)
+        .slice(0, 3)
+        .map(([, token]) => ({ x: token.x, y: token.y }))
+      : [];
+
+    return this.visualFxPlayer.playEffectById(effectId, {
+      casterId: event.actorId,
+      targetId: event.targetId,
+      casterPosition: { x: actorToken.x, y: actorToken.y },
+      targetPosition,
+      groundPosition: targetPosition,
+      additionalTargetPositions,
+      result: event.type === 'miss' ? 'miss' : (event.critical ? 'crit' : 'hit'),
+      movementHook: targetToken
+        ? (behavior, from, to) => {
+          actorToken.setPosition(from.x, from.y);
+          return this.playSkillMovementBehaviorAsync(behavior, actorToken, targetToken).then(() => undefined);
+        }
+        : undefined,
+      audioHook: (soundId, volume) => this.playSoundSafe(soundId, volume),
+      cameraHook: (preset) => this.applyCameraShake(preset),
+    });
+  }
+
   private attachStatusVfx(entityId: string, token: Phaser.GameObjects.Container, statusId: string) {
     let bucket = this.statusVfxByEntity.get(entityId);
     if (!bucket) {
@@ -1202,6 +1401,13 @@ class PhaserBattleScene extends Phaser.Scene {
     const inferred = getBattleEffect(event.hitEffectId ?? event.impactEffectId ?? event.visualEffectId, inferEffectIdForAnimation(event));
 
     if (event.type === 'skill_cast' && actorToken) {
+      const compositeId = [event.visualEffectId, event.castEffectId].find((id) => this.visualFxPlayer?.isComposite(id));
+      if (compositeId && this.playCompositeVisualEffect(event, compositeId, actorToken, targetToken)) {
+        return;
+      }
+      if (targetToken) {
+        this.playSkillMovementBehavior(event.movementBehavior, actorToken, targetToken);
+      }
       const registeredCastFx = this.visualFxPlayer?.getFx(event.castEffectId ?? event.visualEffectId);
       if (registeredCastFx && this.visualFxPlayer?.playFxAt(registeredCastFx, { x: actorToken.x, y: actorToken.y })) {
         this.playSoundSafe(event.castSoundId ?? registeredCastFx.audio?.defaultSoundId, registeredCastFx.audio?.volume);
@@ -1258,6 +1464,10 @@ class PhaserBattleScene extends Phaser.Scene {
     }
 
     if (event.type === 'projectile') {
+      const compositeId = [event.projectileEffectId, event.visualEffectId, event.impactEffectId].find((id) => this.visualFxPlayer?.isComposite(id));
+      if (compositeId && actorToken && this.playCompositeVisualEffect(event, compositeId, actorToken, targetToken)) {
+        return;
+      }
       const projectileFxId = event.projectileEffectId ?? event.visualEffectId;
       const impactFxId = event.impactEffectId ?? event.hitEffectId ?? event.visualEffectId;
       const from = event.from
@@ -1300,6 +1510,10 @@ class PhaserBattleScene extends Phaser.Scene {
     }
 
     if (event.type === 'impact' && (targetToken || event.to)) {
+      const compositeId = [event.impactEffectId, event.hitEffectId, event.visualEffectId].find((id) => this.visualFxPlayer?.isComposite(id));
+      if (compositeId && actorToken && this.playCompositeVisualEffect(event, compositeId, actorToken, targetToken)) {
+        return;
+      }
       const impactTarget = targetToken
         ? { x: targetToken.x, y: targetToken.y }
         : adapter.getCellCenter(event.to!.x, event.to!.y);

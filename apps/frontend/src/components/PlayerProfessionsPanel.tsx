@@ -1,16 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  BLACKSMITH_STATS_KEYS,
+  applyBlacksmithCraftResult,
+  type BlacksmithSessionState,
   normalizePlayerProfessionsState,
   PROFESSION_DEFINITIONS,
   type PlayerProfessionState,
   type PlayerProfessionsState,
   type ProfessionId,
 } from '@theend/rpg-domain';
+import { BlacksmithForgeTab } from '../features/blacksmith/BlacksmithForgeTab';
+import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
+import { BlacksmithRecipesTab } from '../features/blacksmith/BlacksmithRecipesTab';
+import { resolveBlacksmithSkillBonuses } from '../features/blacksmith/blacksmithSkillEffects';
+import {
+  canUnlockFinalBlacksmithTrial,
+  countSelectedBranchesInExclusiveGroup,
+  getBlockedByExclusiveSkillGroupReason,
+  getExclusiveGroupMax,
+} from '../services/professionSkillTreeUtils';
 import { loadProfessionSkillsFromStorage } from '../services/professionSkillRepository';
 import { loadProfessionBranchesFromStorage } from '../services/professionBranchRepository';
 import { getBlockedByExclusiveBranchReason } from '../services/miningSkillValidation';
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
-import type { StoredImage } from '../services/content/models';
+import { getContentSnapshot } from '../services/content/contentApi';
+import { loadRuntimeBlacksmithContent } from '../services/content/runtimeContentService';
+import type { AdminItem, BlacksmithBalance, BlacksmithForgeTier, BlacksmithModule, BlacksmithQualityTier, BlacksmithTool, CraftingRecipe, Material, RecipeVisualProfile, StoredImage } from '../services/content/models';
 import { loadMiningToolsFromStorage } from '../services/miningRepository';
 import { loadMiningCareerStats, type MiningCareerStats } from '../services/miningCareerStats';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
@@ -28,11 +43,22 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const { characterId, professionsState, onClose, onStatus, onChange } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'stats' | 'tree'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
   const [professionSkills, setProfessionSkills] = useState<ProfessionSkill[]>([]);
   const [professionBranches, setProfessionBranches] = useState<ProfessionBranch[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
   const [miningCareerStats, setMiningCareerStats] = useState<MiningCareerStats | null>(null);
+  const [blacksmithRecipes, setBlacksmithRecipes] = useState<CraftingRecipe[]>([]);
+  const [blacksmithForgeTiers, setBlacksmithForgeTiers] = useState<BlacksmithForgeTier[]>([]);
+  const [blacksmithModules, setBlacksmithModules] = useState<BlacksmithModule[]>([]);
+  const [blacksmithTools, setBlacksmithTools] = useState<BlacksmithTool[]>([]);
+  const [blacksmithQualityTiers, setBlacksmithQualityTiers] = useState<BlacksmithQualityTier[]>([]);
+  const [blacksmithBalance, setBlacksmithBalance] = useState<BlacksmithBalance | null>(null);
+  const [recipeVisualProfiles, setRecipeVisualProfiles] = useState<RecipeVisualProfile[]>([]);
+  const [materialsCatalog, setMaterialsCatalog] = useState<Material[]>([]);
+  const [itemsCatalog, setItemsCatalog] = useState<AdminItem[]>([]);
+  const [selectedBlacksmithRecipeId, setSelectedBlacksmithRecipeId] = useState<string | null>(null);
+  const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
 
   const definitionById = useMemo(
     () => new Map(PROFESSION_DEFINITIONS.map((entry) => [entry.id, entry])),
@@ -51,6 +77,28 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
         }
       })
       .catch(() => undefined);
+
+    Promise.all([loadRuntimeBlacksmithContent(), getContentSnapshot()])
+      .then(([runtimeBlacksmith, snapshot]) => {
+        if (cancelled) {
+          return;
+        }
+        setBlacksmithForgeTiers(runtimeBlacksmith.forgeTiers);
+        setBlacksmithModules(runtimeBlacksmith.modules);
+        setBlacksmithTools(runtimeBlacksmith.tools);
+        setBlacksmithQualityTiers(runtimeBlacksmith.qualityTiers);
+        setBlacksmithBalance(runtimeBlacksmith.balance);
+        setRecipeVisualProfiles(runtimeBlacksmith.recipeVisualProfiles ?? []);
+        setMaterialsCatalog(snapshot.materials ?? []);
+        setItemsCatalog(snapshot.items ?? []);
+        const recipes = (snapshot.craftingRecipes ?? []).filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled && entry.status === 'active');
+        setBlacksmithRecipes(recipes);
+        if (recipes.length > 0) {
+          setSelectedBlacksmithRecipeId((current) => current ?? recipes[0].id);
+        }
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
@@ -99,6 +147,65 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
 
   const learnedSkillCount = selectedProfession?.state.learnedSkillIds?.length ?? 0;
 
+  const selectedBlacksmithRecipe = useMemo(
+    () => blacksmithRecipes.find((entry) => entry.id === selectedBlacksmithRecipeId) ?? null,
+    [blacksmithRecipes, selectedBlacksmithRecipeId],
+  );
+
+  const blacksmithSkillBonuses = useMemo(
+    () => resolveBlacksmithSkillBonuses(selectedProfession?.state.learnedSkillIds ?? [], professionSkills),
+    [professionSkills, selectedProfession?.state.learnedSkillIds],
+  );
+
+  const blacksmithOverview = useMemo(() => {
+    const stats = selectedProfession?.state.professionId === 'blacksmithing'
+      ? (selectedProfession.state.stats ?? {})
+      : {};
+
+    const totalCrafts = Math.max(0, Math.round(Number(stats[BLACKSMITH_STATS_KEYS.totalCrafts] ?? 0)));
+    const successfulCrafts = Math.max(0, Math.round(Number(stats[BLACKSMITH_STATS_KEYS.successfulCrafts] ?? 0)));
+    const failedCrafts = Math.max(0, Math.round(Number(stats[BLACKSMITH_STATS_KEYS.failedCrafts] ?? 0)));
+    const bestScore = Math.max(0, Math.round(Number(stats[BLACKSMITH_STATS_KEYS.bestScore] ?? 0)));
+    const qualityCrafts = Math.max(0, Math.round(Number(stats[BLACKSMITH_STATS_KEYS.qualityCrafts] ?? 0)));
+    const masterworkCrafts = Math.max(0, Math.round(Number(stats.blacksmithMasterworkCrafts ?? 0)));
+
+    const bestTier = blacksmithQualityTiers
+      .find((entry) => bestScore >= entry.minScore && bestScore <= entry.maxScore)
+      ?.name ?? '-';
+
+    const forgeStatus = blacksmithSession
+      ? `Активна сессия (${blacksmithSession.stage})`
+      : selectedBlacksmithRecipe
+        ? `Готова к ковке: ${selectedBlacksmithRecipe.name}`
+        : 'Ожидание рецепта';
+
+    const openedWorkTypes = Array.from(new Set([
+      ...blacksmithRecipes
+        .filter((entry) => (entry.requiredProfessionLevel ?? 1) <= (selectedProfession?.state.level ?? 1))
+        .map((entry) => entry.recipeType),
+      ...blacksmithSkillBonuses.unlockedActions,
+    ])).sort((a, b) => a.localeCompare(b, 'ru'));
+
+    const openedMetals = Array.from(new Set(
+      blacksmithForgeTiers
+        .filter((entry) => entry.requiredBlacksmithLevel <= (selectedProfession?.state.level ?? 1))
+        .flatMap((entry) => entry.allowedMaterialTiers ?? []),
+    )).sort((a, b) => a.localeCompare(b, 'ru'));
+
+    return {
+      totalCrafts,
+      successfulCrafts,
+      failedCrafts,
+      bestScore,
+      bestTier,
+      qualityCrafts,
+      masterworkCrafts,
+      forgeStatus,
+      openedWorkTypes,
+      openedMetals,
+    };
+  }, [blacksmithForgeTiers, blacksmithQualityTiers, blacksmithRecipes, blacksmithSession, blacksmithSkillBonuses.unlockedActions, selectedBlacksmithRecipe, selectedProfession]);
+
   const miningInventorySnapshot = useMemo(() => {
     const last = miningCareerStats?.lastMiningInventory ?? [];
     if (last.length > 0) {
@@ -135,18 +242,25 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   };
 
   const handleLearnSkill = (skill: ProfessionSkill): void => {
-    if (!selectedProfession || selectedProfession.state.professionId !== 'mining') {
-      onStatus('Навык можно изучать только в профессии Горняк.');
+    if (!selectedProfession) {
+      onStatus('Сначала выберите профессию.');
+      return;
+    }
+
+    const professionId = selectedProfession.state.professionId;
+    if (skill.professionId !== professionId) {
+      onStatus(`Навык ${skill.name} не относится к профессии ${selectedProfession.definition?.name ?? professionId}.`);
       return;
     }
 
     const learnedIds = new Set(selectedProfession.state.learnedSkillIds ?? []);
     const selectedBranchIds = new Set(selectedProfession.state.selectedBranchIds ?? []);
     const effectiveSelectedBranchIds = new Set(selectedBranchIds);
-    const miningSkills = professionSkills.filter((entry) => entry.professionId === 'mining');
-    const branchById = new Map(miningBranches.map((entry) => [entry.id, entry]));
+    const professionSkillsForTree = professionSkills.filter((entry) => entry.professionId === professionId);
+    const professionBranchesForTree = selectedProfessionBranches;
+    const branchById = new Map(professionBranchesForTree.map((entry) => [entry.id, entry]));
 
-    for (const branch of miningBranches) {
+    for (const branch of professionBranchesForTree) {
       if (!branch.exclusiveGroupId) {
         effectiveSelectedBranchIds.add(branch.id);
       }
@@ -161,7 +275,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       return;
     }
     if (selectedProfession.state.level < skill.requiredLevel) {
-      onStatus(`Требуется уровень Горняка ${skill.requiredLevel}.`);
+      onStatus(`Требуется уровень профессии ${selectedProfession.definition?.name ?? professionId}: ${skill.requiredLevel}.`);
       return;
     }
 
@@ -181,11 +295,21 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     const blockedByBranch = getBlockedByExclusiveBranchReason({
       skill,
       learnedSkillIds: selectedProfession.state.learnedSkillIds ?? [],
-      allSkills: miningSkills,
-      branches: miningBranches,
+      allSkills: professionSkillsForTree,
+      branches: professionBranchesForTree,
     });
     if (blockedByBranch) {
       onStatus(blockedByBranch);
+      return;
+    }
+
+    const blockedByExclusiveSkill = getBlockedByExclusiveSkillGroupReason({
+      skill,
+      learnedSkillIds: selectedProfession.state.learnedSkillIds ?? [],
+      allSkills: professionSkillsForTree,
+    });
+    if (blockedByExclusiveSkill) {
+      onStatus(blockedByExclusiveSkill);
       return;
     }
 
@@ -215,7 +339,14 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   };
 
   const handleSelectBranch = (branch: ProfessionBranch): void => {
-    if (!selectedProfession || selectedProfession.state.professionId !== 'mining') {
+    if (!selectedProfession) {
+      onStatus('Сначала выберите профессию.');
+      return;
+    }
+
+    const professionId = selectedProfession.state.professionId;
+    if (branch.professionId !== professionId) {
+      onStatus(`Ветка ${branch.name} не относится к профессии ${selectedProfession.definition?.name ?? professionId}.`);
       return;
     }
 
@@ -225,15 +356,22 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       return;
     }
 
-    const conflict = miningBranches.find((entry) => (
-      entry.id !== branch.id
-      && Boolean(entry.exclusiveGroupId)
-      && entry.exclusiveGroupId === branch.exclusiveGroupId
-      && selectedIds.has(entry.id)
-    ));
-    if (conflict) {
-      onStatus(`Нельзя выбрать ${branch.name}: уже выбрана взаимоисключающая ветка ${conflict.name}.`);
-      return;
+    const groupId = branch.exclusiveGroupId?.trim();
+    if (groupId) {
+      const selectedInGroup = countSelectedBranchesInExclusiveGroup(groupId, selectedProfessionBranches, selectedIds);
+      const groupMax = getExclusiveGroupMax(branch);
+      if (selectedInGroup >= groupMax) {
+        onStatus(`Нельзя выбрать ${branch.name}: в этой группе уже выбрано максимум веток (${groupMax}).`);
+        return;
+      }
+    }
+
+    if (branch.id === 'final_blacksmith_trial' && professionId === 'blacksmithing') {
+      const learned = new Set(selectedProfession.state.learnedSkillIds ?? []);
+      if (!canUnlockFinalBlacksmithTrial(selectedProfessionBranches, professionSkills, learned, selectedIds)) {
+        onStatus('Финальное испытание откроется после 5 навыков в двух выбранных мастерских ветках.');
+        return;
+      }
     }
 
     const learned = new Set(selectedProfession.state.learnedSkillIds ?? []);
@@ -245,14 +383,14 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
 
     const missingBranch = (branch.requiredBranchIds ?? []).find((requiredBranchId) => !selectedIds.has(requiredBranchId));
     if (missingBranch) {
-      const requiredBranch = miningBranches.find((entry) => entry.id === missingBranch);
+      const requiredBranch = selectedProfessionBranches.find((entry) => entry.id === missingBranch);
       onStatus(`Для ветки ${branch.name} нужна ветка ${requiredBranch?.name ?? missingBranch}.`);
       return;
     }
 
     const lockedByBranch = (branch.locksBranchIds ?? []).find((lockedBranchId) => selectedIds.has(lockedBranchId));
     if (lockedByBranch) {
-      const lockedBranch = miningBranches.find((entry) => entry.id === lockedByBranch);
+      const lockedBranch = selectedProfessionBranches.find((entry) => entry.id === lockedByBranch);
       onStatus(`Нельзя выбрать ${branch.name}: уже выбрана конфликтующая ветка ${lockedBranch?.name ?? lockedByBranch}.`);
       return;
     }
@@ -284,7 +422,9 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
 
   const selectedTabs = selectedProfession?.state.professionId === 'mining'
     ? ['overview', 'inventory', 'stats', 'tree'] as const
-    : ['overview', 'tree'] as const;
+    : selectedProfession?.state.professionId === 'blacksmithing'
+      ? ['overview', 'inventory', 'recipes', 'forge', 'tree'] as const
+      : ['overview', 'tree'] as const;
 
   const xpToNext = selectedProfession
     ? Math.max(0, Math.floor((selectedProfession.state.xpToNextLevel ?? 0) - (selectedProfession.state.xp ?? 0)))
@@ -357,8 +497,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     onClick={() => setActiveTab(tab)}
                   >
                     {tab === 'overview' ? 'Обзор' : null}
-                    {tab === 'inventory' ? 'Инвентарь Горняка' : null}
-                    {tab === 'stats' ? 'Статистика спусков' : null}
+                    {tab === 'recipes' ? 'Рецепты' : null}
+                    {tab === 'forge' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Кузня' : 'Горн') : null}
+                    {tab === 'inventory' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Инвентарь' : 'Инвентарь Горняка') : null}
+                    {tab === 'stats' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Статистика ковки' : 'Статистика спусков') : null}
                     {tab === 'tree' ? 'Древо навыков' : null}
                   </button>
                 ))}
@@ -373,6 +515,20 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 <div className="profession-overview-item"><span>Очки навыков</span><strong>{selectedProfession.state.skillPoints}</strong></div>
                 <div className="profession-overview-item"><span>Изучено навыков</span><strong>{learnedSkillCount}</strong></div>
                 <div className="profession-overview-item"><span>Выбрано веток</span><strong>{selectedProfession.state.selectedBranchIds?.length ?? 0}</strong></div>
+                {selectedProfession.state.professionId === 'blacksmithing' ? (
+                  <>
+                    <div className="profession-overview-item"><span>Лучший ранг качества</span><strong>{blacksmithOverview.bestTier}</strong></div>
+                    <div className="profession-overview-item"><span>Всего выковано</span><strong>{blacksmithOverview.totalCrafts}</strong></div>
+                    <div className="profession-overview-item"><span>Брак</span><strong>{blacksmithOverview.failedCrafts}</strong></div>
+                    <div className="profession-overview-item"><span>Мастерских результатов</span><strong>{blacksmithOverview.masterworkCrafts}</strong></div>
+                    <div className="profession-overview-item"><span>Текущий статус кузни</span><strong>{blacksmithOverview.forgeStatus}</strong></div>
+                    <div className="profession-overview-item"><span>Открытые типы работ</span><strong>{blacksmithOverview.openedWorkTypes.length > 0 ? blacksmithOverview.openedWorkTypes.join(', ') : 'нет'}</strong></div>
+                    <div className="profession-overview-item"><span>Открытые металлы</span><strong>{blacksmithOverview.openedMetals.length > 0 ? blacksmithOverview.openedMetals.join(', ') : 'нет'}</strong></div>
+                    <div className="profession-overview-item"><span>Лучший score</span><strong>{blacksmithOverview.bestScore}</strong></div>
+                    <div className="profession-overview-item"><span>Успешных ковок</span><strong>{blacksmithOverview.successfulCrafts}</strong></div>
+                    <div className="profession-overview-item"><span>Качественных изделий</span><strong>{blacksmithOverview.qualityCrafts}</strong></div>
+                  </>
+                ) : null}
               </div>
             ) : null}
 
@@ -393,6 +549,68 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     </article>
                   ))
                 )}
+              </div>
+            ) : null}
+
+            {activeTab === 'recipes' && selectedProfession.state.professionId === 'blacksmithing' ? (
+              <div className="profession-tab-panel">
+                <BlacksmithRecipesTab
+                recipes={blacksmithRecipes}
+                recipeVisualProfiles={recipeVisualProfiles}
+                materials={materialsCatalog}
+                items={itemsCatalog}
+                runtimeImages={runtimeImages}
+                selectedRecipe={selectedBlacksmithRecipe}
+                selectedRecipeId={selectedBlacksmithRecipeId}
+                onSelectRecipe={(recipeId) => {
+                  setSelectedBlacksmithRecipeId(recipeId);
+                  setBlacksmithSession(null);
+                }}
+                />
+              </div>
+            ) : null}
+
+            {activeTab === 'forge' && selectedProfession.state.professionId === 'blacksmithing' ? (
+              <div className="profession-tab-panel">
+                <BlacksmithForgeTab
+                selectedRecipe={selectedBlacksmithRecipe}
+                session={blacksmithSession}
+                forgeTiers={blacksmithForgeTiers}
+                modules={blacksmithModules}
+                tools={blacksmithTools}
+                qualityTiers={blacksmithQualityTiers}
+                balance={blacksmithBalance}
+                recipeVisualProfiles={recipeVisualProfiles}
+                materials={materialsCatalog}
+                items={itemsCatalog}
+                runtimeImages={runtimeImages}
+                resolveImageRef={(value) => resolveStoredImageSource(value?.trim(), runtimeImages) ?? value}
+                skillBonuses={blacksmithSkillBonuses}
+                onSessionChange={setBlacksmithSession}
+                onComplete={({ xp, score, qualityTierId, success }) => {
+                  const normalized = normalizePlayerProfessionsState(professionsState);
+                  const next = applyBlacksmithCraftResult(normalized, 'blacksmithing', {
+                    xpReward: xp,
+                    score,
+                    success,
+                    isQualityCraft: qualityTierId === 'quality_fine' || qualityTierId === 'quality_masterwork',
+                    isMasterwork: qualityTierId === 'quality_masterwork',
+                  });
+                  onChange(next);
+                  onStatus(`Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}.`);
+                }}
+                />
+              </div>
+            ) : null}
+
+            {activeTab === 'inventory' && selectedProfession.state.professionId === 'blacksmithing' ? (
+              <div className="profession-tab-panel">
+                <BlacksmithInventoryTab
+                selectedRecipe={selectedBlacksmithRecipe}
+                materials={materialsCatalog}
+                items={itemsCatalog}
+                runtimeImages={runtimeImages}
+                />
               </div>
             ) : null}
 
@@ -436,6 +654,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 }}
                 onBack={undefined}
                 resolveIcon={(icon) => resolveStoredImageSource(icon?.trim(), runtimeImages) ?? icon}
+                runtimeImages={runtimeImages}
                 isDev={false}
               />
             ) : null}
@@ -513,6 +732,11 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);
             gap: 0.65rem;
+          }
+          .profession-tab-panel {
+            min-height: 0;
+            overflow: auto;
+            padding-right: 0.2rem;
           }
           .profession-details-head {
             display: flex;

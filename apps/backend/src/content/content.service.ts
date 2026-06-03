@@ -26,6 +26,12 @@ import { isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStoredAudioAsset, write
 import type {
   AdminItem,
   AdminMerchant,
+  BlacksmithBalance,
+  BlacksmithForgeTier,
+  BlacksmithModule,
+  BlacksmithQualityTier,
+  BlacksmithTool,
+  BlacksmithVisualPreset,
   City,
   CityLocation,
   CraftingRecipe,
@@ -46,6 +52,7 @@ import type {
   MerchantItem,
   NpcDefinition,
   PaintedRegion,
+  RecipeVisualProfile,
   QuestDefinition,
   RuneComplex,
   QuestInteractionDefinition,
@@ -78,8 +85,15 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'questMarkers',
   'battleMaps',
   'craftingRecipes',
+  'recipeVisualProfiles',
   'itemSets',
   'runeComplexes',
+  'blacksmithForgeTiers',
+  'blacksmithModules',
+  'blacksmithTools',
+  'blacksmithQualityTiers',
+  'blacksmithVisualPresets',
+  'blacksmithBalance',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -160,8 +174,15 @@ function countContent(db: ContentDatabase): Record<string, number> {
     questMarkers: db.questMarkers.length,
     battleMaps: db.battleMaps.length,
     craftingRecipes: (db.craftingRecipes ?? []).length,
+    recipeVisualProfiles: (db.recipeVisualProfiles ?? []).length,
     itemSets: (db.itemSets ?? []).length,
     runeComplexes: (db.runeComplexes ?? []).length,
+    blacksmithForgeTiers: (db.blacksmithForgeTiers ?? []).length,
+    blacksmithModules: (db.blacksmithModules ?? []).length,
+    blacksmithTools: (db.blacksmithTools ?? []).length,
+    blacksmithQualityTiers: (db.blacksmithQualityTiers ?? []).length,
+    blacksmithVisualPresets: (db.blacksmithVisualPresets ?? []).length,
+    blacksmithBalance: (db.blacksmithBalance ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -512,8 +533,15 @@ function createEmptyDatabase(): ContentDatabase {
     questMarkers: [],
     battleMaps: [],
     craftingRecipes: [],
+    recipeVisualProfiles: [],
     itemSets: [],
     runeComplexes: [],
+    blacksmithForgeTiers: [],
+    blacksmithModules: [],
+    blacksmithTools: [],
+    blacksmithQualityTiers: [],
+    blacksmithVisualPresets: [],
+    blacksmithBalance: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -521,6 +549,319 @@ function createEmptyDatabase(): ContentDatabase {
       updatedAt: timestamp,
     },
   };
+}
+
+function seedBlacksmithForgeTiers(): BlacksmithForgeTier[] {
+  return [
+    {
+      id: 'forge_tier_apprentice',
+      name: 'Ученический горн',
+      description: 'Базовый горн для простой ковки и обработки.',
+      tier: 1,
+      requiredBlacksmithLevel: 1,
+      requiredSkillIds: [],
+      allowedRecipeTypes: ['material_processing', 'smelting', 'blacksmith_craft'],
+      allowedRecipeGroups: ['starter', 'basic_weapons', 'basic_armor'],
+      allowedMaterialTiers: ['common'],
+      heatControlBonus: 2,
+      qualityCapBonus: 0,
+      failureChanceReduction: 0,
+      moduleSlotLimits: { airflow: 1, support: 1, quench: 1 },
+      visualPresetId: 'blacksmith_visual_default',
+      isEnabled: true,
+    },
+    {
+      id: 'forge_tier_master',
+      name: 'Мастерский горн',
+      description: 'Усиленный горн для точной и сложной работы.',
+      tier: 2,
+      requiredBlacksmithLevel: 10,
+      requiredSkillIds: ['blacksmith_fine_work'],
+      allowedRecipeTypes: ['material_processing', 'smelting', 'blacksmith_craft', 'runecrafting'],
+      allowedRecipeGroups: ['advanced_weapons', 'advanced_armor', 'settings', 'rune_surface'],
+      allowedMaterialTiers: ['common', 'uncommon', 'rare'],
+      heatControlBonus: 5,
+      qualityCapBonus: 8,
+      failureChanceReduction: 4,
+      moduleSlotLimits: { airflow: 2, support: 2, quench: 2, precision: 1 },
+      visualPresetId: 'blacksmith_visual_default',
+      isEnabled: true,
+    },
+  ];
+}
+
+function seedBlacksmithModules(): BlacksmithModule[] {
+  return [
+    {
+      id: 'module_airflow_bellows_basic',
+      name: 'Простые меха',
+      moduleType: 'airflow',
+      tier: 1,
+      description: 'Стабилизируют подачу воздуха к печи.',
+      bonuses: { heatControlBonus: 3, overheatChanceReduction: 2 },
+      requiredBlacksmithLevel: 2,
+      requiredSkillIds: ['blacksmith_basic_forging'],
+      compatibleForgeTierIds: ['forge_tier_apprentice', 'forge_tier_master'],
+      imageRef: 'unknown',
+      isEnabled: true,
+    },
+    {
+      id: 'module_quench_trough_reinforced',
+      name: 'Усиленная ванна закалки',
+      moduleType: 'quench',
+      tier: 2,
+      description: 'Снижает риск дефектов при закалке.',
+      bonuses: { defectChanceReduction: 5, quenchStabilityBonus: 8 },
+      requiredBlacksmithLevel: 8,
+      requiredSkillIds: ['blacksmith_simple_tempering'],
+      compatibleForgeTierIds: ['forge_tier_master'],
+      imageRef: 'unknown',
+      isEnabled: true,
+    },
+  ];
+}
+
+function seedBlacksmithTools(): BlacksmithTool[] {
+  return [
+    {
+      id: 'tool_hammer_apprentice',
+      name: 'Молот ученика',
+      toolType: 'hammer',
+      tier: 1,
+      description: 'Базовый молот для ровного темпа ударов.',
+      bonuses: { strikePrecisionBonus: 4 },
+      minResultFloor: 10,
+      specialRules: ['safe_start_window'],
+      imageRef: 'unknown',
+      isEnabled: true,
+    },
+    {
+      id: 'tool_tongs_balanced',
+      name: 'Балансные щипцы',
+      toolType: 'tongs',
+      tier: 1,
+      description: 'Повышают контроль заготовки.',
+      bonuses: { heatDriftReduction: 5 },
+      minResultFloor: 8,
+      specialRules: ['reduced_slip_chance'],
+      imageRef: 'unknown',
+      isEnabled: true,
+    },
+    {
+      id: 'tool_quench_ladle_master',
+      name: 'Мастерский ковш закалки',
+      toolType: 'quench',
+      tier: 2,
+      description: 'Даёт точный контроль на этапе закалки.',
+      bonuses: { quenchControlBonus: 10, crackChanceReduction: 4 },
+      minResultFloor: 15,
+      specialRules: ['quench_sweetspot_bonus'],
+      imageRef: 'unknown',
+      isEnabled: true,
+    },
+  ];
+}
+
+function seedBlacksmithQualityTiers(): BlacksmithQualityTier[] {
+  return [
+    { id: 'quality_failed', name: 'Брак', minScore: 0, maxScore: 29, priceMultiplier: 0.35, xpMultiplier: 0.4, statMultiplier: 0.5, frameImageRef: 'unknown', isFailureTier: true },
+    { id: 'quality_normal', name: 'Нормальное', minScore: 30, maxScore: 59, priceMultiplier: 1, xpMultiplier: 1, statMultiplier: 1, frameImageRef: 'unknown', isFailureTier: false },
+    { id: 'quality_fine', name: 'Качественное', minScore: 60, maxScore: 84, priceMultiplier: 1.35, xpMultiplier: 1.2, statMultiplier: 1.12, frameImageRef: 'unknown', isFailureTier: false },
+    { id: 'quality_masterwork', name: 'Шедевр', minScore: 85, maxScore: 100, priceMultiplier: 1.8, xpMultiplier: 1.45, statMultiplier: 1.25, frameImageRef: 'unknown', isFailureTier: false },
+  ];
+}
+
+function seedBlacksmithVisualPresets(): BlacksmithVisualPreset[] {
+  return [
+    {
+      id: 'blacksmith_visual_default',
+      name: 'Стандартная кузница',
+      backgroundImageRef: 'unknown',
+      anvilImageRef: 'unknown',
+      furnaceImageRef: 'unknown',
+      hammerImageRefs: ['unknown'],
+      defectOverlayRefs: ['unknown'],
+      blankImageRefs: ['unknown'],
+      qualityFrameRefs: ['unknown'],
+    },
+  ];
+}
+
+function seedBlacksmithBalance(): BlacksmithBalance[] {
+  return [
+    {
+      id: 'blacksmith_balance_default',
+      baseXpByRecipeType: {
+        material_processing: 12,
+        smelting: 18,
+        blacksmith_craft: 30,
+        runecrafting: 34,
+      },
+      xpByMaterialTier: {
+        common: 0,
+        uncommon: 6,
+        rare: 14,
+        epic: 24,
+      },
+      qualityBonuses: {
+        quality_normal: 0,
+        quality_fine: 8,
+        quality_masterwork: 16,
+      },
+      qualityPenalties: {
+        quality_failed: -12,
+      },
+      repeatCraftDiminishingReturns: {
+        startAfter: 3,
+        floorMultiplier: 0.35,
+        decayPerCraft: 0.12,
+      },
+      heatRanges: {
+        low: { min: 0, max: 33 },
+        medium: { min: 34, max: 70 },
+        high: { min: 71, max: 100 },
+      },
+      baseDefectChances: {
+        crack: 12,
+        slag: 8,
+        warp: 10,
+      },
+      quenchProfiles: {
+        water: { stability: 45, crackRisk: 18 },
+        oil: { stability: 62, crackRisk: 10 },
+      },
+      strikeProfiles: {
+        light: { progress: 8, precision: 14 },
+        heavy: { progress: 16, precision: -8 },
+      },
+      finishProfiles: {
+        grind: { sharpness: 12, polish: 4 },
+        polish: { sharpness: 4, polish: 14 },
+      },
+    },
+  ];
+}
+
+function seedRecipeVisualProfiles(): RecipeVisualProfile[] {
+  return [
+    {
+      id: 'smelting_metal',
+      name: 'Плавка металла',
+      description: 'Профиль обложки для плавки и металлургии.',
+      recipeTypes: ['smelting', 'material_processing'],
+      materialFamilies: ['metal', 'alloy'],
+      coverImageRef: '/art/crafting/recipes/recipe_smelting_metal.png',
+      iconImageRef: '/art/crafting/recipes/recipe_smelting_metal.png',
+      animationImageRef: '/art/crafting/recipes/recipe_smelting_metal.png',
+      backgroundStyle: 'smelting',
+      accentColor: '#b0682f',
+      isEnabled: true,
+    },
+    {
+      id: 'material_wood',
+      name: 'Обработка дерева',
+      description: 'Профиль для деревообработки.',
+      recipeTypes: ['material_processing', 'carpentry_craft'],
+      materialFamilies: ['wood'],
+      coverImageRef: '/art/crafting/recipes/recipe_material_wood.png',
+      iconImageRef: '/art/crafting/recipes/recipe_material_wood.png',
+      animationImageRef: '/art/crafting/recipes/recipe_material_wood.png',
+      backgroundStyle: 'processing',
+      accentColor: '#7a5a2d',
+      isEnabled: true,
+    },
+    {
+      id: 'material_cloth',
+      name: 'Обработка ткани',
+      description: 'Профиль для ткацких и швейных рецептов.',
+      recipeTypes: ['weaving', 'material_processing'],
+      materialFamilies: ['cloth', 'leather'],
+      coverImageRef: '/art/crafting/recipes/recipe_material_cloth.png',
+      iconImageRef: '/art/crafting/recipes/recipe_material_cloth.png',
+      animationImageRef: '/art/crafting/recipes/recipe_material_cloth.png',
+      backgroundStyle: 'processing',
+      accentColor: '#927552',
+      isEnabled: true,
+    },
+    {
+      id: 'food_basic',
+      name: 'Базовая кулинария',
+      description: 'Профиль для простых пищевых рецептов.',
+      recipeTypes: ['cooking', 'baking'],
+      materialFamilies: ['food'],
+      coverImageRef: '/art/crafting/recipes/recipe_food_basic.png',
+      iconImageRef: '/art/crafting/recipes/recipe_food_basic.png',
+      animationImageRef: '/art/crafting/recipes/recipe_food_basic.png',
+      backgroundStyle: 'cooking',
+      accentColor: '#b37f42',
+      isEnabled: true,
+    },
+    {
+      id: 'alchemy_basic',
+      name: 'Базовая алхимия',
+      description: 'Профиль для алхимических рецептов.',
+      recipeTypes: ['alchemy'],
+      materialFamilies: ['alchemy'],
+      coverImageRef: '/art/crafting/recipes/recipe_alchemy_basic.png',
+      iconImageRef: '/art/crafting/recipes/recipe_alchemy_basic.png',
+      animationImageRef: '/art/crafting/recipes/recipe_alchemy_basic.png',
+      backgroundStyle: 'alchemy',
+      accentColor: '#4f8d7a',
+      isEnabled: true,
+    },
+    {
+      id: 'forging_weapon',
+      name: 'Ковка оружия',
+      description: 'Профиль для оружейных рецептов кузнеца.',
+      recipeTypes: ['blacksmith_craft'],
+      materialFamilies: ['metal'],
+      coverImageRef: '/art/crafting/recipes/recipe_forging_weapon.png',
+      iconImageRef: '/art/crafting/recipes/recipe_forging_weapon.png',
+      animationImageRef: '/art/crafting/recipes/recipe_forging_weapon.png',
+      backgroundStyle: 'forging',
+      accentColor: '#b35a39',
+      isEnabled: true,
+    },
+    {
+      id: 'forging_armor',
+      name: 'Ковка доспеха',
+      description: 'Профиль для бронных рецептов кузнеца.',
+      recipeTypes: ['blacksmith_craft'],
+      materialFamilies: ['metal'],
+      coverImageRef: '/art/crafting/recipes/recipe_forging_armor.png',
+      iconImageRef: '/art/crafting/recipes/recipe_forging_armor.png',
+      animationImageRef: '/art/crafting/recipes/recipe_forging_armor.png',
+      backgroundStyle: 'forging',
+      accentColor: '#8f6c4d',
+      isEnabled: true,
+    },
+    {
+      id: 'rare_alloy',
+      name: 'Редкие сплавы',
+      description: 'Профиль для рецептов редких сплавов.',
+      recipeTypes: ['smelting', 'blacksmith_craft'],
+      materialFamilies: ['alloy', 'metal'],
+      coverImageRef: '/art/crafting/recipes/recipe_rare_alloy.png',
+      iconImageRef: '/art/crafting/recipes/recipe_rare_alloy.png',
+      animationImageRef: '/art/crafting/recipes/recipe_rare_alloy.png',
+      backgroundStyle: 'refinement',
+      accentColor: '#8792a6',
+      isEnabled: true,
+    },
+    {
+      id: 'rune_work',
+      name: 'Рунная обработка',
+      description: 'Профиль для рунических и зачаровательных работ.',
+      recipeTypes: ['runecrafting', 'enchantment'],
+      materialFamilies: ['rune', 'alchemy'],
+      coverImageRef: '/art/crafting/recipes/recipe_rune_work.png',
+      iconImageRef: '/art/crafting/recipes/recipe_rune_work.png',
+      animationImageRef: '/art/crafting/recipes/recipe_rune_work.png',
+      backgroundStyle: 'refinement',
+      accentColor: '#7a62b5',
+      isEnabled: true,
+    },
+  ];
 }
 
 function createSeedDatabase(): ContentDatabase {
@@ -544,8 +885,15 @@ function createSeedDatabase(): ContentDatabase {
     questMarkers: [],
     battleMaps: [],
     craftingRecipes: [],
+    recipeVisualProfiles: seedRecipeVisualProfiles(),
     itemSets: [],
     runeComplexes: [],
+    blacksmithForgeTiers: seedBlacksmithForgeTiers(),
+    blacksmithModules: seedBlacksmithModules(),
+    blacksmithTools: seedBlacksmithTools(),
+    blacksmithQualityTiers: seedBlacksmithQualityTiers(),
+    blacksmithVisualPresets: seedBlacksmithVisualPresets(),
+    blacksmithBalance: seedBlacksmithBalance(),
     worldMap: {
       zones: [],
       regions: [],
@@ -975,12 +1323,165 @@ function normalizeRuneComplexInput(input: RuneComplex): RuneComplex {
   };
 }
 
+function normalizeBlacksmithForgeTierInput(input: BlacksmithForgeTier): BlacksmithForgeTier {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    tier: Math.max(1, toInteger(input.tier) ?? 1),
+    requiredBlacksmithLevel: Math.max(1, toInteger(input.requiredBlacksmithLevel) ?? 1),
+    requiredSkillIds: normalizeStringList(input.requiredSkillIds),
+    allowedRecipeTypes: normalizeStringList(input.allowedRecipeTypes),
+    allowedRecipeGroups: normalizeStringList(input.allowedRecipeGroups),
+    allowedMaterialTiers: normalizeStringList(input.allowedMaterialTiers),
+    heatControlBonus: toFiniteNumber(input.heatControlBonus) ?? 0,
+    qualityCapBonus: toFiniteNumber(input.qualityCapBonus) ?? 0,
+    failureChanceReduction: toFiniteNumber(input.failureChanceReduction) ?? 0,
+    moduleSlotLimits: typeof input.moduleSlotLimits === 'object' && input.moduleSlotLimits !== null && !Array.isArray(input.moduleSlotLimits)
+      ? Object.fromEntries(Object.entries(input.moduleSlotLimits).map(([key, value]) => [key, Math.max(0, toInteger(value) ?? 0)]))
+      : {},
+    visualPresetId: typeof input.visualPresetId === 'string' && input.visualPresetId.trim() ? input.visualPresetId.trim() : undefined,
+    isEnabled: input.isEnabled !== false,
+  };
+}
+
+function normalizeBlacksmithModuleInput(input: BlacksmithModule): BlacksmithModule {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    moduleType: String(input.moduleType ?? '').trim(),
+    tier: Math.max(1, toInteger(input.tier) ?? 1),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    bonuses: typeof input.bonuses === 'object' && input.bonuses !== null && !Array.isArray(input.bonuses)
+      ? clone(input.bonuses)
+      : {},
+    requiredBlacksmithLevel: Math.max(1, toInteger(input.requiredBlacksmithLevel) ?? 1),
+    requiredSkillIds: normalizeStringList(input.requiredSkillIds),
+    compatibleForgeTierIds: normalizeStringList(input.compatibleForgeTierIds),
+    imageRef: typeof input.imageRef === 'string' && input.imageRef.trim() ? input.imageRef.trim() : undefined,
+    isEnabled: input.isEnabled !== false,
+  };
+}
+
+function normalizeBlacksmithToolInput(input: BlacksmithTool): BlacksmithTool {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    toolType: String(input.toolType ?? '').trim(),
+    tier: Math.max(1, toInteger(input.tier) ?? 1),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    bonuses: typeof input.bonuses === 'object' && input.bonuses !== null && !Array.isArray(input.bonuses)
+      ? clone(input.bonuses)
+      : {},
+    minResultFloor: Math.max(0, toInteger(input.minResultFloor) ?? 0),
+    specialRules: normalizeStringList(input.specialRules),
+    imageRef: typeof input.imageRef === 'string' && input.imageRef.trim() ? input.imageRef.trim() : undefined,
+    isEnabled: input.isEnabled !== false,
+  };
+}
+
+function normalizeBlacksmithQualityTierInput(input: BlacksmithQualityTier): BlacksmithQualityTier {
+  const minScore = Math.max(0, Math.min(100, toInteger(input.minScore) ?? 0));
+  const maxScore = Math.max(minScore, Math.min(100, toInteger(input.maxScore) ?? 100));
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    minScore,
+    maxScore,
+    priceMultiplier: Math.max(0, toFiniteNumber(input.priceMultiplier) ?? 1),
+    xpMultiplier: Math.max(0, toFiniteNumber(input.xpMultiplier) ?? 1),
+    statMultiplier: Math.max(0, toFiniteNumber(input.statMultiplier) ?? 1),
+    frameImageRef: typeof input.frameImageRef === 'string' && input.frameImageRef.trim() ? input.frameImageRef.trim() : undefined,
+    isFailureTier: Boolean(input.isFailureTier),
+  };
+}
+
+function normalizeBlacksmithVisualPresetInput(input: BlacksmithVisualPreset): BlacksmithVisualPreset {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    backgroundImageRef: typeof input.backgroundImageRef === 'string' && input.backgroundImageRef.trim() ? input.backgroundImageRef.trim() : undefined,
+    anvilImageRef: typeof input.anvilImageRef === 'string' && input.anvilImageRef.trim() ? input.anvilImageRef.trim() : undefined,
+    furnaceImageRef: typeof input.furnaceImageRef === 'string' && input.furnaceImageRef.trim() ? input.furnaceImageRef.trim() : undefined,
+    hammerImageRefs: normalizeStringList(input.hammerImageRefs),
+    defectOverlayRefs: normalizeStringList(input.defectOverlayRefs),
+    blankImageRefs: normalizeStringList(input.blankImageRefs),
+    qualityFrameRefs: normalizeStringList(input.qualityFrameRefs),
+  };
+}
+
+function normalizeBlacksmithBalanceInput(input: BlacksmithBalance): BlacksmithBalance {
+  const toNumberRecord = (value: unknown): Record<string, number> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+    const next: Record<string, number> = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      const numeric = toFiniteNumber(entryValue);
+      if (entryKey.trim() && typeof numeric === 'number') {
+        next[entryKey] = numeric;
+      }
+    }
+    return next;
+  };
+
+  const toNestedNumberRecord = (value: unknown): Record<string, Record<string, number>> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+    const next: Record<string, Record<string, number>> = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      next[entryKey] = toNumberRecord(entryValue);
+    }
+    return next;
+  };
+
+  const repeatRaw = input.repeatCraftDiminishingReturns;
+  const heatRangesRaw = input.heatRanges;
+  const heatRanges: Record<string, { min: number; max: number }> = {};
+  if (heatRangesRaw && typeof heatRangesRaw === 'object' && !Array.isArray(heatRangesRaw)) {
+    for (const [entryKey, entryValue] of Object.entries(heatRangesRaw)) {
+      if (!entryValue || typeof entryValue !== 'object' || Array.isArray(entryValue)) {
+        continue;
+      }
+      const min = Math.max(0, Math.min(100, toFiniteNumber((entryValue as { min?: unknown }).min) ?? 0));
+      const max = Math.max(min, Math.min(100, toFiniteNumber((entryValue as { max?: unknown }).max) ?? min));
+      heatRanges[entryKey] = { min, max };
+    }
+  }
+
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    baseXpByRecipeType: toNumberRecord(input.baseXpByRecipeType),
+    xpByMaterialTier: toNumberRecord(input.xpByMaterialTier),
+    qualityBonuses: toNumberRecord(input.qualityBonuses),
+    qualityPenalties: toNumberRecord(input.qualityPenalties),
+    repeatCraftDiminishingReturns: {
+      startAfter: Math.max(0, toInteger(repeatRaw?.startAfter) ?? 0),
+      floorMultiplier: Math.max(0, Math.min(1, toFiniteNumber(repeatRaw?.floorMultiplier) ?? 0.5)),
+      decayPerCraft: Math.max(0, Math.min(1, toFiniteNumber(repeatRaw?.decayPerCraft) ?? 0.1)),
+    },
+    heatRanges,
+    baseDefectChances: toNumberRecord(input.baseDefectChances),
+    quenchProfiles: toNestedNumberRecord(input.quenchProfiles),
+    strikeProfiles: toNestedNumberRecord(input.strikeProfiles),
+    finishProfiles: toNestedNumberRecord(input.finishProfiles),
+  };
+}
+
 function normalizeCraftingRecipeInput(input: CraftingRecipe): CraftingRecipe {
   const statusRaw = String(input.status ?? '').trim();
   const recipeTypeRaw = String(input.recipeType ?? '').trim();
   const stationTypeRaw = String(input.stationType ?? '').trim();
   const failureModeRaw = String(input.failureMode ?? '').trim();
   const resultModeRaw = String(input.resultMode ?? '').trim();
+  const visualAnimationRefRaw = String(input.visualAnimationRef ?? '').trim();
 
   return {
     ...clone(input),
@@ -1015,8 +1516,31 @@ function normalizeCraftingRecipeInput(input: CraftingRecipe): CraftingRecipe {
     isRepeatable: input.isRepeatable !== false,
     isEnabled: input.isEnabled !== false,
     tags: normalizeStringList(input.tags),
+    visualProfileId: typeof input.visualProfileId === 'string' && input.visualProfileId.trim() ? input.visualProfileId.trim() : undefined,
+    visualImageRef: typeof input.visualImageRef === 'string' && input.visualImageRef.trim() ? input.visualImageRef.trim() : undefined,
+    visualIconRef: typeof input.visualIconRef === 'string' && input.visualIconRef.trim() ? input.visualIconRef.trim() : undefined,
+    visualAnimationRef: visualAnimationRefRaw ? visualAnimationRefRaw : null,
+    visualMaterialFamily: typeof input.visualMaterialFamily === 'string' && input.visualMaterialFamily.trim() ? input.visualMaterialFamily.trim() as CraftingRecipe['visualMaterialFamily'] : undefined,
+    visualStyle: typeof input.visualStyle === 'string' && input.visualStyle.trim() ? input.visualStyle.trim() as CraftingRecipe['visualStyle'] : undefined,
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
+function normalizeRecipeVisualProfileInput(input: RecipeVisualProfile): RecipeVisualProfile {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    recipeTypes: normalizeStringList(input.recipeTypes),
+    materialFamilies: normalizeStringList(input.materialFamilies) as RecipeVisualProfile['materialFamilies'],
+    coverImageRef: typeof input.coverImageRef === 'string' && input.coverImageRef.trim() ? input.coverImageRef.trim() : undefined,
+    iconImageRef: typeof input.iconImageRef === 'string' && input.iconImageRef.trim() ? input.iconImageRef.trim() : undefined,
+    animationImageRef: typeof input.animationImageRef === 'string' && input.animationImageRef.trim() ? input.animationImageRef.trim() : undefined,
+    backgroundStyle: typeof input.backgroundStyle === 'string' && input.backgroundStyle.trim() ? input.backgroundStyle.trim() : undefined,
+    accentColor: typeof input.accentColor === 'string' && input.accentColor.trim() ? input.accentColor.trim() : undefined,
+    isEnabled: input.isEnabled !== false,
   };
 }
 
@@ -1112,12 +1636,40 @@ function normalizeVisualFxInput(input: VisualFxDefinition): VisualFxDefinition {
   const originY = toFiniteNumber(input.render?.originY);
   const depth = toInteger(input.render?.depth);
   const speed = toFiniteNumber(input.projectile?.speed);
+  const normalizedStages = Array.isArray(input.stages)
+    ? input.stages.map((stage, index) => ({
+      id: String(stage.id ?? '').trim() || `stage_${index + 1}`,
+      name: typeof stage.name === 'string' && stage.name.trim() ? stage.name.trim() : undefined,
+      stageType: stage.stageType ?? 'impact',
+      enabled: stage.enabled !== false,
+      trigger: stage.trigger ?? (index === 0 ? 'on_start' : 'after_previous'),
+      delayMs: Math.max(0, toInteger(stage.delayMs) ?? 0),
+      fxRefId: typeof stage.fxRefId === 'string' && stage.fxRefId.trim() ? stage.fxRefId.trim() : undefined,
+      fxVariantIds: normalizeStringList(stage.fxVariantIds),
+      randomizeFxVariant: stage.randomizeFxVariant === true,
+      playOn: stage.playOn ?? 'target',
+      followMode: stage.followMode ?? 'none',
+      durationMs: Math.max(0, toInteger(stage.durationMs) ?? 0),
+      persistMs: Math.max(0, toInteger(stage.persistMs) ?? 0),
+      movementBehavior: stage.movementBehavior ?? 'none',
+      stopSequenceOnFailure: stage.stopSequenceOnFailure === true,
+      parallelGroup: typeof stage.parallelGroup === 'string' && stage.parallelGroup.trim() ? stage.parallelGroup.trim() : undefined,
+      branchToStageIds: normalizeStringList(stage.branchToStageIds),
+      condition: stage.condition ?? 'always',
+      targetMode: stage.targetMode ?? 'primary_target',
+      audioRefIds: normalizeStringList(stage.audioRefIds),
+      cameraShakePreset: stage.cameraShakePreset ?? 'none',
+      chainFromPrevious: stage.chainFromPrevious === true,
+      maxChainTargets: Math.max(1, toInteger(stage.maxChainTargets) ?? 3),
+    }))
+    : [];
 
   return {
     ...input,
     id,
     name: String(input.name ?? id).trim() || id,
     status: input.status === 'disabled' || input.status === 'draft' ? input.status : 'active',
+    kind: input.kind === 'composite' ? 'composite' : 'single',
     category: input.category ?? 'hit',
     element: input.element,
     type,
@@ -1136,10 +1688,12 @@ function normalizeVisualFxInput(input: VisualFxDefinition): VisualFxDefinition {
     },
     placement: {
       defaultPlayOn: input.placement?.defaultPlayOn ?? 'target',
+      mode: input.placement?.mode ?? 'once',
       anchor: input.placement?.anchor ?? 'center',
       offsetX: toFiniteNumber(input.placement?.offsetX) ?? 0,
       offsetY: toFiniteNumber(input.placement?.offsetY) ?? 0,
       rotateToDirection: input.placement?.rotateToDirection === true,
+      lingerDurationMs: Math.max(80, toInteger(input.placement?.lingerDurationMs) ?? 900),
     },
     render: {
       scale: scale !== undefined ? Math.max(0.01, scale) : 1,
@@ -1164,6 +1718,7 @@ function normalizeVisualFxInput(input: VisualFxDefinition): VisualFxDefinition {
         : undefined,
       volume: Math.max(0, Math.min(1, toFiniteNumber(input.audio?.volume) ?? 1)),
     },
+    stages: normalizedStages,
     tags: normalizeStringList(input.tags),
     createdAt: input.createdAt || timestamp,
     updatedAt: timestamp,
@@ -2769,8 +3324,29 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questMarkers: sanitizeIdObjectArray<QuestMarkerDefinition>(raw.questMarkers).map((entry) => normalizeQuestMarkerInput(entry)).filter((m) => Boolean(m.id)),
       battleMaps: clone(sanitizeIdObjectArray<BattleMapDefinition>(raw.battleMaps)).filter((map) => Boolean(map.id)),
       craftingRecipes: sanitizeIdObjectArray<CraftingRecipe>(raw.craftingRecipes).map((entry) => normalizeCraftingRecipeInput(entry)).filter((entry) => Boolean(entry.id)),
+      recipeVisualProfiles: sanitizeIdObjectArray<RecipeVisualProfile>(raw.recipeVisualProfiles)
+        .map((entry) => normalizeRecipeVisualProfileInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       itemSets: sanitizeIdObjectArray<ItemSet>(raw.itemSets).map((entry) => normalizeItemSetInput(entry)).filter((set) => Boolean(set.id)),
       runeComplexes: sanitizeIdObjectArray<RuneComplex>(raw.runeComplexes).map((entry) => normalizeRuneComplexInput(entry)).filter((entry) => Boolean(entry.id)),
+      blacksmithForgeTiers: sanitizeIdObjectArray<BlacksmithForgeTier>(raw.blacksmithForgeTiers)
+        .map((entry) => normalizeBlacksmithForgeTierInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithModules: sanitizeIdObjectArray<BlacksmithModule>(raw.blacksmithModules)
+        .map((entry) => normalizeBlacksmithModuleInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithTools: sanitizeIdObjectArray<BlacksmithTool>(raw.blacksmithTools)
+        .map((entry) => normalizeBlacksmithToolInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithQualityTiers: sanitizeIdObjectArray<BlacksmithQualityTier>(raw.blacksmithQualityTiers)
+        .map((entry) => normalizeBlacksmithQualityTierInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithVisualPresets: sanitizeIdObjectArray<BlacksmithVisualPreset>(raw.blacksmithVisualPresets)
+        .map((entry) => normalizeBlacksmithVisualPresetInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithBalance: sanitizeIdObjectArray<BlacksmithBalance>(raw.blacksmithBalance)
+        .map((entry) => normalizeBlacksmithBalanceInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
@@ -2870,8 +3446,15 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questMarkers: mergeById(existing.questMarkers, incoming.questMarkers),
       battleMaps: mergeById(existing.battleMaps, incoming.battleMaps),
       craftingRecipes: mergeById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
+      recipeVisualProfiles: mergeById(existing.recipeVisualProfiles ?? [], incoming.recipeVisualProfiles ?? []),
       itemSets: mergeById(existing.itemSets ?? [], incoming.itemSets ?? []),
       runeComplexes: mergeById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
+      blacksmithForgeTiers: mergeById(existing.blacksmithForgeTiers ?? [], incoming.blacksmithForgeTiers ?? []),
+      blacksmithModules: mergeById(existing.blacksmithModules ?? [], incoming.blacksmithModules ?? []),
+      blacksmithTools: mergeById(existing.blacksmithTools ?? [], incoming.blacksmithTools ?? []),
+      blacksmithQualityTiers: mergeById(existing.blacksmithQualityTiers ?? [], incoming.blacksmithQualityTiers ?? []),
+      blacksmithVisualPresets: mergeById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
+      blacksmithBalance: mergeById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       worldMap: {
         zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -2905,8 +3488,15 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       questMarkers: addMissingById(existing.questMarkers, incoming.questMarkers),
       battleMaps: addMissingById(existing.battleMaps, incoming.battleMaps),
       craftingRecipes: addMissingById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
+      recipeVisualProfiles: addMissingById(existing.recipeVisualProfiles ?? [], incoming.recipeVisualProfiles ?? []),
       itemSets: addMissingById(existing.itemSets ?? [], incoming.itemSets ?? []),
       runeComplexes: addMissingById(existing.runeComplexes ?? [], incoming.runeComplexes ?? []),
+      blacksmithForgeTiers: addMissingById(existing.blacksmithForgeTiers ?? [], incoming.blacksmithForgeTiers ?? []),
+      blacksmithModules: addMissingById(existing.blacksmithModules ?? [], incoming.blacksmithModules ?? []),
+      blacksmithTools: addMissingById(existing.blacksmithTools ?? [], incoming.blacksmithTools ?? []),
+      blacksmithQualityTiers: addMissingById(existing.blacksmithQualityTiers ?? [], incoming.blacksmithQualityTiers ?? []),
+      blacksmithVisualPresets: addMissingById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
+      blacksmithBalance: addMissingById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       worldMap: {
         zones: addMissingById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: addMissingById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -2983,8 +3573,15 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         questMarkers: filterCollection('questMarkers', incoming.questMarkers, existing.questMarkers) as QuestMarkerDefinition[] | undefined,
         battleMaps: filterCollection('battleMaps', incoming.battleMaps, existing.battleMaps) as BattleMapDefinition[] | undefined,
         craftingRecipes: filterCollection('craftingRecipes', incoming.craftingRecipes, existing.craftingRecipes ?? []) as CraftingRecipe[] | undefined,
+        recipeVisualProfiles: filterCollection('recipeVisualProfiles', incoming.recipeVisualProfiles, existing.recipeVisualProfiles ?? []) as RecipeVisualProfile[] | undefined,
         itemSets: filterCollection('itemSets', incoming.itemSets, existing.itemSets ?? []) as ItemSet[] | undefined,
         runeComplexes: filterCollection('runeComplexes', incoming.runeComplexes, existing.runeComplexes ?? []) as RuneComplex[] | undefined,
+        blacksmithForgeTiers: filterCollection('blacksmithForgeTiers', incoming.blacksmithForgeTiers, existing.blacksmithForgeTiers ?? []) as BlacksmithForgeTier[] | undefined,
+        blacksmithModules: filterCollection('blacksmithModules', incoming.blacksmithModules, existing.blacksmithModules ?? []) as BlacksmithModule[] | undefined,
+        blacksmithTools: filterCollection('blacksmithTools', incoming.blacksmithTools, existing.blacksmithTools ?? []) as BlacksmithTool[] | undefined,
+        blacksmithQualityTiers: filterCollection('blacksmithQualityTiers', incoming.blacksmithQualityTiers, existing.blacksmithQualityTiers ?? []) as BlacksmithQualityTier[] | undefined,
+        blacksmithVisualPresets: filterCollection('blacksmithVisualPresets', incoming.blacksmithVisualPresets, existing.blacksmithVisualPresets ?? []) as BlacksmithVisualPreset[] | undefined,
+        blacksmithBalance: filterCollection('blacksmithBalance', incoming.blacksmithBalance, existing.blacksmithBalance ?? []) as BlacksmithBalance[] | undefined,
         worldMap,
       },
       actions,
@@ -3040,6 +3637,33 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         if (!itemIds.has(runeItemId)) {
           warnings.push(`Rune complex '${complex.id}' references missing rune item '${runeItemId}'.`);
         }
+      }
+    }
+
+    for (const module of db.blacksmithModules ?? []) {
+      pushMissingImage(`Blacksmith module '${module.id}'`, module.imageRef);
+    }
+    for (const tool of db.blacksmithTools ?? []) {
+      pushMissingImage(`Blacksmith tool '${tool.id}'`, tool.imageRef);
+    }
+    for (const qualityTier of db.blacksmithQualityTiers ?? []) {
+      pushMissingImage(`Blacksmith quality '${qualityTier.id}' frame`, qualityTier.frameImageRef);
+    }
+    for (const preset of db.blacksmithVisualPresets ?? []) {
+      pushMissingImage(`Blacksmith visual preset '${preset.id}' background`, preset.backgroundImageRef);
+      pushMissingImage(`Blacksmith visual preset '${preset.id}' anvil`, preset.anvilImageRef);
+      pushMissingImage(`Blacksmith visual preset '${preset.id}' furnace`, preset.furnaceImageRef);
+      for (const imageId of preset.hammerImageRefs ?? []) {
+        pushMissingImage(`Blacksmith visual preset '${preset.id}' hammer`, imageId);
+      }
+      for (const imageId of preset.defectOverlayRefs ?? []) {
+        pushMissingImage(`Blacksmith visual preset '${preset.id}' defect overlay`, imageId);
+      }
+      for (const imageId of preset.blankImageRefs ?? []) {
+        pushMissingImage(`Blacksmith visual preset '${preset.id}' blank`, imageId);
+      }
+      for (const imageId of preset.qualityFrameRefs ?? []) {
+        pushMissingImage(`Blacksmith visual preset '${preset.id}' quality frame`, imageId);
       }
     }
 
@@ -3375,10 +3999,24 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeQuestMarkerInput(payload as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'craftingRecipes') {
       nextEntry = normalizeCraftingRecipeInput(payload as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'recipeVisualProfiles') {
+      nextEntry = normalizeRecipeVisualProfileInput(payload as unknown as RecipeVisualProfile) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'itemSets') {
       nextEntry = normalizeItemSetInput(payload as unknown as ItemSet) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'runeComplexes') {
       nextEntry = normalizeRuneComplexInput(payload as unknown as RuneComplex) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithForgeTiers') {
+      nextEntry = normalizeBlacksmithForgeTierInput(payload as unknown as BlacksmithForgeTier) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithModules') {
+      nextEntry = normalizeBlacksmithModuleInput(payload as unknown as BlacksmithModule) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithTools') {
+      nextEntry = normalizeBlacksmithToolInput(payload as unknown as BlacksmithTool) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithQualityTiers') {
+      nextEntry = normalizeBlacksmithQualityTierInput(payload as unknown as BlacksmithQualityTier) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithVisualPresets') {
+      nextEntry = normalizeBlacksmithVisualPresetInput(payload as unknown as BlacksmithVisualPreset) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithBalance') {
+      nextEntry = normalizeBlacksmithBalanceInput(payload as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
     } else {
       nextEntry = clone(payload);
     }
@@ -3429,10 +4067,24 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeQuestMarkerInput(mergedBase as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'craftingRecipes') {
       merged = normalizeCraftingRecipeInput(mergedBase as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'recipeVisualProfiles') {
+      merged = normalizeRecipeVisualProfileInput(mergedBase as unknown as RecipeVisualProfile) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'itemSets') {
       merged = normalizeItemSetInput(mergedBase as unknown as ItemSet) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'runeComplexes') {
       merged = normalizeRuneComplexInput(mergedBase as unknown as RuneComplex) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithForgeTiers') {
+      merged = normalizeBlacksmithForgeTierInput(mergedBase as unknown as BlacksmithForgeTier) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithModules') {
+      merged = normalizeBlacksmithModuleInput(mergedBase as unknown as BlacksmithModule) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithTools') {
+      merged = normalizeBlacksmithToolInput(mergedBase as unknown as BlacksmithTool) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithQualityTiers') {
+      merged = normalizeBlacksmithQualityTierInput(mergedBase as unknown as BlacksmithQualityTier) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithVisualPresets') {
+      merged = normalizeBlacksmithVisualPresetInput(mergedBase as unknown as BlacksmithVisualPreset) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithBalance') {
+      merged = normalizeBlacksmithBalanceInput(mergedBase as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
     } else {
       merged = mergedBase;
     }
@@ -3494,6 +4146,30 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.lootTables) && payload.lootTables.length > 0) {
       db.lootTables = mergeById(db.lootTables, payload.lootTables as any[]);
     }
+    if (Array.isArray(payload.blacksmithForgeTiers) && payload.blacksmithForgeTiers.length > 0) {
+      const normalized = payload.blacksmithForgeTiers.map((entry) => normalizeBlacksmithForgeTierInput(entry as BlacksmithForgeTier));
+      db.blacksmithForgeTiers = mergeById(db.blacksmithForgeTiers ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithModules) && payload.blacksmithModules.length > 0) {
+      const normalized = payload.blacksmithModules.map((entry) => normalizeBlacksmithModuleInput(entry as BlacksmithModule));
+      db.blacksmithModules = mergeById(db.blacksmithModules ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithTools) && payload.blacksmithTools.length > 0) {
+      const normalized = payload.blacksmithTools.map((entry) => normalizeBlacksmithToolInput(entry as BlacksmithTool));
+      db.blacksmithTools = mergeById(db.blacksmithTools ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithQualityTiers) && payload.blacksmithQualityTiers.length > 0) {
+      const normalized = payload.blacksmithQualityTiers.map((entry) => normalizeBlacksmithQualityTierInput(entry as BlacksmithQualityTier));
+      db.blacksmithQualityTiers = mergeById(db.blacksmithQualityTiers ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithVisualPresets) && payload.blacksmithVisualPresets.length > 0) {
+      const normalized = payload.blacksmithVisualPresets.map((entry) => normalizeBlacksmithVisualPresetInput(entry as BlacksmithVisualPreset));
+      db.blacksmithVisualPresets = mergeById(db.blacksmithVisualPresets ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithBalance) && payload.blacksmithBalance.length > 0) {
+      const normalized = payload.blacksmithBalance.map((entry) => normalizeBlacksmithBalanceInput(entry as BlacksmithBalance));
+      db.blacksmithBalance = mergeById(db.blacksmithBalance ?? [], normalized);
+    }
     if (Array.isArray(payload.images) && payload.images.length > 0) {
       const normalizedImages = (payload.images as StoredImage[]).map((image) => this.normalizeStoredImageInput(image));
       db.images = mergeById(db.images, normalizedImages);
@@ -3528,6 +4204,11 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.craftingRecipes) && payload.craftingRecipes.length > 0) {
       const normalized = payload.craftingRecipes.map((entry) => normalizeCraftingRecipeInput(entry as CraftingRecipe));
       db.craftingRecipes = mergeById(db.craftingRecipes ?? [], normalized);
+    }
+
+    if (Array.isArray(payload.recipeVisualProfiles) && payload.recipeVisualProfiles.length > 0) {
+      const normalized = payload.recipeVisualProfiles.map((entry) => normalizeRecipeVisualProfileInput(entry as RecipeVisualProfile));
+      db.recipeVisualProfiles = mergeById(db.recipeVisualProfiles ?? [], normalized);
     }
     if (Array.isArray(payload.itemSets) && payload.itemSets.length > 0) {
       const normalized = payload.itemSets.map((entry) => normalizeItemSetInput(entry as ItemSet));

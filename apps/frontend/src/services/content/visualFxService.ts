@@ -29,12 +29,109 @@ export const VISUAL_FX_ELEMENTS: NonNullable<VisualFxDefinition['element']>[] = 
   'arcane',
 ];
 
+export const VISUAL_FX_PLACEMENT_MODES: NonNullable<VisualFxDefinition['placement']['mode']>[] = [
+  'once',
+  'linger',
+  'follow_target',
+  'follow_caster',
+  'ground_persist',
+];
+
+export const VISUAL_FX_KINDS: NonNullable<VisualFxDefinition['kind']>[] = ['single', 'composite'];
+
+export const VISUAL_FX_STAGE_TYPES: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['stageType']>[] = [
+  'cast',
+  'projectile',
+  'impact',
+  'linger',
+  'sound',
+  'camera',
+  'movement',
+  'return',
+];
+
+export const VISUAL_FX_STAGE_TRIGGERS: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['trigger']>[] = [
+  'on_start',
+  'after_previous',
+  'on_hit',
+  'after_delay',
+  'on_complete',
+];
+
+export const VISUAL_FX_STAGE_PLAY_ON: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['playOn']>[] = [
+  'caster',
+  'target',
+  'ground',
+  'projectile_end',
+  'projectile_current',
+  'previous_stage_end',
+];
+
+export const VISUAL_FX_STAGE_FOLLOW_MODES: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['followMode']>[] = [
+  'none',
+  'follow_target',
+  'follow_caster',
+  'follow_projectile',
+];
+
+export const VISUAL_FX_STAGE_MOVEMENT_BEHAVIORS: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['movementBehavior']>[] = [
+  'none',
+  'projectile_straight',
+  'projectile_arc',
+  'dash_to_target',
+  'teleport_to_target',
+  'teleport_there_and_back',
+];
+
+export const VISUAL_FX_STAGE_CONDITIONS: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['condition']>[] = [
+  'always',
+  'if_hit',
+  'if_crit',
+  'if_miss',
+];
+
+export const VISUAL_FX_STAGE_TARGET_MODES: NonNullable<NonNullable<VisualFxDefinition['stages']>[number]['targetMode']>[] = [
+  'primary_target',
+  'all_targets',
+  'aoe_targets',
+  'chain_targets',
+];
+
+export function emptyVisualFxStage(index = 0): NonNullable<VisualFxDefinition['stages']>[number] {
+  return {
+    id: `stage_${index + 1}`,
+    name: '',
+    stageType: 'impact',
+    enabled: true,
+    trigger: index === 0 ? 'on_start' : 'after_previous',
+    delayMs: 0,
+    fxRefId: '',
+    fxVariantIds: [],
+    randomizeFxVariant: false,
+    playOn: 'target',
+    followMode: 'none',
+    durationMs: 700,
+    persistMs: 1400,
+    movementBehavior: 'none',
+    stopSequenceOnFailure: false,
+    parallelGroup: '',
+    branchToStageIds: [],
+    condition: 'always',
+    targetMode: 'primary_target',
+    audioRefIds: [],
+    cameraShakePreset: 'none',
+    chainFromPrevious: false,
+    maxChainTargets: 3,
+  };
+}
+
 export function emptyVisualFx(): VisualFxDefinition {
   const now = nowIso();
   return {
     id: '',
     name: '',
     status: 'draft',
+    kind: 'single',
     category: 'hit',
     element: 'physical',
     type: 'sprite_sheet',
@@ -53,10 +150,12 @@ export function emptyVisualFx(): VisualFxDefinition {
     },
     placement: {
       defaultPlayOn: 'target',
+      mode: 'once',
       anchor: 'center',
       offsetX: 0,
       offsetY: 0,
       rotateToDirection: true,
+      lingerDurationMs: 900,
     },
     render: {
       scale: 1,
@@ -79,6 +178,7 @@ export function emptyVisualFx(): VisualFxDefinition {
       defaultSoundId: '',
       volume: 1,
     },
+    stages: [],
     tags: [],
     createdAt: now,
     updatedAt: now,
@@ -99,12 +199,45 @@ export function normalizeVisualFx(input: Partial<VisualFxDefinition>): VisualFxD
   const frameWidth = numberOrUndefined(input.asset?.frameWidth) ?? base.asset.frameWidth ?? 256;
   const frameHeight = numberOrUndefined(input.asset?.frameHeight) ?? base.asset.frameHeight ?? 256;
   const frameCount = numberOrUndefined(input.asset?.frameCount) ?? base.asset.frameCount ?? 1;
+  const normalizedStages = Array.isArray(input.stages)
+    ? input.stages.map((stage, index) => {
+      const baseStage = emptyVisualFxStage(index);
+      return {
+        ...baseStage,
+        ...stage,
+        id: String(stage.id ?? '').trim() || baseStage.id,
+        name: String(stage.name ?? '').trim() || undefined,
+        stageType: stage.stageType ?? baseStage.stageType,
+        enabled: stage.enabled !== false,
+        trigger: stage.trigger ?? baseStage.trigger,
+        delayMs: Math.max(0, Math.floor(numberOrUndefined(stage.delayMs) ?? baseStage.delayMs ?? 0)),
+        fxRefId: String(stage.fxRefId ?? '').trim() || undefined,
+        fxVariantIds: Array.isArray(stage.fxVariantIds) ? stage.fxVariantIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+        randomizeFxVariant: stage.randomizeFxVariant === true,
+        playOn: stage.playOn ?? baseStage.playOn,
+        followMode: stage.followMode ?? baseStage.followMode,
+        durationMs: Math.max(0, Math.floor(numberOrUndefined(stage.durationMs) ?? baseStage.durationMs ?? 0)),
+        persistMs: Math.max(0, Math.floor(numberOrUndefined(stage.persistMs) ?? baseStage.persistMs ?? 0)),
+        movementBehavior: stage.movementBehavior ?? baseStage.movementBehavior,
+        stopSequenceOnFailure: stage.stopSequenceOnFailure === true,
+        parallelGroup: String(stage.parallelGroup ?? '').trim() || undefined,
+        branchToStageIds: Array.isArray(stage.branchToStageIds) ? stage.branchToStageIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+        condition: stage.condition ?? baseStage.condition,
+        targetMode: stage.targetMode ?? baseStage.targetMode,
+        audioRefIds: Array.isArray(stage.audioRefIds) ? stage.audioRefIds.map((entry) => String(entry).trim()).filter(Boolean) : [],
+        cameraShakePreset: stage.cameraShakePreset ?? baseStage.cameraShakePreset,
+        chainFromPrevious: stage.chainFromPrevious === true,
+        maxChainTargets: Math.max(1, Math.floor(numberOrUndefined(stage.maxChainTargets) ?? baseStage.maxChainTargets ?? 3)),
+      };
+    })
+    : [];
   return {
     ...base,
     ...input,
     id,
     name: input.name?.trim() || id,
     status: input.status ?? base.status,
+    kind: input.kind === 'composite' ? 'composite' : 'single',
     category: input.category ?? base.category,
     element: input.element,
     type: input.type ?? base.type,
@@ -129,10 +262,12 @@ export function normalizeVisualFx(input: Partial<VisualFxDefinition>): VisualFxD
       ...base.placement,
       ...(input.placement ?? {}),
       defaultPlayOn: input.placement?.defaultPlayOn ?? base.placement.defaultPlayOn,
+      mode: input.placement?.mode ?? base.placement.mode,
       anchor: input.placement?.anchor ?? base.placement.anchor,
       offsetX: numberOrUndefined(input.placement?.offsetX) ?? base.placement.offsetX,
       offsetY: numberOrUndefined(input.placement?.offsetY) ?? base.placement.offsetY,
       rotateToDirection: input.placement?.rotateToDirection ?? base.placement.rotateToDirection,
+      lingerDurationMs: Math.max(80, Math.floor(numberOrUndefined(input.placement?.lingerDurationMs) ?? base.placement.lingerDurationMs ?? 900)),
     },
     render: {
       ...base.render,
@@ -163,6 +298,7 @@ export function normalizeVisualFx(input: Partial<VisualFxDefinition>): VisualFxD
       defaultSoundId: input.audio?.defaultSoundId?.trim() || undefined,
       volume: clamp(numberOrUndefined(input.audio?.volume) ?? base.audio!.volume!, 0, 1),
     },
+    stages: normalizedStages,
     tags: Array.isArray(input.tags) ? input.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
     createdAt: input.createdAt || base.createdAt,
     updatedAt: nowIso(),

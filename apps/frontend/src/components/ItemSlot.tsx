@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import type { ItemDefinition } from '@theend/rpg-domain';
+import { GameImageView } from '../admin/components/GameImageView';
+import type { GameImageRef, StoredImage } from '../services/content/models';
 
 export interface ItemSlotProps {
   item?: ItemDefinition;
   iconEmoji?: string;
   iconImage?: string;
+  iconImageRef?: GameImageRef | null;
+  iconLegacyImagePath?: string | null;
+  runtimeImages?: StoredImage[];
   onClick?: () => void;
   showPrice?: boolean;
   price?: number;
@@ -17,6 +22,9 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
   item,
   iconEmoji,
   iconImage,
+  iconImageRef,
+  iconLegacyImagePath,
+  runtimeImages = [],
   onClick,
   showPrice = false,
   price,
@@ -101,16 +109,32 @@ export const ItemSlot: React.FC<ItemSlotProps> = ({
       onDrop={handleDrop}
       title={item.name}
     >
-      <div
-        className="item-slot-icon"
-        style={iconImage ? {
-          backgroundImage: `url('${iconImage}')`,
-          backgroundSize: 'contain',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'center',
-        } : {}}
-      >
-        {!iconImage && fallbackIcon}
+      <div className="item-slot-icon">
+        {iconImageRef ? (
+          <GameImageView
+            imageRef={iconImageRef}
+            legacyImagePath={iconLegacyImagePath}
+            runtimeImages={runtimeImages}
+            alt={item.name}
+            size={56}
+            fit="contain"
+            fallbackText={fallbackIcon}
+            className="item-slot-icon-image"
+          />
+        ) : iconImage ? (
+          <span
+            className="item-slot-icon-image item-slot-icon-image--legacy"
+            style={{
+              backgroundImage: `url('${iconImage}')`,
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+            }}
+            aria-hidden="true"
+          />
+        ) : (
+          fallbackIcon
+        )}
       </div>
       <div className="item-slot-name">{item.name}</div>
 

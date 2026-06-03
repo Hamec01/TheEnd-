@@ -14,7 +14,14 @@ import type {
   AdminQuestMarker,
   AdminSkill,
   AdminVisualFx,
+  BlacksmithBalance,
+  BlacksmithForgeTier,
+  BlacksmithModule,
+  BlacksmithQualityTier,
+  BlacksmithTool,
+  BlacksmithVisualPreset,
   CraftingRecipe,
+  RecipeVisualProfile,
   ItemSet,
   LootTable,
   Material,
@@ -47,8 +54,15 @@ export type ContentCollectionName =
   | 'questMarkers'
   | 'battleMaps'
   | 'craftingRecipes'
+  | 'recipeVisualProfiles'
   | 'itemSets'
-  | 'runeComplexes';
+  | 'runeComplexes'
+  | 'blacksmithForgeTiers'
+  | 'blacksmithModules'
+  | 'blacksmithTools'
+  | 'blacksmithQualityTiers'
+  | 'blacksmithVisualPresets'
+  | 'blacksmithBalance';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -120,8 +134,15 @@ export interface ContentSnapshot {
   questMarkers: AdminQuestMarker[];
   battleMaps: BattleMapDefinition[];
   craftingRecipes: CraftingRecipe[];
+  recipeVisualProfiles: RecipeVisualProfile[];
   itemSets: ItemSet[];
   runeComplexes: RuneComplex[];
+  blacksmithForgeTiers: BlacksmithForgeTier[];
+  blacksmithModules: BlacksmithModule[];
+  blacksmithTools: BlacksmithTool[];
+  blacksmithQualityTiers: BlacksmithQualityTier[];
+  blacksmithVisualPresets: BlacksmithVisualPreset[];
+  blacksmithBalance: BlacksmithBalance[];
   worldMap: WorldMapContent;
 }
 

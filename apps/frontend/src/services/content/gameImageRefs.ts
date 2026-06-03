@@ -12,6 +12,36 @@ export const IMAGE_SHEETS: Record<string, ImageSheetDefinition> = {
     columns: 8,
     rows: 8,
   },
+  blacksmith_forge_objects_384: {
+    id: 'blacksmith_forge_objects_384',
+    name: 'Blacksmith Forge Objects 384',
+    category: 'items',
+    src: '/art/blacksmith/objects/blacksmith_forge_objects_sheet_384.png',
+    frameWidth: 384,
+    frameHeight: 384,
+    columns: 4,
+    rows: 4,
+  },
+  blacksmith_workshop_tools_256: {
+    id: 'blacksmith_workshop_tools_256',
+    name: 'Blacksmith Workshop Tools 256',
+    category: 'ui',
+    src: '/art/blacksmith/tools/blacksmith_workshop_tools_sheet_256.png',
+    frameWidth: 256,
+    frameHeight: 256,
+    columns: 4,
+    rows: 4,
+  },
+  sheet_img_1780262515255_bf3f437a: {
+    id: 'sheet_img_1780262515255_bf3f437a',
+    name: 'Uploaded Materials Tileset 128',
+    category: 'materials',
+    src: 'img_1780262515255_bf3f437a',
+    frameWidth: 128,
+    frameHeight: 128,
+    columns: 10,
+    rows: 8,
+  },
 };
 
 const CUSTOM_IMAGE_SHEETS_STORAGE_KEY = 'theend.customImageSheets.v1';
@@ -156,11 +186,22 @@ export function getImageSheet(sheetId: string | null | undefined): ImageSheetDef
   if (!normalized) {
     return undefined;
   }
-  return IMAGE_SHEETS[normalized] ?? ensureCustomImageSheetsLoaded()[normalized];
+  return ensureCustomImageSheetsLoaded()[normalized] ?? IMAGE_SHEETS[normalized];
+}
+
+function getAllImageSheetsDeduped(): ImageSheetDefinition[] {
+  const byId = new Map<string, ImageSheetDefinition>();
+  for (const sheet of Object.values(IMAGE_SHEETS)) {
+    byId.set(sheet.id, sheet);
+  }
+  for (const sheet of getCustomImageSheets()) {
+    byId.set(sheet.id, sheet);
+  }
+  return Array.from(byId.values());
 }
 
 export function getImageSheetsByCategory(category?: ImageSheetCategory): ImageSheetDefinition[] {
-  const all = [...Object.values(IMAGE_SHEETS), ...getCustomImageSheets()];
+  const all = getAllImageSheetsDeduped();
   if (!category) {
     return all;
   }
@@ -246,6 +287,32 @@ export function toLegacyImagePath(ref: GameImageRef | null | undefined): string 
     return undefined;
   }
   return ref.type === 'image' ? ref.src.trim() || undefined : undefined;
+}
+
+export function resolveItemIdGameImageRef(
+  itemId: string,
+  catalogEntries: Array<{ id: string; imageRef?: GameImageRef | null; imagePath?: string | null }>,
+): GameImageRef | undefined {
+  const probeIds = Array.from(new Set([
+    itemId,
+    itemId.replace(/^item_/, ''),
+    itemId.replace(/^mat_/, ''),
+    `mat_${itemId.replace(/^item_/, '').replace(/^mat_/, '')}`,
+    `item_${itemId.replace(/^item_/, '').replace(/^mat_/, '')}`,
+  ])).filter(Boolean);
+
+  for (const probeId of probeIds) {
+    const entry = catalogEntries.find((candidate) => candidate.id === probeId);
+    if (!entry) {
+      continue;
+    }
+    const normalized = normalizeGameImageRef(entry.imageRef, entry.imagePath);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
 }
 
 export function resolveGameImageRefSource(

@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEventHandler, ReactNode } from 'react';
 import type { PlayerProfessionState } from '@theend/rpg-domain';
 import { getBlockedByExclusiveBranchReason } from '../../services/miningSkillValidation';
+import {
+  canUnlockFinalBlacksmithTrial,
+  countSelectedBranchesInExclusiveGroup,
+  getBlockedByExclusiveSkillGroupReason,
+  getExclusiveGroupMax,
+} from '../../services/professionSkillTreeUtils';
+import {
+  getImageSheet,
+  getTilesetFrameRect,
+  normalizeGameImageRef,
+  resolveGameImageRefSource,
+} from '../../services/content/gameImageRefs';
+import type { StoredImage } from '../../services/content/models';
 import type { ProfessionBranch, ProfessionSkill } from '../../types/profession';
 import { SkillTreeDetailsPanel, type SelectedTreeNode } from './SkillTreeDetailsPanel';
 import {
@@ -9,6 +22,10 @@ import {
   MINING_BRANCH_NODE_WIDTH,
   MINING_SKILL_NODE_HEIGHT,
   MINING_SKILL_NODE_WIDTH,
+  DEFAULT_BRANCH_NODE_HEIGHT,
+  DEFAULT_BRANCH_NODE_WIDTH,
+  DEFAULT_SKILL_NODE_HEIGHT,
+  DEFAULT_SKILL_NODE_WIDTH,
   SkillTreeNode,
   type SkillTreeNodeVisualState,
 } from './SkillTreeNode';
@@ -24,6 +41,7 @@ interface SkillTreeViewProps {
   onReset?: () => void;
   onBack?: () => void;
   resolveIcon?: (icon?: string) => string | undefined;
+  runtimeImages?: StoredImage[];
   legacyFallback?: ReactNode;
   isDev?: boolean;
 }
@@ -64,6 +82,13 @@ function darkBackgroundForProfession(professionId: string): string {
 
 const MINING_STAGE_WIDTH = 1220;
 const MINING_STAGE_HEIGHT = 820;
+const BLACKSMITH_STAGE_WIDTH = 920;
+const BLACKSMITH_STAGE_HEIGHT = 1800;
+const BLACKSMITH_SLOT_OFFSET_X = 0;
+const BLACKSMITH_SLOT_OFFSET_Y = 0;
+const BLACKSMITH_SKILL_NODE_SIZE = 72;
+const BLACKSMITH_BRANCH_NODE_WIDTH = 220;
+const BLACKSMITH_BRANCH_NODE_HEIGHT = 56;
 const MINING_EXTRA_SKILLS_COLUMN_X = 18;
 const MINING_EXTRA_SKILLS_COLUMN_START_Y = 24;
 const MINING_EXTRA_SKILLS_ROW_GAP = 74;
@@ -78,6 +103,66 @@ const MINING_CANONICAL_SKILL_ID_BY_NAME = new Map<string, string>([
   ['чутье прохода', 'mining_passage_sense'],
   ['каменная выдержка', 'mining_stone_endurance'],
 ]);
+
+const BLACKSMITH_TREE_LAYOUT_BY_ID: Record<string, { x: number; y: number; kind?: 'skill' | 'branch' }> = {
+  blacksmith_unlock_jewelcrafting: { x: 724, y: 56 },
+  blacksmith_unlock_runecrafting: { x: 424, y: 56 },
+  blacksmith_unlock_forge_engineering: { x: 124, y: 56 },
+
+  final_blacksmith_trial: { x: 350, y: 176, kind: 'branch' },
+
+  blacksmith_razor_steel: { x: 124, y: 320 },
+  blacksmith_heavy_impact: { x: 124, y: 410 },
+  blacksmith_personal_weapon_fit: { x: 124, y: 500 },
+  blacksmith_clean_weapon_profile: { x: 124, y: 590 },
+  blacksmith_second_weapon_socket: { x: 124, y: 680 },
+
+  blacksmith_firm_armor_fit: { x: 424, y: 320 },
+  blacksmith_dampening_layer: { x: 424, y: 410 },
+  blacksmith_iron_stance: { x: 424, y: 500 },
+  blacksmith_anti_stun_assembly: { x: 424, y: 590 },
+  blacksmith_second_defense_socket: { x: 424, y: 680 },
+
+  blacksmith_gem_settings: { x: 724, y: 320 },
+  blacksmith_rune_marking: { x: 724, y: 410 },
+  blacksmith_stable_mount: { x: 724, y: 500 },
+  blacksmith_thin_metalwork: { x: 724, y: 590 },
+  blacksmith_base_seal: { x: 724, y: 680 },
+
+  blacksmith_weapon_master_path: { x: 50, y: 804, kind: 'branch' },
+  blacksmith_armor_master_path: { x: 350, y: 804, kind: 'branch' },
+  blacksmith_setting_master_path: { x: 650, y: 804, kind: 'branch' },
+
+  blacksmith_weapon_blades: { x: 124, y: 956 },
+  blacksmith_weapon_balance: { x: 124, y: 1046 },
+  blacksmith_sharp_edge: { x: 124, y: 1136 },
+  blacksmith_combat_grip: { x: 124, y: 1226 },
+  blacksmith_weapon_socket: { x: 124, y: 1316 },
+
+  blacksmith_armor_forging: { x: 424, y: 956 },
+  blacksmith_reinforced_plates: { x: 424, y: 1046 },
+  blacksmith_shield_brace: { x: 424, y: 1136 },
+  blacksmith_armor_fitting: { x: 424, y: 1226 },
+  blacksmith_armor_socket: { x: 424, y: 1316 },
+
+  blacksmith_fine_work: { x: 724, y: 956 },
+  blacksmith_metal_setting: { x: 724, y: 1046 },
+  blacksmith_insert_mounting: { x: 724, y: 1136 },
+  blacksmith_minor_rune_surface: { x: 724, y: 1226 },
+  blacksmith_clean_setting: { x: 724, y: 1316 },
+
+  blacksmith_weapon_path: { x: 50, y: 1460, kind: 'branch' },
+  blacksmith_armor_path: { x: 350, y: 1460, kind: 'branch' },
+  blacksmith_precision_path: { x: 650, y: 1460, kind: 'branch' },
+
+  blacksmith_basic_forging: { x: 64, y: 1588 },
+  blacksmith_metal_knowledge: { x: 244, y: 1588 },
+  blacksmith_even_blank: { x: 424, y: 1588 },
+  blacksmith_simple_tempering: { x: 604, y: 1588 },
+  blacksmith_rough_socket: { x: 784, y: 1588 },
+
+  blacksmith_start: { x: 350, y: 1708, kind: 'branch' },
+};
 
 function normalizeMiningSkillNameForMatch(value: string): string {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
@@ -173,6 +258,54 @@ const MINING_VISUAL_CONNECTIONS: MiningConnection[] = [
   { from: 'mining_stone_whisper', to: 'mining_language_of_cracks' },
 ];
 
+const BLACKSMITH_VISUAL_CONNECTIONS: MiningConnection[] = [
+  { from: 'blacksmith_start', to: 'blacksmith_basic_forging' },
+  { from: 'blacksmith_start', to: 'blacksmith_even_blank' },
+  { from: 'blacksmith_start', to: 'blacksmith_rough_socket' },
+
+  { from: 'blacksmith_basic_forging', to: 'blacksmith_weapon_path' },
+  { from: 'blacksmith_even_blank', to: 'blacksmith_armor_path' },
+  { from: 'blacksmith_rough_socket', to: 'blacksmith_precision_path' },
+
+  { from: 'blacksmith_weapon_path', to: 'blacksmith_weapon_blades' },
+  { from: 'blacksmith_weapon_blades', to: 'blacksmith_weapon_socket' },
+  { from: 'blacksmith_weapon_socket', to: 'blacksmith_weapon_master_path' },
+  { from: 'blacksmith_weapon_master_path', to: 'blacksmith_razor_steel' },
+
+  { from: 'blacksmith_armor_path', to: 'blacksmith_armor_forging' },
+  { from: 'blacksmith_armor_forging', to: 'blacksmith_armor_socket' },
+  { from: 'blacksmith_armor_socket', to: 'blacksmith_armor_master_path' },
+  { from: 'blacksmith_armor_master_path', to: 'blacksmith_firm_armor_fit' },
+
+  { from: 'blacksmith_precision_path', to: 'blacksmith_fine_work' },
+  { from: 'blacksmith_fine_work', to: 'blacksmith_clean_setting' },
+  { from: 'blacksmith_clean_setting', to: 'blacksmith_setting_master_path' },
+  { from: 'blacksmith_setting_master_path', to: 'blacksmith_gem_settings' },
+
+  { from: 'blacksmith_weapon_master_path', to: 'final_blacksmith_trial' },
+  { from: 'blacksmith_armor_master_path', to: 'final_blacksmith_trial' },
+  { from: 'blacksmith_setting_master_path', to: 'final_blacksmith_trial' },
+
+  { from: 'final_blacksmith_trial', to: 'blacksmith_unlock_forge_engineering' },
+  { from: 'final_blacksmith_trial', to: 'blacksmith_unlock_runecrafting' },
+  { from: 'final_blacksmith_trial', to: 'blacksmith_unlock_jewelcrafting' },
+];
+
+const BLACKSMITH_SPARKS = [
+  { left: '6%', bottom: '10%', delay: '0s', duration: '5.2s', size: 2 },
+  { left: '14%', bottom: '22%', delay: '0.8s', duration: '4.8s', size: 3 },
+  { left: '22%', bottom: '14%', delay: '1.3s', duration: '5.4s', size: 2 },
+  { left: '30%', bottom: '30%', delay: '0.2s', duration: '4.6s', size: 2 },
+  { left: '38%', bottom: '18%', delay: '1.7s', duration: '5s', size: 3 },
+  { left: '46%', bottom: '12%', delay: '0.5s', duration: '5.6s', size: 2 },
+  { left: '54%', bottom: '28%', delay: '1.1s', duration: '4.9s', size: 3 },
+  { left: '62%', bottom: '16%', delay: '0.9s', duration: '5.1s', size: 2 },
+  { left: '70%', bottom: '26%', delay: '1.5s', duration: '4.7s', size: 2 },
+  { left: '78%', bottom: '12%', delay: '0.4s', duration: '5.5s', size: 3 },
+  { left: '86%', bottom: '24%', delay: '1.9s', duration: '4.5s', size: 2 },
+  { left: '92%', bottom: '10%', delay: '0.6s', duration: '5.3s', size: 2 },
+];
+
 export function SkillTreeView(props: SkillTreeViewProps) {
   const {
     professionId,
@@ -185,13 +318,17 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     onReset,
     onBack,
     resolveIcon,
+    runtimeImages = [],
     legacyFallback,
     isDev = false,
   } = props;
 
   const [selectedNode, setSelectedNode] = useState<{ type: TreeNodeType; id: string } | null>(null);
+  const [selectedNodePopupPosition, setSelectedNodePopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const [selectedNodePopupSize, setSelectedNodePopupSize] = useState<{ width: number; height: number }>({ width: 560, height: 360 });
   const [showLegacyList, setShowLegacyList] = useState(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const didAutoCenter = useRef(false);
 
@@ -219,8 +356,13 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     [branches, professionId],
   );
   const visibleBranches = useMemo(
-    () => allBranches.filter((entry) => !['mining_branch_common', 'mining_branch_transition'].includes(entry.id)),
-    [allBranches],
+    () => {
+      if (professionId === 'blacksmithing') {
+        return allBranches;
+      }
+      return allBranches.filter((entry) => !['mining_branch_common', 'mining_branch_transition'].includes(entry.id));
+    },
+    [allBranches, professionId],
   );
 
   const skillById = useMemo(() => new Map(allSkills.map((entry) => [entry.id, entry])), [allSkills]);
@@ -288,8 +430,13 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         allSkills,
         branches: allBranches,
       });
+      const blockedByExclusiveSkill = getBlockedByExclusiveSkillGroupReason({
+        skill,
+        learnedSkillIds: Array.from(learnedSkillIds),
+        allSkills,
+      });
 
-      const blockedReason = blockedByExclusive || undefined;
+      const blockedReason = blockedByExclusive || blockedByExclusiveSkill || undefined;
       const canLearn = !isLearned && !blockedReason && missing.length === 0;
       const visualState: SkillTreeNodeVisualState = isLearned
         ? 'learned'
@@ -330,18 +477,23 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         }
       }
 
-      const conflict = allBranches.find((candidate) => (
-        candidate.id !== branch.id
-        && Boolean(candidate.exclusiveGroupId)
-        && candidate.exclusiveGroupId === branch.exclusiveGroupId
-        && selectedBranchIds.has(candidate.id)
-      ));
+      const groupId = branch.exclusiveGroupId?.trim();
+      const selectedInGroup = groupId
+        ? countSelectedBranchesInExclusiveGroup(groupId, allBranches, selectedBranchIds)
+        : 0;
+      const groupMax = getExclusiveGroupMax(branch);
+      const groupFull = Boolean(groupId) && selectedInGroup >= groupMax;
       const lockConflictId = (branch.locksBranchIds ?? []).find((lockedBranchId) => selectedBranchIds.has(lockedBranchId));
-      const blockedReason = conflict
-        ? `Заблокировано веткой: ${conflict.name}`
-        : lockConflictId
-          ? `Конфликт с веткой: ${branchById.get(lockConflictId)?.name ?? lockConflictId}`
-          : undefined;
+      const finalTrialBlocked = branch.id === 'final_blacksmith_trial'
+        && professionId === 'blacksmithing'
+        && !canUnlockFinalBlacksmithTrial(allBranches, allSkills, learnedSkillIds, selectedBranchIds);
+      const blockedReason = finalTrialBlocked
+        ? 'Нужно завершить 5 навыков в двух мастерских ветках'
+        : groupFull
+          ? `Можно выбрать только ${groupMax} ветки в этой группе`
+          : lockConflictId
+            ? `Конфликт с веткой: ${branchById.get(lockConflictId)?.name ?? lockConflictId}`
+            : undefined;
 
       const canChoose = !isSelected && !blockedReason && missing.length === 0;
       const visualState: SkillTreeNodeVisualState = isSelected
@@ -365,6 +517,27 @@ export function SkillTreeView(props: SkillTreeViewProps) {
 
   const positions = useMemo(() => {
     const map = new Map<string, NodePosition>();
+    const isBlacksmith = professionId === 'blacksmithing';
+
+    if (isBlacksmith) {
+      for (const [nodeId, layout] of Object.entries(BLACKSMITH_TREE_LAYOUT_BY_ID)) {
+        if (layout.kind === 'branch') {
+          const branch = allBranches.find((entry) => entry.id === nodeId);
+          if (branch) {
+            map.set(`branch:${branch.id}`, { x: layout.x, y: layout.y, kind: 'branch' });
+          }
+          continue;
+        }
+        const skill = allSkills.find((entry) => entry.id === nodeId);
+        if (skill) {
+          map.set(`skill:${skill.id}`, {
+            x: layout.x + BLACKSMITH_SLOT_OFFSET_X,
+            y: layout.y + BLACKSMITH_SLOT_OFFSET_Y,
+            kind: 'skill',
+          });
+        }
+      }
+    }
 
     const extraMiningSkillsOrder = professionId === 'mining'
       ? allSkills
@@ -393,6 +566,9 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     allSkills.forEach((skill, index) => {
       const autoX = 120 + ((skill.requiredLevel - 1) % 6) * 220;
       const autoY = 120 + Math.floor(index / 6) * 180;
+      if (isBlacksmith && map.has(`skill:${skill.id}`)) {
+        return;
+      }
       const layoutPosition = professionId === 'mining' ? MINING_TREE_LAYOUT[skill.id] : undefined;
       const extraIndex = professionId === 'mining' ? extraMiningSkillIndex.get(skill.id) : undefined;
       map.set(`skill:${skill.id}`, {
@@ -412,6 +588,9 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     }, 0);
 
     allBranches.forEach((branch, index) => {
+      if (isBlacksmith && map.has(`branch:${branch.id}`)) {
+        return;
+      }
       const linked = allSkills.filter((skill) => skill.branchId === branch.id);
       const layoutPosition = professionId === 'mining' ? MINING_TREE_LAYOUT[branch.id] : undefined;
       if (layoutPosition) {
@@ -436,6 +615,9 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     if (professionId === 'mining') {
       return { width: MINING_STAGE_WIDTH, height: MINING_STAGE_HEIGHT };
     }
+    if (professionId === 'blacksmithing') {
+      return { width: BLACKSMITH_STAGE_WIDTH, height: BLACKSMITH_STAGE_HEIGHT };
+    }
     let maxX = 1280;
     let maxY = 760;
     for (const value of positions.values()) {
@@ -444,6 +626,31 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     }
     return { width: maxX, height: maxY };
   }, [positions, professionId]);
+
+  const nodeSize = useMemo(() => {
+    if (professionId === 'mining') {
+      return {
+        skillWidth: MINING_SKILL_NODE_WIDTH,
+        skillHeight: MINING_SKILL_NODE_HEIGHT,
+        branchWidth: MINING_BRANCH_NODE_WIDTH,
+        branchHeight: MINING_BRANCH_NODE_HEIGHT,
+      };
+    }
+    if (professionId === 'blacksmithing') {
+      return {
+        skillWidth: BLACKSMITH_SKILL_NODE_SIZE,
+        skillHeight: BLACKSMITH_SKILL_NODE_SIZE,
+        branchWidth: BLACKSMITH_BRANCH_NODE_WIDTH,
+        branchHeight: BLACKSMITH_BRANCH_NODE_HEIGHT,
+      };
+    }
+    return {
+      skillWidth: DEFAULT_SKILL_NODE_WIDTH,
+      skillHeight: DEFAULT_SKILL_NODE_HEIGHT,
+      branchWidth: DEFAULT_BRANCH_NODE_WIDTH,
+      branchHeight: DEFAULT_BRANCH_NODE_HEIGHT,
+    };
+  }, [professionId]);
 
   const stageScale = professionId === 'mining' ? 0.68 : 1;
   const stageWidth = Math.round(canvasSize.width * stageScale);
@@ -461,13 +668,14 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         return null;
       }
 
-      const icon = resolveIcon?.(skill.icon) ?? skill.icon;
+      const iconData = resolveSkillIconData(skill);
       return {
         type: 'skill',
         id: skill.id,
         name: skill.name,
         description: skill.description,
-        icon,
+        icon: iconData.icon,
+        iconFrame: iconData.iconFrame,
         item: skill,
         blockedReason: state.blockedReason,
         missingRequirements: state.missingRequirements,
@@ -509,8 +717,22 @@ export function SkillTreeView(props: SkillTreeViewProps) {
 
   const lines = useMemo(() => {
     const out: Array<{ key: string; from: NodePosition; to: NodePosition; color: string }> = [];
+    const emittedLineKeys = new Set<string>();
+
+    const pushLine = (key: string, from: NodePosition, to: NodePosition, color: string) => {
+      if (emittedLineKeys.has(key)) {
+        return;
+      }
+      emittedLineKeys.add(key);
+      out.push({ key, from, to, color });
+    };
 
     const colorForState = (state: SkillTreeNodeVisualState): string => {
+      if (professionId === 'blacksmithing') {
+        if (state === 'learned') return 'rgba(255, 176, 104, 0.94)';
+        if (state === 'available') return 'rgba(255, 144, 62, 0.72)';
+        return 'rgba(130, 90, 58, 0.46)';
+      }
       if (state === 'learned') return 'rgba(255, 255, 255, 0.95)';
       if (state === 'available') return 'rgba(255, 255, 255, 0.72)';
       return 'rgba(255, 255, 255, 0.38)';
@@ -526,12 +748,22 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         const destinationSkill = skillStates.get(connection.to);
         const destinationBranch = branchStates.get(connection.to);
         const visualState = destinationSkill?.visualState ?? destinationBranch?.visualState ?? 'locked';
-        out.push({
-          key: `${connection.from}->${connection.to}`,
-          from,
-          to,
-          color: colorForState(visualState),
-        });
+        pushLine(`${connection.from}->${connection.to}`, from, to, colorForState(visualState));
+      }
+      return out;
+    }
+
+    if (professionId === 'blacksmithing') {
+      for (const connection of BLACKSMITH_VISUAL_CONNECTIONS) {
+        const from = positions.get(`skill:${connection.from}`) ?? positions.get(`branch:${connection.from}`);
+        const to = positions.get(`skill:${connection.to}`) ?? positions.get(`branch:${connection.to}`);
+        if (!from || !to) {
+          continue;
+        }
+        const destinationSkill = skillStates.get(connection.to);
+        const destinationBranch = branchStates.get(connection.to);
+        const visualState = destinationSkill?.visualState ?? destinationBranch?.visualState ?? 'locked';
+        pushLine(`${connection.from}->${connection.to}`, from, to, colorForState(visualState));
       }
       return out;
     }
@@ -543,18 +775,16 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       for (const requiredId of skill.requiredSkillIds ?? []) {
         const from = positions.get(`skill:${requiredId}`);
         if (!from) continue;
-        out.push({ key: `skill:${requiredId}->skill:${skill.id}`, from, to, color: colorForState(state) });
+        pushLine(`skill:${requiredId}->skill:${skill.id}`, from, to, colorForState(state));
       }
-      for (const requiredBranchId of skill.requiredBranchIds ?? []) {
+      const branchSourceIds = new Set<string>(skill.requiredBranchIds ?? []);
+      if (skill.branchId) {
+        branchSourceIds.add(skill.branchId);
+      }
+      for (const requiredBranchId of branchSourceIds) {
         const from = positions.get(`branch:${requiredBranchId}`);
         if (!from) continue;
-        out.push({ key: `branch:${requiredBranchId}->skill:${skill.id}`, from, to, color: colorForState(state) });
-      }
-      if (skill.branchId) {
-        const from = positions.get(`branch:${skill.branchId}`);
-        if (from) {
-          out.push({ key: `branch:${skill.branchId}->skill:${skill.id}`, from, to, color: colorForState(state) });
-        }
+        pushLine(`branch:${requiredBranchId}->skill:${skill.id}`, from, to, colorForState(state));
       }
     }
 
@@ -565,19 +795,19 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       for (const requiredSkillId of branch.requiredSkillIds ?? []) {
         const from = positions.get(`skill:${requiredSkillId}`);
         if (!from) continue;
-        out.push({ key: `skill:${requiredSkillId}->branch:${branch.id}`, from, to, color: colorForState(state) });
+        pushLine(`skill:${requiredSkillId}->branch:${branch.id}`, from, to, colorForState(state));
       }
       for (const requiredBranchId of branch.requiredBranchIds ?? []) {
         const from = positions.get(`branch:${requiredBranchId}`);
         if (!from) continue;
-        out.push({ key: `branch:${requiredBranchId}->branch:${branch.id}`, from, to, color: colorForState(state) });
+        pushLine(`branch:${requiredBranchId}->branch:${branch.id}`, from, to, colorForState(state));
       }
     }
 
     return out;
   }, [allBranches, allSkills, branchStates, positions, professionId, skillStates]);
 
-  const resolveTreeIcon = (nodeName: string, icon?: string): string | undefined => {
+  function resolveTreeIcon(nodeName: string, icon?: string): string | undefined {
     const resolved = resolveIcon?.(icon) ?? icon;
     if (resolved) {
       return resolved;
@@ -586,7 +816,54 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       return `/art/mining-skills/${nodeName}.png`;
     }
     return undefined;
-  };
+  }
+
+  function resolveSkillIconData(skill: ProfessionSkill): {
+    icon?: string;
+    iconFrame?: {
+      src: string;
+      frameX: number;
+      frameY: number;
+      frameWidth: number;
+      frameHeight: number;
+      sheetWidth: number;
+      sheetHeight: number;
+    };
+  } {
+    const imageRef = normalizeGameImageRef(skill.iconImageRef as never, skill.icon);
+    if (!imageRef) {
+      const autoIconSource = runtimeImages.find((image) => image.id === skill.id)?.dataUrl ?? resolveIcon?.(skill.id);
+      if (autoIconSource) {
+        return { icon: autoIconSource };
+      }
+      return { icon: resolveTreeIcon(skill.name, skill.icon) };
+    }
+
+    if (imageRef.type === 'image') {
+      return { icon: resolveGameImageRefSource(imageRef, runtimeImages) ?? resolveIcon?.(imageRef.src) ?? imageRef.src };
+    }
+
+    const sheet = getImageSheet(imageRef.sheetId);
+    if (!sheet) {
+      return { icon: resolveTreeIcon(skill.name, skill.icon) };
+    }
+    const source = resolveGameImageRefSource(imageRef, runtimeImages) ?? resolveIcon?.(sheet.src) ?? sheet.src;
+    if (!source) {
+      return { icon: resolveTreeIcon(skill.name, skill.icon) };
+    }
+    const frame = getTilesetFrameRect(sheet, imageRef.frame);
+    return {
+      iconFrame: {
+        src: source,
+        frameX: frame.x,
+        frameY: frame.y,
+        frameWidth: Math.max(1, sheet.frameWidth),
+        frameHeight: Math.max(1, sheet.frameHeight),
+        sheetWidth: Math.max(1, sheet.columns * sheet.frameWidth),
+        sheetHeight: Math.max(1, sheet.rows * sheet.frameHeight),
+      },
+    };
+  }
 
   const onPointerDownTree: MouseEventHandler<HTMLDivElement> = (event) => {
     if (event.button !== 0 || !viewportRef.current) {
@@ -615,7 +892,12 @@ export function SkillTreeView(props: SkillTreeViewProps) {
   };
 
   useEffect(() => {
-    if (professionId !== 'mining' || didAutoCenter.current) {
+    didAutoCenter.current = false;
+    setSelectedNodePopupPosition(null);
+  }, [professionId]);
+
+  useEffect(() => {
+    if (didAutoCenter.current) {
       return;
     }
     const viewport = viewportRef.current;
@@ -624,19 +906,13 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     }
     const maxScrollLeft = Math.max(0, stageWidth - viewport.clientWidth);
     viewport.scrollLeft = maxScrollLeft * 0.5;
-    viewport.scrollTop = 0;
+    if (professionId === 'mining') {
+      viewport.scrollTop = 0;
+    } else if (professionId === 'blacksmithing') {
+      viewport.scrollTop = Math.max(0, stageHeight - viewport.clientHeight);
+    }
     didAutoCenter.current = true;
-  }, [professionId, stageWidth]);
-
-  useEffect(() => {
-    if (selectedNode || allSkills.length === 0) {
-      return;
-    }
-    const firstAvailable = allSkills.find((skill) => skillStates.get(skill.id)?.canLearn) ?? allSkills[0];
-    if (firstAvailable) {
-      setSelectedNode({ type: 'skill', id: firstAvailable.id });
-    }
-  }, [allSkills, selectedNode, skillStates]);
+  }, [professionId, stageHeight, stageWidth]);
 
   const handleNodeAction = (item: SelectedTreeNode) => {
     if (item.type === 'skill' && item.canAct) {
@@ -647,6 +923,51 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       onChooseBranch(item.id);
     }
   };
+
+  const handleSelectNode = (type: TreeNodeType, id: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    const viewportRect = viewportRef.current?.getBoundingClientRect();
+    if (viewportRect) {
+      const viewport = viewportRef.current;
+      const scrollLeft = viewport?.scrollLeft ?? 0;
+      const scrollTop = viewport?.scrollTop ?? 0;
+      const x = Math.max(8, scrollLeft + (event.clientX - viewportRect.left));
+      const y = Math.max(8, scrollTop + (event.clientY - viewportRect.top));
+      setSelectedNodePopupPosition({ x, y });
+    } else {
+      setSelectedNodePopupPosition(null);
+    }
+    setSelectedNode({ type, id });
+  };
+
+  useLayoutEffect(() => {
+    if (!selected || !popupRef.current) {
+      return;
+    }
+    const rect = popupRef.current.getBoundingClientRect();
+    const width = Math.max(280, Math.round(rect.width));
+    const height = Math.max(200, Math.round(rect.height));
+    if (width !== selectedNodePopupSize.width || height !== selectedNodePopupSize.height) {
+      setSelectedNodePopupSize({ width, height });
+    }
+  }, [selected, selectedNodePopupSize.height, selectedNodePopupSize.width]);
+
+  const popupPosition = useMemo(() => {
+    const viewport = viewportRef.current;
+    const anchor = selectedNodePopupPosition;
+    if (!viewport || !anchor) {
+      return { left: 12, top: 12 };
+    }
+
+    const minLeft = viewport.scrollLeft + 8;
+    const minTop = viewport.scrollTop + 8;
+    const maxLeft = viewport.scrollLeft + Math.max(8, viewport.clientWidth - selectedNodePopupSize.width - 8);
+    const maxTop = viewport.scrollTop + Math.max(8, viewport.clientHeight - selectedNodePopupSize.height - 8);
+
+    return {
+      left: Math.min(maxLeft, Math.max(minLeft, anchor.x)),
+      top: Math.min(maxTop, Math.max(minTop, anchor.y)),
+    };
+  }, [selectedNodePopupPosition, selectedNodePopupSize.height, selectedNodePopupSize.width]);
 
   return (
     <section
@@ -719,7 +1040,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
             onMouseLeave={clearDrag}
             style={{
               position: 'relative',
-              height: 'clamp(340px, 46vh, 500px)',
+              height: professionId === 'blacksmithing' ? 'clamp(520px, 72vh, 840px)' : 'clamp(340px, 46vh, 500px)',
               overflow: 'auto',
               borderRadius: 10,
               border: '1px solid rgba(184, 143, 78, 0.36)',
@@ -735,27 +1056,70 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                 position: 'relative',
                 width: stageWidth,
                 height: stageHeight,
-                background: 'radial-gradient(circle at 20% 78%, rgba(194, 107, 32, 0.15), transparent 42%), radial-gradient(circle at 76% 24%, rgba(40, 116, 148, 0.15), transparent 40%)',
+                background: professionId === 'blacksmithing'
+                  ? 'radial-gradient(circle at 50% 8%, rgba(255, 157, 77, 0.16), transparent 20%), radial-gradient(circle at 18% 82%, rgba(194, 107, 32, 0.14), transparent 28%), radial-gradient(circle at 82% 24%, rgba(163, 92, 27, 0.12), transparent 26%), linear-gradient(180deg, rgba(16, 12, 10, 0.99), rgba(10, 8, 7, 0.99))'
+                  : 'radial-gradient(circle at 20% 78%, rgba(194, 107, 32, 0.15), transparent 42%), radial-gradient(circle at 76% 24%, rgba(40, 116, 148, 0.15), transparent 40%)',
               }}
             >
+              {professionId === 'blacksmithing' ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundImage: 'url(/art/professions/craft_background.png)',
+                    backgroundPosition: 'center',
+                    backgroundSize: 'cover',
+                    backgroundRepeat: 'no-repeat',
+                    opacity: 0.28,
+                    filter: 'saturate(0.75) contrast(1.06) brightness(0.9)',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                  }}
+                />
+              ) : null}
+              {professionId === 'blacksmithing' ? (
+                <>
+                  <style>{`@keyframes blacksmithSparkRise { 0% { transform: translateY(0) scale(1); opacity: 0.9; } 100% { transform: translateY(-240px) scale(0.25); opacity: 0; } }`}</style>
+                  <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 2 }}>
+                    {BLACKSMITH_SPARKS.map((spark) => (
+                      <span
+                        key={`${spark.left}-${spark.bottom}-${spark.delay}`}
+                        style={{
+                          position: 'absolute',
+                          left: spark.left,
+                          bottom: spark.bottom,
+                          width: spark.size,
+                          height: spark.size,
+                          borderRadius: 999,
+                          background: 'rgba(255, 132, 42, 0.95)',
+                          boxShadow: '0 0 8px rgba(255, 132, 42, 0.72)',
+                          animation: `blacksmithSparkRise ${spark.duration} linear infinite`,
+                          animationDelay: spark.delay,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : null}
               <div
                 style={{
                   position: 'absolute',
                   inset: 0,
                   transform: `scale(${stageScale})`,
                   transformOrigin: 'top left',
+                  zIndex: 3,
                 }}
               >
               <svg width={canvasSize.width} height={canvasSize.height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                 {lines.map((line) => (
                   <path
                     key={line.key}
-                    d={`M ${line.from.x + (line.from.kind === 'branch' ? MINING_BRANCH_NODE_WIDTH / 2 : MINING_SKILL_NODE_WIDTH / 2)} ${line.from.y + (line.from.kind === 'branch' ? MINING_BRANCH_NODE_HEIGHT / 2 : MINING_SKILL_NODE_HEIGHT / 2)} C ${(line.from.x + line.to.x) / 2} ${line.from.y + (line.from.kind === 'branch' ? MINING_BRANCH_NODE_HEIGHT / 2 : MINING_SKILL_NODE_HEIGHT / 2)}, ${(line.from.x + line.to.x) / 2} ${line.to.y + (line.to.kind === 'branch' ? MINING_BRANCH_NODE_HEIGHT / 2 : MINING_SKILL_NODE_HEIGHT / 2)}, ${line.to.x + (line.to.kind === 'branch' ? MINING_BRANCH_NODE_WIDTH / 2 : MINING_SKILL_NODE_WIDTH / 2)} ${line.to.y + (line.to.kind === 'branch' ? MINING_BRANCH_NODE_HEIGHT / 2 : MINING_SKILL_NODE_HEIGHT / 2)}`}
+                    d={`M ${line.from.x + (line.from.kind === 'branch' ? nodeSize.branchWidth / 2 : nodeSize.skillWidth / 2)} ${line.from.y + (line.from.kind === 'branch' ? nodeSize.branchHeight / 2 : nodeSize.skillHeight / 2)} C ${(line.from.x + line.to.x) / 2} ${line.from.y + (line.from.kind === 'branch' ? nodeSize.branchHeight / 2 : nodeSize.skillHeight / 2)}, ${(line.from.x + line.to.x) / 2} ${line.to.y + (line.to.kind === 'branch' ? nodeSize.branchHeight / 2 : nodeSize.skillHeight / 2)}, ${line.to.x + (line.to.kind === 'branch' ? nodeSize.branchWidth / 2 : nodeSize.skillWidth / 2)} ${line.to.y + (line.to.kind === 'branch' ? nodeSize.branchHeight / 2 : nodeSize.skillHeight / 2)}`}
                     fill="none"
                     stroke={line.color}
                     strokeWidth={2}
                     strokeLinecap="round"
-                    style={{ filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.35))' }}
+                    style={{ filter: professionId === 'blacksmithing' ? 'drop-shadow(0 0 8px rgba(255, 141, 62, 0.38))' : 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.35))' }}
                   />
                 ))}
               </svg>
@@ -763,18 +1127,24 @@ export function SkillTreeView(props: SkillTreeViewProps) {
               {allSkills.map((skill) => {
                 const position = positions.get(`skill:${skill.id}`);
                 if (!position) return null;
-                const icon = resolveTreeIcon(skill.name, skill.icon);
+                const iconData = resolveSkillIconData(skill);
                 return (
                   <SkillTreeNode
                     key={skill.id}
                     id={skill.id}
                     name={skill.name}
-                    icon={icon}
+                    icon={iconData.icon}
+                    iconFrame={iconData.iconFrame}
                     x={position.x}
                     y={position.y}
+                    width={nodeSize.skillWidth}
+                    height={nodeSize.skillHeight}
                     visualState={skillStates.get(skill.id)?.visualState ?? 'locked'}
                     isSelected={selectedNode?.type === 'skill' && selectedNode.id === skill.id}
-                    onSelect={(id) => setSelectedNode({ type: 'skill', id })}
+                    showName={professionId !== 'mining' && professionId !== 'blacksmithing'}
+                    grayUntilLearned={professionId === 'blacksmithing'}
+                    slotMode={false}
+                    onSelect={(id, event) => handleSelectNode('skill', id, event)}
                   />
                 );
               })}
@@ -789,18 +1159,47 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                     icon={resolveTreeIcon(branch.name)}
                     x={position.x}
                     y={position.y}
+                    width={nodeSize.branchWidth}
+                    height={nodeSize.branchHeight}
                     isBranch
                     visualState={branchStates.get(branch.id)?.visualState ?? 'locked'}
                     isSelected={selectedNode?.type === 'branch' && selectedNode.id === branch.id}
-                    onSelect={(id) => setSelectedNode({ type: 'branch', id })}
+                    showName={professionId !== 'mining'}
+                    grayUntilLearned={professionId === 'blacksmithing'}
+                    onSelect={(id, event) => handleSelectNode('branch', id, event)}
                   />
                 );
               })}
               </div>
             </div>
-          </div>
 
-          <SkillTreeDetailsPanel selected={selected} onAction={handleNodeAction} />
+            {selected ? (
+              <div
+                ref={popupRef}
+                style={{
+                  position: 'absolute',
+                  left: popupPosition.left,
+                  top: popupPosition.top,
+                  zIndex: 24,
+                  width: 'min(560px, calc(100% - 24px))',
+                  maxWidth: 'calc(100% - 24px)',
+                  pointerEvents: 'auto',
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onMouseMove={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <SkillTreeDetailsPanel
+                  selected={selected}
+                  onAction={handleNodeAction}
+                  onClose={() => {
+                    setSelectedNode(null);
+                    setSelectedNodePopupPosition(null);
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
         </>
       )}
     </section>

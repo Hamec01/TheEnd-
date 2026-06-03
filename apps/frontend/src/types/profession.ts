@@ -113,6 +113,8 @@ export interface ProfessionSkill {
   name: string;
   description: string;
   requiredLevel: number;
+  /** Mutually exclusive final picks within the same group (e.g. only one end profession). */
+  exclusiveSkillGroupId?: string;
   requiredSkillIds?: string[];
   requiredBranchIds?: string[];
   branchId?: string;
@@ -142,6 +144,8 @@ export interface ProfessionBranch {
   name: string;
   description: string;
   exclusiveGroupId?: string;
+  /** Max branches selectable in the same exclusiveGroupId (default 1). */
+  exclusiveGroupMax?: number;
   requiredSkillIds?: string[];
   requiredBranchIds?: string[];
   locksBranchIds?: string[];
