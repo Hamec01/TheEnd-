@@ -13,6 +13,7 @@ import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { loadProfessionBranchesFromStorage } from '../../services/professionBranchRepository';
 import { validateMiningSkillConnectivity } from '../../services/miningSkillValidation';
+import { materializeTilesetFrameToPreset } from '../../services/content/materializeTilesetFrame';
 import type {
   MiningSkillEffectType,
   ProfessionSkill,
@@ -187,6 +188,7 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProfessionSkill>(emptySkill(filterByProfession || ''));
   const [filterProfession, setFilterProfession] = useState<string>(filterByProfession || '');
+  const [status, setStatus] = useState<string>('Готово');
   const effectiveProfessionId = filterByProfession || filterProfession;
 
   useEffect(() => {
@@ -267,6 +269,7 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
     persist(nextSkills);
     setEditingId(normalized.id);
     setDraft(normalized);
+    setStatus(`Навык сохранён: ${normalized.name}`);
   }
 
   function resetDefaults() {
@@ -420,13 +423,38 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
             uploadSuggestedId={draft.id || undefined}
             uploadSuggestedName={`${draft.id || draft.name || 'profession-skill'}-icon`}
             uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
-            onStatus={() => undefined}
-            onChange={(next) => setDraft((current) => ({
-              ...current,
-              iconImageRef: next,
-              icon: toLegacyImagePath(next) ?? '',
-            }))}
+            onStatus={setStatus}
+            onChange={(next) => {
+              setDraft((current) => ({
+                ...current,
+                iconImageRef: next,
+                icon: toLegacyImagePath(next) ?? '',
+              }));
+              if (next?.type !== 'tileset') {
+                return;
+              }
+              void materializeTilesetFrameToPreset(next, {
+                presetId: 'item-icon',
+                runtimeImages: images,
+                folder: buildUploadFolder('images', 'skills', draft.id || draft.name || undefined),
+                id: `${draft.id || draft.name || 'profession-skill'}-icon`,
+                name: `${draft.id || draft.name || 'profession-skill'}-icon`,
+              }).then((result) => {
+                if (!result) {
+                  return;
+                }
+                setDraft((current) => ({
+                  ...current,
+                  iconImageRef: { type: 'image', src: result.imageId },
+                  icon: result.imageId,
+                }));
+                setStatus(`Иконка навыка сохранена как отдельный PNG: ${result.imageId}`);
+              }).catch((error) => {
+                setStatus(String((error as Error).message ?? error));
+              });
+            }}
           />
+          <p className="muted">{status}</p>
 
           <div className="profession-skill-effects-head">
             <h3>Эффекты</h3>

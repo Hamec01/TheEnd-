@@ -1,22 +1,17 @@
 import { useMemo } from 'react';
+import type { InventoryState } from '@theend/rpg-domain';
 import type { AdminItem, CraftingRecipe, Material, StoredImage } from '../../services/content/models';
-import {
-  PLAYER_ITEMS_STORAGE_KEY,
-  PLAYER_MATERIAL_IDS_STORAGE_KEY,
-  PLAYER_MATERIALS_STORAGE_KEY,
-  PLAYER_RESOURCE_IDS_STORAGE_KEY,
-  PLAYER_RESOURCES_STORAGE_KEY,
-  readStringArrayStorage,
-  readStringNumberRecordStorage,
-} from '../../utils/playerInventory';
 import { normalizeGameImageRef } from '../../services/content/gameImageRefs';
 import { GameImageView } from '../../admin/components/GameImageView';
+import { normalizeMaterialLikeId, readPlayerMaterialQuantities } from './blacksmithRecipeMaterials';
 
 interface BlacksmithInventoryTabProps {
   selectedRecipe: CraftingRecipe | null;
   materials: Material[];
   items: AdminItem[];
   runtimeImages: StoredImage[];
+  inventory: InventoryState;
+  inventoryRevision: number;
 }
 
 interface InventoryRow {
@@ -30,25 +25,6 @@ interface InventoryRow {
   requiredByRecipe?: number;
 }
 
-function normalizeMaterialLikeId(id: string): string[] {
-  const probe = String(id ?? '').trim();
-  if (!probe) {
-    return [];
-  }
-  const strippedItem = probe.replace(/^item_/, '');
-  const strippedMaterial = probe.replace(/^mat_/, '');
-  const base = strippedItem.replace(/^mat_/, '') || strippedMaterial.replace(/^item_/, '') || probe;
-  const out = new Set<string>([
-    probe,
-    strippedItem,
-    strippedMaterial,
-    base,
-    `item_${base}`,
-    `mat_${base}`,
-  ]);
-  return Array.from(out).filter(Boolean);
-}
-
 function looksRelevantToSmithing(id: string): boolean {
   const probe = id.toLowerCase();
   return [
@@ -58,31 +34,19 @@ function looksRelevantToSmithing(id: string): boolean {
   ].some((token) => probe.includes(token));
 }
 
-export function BlacksmithInventoryTab({ selectedRecipe, materials, items, runtimeImages }: BlacksmithInventoryTabProps) {
+export function BlacksmithInventoryTab({
+  selectedRecipe,
+  materials,
+  items,
+  runtimeImages,
+  inventory,
+  inventoryRevision,
+}: BlacksmithInventoryTabProps) {
   const materialsById = useMemo(() => new Map(materials.map((entry) => [entry.id, entry])), [materials]);
   const itemsById = useMemo(() => new Map(items.map((entry) => [entry.id, entry])), [items]);
 
   const rows = useMemo<InventoryRow[]>(() => {
-    const itemIds = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
-    const materialIds = readStringArrayStorage(PLAYER_MATERIAL_IDS_STORAGE_KEY);
-    const resourceIds = readStringArrayStorage(PLAYER_RESOURCE_IDS_STORAGE_KEY);
-    const materialMap = readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY);
-    const resourceMap = readStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY);
-
-    const quantityById = new Map<string, number>();
-    const increment = (id: string, qty: number) => {
-      const normalizedId = String(id ?? '').trim();
-      if (!normalizedId || qty <= 0) {
-        return;
-      }
-      quantityById.set(normalizedId, (quantityById.get(normalizedId) ?? 0) + qty);
-    };
-
-    for (const id of itemIds) increment(id, 1);
-    for (const id of materialIds) increment(id, 1);
-    for (const id of resourceIds) increment(id, 1);
-    for (const [id, qty] of Object.entries(materialMap)) increment(id, qty);
-    for (const [id, qty] of Object.entries(resourceMap)) increment(id, qty);
+    const quantityById = readPlayerMaterialQuantities(inventory);
 
     const recipeNeeds = new Map<string, number>();
     for (const input of selectedRecipe?.inputMaterials ?? []) {
@@ -117,7 +81,7 @@ export function BlacksmithInventoryTab({ selectedRecipe, materials, items, runti
         };
       })
       .sort((a, b) => (b.requiredByRecipe ?? 0) - (a.requiredByRecipe ?? 0) || b.quantity - a.quantity || a.name.localeCompare(b.name, 'ru'));
-  }, [itemsById, materialsById, selectedRecipe]);
+  }, [inventory, inventoryRevision, itemsById, materialsById, selectedRecipe]);
 
   return (
     <div className="blacksmith-inventory-grid">

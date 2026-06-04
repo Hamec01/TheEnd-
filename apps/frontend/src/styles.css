@@ -9921,6 +9921,66 @@ body:has(.page.page--scroll) {
   min-width: 110px;
 }
 
+.merchant-page-filters {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.merchant-page-filters__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.merchant-page-search {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(210, 170, 102, 0.35);
+  background: rgba(20, 15, 10, 0.9);
+  color: #efe5d1;
+  padding: 10px 12px;
+}
+
+.merchant-page-search::placeholder {
+  color: rgba(239, 229, 209, 0.62);
+}
+
+.merchant-page-search:focus {
+  outline: 1px solid rgba(210, 170, 102, 0.55);
+  border-color: rgba(210, 170, 102, 0.7);
+}
+
+.merchant-page-category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.merchant-page-category-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(210, 170, 102, 0.35);
+  background: rgba(40, 28, 18, 0.9);
+  color: #efe5d1;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.merchant-page-category-chip:hover {
+  border-color: rgba(210, 170, 102, 0.65);
+  transform: translateY(-1px);
+}
+
+.merchant-page-category-chip.is-active {
+  border-color: rgba(210, 170, 102, 0.85);
+  background: rgba(210, 170, 102, 0.18);
+}
+
 .item-slot {
   cursor: grab;
   user-select: none;

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MineBlockEntry, MineBlockPayload, MineBlockTable, MineBlockType } from '../../types/mining';
-import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
+import { materialsService } from '../../services/content/materialsService';
 import {
   loadMineBlockTablesFromStorage,
   loadMineHazardsFromStorage,
@@ -83,9 +84,12 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
     } else {
       setDraft(emptyTable(mines[0]?.id ?? ''));
     }
-    void itemsService.getAll()
-      .then((items) => {
-        const filtered = items
+    void Promise.all([
+      itemsService.getAll(),
+      materialsService.getAll(),
+    ])
+      .then(([items, materials]) => {
+        const filteredItems = items
           .filter((item) => {
             const type = String(item.type ?? '').toLowerCase();
             const subtype = String(item.subtype ?? '').toLowerCase();
@@ -105,7 +109,10 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
           })
           .map((item) => String(item.id ?? '').trim())
           .filter(Boolean);
-        setKnownItemIds(Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b, 'ru')));
+        const filteredMaterials = materials
+          .map((material) => String(material.id ?? '').trim())
+          .filter(Boolean);
+        setKnownItemIds(Array.from(new Set([...filteredItems, ...filteredMaterials])).sort((a, b) => a.localeCompare(b, 'ru')));
       })
       .catch(() => setKnownItemIds([]));
     const hazards = loadMineHazardsFromStorage().map((entry) => entry.id).filter(Boolean);
@@ -317,6 +324,32 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
     startNew();
   }
 
+  function handleImportJson() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(await file.text()) as unknown;
+        const rawEntries = extractRawCollectionFromImportJson(payload, 'mineBlockTables');
+        saveMineBlockTablesToStorage(rawEntries as MineBlockTable[]);
+        const imported = loadMineBlockTablesFromStorage();
+        setTables(imported);
+        setSelectedId(imported[0]?.id ?? null);
+        setDraft(imported[0] ?? emptyTable(selectedMineId || mines[0]?.id || ''));
+        setStatus(`Импортировано таблиц блоков: ${imported.length}`);
+        onSave?.(imported);
+      } catch (error) {
+        setStatus(`Ошибка импорта: ${String((error as Error).message ?? error)}`);
+      }
+    };
+    input.click();
+  }
+
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
@@ -329,6 +362,7 @@ export function MineBlockTableEditor({ onSave }: MineBlockTableEditorProps) {
           >
             Экспорт JSON
           </button>
+          <button onClick={handleImportJson}>Импорт JSON</button>
         </div>
         <label>
           <AdminFieldLabel label="Шахта" />

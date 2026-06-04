@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BLACKSMITH_STATS_KEYS,
   applyBlacksmithCraftResult,
+  type InventoryState,
   type BlacksmithSessionState,
   normalizePlayerProfessionsState,
   PROFESSION_DEFINITIONS,
@@ -12,6 +13,7 @@ import {
 import { BlacksmithForgeTab } from '../features/blacksmith/BlacksmithForgeTab';
 import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
 import { BlacksmithRecipesTab } from '../features/blacksmith/BlacksmithRecipesTab';
+import { grantRecipeOutputsToCharacter } from '../features/blacksmith/blacksmithRecipeMaterials';
 import { resolveBlacksmithSkillBonuses } from '../features/blacksmith/blacksmithSkillEffects';
 import {
   canUnlockFinalBlacksmithTrial,
@@ -21,9 +23,10 @@ import {
 } from '../services/professionSkillTreeUtils';
 import { loadProfessionSkillsFromStorage } from '../services/professionSkillRepository';
 import { loadProfessionBranchesFromStorage } from '../services/professionBranchRepository';
-import { getBlockedByExclusiveBranchReason } from '../services/miningSkillValidation';
+import { getBlockedBySelectedExclusiveBranchReason } from '../services/miningSkillValidation';
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
 import { getContentSnapshot } from '../services/content/contentApi';
+import { subscribeToContentSync } from '../services/content/contentSync';
 import { loadRuntimeBlacksmithContent } from '../services/content/runtimeContentService';
 import type { AdminItem, BlacksmithBalance, BlacksmithForgeTier, BlacksmithModule, BlacksmithQualityTier, BlacksmithTool, CraftingRecipe, Material, RecipeVisualProfile, StoredImage } from '../services/content/models';
 import { loadMiningToolsFromStorage } from '../services/miningRepository';
@@ -33,14 +36,17 @@ import { SkillTreeView } from '../features/professions/SkillTreeView';
 
 interface PlayerProfessionsPanelProps {
   characterId: string;
+  inventory: InventoryState;
+  runtimeInventoryRevision: number;
   professionsState: PlayerProfessionsState;
   onClose: () => void;
   onStatus: (text: string) => void;
   onChange: (next: PlayerProfessionsState) => void;
+  onInventoryChange: (next: InventoryState) => void;
 }
 
 export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
-  const { characterId, professionsState, onClose, onStatus, onChange } = props;
+  const { characterId, inventory, runtimeInventoryRevision, professionsState, onClose, onStatus, onChange, onInventoryChange } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
@@ -65,44 +71,52 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     [],
   );
 
+  const refreshProfessionAssets = useMemo(
+    () => async () => {
+      const [images, runtimeBlacksmith, snapshot] = await Promise.all([
+        loadRuntimeImages().catch(() => [] as StoredImage[]),
+        loadRuntimeBlacksmithContent(),
+        getContentSnapshot(),
+      ]);
+
+      setRuntimeImages(images);
+      setBlacksmithForgeTiers(runtimeBlacksmith.forgeTiers);
+      setBlacksmithModules(runtimeBlacksmith.modules);
+      setBlacksmithTools(runtimeBlacksmith.tools);
+      setBlacksmithQualityTiers(runtimeBlacksmith.qualityTiers);
+      setBlacksmithBalance(runtimeBlacksmith.balance);
+      setRecipeVisualProfiles(runtimeBlacksmith.recipeVisualProfiles ?? []);
+      setMaterialsCatalog(snapshot.materials ?? []);
+      setItemsCatalog(snapshot.items ?? []);
+
+      const recipes = (snapshot.craftingRecipes ?? []).filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled && entry.status === 'active');
+      setBlacksmithRecipes(recipes);
+      if (recipes.length > 0) {
+        setSelectedBlacksmithRecipeId((current) => current ?? recipes[0].id);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     setProfessionSkills(loadProfessionSkillsFromStorage());
     setProfessionBranches(loadProfessionBranchesFromStorage());
     setMiningCareerStats(loadMiningCareerStats(characterId));
     let cancelled = false;
-    loadRuntimeImages()
-      .then((images) => {
-        if (!cancelled) {
-          setRuntimeImages(images);
-        }
-      })
-      .catch(() => undefined);
+    void refreshProfessionAssets().catch(() => undefined);
 
-    Promise.all([loadRuntimeBlacksmithContent(), getContentSnapshot()])
-      .then(([runtimeBlacksmith, snapshot]) => {
-        if (cancelled) {
-          return;
-        }
-        setBlacksmithForgeTiers(runtimeBlacksmith.forgeTiers);
-        setBlacksmithModules(runtimeBlacksmith.modules);
-        setBlacksmithTools(runtimeBlacksmith.tools);
-        setBlacksmithQualityTiers(runtimeBlacksmith.qualityTiers);
-        setBlacksmithBalance(runtimeBlacksmith.balance);
-        setRecipeVisualProfiles(runtimeBlacksmith.recipeVisualProfiles ?? []);
-        setMaterialsCatalog(snapshot.materials ?? []);
-        setItemsCatalog(snapshot.items ?? []);
-        const recipes = (snapshot.craftingRecipes ?? []).filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled && entry.status === 'active');
-        setBlacksmithRecipes(recipes);
-        if (recipes.length > 0) {
-          setSelectedBlacksmithRecipeId((current) => current ?? recipes[0].id);
-        }
-      })
-      .catch(() => undefined);
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (cancelled || (payload.scope !== 'content' && payload.scope !== 'all')) {
+        return;
+      }
+      void refreshProfessionAssets().catch(() => undefined);
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
-  }, []);
+  }, [characterId, refreshProfessionAssets]);
 
   useEffect(() => {
     setMiningCareerStats(loadMiningCareerStats(characterId));
@@ -292,11 +306,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       return;
     }
 
-    const blockedByBranch = getBlockedByExclusiveBranchReason({
+    const blockedByBranch = getBlockedBySelectedExclusiveBranchReason({
       skill,
-      learnedSkillIds: selectedProfession.state.learnedSkillIds ?? [],
-      allSkills: professionSkillsForTree,
       branches: professionBranchesForTree,
+      selectedBranchIds: Array.from(selectedBranchIds),
     });
     if (blockedByBranch) {
       onStatus(blockedByBranch);
@@ -584,10 +597,27 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 materials={materialsCatalog}
                 items={itemsCatalog}
                 runtimeImages={runtimeImages}
+                inventory={inventory}
+                inventoryRevision={runtimeInventoryRevision}
                 resolveImageRef={(value) => resolveStoredImageSource(value?.trim(), runtimeImages) ?? value}
                 skillBonuses={blacksmithSkillBonuses}
                 onSessionChange={setBlacksmithSession}
-                onComplete={({ xp, score, qualityTierId, success }) => {
+                onInventoryChange={onInventoryChange}
+                onComplete={async ({ xp, score, qualityTierId, success }) => {
+                  if (success && selectedBlacksmithRecipe) {
+                    const qualityTier = blacksmithQualityTiers.find((entry) => entry.id === qualityTierId) ?? null;
+                    const rewardResult = await grantRecipeOutputsToCharacter({
+                      characterId,
+                      recipe: selectedBlacksmithRecipe,
+                      baseInventory: inventory,
+                      itemsCatalog,
+                      materialsCatalog,
+                      qualityTier,
+                    });
+                    if (rewardResult.inventory) {
+                      onInventoryChange(rewardResult.inventory);
+                    }
+                  }
                   const normalized = normalizePlayerProfessionsState(professionsState);
                   const next = applyBlacksmithCraftResult(normalized, 'blacksmithing', {
                     xpReward: xp,
@@ -597,7 +627,11 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     isMasterwork: qualityTierId === 'quality_masterwork',
                   });
                   onChange(next);
-                  onStatus(`Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}.`);
+                  onStatus(
+                    success && selectedBlacksmithRecipe
+                      ? `Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}. Результат рецепта добавлен в инвентарь.`
+                      : `Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}.`,
+                  );
                 }}
                 />
               </div>
@@ -610,6 +644,8 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 materials={materialsCatalog}
                 items={itemsCatalog}
                 runtimeImages={runtimeImages}
+                inventory={inventory}
+                inventoryRevision={runtimeInventoryRevision}
                 />
               </div>
             ) : null}

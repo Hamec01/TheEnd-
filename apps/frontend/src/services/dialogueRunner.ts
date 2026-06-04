@@ -296,7 +296,7 @@ function collectChoiceQuestStartIds(choice: DialogueChoice): string[] {
   return Array.from(questIds);
 }
 
-function isKingdomQuestLockedForPlayer(questId: string, playerId: string): boolean {
+function isKingdomQuestLockedForPlayer(questId: string, player: QuestRuntimePlayer): boolean {
   const quest = getQuestById(questId);
   if (!quest) {
     return false;
@@ -312,7 +312,12 @@ function isKingdomQuestLockedForPlayer(questId: string, playerId: string): boole
     return false;
   }
 
-  const playerKingdomId = resolvePlayerOriginKingdomId(playerId);
+  const playerKingdomId = normalizeKingdomId(
+    player.originId
+      ?? player.kingdomId
+      ?? player.citizenshipKingdomId
+      ?? resolvePlayerOriginKingdomId(player.id),
+  );
   if (!playerKingdomId) {
     return false;
   }
@@ -719,9 +724,12 @@ export function useDialogueRunner(params: {
 
     const npcKingdomId = resolveNpcKingdomId(npc);
     const playerKingdomId = resolvePlayerOriginKingdomId(params.player.id);
+    const resolvedStart = getStartNode(picked, params.player, npc);
+    const dialogueHasContextSpecificStart = Boolean(resolvedStart && resolvedStart.id !== picked.startNodeId);
     const shouldInjectArgosOutsiderIntro = npcKingdomId === 'argos'
       && Boolean(playerKingdomId)
-      && playerKingdomId !== 'argos';
+      && playerKingdomId !== 'argos'
+      && !dialogueHasContextSpecificStart;
 
     if (!shouldInjectArgosOutsiderIntro) {
       openDialogue(picked.id, { ...context, npcId, sourceType: 'npc' });
@@ -793,7 +801,7 @@ export function useDialogueRunner(params: {
     }
 
     const blockedKingdomQuestIds = collectChoiceQuestStartIds(choice)
-      .filter((questId) => isKingdomQuestLockedForPlayer(questId, params.player.id));
+      .filter((questId) => isKingdomQuestLockedForPlayer(questId, params.player));
     if (blockedKingdomQuestIds.length > 0) {
       dispatch({
         type: 'NOTICE',

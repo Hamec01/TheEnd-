@@ -176,6 +176,23 @@ export interface ContentImportResult {
   }>;
 }
 
+export interface ContentAutosaveFileInfo {
+  slot: number;
+  fileName: string;
+  updatedAt?: string;
+}
+
+export interface ContentAutosaveStatus {
+  enabled: boolean;
+  intervalMs: number;
+  slotCount: number;
+  currentSlot: number;
+  lastSavedAt?: string;
+  nextScheduledAt?: string;
+  lastError?: string;
+  files: ContentAutosaveFileInfo[];
+}
+
 let bootstrapPromise: Promise<void> | null = null;
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -279,6 +296,18 @@ export async function getContentSnapshot(): Promise<ContentSnapshot> {
 export async function exportFullContent(): Promise<ContentBackupEnvelope> {
   await ensureContentBackendReady();
   return requestJson<ContentBackupEnvelope>('/content/export');
+}
+
+export async function getContentAutosaveStatus(): Promise<ContentAutosaveStatus> {
+  await ensureContentBackendReady();
+  return requestJson<ContentAutosaveStatus>('/content/autosave-status');
+}
+
+export async function triggerContentAutosave(): Promise<ContentAutosaveStatus> {
+  await ensureContentBackendReady();
+  return requestJson<ContentAutosaveStatus>('/content/autosave', {
+    method: 'POST',
+  });
 }
 
 export async function importFullContent(

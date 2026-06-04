@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { MineLootTable } from '../../types/mining';
-import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { loadMineLootTablesFromStorage, saveMineLootTablesToStorage } from '../../services/miningRepository';
+import { itemsService } from '../../services/content/itemsService';
+import { materialsService } from '../../services/content/materialsService';
 import { AdminFieldLabel } from '../adminUi';
 
 interface MineLootTableEditorProps {
   onSave?: (tables: MineLootTable[]) => void;
 }
+
+const LEGACY_LOOT_ITEM_ID_MAP: Record<string, string> = {
+  item_raw_stone: 'mat_raw_stone',
+  item_iron_ore: 'mat_iron_ore',
+  item_small_gold_nugget: 'mat_gold_nugget',
+  item_cracked_crystal: 'mat_cracked_crystal',
+  item_zeptyrite_trace: 'mat_zeptyrite_trace',
+};
 
 function emptyTable(): MineLootTable {
   return {
@@ -16,11 +26,17 @@ function emptyTable(): MineLootTable {
   };
 }
 
+function normalizeLootItemId(value: string): string {
+  const normalized = value.trim();
+  return LEGACY_LOOT_ITEM_ID_MAP[normalized] ?? normalized;
+}
+
 export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
   const [tables, setTables] = useState<MineLootTable[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MineLootTable>(emptyTable());
   const [status, setStatus] = useState('Готово');
+  const [knownIds, setKnownIds] = useState<string[]>([]);
 
   useEffect(() => {
     const loaded = loadMineLootTablesFromStorage();
@@ -29,6 +45,12 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
       setSelectedId(loaded[0]!.id);
       setDraft(loaded[0]!);
     }
+    void Promise.all([
+      itemsService.getAll().then((items) => items.map((entry) => String(entry.id ?? '').trim())),
+      materialsService.getAll().then((materials) => materials.map((entry) => String(entry.id ?? '').trim())),
+    ]).then(([itemIds, materialIds]) => {
+      setKnownIds(Array.from(new Set([...itemIds, ...materialIds].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'ru')));
+    }).catch(() => setKnownIds([]));
   }, []);
 
   function persist(next: MineLootTable[], nextStatus: string) {
@@ -80,7 +102,7 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
       name: draft.name.trim(),
       entries: draft.entries
         .map((entry) => ({
-          itemId: entry.itemId.trim(),
+          itemId: normalizeLootItemId(entry.itemId),
           weight: Math.max(1, Math.floor(Number(entry.weight || 1))),
           minQuantity: Math.max(1, Math.floor(Number(entry.minQuantity || 1))),
           maxQuantity: Math.max(1, Math.floor(Number(entry.maxQuantity || 1))),
@@ -127,6 +149,32 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
     startNew();
   }
 
+  function handleImportJson() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(await file.text()) as unknown;
+        const rawEntries = extractRawCollectionFromImportJson(payload, 'mineLootTables');
+        saveMineLootTablesToStorage(rawEntries as MineLootTable[]);
+        const imported = loadMineLootTablesFromStorage();
+        setTables(imported);
+        setSelectedId(imported[0]?.id ?? null);
+        setDraft(imported[0] ?? emptyTable());
+        setStatus(`Импортировано таблиц добычи: ${imported.length}`);
+        onSave?.(imported);
+      } catch (error) {
+        setStatus(`Ошибка импорта: ${String((error as Error).message ?? error)}`);
+      }
+    };
+    input.click();
+  }
+
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
@@ -139,6 +187,7 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
           >
             Экспорт JSON
           </button>
+          <button onClick={handleImportJson}>Импорт JSON</button>
         </div>
         <div className="admin-scroll-list">
           {tables.map((table) => (
@@ -163,13 +212,17 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
         </div>
 
         <h4>Записи таблицы</h4>
-        <div className="admin-scroll-list merchant-item-pick">
+        <div className="admin-scroll-list merchant-item-pick" style={{ maxHeight: '42rem', overflowX: 'hidden' }}>
           {draft.entries.map((entry, index) => (
-            <div key={`${entry.itemId}-${index}`} className="merchant-item-row is-active">
+            <div
+              key={`${entry.itemId}-${index}`}
+              className="merchant-item-row is-active"
+              style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 180px) repeat(5, minmax(120px, 1fr))', gap: 12, alignItems: 'end' }}
+            >
               <button onClick={() => removeEntry(index)}>Убрать</button>
               <label>
                 <AdminFieldLabel label="Item ID" />
-                <input value={entry.itemId} onChange={(event) => patchEntry(index, { itemId: event.target.value })} placeholder="mat_iron_ore" />
+                <input list="mine-loot-known-ids" value={entry.itemId} onChange={(event) => patchEntry(index, { itemId: event.target.value })} placeholder="mat_iron_ore" />
               </label>
               <label>
                 <AdminFieldLabel label="Вес" />
@@ -203,6 +256,9 @@ export function MineLootTableEditor({ onSave }: MineLootTableEditorProps) {
           <button disabled={!selectedId} onClick={deleteSelected}>Удалить</button>
         </div>
         <p className="muted">{status}</p>
+        <datalist id="mine-loot-known-ids">
+          {knownIds.map((entry) => <option key={entry} value={entry} />)}
+        </datalist>
       </section>
     </div>
   );

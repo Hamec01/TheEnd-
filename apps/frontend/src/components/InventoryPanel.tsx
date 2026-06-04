@@ -3,11 +3,12 @@ import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock 
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
 import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
-import type { AdminItem, ItemSet, Material } from '../services/content/models';
+import type { AdminItem, GameImageRef, ItemSet, Material, StoredImage } from '../services/content/models';
 import { itemSetsService } from '../services/content/itemSetsService';
 import { materialsService } from '../services/content/materialsService';
 import { getQuestById, getQuestItemById } from '../services/questRepository';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
+import { GameImageView } from '../admin/components/GameImageView';
 import { resolveTrainerSkillCandidates, type TrainerSkillCandidate } from './training/trainerSkillResolver';
 import { canUseSkillOutsideCombat, getSkillDetailFacts, getSkillSummaryLines } from './skillDisplay';
 import { PaperDoll } from './PaperDoll';
@@ -90,6 +91,8 @@ interface ResourceInventoryEntry {
   material: Material | null;
   name: string;
   description: string;
+  imageRef?: GameImageRef;
+  legacyImagePath?: string;
   imageUrl?: string;
 }
 
@@ -127,7 +130,10 @@ interface InventoryPanelProps {
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveAdminItemById?: (itemId: string) => AdminItem | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  resolveItemImageRef?: (item: ItemDefinition | null | undefined) => GameImageRef | undefined;
+  resolveItemLegacyImagePath?: (item: ItemDefinition | null | undefined) => string | undefined;
   resolveSkillIcon?: (skill: import('@theend/rpg-domain').AdminSkillDefinition | null | undefined) => string | undefined;
+  runtimeImages?: StoredImage[];
 }
 
 const CORE_SLOT_BY_LAYOUT: Partial<Record<EquipmentSlotId, keyof Equipment>> = {
@@ -407,7 +413,10 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   resolveItemById,
   resolveAdminItemById,
   resolveItemImage,
+  resolveItemImageRef,
+  resolveItemLegacyImagePath,
   resolveSkillIcon,
+  runtimeImages = [],
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [itemDetailOpen, setItemDetailOpen] = useState(false);
@@ -628,6 +637,12 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             || item?.description
             || material?.gameplayDescription?.trim()
             || 'Описание ресурса пока не заполнено.',
+          imageRef: material?.imageRef
+            ?? adminItem?.imageRef
+            ?? resolveItemImageRef?.(item),
+          legacyImagePath: material?.imagePath
+            ?? adminItem?.imagePath
+            ?? resolveItemLegacyImagePath?.(item),
           imageUrl: resolveItemImage?.(item) || material?.imagePath || undefined,
         };
       })
@@ -646,6 +661,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     resolveAdminItemById,
     resolveItemById,
     resolveItemImage,
+    resolveItemImageRef,
+    resolveItemLegacyImagePath,
   ]);
 
   const inventoryByItemId = useMemo(
@@ -2426,7 +2443,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderSpecialInventoryCards(
-    entries: Array<{ id: string; quantity: number; name: string; imageUrl?: string }>,
+    entries: Array<{ id: string; quantity: number; name: string; imageUrl?: string; imageRef?: GameImageRef; legacyImagePath?: string }>,
   ) {
     return (
       <div className="character-inventory-grid">
@@ -2440,17 +2457,33 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               setSelectedItemId(entry.id);
             }}
           >
-            <span
-              className="character-item-icon"
-              style={entry.imageUrl
-                ? {
-                    backgroundImage: `url("${entry.imageUrl}")`,
-                    backgroundSize: 'contain',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'center',
-                  }
-                : undefined}
-            />
+            <span className="character-item-icon">
+              {entry.imageRef ? (
+                <GameImageView
+                  imageRef={entry.imageRef}
+                  legacyImagePath={entry.legacyImagePath}
+                  runtimeImages={runtimeImages}
+                  alt={entry.name}
+                  size={56}
+                  fit="contain"
+                  fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
+                  className="item-slot-icon-image"
+                />
+              ) : (
+                <span
+                  className="item-slot-icon-image item-slot-icon-image--legacy"
+                  style={entry.imageUrl
+                    ? {
+                        backgroundImage: `url("${entry.imageUrl}")`,
+                        backgroundSize: 'contain',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'center',
+                      }
+                    : undefined}
+                  aria-hidden="true"
+                />
+              )}
+            </span>
             <span className="character-item-name">{entry.name}</span>
             <span className="character-item-qty">x{entry.quantity}</span>
           </button>

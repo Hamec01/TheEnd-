@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getBlockedByExclusiveBranchReason, validateMiningSkillConnectivity } from './miningSkillValidation';
+import { getBlockedByExclusiveBranchReason, getBlockedBySelectedExclusiveBranchReason, validateMiningSkillConnectivity } from './miningSkillValidation';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
 
 describe('mining branch exclusivity', () => {
@@ -63,6 +63,24 @@ describe('mining branch exclusivity', () => {
       branches,
     });
     expect(reason).toBeNull();
+  });
+
+  it('allows learning inside a selected branch even when another branch in the group is also selected', () => {
+    const reason = getBlockedBySelectedExclusiveBranchReason({
+      skill: skills[1]!,
+      branches,
+      selectedBranchIds: ['mining_branch_deep_delver', 'mining_branch_prospector'],
+    });
+    expect(reason).toBeNull();
+  });
+
+  it('blocks learning from a branch that is not selected when another branch in the group is active', () => {
+    const reason = getBlockedBySelectedExclusiveBranchReason({
+      skill: skills[1]!,
+      branches,
+      selectedBranchIds: ['mining_branch_deep_delver'],
+    });
+    expect(reason).toContain('Старатель');
   });
 
   it('does not warn that implemented mining effects are unsupported', () => {

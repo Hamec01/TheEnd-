@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEventHandler, ReactNode } from 'react';
 import type { PlayerProfessionState } from '@theend/rpg-domain';
-import { getBlockedByExclusiveBranchReason } from '../../services/miningSkillValidation';
+import { getBlockedBySelectedExclusiveBranchReason } from '../../services/miningSkillValidation';
 import {
   canUnlockFinalBlacksmithTrial,
   countSelectedBranchesInExclusiveGroup,
@@ -424,11 +424,10 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         }
       }
 
-      const blockedByExclusive = getBlockedByExclusiveBranchReason({
+      const blockedByExclusive = getBlockedBySelectedExclusiveBranchReason({
         skill,
-        learnedSkillIds: Array.from(learnedSkillIds),
-        allSkills,
         branches: allBranches,
+        selectedBranchIds: Array.from(selectedBranchIds),
       });
       const blockedByExclusiveSkill = getBlockedByExclusiveSkillGroupReason({
         skill,
@@ -455,7 +454,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     }
 
     return result;
-  }, [allBranches, allSkills, branchById, effectiveSelectedBranchIds, learnedSkillIds, playerProfessionState.level, playerProfessionState.skillPoints, skillById]);
+  }, [allBranches, allSkills, branchById, effectiveSelectedBranchIds, learnedSkillIds, playerProfessionState.level, playerProfessionState.skillPoints, selectedBranchIds, skillById]);
 
   const branchStates = useMemo(() => {
     const result = new Map<string, ComputedBranchState>();

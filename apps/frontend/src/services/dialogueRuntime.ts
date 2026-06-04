@@ -111,14 +111,43 @@ function writeRecord(key: string, value: Record<string, unknown>): void {
 }
 
 export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcDefinition | null, conditions: DialogueCondition[] = []): boolean {
+  const normalizeKingdomId = (raw: unknown): string => String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^origin_/, '')
+    .replace(/^kingdom_/, '')
+    .replace(/_kingdom$/, '')
+    .replace(/\s+/g, '_');
+  const normalizeRaceId = (raw: unknown): string => String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^race_/, '');
+  const resolvePlayerKingdomId = (): string => normalizeKingdomId(
+    player.originId
+      ?? player.kingdomId
+      ?? player.citizenshipKingdomId
+      ?? '',
+  );
   const normalizeType = (raw: string): string => {
     switch (raw) {
       case 'playerLevel':
         return 'player_level';
       case 'playerRace':
         return 'player_race';
+      case 'playerRaceNot':
+        return 'player_race_not';
+      case 'playerOrigin':
+        return 'player_origin';
+      case 'playerOriginNot':
+        return 'player_origin_not';
+      case 'playerKingdom':
+        return 'player_kingdom';
+      case 'playerKingdomNot':
+        return 'player_kingdom_not';
       case 'playerProfession':
         return 'player_profession';
+      case 'statCheck':
+        return 'stat_check';
       case 'questActive':
         return 'quest_active';
       case 'questCompleted':
@@ -209,11 +238,48 @@ export function evaluateDialogueConditions(player: QuestRuntimePlayer, npc: NpcD
           return false;
         }
         break;
+      case 'player_race_not':
+        if (typeof value === 'string' && normalizeRaceId(player.race) === normalizeRaceId(value)) {
+          return false;
+        }
+        break;
+      case 'player_origin':
+        if (typeof value === 'string' && normalizeKingdomId(player.originId) !== normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_origin_not':
+        if (typeof value === 'string' && normalizeKingdomId(player.originId) === normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_kingdom':
+        if (typeof value === 'string' && resolvePlayerKingdomId() !== normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_kingdom_not':
+        if (typeof value === 'string' && resolvePlayerKingdomId() === normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
       case 'player_profession':
         if (typeof value === 'string' && !playerHasProfessionCompat(player, value)) {
           return false;
         }
         break;
+      case 'stat_check': {
+        const statKey = String((condition as { stat?: unknown }).stat ?? condition.key ?? '').trim();
+        const expected = Number(condition.value ?? value ?? 0);
+        if (!statKey || !Number.isFinite(expected)) {
+          return false;
+        }
+        const actual = Number(player.stats?.[statKey] ?? 0);
+        if (!compare(actual, condition.operator, expected)) {
+          return false;
+        }
+        break;
+      }
       case 'quest_active':
         if (typeof (condition.questId ?? value) === 'string' && getPlayerQuestState(player.id, String(condition.questId ?? value))?.status !== 'active') {
           return false;
@@ -401,11 +467,7 @@ export function getAvailableDialoguesForNpc(player: QuestRuntimePlayer, npcId: s
     if (dialogue.status !== 'active') {
       return false;
     }
-    const startNode = dialogue.nodes.find((node) => node.id === dialogue.startNodeId);
-    if (!startNode) {
-      return false;
-    }
-    return evaluateDialogueConditions(player, npc, startNode.conditions ?? []);
+    return Boolean(getStartNode(dialogue, player, npc));
   });
 }
 
@@ -433,13 +495,41 @@ export function getAvailableChoices(
   npc: NpcDefinition | null,
   node: DialogueNode,
 ): Array<DialogueChoice & { disabled: boolean; hidden: boolean }> {
+  const getChoiceQuestStartIds = (choice: DialogueChoice): string[] => {
+    const questIds = new Set<string>();
+    const giveQuestId = String(choice.giveQuest ?? '').trim();
+    if (giveQuestId) {
+      questIds.add(giveQuestId);
+    }
+    for (const action of [...(choice.actions ?? []), ...(choice.effects ?? [])]) {
+      const normalizedType = String(action?.type ?? '').trim();
+      if (normalizedType !== 'startQuest' && normalizedType !== 'start_quest') {
+        continue;
+      }
+      const questId = String(action?.questId ?? '').trim();
+      if (questId) {
+        questIds.add(questId);
+      }
+    }
+    return Array.from(questIds);
+  };
+
   const visible = node.choices
     .map((choice) => {
       const valid = evaluateDialogueConditions(player, npc, choice.conditions ?? []);
+      const questStartIds = valid ? getChoiceQuestStartIds(choice) : [];
+      const blockedByQuest = questStartIds.some((questId) => {
+        const quest = getQuestById(questId);
+        if (!quest) {
+          return false;
+        }
+        return !canStartQuest(player, quest);
+      });
+      const effectiveValid = valid && !blockedByQuest;
       return {
         ...choice,
-        disabled: !valid && Boolean(choice.disabledIfConditionsFail),
-        hidden: !valid && Boolean(choice.hiddenIfConditionsFail),
+        disabled: !effectiveValid && Boolean(choice.disabledIfConditionsFail),
+        hidden: !effectiveValid && (Boolean(choice.hiddenIfConditionsFail) || blockedByQuest),
       };
     })
     .filter((choice) => !choice.hidden);

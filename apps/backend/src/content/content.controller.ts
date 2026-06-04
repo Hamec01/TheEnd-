@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Put, Res
 import type { Response } from 'express';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { basename, extname, join } from 'path';
-import type { ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, StoredImage, WorldMapContent } from './content.types';
+import type { ContentAutosaveStatus, ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, StoredImage, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
 import { resolveContentAssetsDir } from './content-assets';
 import { buildItemPreview, buildItemSetPreview, buildRuneComplexPreview } from './admin-preview.builder';
@@ -169,6 +169,18 @@ export class ContentController {
   async exportContent(): Promise<ContentBackupEnvelope> {
     await this.contentService.ensureInitialized();
     return this.contentService.exportFullContent();
+  }
+
+  @Get('autosave-status')
+  async getAutosaveStatus(): Promise<ContentAutosaveStatus> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.getAutosaveStatus();
+  }
+
+  @Post('autosave')
+  async triggerAutosave(): Promise<ContentAutosaveStatus> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.triggerAutosave();
   }
 
   @Post('import')

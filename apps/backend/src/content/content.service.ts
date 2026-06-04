@@ -37,6 +37,7 @@ import type {
   CraftingRecipe,
   WorldLocation,
   ContentBackupEnvelope,
+  ContentAutosaveStatus,
   ContentCollectionMap,
   ContentCollectionName,
   ContentDatabase,
@@ -99,12 +100,9 @@ const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
 const CONTENT_DB_BACKUP_SLOTS = 3;
 const CONTENT_AUTOSAVE_DIR = 'autosaves';
-const CONTENT_AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000;
-const CONTENT_AUTOSAVE_SOURCES = [
-  'content-db.json',
-  'theend_content.local.json',
-  'theend_runtime.local.json',
-] as const;
+const CONTENT_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
+const CONTENT_AUTOSAVE_SLOTS = 3;
+const CONTENT_AUTOSAVE_FILE_PREFIX = 'theend_content_autosave_';
 const BUILTIN_PLACEHOLDER_IMAGE_IDS = new Set(['unknown']);
 const CONTENT_STORE_KEY = 'main-content-db';
 const CONTENT_BACKUP_SCHEMA_VERSION = 2;
@@ -2811,6 +2809,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
   private imageAssetsMaterialized = 0;
   private writeQueue: Promise<ContentDatabase> = Promise.resolve(createEmptyDatabase());
   private autosaveTimer: NodeJS.Timeout | null = null;
+  private autosaveSlot = 0;
+  private autosaveStatus: ContentAutosaveStatus = {
+    enabled: true,
+    intervalMs: CONTENT_AUTOSAVE_INTERVAL_MS,
+    slotCount: CONTENT_AUTOSAVE_SLOTS,
+    currentSlot: 0,
+    files: [],
+  };
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -3229,7 +3235,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Run one snapshot on startup and continue every 2 minutes.
+    this.scheduleNextAutosave();
     this.createAutosaveSnapshot();
 
     if (this.autosaveTimer) {
@@ -3246,18 +3252,61 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         mkdirSync(this.autosaveDir, { recursive: true });
       }
 
-      for (const sourceName of CONTENT_AUTOSAVE_SOURCES) {
-        const sourcePath = join(this.dataDir, sourceName);
-        if (!existsSync(sourcePath)) {
-          continue;
+      const legacyFiles = [
+        'content-db.json',
+        'theend_content.local.json',
+        'theend_runtime.local.json',
+      ];
+      for (const legacyFile of legacyFiles) {
+        const legacyPath = join(this.autosaveDir, legacyFile);
+        if (existsSync(legacyPath)) {
+          unlinkSync(legacyPath);
         }
-        const targetPath = join(this.autosaveDir, sourceName);
-        copyFileSync(sourcePath, targetPath);
       }
+
+      const slot = (this.autosaveSlot % CONTENT_AUTOSAVE_SLOTS) + 1;
+      const targetPath = join(this.autosaveDir, `${CONTENT_AUTOSAVE_FILE_PREFIX}${slot}.json`);
+      const payload = this.createBackupEnvelope(this.ensureLoaded());
+      writeFileSync(targetPath, JSON.stringify(payload, null, 2), 'utf8');
+
+      const savedAt = nowIso();
+      this.autosaveSlot = slot % CONTENT_AUTOSAVE_SLOTS;
+      this.autosaveStatus = {
+        ...this.autosaveStatus,
+        currentSlot: slot,
+        lastSavedAt: savedAt,
+        lastError: undefined,
+        files: this.collectAutosaveFiles(),
+      };
+      this.scheduleNextAutosave();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown autosave error';
+      this.autosaveStatus = {
+        ...this.autosaveStatus,
+        lastError: message,
+        files: this.collectAutosaveFiles(),
+      };
+      this.scheduleNextAutosave();
       this.logger.warn(`Autosave snapshot failed: ${message}`);
     }
+  }
+
+  private scheduleNextAutosave(): void {
+    this.autosaveStatus = {
+      ...this.autosaveStatus,
+      nextScheduledAt: new Date(Date.now() + CONTENT_AUTOSAVE_INTERVAL_MS).toISOString(),
+    };
+  }
+
+  private collectAutosaveFiles(): ContentAutosaveStatus['files'] {
+    const files: ContentAutosaveStatus['files'] = [];
+    for (let slot = 1; slot <= CONTENT_AUTOSAVE_SLOTS; slot += 1) {
+      const fileName = `${CONTENT_AUTOSAVE_FILE_PREFIX}${slot}.json`;
+      const filePath = join(this.autosaveDir, fileName);
+      const updatedAt = existsSync(filePath) ? statSync(filePath).mtime.toISOString() : undefined;
+      files.push({ slot, fileName, updatedAt });
+    }
+    return files;
   }
 
   private materializeStoredImageAsset(image: StoredImage): StoredImage {
@@ -3763,6 +3812,18 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
 
   exportFullContent(): ContentBackupEnvelope {
     return this.createBackupEnvelope(this.ensureLoaded());
+  }
+
+  getAutosaveStatus(): ContentAutosaveStatus {
+    return {
+      ...this.autosaveStatus,
+      files: this.collectAutosaveFiles(),
+    };
+  }
+
+  triggerAutosave(): ContentAutosaveStatus {
+    this.createAutosaveSnapshot();
+    return this.getAutosaveStatus();
   }
 
   async importFullContent(payload: unknown, mode: ContentImportMode = 'replace', dryRunOverride?: boolean): Promise<ContentImportResult> {

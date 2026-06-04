@@ -5,7 +5,9 @@ import { fixMojibake } from '../utils/fixMojibake';
 import { itemsService } from '../services/content/itemsService';
 import { materialsService } from '../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
-import type { StoredImage } from '../services/content/models';
+import type { GameImageRef, StoredImage } from '../services/content/models';
+import { normalizeGameImageRef } from '../services/content/gameImageRefs';
+import { GameImageView } from '../admin/components/GameImageView';
 import {
   loadWorldAudioSettings,
   WORLD_AUDIO_SETTINGS_EVENT,
@@ -59,6 +61,7 @@ interface MiningItemMeta {
   name: string;
   description: string;
   iconUrl?: string;
+  imageRef?: GameImageRef;
 }
 
 interface MiningVisibleSlot {
@@ -67,6 +70,7 @@ interface MiningVisibleSlot {
   name: string;
   quantity: number;
   iconUrl?: string;
+  imageRef?: GameImageRef;
 }
 
 interface SlotActionState {
@@ -75,6 +79,7 @@ interface SlotActionState {
   name: string;
   quantity: number;
   iconUrl?: string;
+  imageRef?: GameImageRef;
   description?: string;
 }
 
@@ -480,6 +485,7 @@ export function MiningScreen({
 
     const resolveMeta = async (itemId: string): Promise<MiningItemMeta> => {
       const base = resolveItemMeta?.(itemId) ?? null;
+      const runtimeToolEntry = (run.miningInventory ?? []).find((entry) => entry.itemId === itemId) ?? null;
 
       const item = await itemsService.getById(itemId);
       if (item) {
@@ -492,6 +498,7 @@ export function MiningScreen({
             resolveStoredImageSource(item.imagePath, runtimeImages),
             resolveImageSource(item.imagePath),
           ),
+          imageRef: normalizeGameImageRef(item.imageRef, item.imagePath),
         };
       }
 
@@ -506,14 +513,16 @@ export function MiningScreen({
             resolveStoredImageSource(material.imagePath, runtimeImages),
             resolveImageSource(material.imagePath),
           ),
+          imageRef: normalizeGameImageRef(material.imageRef, material.imagePath),
         };
       }
 
       return {
         itemId,
-        name: fixMojibake(firstNonEmpty(base?.name, resolveItemName(itemId), itemId) ?? itemId),
+        name: fixMojibake(firstNonEmpty(base?.name, runtimeToolEntry?.name, resolveItemName(itemId), itemId) ?? itemId),
         description: fixMojibake(firstNonEmpty(base?.description, 'Описание отсутствует.') ?? 'Описание отсутствует.'),
-        iconUrl: firstNonEmpty(base?.iconUrl),
+        iconUrl: firstNonEmpty(base?.iconUrl, resolveImageSource(runtimeToolEntry?.iconUrl)),
+        imageRef: undefined,
       };
     };
 
@@ -537,7 +546,7 @@ export function MiningScreen({
     return () => {
       cancelled = true;
     };
-  }, [miningInventoryIdsKey, resolveItemMeta, resolveItemName, runtimeImages, visibleSlotIdsKey]);
+  }, [miningInventoryIdsKey, resolveItemMeta, resolveItemName, run.miningInventory, runtimeImages, visibleSlotIdsKey]);
 
   const lootGridSlots = useMemo(() => {
     const occupied = visibleSlots.slots.map((entry) => {
@@ -551,6 +560,7 @@ export function MiningScreen({
         name: fixMojibake(firstNonEmpty(meta?.name, entry.name, entry.itemId ?? 'Неизвестный ресурс') ?? 'Неизвестный ресурс'),
         description: meta?.description ?? 'Описание отсутствует.',
         iconUrl: firstNonEmpty(entry.iconUrl, meta?.iconUrl),
+        imageRef: meta?.imageRef,
       };
     });
     const emptyCount = Math.max(0, visibleSlots.maxSlots - occupied.length);
@@ -563,6 +573,7 @@ export function MiningScreen({
       name: 'Пустой слот',
       description: '',
       iconUrl: undefined,
+      imageRef: undefined,
     }));
     return [...occupied, ...empties];
   }, [itemMetaById, visibleSlots.maxSlots, visibleSlots.slots]);
@@ -578,6 +589,7 @@ export function MiningScreen({
         name: fixMojibake(firstNonEmpty(meta?.name, entry.name, entry.itemId) ?? entry.itemId),
         description: meta?.description ?? 'Описание отсутствует.',
         iconUrl: firstNonEmpty(resolveImageSource(entry.iconUrl), meta?.iconUrl),
+        imageRef: meta?.imageRef,
         selected: run.selectedToolId === entry.toolId,
       };
     });
@@ -589,6 +601,7 @@ export function MiningScreen({
       name: 'Пустой слот',
       description: '',
       iconUrl: undefined,
+      imageRef: undefined,
       selected: false,
     }));
     return [...entries, ...filler];
@@ -770,12 +783,17 @@ export function MiningScreen({
                         name: entry.name,
                         quantity: entry.quantity,
                         iconUrl: entry.iconUrl,
+                        imageRef: entry.imageRef,
                         description: entry.description,
                       })}
                       title={entry.name}
                     >
                       <div className="mining-slot-icon">
-                        <img src={entry.iconUrl || SLOT_ICON_FALLBACK} alt={entry.name} loading="lazy" />
+                        {entry.imageRef ? (
+                          <GameImageView imageRef={entry.imageRef} runtimeImages={runtimeImages} alt={entry.name} className="mining-slot-icon-image" />
+                        ) : (
+                          <img src={entry.iconUrl || SLOT_ICON_FALLBACK} alt={entry.name} loading="lazy" />
+                        )}
                       </div>
                       <div className="mining-slot-meta">
                         <p className="mining-slot-name">{entry.name}</p>
@@ -804,12 +822,17 @@ export function MiningScreen({
                         name: entry.name,
                         quantity: entry.quantity,
                         iconUrl: entry.iconUrl,
+                        imageRef: entry.imageRef,
                         description: entry.description,
                       })}
                       title={entry.name}
                     >
                       <div className="mining-slot-icon">
-                        <img src={entry.iconUrl || SLOT_ICON_FALLBACK} alt={entry.name} loading="lazy" />
+                        {entry.imageRef ? (
+                          <GameImageView imageRef={entry.imageRef} runtimeImages={runtimeImages} alt={entry.name} className="mining-slot-icon-image" />
+                        ) : (
+                          <img src={entry.iconUrl || SLOT_ICON_FALLBACK} alt={entry.name} loading="lazy" />
+                        )}
                       </div>
                       <div className="mining-slot-meta">
                         <p className="mining-slot-name">{entry.name}</p>
@@ -883,7 +906,11 @@ export function MiningScreen({
               </div>
               <div className="mining-item-modal-preview">
                 <div className="mining-slot-icon mining-slot-icon-lg">
-                  <img src={slotActions.iconUrl || SLOT_ICON_FALLBACK} alt={slotActions.name} loading="lazy" />
+                  {slotActions.imageRef ? (
+                    <GameImageView imageRef={slotActions.imageRef} runtimeImages={runtimeImages} alt={slotActions.name} className="mining-slot-icon-image" />
+                  ) : (
+                    <img src={slotActions.iconUrl || SLOT_ICON_FALLBACK} alt={slotActions.name} loading="lazy" />
+                  )}
                 </div>
                 <p className="mining-muted">Количество: {slotActions.quantity}</p>
               </div>
@@ -915,7 +942,11 @@ export function MiningScreen({
               </div>
               <div className="mining-item-modal-preview">
                 <div className="mining-slot-icon mining-slot-icon-lg">
-                  <img src={inspectTarget.iconUrl || SLOT_ICON_FALLBACK} alt={inspectTarget.name} loading="lazy" />
+                  {inspectTarget.imageRef ? (
+                    <GameImageView imageRef={inspectTarget.imageRef} runtimeImages={runtimeImages} alt={inspectTarget.name} className="mining-slot-icon-image" />
+                  ) : (
+                    <img src={inspectTarget.iconUrl || SLOT_ICON_FALLBACK} alt={inspectTarget.name} loading="lazy" />
+                  )}
                 </div>
                 <p className="mining-muted">{fixMojibake(inspectTarget.description ?? 'Описание отсутствует.')}</p>
               </div>
@@ -935,7 +966,8 @@ export function MiningScreen({
             position: relative;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow: visible;
+            isolation: isolate;
             gap: 1rem;
             background: linear-gradient(180deg, rgba(18, 14, 11, 0.98), rgba(10, 8, 7, 0.99));
           }
@@ -997,7 +1029,8 @@ export function MiningScreen({
           .mining-skill-wheel-backdrop {
             position: absolute;
             inset: 0;
-            z-index: 14;
+            overflow: visible;
+            z-index: 40;
           }
           .mining-skill-wheel {
             position: absolute;
@@ -1007,6 +1040,7 @@ export function MiningScreen({
             display: flex;
             justify-content: center;
             align-items: center;
+            z-index: 41;
           }
           .mining-skill-wheel-icon {
             position: absolute;
@@ -1048,6 +1082,7 @@ export function MiningScreen({
             filter: grayscale(0.7) brightness(0.72);
           }
           .mining-skill-mini-pop {
+            position: relative;
             width: 220px;
             min-height: 140px;
             border-radius: 10px;
@@ -1056,7 +1091,7 @@ export function MiningScreen({
             padding: 0.6rem;
             display: grid;
             gap: 0.5rem;
-            z-index: 2;
+            z-index: 42;
           }
           .mining-skill-mini-pop-hint {
             align-content: center;
@@ -1198,7 +1233,7 @@ export function MiningScreen({
             align-items: center;
             justify-content: center;
             padding: 1rem;
-            z-index: 16;
+            z-index: 60;
           }
           .mining-item-modal {
             width: min(420px, 92vw);

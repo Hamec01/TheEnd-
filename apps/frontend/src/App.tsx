@@ -77,7 +77,7 @@ import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/Godm
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
-import type { AdminItem, AdminMerchant, AdminSkill, StoredImage } from './services/content/models';
+import type { AdminItem, AdminMerchant, AdminSkill, Material, StoredImage } from './services/content/models';
 import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
   CHARACTER_CREATION_AVATAR_PRESETS,
@@ -109,6 +109,7 @@ import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services
 import { cityService } from './services/cityRepository';
 import { itemSetsService } from './services/content/itemSetsService';
 import { materialsService } from './services/content/materialsService';
+import { craftingRecipesService } from './services/content/craftingRecipesService';
 import { ensureDialoguesLoaded, getAllDialogues } from './services/dialogueRepository';
 import { loadProfessionBranchesFromStorage } from './services/professionBranchRepository';
 import { loadProfessionSkillsFromStorage } from './services/professionSkillRepository';
@@ -585,6 +586,8 @@ function normalizeGodmodeCommandTokens(commandLine: string): string[] {
     remove_quest_item: ['questitem', 'remove'],
     give_skill: ['skill', 'add'],
     remove_skill: ['skill', 'remove'],
+    give_material: ['material', 'add'],
+    remove_material: ['material', 'remove'],
     give_gold: ['gold', 'add'],
     set_gold: ['gold', 'set'],
     add_xp: ['xp', 'add'],
@@ -637,7 +640,11 @@ function getGodmodeHelpLines(): string[] {
     'level set <value> | points add <value> | points set <value>',
     'profession list | profession unlock <professionId> | profession remove <professionId>',
     'profession xp add|set <professionId> <value> | profession level set <professionId> <value> | profession points add|set <professionId> <value>',
+    'mining unlock | mining xp add|set <value> | mining level set <value> | mining points add|set <value>',
     'profession skill learn|reset <professionId> [skillId] | profession branch choose|reset <professionId> [branchId]',
+    'blacksmith unlock | blacksmith xp add|set <value> | blacksmith level set <value> | blacksmith points add|set <value>',
+    'blacksmith list recipes|materials|skills|branches [filter]',
+    'blacksmith recipe give|output <recipeId> [times] | blacksmith stock [times]',
     'stat set <hp|mp|stamina|strength|constitution|dexterity|intelligence|luck|perception|willpower> <value>',
     'stat add <stat> <delta>',
     'resource full | resource set <hp|mp|stamina|regen> <value>',
@@ -1422,6 +1429,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [runtimeAdminItems, setRuntimeAdminItems] = useState<AdminItem[]>([]);
   const [runtimeAdminMerchants, setRuntimeAdminMerchants] = useState<AdminMerchant[]>([]);
   const [runtimeAdminSkills, setRuntimeAdminSkills] = useState<AdminSkill[]>([]);
+  const [runtimeAdminMaterials, setRuntimeAdminMaterials] = useState<Material[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
   const [characterSkills, setCharacterSkills] = useState<CharacterSkillRow[]>([]);
   const [skillLoadout, setSkillLoadout] = useState<CharacterSkillLoadout | null>(null);
@@ -1494,14 +1502,51 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   );
   const isGodmodeAccount = accountId !== null && login.trim().toLowerCase() === GODMODE_LOGIN;
 
+  const runtimeVisualItems = useMemo<AdminItem[]>(() => {
+    const entries = [...runtimeAdminItems];
+    const knownIds = new Set(runtimeAdminItems.map((entry) => entry.id));
+    for (const material of runtimeAdminMaterials) {
+      if (knownIds.has(material.id)) {
+        continue;
+      }
+      entries.push({
+        id: material.id,
+        name: material.name,
+        type: 'material',
+        subtype: material.category,
+        rarity: material.rarity,
+        price: Math.max(0, Math.round(material.averageMarketPrice ?? 0)),
+        stackable: true,
+        gameplayDescription: material.gameplayDescription ?? '',
+        loreDescription: material.loreDescription ?? '',
+        imagePath: material.imagePath,
+        imageRef: material.imageRef,
+        isEnabled: material.isEnabled,
+        createdAt: material.createdAt,
+        updatedAt: material.updatedAt,
+      });
+    }
+    return entries;
+  }, [runtimeAdminItems, runtimeAdminMaterials]);
+
+  const resolveRuntimeItemById = useCallback(
+    (itemId: string) => getDomainItemWithFallback(itemId, runtimeVisualItems),
+    [runtimeVisualItems],
+  );
+
+  const resolveAdminVisualItemById = useCallback(
+    (itemId: string) => runtimeVisualItems.find((item) => item.id === itemId) ?? null,
+    [runtimeVisualItems],
+  );
+
   function resolveItem(itemId: string): ItemDefinition {
-    const resolved = getDomainItemWithFallback(itemId, runtimeAdminItems);
+    const resolved = resolveRuntimeItemById(itemId);
     return resolved ?? createUnknownItem(itemId);
   }
 
   const resolveArenaNpcItem = useCallback(
-    (itemId: string) => getDomainItemWithFallback(itemId, runtimeAdminItems),
-    [runtimeAdminItems],
+    (itemId: string) => resolveRuntimeItemById(itemId),
+    [resolveRuntimeItemById],
   );
 
   const resolveItemImage = useCallback(
@@ -1523,7 +1568,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       ])).filter(Boolean);
 
       for (const probeId of probeIds) {
-        const adminItem = runtimeAdminItems.find((entry) => entry.id === probeId);
+        const adminItem = runtimeVisualItems.find((entry) => entry.id === probeId);
         if (!adminItem) {
           continue;
         }
@@ -1539,16 +1584,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
       return undefined;
     },
-    [runtimeAdminItems, runtimeImages],
+    [runtimeImages, runtimeVisualItems],
   );
   const resolveItemImageRef = useCallback(
     (item: ItemDefinition | null | undefined) => {
       if (!item) {
         return undefined;
       }
-      return resolveItemIdGameImageRef(item.id, runtimeAdminItems);
+      return resolveItemIdGameImageRef(item.id, runtimeVisualItems);
     },
-    [runtimeAdminItems],
+    [runtimeVisualItems],
   );
   const resolveItemLegacyImagePath = useCallback(
     (item: ItemDefinition | null | undefined) => {
@@ -1563,14 +1608,14 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         `item_${item.id.replace(/^item_/, '').replace(/^mat_/, '')}`,
       ])).filter(Boolean);
       for (const probeId of probeIds) {
-        const adminItem = runtimeAdminItems.find((entry) => entry.id === probeId);
+        const adminItem = runtimeVisualItems.find((entry) => entry.id === probeId);
         if (adminItem?.imagePath?.trim()) {
           return adminItem.imagePath.trim();
         }
       }
       return undefined;
     },
-    [runtimeAdminItems],
+    [runtimeVisualItems],
   );
   const resolveSkillIcon = useCallback(
     (skill: AdminSkillDefinition | null | undefined) => {
@@ -1953,16 +1998,18 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     lastRuntimeContentRefreshAtRef.current = now;
     const refreshPromise = Promise.all([
       loadRuntimeAdminContent(),
+      materialsService.getAll(),
       loadRuntimeImages(),
       ensureDialoguesLoaded(options?.force === true),
       ensureNpcsLoaded(options?.force === true),
       ensureQuestsLoaded(options?.force === true),
       ensureQuestMarkersLoaded(options?.force === true),
     ])
-      .then(([content, images]) => {
+      .then(([content, materials, images]) => {
         setRuntimeAdminItems(content.items);
         setRuntimeAdminMerchants(content.merchants);
         setRuntimeAdminSkills(content.skills);
+        setRuntimeAdminMaterials(materials.filter((material) => material.isEnabled));
         setRuntimeImages(images);
       })
       .catch(() => {
@@ -3705,11 +3752,71 @@ function applyHubState(hub: HubStatePayload): void {
       });
     };
 
+    const loadBlacksmithRecipes = async () => {
+      const recipes = await craftingRecipesService.getAll();
+      return recipes.filter((recipe) => (
+        recipe.isEnabled !== false
+        && recipe.status !== 'disabled'
+        && (
+          String(recipe.professionId ?? '').trim().toLowerCase() === 'blacksmithing'
+          || String(recipe.stationType ?? '').trim().toLowerCase() === 'forge'
+          || String(recipe.stationType ?? '').trim().toLowerCase() === 'anvil'
+        )
+      ));
+    };
+
+    const grantMaterialStacks = (
+      stacks: Array<{ materialId: string; quantity: number }>,
+      times: number,
+    ): Array<{ materialId: string; added: number }> => (
+      stacks
+        .map((entry) => ({
+          materialId: String(entry.materialId ?? '').trim(),
+          quantity: Math.max(0, Math.trunc(Number(entry.quantity ?? 0))),
+        }))
+        .filter((entry) => entry.materialId && entry.quantity > 0)
+        .map((entry) => ({
+          materialId: entry.materialId,
+          added: adjustCountRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, entry.materialId, entry.quantity * times),
+        }))
+    );
+
+    const grantItemStacks = async (
+      player: ArenaCharacter,
+      stacks: Array<{ itemId: string; quantity: number }>,
+      times: number,
+    ): Promise<string[]> => {
+      const granted: string[] = [];
+      for (const entry of stacks) {
+        const itemId = String(entry.itemId ?? '').trim();
+        const quantity = Math.max(0, Math.trunc(Number(entry.quantity ?? 0)));
+        if (!itemId || quantity <= 0) {
+          continue;
+        }
+        await applyHubAndRefresh(await adjustDevInventoryItem(player.id, {
+          itemId,
+          quantityDelta: quantity * times,
+        }));
+        granted.push(`${itemId} x${quantity * times}`);
+      }
+      return granted;
+    };
+
     const saveProfessionState = async (
       player: ArenaCharacter,
       nextProfessions: PlayerProfessionsState,
     ): Promise<ArenaHubState> => {
-      const hub = await patchDevCharacterState(player.id, { professions: nextProfessions });
+      const normalized = normalizePlayerProfessionsState(nextProfessions);
+      savePlayerProfessionsState(player.id, normalized);
+      setCharacter((current) => (
+        current && current.id === player.id
+          ? {
+              ...current,
+              professions: mergePlayerProfessionsState(normalized, normalizePlayerProfessionsState(current.professions)),
+            }
+          : current
+      ));
+      const hub = await patchDevCharacterState(player.id, { professions: normalized });
       return applyHubAndRefresh(hub);
     };
 
@@ -4065,12 +4172,22 @@ function applyHubState(hub: HubStatePayload): void {
         return { ok: true, lines: [`Free points set to ${hub.character.freePoints}.`] };
       }
 
-      if (head === 'profession' || head === 'prof') {
+      if (head === 'profession' || head === 'prof' || head === 'mining' || head === 'miner') {
         const player = requireCharacter();
+        const shortcutProfessionId = head === 'mining' || head === 'miner' ? 'mining' : null;
         const professionScope = action;
-        const professionId = String(rest[1] ?? rest[0] ?? 'mining').trim().toLowerCase();
+        const professionId = shortcutProfessionId ?? String(rest[1] ?? rest[0] ?? 'mining').trim().toLowerCase();
         const professionDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === professionId) ?? null;
         const currentProfessions = normalizePlayerProfessionsState(player.professions);
+        const readProfessionTargetId = (): string => (
+          shortcutProfessionId ?? String(rest[1] ?? 'mining').trim().toLowerCase()
+        );
+        const readProfessionValue = (label: string): number => (
+          parseConsoleInteger(rest[shortcutProfessionId ? 1 : 2], label)
+        );
+        const readProfessionScopedId = (): string => (
+          String(rest[shortcutProfessionId ? 1 : 2] ?? '').trim()
+        );
 
         const writeProfessions = async (nextProfessions: PlayerProfessionsState): Promise<ArenaHubState> => {
           const hub = await saveProfessionState(player, nextProfessions);
@@ -4112,8 +4229,8 @@ function applyHubState(hub: HubStatePayload): void {
 
         if (professionScope === 'xp') {
           const xpMode = String(rest[0] ?? '').trim().toLowerCase();
-          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
-          const amount = parseConsoleInteger(rest[2], 'XP');
+          const targetId = readProfessionTargetId();
+          const amount = readProfessionValue('XP');
           const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
           if (!targetDefinition) {
             throw new Error(`Unknown profession: ${targetId}`);
@@ -4150,8 +4267,8 @@ function applyHubState(hub: HubStatePayload): void {
           if (String(rest[0] ?? '').trim().toLowerCase() !== 'set') {
             throw new Error('Use: profession level set <professionId> <value>.');
           }
-          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
-          const value = parseConsoleInteger(rest[2], 'Level');
+          const targetId = readProfessionTargetId();
+          const value = readProfessionValue('Level');
           const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
           if (!targetDefinition) {
             throw new Error(`Unknown profession: ${targetId}`);
@@ -4175,8 +4292,8 @@ function applyHubState(hub: HubStatePayload): void {
 
         if (professionScope === 'points') {
           const pointsMode = String(rest[0] ?? '').trim().toLowerCase();
-          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
-          const amount = parseConsoleInteger(rest[2], 'Points');
+          const targetId = readProfessionTargetId();
+          const amount = readProfessionValue('Points');
           const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
           if (!targetDefinition) {
             throw new Error(`Unknown profession: ${targetId}`);
@@ -4192,14 +4309,15 @@ function applyHubState(hub: HubStatePayload): void {
                 : entry
             )),
           };
-          const hub = await writeProfessions(nextProfessions);
-          return { ok: true, lines: [`Skill points ${pointsMode === 'set' ? 'set' : 'changed'} for ${targetDefinition.name}.`, `Current points: ${hub.character.professions?.professions.find((entry) => entry.professionId === targetDefinition.id)?.skillPoints ?? 0}.`] };
+          await writeProfessions(nextProfessions);
+          const currentState = getPlayerProfession(loadPlayerProfessionsState(player.id), targetDefinition.id);
+          return { ok: true, lines: [`Skill points ${pointsMode === 'set' ? 'set' : 'changed'} for ${targetDefinition.name}.`, `Current points: ${currentState?.skillPoints ?? 0}.`] };
         }
 
         if (professionScope === 'skill') {
           const skillMode = String(rest[0] ?? '').trim().toLowerCase();
-          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
-          const skillId = String(rest[2] ?? '').trim();
+          const targetId = readProfessionTargetId();
+          const skillId = readProfessionScopedId();
           const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
           if (!targetDefinition) {
             throw new Error(`Unknown profession: ${targetId}`);
@@ -4279,8 +4397,8 @@ function applyHubState(hub: HubStatePayload): void {
 
         if (professionScope === 'branch') {
           const branchMode = String(rest[0] ?? '').trim().toLowerCase();
-          const targetId = String(rest[1] ?? 'mining').trim().toLowerCase();
-          const branchId = String(rest[2] ?? '').trim();
+          const targetId = readProfessionTargetId();
+          const branchId = readProfessionScopedId();
           const targetDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === targetId) ?? null;
           if (!targetDefinition) {
             throw new Error(`Unknown profession: ${targetId}`);
@@ -4356,6 +4474,222 @@ function applyHubState(hub: HubStatePayload): void {
         }
 
         throw new Error('Use: profession list | profession unlock/remove <professionId> | profession xp add|set <professionId> <value> | profession level set <professionId> <value> | profession points add|set <professionId> <value> | profession skill learn|reset <professionId> [skillId] | profession branch choose|reset <professionId> [branchId].');
+      }
+
+      if (head === 'blacksmith' || head === 'smith') {
+        const player = requireCharacter();
+        const blacksmithDefinition = PROFESSION_DEFINITIONS.find((entry) => entry.id === 'blacksmithing');
+        if (!blacksmithDefinition) {
+          throw new Error('Blacksmith profession definition is missing.');
+        }
+
+        const currentProfessions = normalizePlayerProfessionsState(player.professions);
+        const writeBlacksmithProfessions = async (nextProfessions: PlayerProfessionsState): Promise<ArenaHubState> => {
+          const hub = await saveProfessionState(player, nextProfessions);
+          setStatus('GODMODE blacksmith state updated.');
+          return hub;
+        };
+
+        if (action === 'unlock') {
+          const next = unlockProfession(currentProfessions, 'blacksmithing');
+          const hub = await writeBlacksmithProfessions(next);
+          const state = hub.character.professions?.professions.find((entry) => entry.professionId === 'blacksmithing');
+          return {
+            ok: true,
+            lines: [
+              `Unlocked profession ${blacksmithDefinition.name}.`,
+              `Level ${state?.level ?? 1}, XP ${state?.xp ?? 0}/${state?.xpToNextLevel ?? 100}, points ${state?.skillPoints ?? 0}.`,
+            ],
+          };
+        }
+
+        if (action === 'xp' || action === 'level' || action === 'points') {
+          const mode = String(rest[0] ?? '').trim().toLowerCase();
+          const amount = parseConsoleInteger(rest[1], action === 'level' ? 'Level' : 'Value');
+          const unlocked = unlockProfession(currentProfessions, 'blacksmithing');
+
+          if (action === 'xp' && (mode === 'add' || mode === 'set')) {
+            const next = mode === 'add'
+              ? addProfessionXp(unlocked, 'blacksmithing', amount)
+              : {
+                  professions: unlocked.professions.map((entry) => (
+                    entry.professionId === 'blacksmithing'
+                      ? { ...entry, xp: Math.max(0, amount), xpToNextLevel: Math.max(1, entry.level * 100) }
+                      : entry
+                  )),
+                };
+            const hub = await writeBlacksmithProfessions(next);
+            const state = hub.character.professions?.professions.find((entry) => entry.professionId === 'blacksmithing');
+            return { ok: true, lines: [`Blacksmith XP ${mode === 'add' ? 'added' : 'set'}: ${amount}.`, `Current XP: ${state?.xp ?? 0}.`] };
+          }
+
+          if (action === 'level' && mode === 'set') {
+            const next = {
+              professions: unlocked.professions.map((entry) => (
+                entry.professionId === 'blacksmithing'
+                  ? { ...entry, level: Math.max(1, amount), xp: 0, xpToNextLevel: Math.max(1, Math.max(1, amount) * 100) }
+                  : entry
+              )),
+            };
+            const hub = await writeBlacksmithProfessions(next);
+            const state = hub.character.professions?.professions.find((entry) => entry.professionId === 'blacksmithing');
+            return { ok: true, lines: [`Blacksmith level set to ${state?.level ?? Math.max(1, amount)}.`] };
+          }
+
+          if (action === 'points' && (mode === 'add' || mode === 'set')) {
+            const next = {
+              professions: unlocked.professions.map((entry) => (
+                entry.professionId === 'blacksmithing'
+                  ? { ...entry, skillPoints: Math.max(0, mode === 'set' ? amount : entry.skillPoints + amount) }
+                  : entry
+              )),
+            };
+            const hub = await writeBlacksmithProfessions(next);
+            const state = hub.character.professions?.professions.find((entry) => entry.professionId === 'blacksmithing');
+            return { ok: true, lines: [`Blacksmith skill points ${mode === 'set' ? 'set' : 'changed'}: ${state?.skillPoints ?? 0}.`] };
+          }
+
+          throw new Error('Use: blacksmith xp add|set <value> | blacksmith level set <value> | blacksmith points add|set <value>.');
+        }
+
+        if (action === 'list') {
+          const scope = String(rest[0] ?? 'recipes').trim().toLowerCase();
+          const filter = rest.slice(1).join(' ').trim();
+
+          if (scope === 'recipes' || scope === 'recipe') {
+            const recipes = await loadBlacksmithRecipes();
+            const lines = recipes
+              .filter((recipe) => matchesGodmodeFilter(filter, recipe.id, recipe.name, recipe.recipeType, recipe.stationType, recipe.tags?.join(',')))
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .map((recipe) => `${recipe.id} — ${recipe.name} [${recipe.recipeType}/${recipe.stationType}] mats=${recipe.inputMaterials.length} items=${recipe.inputItems.length}`);
+            return { ok: true, lines: formatGodmodeListLines('Blacksmith recipes', lines, filter) };
+          }
+
+          if (scope === 'materials' || scope === 'material') {
+            const recipes = await loadBlacksmithRecipes();
+            const materialIds = Array.from(new Set(recipes.flatMap((recipe) => recipe.inputMaterials.map((entry) => entry.materialId))));
+            const materials = await materialsService.getAll();
+            const lines = materials
+              .filter((material) => materialIds.includes(material.id))
+              .filter((material) => matchesGodmodeFilter(filter, material.id, material.name, material.category, material.region))
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .map((material) => `${material.id} — ${material.name} [${material.category}/${material.rarity}] region=${material.region}`);
+            return { ok: true, lines: formatGodmodeListLines('Blacksmith materials', lines, filter) };
+          }
+
+          if (scope === 'skills' || scope === 'skill') {
+            const lines = loadProfessionSkillsFromStorage()
+              .filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled)
+              .filter((entry) => matchesGodmodeFilter(filter, entry.id, entry.name, entry.branchId, (entry.requiredSkillIds ?? []).join(',')))
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .map((entry) => `${entry.id} — ${entry.name} [lvl ${entry.requiredLevel}, cost ${entry.skillPointCost}] branch=${entry.branchId ?? 'none'}`);
+            return { ok: true, lines: formatGodmodeListLines('Blacksmith skills', lines, filter) };
+          }
+
+          if (scope === 'branches' || scope === 'branch') {
+            const lines = loadProfessionBranchesFromStorage()
+              .filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled)
+              .filter((entry) => matchesGodmodeFilter(filter, entry.id, entry.name, entry.exclusiveGroupId, (entry.requiredSkillIds ?? []).join(',')))
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .map((entry) => `${entry.id} — ${entry.name} [group=${entry.exclusiveGroupId ?? 'none'}] requires=${(entry.requiredSkillIds ?? []).join(',') || 'none'}`);
+            return { ok: true, lines: formatGodmodeListLines('Blacksmith branches', lines, filter) };
+          }
+
+          throw new Error('Use: blacksmith list recipes|materials|skills|branches [filter].');
+        }
+
+        if (action === 'recipe') {
+          const recipeMode = String(rest[0] ?? '').trim().toLowerCase();
+          const recipeId = String(rest[1] ?? '').trim();
+          const times = Math.max(1, Math.abs(parseConsoleInteger(rest[2] ?? '1', 'Times')));
+          if (!recipeId) {
+            throw new Error('Use: blacksmith recipe give|output <recipeId> [times].');
+          }
+
+          const recipes = await loadBlacksmithRecipes();
+          const recipe = recipes.find((entry) => entry.id === recipeId);
+          if (!recipe) {
+            throw new Error(`Blacksmith recipe not found: ${recipeId}`);
+          }
+
+          if (recipeMode === 'give' || recipeMode === 'inputs' || recipeMode === 'mats') {
+            const grantedMaterials = grantMaterialStacks(recipe.inputMaterials, times);
+            const grantedItems = await grantItemStacks(player, recipe.inputItems, times);
+            if (recipe.requiredBlueprintItemId) {
+              await applyHubAndRefresh(await adjustDevInventoryItem(player.id, {
+                itemId: recipe.requiredBlueprintItemId,
+                quantityDelta: 1,
+              }));
+              grantedItems.push(`${recipe.requiredBlueprintItemId} x1`);
+            }
+            handleRuntimeInventoryChanged();
+            return {
+              ok: true,
+              lines: [
+                `Granted forge inputs for ${recipe.id} x${times}.`,
+                `Materials: ${grantedMaterials.map((entry) => `${entry.materialId} x${entry.added}`).join(', ') || 'none'}.`,
+                `Items: ${grantedItems.join(', ') || 'none'}.`,
+              ],
+            };
+          }
+
+          if (recipeMode === 'output' || recipeMode === 'result' || recipeMode === 'craft') {
+            const grantedMaterials = grantMaterialStacks(recipe.outputMaterials, times);
+            const grantedItems = await grantItemStacks(player, recipe.outputItems, times);
+            handleRuntimeInventoryChanged();
+            return {
+              ok: true,
+              lines: [
+                `Granted forge outputs for ${recipe.id} x${times}.`,
+                `Materials: ${grantedMaterials.map((entry) => `${entry.materialId} x${entry.added}`).join(', ') || 'none'}.`,
+                `Items: ${grantedItems.join(', ') || 'none'}.`,
+              ],
+            };
+          }
+
+          throw new Error('Use: blacksmith recipe give|output <recipeId> [times].');
+        }
+
+        if (action === 'stock' || action === 'stash' || action === 'allmats') {
+          const times = Math.max(1, Math.abs(parseConsoleInteger(rest[0] ?? '1', 'Times')));
+          const recipes = await loadBlacksmithRecipes();
+          const materialTotals = new Map<string, number>();
+          const itemTotals = new Map<string, number>();
+
+          for (const recipe of recipes) {
+            for (const entry of recipe.inputMaterials) {
+              materialTotals.set(entry.materialId, (materialTotals.get(entry.materialId) ?? 0) + Math.max(0, entry.quantity));
+            }
+            for (const entry of recipe.inputItems) {
+              itemTotals.set(entry.itemId, (itemTotals.get(entry.itemId) ?? 0) + Math.max(0, entry.quantity));
+            }
+            if (recipe.requiredBlueprintItemId) {
+              itemTotals.set(recipe.requiredBlueprintItemId, (itemTotals.get(recipe.requiredBlueprintItemId) ?? 0) + 1);
+            }
+          }
+
+          const grantedMaterials = grantMaterialStacks(
+            Array.from(materialTotals.entries()).map(([materialId, quantity]) => ({ materialId, quantity })),
+            times,
+          );
+          const grantedItems = await grantItemStacks(
+            player,
+            Array.from(itemTotals.entries()).map(([itemId, quantity]) => ({ itemId, quantity })),
+            times,
+          );
+          handleRuntimeInventoryChanged();
+          return {
+            ok: true,
+            lines: [
+              `Granted blacksmith stock bundle x${times}.`,
+              `Recipes covered: ${recipes.length}.`,
+              `Materials: ${grantedMaterials.length}.`,
+              `Items: ${grantedItems.length}.`,
+            ],
+          };
+        }
+
+        throw new Error('Use: blacksmith unlock | blacksmith xp add|set <value> | blacksmith level set <value> | blacksmith points add|set <value> | blacksmith list recipes|materials|skills|branches [filter] | blacksmith recipe give|output <recipeId> [times] | blacksmith stock [times].');
       }
 
       if (head === 'mine') {
@@ -5503,7 +5837,7 @@ function applyHubState(hub: HubStatePayload): void {
           }}
           onStatus={setStatus}
           cityMerchants={enabledRuntimeMerchants}
-          resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+          resolveItemById={resolveRuntimeItemById}
           resolveItemImage={resolveItemImage}
           resolveMerchantImage={resolveMerchantImage}
           devTravelRequest={godmodeTravelRequest}
@@ -5545,10 +5879,13 @@ function applyHubState(hub: HubStatePayload): void {
             onUseSkillOutOfCombat={handleUseSkillOutOfCombat}
             onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={effectivePlayerAvatarUrl}
-            resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
-            resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
+            resolveItemById={resolveRuntimeItemById}
+            resolveAdminItemById={resolveAdminVisualItemById}
             resolveItemImage={resolveItemImage}
+            resolveItemImageRef={resolveItemImageRef}
+            resolveItemLegacyImagePath={resolveItemLegacyImagePath}
             resolveSkillIcon={resolveSkillIcon}
+            runtimeImages={runtimeImages}
           />
         ) : null}
 
@@ -5595,10 +5932,13 @@ function applyHubState(hub: HubStatePayload): void {
         {overlayPanel === 'professions' && character ? (
           <PlayerProfessionsPanel
             characterId={character.id}
+            inventory={worldInventory}
+            runtimeInventoryRevision={runtimeInventoryRevision}
             professionsState={normalizePlayerProfessionsState(character.professions)}
             onClose={() => setOverlayPanel(null)}
             onStatus={setStatus}
             onChange={handlePlayerProfessionsChange}
+            onInventoryChange={setInventory}
           />
         ) : null}
 
@@ -5804,8 +6144,8 @@ function applyHubState(hub: HubStatePayload): void {
             equipment={equipment}
             merchantItems={merchantItems}
             allowedSellItemIds={selectedMerchantAllowedSellItemIds}
-            resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
-            resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
+            resolveItemById={resolveRuntimeItemById}
+            resolveAdminItemById={resolveAdminVisualItemById}
             resolveItemImage={resolveItemImage}
             resolveItemImageRef={resolveItemImageRef}
             resolveItemLegacyImagePath={resolveItemLegacyImagePath}
@@ -5986,10 +6326,10 @@ function applyHubState(hub: HubStatePayload): void {
                 onBattleFinished={handleBattleFinished}
                 onClose={() => setBattleWindowOpen(false)}
                 playerAvatarUrl={effectivePlayerAvatarUrl}
-                resolveItemById={(itemId) => getDomainItemWithFallback(itemId, runtimeAdminItems)}
+                resolveItemById={resolveRuntimeItemById}
                 resolveItemImage={resolveItemImage}
                 resolveSkillIcon={resolveSkillIcon}
-                resolveAdminItemById={(itemId) => runtimeAdminItems.find((item) => item.id === itemId) ?? null}
+                resolveAdminItemById={resolveAdminVisualItemById}
                 playerEquipment={equipment}
               />
             </section>

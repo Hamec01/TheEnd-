@@ -20,6 +20,8 @@ function normalizeConditionType(type: string): string {
       return 'player_profession';
     case 'faction_relation_min':
       return 'faction_reputation';
+    case 'statCheck':
+      return 'stat_check';
     default:
       return type;
   }

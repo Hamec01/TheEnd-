@@ -2329,7 +2329,7 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = this.contentService.canEquipItem(state.character.baseStats, itemId, state.equipment, preferredSlot);
+    const check = this.contentService.canEquipItem(state.character.activeStats, itemId, state.equipment, preferredSlot);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }
@@ -2566,13 +2566,14 @@ export class ArenaService implements OnModuleInit {
     const character = await this.requireRuntimeCharacter(characterId);
     const baseStats = this.toBaseStats(character);
     const equipment = await this.readRuntimeEquipment(characterId);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const inventoryItems = await this.readRuntimeInventoryItems(characterId);
     const hasItem = inventoryItems.some((entry) => entry.itemId === itemId && entry.quantity > 0);
     if (!hasItem) {
       throw new BadRequestException('Item is not in inventory.');
     }
 
-    const check = this.contentService.canEquipItem(baseStats, itemId, equipment, preferredSlot);
+    const check = this.contentService.canEquipItem(activeStats, itemId, equipment, preferredSlot);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item.');
     }
@@ -2674,7 +2675,7 @@ export class ArenaService implements OnModuleInit {
     const instance = await this.getItemInstance(characterId, itemInstanceId);
     const state = await this.getCharacterArenaState(characterId);
 
-    const check = this.contentService.canEquipItem(state.character.baseStats, instance.itemId, state.equipment, preferredSlot);
+    const check = this.contentService.canEquipItem(state.character.activeStats, instance.itemId, state.equipment, preferredSlot);
     if (!check.ok) {
       throw new BadRequestException(check.reason ?? 'Cannot equip this item instance.');
     }

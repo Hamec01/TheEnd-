@@ -314,6 +314,40 @@ export function getBlockedByExclusiveBranchReason(params: {
   return null;
 }
 
+export function getBlockedBySelectedExclusiveBranchReason(params: {
+  skill: ProfessionSkill;
+  branches: ProfessionBranch[];
+  selectedBranchIds: string[];
+}): string | null {
+  const branchId = params.skill.branchId?.trim();
+  if (!branchId) {
+    return null;
+  }
+
+  const branch = params.branches.find((entry) => entry.id === branchId && entry.isEnabled);
+  if (!branch?.exclusiveGroupId) {
+    return null;
+  }
+
+  const selectedBranchIds = new Set(params.selectedBranchIds.map((entry) => String(entry ?? '').trim()).filter(Boolean));
+  if (selectedBranchIds.has(branch.id)) {
+    return null;
+  }
+
+  const conflictingSelectedBranch = params.branches.find((entry) => (
+    entry.isEnabled
+    && entry.id !== branch.id
+    && entry.exclusiveGroupId === branch.exclusiveGroupId
+    && selectedBranchIds.has(entry.id)
+  ));
+
+  if (conflictingSelectedBranch) {
+    return `Сначала выберите ветку ${branch.name}. Сейчас активна другая ветка группы: ${conflictingSelectedBranch.name}.`;
+  }
+
+  return null;
+}
+
 export const MINING_HAZARD_TYPES: MineHazardType[] = [
   'minor_collapse',
   'medium_collapse',

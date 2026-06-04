@@ -16,6 +16,11 @@ interface MiningToolEditorProps {
 
 const TOOL_TYPES: MiningToolType[] = ['pickaxe', 'dynamite', 'rope', 'torch', 'support', 'food', 'helper', 'special'];
 const EFFECT_TYPES: MiningToolEffectType[] = ['extra_hits', 'break_block', 'safe_retreat', 'reveal_hint', 'reduce_next_hazard', 'restore_stamina', 'extra_loot_slots'];
+const LEGACY_TOOL_ITEM_ID_MAP: Record<string, string> = {
+  tool_pickaxe_rusty: 'mining_tool_rusty_pickaxe',
+  tool_dynamite: 'mining_tool_dynamite',
+  tool_torch: 'mining_tool_torch',
+};
 
 function emptyTool(): MiningToolDefinition {
   return {
@@ -33,6 +38,11 @@ function emptyTool(): MiningToolDefinition {
     isConsumable: false,
     isEnabled: true,
   };
+}
+
+function normalizeToolItemId(value: string): string {
+  const normalized = value.trim();
+  return LEGACY_TOOL_ITEM_ID_MAP[normalized] ?? normalized;
 }
 
 export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
@@ -93,7 +103,7 @@ export function MiningToolEditor({ onSave }: MiningToolEditorProps) {
     const normalized: MiningToolDefinition = {
       ...draft,
       id: draft.id.trim(),
-      itemId: draft.itemId.trim(),
+      itemId: normalizeToolItemId(draft.itemId),
       name: draft.name.trim(),
       description: draft.description?.trim() || undefined,
       spriteRef: normalizedSpriteRef,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-03T21:49:27.118Z",
+  "exportedAt": "2026-06-04T10:22:09.034Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -11,9 +11,9 @@
     "merchants": 5,
     "cities": 7,
     "locations": 4,
-    "materials": 130,
+    "materials": 152,
     "lootTables": 0,
-    "images": 274,
+    "images": 276,
     "dialogues": 24,
     "npcs": 30,
     "quests": 10,
@@ -1956,11 +1956,11 @@
         "name": "Железная руда",
         "type": "material",
         "rarity": "common",
-        "price": 1,
+        "price": 14,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Базовая руда для кузниц, оружия, инструментов и ремонта укреплений.",
-        "loreDescription": "Гранкорская железная руда тяжёлая и чистая; её охотно покупают города, где стены и мечи изнашиваются быстрее людей.",
+        "gameplayDescription": "Жила железа, пригодная для выплавки.",
+        "loreDescription": "Обычная железная руда с глубин Терамора.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -1974,7 +1974,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:12.346Z"
       },
       {
         "id": "mat_coal_lumps",
@@ -2298,14 +2298,14 @@
       },
       {
         "id": "mat_raw_stone",
-        "name": "Обычный шахтный камень",
+        "name": "Необработанный камень",
         "type": "material",
         "rarity": "common",
-        "price": 1,
+        "price": 6,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 1 золота. Использование: Базовое строительство, подпорки, грубые рецепты.",
-        "loreDescription": "Ничем не примечательная порода, но без неё не держится ни одна шахта и ни одна крепкая кузня.",
+        "gameplayDescription": "Кусок обычной породы из шахты.",
+        "loreDescription": "Грубый камень, который шахтёры выносят мешками.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -2319,7 +2319,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:09.402Z"
       },
       {
         "id": "mat_hard_stone",
@@ -2648,14 +2648,14 @@
       },
       {
         "id": "mat_gold_nugget",
-        "name": "Золотой самородок",
+        "name": "Маленький золотой самородок",
         "type": "material",
-        "rarity": "uncommon",
-        "price": 60,
+        "rarity": "rare",
+        "price": 48,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 60 золота. Использование: Деньги, украшения, дорогие рецепты.",
-        "loreDescription": "Небольшой самородок, который всегда меняет настроение шахтёра.",
+        "gameplayDescription": "Небольшой, но ценный кусок золота.",
+        "loreDescription": "Редкая находка, за которую торговцы охотно платят.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -2669,7 +2669,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:15.578Z"
       },
       {
         "id": "mat_large_gold_nugget",
@@ -2700,12 +2700,12 @@
         "id": "mat_zeptyrite_trace",
         "name": "Зептиритовый след",
         "type": "material",
-        "rarity": "uncommon",
-        "price": 35,
+        "rarity": "rare",
+        "price": 120,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 1-3. Средняя цена: 35 золота. Использование: Ранний компонент для изучения Зептирита.",
-        "loreDescription": "Не полноценная руда, а тёмно-жёлтая пыль и прожилки Зептирита в обычной породе.",
+        "gameplayDescription": "Редкий след загадочного минерала.",
+        "loreDescription": "Слабый зептиритовый след, по которому охотятся мастера и алхимики.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -2719,7 +2719,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:21.593Z"
       },
       {
         "id": "mat_zeptyrite_ore",
@@ -3225,12 +3225,12 @@
         "id": "mat_cracked_crystal",
         "name": "Треснувший кристалл",
         "type": "material",
-        "rarity": "common",
-        "price": 15,
+        "rarity": "rare",
+        "price": 32,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 15 золота. Использование: Кристальная пыль, слабые рецепты, обучение ювелира.",
-        "loreDescription": "Кристалл не выдержал удара, но его сердцевина ещё годится для пыли и простых опытов.",
+        "gameplayDescription": "Хрупкий кристалл с остаточной ценностью.",
+        "loreDescription": "Неидеальный, но всё ещё красивый шахтный кристалл.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -3244,7 +3244,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:18.535Z"
       },
       {
         "id": "mat_clear_quartz",
@@ -3725,12 +3725,12 @@
         "id": "mat_rune_dust",
         "name": "Рунная пыль",
         "type": "material",
-        "rarity": "rare",
-        "price": 220,
+        "rarity": "common",
+        "price": 12,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 2-4. Средняя цена: 220 золота. Использование: Рунорез, слабые рунные рецепты, стабилизация.",
-        "loreDescription": "Серая пыль с едва заметным свечением. Иногда складывается в линии, если подуть на неё.",
+        "gameplayDescription": "Мелкая рунная пыль, осевшая в трещинах камня.",
+        "loreDescription": "Остаток древних знаков, стёртых временем и обвалами.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -3744,18 +3744,18 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:27.835Z"
       },
       {
         "id": "mat_weak_rune_fragment",
         "name": "Слабый рунный осколок",
         "type": "material",
         "rarity": "rare",
-        "price": 400,
+        "price": 35,
         "stackable": true,
         "maxStack": 999,
-        "gameplayDescription": "Добывается горняком. Глубина: 3-4. Средняя цена: 400 золота. Использование: Слабые руны, рунные следы, обучение рунореза.",
-        "loreDescription": "Кусок древнего знака, утративший большую часть силы, но сохранивший направление формулы.",
+        "gameplayDescription": "Осколок древней руны, найденный в глубокой породе.",
+        "loreDescription": "Хрупкий рунный фрагмент, ещё хранящий эхо старой силы.",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -3769,7 +3769,7 @@
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false,
         "createdAt": "2026-05-31T23:19:36Z",
-        "updatedAt": "2026-05-31T23:19:36Z"
+        "updatedAt": "2026-06-04T09:22:24.654Z"
       },
       {
         "id": "mat_orcish_rune_chisel_chip",
@@ -7321,7 +7321,7 @@
       {
         "id": "projectile_ice_arrow",
         "name": "Ice Arrow Projectile",
-        "status": "active",
+        "status": "draft",
         "category": "projectile",
         "element": "ice",
         "type": "sprite_sheet",
@@ -7374,7 +7374,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "updatedAt": "2026-06-04T08:09:05.575Z",
         "kind": "single",
         "stages": []
       },
@@ -7430,7 +7430,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "updatedAt": "2026-06-04T08:09:05.575Z",
         "kind": "single",
         "stages": []
       },
@@ -7489,7 +7489,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-03T21:23:34.690Z",
+        "updatedAt": "2026-06-04T08:09:05.575Z",
         "kind": "single",
         "stages": []
       }
@@ -12572,27 +12572,24 @@
       {
         "id": "iron_ore",
         "name": "Железная руда",
-        "category": "other",
-        "region": "teramor",
+        "category": "metal",
+        "region": "teramor_mines",
         "rarity": "common",
         "properties": [
-          "trade_good",
-          "ore",
           "mining",
-          "origin:grankor",
-          "demand:arklein",
-          "demand:brainhold"
+          "ore"
         ],
-        "gameplayDescription": "Базовая руда для кузниц, оружия, инструментов и ремонта укреплений.",
-        "loreDescription": "Гранкорская железная руда тяжёлая и чистая; её охотно покупают города, где стены и мечи изнашиваются быстрее людей.",
+        "gameplayDescription": "Жила железа, пригодная для выплавки.",
+        "loreDescription": "Обычная железная руда с глубин Терамора.",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:04.159Z",
-        "updatedAt": "2026-05-31T21:45:33.492Z",
+        "updatedAt": "2026-06-04T09:22:13.989Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
           "frame": 11
-        }
+        },
+        "averageMarketPrice": 14
       },
       {
         "id": "coal_lumps",
@@ -13002,23 +12999,20 @@
       },
       {
         "id": "raw_stone",
-        "name": "Обычный шахтный камень",
+        "name": "Необработанный камень",
         "category": "stone",
-        "region": "any_region",
+        "region": "teramor_mines",
         "rarity": "common",
-        "averageMarketPrice": 1,
+        "averageMarketPrice": 6,
         "properties": [
-          "stone",
-          "basic",
-          "building",
-          "depth:1-4",
-          "recommended_mine:Любая каменная шахта"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 1 золота. Использование: Базовое строительство, подпорки, грубые рецепты.",
-        "loreDescription": "Ничем не примечательная порода, но без неё не держится ни одна шахта и ни одна крепкая кузня.",
+        "gameplayDescription": "Кусок обычной породы из шахты.",
+        "loreDescription": "Грубый камень, который шахтёры выносят мешками.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:20.376Z",
-        "updatedAt": "2026-05-31T23:22:15Z",
+        "updatedAt": "2026-06-04T09:22:10.957Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -13355,23 +13349,20 @@
       },
       {
         "id": "gold_nugget",
-        "name": "Золотой самородок",
+        "name": "Маленький золотой самородок",
         "category": "metal",
-        "region": "any_region",
-        "rarity": "uncommon",
-        "averageMarketPrice": 60,
+        "region": "teramor_mines",
+        "rarity": "rare",
+        "averageMarketPrice": 48,
         "properties": [
-          "gold",
-          "trade",
-          "jewelcrafting",
-          "depth:1-4",
-          "recommended_mine:Золотые следы и богатые жилы"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 60 золота. Использование: Деньги, украшения, дорогие рецепты.",
-        "loreDescription": "Небольшой самородок, который всегда меняет настроение шахтёра.",
+        "gameplayDescription": "Небольшой, но ценный кусок золота.",
+        "loreDescription": "Редкая находка, за которую торговцы охотно платят.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:27.469Z",
-        "updatedAt": "2026-05-31T23:19:36Z",
+        "updatedAt": "2026-06-04T09:22:17.211Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -13406,22 +13397,19 @@
       {
         "id": "zeptyrite_trace",
         "name": "Зептиритовый след",
-        "category": "metal",
-        "region": "teramor",
-        "rarity": "uncommon",
-        "averageMarketPrice": 35,
+        "category": "other",
+        "region": "teramor_mines",
+        "rarity": "rare",
+        "averageMarketPrice": 120,
         "properties": [
-          "zeptyrite",
-          "trace",
-          "heavy_metal",
-          "depth:1-3",
-          "recommended_mine:Старые шахты Терамора"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 1-3. Средняя цена: 35 золота. Использование: Ранний компонент для изучения Зептирита.",
-        "loreDescription": "Не полноценная руда, а тёмно-жёлтая пыль и прожилки Зептирита в обычной породе.",
+        "gameplayDescription": "Редкий след загадочного минерала.",
+        "loreDescription": "Слабый зептиритовый след, по которому охотятся мастера и алхимики.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:28.550Z",
-        "updatedAt": "2026-05-31T23:22:15Z",
+        "updatedAt": "2026-06-04T09:22:23.238Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -13952,21 +13940,18 @@
         "id": "cracked_crystal",
         "name": "Треснувший кристалл",
         "category": "crystal",
-        "region": "any_region",
-        "rarity": "common",
-        "averageMarketPrice": 15,
+        "region": "teramor_mines",
+        "rarity": "rare",
+        "averageMarketPrice": 32,
         "properties": [
-          "crystal",
-          "cracked",
-          "crafting",
-          "depth:1-4",
-          "recommended_mine:Любая шахта с кристаллами"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 1-4. Средняя цена: 15 золота. Использование: Кристальная пыль, слабые рецепты, обучение ювелира.",
-        "loreDescription": "Кристалл не выдержал удара, но его сердцевина ещё годится для пыли и простых опытов.",
+        "gameplayDescription": "Хрупкий кристалл с остаточной ценностью.",
+        "loreDescription": "Неидеальный, но всё ещё красивый шахтный кристалл.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:40.076Z",
-        "updatedAt": "2026-05-31T23:22:15Z",
+        "updatedAt": "2026-06-04T09:22:20.131Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -14471,21 +14456,18 @@
         "id": "rune_dust",
         "name": "Рунная пыль",
         "category": "other",
-        "region": "any_region",
-        "rarity": "rare",
-        "averageMarketPrice": 220,
+        "region": "teramor_mines",
+        "rarity": "common",
+        "averageMarketPrice": 12,
         "properties": [
-          "rune",
-          "dust",
-          "runecrafting",
-          "depth:2-4",
-          "recommended_mine:Глубокие шахты, древние плиты"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 2-4. Средняя цена: 220 золота. Использование: Рунорез, слабые рунные рецепты, стабилизация.",
-        "loreDescription": "Серая пыль с едва заметным свечением. Иногда складывается в линии, если подуть на неё.",
+        "gameplayDescription": "Мелкая рунная пыль, осевшая в трещинах камня.",
+        "loreDescription": "Остаток древних знаков, стёртых временем и обвалами.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:50.385Z",
-        "updatedAt": "2026-05-31T23:22:15Z",
+        "updatedAt": "2026-06-04T09:22:29.788Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -14496,22 +14478,18 @@
         "id": "weak_rune_fragment",
         "name": "Слабый рунный осколок",
         "category": "other",
-        "region": "teramor",
+        "region": "teramor_mines",
         "rarity": "rare",
-        "averageMarketPrice": 400,
+        "averageMarketPrice": 35,
         "properties": [
-          "rune",
-          "fragment",
-          "weak",
-          "runecrafting",
-          "depth:3-4",
-          "recommended_mine:Глубокие карманы Терамора"
+          "mining",
+          "ore"
         ],
-        "gameplayDescription": "Добывается горняком. Глубина: 3-4. Средняя цена: 400 золота. Использование: Слабые руны, рунные следы, обучение рунореза.",
-        "loreDescription": "Кусок древнего знака, утративший большую часть силы, но сохранивший направление формулы.",
+        "gameplayDescription": "Осколок древней руны, найденный в глубокой породе.",
+        "loreDescription": "Хрупкий рунный фрагмент, ещё хранящий эхо старой силы.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:50.753Z",
-        "updatedAt": "2026-05-31T23:19:36Z",
+        "updatedAt": "2026-06-04T09:22:26.294Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_img_1780262515255_bf3f437a",
@@ -15150,7 +15128,7 @@
         "loreDescription": "Кузню часто судят не по мечам, а по заклёпкам: они выдают небрежность быстрее любой героики.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-03T21:42:51.387Z",
+        "updatedAt": "2026-06-04T08:04:57.078Z",
         "imageRef": {
           "type": "tileset",
           "sheetId": "sheet_iron_bloom",
@@ -15480,6 +15458,495 @@
           "sheetId": "sheet_iron_bloom",
           "frame": 46
         }
+      },
+      {
+        "id": "snow_watcher_log",
+        "name": "Бревно Снежного Дозорника",
+        "category": "wood",
+        "region": "aylassil",
+        "rarity": "uncommon",
+        "averageMarketPrice": 24,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "ice",
+          "heat_storage",
+          "origin:aylassil"
+        ],
+        "gameplayDescription": "Холодостойкая древесина для северных щитов, посохов и тёплых походных деталей.",
+        "loreDescription": "Белая кора Снежного Дозорника медленно собирает тепло и держит его даже там, где ветер режет кожу.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:13.489Z",
+        "updatedAt": "2026-06-04T08:24:13.489Z"
+      },
+      {
+        "id": "snow_watcher_plank",
+        "name": "Доска Снежного Дозорника",
+        "category": "wood",
+        "region": "aylassil",
+        "rarity": "uncommon",
+        "averageMarketPrice": 14,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "construction",
+          "refined",
+          "ice",
+          "heat_storage"
+        ],
+        "gameplayDescription": "Обработанная северная доска для лёгких щитов, саней, рукоятей и зимнего снаряжения.",
+        "loreDescription": "Такая доска не трескается от мороза и ценится мастерами Айлас’сила.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:13.843Z",
+        "updatedAt": "2026-06-04T08:24:13.843Z"
+      },
+      {
+        "id": "steelleaf_plate",
+        "name": "Пластина Сталелиста",
+        "category": "wood",
+        "region": "aylassil",
+        "rarity": "rare",
+        "averageMarketPrice": 58,
+        "properties": [
+          "trade_good",
+          "wood",
+          "armor_part",
+          "plate",
+          "ice",
+          "heat_storage",
+          "crafting",
+          "blacksmithing"
+        ],
+        "gameplayDescription": "Твёрдая древесно-лиственная пластина для щитов, лёгкой брони и усиленных накладок.",
+        "loreDescription": "Листья Сталелиста так плотны, что неопытный ученик скорее затупит нож, чем срежет их правильно.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:14.121Z",
+        "updatedAt": "2026-06-04T08:24:14.121Z"
+      },
+      {
+        "id": "sand_lord_rootwood",
+        "name": "Корневище Песчаного Властелина",
+        "category": "wood",
+        "region": "telfaren",
+        "rarity": "uncommon",
+        "averageMarketPrice": 22,
+        "properties": [
+          "trade_good",
+          "wood",
+          "dwarf",
+          "construction",
+          "desert",
+          "preservation",
+          "crafting",
+          "origin:telfaren"
+        ],
+        "gameplayDescription": "Сухая, жилистая древесина для рукоятей, луков и походных конструкций пустыни.",
+        "loreDescription": "Корни Песчаного Властелина уходят глубоко в песок и несут в себе упорство земли, ищущей воду.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:14.876Z",
+        "updatedAt": "2026-06-04T08:24:14.876Z"
+      },
+      {
+        "id": "sand_lord_plank",
+        "name": "Доска Песчаного Властелина",
+        "category": "wood",
+        "region": "telfaren",
+        "rarity": "uncommon",
+        "averageMarketPrice": 13,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "construction",
+          "refined",
+          "desert",
+          "preservation"
+        ],
+        "gameplayDescription": "Материал для лёгких сухостойких изделий: щитов, ящиков, походных рам и пустынных луков.",
+        "loreDescription": "Эта доска почти не пьёт влагу и потому не ведёт её в жаре Тел’фарена.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:15.266Z",
+        "updatedAt": "2026-06-04T08:24:15.266Z"
+      },
+      {
+        "id": "sahara_shadow_bark",
+        "name": "Кора Тени Сахары",
+        "category": "wood",
+        "region": "telfaren",
+        "rarity": "rare",
+        "averageMarketPrice": 44,
+        "properties": [
+          "trade_good",
+          "wood",
+          "alchemy",
+          "ingredient",
+          "sun",
+          "desert",
+          "preservation",
+          "heat_storage",
+          "crafting"
+        ],
+        "gameplayDescription": "Кора для защитных покрытий, жаростойких накладок и алхимических пропиток.",
+        "loreDescription": "Тонкий песчаный налёт на коре защищает дерево от солнца и делает её ценным покрытием для дорожного снаряжения.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:15.867Z",
+        "updatedAt": "2026-06-04T08:24:15.867Z"
+      },
+      {
+        "id": "green_whisper_branch",
+        "name": "Ветвь Зелёного Шёпота",
+        "category": "wood",
+        "region": "ilaraen",
+        "rarity": "common",
+        "averageMarketPrice": 12,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "weapon_part",
+          "origin:ilaraen"
+        ],
+        "gameplayDescription": "Гибкая ветвь для простых луков, древков, обручей и лёгкой мебели.",
+        "loreDescription": "Зелёный Шёпот послушен ветру; его ветви легко гнутся, но не любят грубой руки.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:16.278Z",
+        "updatedAt": "2026-06-04T08:24:16.278Z"
+      },
+      {
+        "id": "green_whisper_bow_limb",
+        "name": "Лучина Зелёного Шёпота",
+        "category": "wood",
+        "region": "ilaraen",
+        "rarity": "uncommon",
+        "averageMarketPrice": 20,
+        "properties": [
+          "trade_good",
+          "wood",
+          "weapon_part",
+          "refined",
+          "crafting"
+        ],
+        "gameplayDescription": "Подготовленная заготовка плеча лука. Хороша для охотничьего и учебного оружия.",
+        "loreDescription": "Лесные мастера сушат такие лучины медленно, чтобы сохранить живую упругость древесины.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:16.951Z",
+        "updatedAt": "2026-06-04T08:24:16.951Z"
+      },
+      {
+        "id": "elven_song_branch",
+        "name": "Ветвь Эльфийской Песни",
+        "category": "wood",
+        "region": "ilaraen",
+        "rarity": "rare",
+        "averageMarketPrice": 52,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "weapon_part",
+          "resonance",
+          "focus",
+          "mana_storage"
+        ],
+        "gameplayDescription": "Резонансная ветвь для посохов, тонких луков и музыкальных ремесленных изделий.",
+        "loreDescription": "При ветре тонкие ветви Эльфийской Песни звучат так, будто лес вспоминает старые имена.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:17.309Z",
+        "updatedAt": "2026-06-04T08:24:17.309Z"
+      },
+      {
+        "id": "elven_song_staff_core",
+        "name": "Сердцевина Эльфийской Песни",
+        "category": "wood",
+        "region": "ilaraen",
+        "rarity": "rare",
+        "averageMarketPrice": 76,
+        "properties": [
+          "trade_good",
+          "wood",
+          "focus",
+          "weapon_part",
+          "resonance",
+          "refined",
+          "crafting",
+          "mana_storage"
+        ],
+        "gameplayDescription": "Основа для магических посохов, жезлов и точных резных изделий.",
+        "loreDescription": "Сердцевина хранит мягкий звон ветра; маги говорят, что такой посох легче слышит заклинание.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:17.996Z",
+        "updatedAt": "2026-06-04T08:24:17.996Z"
+      },
+      {
+        "id": "golden_reaper_wood",
+        "name": "Древесина Золотого Жнеца",
+        "category": "wood",
+        "region": "mirilnuar",
+        "rarity": "uncommon",
+        "averageMarketPrice": 28,
+        "properties": [
+          "trade_good",
+          "wood",
+          "healing",
+          "crafting",
+          "origin:mirilnuar"
+        ],
+        "gameplayDescription": "Тёплая древесина для мебели, храмовых предметов и лекарских инструментов.",
+        "loreDescription": "Золотой Жнец славится плодами, но и древесина его несёт спокойное тепло садов Мирил’нуара.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:18.373Z",
+        "updatedAt": "2026-06-04T08:24:18.373Z"
+      },
+      {
+        "id": "golden_reaper_resin",
+        "name": "Смола Золотого Жнеца",
+        "category": "wood",
+        "region": "mirilnuar",
+        "rarity": "rare",
+        "averageMarketPrice": 64,
+        "properties": [
+          "trade_good",
+          "wood",
+          "alchemy",
+          "oil",
+          "ingredient",
+          "healing",
+          "crafting"
+        ],
+        "gameplayDescription": "Смола для лекарских покрытий, пропитки рукоятей и дорогой отделки.",
+        "loreDescription": "Смола пахнет плодами и чистой корой; лекари добавляют её в редкие мази и повязки.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:18.979Z",
+        "updatedAt": "2026-06-04T08:24:18.979Z"
+      },
+      {
+        "id": "royal_cocoon_wood",
+        "name": "Древесина Королевской Куколки",
+        "category": "wood",
+        "region": "mirilnuar",
+        "rarity": "uncommon",
+        "averageMarketPrice": 26,
+        "properties": [
+          "trade_good",
+          "wood",
+          "ceremonial",
+          "crafting",
+          "origin:mirilnuar"
+        ],
+        "gameplayDescription": "Красивая древесина для мебели, резьбы, украшений и дворцовых предметов.",
+        "loreDescription": "Пышные кроны Королевской Куколки дают древесину мягкого оттенка, любимую мастерами богатых домов.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:19.386Z",
+        "updatedAt": "2026-06-04T08:24:19.386Z"
+      },
+      {
+        "id": "mountain_guardian_log",
+        "name": "Бревно Горного Стража",
+        "category": "wood",
+        "region": "teramor",
+        "rarity": "common",
+        "averageMarketPrice": 16,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "construction",
+          "origin:teramor"
+        ],
+        "gameplayDescription": "Крепкое горное бревно для подпорок, щитов, балок и простых укреплений.",
+        "loreDescription": "Горный Страж растёт на каменных склонах Терамора и берёт крепость у самой горы.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:20.071Z",
+        "updatedAt": "2026-06-04T08:24:20.071Z"
+      },
+      {
+        "id": "mountain_guardian_beam",
+        "name": "Балка Горного Стража",
+        "category": "wood",
+        "region": "teramor",
+        "rarity": "common",
+        "averageMarketPrice": 24,
+        "properties": [
+          "trade_good",
+          "wood",
+          "construction",
+          "building",
+          "refined",
+          "crafting"
+        ],
+        "gameplayDescription": "Обработанная балка для шахт, ворот, мостков, щитов и укреплённых каркасов.",
+        "loreDescription": "Балка тяжёлая, но надёжная: такую любят шахтёры, сторожа ворот и мастера крепостей.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:20.443Z",
+        "updatedAt": "2026-06-04T08:24:20.443Z"
+      },
+      {
+        "id": "dwarf_heart_log",
+        "name": "Бревно Сердца Гнома",
+        "category": "wood",
+        "region": "teramor",
+        "rarity": "uncommon",
+        "averageMarketPrice": 32,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "dense",
+          "construction",
+          "dwarf",
+          "dwarf_engineering",
+          "origin:teramor"
+        ],
+        "gameplayDescription": "Плотная древесина для гномьих конструкций, щитов, рукоятей и инженерных рам.",
+        "loreDescription": "Невысокое дерево Сердце Гнома редко красиво, зато держит удар лучше многих высоких стволов.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:21.109Z",
+        "updatedAt": "2026-06-04T08:24:21.109Z"
+      },
+      {
+        "id": "dwarf_heart_beam",
+        "name": "Балка Сердца Гнома",
+        "category": "wood",
+        "region": "teramor",
+        "rarity": "rare",
+        "averageMarketPrice": 68,
+        "properties": [
+          "trade_good",
+          "wood",
+          "construction",
+          "building",
+          "refined",
+          "crafting",
+          "dense",
+          "dwarf",
+          "dwarf_engineering",
+          "engineering"
+        ],
+        "gameplayDescription": "Тяжёлая балка для мостов, шахтных механизмов, щитовых каркасов и осадных частей.",
+        "loreDescription": "Гномы говорят: если балка из Сердца Гнома просела, значит, гора тоже устала.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:21.488Z",
+        "updatedAt": "2026-06-04T08:24:21.488Z"
+      },
+      {
+        "id": "flame_whirl_log",
+        "name": "Бревно Пламенного Вихря",
+        "category": "wood",
+        "region": "fire_shadowlands",
+        "rarity": "rare",
+        "averageMarketPrice": 82,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "fire_resistant",
+          "origin:fire_shadowlands"
+        ],
+        "gameplayDescription": "Жаростойкая древесина для огнеупорных щитов, рукоятей и кузнечных приспособлений.",
+        "loreDescription": "Листья Пламенного Вихря будто охвачены огнём, а ствол привык к свету, жару и пеплу.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:22.089Z",
+        "updatedAt": "2026-06-04T08:24:22.089Z"
+      },
+      {
+        "id": "flame_whirl_plank",
+        "name": "Доска Пламенного Вихря",
+        "category": "wood",
+        "region": "fire_shadowlands",
+        "rarity": "rare",
+        "averageMarketPrice": 98,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crafting",
+          "construction",
+          "refined",
+          "fire_resistant",
+          "blacksmithing"
+        ],
+        "gameplayDescription": "Обработанная жаростойкая доска для кузниц, огненных ловушек, щитов и рукоятей.",
+        "loreDescription": "Её режут медленно и в маске: пепельная пыль въедается в горло, но доска стоит риска.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:22.476Z",
+        "updatedAt": "2026-06-04T08:24:22.476Z"
+      },
+      {
+        "id": "feralas_dance_blackwood",
+        "name": "Чёрнодрев Танца Фераласа",
+        "category": "wood",
+        "region": "fire_shadowlands",
+        "rarity": "epic",
+        "averageMarketPrice": 180,
+        "properties": [
+          "trade_good",
+          "wood",
+          "dark",
+          "feralas",
+          "fire_resistant",
+          "fire",
+          "crafting",
+          "runecrafting",
+          "origin:fire_shadowlands"
+        ],
+        "gameplayDescription": "Редкая огнеупорная древесина для элитных щитов, рунных посохов и предметов против огня.",
+        "loreDescription": "Чёрная кора и красные листья Танца Фераласа словно повторяют память о древнем пламени.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:23.162Z",
+        "updatedAt": "2026-06-04T09:14:14.232Z"
+      },
+      {
+        "id": "feralas_dance_ember_core",
+        "name": "Углевая сердцевина Танца Фераласа",
+        "category": "wood",
+        "region": "fire_shadowlands",
+        "rarity": "epic",
+        "averageMarketPrice": 260,
+        "properties": [
+          "trade_good",
+          "wood",
+          "fire_core",
+          "feralas",
+          "fire_resistant",
+          "fire",
+          "rune",
+          "focus",
+          "runecrafting",
+          "weapon_part",
+          "crafting"
+        ],
+        "gameplayDescription": "Сердцевина для рунных посохов, огнестойких рукоятей и поздних кузнечных рецептов.",
+        "loreDescription": "Внутри древесина не горит — она будто уже пережила собственный пожар.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:23.527Z",
+        "updatedAt": "2026-06-04T08:24:23.527Z"
+      },
+      {
+        "id": "lunaan_crystal_branch",
+        "name": "Кристальная ветвь Луна’ан",
+        "category": "wood",
+        "region": "fire_shadowlands",
+        "rarity": "rare",
+        "averageMarketPrice": 120,
+        "properties": [
+          "trade_good",
+          "wood",
+          "crystal",
+          "glass_tree",
+          "lunaan",
+          "resonance",
+          "focus",
+          "weapon_part",
+          "alchemy",
+          "crafting",
+          "origin:lunaan"
+        ],
+        "gameplayDescription": "Стеклянно-древесная ветвь для магических фокусов, ловушек, посохов и тёмно-эльфийских изделий.",
+        "loreDescription": "В Лесах Луна’ан ветви искрятся от жара, будто дерево и кристалл заключили суровый союз.",
+        "isEnabled": true,
+        "createdAt": "2026-06-04T08:24:24.202Z",
+        "updatedAt": "2026-06-04T08:24:24.202Z"
       }
     ],
     "lootTables": [],
@@ -17332,7 +17799,7 @@
         "height": 128,
         "dataUrl": "/assets/upload/images/mining/tools/mining_tool_rusty_pickaxe/mining_tool_rusty_pickaxe-icon-mining_tool_rusty_pickaxe-icon.png",
         "createdAt": "2026-05-26T09:25:31.666Z",
-        "updatedAt": "2026-05-26T09:25:31.666Z"
+        "updatedAt": "2026-06-04T10:22:09.012Z"
       },
       {
         "id": "mining_tool_torch-icon",
@@ -17342,7 +17809,7 @@
         "height": 128,
         "dataUrl": "/assets/upload/images/mining/tools/mining_tool_torch/mining_tool_torch-icon-mining_tool_torch-icon.png",
         "createdAt": "2026-05-26T09:29:20.891Z",
-        "updatedAt": "2026-05-26T09:29:20.891Z"
+        "updatedAt": "2026-06-04T10:21:44.961Z"
       },
       {
         "id": "mining_tool_dynamite-icon",
@@ -17352,7 +17819,7 @@
         "height": 128,
         "dataUrl": "/assets/upload/images/mining/tools/mining_tool_dynamite/mining_tool_dynamite-icon-mining_tool_dynamite-icon.png",
         "createdAt": "2026-05-26T11:49:49.474Z",
-        "updatedAt": "2026-05-26T11:49:49.474Z"
+        "updatedAt": "2026-06-04T10:21:56.869Z"
       },
       {
         "id": "item_raw_stone",
@@ -18223,6 +18690,26 @@
         "dataUrl": "/assets/upload/images/materials/iron_bloom/img_1780522933536_4fa9cfa7-iron_bloom-icon.png",
         "createdAt": "2026-06-03T21:42:13.537Z",
         "updatedAt": "2026-06-03T21:42:13.537Z"
+      },
+      {
+        "id": "img_1780560270423_03b427a3",
+        "name": "iron_bloom-icon",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 1024,
+        "dataUrl": "/assets/upload/images/materials/iron_bloom/img_1780560270423_03b427a3-iron_bloom-icon.png",
+        "createdAt": "2026-06-04T08:04:30.424Z",
+        "updatedAt": "2026-06-04T08:04:30.424Z"
+      },
+      {
+        "id": "img_1780565402806_b3a3270f",
+        "name": "blacksmith_basic_forging-icon",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 1024,
+        "dataUrl": "/assets/upload/images/skills/blacksmith_basic_forging/img_1780565402806_b3a3270f-blacksmith_basic_forging-icon.png",
+        "createdAt": "2026-06-04T09:30:02.806Z",
+        "updatedAt": "2026-06-04T09:30:02.806Z"
       }
     ],
     "dialogues": [
@@ -20458,7 +20945,13 @@
                 "text": "Какие солдаты меня нашли?",
                 "nextNodeId": "which_soldiers",
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [],
+                "conditions": [
+                  {
+                    "id": "cond_choice_which_soldiers_argos_only",
+                    "type": "player_kingdom",
+                    "value": "argos"
+                  }
+                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest",
@@ -20478,7 +20971,8 @@
                     "value": true
                   }
                 ],
-                "effects": []
+                "effects": [],
+                "hiddenIfConditionsFail": true
               },
               {
                 "id": "choice_who_am_i",
@@ -20505,6 +20999,125 @@
                 "effects": []
               }
             ],
+            "conditions": [
+              {
+                "id": "cond_bran_intro_human",
+                "type": "player_race",
+                "value": "human"
+              },
+              {
+                "id": "cond_bran_intro_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              }
+            ],
+            "actions": []
+          },
+          {
+            "id": "start_non_human",
+            "speaker": "npc",
+            "text": "Скрип двери заставляет Брана поднять взгляд от грубо обструганной рукояти.\n\nОн сидит у стены в старом кресле, укрытый шерстяным покрывалом ниже пояса. Масляная лампа отбрасывает тёплый свет на седую бороду и тяжёлые плечи.\n\n— Заходи.\n— Если пришёл по делу, говори. Если за жалостью — зря тратишь время.",
+            "choices": [
+              {
+                "id": "choice_outsider_who_are_you_non_human",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_outsider",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_outsider_legs_non_human",
+                "text": "Что случилось с твоими ногами?",
+                "nextNodeId": "legs_story",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_outsider_leave_non_human",
+                "text": "Мне нужно идти.",
+                "nextNodeId": "leave",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_bran_non_human_start",
+                "type": "player_race_not",
+                "value": "human"
+              }
+            ],
+            "actions": []
+          },
+          {
+            "id": "start_non_argos_human",
+            "speaker": "npc",
+            "text": "Скрип двери заставляет Брана поднять взгляд от грубо обструганной рукояти.\n\nОн сидит у стены в старом кресле, укрытый шерстяным покрывалом ниже пояса. Масляная лампа отбрасывает тёплый свет на седую бороду и тяжёлые плечи.\n\n— Заходи.\n— Если пришёл по делу, говори. Если за жалостью — зря тратишь время.",
+            "choices": [
+              {
+                "id": "choice_outsider_who_are_you_non_argos_human",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_outsider",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_outsider_legs_non_argos_human",
+                "text": "Что случилось с твоими ногами?",
+                "nextNodeId": "legs_story",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_outsider_leave_non_argos_human",
+                "text": "Мне нужно идти.",
+                "nextNodeId": "leave",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_bran_non_argos_human_race",
+                "type": "player_race",
+                "value": "human"
+              },
+              {
+                "id": "cond_bran_non_argos_human_kingdom",
+                "type": "player_kingdom_not",
+                "value": "argos"
+              }
+            ],
+            "actions": []
+          },
+          {
+            "id": "who_are_you_outsider",
+            "speaker": "npc",
+            "text": "— Бран Камыш.\n— Живу здесь, в Клиногорье.\n\nОн откладывает заготовку и проводит пальцами по седой бороде.\n\n— Раньше ходил с аргосским строем по южным дорогам. Теперь чиню рукояти, стрелы и всё, что деревня ещё может использовать.\n\n— Люди приходят ко мне не за красивыми историями. Обычно им нужен честный ответ.",
+            "choices": [
+              {
+                "id": "choice_outsider_identity_to_legs",
+                "text": "Что случилось с твоими ногами?",
+                "nextNodeId": "legs_story",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_outsider_identity_to_leave",
+                "text": "Понял. Мне пора.",
+                "nextNodeId": "leave",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              }
+            ],
             "conditions": [],
             "actions": []
           },
@@ -20518,7 +21131,13 @@
                 "text": "Какие солдаты меня нашли?",
                 "nextNodeId": "which_soldiers",
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [],
+                "conditions": [
+                  {
+                    "id": "cond_where_to_soldiers_argos_only",
+                    "type": "player_kingdom",
+                    "value": "argos"
+                  }
+                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_where",
@@ -20538,7 +21157,8 @@
                     "value": true
                   }
                 ],
-                "effects": []
+                "effects": [],
+                "hiddenIfConditionsFail": true
               },
               {
                 "id": "choice_where_to_identity",
@@ -20611,7 +21231,13 @@
                 "text": "Какие солдаты меня нашли?",
                 "nextNodeId": "which_soldiers",
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [],
+                "conditions": [
+                  {
+                    "id": "cond_identity_to_soldiers_argos_only",
+                    "type": "player_kingdom",
+                    "value": "argos"
+                  }
+                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_identity",
@@ -20631,7 +21257,8 @@
                     "value": true
                   }
                 ],
-                "effects": []
+                "effects": [],
+                "hiddenIfConditionsFail": true
               },
               {
                 "id": "choice_identity_to_legs",
@@ -20663,7 +21290,13 @@
                 "text": "Какие солдаты меня нашли?",
                 "nextNodeId": "which_soldiers",
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [],
+                "conditions": [
+                  {
+                    "id": "cond_legs_to_soldiers_argos_only",
+                    "type": "player_kingdom",
+                    "value": "argos"
+                  }
+                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_legs",
@@ -20683,7 +21316,8 @@
                     "value": true
                   }
                 ],
-                "effects": []
+                "effects": [],
+                "hiddenIfConditionsFail": true
               },
               {
                 "id": "choice_legs_to_identity",
@@ -20789,7 +21423,7 @@
               },
               {
                 "id": "choice_guard_lie_papers_inside_success",
-                "text": "Они у меня в городе остались. Пропусти.",
+                "text": "Уверенно сказать: они у меня в городе остались. Пропусти.",
                 "nextNodeId": "lie_success",
                 "conditions": [
                   {
@@ -20843,7 +21477,7 @@
               },
               {
                 "id": "choice_guard_lie_papers_inside_fail",
-                "text": "Они у меня в городе остались. Пропусти.",
+                "text": "Попытаться соврать: они у меня в городе остались. Пропусти.",
                 "nextNodeId": "lie_fail",
                 "conditions": [
                   {
@@ -20880,6 +21514,49 @@
               {
                 "id": "choice_guard_leave_start",
                 "text": "Развернуться и уйти.",
+                "endsDialogue": true
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_guard_argos_player",
+                "type": "player_kingdom",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "start_outsider",
+            "speaker": "npc",
+            "text": "Стражник у ворот Ом’тары выставляет вперёд копьё, не давая пройти.\n\n— Стоять.\n— Чужеземцев в город без приказа, пропуска или служебного дела не впускают. Разворачивайся.",
+            "choices": [
+              {
+                "id": "choice_guard_outsider_reason",
+                "text": "И всем у вас такой приём?",
+                "nextNodeId": "outsider_warning"
+              },
+              {
+                "id": "choice_guard_outsider_leave",
+                "text": "Ладно. Ухожу.",
+                "endsDialogue": true
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_guard_non_argos_player",
+                "type": "player_kingdom_not",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "outsider_warning",
+            "speaker": "npc",
+            "text": "— Пока вокруг дорог полно шпионов, наёмников и беглых магов, да.\n\nСтражник даже не моргает.\n\n— Если у тебя нет бумаги с печатью, поручения от офицера или торгового пропуска, Ом’тара для тебя закрыта.",
+            "choices": [
+              {
+                "id": "choice_guard_outsider_warning_leave",
+                "text": "Понял.",
                 "endsDialogue": true
               }
             ]
@@ -21300,6 +21977,49 @@
                 "text": "Я вернусь позже.",
                 "endsDialogue": true
               }
+            ],
+            "conditions": [
+              {
+                "id": "cond_orven_argos_player",
+                "type": "player_kingdom",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "start_outsider",
+            "speaker": "npc",
+            "text": "Орвен Печать поднимает глаза от книг и сразу оценивающе смотрит на тебя.\n\n— Магистрат Гражданства не занимается праздным любопытством.\n\nОн откладывает перо.\n\n— Если ты не проходишь дело о подданстве Аргоса, тебе здесь делать нечего.",
+            "choices": [
+              {
+                "id": "choice_orven_outsider_why",
+                "text": "И чем вы тут вообще занимаетесь?",
+                "nextNodeId": "outsider_explained"
+              },
+              {
+                "id": "choice_orven_outsider_leave",
+                "text": "Ясно. Уйду.",
+                "endsDialogue": true
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_orven_non_argos_player",
+                "type": "player_kingdom_not",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "outsider_explained",
+            "speaker": "npc",
+            "text": "— Проверяем родословные, бумаги, службу, присяги и право носить печать Аргоса.\n\nОрвен уже снова тянется к своим книгам.\n\n— Это внутреннее дело королевства. Чужеземцу здесь не выдадут ни подданство, ни королевскую аудиенцию.",
+            "choices": [
+              {
+                "id": "choice_orven_outsider_done",
+                "text": "Понял.",
+                "endsDialogue": true
+              }
             ]
           },
           {
@@ -21579,6 +22299,49 @@
               {
                 "id": "choice_leave",
                 "text": "Уйти.",
+                "endsDialogue": true
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_gramar_argos_player",
+                "type": "player_kingdom",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "start_outsider",
+            "speaker": "npc",
+            "text": "Стража у входа в королевский шатёр даже не даёт тебе приблизиться к пологу.\n\n— Король не принимает чужеземцев без отдельного приказа.\n— Назови причину, по которой мы вообще должны о тебе доложить.",
+            "choices": [
+              {
+                "id": "choice_gramar_outsider_reason",
+                "text": "Я хотел говорить с королём лично.",
+                "nextNodeId": "outsider_refusal"
+              },
+              {
+                "id": "choice_gramar_outsider_leave",
+                "text": "Никакой. Уйду.",
+                "endsDialogue": true
+              }
+            ],
+            "conditions": [
+              {
+                "id": "cond_gramar_non_argos_player",
+                "type": "player_kingdom_not",
+                "value": "argos"
+              }
+            ]
+          },
+          {
+            "id": "outsider_refusal",
+            "speaker": "npc",
+            "text": "Стражник качает головой.\n\n— Тогда говори с офицерами, писарями или теми, кто тебя сюда прислал.\n\n— Король Грамар не тратит время на тех, кто не связан с делами Аргоса.",
+            "choices": [
+              {
+                "id": "choice_gramar_outsider_refusal_leave",
+                "text": "Понял.",
                 "endsDialogue": true
               }
             ]
@@ -22923,7 +23686,7 @@
         ],
         "dialogues": [
           {
-            "dialogueId": "dialogue_strange_dwarf_smith",
+            "dialogueId": "dlg_npc_strange_dwarf_smith_97rv",
             "priority": 5,
             "isDefault": true,
             "conditions": []
@@ -24643,7 +25406,7 @@
         "steps": [],
         "title": "First Step in Arklein",
         "cityId": "city_arklein",
-        "status": "active",
+        "status": "draft",
         "rewards": [
           {
             "type": "gold",

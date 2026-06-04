@@ -89,7 +89,41 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
         <div className="tabs-content">
           {activeTab === 'general' ? (
             <div className="tab-pane">
-              <p className="muted">Базовые параметры профессии "{professionName}".</p>
+              {professionId === 'mining' ? (
+                <div style={{ display: 'grid', gap: '1rem', maxWidth: 980 }}>
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Как собрать горняка от и до</h3>
+                    <p className="muted" style={{ marginBottom: 0 }}>
+                      Сначала создаются шахты и глубины, потом настраиваются таблицы блоков, опасностей и добычи,
+                      а уже после этого подключаются инструменты, навыки и визуалы. Так рантайм точно понимает,
+                      что может выпасть, как это показать и какими эффектами управлять в мини-игре.
+                    </p>
+                  </div>
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Рекомендуемый порядок</h3>
+                    <ol style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                      <li>В `Шахты` настройте вход, регион, уровень и список известных ресурсов.</li>
+                      <li>В `Глубины` задайте сетку, удары, риск обвала и графику блоков.</li>
+                      <li>В `Блоки` опишите, какие типы ячеек и payload могут выпасть на глубине.</li>
+                      <li>В `Опасности` заполните сами hazard-записи и их таблицы по глубинам.</li>
+                      <li>В `Добыча` используйте только реальные `itemId` и `materialId`, которые есть в контенте.</li>
+                      <li>В `Инструменты` привяжите кирки, динамит и факелы, плюс их иконки.</li>
+                      <li>В `Навыки` и `Ветки` соберите прогрессию и активные эффекты профессии.</li>
+                    </ol>
+                  </div>
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Что проверять после сохранения</h3>
+                    <p className="muted" style={{ marginBottom: 0 }}>
+                      Если в мини-игре виден `unknown`, пустая иконка или целая spritesheet вместо иконки,
+                      значит не совпал `itemId`/`materialId`, нет изображения в контенте или frame ещё не
+                      материализован в отдельный PNG. Для переносов между машинами используйте экспорт и импорт JSON
+                      в нужном разделе, а для ручной фиксации состояния сверху остаётся общий `SAVE NOW`.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">Базовые параметры профессии "{professionName}".</p>
+              )}
             </div>
           ) : null}
 

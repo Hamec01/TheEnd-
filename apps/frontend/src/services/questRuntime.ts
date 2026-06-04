@@ -42,8 +42,21 @@ function normalizeKingdomId(value: string | null | undefined): string {
     .replace(/\s+/g, '_');
 }
 
-function resolvePlayerOriginKingdomId(characterId: string): string {
-  const profile = loadCharacterProfile(characterId);
+function resolvePlayerOriginKingdomIdFromRuntimePlayer(player: Pick<QuestRuntimePlayer, 'id' | 'originId' | 'kingdomId' | 'citizenshipKingdomId'>): string {
+  const fromRuntimeOrigin = normalizeKingdomId(player.originId);
+  if (fromRuntimeOrigin) {
+    return fromRuntimeOrigin;
+  }
+  const fromRuntimeKingdom = normalizeKingdomId(player.kingdomId);
+  if (fromRuntimeKingdom) {
+    return fromRuntimeKingdom;
+  }
+  const fromRuntimeCitizenship = normalizeKingdomId(player.citizenshipKingdomId);
+  if (fromRuntimeCitizenship) {
+    return fromRuntimeCitizenship;
+  }
+
+  const profile = loadCharacterProfile(player.id);
   if (!profile) {
     return '';
   }
@@ -58,7 +71,7 @@ function resolvePlayerOriginKingdomId(characterId: string): string {
   return normalizeKingdomId(profile.citizenshipKingdomId);
 }
 
-function isKingdomQuestLockedForPlayer(quest: QuestDefinition, characterId: string): boolean {
+function isKingdomQuestLockedForPlayer(quest: QuestDefinition, player: Pick<QuestRuntimePlayer, 'id' | 'originId' | 'kingdomId' | 'citizenshipKingdomId'>): boolean {
   const isKingdomQuest = String(quest.category ?? '').trim().toLowerCase() === 'kingdom';
   if (!isKingdomQuest) {
     return false;
@@ -69,7 +82,7 @@ function isKingdomQuestLockedForPlayer(quest: QuestDefinition, characterId: stri
     return false;
   }
 
-  const playerKingdomId = resolvePlayerOriginKingdomId(characterId);
+  const playerKingdomId = resolvePlayerOriginKingdomIdFromRuntimePlayer(player);
   if (!playerKingdomId) {
     return false;
   }
@@ -81,6 +94,9 @@ export interface QuestRuntimePlayer {
   id: string;
   level?: number;
   race?: string;
+  originId?: string;
+  kingdomId?: string;
+  citizenshipKingdomId?: string;
   classId?: string;
   professionId?: string;
   professions?: PlayerProfessionsState;
@@ -422,7 +438,7 @@ export function canStartQuest(player: QuestRuntimePlayer, quest: QuestDefinition
 }
 
 function canStartQuestDetailed(player: QuestRuntimePlayer, quest: QuestDefinition): { canStart: boolean; reason?: string } {
-  if (isKingdomQuestLockedForPlayer(quest, player.id)) {
+  if (isKingdomQuestLockedForPlayer(quest, player)) {
     const questKingdomId = normalizeKingdomId(quest.kingdomId);
     return { canStart: false, reason: `Quest is restricted to ${questKingdomId} origin profiles.` };
   }

@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isAdminAuthenticated, loginAdmin, logoutAdmin } from '../services/adminAuth';
+import type { ContentAutosaveStatus } from '../services/content/contentApi';
+import { getContentAutosaveStatus, triggerContentAutosave } from '../services/content/contentApi';
 import { AdminLayout } from './AdminLayout';
 import { AdminLogin } from './AdminLogin';
 import { DashboardPage } from './pages/DashboardPage';
@@ -63,6 +65,8 @@ function normalizeAdminPath(path: string): AdminRoute {
 
 export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
   const [isAuthenticated, setAuthenticated] = useState(() => isAdminAuthenticated());
+  const [autosaveStatus, setAutosaveStatus] = useState<ContentAutosaveStatus | null>(null);
+  const [autosaveState, setAutosaveState] = useState<'idle' | 'saving' | 'error'>('idle');
   const route = normalizeAdminPath(currentPath);
 
   const title = useMemo(() => {
@@ -123,6 +127,51 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
   function logout() {
     logoutAdmin();
     setAuthenticated(false);
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadStatus = async () => {
+      try {
+        const status = await getContentAutosaveStatus();
+        if (!isMounted) {
+          return;
+        }
+        setAutosaveStatus(status);
+        setAutosaveState(status.lastError ? 'error' : 'idle');
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setAutosaveState('error');
+      }
+    };
+
+    void loadStatus();
+    const timer = window.setInterval(() => {
+      void loadStatus();
+    }, 15_000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated]);
+
+  async function handleSaveNow() {
+    setAutosaveState('saving');
+    try {
+      const status = await triggerContentAutosave();
+      setAutosaveStatus(status);
+      setAutosaveState(status.lastError ? 'error' : 'idle');
+    } catch {
+      setAutosaveState('error');
+    }
   }
 
   if (!isAuthenticated) {
@@ -205,6 +254,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       currentPath={route}
       onNavigate={onNavigate}
       onLogout={logout}
+      autosaveStatus={autosaveStatus}
+      autosaveState={autosaveState}
+      onSaveNow={() => { void handleSaveNow(); }}
       isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor' || route === '/admin/cities'}
     >
       {page}

@@ -1372,6 +1372,23 @@ export interface ContentImportResult {
   }>;
 }
 
+export interface ContentAutosaveFileInfo {
+  slot: number;
+  fileName: string;
+  updatedAt?: string;
+}
+
+export interface ContentAutosaveStatus {
+  enabled: boolean;
+  intervalMs: number;
+  slotCount: number;
+  currentSlot: number;
+  lastSavedAt?: string;
+  nextScheduledAt?: string;
+  lastError?: string;
+  files: ContentAutosaveFileInfo[];
+}
+
 export type ContentCollectionName =
   | 'items'
   | 'skills'

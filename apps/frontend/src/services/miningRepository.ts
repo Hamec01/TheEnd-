@@ -33,6 +33,35 @@ const DEFAULT_HAZARD_BY_ID = new Map(DEFAULT_MINING_FALLBACK.hazards.map((entry)
 const DEFAULT_HAZARD_TABLE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.hazardTables.map((entry) => [entry.id, entry]));
 const DEFAULT_LOOT_TABLE_BY_ID = new Map(DEFAULT_MINING_FALLBACK.lootTables.map((entry) => [entry.id, entry]));
 const DEFAULT_TOOL_BY_ID = new Map((DEFAULT_MINING_FALLBACK.tools ?? []).map((entry) => [entry.id, entry]));
+const MINING_TOOL_DEFAULT_ITEM_IDS: Record<string, string> = {
+  mining_tool_rusty_pickaxe: 'mining_tool_rusty_pickaxe',
+  mining_tool_dynamite: 'mining_tool_dynamite',
+  mining_tool_torch: 'mining_tool_torch',
+};
+const MINING_TOOL_DEFAULT_ICON_IDS: Record<string, string> = {
+  mining_tool_rusty_pickaxe: 'mining_tool_rusty_pickaxe-icon',
+  mining_tool_dynamite: 'mining_tool_dynamite-icon',
+  mining_tool_torch: 'mining_tool_torch-icon',
+};
+const LEGACY_MINING_ITEM_ID_MAP: Record<string, string> = {
+  item_raw_stone: 'mat_raw_stone',
+  item_iron_ore: 'mat_iron_ore',
+  item_small_gold_nugget: 'mat_gold_nugget',
+  item_cracked_crystal: 'mat_cracked_crystal',
+  item_zeptyrite_trace: 'mat_zeptyrite_trace',
+  tool_pickaxe_rusty: 'mining_tool_rusty_pickaxe',
+  tool_dynamite: 'mining_tool_dynamite',
+  tool_torch: 'mining_tool_torch',
+};
+const LEGACY_MINING_MATERIAL_ID_MAP: Record<string, string> = {
+  raw_stone: 'mat_raw_stone',
+  iron_ore: 'mat_iron_ore',
+  rich_iron_ore: 'mat_rich_iron_ore',
+  gold_nugget: 'mat_gold_nugget',
+  large_gold_nugget: 'mat_large_gold_nugget',
+  zeptyrite_trace: 'mat_zeptyrite_trace',
+  cracked_crystal: 'mat_cracked_crystal',
+};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -50,6 +79,22 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
     }
   }
   return undefined;
+}
+
+function normalizeMiningItemId(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return '';
+  }
+  return LEGACY_MINING_ITEM_ID_MAP[normalized] ?? normalized;
+}
+
+function normalizeMiningMaterialId(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return '';
+  }
+  return LEGACY_MINING_MATERIAL_ID_MAP[normalized] ?? LEGACY_MINING_ITEM_ID_MAP[normalized] ?? normalized;
 }
 
 function mergeById<T extends { id: string }>(current: T[], defaults: T[]): T[] {
@@ -220,13 +265,24 @@ function normalizeTool(raw: unknown): MiningToolDefinition | null {
   }
   const row = raw as Record<string, unknown>;
   const id = String(row.id ?? '').trim();
-  const itemId = String(row.itemId ?? '').trim();
+  const fallback = DEFAULT_TOOL_BY_ID.get(id);
+  const itemId = normalizeMiningItemId(firstNonEmpty(
+    row.itemId as string | undefined,
+    fallback?.itemId,
+    MINING_TOOL_DEFAULT_ITEM_IDS[id],
+    id,
+  ));
   const name = String(row.name ?? '').trim();
   if (!id || !itemId || !name) {
     return null;
   }
-  const fallback = DEFAULT_TOOL_BY_ID.get(id);
-  const spriteFallback = firstNonEmpty(row.spriteUrl as string | undefined, row.spriteAssetId as string | undefined, fallback?.spriteUrl, fallback?.spriteAssetId);
+  const spriteFallback = firstNonEmpty(
+    row.spriteUrl as string | undefined,
+    row.spriteAssetId as string | undefined,
+    fallback?.spriteUrl,
+    fallback?.spriteAssetId,
+    MINING_TOOL_DEFAULT_ICON_IDS[id],
+  );
   const normalizedSpriteRef = normalizeGameImageRef(
     row.spriteRef,
     spriteFallback,
@@ -239,8 +295,8 @@ function normalizeTool(raw: unknown): MiningToolDefinition | null {
     name: fixMojibake(name, fallback?.name),
     description: fixMojibake(String(row.description ?? '').trim(), fallback?.description) || undefined,
     spriteRef: normalizedSpriteRef,
-    spriteAssetId: firstNonEmpty(row.spriteAssetId as string | undefined, fallback?.spriteAssetId),
-    spriteUrl: toLegacyImagePath(normalizedSpriteRef) ?? firstNonEmpty(row.spriteUrl as string | undefined, fallback?.spriteUrl),
+    spriteAssetId: firstNonEmpty(row.spriteAssetId as string | undefined, fallback?.spriteAssetId, MINING_TOOL_DEFAULT_ICON_IDS[id]),
+    spriteUrl: toLegacyImagePath(normalizedSpriteRef) ?? firstNonEmpty(row.spriteUrl as string | undefined, fallback?.spriteUrl, MINING_TOOL_DEFAULT_ICON_IDS[id]),
     effectType: (String(row.effectType ?? fallback?.effectType ?? '').trim() || undefined) as MiningToolDefinition['effectType'],
     effectValue: Number.isFinite(Number(row.effectValue)) ? Number(row.effectValue) : fallback?.effectValue,
     isConsumable: row.isConsumable === true,
@@ -296,8 +352,8 @@ function normalizeBlockTable(raw: unknown): MineBlockTable | null {
             id: String(rawPayload.id ?? '').trim() || undefined,
             type: payloadType as MineBlockPayload['type'],
             weight: payloadWeight,
-            itemId: String(rawPayload.itemId ?? '').trim() || undefined,
-            materialId: String(rawPayload.materialId ?? '').trim() || undefined,
+            itemId: normalizeMiningItemId(String(rawPayload.itemId ?? '').trim()) || undefined,
+            materialId: normalizeMiningMaterialId(String(rawPayload.materialId ?? '').trim()) || undefined,
             hazardId: String(rawPayload.hazardId ?? '').trim() || undefined,
             eventId: String(rawPayload.eventId ?? '').trim() || undefined,
             goldMin: Number.isFinite(Number(rawPayload.goldMin)) ? Math.max(0, Math.floor(Number(rawPayload.goldMin))) : undefined,
@@ -440,7 +496,7 @@ function normalizeLootTable(raw: unknown): MineLootTable | null {
         continue;
       }
       const value = entry as Record<string, unknown>;
-      const itemId = String(value.itemId ?? '').trim();
+      const itemId = normalizeMiningItemId(String(value.itemId ?? '').trim());
       const weight = Number(value.weight ?? 0);
       const minQuantity = Number(value.minQuantity ?? 1);
       const maxQuantity = Number(value.maxQuantity ?? 1);
@@ -1668,10 +1724,12 @@ function defaultMiningContent(): MiningContentBundle {
       {
         id: 'mining_tool_rusty_pickaxe',
         professionId: 'mining',
-        itemId: 'tool_pickaxe_rusty',
+        itemId: 'mining_tool_rusty_pickaxe',
         toolType: 'pickaxe',
         name: 'Ржавая кирка',
         description: 'Старая, но надежная кирка для первых спусков.',
+        spriteAssetId: 'mining_tool_rusty_pickaxe-icon',
+        spriteUrl: 'mining_tool_rusty_pickaxe-icon',
         effectType: 'extra_hits',
         effectValue: 0,
         isConsumable: false,
@@ -1682,10 +1740,12 @@ function defaultMiningContent(): MiningContentBundle {
       {
         id: 'mining_tool_dynamite',
         professionId: 'mining',
-        itemId: 'tool_dynamite',
+        itemId: 'mining_tool_dynamite',
         toolType: 'dynamite',
         name: 'Динамит',
         description: 'Моментально вскрывает один блок.',
+        spriteAssetId: 'mining_tool_dynamite-icon',
+        spriteUrl: 'mining_tool_dynamite-icon',
         effectType: 'break_block',
         effectValue: 1,
         isConsumable: true,
@@ -1696,10 +1756,12 @@ function defaultMiningContent(): MiningContentBundle {
       {
         id: 'mining_tool_torch',
         professionId: 'mining',
-        itemId: 'tool_torch',
+        itemId: 'mining_tool_torch',
         toolType: 'torch',
         name: 'Факел',
         description: 'Подсказывает один перспективный блок.',
+        spriteAssetId: 'mining_tool_torch-icon',
+        spriteUrl: 'mining_tool_torch-icon',
         effectType: 'reveal_hint',
         effectValue: 1,
         isConsumable: true,

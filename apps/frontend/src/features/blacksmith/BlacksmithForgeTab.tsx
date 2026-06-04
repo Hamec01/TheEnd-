@@ -26,9 +26,11 @@ import { BLACKSMITH_BUTTON_SOUNDS, BLACKSMITH_MUSIC_TRACKS, playBlacksmithUiSoun
 import { loadWorldAudioSettings } from '../../worldmap/worldAudioSettings';
 import {
   canAffordRecipeMaterials,
+  canAffordRecipeMaterialsWithInventory,
   consumeRecipeMaterials,
   getRecipeMaterialShortages,
 } from './blacksmithRecipeMaterials';
+import type { InventoryState } from '@theend/rpg-domain';
 
 interface BlacksmithForgeTabProps {
   selectedRecipe: CraftingRecipe | null;
@@ -42,10 +44,13 @@ interface BlacksmithForgeTabProps {
   materials: Material[];
   items: AdminItem[];
   runtimeImages: StoredImage[];
+  inventory: InventoryState;
+  inventoryRevision: number;
   resolveImageRef: (value?: string) => string | undefined;
   skillBonuses: BlacksmithSkillBonuses;
   onSessionChange: (next: BlacksmithSessionState | null) => void;
-  onComplete: (payload: { xp: number; score: number; qualityTierId: string; success: boolean }) => void;
+  onInventoryChange: (next: InventoryState) => void;
+  onComplete: (payload: { xp: number; score: number; qualityTierId: string; success: boolean }) => void | Promise<void>;
 }
 
 const OBJECT_SHEET_SRC = '/art/blacksmith/objects/blacksmith_forge_objects_sheet_384.png';
@@ -251,9 +256,12 @@ export function BlacksmithForgeTab({
   materials,
   items,
   runtimeImages,
+  inventory,
+  inventoryRevision,
   resolveImageRef,
   skillBonuses,
   onSessionChange,
+  onInventoryChange,
   onComplete,
 }: BlacksmithForgeTabProps) {
   const bonuses = useMemo(
@@ -336,8 +344,8 @@ export function BlacksmithForgeTab({
     warpedMetalSrc,
   ]);
   const materialShortages = useMemo(
-    () => getRecipeMaterialShortages(selectedRecipe),
-    [selectedRecipe],
+    () => getRecipeMaterialShortages(selectedRecipe, inventory),
+    [inventory, inventoryRevision, selectedRecipe],
   );
   const canStartSession = Boolean(selectedRecipe) && materialShortages.length === 0 && !session;
   const musicRef = useRef<HTMLAudioElement | null>(null);
@@ -386,8 +394,8 @@ export function BlacksmithForgeTab({
     if (!selectedRecipe) {
       return;
     }
-    if (!canAffordRecipeMaterials(selectedRecipe)) {
-      const firstShortage = getRecipeMaterialShortages(selectedRecipe)[0];
+    if (!canAffordRecipeMaterialsWithInventory(selectedRecipe, inventory)) {
+      const firstShortage = getRecipeMaterialShortages(selectedRecipe, inventory)[0];
       if (firstShortage) {
         const label = materialsById.get(firstShortage.catalogId)?.name
           ?? itemsById.get(firstShortage.catalogId)?.name
@@ -398,9 +406,13 @@ export function BlacksmithForgeTab({
       }
       return;
     }
-    if (!consumeRecipeMaterials(selectedRecipe)) {
+    const consumeResult = consumeRecipeMaterials(selectedRecipe, inventory);
+    if (!consumeResult.ok) {
       window.alert('Не удалось списать материалы. Проверьте инвентарь.');
       return;
+    }
+    if (consumeResult.inventory) {
+      onInventoryChange(consumeResult.inventory);
     }
     playBlacksmithUiSound(BLACKSMITH_BUTTON_SOUNDS.startSession);
 
@@ -434,13 +446,14 @@ export function BlacksmithForgeTab({
       successBonusPercent: Number(skillBonuses.craftSuccessBonus ?? 0),
       failureReductionPercent: Number(skillBonuses.failureChanceReduction ?? 0),
     });
-    onComplete({
+    void Promise.resolve(onComplete({
       xp,
       score: finalScore,
       qualityTierId: tierId,
       success: !(qualityTier?.isFailureTier ?? false),
+    })).finally(() => {
+      onSessionChange(null);
     });
-    onSessionChange(null);
   }
 
   function runAction(action: 'prepare_blank' | 'add_heat' | 'stabilize_heat' | 'light_strike' | 'medium_strike' | 'heavy_strike' | 'quench_water' | 'quench_oil' | 'finish_polish') {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MineHazardTable } from '../../types/mining';
-import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import {
   loadMineHazardTablesFromStorage,
   loadMineHazardsFromStorage,
@@ -126,6 +126,32 @@ export function MineHazardTableEditor({ onSave }: MineHazardTableEditorProps) {
     startNew();
   }
 
+  function handleImportJson() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(await file.text()) as unknown;
+        const rawEntries = extractRawCollectionFromImportJson(payload, 'mineHazardTables');
+        saveMineHazardTablesToStorage(rawEntries as MineHazardTable[]);
+        const imported = loadMineHazardTablesFromStorage();
+        setTables(imported);
+        setSelectedId(imported[0]?.id ?? null);
+        setDraft(imported[0] ?? emptyTable());
+        setStatus(`Импортировано таблиц опасностей: ${imported.length}`);
+        onSave?.(imported);
+      } catch (error) {
+        setStatus(`Ошибка импорта: ${String((error as Error).message ?? error)}`);
+      }
+    };
+    input.click();
+  }
+
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
@@ -138,6 +164,7 @@ export function MineHazardTableEditor({ onSave }: MineHazardTableEditorProps) {
           >
             Экспорт JSON
           </button>
+          <button onClick={handleImportJson}>Импорт JSON</button>
         </div>
         <div className="admin-scroll-list">
           {tables.map((table) => (

@@ -97,6 +97,10 @@ export function mergePlayerProfessionsState(
 
     return {
       ...preferred,
+      level: Math.max(preferred.level, secondary.level),
+      xp: Math.max(preferred.xp, secondary.xp),
+      xpToNextLevel: Math.max(preferred.xpToNextLevel, secondary.xpToNextLevel),
+      skillPoints: Math.max(preferred.skillPoints, secondary.skillPoints),
       learnedSkillIds: Array.from(new Set([...(preferred.learnedSkillIds ?? []), ...(secondary.learnedSkillIds ?? [])])),
       selectedBranchIds: Array.from(new Set([...(preferred.selectedBranchIds ?? []), ...(secondary.selectedBranchIds ?? [])])),
       stats: mergedStats,

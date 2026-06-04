@@ -410,6 +410,14 @@ function isMineResourceZone(zone: WorldMapZone | null | undefined): zone is Worl
   return Boolean(zone && zone.resourceKind === 'mine' && zone.mineId?.trim());
 }
 
+function isUnknownDomainItem(item: ItemDefinition | null | undefined): boolean {
+  if (!item) {
+    return true;
+  }
+  return String(item.name ?? '').startsWith('Unknown item (')
+    || String((item as { itemSubType?: string }).itemSubType ?? '').trim() === 'unknown';
+}
+
 const DEFAULT_PLAYER_POSITION = { x: 0.53, y: 0.83 };
 const UI_LEFT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.leftPanelCollapsed";
 const UI_RIGHT_PANEL_COLLAPSED_KEY = "theend.worldMap.ui.rightPanelCollapsed";
@@ -1417,15 +1425,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [],
   );
   const dialoguePlayer = useMemo(
-    () => ({
-      id: character.id,
-      level: character.level,
-      race: character.race,
-      ...questRuntimeProfessionCompat,
-      stats: Object.fromEntries(
-        Object.entries(character.activeStats ?? {}).map(([key, value]) => [key, Number(value ?? 0)]),
-      ),
-    }),
+    () => {
+      const profile = loadCharacterProfile(character.id);
+      return {
+        id: character.id,
+        level: character.level,
+        race: character.race,
+        originId: profile?.originId ?? undefined,
+        kingdomId: profile?.kingdomId ?? undefined,
+        citizenshipKingdomId: profile?.citizenshipKingdomId ?? undefined,
+        ...questRuntimeProfessionCompat,
+        stats: Object.fromEntries(
+          Object.entries(character.activeStats ?? {}).map(([key, value]) => [key, Number(value ?? 0)]),
+        ),
+      };
+    },
     [character.activeStats, character.id, character.level, character.race, questRuntimeProfessionCompat],
   );
   const refreshPlayerQuestStates = useCallback(() => {
@@ -6085,31 +6099,67 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, currentGold + normalized);
   }, []);
 
+  const materialCatalogById = useMemo(
+    () => new Map((contentSnapshot?.materials ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
+    [contentSnapshot?.materials],
+  );
+  const itemCatalogById = useMemo(
+    () => new Map((contentSnapshot?.items ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
+    [contentSnapshot?.items],
+  );
+
 
   const resolveMineItemName = useCallback((itemId: string) => {
     const item = resolveItemById?.(itemId);
-    return item?.name ?? itemId;
-  }, [resolveItemById]);
+    if (item?.name && !isUnknownDomainItem(item)) {
+      return item.name;
+    }
+    const adminItem = itemCatalogById.get(itemId);
+    if (adminItem?.name) {
+      return adminItem.name;
+    }
+    return materialCatalogById.get(itemId)?.name ?? itemId;
+  }, [itemCatalogById, materialCatalogById, resolveItemById]);
 
   const resolveMineItemMeta = useCallback((itemId: string) => {
     const item = resolveItemById?.(itemId);
-    if (!item) {
+    if (item && !isUnknownDomainItem(item)) {
+      const itemRecord = item as ItemDefinition & {
+        gameplayDescription?: string;
+        loreDescription?: string;
+        description?: string;
+      };
+      return {
+        name: itemRecord.name,
+        description: itemRecord.gameplayDescription
+          || itemRecord.loreDescription
+          || itemRecord.description
+          || '',
+        iconUrl: resolveItemImage?.(itemRecord) ?? undefined,
+      };
+    }
+    const adminItem = itemCatalogById.get(itemId);
+    if (adminItem) {
+      return {
+        name: adminItem.name,
+        description: adminItem.gameplayDescription
+          || adminItem.loreDescription
+          || '',
+        iconUrl: resolveStoredImageSource(adminItem.imagePath, runtimeImages) ?? adminItem.imagePath ?? undefined,
+      };
+    }
+    const material = materialCatalogById.get(itemId);
+    if (!material) {
       return null;
     }
-    const itemRecord = item as ItemDefinition & {
-      gameplayDescription?: string;
-      loreDescription?: string;
-      description?: string;
-    };
     return {
-      name: itemRecord.name,
-      description: itemRecord.gameplayDescription
-        || itemRecord.loreDescription
-        || itemRecord.description
+      name: material.name,
+      description: material.gameplayDescription
+        || material.loreDescription
         || '',
-      iconUrl: resolveItemImage?.(itemRecord) ?? undefined,
+      iconUrl: resolveStoredImageSource(material.imagePath, runtimeImages) ?? material.imagePath ?? undefined,
     };
-  }, [resolveItemById, resolveItemImage]);
+  }, [itemCatalogById, materialCatalogById, resolveItemById, resolveItemImage, runtimeImages]);
 
   const handleMineDropLoot = useCallback((itemId: string, quantity: number) => {
     if (!activeMineRun || activeMineRun.status !== 'active') {
@@ -8981,7 +9031,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         depth={depth}
         run={toPublicMineRun(activeMineRun)}
         miningLevel={miningProfession?.level ?? 1}
-        pickaxeName="Безымянная кирка"
+        pickaxeName={activeMineRun.miningInventory?.find((entry) => entry.toolId === activeMineRun.selectedToolId)?.name ?? activeMineRun.miningInventory?.[0]?.name ?? 'Кирка'}
         emergencyEscapeAvailable={Boolean(activeMineEffects?.some((effect) => effect.type === 'mine_once_per_run_escape') && !activeMineRun.usedEmergencyEscape)}
         activeMiningSkills={activeMiningSkills}
         resolveItemName={resolveMineItemName}

@@ -6,6 +6,17 @@ import { InventoryGrid } from './InventoryGrid';
 import { TradeModal } from './TradeModal';
 import { resolvePreferredEquipmentSlot } from '../utils/equipmentTarget';
 
+type MerchantFilterCategory = 'all' | 'weapon' | 'armor' | 'consumable' | 'material' | 'misc';
+
+const MERCHANT_FILTER_LABELS: Record<MerchantFilterCategory, string> = {
+  all: 'Все',
+  weapon: 'Оружие',
+  armor: 'Броня',
+  consumable: 'Расходники',
+  material: 'Материалы',
+  misc: 'Разное',
+};
+
 interface MerchantPanelProps {
   merchant: Merchant;
   inventory: InventoryState;
@@ -25,6 +36,10 @@ interface MerchantPanelProps {
   merchantStockByItemId?: Record<string, number | null>;
   onBuyItem: (itemId: string, merchantId: string, quantity: number) => Promise<void>;
   onSellItem: (itemId: string, quantity: number) => Promise<void>;
+}
+
+function normalizeSearchValue(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
 }
 
 export const MerchantPanel: React.FC<MerchantPanelProps> = ({
@@ -48,6 +63,8 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   onSellItem,
 }) => {
   const [mode, setMode] = useState<'buy' | 'sell'>('buy');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<MerchantFilterCategory>('all');
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemDefinition | null>(null);
   const [tradeQuantity, setTradeQuantity] = useState(1);
@@ -56,6 +73,27 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
   const merchantItems = useMemo(
     () => merchantItemsOverride ?? getMerchantItems(merchant.id),
     [merchant.id, merchantItemsOverride],
+  );
+  const resolveItemCategory = useMemo(
+    () => (item: ItemDefinition): MerchantFilterCategory => {
+      const adminItem = resolveAdminItemById?.(item.id);
+      if (adminItem?.type === 'material' || item.id.startsWith('mat_')) {
+        return 'material';
+      }
+
+      const typeProbe = normalizeSearchValue(adminItem?.type ?? item.itemType);
+      if (typeProbe.includes('weapon')) {
+        return 'weapon';
+      }
+      if (['shield', 'helmet', 'armor', 'boots', 'gloves'].includes(typeProbe) || typeProbe.includes('armor')) {
+        return 'armor';
+      }
+      if (typeProbe.includes('consumable') || typeProbe.includes('potion')) {
+        return 'consumable';
+      }
+      return 'misc';
+    },
+    [resolveAdminItemById],
   );
   const isMaterialItem = useMemo(
     () => (item: ItemDefinition) => {
@@ -75,6 +113,10 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
     () => merchantItems.filter((item) => !isMaterialItem(item)),
     [isMaterialItem, merchantItems],
   );
+  const merchantAllItems = useMemo(
+    () => [...merchantRegularItems, ...merchantMaterialItems],
+    [merchantMaterialItems, merchantRegularItems],
+  );
   const inventoryItems = useMemo(
     () => {
       const allowedSet = allowedSellItemIds && allowedSellItemIds.length > 0 ? new Set(allowedSellItemIds) : null;
@@ -84,6 +126,50 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
         .filter(Boolean) as ItemDefinition[];
     },
     [allowedSellItemIds, inventory.items, resolveItemById],
+  );
+  const activeItems = useMemo(
+    () => (mode === 'buy' ? merchantAllItems : inventoryItems),
+    [inventoryItems, merchantAllItems, mode],
+  );
+  const normalizedSearchQuery = useMemo(() => normalizeSearchValue(searchQuery), [searchQuery]);
+  const categoryCounts = useMemo(() => {
+    const counts: Record<MerchantFilterCategory, number> = {
+      all: activeItems.length,
+      weapon: 0,
+      armor: 0,
+      consumable: 0,
+      material: 0,
+      misc: 0,
+    };
+
+    for (const item of activeItems) {
+      counts[resolveItemCategory(item)] += 1;
+    }
+
+    return counts;
+  }, [activeItems, resolveItemCategory]);
+  const filteredItems = useMemo(
+    () => activeItems.filter((item) => {
+      const category = resolveItemCategory(item);
+      if (selectedCategory !== 'all' && category !== selectedCategory) {
+        return false;
+      }
+      if (!normalizedSearchQuery) {
+        return true;
+      }
+
+      const adminItem = resolveAdminItemById?.(item.id);
+      return [
+        item.id,
+        item.name,
+        item.itemType,
+        item.itemSubType,
+        adminItem?.name,
+        adminItem?.type,
+        adminItem?.subtype,
+      ].some((value) => normalizeSearchValue(value).includes(normalizedSearchQuery));
+    }),
+    [activeItems, normalizedSearchQuery, resolveAdminItemById, resolveItemCategory, selectedCategory],
   );
   const inventoryQuantityByItemId = useMemo(() => {
     const quantityByItemId = new Map<string, number>();
@@ -167,6 +253,12 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
     }
     return 'Бесконечно';
   }, [mode, selectedMerchantStock]);
+
+  const openTradeModal = (item: ItemDefinition) => {
+    setSelectedItem(item);
+    setTradeQuantity(1);
+    setTradeModalOpen(true);
+  };
 
   const handleBuy = async () => {
     if (selectedItem) {
@@ -265,61 +357,49 @@ export const MerchantPanel: React.FC<MerchantPanelProps> = ({
           </button>
         </div>
 
-        {mode === 'buy' ? (
-          <>
-            {merchantRegularItems.length > 0 ? (
-              <InventoryGrid
-                title={`Товары: ${merchant.name}`}
-                items={merchantRegularItems}
-                columns={5}
-                resolveItemImage={resolveItemImage}
-                resolveItemImageRef={resolveItemImageRef}
-                resolveItemLegacyImagePath={resolveItemLegacyImagePath}
-                runtimeImages={runtimeImages}
-                onItemClick={(item) => {
-                  if (!item) return;
-                  setSelectedItem(item);
-                  setTradeQuantity(1);
-                  setTradeModalOpen(true);
-                }}
-              />
-            ) : null}
+        <section className="merchant-page-filters card">
+          <div className="merchant-page-filters__head">
+            <strong>{mode === 'buy' ? 'Поиск по товарам торговца' : 'Поиск по предметам на продажу'}</strong>
+            <span className="muted">Найдено: {filteredItems.length} из {activeItems.length}</span>
+          </div>
 
-            {merchantMaterialItems.length > 0 ? (
-              <InventoryGrid
-                title="Материалы"
-                items={merchantMaterialItems}
-                columns={5}
-                resolveItemImage={resolveItemImage}
-                resolveItemImageRef={resolveItemImageRef}
-                resolveItemLegacyImagePath={resolveItemLegacyImagePath}
-                runtimeImages={runtimeImages}
-                onItemClick={(item) => {
-                  if (!item) return;
-                  setSelectedItem(item);
-                  setTradeQuantity(1);
-                  setTradeModalOpen(true);
-                }}
-              />
-            ) : null}
-          </>
-        ) : (
-          <InventoryGrid
-            title="Ваши предметы на продажу"
-            items={inventoryItems}
-            columns={5}
-            resolveItemImage={resolveItemImage}
-            resolveItemImageRef={resolveItemImageRef}
-            resolveItemLegacyImagePath={resolveItemLegacyImagePath}
-            runtimeImages={runtimeImages}
-            onItemClick={(item) => {
-              if (!item) return;
-              setSelectedItem(item);
-              setTradeQuantity(1);
-              setTradeModalOpen(true);
-            }}
+          <input
+            className="merchant-page-search"
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Поиск по названию, ID, типу..."
+            autoComplete="off"
+            spellCheck={false}
           />
-        )}
+
+          <div className="merchant-page-category-row">
+            {(Object.keys(MERCHANT_FILTER_LABELS) as MerchantFilterCategory[]).map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={`merchant-page-category-chip ${selectedCategory === category ? 'is-active' : ''}`}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {MERCHANT_FILTER_LABELS[category]} ({categoryCounts[category]})
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <InventoryGrid
+          title={mode === 'buy' ? `Каталог: ${merchant.name}` : 'Ваши предметы на продажу'}
+          items={filteredItems}
+          columns={5}
+          resolveItemImage={resolveItemImage}
+          resolveItemImageRef={resolveItemImageRef}
+          resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+          runtimeImages={runtimeImages}
+          onItemClick={(item) => {
+            if (!item) return;
+            openTradeModal(item);
+          }}
+        />
 
         <TradeModal
           isOpen={tradeModalOpen}
