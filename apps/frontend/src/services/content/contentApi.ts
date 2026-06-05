@@ -20,6 +20,8 @@ import type {
   BlacksmithQualityTier,
   BlacksmithTool,
   BlacksmithVisualPreset,
+  BlacksmithItemTemplate,
+  BlacksmithItemWorkAction,
   CraftingRecipe,
   RecipeVisualProfile,
   ItemSet,
@@ -62,7 +64,9 @@ export type ContentCollectionName =
   | 'blacksmithTools'
   | 'blacksmithQualityTiers'
   | 'blacksmithVisualPresets'
-  | 'blacksmithBalance';
+  | 'blacksmithBalance'
+  | 'blacksmithItemTemplates'
+  | 'blacksmithItemWorkActions';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -143,6 +147,8 @@ export interface ContentSnapshot {
   blacksmithQualityTiers: BlacksmithQualityTier[];
   blacksmithVisualPresets: BlacksmithVisualPreset[];
   blacksmithBalance: BlacksmithBalance[];
+  blacksmithItemTemplates: BlacksmithItemTemplate[];
+  blacksmithItemWorkActions: BlacksmithItemWorkAction[];
   worldMap: WorldMapContent;
 }
 

@@ -102,6 +102,7 @@ class PhaserBattleScene extends Phaser.Scene {
   private visualFxPlayer?: PhaserVisualFxPlayer;
   private bg?: Phaser.GameObjects.Image;
   private tokenById = new Map<string, Phaser.GameObjects.Container>();
+  private tokenFacingById = new Map<string, 1 | -1>();
   private statusVfxByEntity = new Map<string, Map<string, Phaser.GameObjects.GameObject[]>>();
   private particleTextureKey = '__battle_fx_dot';
   private processedEvents = new Set<string>();
@@ -145,6 +146,18 @@ class PhaserBattleScene extends Phaser.Scene {
 
     const label = token.getByName('portraitLabel') as Phaser.GameObjects.Text | null;
     label?.setVisible(false);
+  }
+
+  private applyTokenFacing(actorId: string, token: Phaser.GameObjects.Container, horizontalDelta: number) {
+    if (Math.abs(horizontalDelta) <= 0.01) {
+      return;
+    }
+    const facingX: 1 | -1 = horizontalDelta < 0 ? -1 : 1;
+    this.tokenFacingById.set(actorId, facingX);
+    const image = token.getByName('battleSpriteImage') as Phaser.GameObjects.Image | null;
+    if (image) {
+      image.setFlipX(facingX === -1);
+    }
   }
 
   private ensureCircularPortraitTexture(imageKey: string, size: number): string | null {
@@ -541,6 +554,7 @@ class PhaserBattleScene extends Phaser.Scene {
         this.removeStatusVfx(id);
         token.destroy(true);
         this.tokenById.delete(id);
+        this.tokenFacingById.delete(id);
         this.tokenPortraitKeyById.delete(id);
         this.movingTokenIds.delete(id);
         this.actorVisualCells.delete(id);
@@ -682,6 +696,7 @@ class PhaserBattleScene extends Phaser.Scene {
       const from = adapter.getCellCenter(event.from.x, event.from.y);
       const to = adapter.getCellCenter(event.to.x, event.to.y);
       const duration = getMovementTweenDurationMs(event);
+      this.applyTokenFacing(event.actorId, token, to.x - from.x);
 
       this.activeMoveTweenByActor.get(event.actorId)?.stop();
       this.movingTokenIds.add(event.actorId);
@@ -744,13 +759,39 @@ class PhaserBattleScene extends Phaser.Scene {
     const portrait = getRacePortrait(entity, snapshot.playerId, snapshot.playerAvatarUrl);
     const imageKey = `actor:${portrait}`;
     const staticImageKey = portrait.startsWith('/sprites/actor/') ? `actor-static:${portrait}` : null;
+    const explicitSpriteUrl = entity.battleSpriteUrl?.trim();
+    const explicitSpriteId = entity.battleSpriteId?.trim();
+    const spriteSource = explicitSpriteUrl || (explicitSpriteId ? `/sprites/battle/${explicitSpriteId}.png` : '');
+    const spriteImageKey = spriteSource ? `battle-sprite:${spriteSource}` : '';
+    const renderAsSprite = entity.battleRenderMode === 'sprite' || Boolean(spriteSource);
     const fallbackPortrait = isBanditLike(entity)
       ? pickDeterministicBanditPortrait(entity.id)
       : '/sprites/actor/human_01.png';
     const fallbackImageKey = `actor:${fallbackPortrait}`;
     const fallbackStaticImageKey = `actor-static:${fallbackPortrait}`;
+    const size = Math.max(24, Math.floor(snapshot.sceneCellSize * 0.72));
 
-    const ensureLoadedPortrait = (targetToken: Phaser.GameObjects.Container, key: string, source: string, size: number) => {
+    const addBattleSprite = (targetToken: Phaser.GameObjects.Container, key: string) => {
+      const existingBattleImage = targetToken.getByName('battleSpriteImage') as Phaser.GameObjects.Image | null;
+      if (existingBattleImage?.texture?.key === key) {
+        existingBattleImage.setFlipX((this.tokenFacingById.get(entity.id) ?? 1) === -1);
+        return;
+      }
+
+      existingBattleImage?.destroy();
+      (targetToken.getByName('portraitImage') as Phaser.GameObjects.Image | null)?.destroy();
+      (targetToken.getByName('portraitMask') as Phaser.GameObjects.Graphics | null)?.destroy();
+
+      const image = this.add.image(0, -Math.max(2, Math.floor(size * 0.06)), key)
+        .setDisplaySize(Math.max(32, Math.round(size * 1.15)), Math.max(32, Math.round(size * 1.15)))
+        .setName('battleSpriteImage');
+      image.setFlipX((this.tokenFacingById.get(entity.id) ?? 1) === -1);
+      targetToken.addAt(image, 1);
+      const label = targetToken.getByName('portraitLabel') as Phaser.GameObjects.Text | null;
+      label?.setVisible(false);
+    };
+
+    const ensureLoadedPortrait = (targetToken: Phaser.GameObjects.Container, key: string, source: string) => {
       if (staticImageKey && this.textures.exists(staticImageKey)) {
         this.addCircularPortrait(targetToken, staticImageKey, size);
         this.tokenPortraitKeyById.set(entity.id, staticImageKey);
@@ -802,20 +843,66 @@ class PhaserBattleScene extends Phaser.Scene {
       }
     };
 
+    const ensureLoadedBattleSprite = (targetToken: Phaser.GameObjects.Container, key: string, source: string) => {
+      if (this.textures.exists(key)) {
+        addBattleSprite(targetToken, key);
+        this.tokenPortraitKeyById.set(entity.id, key);
+        return;
+      }
+
+      if (!this.loadedImages.has(key)) {
+        this.loadedImages.add(key);
+        this.load.once(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+          if (file.key !== key) {
+            return;
+          }
+          const sceneToken = this.tokenById.get(entity.id);
+          if (sceneToken) {
+            ensureLoadedPortrait(sceneToken, imageKey, portrait);
+          }
+        });
+        this.load.image(key, source);
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          const sceneToken = this.tokenById.get(entity.id);
+          if (!sceneToken) {
+            return;
+          }
+          if (this.textures.exists(key)) {
+            addBattleSprite(sceneToken, key);
+            this.tokenPortraitKeyById.set(entity.id, key);
+          } else {
+            ensureLoadedPortrait(sceneToken, imageKey, portrait);
+          }
+          this.renderSnapshot();
+        });
+        this.load.start();
+      }
+    };
+
     if (existing) {
-      const size = Math.max(24, Math.floor(snapshot.sceneCellSize * 0.72));
-      const currentPortraitKey = this.tokenPortraitKeyById.get(entity.id);
-      if (currentPortraitKey !== imageKey || !existing.getByName('portraitImage')) {
-        ensureLoadedPortrait(existing, imageKey, portrait, size);
+      const currentBodyKey = this.tokenPortraitKeyById.get(entity.id);
+      if (renderAsSprite && spriteSource) {
+        if (currentBodyKey !== spriteImageKey || !existing.getByName('battleSpriteImage')) {
+          ensureLoadedBattleSprite(existing, spriteImageKey, spriteSource);
+        }
+        const battleSpriteImage = existing.getByName('battleSpriteImage') as Phaser.GameObjects.Image | null;
+        battleSpriteImage?.setFlipX((this.tokenFacingById.get(entity.id) ?? 1) === -1);
+        return existing;
+      }
+      if (currentBodyKey !== imageKey || !existing.getByName('portraitImage')) {
+        ensureLoadedPortrait(existing, imageKey, portrait);
       }
       return existing;
     }
 
-    const size = Math.max(24, Math.floor(snapshot.sceneCellSize * 0.72));
     const token = this.add.container(0, 0);
     const teamColor = entity.team === TeamSide.Right ? 0x8f3333 : entity.team === TeamSide.Left ? 0x2f6f9e : 0x847052;
-    const base = this.add.circle(0, 0, size / 2, teamColor, 0.94);
-    base.setStrokeStyle(2, 0xf3d9a8, 0.8);
+    const base = renderAsSprite
+      ? this.add.ellipse(0, size * 0.22, size * 0.82, Math.max(10, size * 0.24), 0x000000, 0.2)
+      : this.add.circle(0, 0, size / 2, teamColor, 0.94);
+    if ('setStrokeStyle' in base && typeof base.setStrokeStyle === 'function') {
+      base.setStrokeStyle(2, 0xf3d9a8, renderAsSprite ? 0.28 : 0.8);
+    }
     const label = this.add.text(0, -1, entity.name.slice(0, 2).toUpperCase(), {
       color: '#fff4d4',
       fontFamily: 'Georgia, serif',
@@ -830,7 +917,11 @@ class PhaserBattleScene extends Phaser.Scene {
     this.tokenById.set(entity.id, token);
     this.tokenPositionInitialized.delete(entity.id);
 
-    ensureLoadedPortrait(token, imageKey, portrait, size);
+    if (renderAsSprite && spriteSource) {
+      ensureLoadedBattleSprite(token, spriteImageKey, spriteSource);
+    } else {
+      ensureLoadedPortrait(token, imageKey, portrait);
+    }
 
     return token;
   }
@@ -1070,6 +1161,7 @@ class PhaserBattleScene extends Phaser.Scene {
   }
 
   private playSkillMovementBehavior(
+    actorId: string,
     behavior: CombatAnimationEvent['movementBehavior'],
     actorToken: Phaser.GameObjects.Container,
     targetToken: Phaser.GameObjects.Container,
@@ -1087,6 +1179,7 @@ class PhaserBattleScene extends Phaser.Scene {
     const travelRatio = distance <= 0 ? 1 : Math.max(0, (distance - stopShort) / distance);
     const strikeX = originX + dx * travelRatio;
     const strikeY = originY + dy * travelRatio;
+    this.applyTokenFacing(actorId, actorToken, dx);
 
     if (behavior === 'dash_to_target') {
       this.tweens.add({
@@ -1150,6 +1243,7 @@ class PhaserBattleScene extends Phaser.Scene {
   }
 
   private playSkillMovementBehaviorAsync(
+    actorId: string,
     behavior: CombatAnimationEvent['movementBehavior'],
     actorToken: Phaser.GameObjects.Container,
     targetToken: Phaser.GameObjects.Container,
@@ -1169,6 +1263,7 @@ class PhaserBattleScene extends Phaser.Scene {
       const travelRatio = distance <= 0 ? 1 : Math.max(0, (distance - stopShort) / distance);
       const strikeX = originX + dx * travelRatio;
       const strikeY = originY + dy * travelRatio;
+      this.applyTokenFacing(actorId, actorToken, dx);
 
       if (behavior === 'dash_to_target') {
         this.tweens.add({
@@ -1260,7 +1355,7 @@ class PhaserBattleScene extends Phaser.Scene {
       movementHook: targetToken
         ? (behavior, from, to) => {
           actorToken.setPosition(from.x, from.y);
-          return this.playSkillMovementBehaviorAsync(behavior, actorToken, targetToken).then(() => undefined);
+          return this.playSkillMovementBehaviorAsync(event.actorId ?? '', behavior, actorToken, targetToken).then(() => undefined);
         }
         : undefined,
       audioHook: (soundId, volume) => this.playSoundSafe(soundId, volume),
@@ -1406,7 +1501,7 @@ class PhaserBattleScene extends Phaser.Scene {
         return;
       }
       if (targetToken) {
-        this.playSkillMovementBehavior(event.movementBehavior, actorToken, targetToken);
+        this.playSkillMovementBehavior(event.actorId ?? '', event.movementBehavior, actorToken, targetToken);
       }
       const registeredCastFx = this.visualFxPlayer?.getFx(event.castEffectId ?? event.visualEffectId);
       if (registeredCastFx && this.visualFxPlayer?.playFxAt(registeredCastFx, { x: actorToken.x, y: actorToken.y })) {

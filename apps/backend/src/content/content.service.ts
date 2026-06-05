@@ -32,6 +32,8 @@ import type {
   BlacksmithQualityTier,
   BlacksmithTool,
   BlacksmithVisualPreset,
+  BlacksmithItemTemplate,
+  BlacksmithItemWorkAction,
   City,
   CityLocation,
   CraftingRecipe,
@@ -47,6 +49,7 @@ import type {
   GameImageRef,
   ItemEffect,
   ItemSet,
+  ItemSocket,
   ItemRarity,
   LootTable,
   Material,
@@ -95,6 +98,8 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'blacksmithQualityTiers',
   'blacksmithVisualPresets',
   'blacksmithBalance',
+  'blacksmithItemTemplates',
+  'blacksmithItemWorkActions',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -181,6 +186,8 @@ function countContent(db: ContentDatabase): Record<string, number> {
     blacksmithQualityTiers: (db.blacksmithQualityTiers ?? []).length,
     blacksmithVisualPresets: (db.blacksmithVisualPresets ?? []).length,
     blacksmithBalance: (db.blacksmithBalance ?? []).length,
+    blacksmithItemTemplates: (db.blacksmithItemTemplates ?? []).length,
+    blacksmithItemWorkActions: (db.blacksmithItemWorkActions ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -540,6 +547,8 @@ function createEmptyDatabase(): ContentDatabase {
     blacksmithQualityTiers: [],
     blacksmithVisualPresets: [],
     blacksmithBalance: [],
+    blacksmithItemTemplates: [],
+    blacksmithItemWorkActions: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -740,6 +749,159 @@ function seedBlacksmithBalance(): BlacksmithBalance[] {
   ];
 }
 
+function seedBlacksmithItemTemplates(): BlacksmithItemTemplate[] {
+  return [
+    {
+      id: 'blacksmith_template_one_hand_sword',
+      name: 'Одноручный меч',
+      description: 'Базовый шаблон одноручного меча для свободной ковки.',
+      itemType: 'weapon',
+      subtype: 'sword',
+      slot: 'rightHand',
+      handsRequired: 1,
+      baseDamageMin: 4,
+      baseDamageMax: 8,
+      damageCategory: 'physical',
+      physicalType: 'slash',
+      requiredRoles: [
+        { id: 'main_metal', label: 'Основной металл', role: 'main_metal', required: true, quantity: 3 },
+        { id: 'handle', label: 'Рукоять', role: 'handle', required: true, quantity: 1 },
+        { id: 'binding', label: 'Обмотка', role: 'leather', required: true, quantity: 1 },
+      ],
+      optionalRoles: [
+        { id: 'quench', label: 'Закалочная жидкость', role: 'quench_liquid', required: false, quantity: 1 },
+        { id: 'catalyst', label: 'Катализатор', role: 'flux', required: false, quantity: 1 },
+      ],
+      allowedMainMaterialRoles: ['main_metal', 'ingot'],
+      allowedMaterialTiers: ['common', 'uncommon', 'rare', 'epic'],
+      baseMaxAugmentSlots: 2,
+      canAddAugmentSlots: true,
+      canHaveRuneComplex: true,
+      requiredBlacksmithLevel: 1,
+      requiredSkillIds: [],
+      tags: ['blacksmith_template', 'weapon', 'sword'],
+      imageRef: { type: 'tileset', sheetId: 'blacksmith_forge_objects_384', frame: 7 },
+      isEnabled: true,
+    },
+    {
+      id: 'blacksmith_template_spear',
+      name: 'Копьё',
+      description: 'Длинное оружие с упором на древко и наконечник.',
+      itemType: 'weapon',
+      subtype: 'spear',
+      slot: 'rightHand',
+      handsRequired: 2,
+      baseDamageMin: 5,
+      baseDamageMax: 9,
+      damageCategory: 'physical',
+      physicalType: 'pierce',
+      attackRange: 2,
+      requiredRoles: [
+        { id: 'main_metal', label: 'Наконечник', role: 'main_metal', required: true, quantity: 2 },
+        { id: 'handle', label: 'Древко', role: 'wood', required: true, quantity: 2 },
+        { id: 'binding', label: 'Крепление', role: 'leather', required: true, quantity: 1 },
+      ],
+      optionalRoles: [
+        { id: 'quench', label: 'Закалочная жидкость', role: 'quench_liquid', required: false, quantity: 1 },
+      ],
+      allowedMainMaterialRoles: ['main_metal', 'ingot'],
+      allowedMaterialTiers: ['common', 'uncommon', 'rare', 'epic'],
+      baseMaxAugmentSlots: 2,
+      canAddAugmentSlots: true,
+      canHaveRuneComplex: true,
+      requiredBlacksmithLevel: 1,
+      requiredSkillIds: [],
+      tags: ['blacksmith_template', 'weapon', 'spear'],
+      imageRef: { type: 'tileset', sheetId: 'blacksmith_forge_objects_384', frame: 9 },
+      isEnabled: true,
+    },
+    {
+      id: 'blacksmith_template_chestplate',
+      name: 'Нагрудник',
+      description: 'Защитный доспех из металлических пластин.',
+      itemType: 'armor',
+      subtype: 'chestplate',
+      slot: 'chest',
+      baseArmorValue: 6,
+      requiredRoles: [
+        { id: 'main_metal', label: 'Основной металл', role: 'main_metal', required: true, quantity: 4 },
+        { id: 'binding', label: 'Подкладка', role: 'cloth', required: true, quantity: 1 },
+      ],
+      optionalRoles: [
+        { id: 'quench', label: 'Закалочная жидкость', role: 'quench_liquid', required: false, quantity: 1 },
+        { id: 'catalyst', label: 'Катализатор', role: 'flux', required: false, quantity: 1 },
+      ],
+      allowedMainMaterialRoles: ['main_metal', 'ingot'],
+      allowedMaterialTiers: ['common', 'uncommon', 'rare', 'epic'],
+      baseMaxAugmentSlots: 2,
+      canAddAugmentSlots: true,
+      canHaveRuneComplex: true,
+      requiredBlacksmithLevel: 2,
+      requiredSkillIds: [],
+      tags: ['blacksmith_template', 'armor', 'chestplate'],
+      imageRef: { type: 'tileset', sheetId: 'blacksmith_forge_objects_384', frame: 11 },
+      isEnabled: true,
+    },
+  ];
+}
+
+function seedBlacksmithItemWorkActions(): BlacksmithItemWorkAction[] {
+  return [
+    {
+      id: 'blacksmith_itemwork_improve',
+      name: 'Улучшить предмет',
+      description: 'Повышает урон или броню по итогам мини-игры.',
+      actionType: 'improve_stats',
+      allowedItemTypes: ['weapon', 'armor'],
+      materialCosts: [{ materialId: 'item_iron_ore', quantity: 1 }],
+      goldCost: 15,
+      baseDifficulty: 38,
+      risk: 18,
+      statMultiplierDelta: 0.05,
+      isEnabled: true,
+    },
+    {
+      id: 'blacksmith_itemwork_add_socket',
+      name: 'Добавить слот',
+      description: 'Пытается добавить новый слот усиления.',
+      actionType: 'add_socket',
+      allowedItemTypes: ['weapon', 'armor'],
+      materialCosts: [{ materialId: 'item_iron_ore', quantity: 2 }],
+      goldCost: 35,
+      baseDifficulty: 48,
+      risk: 26,
+      addSocketRules: {
+        allowedAugmentTypes: ['rune', 'magic_stone', 'enchantment'],
+        source: 'blacksmith_added',
+      },
+      isEnabled: true,
+    },
+    {
+      id: 'blacksmith_itemwork_temper_buff',
+      name: 'Временная закалка',
+      description: 'Даёт временный боевой бафф предмету.',
+      actionType: 'temporary_buff',
+      allowedItemTypes: ['weapon', 'armor'],
+      materialCosts: [{ materialId: 'item_coal_chunk', quantity: 1 }],
+      goldCost: 12,
+      baseDifficulty: 24,
+      risk: 10,
+      isEnabled: true,
+    },
+    {
+      id: 'blacksmith_itemwork_dismantle',
+      name: 'Разобрать предмет',
+      description: 'Разобрать предмет на часть материалов.',
+      actionType: 'dismantle',
+      allowedItemTypes: ['weapon', 'armor'],
+      goldCost: 0,
+      baseDifficulty: 12,
+      risk: 4,
+      isEnabled: true,
+    },
+  ];
+}
+
 function seedRecipeVisualProfiles(): RecipeVisualProfile[] {
   return [
     {
@@ -892,6 +1054,8 @@ function createSeedDatabase(): ContentDatabase {
     blacksmithQualityTiers: seedBlacksmithQualityTiers(),
     blacksmithVisualPresets: seedBlacksmithVisualPresets(),
     blacksmithBalance: seedBlacksmithBalance(),
+    blacksmithItemTemplates: seedBlacksmithItemTemplates(),
+    blacksmithItemWorkActions: seedBlacksmithItemWorkActions(),
     worldMap: {
       zones: [],
       regions: [],
@@ -1470,6 +1634,132 @@ function normalizeBlacksmithBalanceInput(input: BlacksmithBalance): BlacksmithBa
     quenchProfiles: toNestedNumberRecord(input.quenchProfiles),
     strikeProfiles: toNestedNumberRecord(input.strikeProfiles),
     finishProfiles: toNestedNumberRecord(input.finishProfiles),
+  };
+}
+
+function normalizeMaterialCraftingPropertiesInput(value: Material['craftingProperties']): Material['craftingProperties'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = clone(value) as NonNullable<Material['craftingProperties']>;
+  normalized.roles = normalizeOptionalStringList(normalized.roles) as NonNullable<Material['craftingProperties']>['roles'];
+  normalized.professions = normalizeOptionalStringList(normalized.professions);
+  normalized.tags = normalizeOptionalStringList(normalized.tags);
+  if (normalized.blacksmith) {
+    normalized.blacksmith.allowedTemplateIds = normalizeOptionalStringList(normalized.blacksmith.allowedTemplateIds);
+    normalized.blacksmith.preferredTemplateIds = normalizeOptionalStringList(normalized.blacksmith.preferredTemplateIds);
+    normalized.blacksmith.tags = normalizeOptionalStringList(normalized.blacksmith.tags);
+    normalized.blacksmith.bonusEffects = normalizeOptionalItemEffects(normalized.blacksmith.bonusEffects);
+  }
+  if (normalized.runic) {
+    normalized.runic.compatibleRuneIds = normalizeOptionalStringList(normalized.runic.compatibleRuneIds);
+    normalized.runic.forbiddenRuneIds = normalizeOptionalStringList(normalized.runic.forbiddenRuneIds);
+  }
+  return normalized;
+}
+
+function normalizeBlacksmithTemplateMaterialSlotInput(
+  value: unknown,
+  fallbackId: string,
+): BlacksmithItemTemplate['requiredRoles'][number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const role = String(raw.role ?? '').trim();
+  if (!role) {
+    return null;
+  }
+  return {
+    id: String(raw.id ?? '').trim() || fallbackId,
+    label: String(raw.label ?? raw.id ?? role).trim() || role,
+    role: role as BlacksmithItemTemplate['requiredRoles'][number]['role'],
+    required: raw.required !== false,
+    quantity: Math.max(1, toInteger(raw.quantity) ?? 1),
+  };
+}
+
+function normalizeBlacksmithItemTemplateInput(input: BlacksmithItemTemplate): BlacksmithItemTemplate {
+  const imageRef = normalizeGameImageRefInput(input.imageRef);
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    itemType: input.itemType === 'armor' ? 'armor' : 'weapon',
+    subtype: typeof input.subtype === 'string' && input.subtype.trim() ? input.subtype.trim() : undefined,
+    slot: typeof input.slot === 'string' && input.slot.trim() ? input.slot : undefined,
+    handsRequired: input.handsRequired === 2 ? 2 : input.handsRequired === 1 ? 1 : undefined,
+    baseDamageMin: typeof input.baseDamageMin === 'number' ? Math.max(0, Math.round(input.baseDamageMin)) : undefined,
+    baseDamageMax: typeof input.baseDamageMax === 'number' ? Math.max(0, Math.round(input.baseDamageMax)) : undefined,
+    baseArmorValue: typeof input.baseArmorValue === 'number' ? Math.max(0, Math.round(input.baseArmorValue)) : undefined,
+    damageCategory: typeof input.damageCategory === 'string' && input.damageCategory.trim() ? input.damageCategory : undefined,
+    physicalType: typeof input.physicalType === 'string' && input.physicalType.trim() ? input.physicalType : undefined,
+    attackRange: typeof input.attackRange === 'number' ? Math.max(1, Math.round(input.attackRange)) : undefined,
+    requiredRoles: Array.isArray(input.requiredRoles)
+      ? input.requiredRoles
+        .map((entry, index) => normalizeBlacksmithTemplateMaterialSlotInput(entry, `required_${index + 1}`))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      : [],
+    optionalRoles: Array.isArray(input.optionalRoles)
+      ? input.optionalRoles
+        .map((entry, index) => normalizeBlacksmithTemplateMaterialSlotInput(entry, `optional_${index + 1}`))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      : undefined,
+    allowedMainMaterialRoles: normalizeOptionalStringList(input.allowedMainMaterialRoles) as BlacksmithItemTemplate['allowedMainMaterialRoles'],
+    allowedMaterialTiers: normalizeOptionalStringList(input.allowedMaterialTiers),
+    baseMaxAugmentSlots: typeof input.baseMaxAugmentSlots === 'number' ? Math.max(0, Math.round(input.baseMaxAugmentSlots)) : undefined,
+    canAddAugmentSlots: input.canAddAugmentSlots === true,
+    canHaveRuneComplex: input.canHaveRuneComplex === true,
+    requiredBlacksmithLevel: typeof input.requiredBlacksmithLevel === 'number' ? Math.max(1, Math.round(input.requiredBlacksmithLevel)) : undefined,
+    requiredSkillIds: normalizeOptionalStringList(input.requiredSkillIds),
+    tags: normalizeOptionalStringList(input.tags),
+    imageRef,
+    isEnabled: input.isEnabled !== false,
+  };
+}
+
+function normalizeBlacksmithItemWorkActionInput(input: BlacksmithItemWorkAction): BlacksmithItemWorkAction {
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    actionType: String(input.actionType ?? '').trim() as BlacksmithItemWorkAction['actionType'],
+    allowedItemTypes: normalizeStringList(input.allowedItemTypes) as BlacksmithItemWorkAction['allowedItemTypes'],
+    allowedSubtypes: normalizeOptionalStringList(input.allowedSubtypes),
+    requiredBlacksmithLevel: typeof input.requiredBlacksmithLevel === 'number' ? Math.max(1, Math.round(input.requiredBlacksmithLevel)) : undefined,
+    requiredSkillIds: normalizeOptionalStringList(input.requiredSkillIds),
+    materialCosts: Array.isArray(input.materialCosts)
+      ? input.materialCosts
+        .map((entry) => ({
+          materialId: String(entry.materialId ?? '').trim(),
+          quantity: Math.max(1, toInteger(entry.quantity) ?? 1),
+        }))
+        .filter((entry) => Boolean(entry.materialId))
+      : undefined,
+    itemCosts: Array.isArray(input.itemCosts)
+      ? input.itemCosts
+        .map((entry) => ({
+          itemId: String(entry.itemId ?? '').trim(),
+          quantity: Math.max(1, toInteger(entry.quantity) ?? 1),
+          consume: entry.consume !== false,
+        }))
+        .filter((entry) => Boolean(entry.itemId))
+      : undefined,
+    goldCost: typeof input.goldCost === 'number' ? Math.max(0, Math.round(input.goldCost)) : undefined,
+    baseDifficulty: Math.max(1, toInteger(input.baseDifficulty) ?? 1),
+    risk: Math.max(0, toInteger(input.risk) ?? 0),
+    effects: normalizeOptionalItemEffects(input.effects),
+    statMultiplierDelta: typeof input.statMultiplierDelta === 'number' ? input.statMultiplierDelta : undefined,
+    addSocketRules: input.addSocketRules
+      ? {
+        allowedAugmentTypes: normalizeOptionalStringList(input.addSocketRules.allowedAugmentTypes) as ItemSocket['allowedAugmentTypes'],
+        source: 'blacksmith_added',
+      }
+      : undefined,
+    isEnabled: input.isEnabled !== false,
   };
 }
 
@@ -2096,6 +2386,7 @@ function normalizeMaterialInput(input: Material): Material {
       : undefined,
     gameplayDescription: String(input.gameplayDescription ?? '').trim(),
     loreDescription: String(input.loreDescription ?? '').trim(),
+    craftingProperties: normalizeMaterialCraftingPropertiesInput(input.craftingProperties),
     imagePath: toLegacyImagePath(imageRef, input.imagePath),
     imageRef,
     isEnabled: input.isEnabled !== false,
@@ -3396,6 +3687,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithBalance: sanitizeIdObjectArray<BlacksmithBalance>(raw.blacksmithBalance)
         .map((entry) => normalizeBlacksmithBalanceInput(entry))
         .filter((entry) => Boolean(entry.id)),
+      blacksmithItemTemplates: sanitizeIdObjectArray<BlacksmithItemTemplate>(raw.blacksmithItemTemplates)
+        .map((entry) => normalizeBlacksmithItemTemplateInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      blacksmithItemWorkActions: sanitizeIdObjectArray<BlacksmithItemWorkAction>(raw.blacksmithItemWorkActions)
+        .map((entry) => normalizeBlacksmithItemWorkActionInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
@@ -3504,6 +3801,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithQualityTiers: mergeById(existing.blacksmithQualityTiers ?? [], incoming.blacksmithQualityTiers ?? []),
       blacksmithVisualPresets: mergeById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
       blacksmithBalance: mergeById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
+      blacksmithItemTemplates: mergeById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
+      blacksmithItemWorkActions: mergeById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       worldMap: {
         zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -3546,6 +3845,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithQualityTiers: addMissingById(existing.blacksmithQualityTiers ?? [], incoming.blacksmithQualityTiers ?? []),
       blacksmithVisualPresets: addMissingById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
       blacksmithBalance: addMissingById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
+      blacksmithItemTemplates: addMissingById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
+      blacksmithItemWorkActions: addMissingById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       worldMap: {
         zones: addMissingById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: addMissingById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -3631,6 +3932,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         blacksmithQualityTiers: filterCollection('blacksmithQualityTiers', incoming.blacksmithQualityTiers, existing.blacksmithQualityTiers ?? []) as BlacksmithQualityTier[] | undefined,
         blacksmithVisualPresets: filterCollection('blacksmithVisualPresets', incoming.blacksmithVisualPresets, existing.blacksmithVisualPresets ?? []) as BlacksmithVisualPreset[] | undefined,
         blacksmithBalance: filterCollection('blacksmithBalance', incoming.blacksmithBalance, existing.blacksmithBalance ?? []) as BlacksmithBalance[] | undefined,
+        blacksmithItemTemplates: filterCollection('blacksmithItemTemplates', incoming.blacksmithItemTemplates, existing.blacksmithItemTemplates ?? []) as BlacksmithItemTemplate[] | undefined,
+        blacksmithItemWorkActions: filterCollection('blacksmithItemWorkActions', incoming.blacksmithItemWorkActions, existing.blacksmithItemWorkActions ?? []) as BlacksmithItemWorkAction[] | undefined,
         worldMap,
       },
       actions,
@@ -4078,6 +4381,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeBlacksmithVisualPresetInput(payload as unknown as BlacksmithVisualPreset) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithBalance') {
       nextEntry = normalizeBlacksmithBalanceInput(payload as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithItemTemplates') {
+      nextEntry = normalizeBlacksmithItemTemplateInput(payload as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithItemWorkActions') {
+      nextEntry = normalizeBlacksmithItemWorkActionInput(payload as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
     } else {
       nextEntry = clone(payload);
     }
@@ -4146,6 +4453,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeBlacksmithVisualPresetInput(mergedBase as unknown as BlacksmithVisualPreset) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithBalance') {
       merged = normalizeBlacksmithBalanceInput(mergedBase as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithItemTemplates') {
+      merged = normalizeBlacksmithItemTemplateInput(mergedBase as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'blacksmithItemWorkActions') {
+      merged = normalizeBlacksmithItemWorkActionInput(mergedBase as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
     } else {
       merged = mergedBase;
     }
@@ -4230,6 +4541,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.blacksmithBalance) && payload.blacksmithBalance.length > 0) {
       const normalized = payload.blacksmithBalance.map((entry) => normalizeBlacksmithBalanceInput(entry as BlacksmithBalance));
       db.blacksmithBalance = mergeById(db.blacksmithBalance ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithItemTemplates) && payload.blacksmithItemTemplates.length > 0) {
+      const normalized = payload.blacksmithItemTemplates.map((entry) => normalizeBlacksmithItemTemplateInput(entry as BlacksmithItemTemplate));
+      db.blacksmithItemTemplates = mergeById(db.blacksmithItemTemplates ?? [], normalized);
+    }
+    if (Array.isArray(payload.blacksmithItemWorkActions) && payload.blacksmithItemWorkActions.length > 0) {
+      const normalized = payload.blacksmithItemWorkActions.map((entry) => normalizeBlacksmithItemWorkActionInput(entry as BlacksmithItemWorkAction));
+      db.blacksmithItemWorkActions = mergeById(db.blacksmithItemWorkActions ?? [], normalized);
     }
     if (Array.isArray(payload.images) && payload.images.length > 0) {
       const normalizedImages = (payload.images as StoredImage[]).map((image) => this.normalizeStoredImageInput(image));

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyBlacksmithAction,
   computeBlacksmithXpReward,
@@ -9,7 +9,10 @@ import {
 } from '@theend/rpg-domain';
 import type {
   BlacksmithBalance,
+  BlacksmithCustomForgePlan,
   BlacksmithForgeTier,
+  BlacksmithItemTemplate,
+  BlacksmithItemWorkAction,
   BlacksmithModule,
   BlacksmithQualityTier,
   BlacksmithTool,
@@ -25,8 +28,10 @@ import { GameImageView } from '../../admin/components/GameImageView';
 import { BLACKSMITH_BUTTON_SOUNDS, BLACKSMITH_MUSIC_TRACKS, playBlacksmithUiSound } from './blacksmithAudio';
 import { loadWorldAudioSettings } from '../../worldmap/worldAudioSettings';
 import {
-  canAffordRecipeMaterials,
+  calculateCustomForgeDifficulty,
   canAffordRecipeMaterialsWithInventory,
+  consumeCustomForgeMaterials,
+  consumeItemWorkCosts,
   consumeRecipeMaterials,
   getRecipeMaterialShortages,
 } from './blacksmithRecipeMaterials';
@@ -34,6 +39,11 @@ import type { InventoryState } from '@theend/rpg-domain';
 
 interface BlacksmithForgeTabProps {
   selectedRecipe: CraftingRecipe | null;
+  mode: 'recipe' | 'custom_forge' | 'item_work';
+  customForgePlan: BlacksmithCustomForgePlan | null;
+  customForgeTemplate: BlacksmithItemTemplate | null;
+  itemWorkAction: BlacksmithItemWorkAction | null;
+  itemWorkItem: AdminItem | null;
   session: BlacksmithSessionState | null;
   forgeTiers: BlacksmithForgeTier[];
   modules: BlacksmithModule[];
@@ -50,20 +60,31 @@ interface BlacksmithForgeTabProps {
   skillBonuses: BlacksmithSkillBonuses;
   onSessionChange: (next: BlacksmithSessionState | null) => void;
   onInventoryChange: (next: InventoryState) => void;
-  onComplete: (payload: { xp: number; score: number; qualityTierId: string; success: boolean }) => void | Promise<void>;
+  onComplete: (payload: { xp: number; score: number; qualityTierId: string; success: boolean; mode: 'recipe' | 'custom_forge' | 'item_work' }) => void | Promise<void>;
 }
 
 const OBJECT_SHEET_SRC = '/art/blacksmith/objects/blacksmith_forge_objects_sheet_384.png';
 const OBJECT_FRAME_SIZE = 384;
 const OBJECT_SHEET_COLUMNS = 4;
-const TOOL_SHEET_ID = 'blacksmith_workshop_tools_256';
-const TOOL_FRAMES = {
-  hammer: 0,
-  anvil: 4,
-  forge: 7,
-  tongs: 10,
-  gauge: 12,
-} as const;
+
+type BlacksmithActionId =
+  | 'prepare_blank'
+  | 'add_heat'
+  | 'stabilize_heat'
+  | 'light_strike'
+  | 'medium_strike'
+  | 'heavy_strike'
+  | 'quench_water'
+  | 'quench_oil'
+  | 'finish_polish';
+
+interface ForgeStripEntry {
+  id: string;
+  name: string;
+  imageRef?: ReturnType<typeof normalizeGameImageRef>;
+  legacyImagePath?: string;
+  fallbackText: string;
+}
 
 const MATERIAL_FRAME_MATCHERS: Array<{ includes: string[]; frame: number }> = [
   { includes: ['iron'], frame: 0 },
@@ -240,12 +261,13 @@ function frameStyle(sheetSrc: string, frame: number, frameSize: number, columns:
   };
 }
 
-function makeTilesetRef(sheetId: string, frame: number) {
-  return { type: 'tileset' as const, sheetId, frame };
-}
-
 export function BlacksmithForgeTab({
   selectedRecipe,
+  mode,
+  customForgePlan,
+  customForgeTemplate,
+  itemWorkAction,
+  itemWorkItem,
   session,
   forgeTiers,
   modules,
@@ -264,6 +286,7 @@ export function BlacksmithForgeTab({
   onInventoryChange,
   onComplete,
 }: BlacksmithForgeTabProps) {
+  const [lastAction, setLastAction] = useState<BlacksmithActionId | null>(null);
   const bonuses = useMemo(
     () => resolveBonuses(forgeTiers, modules, tools, skillBonuses),
     [forgeTiers, modules, tools, skillBonuses],
@@ -275,6 +298,10 @@ export function BlacksmithForgeTab({
   const itemsById = useMemo(() => new Map(items.map((entry) => [entry.id, entry])), [items]);
   const profileById = useMemo(() => new Map(recipeVisualProfiles.map((entry) => [entry.id, entry])), [recipeVisualProfiles]);
   const selectedProfile = selectedRecipe?.visualProfileId ? profileById.get(selectedRecipe.visualProfileId) : null;
+  const customDifficulty = useMemo(
+    () => (customForgePlan && customForgeTemplate ? calculateCustomForgeDifficulty(customForgePlan, materials, customForgeTemplate) : null),
+    [customForgePlan, customForgeTemplate, materials],
+  );
 
   const sceneBackgroundSrc = resolveImageRef('/art/blacksmith/scene/forge_background.png');
   const furnaceSrc = resolveImageRef('/art/blacksmith/scene/furnace_ui.png');
@@ -294,45 +321,54 @@ export function BlacksmithForgeTab({
   const warpedMetalSrc = resolveImageRef('/art/blacksmith/effects/warped_metal.png');
 
   const objectFrame = resolveObjectFrame(selectedRecipe, materialsById, itemsById);
-  const directCentralObject = selectedRecipe
+  const directCentralObject = mode === 'custom_forge' && customForgePlan
     ? resolveImageCandidate(
-      selectedRecipe.outputMaterials?.[0]?.materialId
-        ?? selectedRecipe.outputItems?.[0]?.itemId
-        ?? selectedRecipe.inputMaterials?.[0]?.materialId
-        ?? selectedRecipe.inputItems?.[0]?.itemId,
+      customForgePlan.selectedMaterials[0]?.materialId,
       materialsById,
       itemsById,
-    )
-    : null;
+    ) ?? (customForgeTemplate?.imageRef ? { imageRef: customForgeTemplate.imageRef } : null)
+    : mode === 'item_work' && itemWorkItem
+      ? resolveImageCandidate(itemWorkItem.id, materialsById, itemsById) ?? {
+        imageRef: normalizeGameImageRef(itemWorkItem.imageRef, itemWorkItem.imagePath ?? itemWorkItem.id) ?? undefined,
+        legacyImagePath: itemWorkItem.imagePath ?? itemWorkItem.id,
+      }
+      : selectedRecipe
+        ? resolveImageCandidate(
+          selectedRecipe.outputMaterials?.[0]?.materialId
+            ?? selectedRecipe.outputItems?.[0]?.itemId
+            ?? selectedRecipe.inputMaterials?.[0]?.materialId
+            ?? selectedRecipe.inputItems?.[0]?.itemId,
+          materialsById,
+          itemsById,
+        )
+        : null;
   const qualityToneClass = qualityClass(currentScore, currentQualityTier?.isFailureTier ?? false);
-  const defectOverlaySources = useMemo(() => {
+  const defectOverlaySource = useMemo(() => {
     if (!session) {
-      return [];
-    }
-
-    const overlays: string[] = [];
-    if (session.heat > 75 && overheatedSrc) {
-      overlays.push(overheatedSrc);
-    }
-    if (session.stage === 'prep' && session.defectScore > 0 && impuritySrc) {
-      overlays.push(impuritySrc);
-    }
-    if (session.stage === 'quench' && session.defectScore > 0 && quenchedBadlySrc) {
-      overlays.push(quenchedBadlySrc);
-    }
-    if (session.progress >= 14 && session.defectScore >= 2 && warpedMetalSrc) {
-      overlays.push(warpedMetalSrc);
-    }
-    if (session.defectScore >= 1 && crackSmallSrc) {
-      overlays.push(crackSmallSrc);
-    }
-    if (session.defectScore >= 4 && crackMediumSrc) {
-      overlays.push(crackMediumSrc);
+      return null;
     }
     if (session.defectScore >= 7 && crackCriticalSrc) {
-      overlays.push(crackCriticalSrc);
+      return crackCriticalSrc;
     }
-    return overlays;
+    if (session.defectScore >= 4 && crackMediumSrc) {
+      return crackMediumSrc;
+    }
+    if (session.heat > 75 && overheatedSrc) {
+      return overheatedSrc;
+    }
+    if (session.stage === 'quench' && session.defectScore > 0 && quenchedBadlySrc) {
+      return quenchedBadlySrc;
+    }
+    if (session.stage === 'prep' && session.defectScore > 0 && impuritySrc) {
+      return impuritySrc;
+    }
+    if (session.progress >= 14 && session.defectScore >= 2 && warpedMetalSrc) {
+      return warpedMetalSrc;
+    }
+    if (session.defectScore >= 1 && crackSmallSrc) {
+      return crackSmallSrc;
+    }
+    return null;
   }, [
     crackCriticalSrc,
     crackMediumSrc,
@@ -347,8 +383,79 @@ export function BlacksmithForgeTab({
     () => getRecipeMaterialShortages(selectedRecipe, inventory),
     [inventory, inventoryRevision, selectedRecipe],
   );
-  const canStartSession = Boolean(selectedRecipe) && materialShortages.length === 0 && !session;
+  const canStartRecipeSession = Boolean(selectedRecipe) && materialShortages.length === 0 && !session;
+  const canStartCustomForgeSession = mode === 'custom_forge' && Boolean(customForgePlan && customForgeTemplate) && !session;
+  const canStartItemWorkSession = mode === 'item_work' && Boolean(itemWorkAction && itemWorkItem) && !session;
+  const canStartSession = canStartRecipeSession || canStartCustomForgeSession || canStartItemWorkSession;
   const musicRef = useRef<HTMLAudioElement | null>(null);
+
+  const workingStripEntries = useMemo<ForgeStripEntry[]>(() => {
+    const entries: ForgeStripEntry[] = [];
+    const pushCandidate = (id: string, fallbackName?: string) => {
+      const resolved = resolveImageCandidate(id, materialsById, itemsById);
+      if (!resolved) {
+        return;
+      }
+      const item = itemsById.get(id);
+      const material = materialsById.get(id);
+      entries.push({
+        id,
+        name: item?.name ?? material?.name ?? fallbackName ?? id,
+        imageRef: resolved.imageRef,
+        legacyImagePath: resolved.legacyImagePath,
+        fallbackText: ((item?.name ?? material?.name ?? fallbackName ?? id).trim().charAt(0) || '?').toUpperCase(),
+      });
+    };
+
+    if (mode === 'recipe' && selectedRecipe) {
+      const outputId = selectedRecipe.outputItems?.[0]?.itemId ?? selectedRecipe.outputMaterials?.[0]?.materialId;
+      if (outputId) {
+        pushCandidate(outputId, selectedRecipe.name);
+      }
+      for (const input of selectedRecipe.inputItems ?? []) {
+        pushCandidate(input.itemId);
+      }
+      for (const input of selectedRecipe.inputMaterials ?? []) {
+        pushCandidate(input.materialId);
+      }
+    } else if (mode === 'custom_forge' && customForgePlan) {
+      for (const input of customForgePlan.selectedMaterials) {
+        pushCandidate(input.materialId);
+      }
+    } else if (mode === 'item_work' && itemWorkItem) {
+      pushCandidate(itemWorkItem.id, itemWorkItem.name);
+      for (const input of itemWorkAction?.materialCosts ?? []) {
+        pushCandidate(input.materialId);
+      }
+      for (const input of itemWorkAction?.itemCosts ?? []) {
+        pushCandidate(input.itemId);
+      }
+    }
+
+    const deduped = new Map<string, ForgeStripEntry>();
+    for (const entry of entries) {
+      if (!deduped.has(entry.id)) {
+        deduped.set(entry.id, entry);
+      }
+    }
+    return Array.from(deduped.values()).slice(0, 5);
+  }, [customForgePlan, itemWorkAction?.itemCosts, itemWorkAction?.materialCosts, itemWorkItem, itemsById, materialsById, mode, selectedRecipe]);
+
+  const highlightedStation = useMemo(() => {
+    if (!session) {
+      return { furnace: false, bellows: false, anvil: false, quench: false, sparks: false };
+    }
+    const furnace = session.stage === 'heat' || lastAction === 'add_heat';
+    const bellows = lastAction === 'stabilize_heat';
+    const anvil = session.stage === 'strike'
+      || lastAction === 'prepare_blank'
+      || lastAction === 'light_strike'
+      || lastAction === 'medium_strike'
+      || lastAction === 'heavy_strike';
+    const quench = session.stage === 'quench' || lastAction === 'quench_water' || lastAction === 'quench_oil';
+    const sparks = lastAction === 'light_strike' || lastAction === 'medium_strike' || lastAction === 'heavy_strike' || session.stage === 'strike';
+    return { furnace, bellows, anvil, quench, sparks };
+  }, [lastAction, session]);
 
   useEffect(() => {
     const audioSettings = loadWorldAudioSettings();
@@ -390,42 +497,102 @@ export function BlacksmithForgeTab({
     };
   }, []);
 
-  function startSession() {
-    if (!selectedRecipe) {
-      return;
+  useEffect(() => {
+    if (!session) {
+      setLastAction(null);
     }
-    if (!canAffordRecipeMaterialsWithInventory(selectedRecipe, inventory)) {
-      const firstShortage = getRecipeMaterialShortages(selectedRecipe, inventory)[0];
-      if (firstShortage) {
-        const label = materialsById.get(firstShortage.catalogId)?.name
-          ?? itemsById.get(firstShortage.catalogId)?.name
-          ?? firstShortage.catalogId;
-        window.alert(`Недостаточно материалов: ${label} (нужно ${firstShortage.required}, есть ${firstShortage.available}).`);
-      } else {
-        window.alert('Недостаточно материалов для этой ковки.');
-      }
-      return;
-    }
-    const consumeResult = consumeRecipeMaterials(selectedRecipe, inventory);
-    if (!consumeResult.ok) {
-      window.alert('Не удалось списать материалы. Проверьте инвентарь.');
-      return;
-    }
-    if (consumeResult.inventory) {
-      onInventoryChange(consumeResult.inventory);
-    }
-    playBlacksmithUiSound(BLACKSMITH_BUTTON_SOUNDS.startSession);
+  }, [session]);
 
-    const nextSession = createBlacksmithSession(
-      {
+  function startSession() {
+    if (mode === 'recipe') {
+      if (!selectedRecipe) {
+        return;
+      }
+      if (!canAffordRecipeMaterialsWithInventory(selectedRecipe, inventory)) {
+        const firstShortage = getRecipeMaterialShortages(selectedRecipe, inventory)[0];
+        if (firstShortage) {
+          const label = materialsById.get(firstShortage.catalogId)?.name
+            ?? itemsById.get(firstShortage.catalogId)?.name
+            ?? firstShortage.catalogId;
+          window.alert(`Недостаточно материалов: ${label} (нужно ${firstShortage.required}, есть ${firstShortage.available}).`);
+        } else {
+          window.alert('Недостаточно материалов для этой ковки.');
+        }
+        return;
+      }
+      const consumeResult = consumeRecipeMaterials(selectedRecipe, inventory);
+      if (!consumeResult.ok) {
+        window.alert('Не удалось списать материалы. Проверьте инвентарь.');
+        return;
+      }
+      if (consumeResult.inventory) {
+        onInventoryChange(consumeResult.inventory);
+      }
+      playBlacksmithUiSound(BLACKSMITH_BUTTON_SOUNDS.startSession);
+      onSessionChange(createBlacksmithSession({
         recipeId: selectedRecipe.id,
         recipeType: selectedRecipe.recipeType,
         materialTier: 'common',
         baseDifficulty: 45,
-      },
-      bonuses,
-    );
-    onSessionChange(nextSession);
+        mode: 'recipe',
+      }, bonuses));
+      return;
+    }
+
+    if (mode === 'custom_forge' && customForgePlan && customForgeTemplate) {
+      const consumeResult = consumeCustomForgeMaterials(customForgePlan, inventory);
+      if (!consumeResult.ok) {
+        window.alert('Не удалось списать материалы для свободной ковки.');
+        return;
+      }
+      if (consumeResult.inventory) {
+        onInventoryChange(consumeResult.inventory);
+      }
+      const difficulty = customDifficulty ?? calculateCustomForgeDifficulty(customForgePlan, materials, customForgeTemplate);
+      playBlacksmithUiSound(BLACKSMITH_BUTTON_SOUNDS.startSession);
+      onSessionChange(createBlacksmithSession({
+        recipeId: customForgeTemplate.id,
+        recipeType: 'custom_forge',
+        materialTier: difficulty.materialTier,
+        baseDifficulty: difficulty.baseDifficulty,
+        mode: 'custom_forge',
+        customForgePlanId: customForgePlan.id,
+      }, bonuses));
+      return;
+    }
+
+    if (mode === 'item_work' && itemWorkAction && itemWorkItem) {
+      if (itemWorkAction.actionType === 'add_socket') {
+        if (itemWorkItem.canAddAugmentSlots !== true) {
+          window.alert('Этот предмет не поддерживает добавление слотов.');
+          return;
+        }
+        const currentSlots = itemWorkItem.augmentSlots?.length ?? 0;
+        const maxSlots = itemWorkItem.maxAugmentSlots ?? currentSlots;
+        if (currentSlots >= maxSlots) {
+          window.alert(`Для предмета уже достигнут максимум слотов (${maxSlots}).`);
+          return;
+        }
+      }
+      const consumeResult = consumeItemWorkCosts(itemWorkAction, inventory);
+      if (!consumeResult.ok) {
+        window.alert('Не удалось списать материалы для кузнечной доработки.');
+        return;
+      }
+      if (consumeResult.inventory) {
+        onInventoryChange(consumeResult.inventory);
+      }
+      playBlacksmithUiSound(BLACKSMITH_BUTTON_SOUNDS.startSession);
+      onSessionChange(createBlacksmithSession({
+        recipeId: itemWorkAction.id,
+        recipeType: 'item_work',
+        materialTier: itemWorkItem.rarity ?? 'common',
+        baseDifficulty: itemWorkAction.baseDifficulty,
+        mode: 'item_work',
+        targetItemId: itemWorkItem.id,
+        itemWorkActionId: itemWorkAction.id,
+      }, bonuses));
+    }
   }
 
   function completeSession(next: BlacksmithSessionState) {
@@ -451,12 +618,13 @@ export function BlacksmithForgeTab({
       score: finalScore,
       qualityTierId: tierId,
       success: !(qualityTier?.isFailureTier ?? false),
+      mode,
     })).finally(() => {
       onSessionChange(null);
     });
   }
 
-  function runAction(action: 'prepare_blank' | 'add_heat' | 'stabilize_heat' | 'light_strike' | 'medium_strike' | 'heavy_strike' | 'quench_water' | 'quench_oil' | 'finish_polish') {
+  function runAction(action: BlacksmithActionId) {
     if (!session) {
       return;
     }
@@ -472,14 +640,17 @@ export function BlacksmithForgeTab({
       finish_polish: BLACKSMITH_BUTTON_SOUNDS.finish,
     };
     playBlacksmithUiSound(soundByAction[action]);
+    setLastAction(action);
     const next = applyBlacksmithAction(session, action, bonuses).state;
     onSessionChange(next);
   }
 
   return (
     <div className="blacksmith-forge-layout">
-      {!selectedRecipe ? <p className="wm-stat-hint">Сначала выберите рецепт во вкладке "Рецепты".</p> : null}
-      {selectedRecipe ? (
+      {mode === 'recipe' && !selectedRecipe ? <p className="wm-stat-hint">Сначала выберите рецепт во вкладке "Рецепты".</p> : null}
+      {mode === 'custom_forge' && !customForgePlan ? <p className="wm-stat-hint">Сначала подготовьте план во вкладке "Свободная ковка".</p> : null}
+      {mode === 'item_work' && !(itemWorkAction && itemWorkItem) ? <p className="wm-stat-hint">Сначала выберите предмет и кузнечную операцию во вкладке "Инвентарь".</p> : null}
+      {mode === 'recipe' && selectedRecipe ? (
         <article className="blacksmith-recipe-focus-card">
           <div className="blacksmith-recipe-focus-main">
             <div>
@@ -516,6 +687,70 @@ export function BlacksmithForgeTab({
         </article>
       ) : null}
 
+      {mode === 'custom_forge' && customForgePlan && customForgeTemplate ? (
+        <article className="blacksmith-recipe-focus-card">
+          <div className="blacksmith-recipe-focus-main">
+            <div>
+              <strong>{customForgeTemplate.name}</strong>
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Режим: свободная ковка · Сложность: {customDifficulty?.baseDifficulty ?? customForgePlan.predictedDifficulty}
+              </p>
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Риск: {customDifficulty?.risk ?? customForgePlan.predictedRisk} · Потенциал: {customDifficulty?.power ?? customForgePlan.predictedPower}
+              </p>
+              {customForgePlan.customName ? (
+                <p className="wm-stat-hint" style={{ margin: 0 }}>Имя предмета: {customForgePlan.customName}</p>
+              ) : null}
+            </div>
+            <button type="button" onClick={startSession} disabled={!canStartSession}>
+              Старт сессии
+            </button>
+          </div>
+          <div className="blacksmith-recipe-focus-io">
+            {customForgePlan.selectedMaterials.map((entry) => (
+              <span key={`${entry.slotId}:${entry.materialId}`}>
+                {materialsById.get(entry.materialId)?.name ?? entry.materialId} x{entry.quantity}
+              </span>
+            ))}
+          </div>
+        </article>
+      ) : null}
+
+      {mode === 'item_work' && itemWorkAction && itemWorkItem ? (
+        <article className="blacksmith-recipe-focus-card">
+          <div className="blacksmith-recipe-focus-main">
+            <div>
+              <strong>{itemWorkItem.name}</strong>
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Режим: работа с предметом · Операция: {itemWorkAction.name}
+              </p>
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Сложность: {itemWorkAction.baseDifficulty} · Риск: {itemWorkAction.risk}
+              </p>
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                {typeof itemWorkItem.damageMin === 'number' || typeof itemWorkItem.damageMax === 'number'
+                  ? `Урон: ${itemWorkItem.damageMin ?? 0}-${itemWorkItem.damageMax ?? itemWorkItem.damageMin ?? 0}`
+                  : typeof itemWorkItem.armorValue === 'number'
+                    ? `Броня: ${itemWorkItem.armorValue}`
+                    : 'Предмет можно доработать в кузнице.'}
+                {' · '}Слоты: {itemWorkItem.augmentSlots?.length ?? 0}/{itemWorkItem.maxAugmentSlots ?? itemWorkItem.augmentSlots?.length ?? 0}
+              </p>
+            </div>
+            <button type="button" onClick={startSession} disabled={!canStartSession}>
+              Старт сессии
+            </button>
+          </div>
+          <div className="blacksmith-recipe-focus-io">
+            {(itemWorkAction.materialCosts ?? []).map((entry) => (
+              <span key={`mat-${entry.materialId}`}>{materialsById.get(entry.materialId)?.name ?? entry.materialId} x{entry.quantity}</span>
+            ))}
+            {(itemWorkAction.itemCosts ?? []).map((entry) => (
+              <span key={`item-${entry.itemId}`}>{itemsById.get(entry.itemId)?.name ?? entry.itemId} x{entry.quantity}</span>
+            ))}
+          </div>
+        </article>
+      ) : null}
+
       {session ? (
         <div className="blacksmith-forge-scene-wrap">
           <div
@@ -524,13 +759,13 @@ export function BlacksmithForgeTab({
           >
             {forgeGlowSrc ? <img className="forge-overlay forge-overlay--glow" src={forgeGlowSrc} alt="" aria-hidden="true" /> : null}
             {embersSrc ? <img className="forge-overlay forge-overlay--embers" src={embersSrc} alt="" aria-hidden="true" /> : null}
-            {sparksSrc ? <img className="forge-overlay forge-overlay--sparks" src={sparksSrc} alt="" aria-hidden="true" /> : null}
+            {sparksSrc ? <img className={`forge-overlay forge-overlay--sparks ${highlightedStation.sparks ? 'is-active' : ''}`} src={sparksSrc} alt="" aria-hidden="true" /> : null}
             {smokeSrc ? <img className="forge-overlay forge-overlay--smoke" src={smokeSrc} alt="" aria-hidden="true" /> : null}
 
-            {furnaceSrc ? <img className="forge-station forge-station--furnace" src={furnaceSrc} alt="Горн" /> : null}
-            {anvilSrc ? <img className="forge-station forge-station--anvil" src={anvilSrc} alt="Наковальня" /> : null}
-            {bellowsSrc ? <img className="forge-station forge-station--bellows" src={bellowsSrc} alt="Меха" /> : null}
-            {quenchVatSrc ? <img className="forge-station forge-station--quench" src={quenchVatSrc} alt="Ванна закалки" /> : null}
+            {furnaceSrc ? <img className={`forge-station forge-station--furnace ${highlightedStation.furnace ? 'is-active' : ''}`} src={furnaceSrc} alt="Горн" /> : null}
+            {anvilSrc ? <img className={`forge-station forge-station--anvil ${highlightedStation.anvil ? 'is-active' : ''}`} src={anvilSrc} alt="Наковальня" /> : null}
+            {bellowsSrc ? <img className={`forge-station forge-station--bellows ${highlightedStation.bellows ? 'is-active' : ''}`} src={bellowsSrc} alt="Меха" /> : null}
+            {quenchVatSrc ? <img className={`forge-station forge-station--quench ${highlightedStation.quench ? 'is-active' : ''}`} src={quenchVatSrc} alt="Ванна закалки" /> : null}
 
             {directCentralObject?.imageRef ? (
               <div className="forge-central-object forge-central-object--image" title="Текущая заготовка">
@@ -544,15 +779,7 @@ export function BlacksmithForgeTab({
                   className="forge-central-object-image"
                   fallbackText="?"
                 />
-                {defectOverlaySources.map((src, index) => (
-                  <img
-                    key={`${src}-${index}`}
-                    className={`forge-central-overlay forge-central-overlay--${Math.min(index + 1, 4)}`}
-                    src={src}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                ))}
+                {defectOverlaySource ? <img className="forge-central-overlay" src={defectOverlaySource} alt="" aria-hidden="true" /> : null}
               </div>
             ) : (
               <div
@@ -560,15 +787,7 @@ export function BlacksmithForgeTab({
                 style={frameStyle(OBJECT_SHEET_SRC, objectFrame, OBJECT_FRAME_SIZE, OBJECT_SHEET_COLUMNS, 144)}
                 title="Текущая заготовка"
               >
-                {defectOverlaySources.map((src, index) => (
-                  <img
-                    key={`${src}-${index}`}
-                    className={`forge-central-overlay forge-central-overlay--${Math.min(index + 1, 4)}`}
-                    src={src}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                ))}
+                {defectOverlaySource ? <img className="forge-central-overlay" src={defectOverlaySource} alt="" aria-hidden="true" /> : null}
               </div>
             )}
           </div>
@@ -589,52 +808,22 @@ export function BlacksmithForgeTab({
       {session ? (
         <div className="blacksmith-action-panel">
           <div className="blacksmith-tool-strip">
-            <GameImageView
-              imageRef={makeTilesetRef(TOOL_SHEET_ID, TOOL_FRAMES.forge)}
-              runtimeImages={runtimeImages}
-              alt="Горн"
-              size={58}
-              fit="contain"
-              className="blacksmith-tool-frame"
-              fallbackText="Г"
-            />
-            <GameImageView
-              imageRef={makeTilesetRef(TOOL_SHEET_ID, TOOL_FRAMES.gauge)}
-              runtimeImages={runtimeImages}
-              alt="Измеритель температуры"
-              size={58}
-              fit="contain"
-              className="blacksmith-tool-frame"
-              fallbackText="Т"
-            />
-            <GameImageView
-              imageRef={makeTilesetRef(TOOL_SHEET_ID, TOOL_FRAMES.hammer)}
-              runtimeImages={runtimeImages}
-              alt="Кузнечный молот"
-              size={58}
-              fit="contain"
-              className="blacksmith-tool-frame"
-              fallbackText="М"
-            />
-            <GameImageView
-              imageRef={makeTilesetRef(TOOL_SHEET_ID, TOOL_FRAMES.tongs)}
-              runtimeImages={runtimeImages}
-              alt="Клещи"
-              size={58}
-              fit="contain"
-              className="blacksmith-tool-frame"
-              fallbackText="К"
-            />
-            <GameImageView
-              imageRef={makeTilesetRef(TOOL_SHEET_ID, TOOL_FRAMES.anvil)}
-              runtimeImages={runtimeImages}
-              alt="Наковальня"
-              size={58}
-              fit="contain"
-              className="blacksmith-tool-frame"
-              fallbackText="Н"
-            />
+            {workingStripEntries.map((entry) => (
+              <div key={entry.id} className="blacksmith-tool-frame" title={entry.name}>
+                <GameImageView
+                  imageRef={entry.imageRef}
+                  legacyImagePath={entry.legacyImagePath}
+                  runtimeImages={runtimeImages}
+                  alt={entry.name}
+                  size={58}
+                  fit="contain"
+                  className="blacksmith-tool-frame-image"
+                  fallbackText={entry.fallbackText}
+                />
+              </div>
+            ))}
           </div>
+
           <div className="blacksmith-action-grid">
             <button type="button" onClick={() => runAction('prepare_blank')}>Подготовка</button>
             <button type="button" onClick={() => runAction('add_heat')}>Поддать жару</button>
@@ -706,13 +895,20 @@ export function BlacksmithForgeTab({
         }
         .forge-overlay--glow { left: 34%; top: 30%; width: 220px; }
         .forge-overlay--embers { left: 42%; bottom: 8%; width: 200px; opacity: 0.62; }
-        .forge-overlay--sparks { right: 22%; top: 24%; width: 200px; opacity: 0.42; }
+        .forge-overlay--sparks { right: 22%; top: 24%; width: 200px; opacity: 0.12; transition: opacity 140ms ease, transform 140ms ease; }
+        .forge-overlay--sparks.is-active { opacity: 0.72; transform: scale(1.06); animation: forge-spark-pulse 0.32s ease-in-out infinite alternate; }
         .forge-overlay--smoke { right: 30%; top: 3%; width: 210px; opacity: 0.34; }
         .forge-station {
           position: absolute;
           object-fit: contain;
           filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
-          opacity: 0.93;
+          opacity: 0.8;
+          transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
+        }
+        .forge-station.is-active {
+          opacity: 1;
+          transform: scale(1.04);
+          filter: drop-shadow(0 0 18px rgba(255, 173, 84, 0.42)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
         }
         .forge-station--furnace { width: 170px; left: 6%; top: 18%; }
         .forge-station--anvil { width: 160px; right: 8%; top: 36%; }
@@ -755,11 +951,8 @@ export function BlacksmithForgeTab({
           pointer-events: none;
           opacity: 0.64;
           mix-blend-mode: screen;
-          filter: drop-shadow(0 0 10px rgba(255, 140, 65, 0.2));
+          filter: drop-shadow(0 0 10px rgba(255, 140, 65, 0.18));
         }
-        .forge-central-overlay--2 { opacity: 0.54; transform: scale(0.98); }
-        .forge-central-overlay--3 { opacity: 0.48; transform: scale(0.96); }
-        .forge-central-overlay--4 { opacity: 0.42; transform: scale(0.94); }
         .blacksmith-forge-hud {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -775,11 +968,19 @@ export function BlacksmithForgeTab({
           flex-wrap: wrap;
         }
         .blacksmith-tool-frame {
-          width: 58px;
-          height: 58px;
+          width: 60px;
+          height: 60px;
           border-radius: 8px;
           border: 1px solid rgba(164, 141, 110, 0.3);
           background-color: rgba(15, 11, 8, 0.9);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .blacksmith-tool-frame-image {
+          width: 100%;
+          height: 100%;
         }
         .blacksmith-action-grid {
           display: flex;
@@ -796,6 +997,10 @@ export function BlacksmithForgeTab({
         @media (max-width: 1180px) {
           .blacksmith-forge-scene-wrap { grid-template-columns: 1fr; }
           .blacksmith-forge-scene { min-height: 280px; }
+        }
+        @keyframes forge-spark-pulse {
+          from { opacity: 0.46; transform: scale(0.98) translateY(0); }
+          to { opacity: 0.82; transform: scale(1.08) translateY(-2px); }
         }
       `}</style>
     </div>

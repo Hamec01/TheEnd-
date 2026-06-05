@@ -1,6 +1,16 @@
 import type { InventoryState } from '@theend/rpg-domain';
 import { adjustDevInventoryItem } from '../../api';
-import type { AdminItem, BlacksmithQualityTier, CraftingRecipe, Material } from '../../services/content/models';
+import type {
+  AdminItem,
+  BlacksmithCustomForgePlan,
+  BlacksmithItemTemplate,
+  BlacksmithItemWorkAction,
+  BlacksmithQualityTier,
+  CraftingRecipe,
+  ItemEffect,
+  Material,
+  MaterialCraftingRole,
+} from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import {
   PLAYER_ITEMS_STORAGE_KEY,
@@ -25,6 +35,39 @@ export interface RecipeMaterialShortage {
   required: number;
   available: number;
   source: 'material' | 'item';
+}
+
+export interface BlacksmithCustomForgeDifficultyResult {
+  baseDifficulty: number;
+  materialTier: string;
+  risk: number;
+  power: number;
+  warnings: string[];
+}
+
+export interface BlacksmithItemWorkSelection {
+  targetItemId: string;
+  actionId: string;
+}
+
+export interface BlacksmithItemWorkApplyResult {
+  inventory?: InventoryState;
+  createdItem?: AdminItem | null;
+  salvagedMaterials?: Record<string, number>;
+  success: boolean;
+  message: string;
+}
+
+function formatItemCoreStats(item: AdminItem): string[] {
+  const parts: string[] = [];
+  if (typeof item.damageMin === 'number' || typeof item.damageMax === 'number') {
+    parts.push(`урон ${item.damageMin ?? 0}-${item.damageMax ?? item.damageMin ?? 0}`);
+  }
+  if (typeof item.armorValue === 'number') {
+    parts.push(`броня ${item.armorValue}`);
+  }
+  parts.push(`слоты ${item.augmentSlots?.length ?? 0}/${item.maxAugmentSlots ?? item.augmentSlots?.length ?? 0}`);
+  return parts;
 }
 
 export function normalizeMaterialLikeId(id: string): string[] {
@@ -403,6 +446,474 @@ function createForgedItemFromBase(
     ])),
     isEnabled: true,
   };
+}
+
+function normalizeRoleList(material: Material): MaterialCraftingRole[] {
+  const explicit = material.craftingProperties?.roles?.filter(Boolean) ?? [];
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
+  const probe = `${material.id} ${material.name} ${material.category} ${(material.properties ?? []).join(' ')}`.toLowerCase();
+  const roles = new Set<MaterialCraftingRole>();
+  if (probe.includes('ore') || probe.includes('руда')) roles.add('ore');
+  if (probe.includes('ingot') || probe.includes('слит')) {
+    roles.add('ingot');
+    roles.add('main_metal');
+  }
+  if (probe.includes('coal') || probe.includes('уг') || probe.includes('fuel')) roles.add('fuel');
+  if (probe.includes('flux')) roles.add('flux');
+  if (material.category === 'wood') {
+    roles.add('wood');
+    roles.add('handle');
+  }
+  if (material.category === 'leather') roles.add('leather');
+  if (material.category === 'cloth') {
+    roles.add('cloth');
+    roles.add('thread');
+  }
+  if (material.category === 'metal' && roles.size === 0) {
+    roles.add('main_metal');
+  }
+  if (probe.includes('oil') || probe.includes('масл')) {
+    roles.add('oil');
+    roles.add('quench_liquid');
+  }
+  if (probe.includes('salt') || probe.includes('соль')) roles.add('salt');
+  if (probe.includes('ash') || probe.includes('пеп')) roles.add('ash');
+  if (probe.includes('rune') || probe.includes('рун')) roles.add('rune_dust');
+  if (probe.includes('crystal') || probe.includes('крист')) roles.add('crystal');
+  if (probe.includes('bone') || probe.includes('кость')) roles.add('bone');
+  if (roles.size === 0) {
+    roles.add(material.category === 'metal' ? 'main_metal' : material.category === 'wood' ? 'wood' : 'essence');
+  }
+  return Array.from(roles);
+}
+
+function getMaterialTier(material: Material): string {
+  return material.craftingProperties?.tier?.trim()
+    || (material.rarity === 'legendary' || material.rarity === 'mythic' ? 'epic' : material.rarity === 'rare' || material.rarity === 'epic' ? 'rare' : 'common');
+}
+
+function getTierWeight(tier: string | undefined): number {
+  switch (String(tier ?? '').trim()) {
+    case 'mythic':
+    case 'legendary':
+      return 5;
+    case 'epic':
+      return 4;
+    case 'rare':
+      return 3;
+    case 'uncommon':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function getBlacksmithMaterialProps(material: Material) {
+  return material.craftingProperties?.blacksmith ?? {};
+}
+
+function inferSuitabilityForRole(material: Material, role: MaterialCraftingRole): { matches: boolean; warning?: string } {
+  const roles = normalizeRoleList(material);
+  const matches = roles.includes(role);
+  if (matches) {
+    return { matches: true };
+  }
+  return {
+    matches: false,
+    warning: `Материал ${material.name} плохо подходит для роли ${role}. Риск дефектов повышен.`,
+  };
+}
+
+function buildPseudoNeedsForCustomPlan(plan: BlacksmithCustomForgePlan) {
+  return plan.selectedMaterials.map((entry) => ({
+    catalogId: entry.materialId,
+    quantity: Math.max(1, Math.floor(entry.quantity || 1)),
+    source: 'material' as const,
+  }));
+}
+
+function consumeCatalogNeeds(
+  needs: Array<{ catalogId: string; quantity: number; source: 'material' | 'item' }>,
+  baseInventory?: InventoryState | null,
+): { ok: boolean; inventory?: InventoryState } {
+  const mockRecipe = {
+    inputMaterials: needs.filter((entry) => entry.source === 'material').map((entry) => ({ materialId: entry.catalogId, quantity: entry.quantity })),
+    inputItems: needs.filter((entry) => entry.source === 'item').map((entry) => ({ itemId: entry.catalogId, quantity: entry.quantity })),
+  } as CraftingRecipe;
+  return consumeRecipeMaterials(mockRecipe, baseInventory);
+}
+
+export function calculateCustomForgeDifficulty(
+  plan: BlacksmithCustomForgePlan,
+  materials: Material[],
+  template: BlacksmithItemTemplate,
+): BlacksmithCustomForgeDifficultyResult {
+  const materialsById = new Map(materials.map((entry) => [entry.id, entry]));
+  let baseDifficulty = template.requiredBlacksmithLevel ? 18 + template.requiredBlacksmithLevel * 6 : 24;
+  let risk = 8;
+  let power = template.itemType === 'weapon'
+    ? Math.round(((template.baseDamageMin ?? 0) + (template.baseDamageMax ?? 0)) / 2)
+    : Math.max(1, Math.round(template.baseArmorValue ?? 1));
+  let topTier = 1;
+  const warnings: string[] = [];
+
+  const allSlots = [...(template.requiredRoles ?? []), ...(template.optionalRoles ?? [])];
+  for (const slot of allSlots) {
+    const selected = plan.selectedMaterials.find((entry) => entry.slotId === slot.id);
+    if (!selected) {
+      if (slot.required) {
+        baseDifficulty += 10;
+        risk += 14;
+        warnings.push(`Не заполнен обязательный слот: ${slot.label}.`);
+      }
+      continue;
+    }
+    const material = materialsById.get(selected.materialId);
+    if (!material) {
+      baseDifficulty += 8;
+      risk += 12;
+      warnings.push(`Материал ${selected.materialId} не найден в каталоге.`);
+      continue;
+    }
+    const suitability = inferSuitabilityForRole(material, slot.role);
+    if (!suitability.matches && suitability.warning) {
+      warnings.push(suitability.warning);
+      risk += 10;
+      baseDifficulty += 6;
+    }
+    const smithProps = getBlacksmithMaterialProps(material);
+    const tier = getMaterialTier(material);
+    topTier = Math.max(topTier, getTierWeight(tier));
+    baseDifficulty += Math.round((smithProps.heatDifficulty ?? 0) + ((material.craftingProperties?.runic?.instability ?? 0) / 4));
+    risk += Math.round((smithProps.defectRisk ?? 0) + ((material.craftingProperties?.runic?.corruptionRisk ?? 0) / 6));
+    power += Math.round(
+      (smithProps.qualityBonus ?? 0)
+      + (smithProps.damageMultiplier ? (smithProps.damageMultiplier - 1) * 8 : 0)
+      + (smithProps.armorMultiplier ? (smithProps.armorMultiplier - 1) * 8 : 0)
+      + ((material.craftingProperties?.physical?.durability ?? 0) / 18)
+      + ((material.craftingProperties?.elemental?.firePower ?? 0) / 12)
+      + ((material.craftingProperties?.magical?.magicPower ?? 0) / 14),
+    );
+  }
+
+  return {
+    baseDifficulty: Math.max(1, Math.round(baseDifficulty)),
+    materialTier: topTier >= 5 ? 'mythic' : topTier >= 4 ? 'epic' : topTier >= 3 ? 'rare' : topTier >= 2 ? 'uncommon' : 'common',
+    risk: Math.max(0, Math.round(risk)),
+    power: Math.max(1, Math.round(power)),
+    warnings,
+  };
+}
+
+function createTemplateRuntimeItemId(templateId: string, mainMaterialId: string, qualityId: string): string {
+  const base = sanitizeIdFragment(templateId) || 'template';
+  const mat = sanitizeIdFragment(mainMaterialId) || 'material';
+  const quality = sanitizeIdFragment(qualityId) || 'quality';
+  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+    : `${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+  return `crafted_${base}_${mat}_${quality}_${uuid}`;
+}
+
+function deriveRarityFromForge(score: number, rarityPower: number): AdminItem['rarity'] {
+  if (score >= 96 || rarityPower >= 5) return 'legendary';
+  if (score >= 84 || rarityPower >= 4) return 'epic';
+  if (score >= 68 || rarityPower >= 3) return 'rare';
+  if (score >= 48 || rarityPower >= 2) return 'uncommon';
+  return 'common';
+}
+
+function mergeItemEffects(effects: Array<ItemEffect[] | undefined>): ItemEffect[] | undefined {
+  const merged = effects.flatMap((entry) => entry ?? []);
+  return merged.length > 0 ? merged : undefined;
+}
+
+export function createForgedItemFromTemplate(params: {
+  template: BlacksmithItemTemplate;
+  plan: BlacksmithCustomForgePlan;
+  materials: Material[];
+  qualityTier: BlacksmithQualityTier | null;
+  score: number;
+  characterId: string;
+}): Omit<AdminItem, 'createdAt' | 'updatedAt'> {
+  const { template, plan, materials, qualityTier, score, characterId } = params;
+  const materialsById = new Map(materials.map((entry) => [entry.id, entry]));
+  const selectedMaterials = plan.selectedMaterials
+    .map((entry) => ({
+      ...entry,
+      material: materialsById.get(entry.materialId) ?? null,
+    }))
+    .filter((entry) => Boolean(entry.material));
+
+  const mainEntry = selectedMaterials.find((entry) => {
+    const slot = template.requiredRoles.find((role) => role.id === entry.slotId) ?? template.optionalRoles?.find((role) => role.id === entry.slotId);
+    return slot?.role === 'main_metal' || slot?.role === 'ingot';
+  }) ?? selectedMaterials[0] ?? null;
+
+  const mainMaterial = mainEntry?.material ?? null;
+  const mainProps = mainMaterial ? getBlacksmithMaterialProps(mainMaterial) : {};
+  const qualityMultiplier = Math.max(0.4, Number(qualityTier?.statMultiplier ?? 1) || 1);
+  const rarityPower = Math.max(...selectedMaterials.map((entry) => Number(entry.material?.craftingProperties?.rarityPower ?? getTierWeight(getMaterialTier(entry.material!))) || 0), 1);
+  const defectPenalty = score < 35 ? 0.82 : score < 55 ? 0.94 : 1;
+  const smithDamageMultiplier = Number(mainProps.damageMultiplier ?? 1) || 1;
+  const smithArmorMultiplier = Number(mainProps.armorMultiplier ?? 1) || 1;
+  const valueMultiplier = selectedMaterials.reduce((acc, entry) => acc * (Number(getBlacksmithMaterialProps(entry.material!).valueMultiplier ?? 1) || 1), 1);
+  const physicalBonus = selectedMaterials.reduce((sum, entry) => sum + Number(entry.material?.craftingProperties?.physical?.durability ?? 0), 0);
+  const elementalFire = selectedMaterials.reduce((sum, entry) => sum + Number(entry.material?.craftingProperties?.elemental?.firePower ?? 0), 0);
+  const magicalPower = selectedMaterials.reduce((sum, entry) => sum + Number(entry.material?.craftingProperties?.magical?.magicPower ?? 0), 0);
+
+  const baseDamageMin = template.baseDamageMin ?? 0;
+  const baseDamageMax = template.baseDamageMax ?? 0;
+  const baseArmorValue = template.baseArmorValue ?? 0;
+  const damageMin = template.itemType === 'weapon'
+    ? Math.max(1, Math.round(baseDamageMin * smithDamageMultiplier * qualityMultiplier * defectPenalty + physicalBonus / 25))
+    : undefined;
+  const damageMax = template.itemType === 'weapon'
+    ? Math.max(damageMin ?? 1, Math.round(baseDamageMax * smithDamageMultiplier * qualityMultiplier * defectPenalty + physicalBonus / 18))
+    : undefined;
+  const armorValue = template.itemType === 'armor'
+    ? Math.max(1, Math.round(baseArmorValue * smithArmorMultiplier * qualityMultiplier * defectPenalty + physicalBonus / 20))
+    : undefined;
+  const priceBase = template.itemType === 'weapon'
+    ? ((damageMin ?? 0) + (damageMax ?? 0)) * 8
+    : (armorValue ?? 0) * 14;
+  const qualityId = qualityTier?.id ?? 'quality_normal';
+  const qualityLabel = String(qualityTier?.name ?? 'Обычная ковка').trim();
+  const namePrefix = mainMaterial?.name ? `${mainMaterial.name.replace(/ слиток$/i, '').replace(/ руда$/i, '')} ` : '';
+  const itemId = createTemplateRuntimeItemId(template.id, mainMaterial?.id ?? 'unknown', qualityId);
+  const tags = Array.from(new Set([
+    'crafted',
+    'blacksmith_forged',
+    'custom_forge',
+    `template:${template.id}`,
+    `crafted_quality:${qualityId}`,
+    `crafted_owner:${characterId}`,
+    ...selectedMaterials.map((entry) => `material:${entry.materialId}`),
+    ...(template.tags ?? []),
+  ]));
+  const equipmentEffects = mergeItemEffects([
+    mainProps.bonusEffects,
+    selectedMaterials.flatMap((entry) => getBlacksmithMaterialProps(entry.material!).bonusEffects ?? []),
+    elementalFire >= 20 ? [{
+      type: 'status_resistance',
+      statusId: 'burning',
+      percent: 10,
+      trigger: 'always' as const,
+    }] : undefined,
+    magicalPower >= 18 ? [{
+      type: 'stat_bonus',
+      stat: 'willpower',
+      value: 1,
+      trigger: 'always' as const,
+    }] : undefined,
+  ]);
+
+  return {
+    id: itemId,
+    name: plan.customName?.trim() || `${namePrefix}${template.name} (${qualityLabel})`,
+    type: template.itemType,
+    subtype: template.subtype,
+    slot: template.slot ?? (template.itemType === 'weapon' ? 'rightHand' : 'chest'),
+    handsRequired: template.itemType === 'weapon' ? (template.handsRequired ?? 1) : 1,
+    rarity: deriveRarityFromForge(score, rarityPower),
+    price: Math.max(1, Math.round(priceBase * Math.max(1, Number(qualityTier?.priceMultiplier ?? 1) || 1) * valueMultiplier)),
+    stackable: false,
+    maxStack: 1,
+    damageMin,
+    damageMax,
+    damageCategory: template.damageCategory ?? (template.itemType === 'weapon' ? 'physical' : undefined),
+    physicalType: template.physicalType,
+    armorValue,
+    attackRange: template.attackRange,
+    bonuses: {},
+    equipmentEffects,
+    augmentSlots: [],
+    canAddAugmentSlots: template.canAddAugmentSlots === true,
+    maxAugmentSlots: Math.max(0, template.baseMaxAugmentSlots ?? 0),
+    canHaveRuneComplex: template.canHaveRuneComplex === true,
+    tags,
+    gameplayDescription: `Предмет создан в свободной кузнечной ковке. Шаблон: ${template.name}. Основной материал: ${mainMaterial?.name ?? 'неизвестен'}. Качество: ${qualityLabel}.`,
+    loreDescription: `Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.`,
+    imageRef: template.imageRef,
+    isEnabled: true,
+  };
+}
+
+export function consumeCustomForgeMaterials(
+  plan: BlacksmithCustomForgePlan | null,
+  baseInventory?: InventoryState | null,
+): { ok: boolean; inventory?: InventoryState } {
+  if (!plan) {
+    return { ok: false };
+  }
+  return consumeCatalogNeeds(buildPseudoNeedsForCustomPlan(plan), baseInventory);
+}
+
+function createItemWorkRuntimeItemId(baseItemId: string, actionId: string): string {
+  const base = sanitizeIdFragment(baseItemId) || 'item';
+  const action = sanitizeIdFragment(actionId) || 'work';
+  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+    : `${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+  return `worked_${base}_${action}_${uuid}`;
+}
+
+export function consumeItemWorkCosts(
+  action: BlacksmithItemWorkAction | null,
+  baseInventory?: InventoryState | null,
+): { ok: boolean; inventory?: InventoryState } {
+  if (!action) {
+    return { ok: false };
+  }
+  const needs = [
+    ...(action.materialCosts ?? []).map((entry) => ({ catalogId: entry.materialId, quantity: entry.quantity, source: 'material' as const })),
+    ...(action.itemCosts ?? []).map((entry) => ({ catalogId: entry.itemId, quantity: entry.quantity, source: 'item' as const })),
+  ];
+  return consumeCatalogNeeds(needs, baseInventory);
+}
+
+function buildWorkedItem(baseItem: AdminItem, action: BlacksmithItemWorkAction, score: number): Omit<AdminItem, 'createdAt' | 'updatedAt'> {
+  const multiplier = action.actionType === 'improve_stats'
+    ? Math.max(1.05, Math.min(1.15, 1.02 + score / 100))
+    : action.actionType === 'reinforce'
+      ? Math.max(1.04, Math.min(1.12, 1.01 + score / 120))
+      : 1;
+  const nextSockets = [...(baseItem.augmentSlots ?? [])];
+  if (action.actionType === 'add_socket') {
+    nextSockets.push({
+      id: `socket_blacksmith_added_${Math.random().toString(36).slice(2, 10)}`,
+      source: 'blacksmith_added',
+      isLocked: false,
+      allowedAugmentTypes: action.addSocketRules?.allowedAugmentTypes ?? ['rune', 'magic_stone', 'enchantment'],
+    });
+  }
+  const extraEffects: ItemEffect[] | undefined = action.actionType === 'temporary_buff'
+    ? (action.effects && action.effects.length > 0 ? action.effects : [{
+      type: 'stat_bonus',
+      stat: 'strength',
+      value: 1,
+      trigger: 'always',
+    } satisfies ItemEffect])
+    : undefined;
+
+  return {
+    ...baseItem,
+    id: createItemWorkRuntimeItemId(baseItem.id, action.id),
+    name: `${baseItem.name} (${action.name})`,
+    price: Math.max(0, Math.round(baseItem.price * multiplier)),
+    damageMin: typeof baseItem.damageMin === 'number' ? Math.max(1, Math.round(baseItem.damageMin * multiplier)) : undefined,
+    damageMax: typeof baseItem.damageMax === 'number' ? Math.max((typeof baseItem.damageMin === 'number' ? Math.round(baseItem.damageMin * multiplier) : 1), Math.round((baseItem.damageMax ?? 0) * multiplier)) : undefined,
+    armorValue: typeof baseItem.armorValue === 'number' ? Math.max(1, Math.round(baseItem.armorValue * multiplier)) : undefined,
+    augmentSlots: nextSockets,
+    canAddAugmentSlots: baseItem.canAddAugmentSlots !== false,
+    maxAugmentSlots: Math.max(baseItem.maxAugmentSlots ?? nextSockets.length, nextSockets.length),
+    equipmentEffects: mergeItemEffects([baseItem.equipmentEffects, extraEffects]),
+    tags: Array.from(new Set([...(baseItem.tags ?? []), `item_work:${action.actionType}`, `item_work_action:${action.id}`])),
+    gameplayDescription: `${baseItem.gameplayDescription} Доработка кузнецом: ${action.name}.`,
+    loreDescription: `${baseItem.loreDescription} Предмет прошёл кузнечную доработку.`,
+    isEnabled: true,
+  };
+}
+
+function inferDismantleMaterials(item: AdminItem): Record<string, number> {
+  const materials: Record<string, number> = {};
+  const materialTags = (item.tags ?? []).filter((tag) => tag.startsWith('material:'));
+  if (materialTags.length > 0) {
+    for (const tag of materialTags.slice(0, 2)) {
+      incrementRecord(materials, tag.slice('material:'.length), 1);
+    }
+    return materials;
+  }
+  if (item.type === 'weapon' || item.type === 'armor') {
+    incrementRecord(materials, 'item_iron_ore', item.type === 'armor' ? 2 : 1);
+  }
+  if ((item.subtype ?? '').toLowerCase().includes('spear') || (item.name ?? '').toLowerCase().includes('древ')) {
+    incrementRecord(materials, 'item_hardwood', 1);
+  }
+  return materials;
+}
+
+export async function applyItemWorkToCharacter(params: {
+  characterId: string;
+  action: BlacksmithItemWorkAction;
+  baseItem: AdminItem;
+  score: number;
+  inventory?: InventoryState | null;
+}): Promise<BlacksmithItemWorkApplyResult> {
+  const { characterId, action, baseItem, score, inventory } = params;
+
+  if (action.actionType === 'add_socket') {
+    if (baseItem.canAddAugmentSlots !== true) {
+      return { success: false, message: 'Этот предмет не поддерживает дополнительные слоты.' };
+    }
+    const currentSlots = baseItem.augmentSlots?.length ?? 0;
+    const maxSlots = baseItem.maxAugmentSlots ?? currentSlots;
+    if (currentSlots >= maxSlots) {
+      return { success: false, message: `Достигнут максимум слотов (${maxSlots}).` };
+    }
+  }
+
+  if (action.actionType === 'dismantle') {
+    let latestInventory = inventory ?? undefined;
+    const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
+    latestInventory = removeHub.inventory;
+    const salvage = inferDismantleMaterials(baseItem);
+    const materialMap = { ...readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY) };
+    for (const [materialId, quantity] of Object.entries(salvage)) {
+      incrementRecord(materialMap, materialId, Math.max(1, Math.round(quantity * Math.max(0.4, score / 100))));
+    }
+    writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, materialMap);
+    return {
+      inventory: latestInventory,
+      salvagedMaterials: salvage,
+      success: true,
+      message: 'Предмет разобран на материалы.',
+    };
+  }
+
+  const nextDefinition = await itemsService.create(buildWorkedItem(baseItem, action, score));
+  const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
+  const addHub = await adjustDevInventoryItem(characterId, { itemId: nextDefinition.id, quantityDelta: 1 });
+  const beforeStats = formatItemCoreStats(baseItem).join(', ');
+  const afterStats = formatItemCoreStats(nextDefinition).join(', ');
+  return {
+    inventory: addHub.inventory ?? removeHub.inventory,
+    createdItem: nextDefinition,
+    success: true,
+    message: `${action.name}: ${baseItem.name} -> ${nextDefinition.name}. Было: ${beforeStats}. Стало: ${afterStats}.`,
+  };
+}
+
+export async function grantCustomForgeItemToCharacter(params: {
+  characterId: string;
+  template: BlacksmithItemTemplate;
+  plan: BlacksmithCustomForgePlan;
+  materialsCatalog: Material[];
+  qualityTier?: BlacksmithQualityTier | null;
+  score: number;
+}): Promise<{ inventory?: InventoryState; createdItem?: AdminItem | null; success: boolean }> {
+  const { characterId, template, plan, materialsCatalog, qualityTier, score } = params;
+  if ((qualityTier?.isFailureTier ?? false) || score < 20) {
+    const salvageMap = { ...readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY) };
+    for (const entry of plan.selectedMaterials.slice(0, 2)) {
+      incrementRecord(salvageMap, entry.materialId, 1);
+    }
+    writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, salvageMap);
+    return { success: false };
+  }
+  const created = await itemsService.create(createForgedItemFromTemplate({
+    template,
+    plan,
+    materials: materialsCatalog,
+    qualityTier: qualityTier ?? null,
+    score,
+    characterId,
+  }));
+  const hub = await adjustDevInventoryItem(characterId, { itemId: created.id, quantityDelta: 1 });
+  return { inventory: hub.inventory, createdItem: created, success: true };
 }
 
 function incrementRecord(record: Record<string, number>, itemId: string, quantity: number): void {

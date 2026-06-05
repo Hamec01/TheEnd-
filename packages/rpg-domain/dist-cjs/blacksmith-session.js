@@ -23,6 +23,10 @@ function createBlacksmithSession(seed, bonuses = {}) {
         defectScore: clamp(Math.round(difficulty / 4) - Math.round((bonuses.defectChanceReduction ?? 0) / 2), 0, 100),
         turnsUsed: 0,
         completed: false,
+        mode: seed.mode ?? 'recipe',
+        customForgePlanId: seed.customForgePlanId,
+        targetItemId: seed.targetItemId,
+        itemWorkActionId: seed.itemWorkActionId,
     };
 }
 function applyBlacksmithAction(state, action, bonuses = {}) {

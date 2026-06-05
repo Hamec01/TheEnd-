@@ -168,6 +168,16 @@ function normalizeMiningSkillNameForMatch(value: string): string {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
 }
 
+function shouldAutoActivateBranch(professionId: string, branch: ProfessionBranch): boolean {
+  if (professionId === 'mining') {
+    return branch.id === 'mining_branch_common' || branch.id === 'mining_branch_transition';
+  }
+  if (professionId === 'blacksmithing') {
+    return branch.id === 'blacksmith_start';
+  }
+  return !branch.exclusiveGroupId;
+}
+
 const MINING_TREE_LAYOUT: Record<string, { x: number; y: number }> = {
   mining_firm_swing: { x: 452, y: 24 },
   mining_stone_hearing: { x: 522, y: 24 },
@@ -373,12 +383,12 @@ export function SkillTreeView(props: SkillTreeViewProps) {
   const effectiveSelectedBranchIds = useMemo(() => {
     const merged = new Set(selectedBranchIds);
     for (const branch of allBranches) {
-      if (!branch.exclusiveGroupId) {
+      if (shouldAutoActivateBranch(professionId, branch)) {
         merged.add(branch.id);
       }
     }
     return merged;
-  }, [allBranches, selectedBranchIds]);
+  }, [allBranches, professionId, selectedBranchIds]);
 
   const skillStates = useMemo(() => {
     const result = new Map<string, ComputedSkillState>();
@@ -737,34 +747,22 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       return 'rgba(255, 255, 255, 0.38)';
     };
 
-    if (professionId === 'mining') {
-      for (const connection of MINING_VISUAL_CONNECTIONS) {
-        const from = positions.get(`skill:${connection.from}`) ?? positions.get(`branch:${connection.from}`);
-        const to = positions.get(`skill:${connection.to}`) ?? positions.get(`branch:${connection.to}`);
-        if (!from || !to) {
-          continue;
-        }
-        const destinationSkill = skillStates.get(connection.to);
-        const destinationBranch = branchStates.get(connection.to);
-        const visualState = destinationSkill?.visualState ?? destinationBranch?.visualState ?? 'locked';
-        pushLine(`${connection.from}->${connection.to}`, from, to, colorForState(visualState));
-      }
-      return out;
-    }
+    const extraVisualConnections = professionId === 'mining'
+      ? MINING_VISUAL_CONNECTIONS
+      : professionId === 'blacksmithing'
+        ? BLACKSMITH_VISUAL_CONNECTIONS
+        : [];
 
-    if (professionId === 'blacksmithing') {
-      for (const connection of BLACKSMITH_VISUAL_CONNECTIONS) {
-        const from = positions.get(`skill:${connection.from}`) ?? positions.get(`branch:${connection.from}`);
-        const to = positions.get(`skill:${connection.to}`) ?? positions.get(`branch:${connection.to}`);
-        if (!from || !to) {
-          continue;
-        }
-        const destinationSkill = skillStates.get(connection.to);
-        const destinationBranch = branchStates.get(connection.to);
-        const visualState = destinationSkill?.visualState ?? destinationBranch?.visualState ?? 'locked';
-        pushLine(`${connection.from}->${connection.to}`, from, to, colorForState(visualState));
+    for (const connection of extraVisualConnections) {
+      const from = positions.get(`skill:${connection.from}`) ?? positions.get(`branch:${connection.from}`);
+      const to = positions.get(`skill:${connection.to}`) ?? positions.get(`branch:${connection.to}`);
+      if (!from || !to) {
+        continue;
       }
-      return out;
+      const destinationSkill = skillStates.get(connection.to);
+      const destinationBranch = branchStates.get(connection.to);
+      const visualState = destinationSkill?.visualState ?? destinationBranch?.visualState ?? 'locked';
+      pushLine(`${connection.from}->${connection.to}`, from, to, colorForState(visualState));
     }
 
     for (const skill of allSkills) {

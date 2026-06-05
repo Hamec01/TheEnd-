@@ -111,6 +111,9 @@ export interface ArenaCombatEntity {
   battlefieldX?: number;
   battlefieldY?: number;
   avatarUrl?: string;
+  battleSpriteUrl?: string;
+  battleSpriteId?: string;
+  battleRenderMode?: 'portrait' | 'sprite';
   combatStyleHint?: 'MELEE' | 'RANGED' | 'MAGIC';
   /**
    * Grid-based combat targeting (cells).

@@ -38,7 +38,7 @@ export function extractRawMaterialsFromImportJson(payload: unknown): unknown[] {
   return extractRawCollectionFromImportJson(payload, 'materials');
 }
 
-export async function importMaterialsFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+export async function importMaterialsFromJsonEntries(entries: unknown[], mode: 'addOnly' | 'merge' = 'merge'): Promise<JsonImportResult> {
   const defaults = (): Material => ({
     id: '',
     name: '',
@@ -64,6 +64,7 @@ export async function importMaterialsFromJsonEntries(entries: unknown[]): Promis
     getAll: () => materialsService.getAll(),
     create: (value) => materialsService.create(value),
     update: (id, value) => materialsService.update(id, value),
+    mode,
   });
 }
 

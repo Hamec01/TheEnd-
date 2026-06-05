@@ -11,9 +11,15 @@ import {
   type ProfessionId,
 } from '@theend/rpg-domain';
 import { BlacksmithForgeTab } from '../features/blacksmith/BlacksmithForgeTab';
+import { BlacksmithCustomForgeTab } from '../features/blacksmith/BlacksmithCustomForgeTab';
 import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
 import { BlacksmithRecipesTab } from '../features/blacksmith/BlacksmithRecipesTab';
-import { grantRecipeOutputsToCharacter } from '../features/blacksmith/blacksmithRecipeMaterials';
+import {
+  applyItemWorkToCharacter,
+  grantCustomForgeItemToCharacter,
+  grantRecipeOutputsToCharacter,
+  type BlacksmithItemWorkSelection,
+} from '../features/blacksmith/blacksmithRecipeMaterials';
 import { resolveBlacksmithSkillBonuses } from '../features/blacksmith/blacksmithSkillEffects';
 import {
   canUnlockFinalBlacksmithTrial,
@@ -27,8 +33,26 @@ import { getBlockedBySelectedExclusiveBranchReason } from '../services/miningSki
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
 import { getContentSnapshot } from '../services/content/contentApi';
 import { subscribeToContentSync } from '../services/content/contentSync';
-import { loadRuntimeBlacksmithContent } from '../services/content/runtimeContentService';
-import type { AdminItem, BlacksmithBalance, BlacksmithForgeTier, BlacksmithModule, BlacksmithQualityTier, BlacksmithTool, CraftingRecipe, Material, RecipeVisualProfile, StoredImage } from '../services/content/models';
+import {
+  getFallbackBlacksmithItemTemplates,
+  getFallbackBlacksmithItemWorkActions,
+  loadRuntimeBlacksmithContent,
+} from '../services/content/runtimeContentService';
+import type {
+  AdminItem,
+  BlacksmithBalance,
+  BlacksmithCustomForgePlan,
+  BlacksmithForgeTier,
+  BlacksmithItemTemplate,
+  BlacksmithItemWorkAction,
+  BlacksmithModule,
+  BlacksmithQualityTier,
+  BlacksmithTool,
+  CraftingRecipe,
+  Material,
+  RecipeVisualProfile,
+  StoredImage,
+} from '../services/content/models';
 import { loadMiningToolsFromStorage } from '../services/miningRepository';
 import { loadMiningCareerStats, type MiningCareerStats } from '../services/miningCareerStats';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
@@ -45,17 +69,29 @@ interface PlayerProfessionsPanelProps {
   onInventoryChange: (next: InventoryState) => void;
 }
 
+function shouldAutoActivateProfessionBranch(professionId: string, branch: ProfessionBranch): boolean {
+  if (professionId === 'mining') {
+    return branch.id === 'mining_branch_common' || branch.id === 'mining_branch_transition';
+  }
+  if (professionId === 'blacksmithing') {
+    return branch.id === 'blacksmith_start';
+  }
+  return !branch.exclusiveGroupId;
+}
+
 export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const { characterId, inventory, runtimeInventoryRevision, professionsState, onClose, onStatus, onChange, onInventoryChange } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'customForge' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
   const [professionSkills, setProfessionSkills] = useState<ProfessionSkill[]>([]);
   const [professionBranches, setProfessionBranches] = useState<ProfessionBranch[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
   const [miningCareerStats, setMiningCareerStats] = useState<MiningCareerStats | null>(null);
   const [blacksmithRecipes, setBlacksmithRecipes] = useState<CraftingRecipe[]>([]);
   const [blacksmithForgeTiers, setBlacksmithForgeTiers] = useState<BlacksmithForgeTier[]>([]);
+  const [blacksmithItemTemplates, setBlacksmithItemTemplates] = useState<BlacksmithItemTemplate[]>([]);
+  const [blacksmithItemWorkActions, setBlacksmithItemWorkActions] = useState<BlacksmithItemWorkAction[]>([]);
   const [blacksmithModules, setBlacksmithModules] = useState<BlacksmithModule[]>([]);
   const [blacksmithTools, setBlacksmithTools] = useState<BlacksmithTool[]>([]);
   const [blacksmithQualityTiers, setBlacksmithQualityTiers] = useState<BlacksmithQualityTier[]>([]);
@@ -64,6 +100,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [materialsCatalog, setMaterialsCatalog] = useState<Material[]>([]);
   const [itemsCatalog, setItemsCatalog] = useState<AdminItem[]>([]);
   const [selectedBlacksmithRecipeId, setSelectedBlacksmithRecipeId] = useState<string | null>(null);
+  const [preparedCustomForgePlan, setPreparedCustomForgePlan] = useState<BlacksmithCustomForgePlan | null>(null);
+  const [preparedCustomForgeTemplateId, setPreparedCustomForgeTemplateId] = useState<string | null>(null);
+  const [preparedItemWork, setPreparedItemWork] = useState<BlacksmithItemWorkSelection | null>(null);
+  const [blacksmithMode, setBlacksmithMode] = useState<'recipe' | 'custom_forge' | 'item_work'>('recipe');
   const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
 
   const definitionById = useMemo(
@@ -80,7 +120,11 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       ]);
 
       setRuntimeImages(images);
-      setBlacksmithForgeTiers(runtimeBlacksmith.forgeTiers);
+        const fallbackTemplates = getFallbackBlacksmithItemTemplates();
+        const fallbackItemWorkActions = getFallbackBlacksmithItemWorkActions();
+        setBlacksmithForgeTiers(runtimeBlacksmith.forgeTiers);
+        setBlacksmithItemTemplates(runtimeBlacksmith.itemTemplates.length > 0 ? runtimeBlacksmith.itemTemplates : fallbackTemplates);
+        setBlacksmithItemWorkActions(runtimeBlacksmith.itemWorkActions.length > 0 ? runtimeBlacksmith.itemWorkActions : fallbackItemWorkActions);
       setBlacksmithModules(runtimeBlacksmith.modules);
       setBlacksmithTools(runtimeBlacksmith.tools);
       setBlacksmithQualityTiers(runtimeBlacksmith.qualityTiers);
@@ -164,6 +208,18 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const selectedBlacksmithRecipe = useMemo(
     () => blacksmithRecipes.find((entry) => entry.id === selectedBlacksmithRecipeId) ?? null,
     [blacksmithRecipes, selectedBlacksmithRecipeId],
+  );
+  const selectedBlacksmithTemplate = useMemo(
+    () => blacksmithItemTemplates.find((entry) => entry.id === preparedCustomForgeTemplateId) ?? null,
+    [blacksmithItemTemplates, preparedCustomForgeTemplateId],
+  );
+  const selectedItemWorkAction = useMemo(
+    () => blacksmithItemWorkActions.find((entry) => entry.id === preparedItemWork?.actionId) ?? null,
+    [blacksmithItemWorkActions, preparedItemWork?.actionId],
+  );
+  const selectedItemWorkItem = useMemo(
+    () => itemsCatalog.find((entry) => entry.id === preparedItemWork?.targetItemId) ?? null,
+    [itemsCatalog, preparedItemWork?.targetItemId],
   );
 
   const blacksmithSkillBonuses = useMemo(
@@ -255,6 +311,13 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     onChange(next);
   };
 
+  const resetPreparedBlacksmithFlows = (): void => {
+    setPreparedCustomForgePlan(null);
+    setPreparedCustomForgeTemplateId(null);
+    setPreparedItemWork(null);
+    setBlacksmithSession(null);
+  };
+
   const handleLearnSkill = (skill: ProfessionSkill): void => {
     if (!selectedProfession) {
       onStatus('Сначала выберите профессию.');
@@ -275,7 +338,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     const branchById = new Map(professionBranchesForTree.map((entry) => [entry.id, entry]));
 
     for (const branch of professionBranchesForTree) {
-      if (!branch.exclusiveGroupId) {
+      if (shouldAutoActivateProfessionBranch(professionId, branch)) {
         effectiveSelectedBranchIds.add(branch.id);
       }
     }
@@ -436,7 +499,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const selectedTabs = selectedProfession?.state.professionId === 'mining'
     ? ['overview', 'inventory', 'stats', 'tree'] as const
     : selectedProfession?.state.professionId === 'blacksmithing'
-      ? ['overview', 'inventory', 'recipes', 'forge', 'tree'] as const
+      ? ['overview', 'inventory', 'recipes', 'customForge', 'forge', 'tree'] as const
       : ['overview', 'tree'] as const;
 
   const xpToNext = selectedProfession
@@ -511,6 +574,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   >
                     {tab === 'overview' ? 'Обзор' : null}
                     {tab === 'recipes' ? 'Рецепты' : null}
+                    {tab === 'customForge' ? 'Свободная ковка' : null}
                     {tab === 'forge' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Кузня' : 'Горн') : null}
                     {tab === 'inventory' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Инвентарь' : 'Инвентарь Горняка') : null}
                     {tab === 'stats' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Статистика ковки' : 'Статистика спусков') : null}
@@ -577,8 +641,31 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 selectedRecipeId={selectedBlacksmithRecipeId}
                 onSelectRecipe={(recipeId) => {
                   setSelectedBlacksmithRecipeId(recipeId);
-                  setBlacksmithSession(null);
+                  resetPreparedBlacksmithFlows();
+                  setBlacksmithMode('recipe');
                 }}
+                />
+              </div>
+            ) : null}
+
+            {activeTab === 'customForge' && selectedProfession.state.professionId === 'blacksmithing' ? (
+              <div className="profession-tab-panel">
+                <BlacksmithCustomForgeTab
+                  templates={blacksmithItemTemplates}
+                  materials={materialsCatalog}
+                  runtimeImages={runtimeImages}
+                  inventory={inventory}
+                  inventoryRevision={runtimeInventoryRevision}
+                  initialTemplateId={preparedCustomForgeTemplateId}
+                  onPreparePlan={({ template, plan }) => {
+                    setPreparedCustomForgeTemplateId(template.id);
+                    setPreparedCustomForgePlan(plan);
+                    setPreparedItemWork(null);
+                    setBlacksmithMode('custom_forge');
+                    setBlacksmithSession(null);
+                    setActiveTab('forge');
+                    onStatus(`Подготовлен план свободной ковки: ${template.name}.`);
+                  }}
                 />
               </div>
             ) : null}
@@ -587,6 +674,11 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
               <div className="profession-tab-panel">
                 <BlacksmithForgeTab
                 selectedRecipe={selectedBlacksmithRecipe}
+                mode={blacksmithMode}
+                customForgePlan={preparedCustomForgePlan}
+                customForgeTemplate={selectedBlacksmithTemplate}
+                itemWorkAction={selectedItemWorkAction}
+                itemWorkItem={selectedItemWorkItem}
                 session={blacksmithSession}
                 forgeTiers={blacksmithForgeTiers}
                 modules={blacksmithModules}
@@ -603,9 +695,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 skillBonuses={blacksmithSkillBonuses}
                 onSessionChange={setBlacksmithSession}
                 onInventoryChange={onInventoryChange}
-                onComplete={async ({ xp, score, qualityTierId, success }) => {
-                  if (success && selectedBlacksmithRecipe) {
-                    const qualityTier = blacksmithQualityTiers.find((entry) => entry.id === qualityTierId) ?? null;
+                onComplete={async ({ xp, score, qualityTierId, success, mode }) => {
+                  const qualityTier = blacksmithQualityTiers.find((entry) => entry.id === qualityTierId) ?? null;
+                  let rewardMessage = '';
+                  if (mode === 'recipe' && success && selectedBlacksmithRecipe) {
                     const rewardResult = await grantRecipeOutputsToCharacter({
                       characterId,
                       recipe: selectedBlacksmithRecipe,
@@ -617,6 +710,41 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     if (rewardResult.inventory) {
                       onInventoryChange(rewardResult.inventory);
                     }
+                    rewardMessage = ' Результат рецепта добавлен в инвентарь.';
+                  }
+                  if (mode === 'custom_forge' && preparedCustomForgePlan && selectedBlacksmithTemplate) {
+                    const forgeResult = await grantCustomForgeItemToCharacter({
+                      characterId,
+                      template: selectedBlacksmithTemplate,
+                      plan: preparedCustomForgePlan,
+                      materialsCatalog,
+                      qualityTier,
+                      score,
+                    });
+                    if (forgeResult.inventory) {
+                      onInventoryChange(forgeResult.inventory);
+                    }
+                    rewardMessage = forgeResult.success
+                      ? ` Создан предмет: ${forgeResult.createdItem?.name ?? selectedBlacksmithTemplate.name}.`
+                      : ' Свободная ковка завершилась браком, часть материалов возвращена.';
+                    setPreparedCustomForgePlan(null);
+                    setPreparedCustomForgeTemplateId(null);
+                    setBlacksmithMode('recipe');
+                  }
+                  if (mode === 'item_work' && selectedItemWorkAction && selectedItemWorkItem) {
+                    const workResult = await applyItemWorkToCharacter({
+                      characterId,
+                      action: selectedItemWorkAction,
+                      baseItem: selectedItemWorkItem,
+                      score,
+                      inventory,
+                    });
+                    if (workResult.inventory) {
+                      onInventoryChange(workResult.inventory);
+                    }
+                    rewardMessage = ` ${workResult.message}`;
+                    setPreparedItemWork(null);
+                    setBlacksmithMode('recipe');
                   }
                   const normalized = normalizePlayerProfessionsState(professionsState);
                   const next = applyBlacksmithCraftResult(normalized, 'blacksmithing', {
@@ -627,11 +755,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     isMasterwork: qualityTierId === 'quality_masterwork',
                   });
                   onChange(next);
-                  onStatus(
-                    success && selectedBlacksmithRecipe
-                      ? `Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}. Результат рецепта добавлен в инвентарь.`
-                      : `Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}.`,
-                  );
+                  onStatus(`Ковка завершена: ${score}/100 (${qualityTierId}). Получено XP: ${xp}.${rewardMessage}`);
                 }}
                 />
               </div>
@@ -643,9 +767,22 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 selectedRecipe={selectedBlacksmithRecipe}
                 materials={materialsCatalog}
                 items={itemsCatalog}
+                itemWorkActions={blacksmithItemWorkActions}
                 runtimeImages={runtimeImages}
                 inventory={inventory}
                 inventoryRevision={runtimeInventoryRevision}
+                onPrepareItemWork={({ item, action }) => {
+                  setPreparedItemWork({
+                    targetItemId: item.id,
+                    actionId: action.id,
+                  });
+                  setPreparedCustomForgePlan(null);
+                  setPreparedCustomForgeTemplateId(null);
+                  setBlacksmithMode('item_work');
+                  setBlacksmithSession(null);
+                  setActiveTab('forge');
+                  onStatus(`Подготовлена кузнечная работа: ${action.name} для ${item.name}.`);
+                }}
                 />
               </div>
             ) : null}

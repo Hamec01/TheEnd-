@@ -1,10 +1,15 @@
 export type BlacksmithStage = 'prep' | 'heat' | 'strike' | 'quench' | 'finish' | 'completed';
+export type BlacksmithWorkMode = 'recipe' | 'custom_forge' | 'item_work';
 
 export interface BlacksmithSessionSeed {
-  recipeId: string;
+  recipeId?: string;
   recipeType: string;
   materialTier?: string;
   baseDifficulty: number;
+  mode?: BlacksmithWorkMode;
+  customForgePlanId?: string;
+  targetItemId?: string;
+  itemWorkActionId?: string;
 }
 
 export interface BlacksmithSessionBonuses {
@@ -19,7 +24,7 @@ export interface BlacksmithSessionBonuses {
 
 export interface BlacksmithSessionState {
   id: string;
-  recipeId: string;
+  recipeId?: string;
   recipeType: string;
   materialTier?: string;
   stage: BlacksmithStage;
@@ -29,6 +34,10 @@ export interface BlacksmithSessionState {
   defectScore: number;
   turnsUsed: number;
   completed: boolean;
+  mode: BlacksmithWorkMode;
+  customForgePlanId?: string;
+  targetItemId?: string;
+  itemWorkActionId?: string;
 }
 
 export interface BlacksmithSessionActionResult {
@@ -58,6 +67,10 @@ export function createBlacksmithSession(seed: BlacksmithSessionSeed, bonuses: Bl
     defectScore: clamp(Math.round(difficulty / 4) - Math.round((bonuses.defectChanceReduction ?? 0) / 2), 0, 100),
     turnsUsed: 0,
     completed: false,
+    mode: seed.mode ?? 'recipe',
+    customForgePlanId: seed.customForgePlanId,
+    targetItemId: seed.targetItemId,
+    itemWorkActionId: seed.itemWorkActionId,
   };
 }
 

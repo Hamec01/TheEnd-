@@ -161,6 +161,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     isHostile: boolean;
     hasQuest: boolean;
     kind?: RenderedWorldEntity['kind'];
+    facingX: 1 | -1;
     renderWorldX: number;
     renderWorldY: number;
     fromWorldX: number;
@@ -572,6 +573,12 @@ class PhaserWorldMapScene extends Phaser.Scene {
     const textureKey = resolvedImageSrc ? this.ensureDynamicTexture(resolvedImageSrc) : null;
     const canUseImage = Boolean(textureKey && this.textures.exists(textureKey));
     const existing = this.activeEntitySprites.get(entity.id);
+    const horizontalDelta = existing ? (worldCoordinates.x - existing.targetWorldX) : 0;
+    const nextFacingX: 1 | -1 = existing?.facingX ?? 1;
+    const hasHorizontalFacingDelta = Math.abs(horizontalDelta) > 0.00005;
+    const facingX = hasHorizontalFacingDelta
+      ? (horizontalDelta < 0 ? -1 : 1)
+      : nextFacingX;
     const shouldRecreate = !existing
       || existing.imageSrc !== (canUseImage ? resolvedImageSrc : undefined)
       || existing.memberCount !== entity.memberCount
@@ -584,7 +591,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
       if (existing) {
         existing.container.destroy(true);
       }
-      container = this.buildActiveEntityContainer(entity, canUseImage ? (textureKey as string) : null, x, y);
+      container = this.buildActiveEntityContainer(entity, canUseImage ? (textureKey as string) : null, x, y, facingX);
       this.entityLayer.add(container);
       this.activeEntitySprites.set(entity.id, {
         container,
@@ -593,6 +600,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
         isHostile: entity.isHostile,
         hasQuest: entity.hasQuest,
         kind: entity.kind,
+        facingX,
         renderWorldX: worldCoordinates.x,
         renderWorldY: worldCoordinates.y,
         fromWorldX: worldCoordinates.x,
@@ -630,18 +638,24 @@ class PhaserWorldMapScene extends Phaser.Scene {
       ? (nextSourceUpdatedAtMs as number) > (existing.lastSourceUpdatedAtMs as number)
       : Number.isFinite(nextSourceUpdatedAtMs);
 
-    const hasNewSourceSample = Boolean(sourceTickChanged || sourceUpdatedAtChanged || movedInWorld);
+    const hasNewSourceSample = Boolean(sourceTickChanged || sourceUpdatedAtChanged || movedInWorld || hasHorizontalFacingDelta);
 
     if (!hasNewSourceSample) {
       this.activeEntitySprites.set(entity.id, {
         ...existing,
         container,
+        facingX,
         renderWorldX: currentWorld.x,
         renderWorldY: currentWorld.y,
         lastSourceTick: source?.sourceTick ?? existing.lastSourceTick,
         lastSourceUpdatedAtMs: nextSourceUpdatedAtMs ?? existing.lastSourceUpdatedAtMs,
       });
       return;
+    }
+
+    if (entity.renderMode === 'sprite') {
+      const bodyImage = container.getData('bodyImage') as Phaser.GameObjects.Image | undefined;
+      bodyImage?.setFlipX(facingX === -1);
     }
 
     const fromScreen = normalizedToScreen(currentWorld, snapshot.camera, snapshot.widthPx, snapshot.heightPx);
@@ -684,6 +698,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     this.activeEntitySprites.set(entity.id, {
       ...existing,
       container,
+      facingX,
       renderWorldX: currentWorld.x,
       renderWorldY: currentWorld.y,
       fromWorldX: currentWorld.x,
@@ -705,6 +720,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     textureKey: string | null,
     x: number,
     y: number,
+    facingX: 1 | -1,
   ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
     const layout = resolveWorldEntityMarkerLayout(entity);
@@ -715,10 +731,15 @@ class PhaserWorldMapScene extends Phaser.Scene {
         container.add(ring);
       }
 
-      const circularTextureKey = layout.clipShape === 'circle'
+      const circularTextureKey = layout.clipShape === 'circle' && entity.renderMode !== 'sprite'
         ? this.ensureCircularTexture(textureKey, Math.max(12, Math.round(Math.min(layout.widthPx, layout.heightPx))))
         : null;
-      const image = this.add.image(0, 0, circularTextureKey ?? textureKey).setDisplaySize(layout.widthPx, layout.heightPx);
+      const image = this.add.image(0, 0, circularTextureKey ?? textureKey)
+        .setDisplaySize(layout.widthPx, layout.heightPx);
+      if (entity.renderMode === 'sprite') {
+        image.setFlipX(facingX === -1);
+      }
+      container.setData('bodyImage', image);
       container.add(image);
     } else {
       const fillColor = entity.isHostile ? 0xc94a42 : entity.kind === 'merchant' ? 0xd4b15e : 0x79b2dc;

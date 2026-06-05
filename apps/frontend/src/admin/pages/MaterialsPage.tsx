@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import type { Material } from '../../services/content/models';
+import { MATERIAL_PROPERTY_TAGS, type Material } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
 import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
 import { extractRawMaterialsFromImportJson, importMaterialsFromJsonEntries, materialsService, validateMaterial } from '../../services/content/materialsService';
@@ -20,6 +20,24 @@ import {
 
 const MATERIAL_CATEGORIES: Material['category'][] = ['metal', 'wood', 'leather', 'cloth', 'herb', 'stone', 'crystal', 'bone', 'other'];
 const MATERIAL_RARITIES: Material['rarity'][] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'forbidden'];
+const KNOWN_BLACKSMITH_TAG_SUGGESTIONS = [
+  'weapon',
+  'armor',
+  'blade',
+  'shield',
+  'socket_ready',
+  'rune_ready',
+  'heat_stable',
+  'flexible',
+  'heavy',
+  'lightweight',
+  'ornamental',
+  'precision',
+  'military',
+  'ritual',
+  'cursed',
+  'holy',
+] as const;
 
 function emptyMaterial(): Material {
   const now = new Date().toISOString();
@@ -54,7 +72,90 @@ export function MaterialsPage() {
   const [catalogFilterMode, setCatalogFilterMode] = useState<'none' | 'category' | 'rarity'>('none');
   const [catalogFilterValue, setCatalogFilterValue] = useState<string>('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [craftingTagDraft, setCraftingTagDraft] = useState('');
+  const [blacksmithTagDraft, setBlacksmithTagDraft] = useState('');
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  function updateCraftingProperties(next: Partial<NonNullable<Material['craftingProperties']>>) {
+    setDraft((current) => ({
+      ...current,
+      craftingProperties: {
+        ...(current.craftingProperties ?? {}),
+        ...next,
+      },
+    }));
+  }
+
+  function parseCsv(raw: string): string[] {
+    return raw.split(',').map((entry) => entry.trim()).filter(Boolean);
+  }
+
+  function appendCsvTag(raw: string, nextTag: string): string {
+    const clean = nextTag.trim();
+    if (!clean) {
+      return raw;
+    }
+    const existing = parseCsv(raw);
+    if (existing.includes(clean)) {
+      return existing.join(', ');
+    }
+    return [...existing, clean].join(', ');
+  }
+
+  function updateCraftingList<K extends keyof NonNullable<Material['craftingProperties']>>(key: K, raw: string) {
+    updateCraftingProperties({ [key]: parseCsv(raw) } as Partial<NonNullable<Material['craftingProperties']>>);
+  }
+
+  function updateCraftingNumberSection<
+    K extends keyof NonNullable<Material['craftingProperties']>,
+    S extends NonNullable<NonNullable<Material['craftingProperties']>[K]>,
+    P extends keyof S,
+  >(section: K, key: P, value: number) {
+    setDraft((current) => ({
+      ...current,
+      craftingProperties: {
+        ...(current.craftingProperties ?? {}),
+        [section]: {
+          ...(((current.craftingProperties ?? {})[section] as Record<string, unknown> | undefined) ?? {}),
+          [key]: value,
+        },
+      },
+    }));
+  }
+
+  function updateCraftingBooleanSection<
+    K extends keyof NonNullable<Material['craftingProperties']>,
+    S extends NonNullable<NonNullable<Material['craftingProperties']>[K]>,
+    P extends keyof S,
+  >(section: K, key: P, checked: boolean) {
+    setDraft((current) => ({
+      ...current,
+      craftingProperties: {
+        ...(current.craftingProperties ?? {}),
+        [section]: {
+          ...(((current.craftingProperties ?? {})[section] as Record<string, unknown> | undefined) ?? {}),
+          [key]: checked,
+        },
+      },
+    }));
+  }
+
+  function updateCraftingListSection<
+    K extends keyof NonNullable<Material['craftingProperties']>,
+    S extends NonNullable<NonNullable<Material['craftingProperties']>[K]>,
+    P extends keyof S,
+  >(section: K, key: P, raw: string) {
+    setDraft((current) => ({
+      ...current,
+      craftingProperties: {
+        ...(current.craftingProperties ?? {}),
+        [section]: {
+          ...(((current.craftingProperties ?? {})[section] as Record<string, unknown> | undefined) ?? {}),
+          [key]: parseCsv(raw),
+        },
+      },
+    }));
+  }
 
   async function refresh() {
     const all = await materialsService.getAll();
@@ -117,10 +218,11 @@ export function MaterialsPage() {
       const text = await file.text();
       const payload = JSON.parse(text) as unknown;
       const entries = extractRawMaterialsFromImportJson(payload);
-      const result = await importMaterialsFromJsonEntries(entries);
+      const result = await importMaterialsFromJsonEntries(entries, 'merge');
       await refresh();
       const parts = [
         result.created.length ? `создано: ${result.created.length}` : null,
+        result.updated.length ? `обновлено: ${result.updated.length}` : null,
         result.skippedExisting.length ? `пропущено существующих: ${result.skippedExisting.length}` : null,
         result.errors.length ? `ошибок: ${result.errors.length}` : null,
       ].filter(Boolean);
@@ -259,6 +361,35 @@ export function MaterialsPage() {
       items: sortItems(groups.get(key) ?? []),
     }));
   }, [catalogGroupMode, catalogSortMode, categoryRank, rarityRank, visibleMaterials]);
+
+  const craftingTagSuggestions = useMemo(() => {
+    const pool = new Set<string>(MATERIAL_PROPERTY_TAGS as readonly string[]);
+    for (const material of materials) {
+      for (const tag of material.craftingProperties?.tags ?? []) {
+        if (tag.trim()) {
+          pool.add(tag.trim());
+        }
+      }
+      for (const tag of material.craftingProperties?.blacksmith?.tags ?? []) {
+        if (tag.trim()) {
+          pool.add(tag.trim());
+        }
+      }
+    }
+    return Array.from(pool).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [materials]);
+
+  const blacksmithTagSuggestions = useMemo(() => {
+    const pool = new Set<string>(KNOWN_BLACKSMITH_TAG_SUGGESTIONS);
+    for (const material of materials) {
+      for (const tag of material.craftingProperties?.blacksmith?.tags ?? []) {
+        if (tag.trim()) {
+          pool.add(tag.trim());
+        }
+      }
+    }
+    return Array.from(pool).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [materials]);
 
   function getMaterialCardAccent(material: Material): string {
     if (!material.isEnabled) {
@@ -418,6 +549,394 @@ export function MaterialsPage() {
             <AdminFieldLabel label="Включён" hint="Если выключить, материал останется в базе, но не будет использоваться активным контентом." />
           </label>
         </div>
+
+        <section className="card" style={{ marginBlock: 14 }}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div>
+              <strong>Крафтовые свойства материала</strong>
+              <p className="muted" style={{ margin: '6px 0 0' }}>
+                Эти поля определяют, как материал ведёт себя в кузнице, алхимии, рунах и экономике.
+              </p>
+            </div>
+            <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Роли" hint="Через запятую: ore, ingot, main_metal, handle, quench_liquid и т.д." />
+                <input
+                  value={(draft.craftingProperties?.roles ?? []).join(', ')}
+                  onChange={(event) => updateCraftingList('roles', event.target.value)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Профессии" hint="Например: blacksmithing, alchemy, runecrafting." />
+                <input
+                  value={(draft.craftingProperties?.professions ?? []).join(', ')}
+                  onChange={(event) => updateCraftingList('professions', event.target.value)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Tier" hint="Уровень материала для логики крафта: common, rare, exotic и т.д." />
+                <input
+                  value={draft.craftingProperties?.tier ?? ''}
+                  onChange={(event) => updateCraftingProperties({ tier: event.target.value })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Rarity Power" hint="Служебная сила редкости для расчётов." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.rarityPower ?? 0}
+                  onChange={(event) => updateCraftingProperties({ rarityPower: Number(event.target.value) || 0 })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Теги крафта" hint="Дополнительные теги материала через запятую." />
+                <input
+                  value={(draft.craftingProperties?.tags ?? []).join(', ')}
+                  onChange={(event) => updateCraftingList('tags', event.target.value)}
+                />
+                <div className="admin-tag-helper-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, marginTop: 8 }}>
+                  <input
+                    list="material-crafting-tag-suggestions"
+                    placeholder="Выберите или введите тег"
+                    value={craftingTagDraft}
+                    onChange={(event) => setCraftingTagDraft(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = appendCsvTag((draft.craftingProperties?.tags ?? []).join(', '), craftingTagDraft);
+                      updateCraftingList('tags', next);
+                      setCraftingTagDraft('');
+                    }}
+                  >
+                    Добавить тег
+                  </button>
+                  <datalist id="material-crafting-tag-suggestions">
+                    {craftingTagSuggestions.map((tag) => <option key={tag} value={tag} />)}
+                  </datalist>
+                </div>
+              </label>
+            </div>
+
+            <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Твёрдость" hint="Физическое свойство материала." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.physical?.hardness ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('physical', 'hardness', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Прочность" hint="Насколько материал долговечен." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.physical?.durability ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('physical', 'durability', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Вес" hint="Базовый вес материала." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.physical?.weight ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('physical', 'weight', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Жаростойкость" hint="Устойчивость к нагреву." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.physical?.heatResistance ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('physical', 'heatResistance', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Огонь" hint="Стихийная сила огня." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.elemental?.firePower ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('elemental', 'firePower', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Вода" hint="Стихийная сила воды." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.elemental?.waterPower ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('elemental', 'waterPower', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Магическая сила" hint="Общая магическая насыщенность." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.magical?.magicPower ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('magical', 'magicPower', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Проводимость маны" hint="Насколько хорошо материал проводит магию." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.magical?.manaConductivity ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('magical', 'manaConductivity', Number(event.target.value) || 0)}
+                />
+              </label>
+            </div>
+
+            <div className="admin-form-grid">
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeMainMaterial === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeMainMaterial', event.target.checked)}
+                />
+                <AdminFieldLabel label="Основной металл" hint="Можно использовать как базовый материал предмета." />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeAlloy === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeAlloy', event.target.checked)}
+                />
+                <AdminFieldLabel label="Сплав" hint="Можно добавлять как компонент сплава." />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeHandle === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeHandle', event.target.checked)}
+                />
+                <AdminFieldLabel label="Рукоять" hint="Подходит для слота рукояти." />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeBinding === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeBinding', event.target.checked)}
+                />
+                <AdminFieldLabel label="Обмотка/крепёж" hint="Подходит для связки или обмотки." />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeQuench === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeQuench', event.target.checked)}
+                />
+                <AdminFieldLabel label="Закалка" hint="Можно использовать как закалочную жидкость." />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.blacksmith?.canBeCatalyst === true}
+                  onChange={(event) => updateCraftingBooleanSection('blacksmith', 'canBeCatalyst', event.target.checked)}
+                />
+                <AdminFieldLabel label="Катализатор" hint="Подходит как экспериментальная добавка." />
+              </label>
+            </div>
+
+            <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Множитель урона" hint="Вклад материала в оружейный результат." />
+                <input
+                  type="number"
+                  step="0.05"
+                  value={draft.craftingProperties?.blacksmith?.damageMultiplier ?? 1}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'damageMultiplier', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Множитель брони" hint="Вклад материала в защитные предметы." />
+                <input
+                  type="number"
+                  step="0.05"
+                  value={draft.craftingProperties?.blacksmith?.armorMultiplier ?? 1}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'armorMultiplier', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Множитель цены" hint="Насколько материал повышает ценность изделия." />
+                <input
+                  type="number"
+                  step="0.05"
+                  value={draft.craftingProperties?.blacksmith?.valueMultiplier ?? 1}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'valueMultiplier', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Множитель веса" hint="Насколько материал утяжеляет или облегчает изделие." />
+                <input
+                  type="number"
+                  step="0.05"
+                  value={draft.craftingProperties?.blacksmith?.weightMultiplier ?? 1}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'weightMultiplier', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Сложность нагрева" hint="Дополнительная сложность работы в горне." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.blacksmith?.heatDifficulty ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'heatDifficulty', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Риск дефекта" hint="Базовый риск дефекта у материала." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.blacksmith?.defectRisk ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'defectRisk', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Бонус качества" hint="Базовый бонус к качеству ковки." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.blacksmith?.qualityBonus ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'qualityBonus', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Потолок качества" hint="Максимальный бонус качества от материала." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.blacksmith?.maxQualityBonus ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('blacksmith', 'maxQualityBonus', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Разрешённые шаблоны" hint="ID шаблонов ковки через запятую." />
+                <input
+                  value={(draft.craftingProperties?.blacksmith?.allowedTemplateIds ?? []).join(', ')}
+                  onChange={(event) => updateCraftingListSection('blacksmith', 'allowedTemplateIds', event.target.value)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Предпочтительные шаблоны" hint="Шаблоны, где материал особенно уместен." />
+                <input
+                  value={(draft.craftingProperties?.blacksmith?.preferredTemplateIds ?? []).join(', ')}
+                  onChange={(event) => updateCraftingListSection('blacksmith', 'preferredTemplateIds', event.target.value)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Кузнечные теги" hint="Дополнительные теги blacksmith-свойств." />
+                <input
+                  value={(draft.craftingProperties?.blacksmith?.tags ?? []).join(', ')}
+                  onChange={(event) => updateCraftingListSection('blacksmith', 'tags', event.target.value)}
+                />
+                <div className="admin-tag-helper-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, marginTop: 8 }}>
+                  <input
+                    list="material-blacksmith-tag-suggestions"
+                    placeholder="Выберите или введите кузнечный тег"
+                    value={blacksmithTagDraft}
+                    onChange={(event) => setBlacksmithTagDraft(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = appendCsvTag((draft.craftingProperties?.blacksmith?.tags ?? []).join(', '), blacksmithTagDraft);
+                      updateCraftingListSection('blacksmith', 'tags', next);
+                      setBlacksmithTagDraft('');
+                    }}
+                  >
+                    Добавить тег
+                  </button>
+                  <datalist id="material-blacksmith-tag-suggestions">
+                    {blacksmithTagSuggestions.map((tag) => <option key={tag} value={tag} />)}
+                  </datalist>
+                </div>
+              </label>
+            </div>
+
+            <div className="admin-form-grid">
+              <label>
+                <AdminFieldLabel label="Рунная сила" hint="Сила взаимодействия с рунами." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.runic?.runePower ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('runic', 'runePower', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Нестабильность" hint="Риск рунной нестабильности." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.runic?.instability ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('runic', 'instability', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Риск порчи" hint="Шанс испортить рунную работу." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.runic?.corruptionRisk ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('runic', 'corruptionRisk', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label className="zone-editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={draft.craftingProperties?.runic?.canBindToItem === true}
+                  onChange={(event) => updateCraftingBooleanSection('runic', 'canBindToItem', event.target.checked)}
+                />
+                <AdminFieldLabel label="Можно связать с предметом" hint="Подходит для рунной привязки." />
+              </label>
+              <label>
+                <AdminFieldLabel label="Base Demand" hint="Базовый спрос на рынке." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.economic?.baseDemand ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('economic', 'baseDemand', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Military Demand" hint="Военный спрос." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.economic?.militaryDemand ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('economic', 'militaryDemand', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Luxury Value" hint="Люксовая ценность." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.economic?.luxuryValue ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('economic', 'luxuryValue', Number(event.target.value) || 0)}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Export Value" hint="Экспортная ценность материала." />
+                <input
+                  type="number"
+                  step="0.1"
+                  value={draft.craftingProperties?.economic?.exportValue ?? 0}
+                  onChange={(event) => updateCraftingNumberSection('economic', 'exportValue', Number(event.target.value) || 0)}
+                />
+              </label>
+            </div>
+          </div>
+        </section>
 
         <ImageSheetPicker
           label="Изображение материала"

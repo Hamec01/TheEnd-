@@ -247,6 +247,74 @@ export interface BlacksmithBalance {
   finishProfiles: Record<string, Record<string, number>>;
 }
 
+export interface BlacksmithTemplateMaterialSlot {
+  id: string;
+  label: string;
+  role: MaterialCraftingRole;
+  required: boolean;
+  quantity: number;
+}
+
+export interface BlacksmithItemTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  itemType: 'weapon' | 'armor';
+  subtype?: string;
+  slot?: ItemSlot;
+  handsRequired?: 1 | 2;
+  baseDamageMin?: number;
+  baseDamageMax?: number;
+  baseArmorValue?: number;
+  damageCategory?: DamageCategory;
+  physicalType?: PhysicalType;
+  attackRange?: number;
+  requiredRoles: BlacksmithTemplateMaterialSlot[];
+  optionalRoles?: BlacksmithTemplateMaterialSlot[];
+  allowedMainMaterialRoles?: MaterialCraftingRole[];
+  allowedMaterialTiers?: string[];
+  baseMaxAugmentSlots?: number;
+  canAddAugmentSlots?: boolean;
+  canHaveRuneComplex?: boolean;
+  requiredBlacksmithLevel?: number;
+  requiredSkillIds?: string[];
+  tags?: string[];
+  imageRef?: GameImageRef;
+  isEnabled: boolean;
+}
+
+export interface BlacksmithItemWorkAction {
+  id: string;
+  name: string;
+  description?: string;
+  actionType:
+    | 'improve_stats'
+    | 'add_socket'
+    | 'temporary_buff'
+    | 'reforge'
+    | 'rebalance'
+    | 'reinforce'
+    | 'dismantle'
+    | 'prepare_for_rune'
+    | 'prepare_for_magic_stone';
+  allowedItemTypes: ItemType[];
+  allowedSubtypes?: string[];
+  requiredBlacksmithLevel?: number;
+  requiredSkillIds?: string[];
+  materialCosts?: CraftingMaterialStack[];
+  itemCosts?: CraftingItemStack[];
+  goldCost?: number;
+  baseDifficulty: number;
+  risk: number;
+  effects?: ItemEffect[];
+  statMultiplierDelta?: number;
+  addSocketRules?: {
+    allowedAugmentTypes?: ItemAugmentType[];
+    source: 'blacksmith_added';
+  };
+  isEnabled: boolean;
+}
+
 export type RecipeVisualMaterialFamily =
   | 'metal'
   | 'wood'
@@ -706,6 +774,151 @@ export type MaterialProperty =
   | MaterialPropertyTag
   | `${MaterialPropertyKeyValuePrefix}:${string}`;
 
+export type MaterialCraftingRole =
+  | 'ore'
+  | 'ingot'
+  | 'main_metal'
+  | 'alloy_component'
+  | 'fuel'
+  | 'flux'
+  | 'wood'
+  | 'handle'
+  | 'leather'
+  | 'cloth'
+  | 'thread'
+  | 'bone'
+  | 'crystal'
+  | 'gem'
+  | 'herb'
+  | 'mushroom'
+  | 'liquid'
+  | 'oil'
+  | 'quench_liquid'
+  | 'poison'
+  | 'medicine'
+  | 'food'
+  | 'spice'
+  | 'rune_dust'
+  | 'rune_fragment'
+  | 'rune_stone'
+  | 'ritual_component'
+  | 'monster_part'
+  | 'demon_part'
+  | 'essence'
+  | 'ash'
+  | 'salt'
+  | 'ink'
+  | 'wax'
+  | 'resin';
+
+export interface MaterialPhysicalProperties {
+  hardness?: number;
+  flexibility?: number;
+  density?: number;
+  weight?: number;
+  sharpnessPotential?: number;
+  durability?: number;
+  corrosionResistance?: number;
+  heatResistance?: number;
+  coldResistance?: number;
+  conductivity?: number;
+  fragility?: number;
+  elasticity?: number;
+}
+
+export interface MaterialElementalProperties {
+  firePower?: number;
+  waterPower?: number;
+  earthPower?: number;
+  airPower?: number;
+  lightPower?: number;
+  darkPower?: number;
+}
+
+export interface MaterialMagicalProperties {
+  magicPower?: number;
+  manaConductivity?: number;
+  spellAmplification?: number;
+  curseAffinity?: number;
+  spiritAffinity?: number;
+  demonAffinity?: number;
+  necroticAffinity?: number;
+  holyAffinity?: number;
+}
+
+export interface MaterialAlchemyProperties {
+  healingPower?: number;
+  poisonPower?: number;
+  stimulantPower?: number;
+  sedativePower?: number;
+  painkillerPower?: number;
+  regenerationPower?: number;
+  visionPower?: number;
+  manaPower?: number;
+  bloodEffect?: number;
+  toxicity?: number;
+  addictionRisk?: number;
+}
+
+export interface MaterialBlacksmithProperties {
+  canBeMainMaterial?: boolean;
+  canBeAlloy?: boolean;
+  canBeHandle?: boolean;
+  canBeBinding?: boolean;
+  canBeQuench?: boolean;
+  canBeCatalyst?: boolean;
+  damageMultiplier?: number;
+  armorMultiplier?: number;
+  valueMultiplier?: number;
+  weightMultiplier?: number;
+  heatDifficulty?: number;
+  defectRisk?: number;
+  qualityBonus?: number;
+  maxQualityBonus?: number;
+  allowedTemplateIds?: string[];
+  preferredTemplateIds?: string[];
+  bonusEffects?: ItemEffect[];
+  tags?: string[];
+}
+
+export interface MaterialRunicProperties {
+  runePower?: number;
+  instability?: number;
+  soulRisk?: number;
+  bloodCost?: number;
+  memoryCost?: number;
+  corruptionRisk?: number;
+  canContainSpirit?: boolean;
+  canContainDemon?: boolean;
+  canBindToItem?: boolean;
+  compatibleRuneIds?: string[];
+  forbiddenRuneIds?: string[];
+}
+
+export interface MaterialEconomicProperties {
+  baseDemand?: number;
+  militaryDemand?: number;
+  foodDemand?: number;
+  luxuryValue?: number;
+  illegalValue?: number;
+  exportValue?: number;
+}
+
+export interface MaterialCraftingProperties {
+  roles?: MaterialCraftingRole[];
+  professions?: string[];
+  tier?: string;
+  rarityPower?: number;
+  tags?: string[];
+  physical?: MaterialPhysicalProperties;
+  elemental?: MaterialElementalProperties;
+  magical?: MaterialMagicalProperties;
+  alchemy?: MaterialAlchemyProperties;
+  blacksmith?: MaterialBlacksmithProperties;
+  runic?: MaterialRunicProperties;
+  economic?: MaterialEconomicProperties;
+}
+
 export interface Material {
   id: string;
   name: string;
@@ -716,6 +929,7 @@ export interface Material {
   averageMarketPrice?: number;
   gameplayDescription: string;
   loreDescription: string;
+  craftingProperties?: MaterialCraftingProperties;
   imagePath?: string;
   imageRef?: GameImageRef;
   isEnabled: boolean;
@@ -1329,6 +1543,8 @@ export interface ContentDatabase {
   blacksmithQualityTiers?: BlacksmithQualityTier[];
   blacksmithVisualPresets?: BlacksmithVisualPreset[];
   blacksmithBalance?: BlacksmithBalance[];
+  blacksmithItemTemplates?: BlacksmithItemTemplate[];
+  blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
   worldMap: WorldMapContent;
 }
 
@@ -1415,7 +1631,9 @@ export type ContentCollectionName =
   | 'blacksmithTools'
   | 'blacksmithQualityTiers'
   | 'blacksmithVisualPresets'
-  | 'blacksmithBalance';
+  | 'blacksmithBalance'
+  | 'blacksmithItemTemplates'
+  | 'blacksmithItemWorkActions';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1444,6 +1662,8 @@ export interface ContentCollectionMap {
   blacksmithQualityTiers: BlacksmithQualityTier;
   blacksmithVisualPresets: BlacksmithVisualPreset;
   blacksmithBalance: BlacksmithBalance;
+  blacksmithItemTemplates: BlacksmithItemTemplate;
+  blacksmithItemWorkActions: BlacksmithItemWorkAction;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';
