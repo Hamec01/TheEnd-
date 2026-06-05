@@ -1,5 +1,6 @@
 import type { BlacksmithModule } from '../../services/content/models';
 import { BlacksmithCrudEditor } from './BlacksmithCrudEditor';
+import { AdminImageField } from '../AdminImageField';
 
 const DEFAULT_DRAFT: BlacksmithModule = {
   id: '',
@@ -28,7 +29,14 @@ export function BlacksmithModuleEditor() {
           <label><span className="muted">Тип модуля</span><input value={draft.moduleType} onChange={(e) => setDraft({ ...draft, moduleType: e.target.value })} /></label>
           <label><span className="muted">Тир</span><input type="number" value={draft.tier} onChange={(e) => setDraft({ ...draft, tier: Number(e.target.value) || 1 })} /></label>
           <label><span className="muted">Мин. уровень</span><input type="number" value={draft.requiredBlacksmithLevel} onChange={(e) => setDraft({ ...draft, requiredBlacksmithLevel: Number(e.target.value) || 1 })} /></label>
-          <label><span className="muted">Image ref</span><input value={draft.imageRef ?? ''} onChange={(e) => setDraft({ ...draft, imageRef: e.target.value })} /></label>
+          <AdminImageField
+            value={draft.imageRef}
+            onChange={(next) => setDraft({ ...draft, imageRef: next })}
+            presetId="item-icon"
+            label="Image ref"
+            suggestedId={`${draft.id || 'module'}`}
+            suggestedName={`${draft.name || 'Module'}`}
+          />
           <label><span className="muted">Описание</span><textarea rows={3} value={draft.description ?? ''} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
           <label><span className="muted">Skill ids (через запятую)</span><input value={draft.requiredSkillIds.join(', ')} onChange={(e) => setDraft({ ...draft, requiredSkillIds: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></label>
           <label><span className="muted">Forge tier ids (через запятую)</span><input value={draft.compatibleForgeTierIds.join(', ')} onChange={(e) => setDraft({ ...draft, compatibleForgeTierIds: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></label>

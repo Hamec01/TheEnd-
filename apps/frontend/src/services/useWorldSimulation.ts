@@ -3,6 +3,8 @@ import type {
   ActiveWorldEntity,
   WorldNpcArchetype,
   WorldRoute,
+  WorldSimConfig,
+  WorldSimImportResult,
   WorldSimulationSnapshot,
   WorldSpawnRule,
 } from '../types/world-simulation.types';
@@ -22,16 +24,15 @@ interface WorldSnapshotStoreState {
 
 async function parseJsonSafe(response: Response): Promise<any> {
   const text = await response.text();
-  if (!text) {
-    return null;
-  }
-
+  if (!text) return null;
   try {
     return JSON.parse(text);
   } catch {
     return null;
   }
 }
+
+// ─── World Snapshot polling store (shared across hooks) ────────────────────
 
 const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 250;
 
@@ -41,11 +42,7 @@ const worldSnapshotStore: {
   intervalId: ReturnType<typeof setInterval> | null;
   inFlight: Promise<void> | null;
 } = {
-  state: {
-    snapshot: null,
-    loading: true,
-    error: null,
-  },
+  state: { snapshot: null, loading: true, error: null },
   listeners: new Set(),
   intervalId: null,
   inFlight: null,
@@ -58,23 +55,14 @@ function emitWorldSnapshotStore() {
 }
 
 async function refreshWorldSnapshotStore() {
-  if (worldSnapshotStore.inFlight) {
-    return worldSnapshotStore.inFlight;
-  }
+  if (worldSnapshotStore.inFlight) return worldSnapshotStore.inFlight;
 
   const request = (async () => {
     try {
       const response = await fetch('/api/world-simulation/snapshot');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
       const data = await response.json();
-      worldSnapshotStore.state = {
-        snapshot: data,
-        loading: false,
-        error: null,
-      };
+      worldSnapshotStore.state = { snapshot: data, loading: false, error: null };
     } catch (err) {
       worldSnapshotStore.state = {
         ...worldSnapshotStore.state,
@@ -92,54 +80,96 @@ async function refreshWorldSnapshotStore() {
 }
 
 function startWorldSnapshotPolling() {
-  if (worldSnapshotStore.intervalId) {
-    return;
-  }
-
+  if (worldSnapshotStore.intervalId) return;
   void refreshWorldSnapshotStore();
-  worldSnapshotStore.intervalId = setInterval(() => {
-    void refreshWorldSnapshotStore();
-  }, WORLD_SNAPSHOT_POLL_INTERVAL_MS);
+  worldSnapshotStore.intervalId = setInterval(() => void refreshWorldSnapshotStore(), WORLD_SNAPSHOT_POLL_INTERVAL_MS);
 }
 
 function stopWorldSnapshotPolling() {
-  if (!worldSnapshotStore.intervalId) {
-    return;
-  }
-
+  if (!worldSnapshotStore.intervalId) return;
   clearInterval(worldSnapshotStore.intervalId);
   worldSnapshotStore.intervalId = null;
 }
 
-/**
- * Хук для получения снимка мира (активные сущности, цены, события).
- */
+// ─── Config API helpers ────────────────────────────────────────────────────
+
+/** Fetch the current persistent World-Sim config from the backend. */
+export async function fetchWorldSimConfig(): Promise<WorldSimConfig> {
+  const res = await fetch('/api/world-simulation/config');
+  if (!res.ok) throw new Error(`fetchWorldSimConfig failed: ${res.statusText}`);
+  return res.json();
+}
+
+/** Replace the persistent World-Sim config on the backend. */
+export async function saveWorldSimConfig(config: WorldSimConfig): Promise<WorldSimImportResult> {
+  const res = await fetch('/api/world-simulation/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data?.message ?? data?.errors?.[0]) ?? 'saveWorldSimConfig failed');
+  return data as WorldSimImportResult;
+}
+
+/** Import (replace or merge) a World-Sim config on the backend. */
+export async function importWorldSimConfig(
+  mode: 'replace' | 'merge',
+  config: WorldSimConfig,
+): Promise<WorldSimImportResult> {
+  const res = await fetch('/api/world-simulation/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, config }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data?.message ?? data?.errors?.[0]) ?? 'importWorldSimConfig failed');
+  return data as WorldSimImportResult;
+}
+
+/** Validate a config against the backend without saving. */
+export async function validateWorldSimConfig(config: WorldSimConfig): Promise<{ ok: boolean; errors: string[] }> {
+  const res = await fetch('/api/world-simulation/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return res.json();
+}
+
+/** Trigger browser download of a World-Sim JSON file. */
+export function downloadWorldSimJson(config: WorldSimConfig): void {
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `theend_world_sim_${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── useWorldSnapshot ─────────────────────────────────────────────────────
+
 export function useWorldSnapshot() {
   const [state, setState] = useState<WorldSnapshotStoreState>(worldSnapshotStore.state);
 
   useEffect(() => {
-    const listener = (nextState: WorldSnapshotStoreState) => {
-      setState(nextState);
-    };
-
+    const listener = (nextState: WorldSnapshotStoreState) => setState(nextState);
     worldSnapshotStore.listeners.add(listener);
     setState(worldSnapshotStore.state);
     startWorldSnapshotPolling();
-
     return () => {
       worldSnapshotStore.listeners.delete(listener);
-      if (worldSnapshotStore.listeners.size === 0) {
-        stopWorldSnapshotPolling();
-      }
+      if (worldSnapshotStore.listeners.size === 0) stopWorldSnapshotPolling();
     };
   }, []);
 
   return state;
 }
 
-/**
- * Хук для получения зон world map (нужно для удобных селектов в админке).
- */
+// ─── useWorldMapZones ─────────────────────────────────────────────────────
+
 export function useWorldMapZones() {
   const [zones, setZones] = useState<WorldMapZoneOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,22 +177,15 @@ export function useWorldMapZones() {
   useEffect(() => {
     fetch('/api/content/world-map')
       .then((r) => r.json())
-      .then((data) => {
-        setZones(Array.isArray(data?.zones) ? data.zones : []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setZones([]);
-        setLoading(false);
-      });
+      .then((data) => { setZones(Array.isArray(data?.zones) ? data.zones : []); setLoading(false); })
+      .catch(() => { setZones([]); setLoading(false); });
   }, []);
 
   return { zones, loading };
 }
 
-/**
- * Хук для управления архетипами.
- */
+// ─── useWorldArchetypes ───────────────────────────────────────────────────
+
 export function useWorldArchetypes() {
   const [archetypes, setArchetypes] = useState<WorldNpcArchetype[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,14 +193,8 @@ export function useWorldArchetypes() {
   useEffect(() => {
     fetch('/api/world-simulation/archetypes')
       .then((r) => parseJsonSafe(r))
-      .then((data) => {
-        setArchetypes(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setArchetypes([]);
-        setLoading(false);
-      });
+      .then((data) => { setArchetypes(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => { setArchetypes([]); setLoading(false); });
   }, []);
 
   const create = async (archetype: WorldNpcArchetype) => {
@@ -187,7 +204,7 @@ export function useWorldArchetypes() {
       body: JSON.stringify(archetype),
     });
     const data = await res.json();
-    setArchetypes([...archetypes, data as WorldNpcArchetype]);
+    setArchetypes((current) => [...current, data as WorldNpcArchetype]);
     return data;
   };
 
@@ -198,14 +215,12 @@ export function useWorldArchetypes() {
       body: JSON.stringify(updates),
     });
     const data = await res.json();
-    setArchetypes(archetypes.map((a) => (a.id === id ? data as WorldNpcArchetype : a)));
+    setArchetypes((current) => current.map((a) => (a.id === id ? (data as WorldNpcArchetype) : a)));
     return data;
   };
 
   const remove = async (id: string) => {
-    const res = await fetch(`/api/world-simulation/archetypes/${id}`, {
-      method: 'DELETE',
-    });
+    const res = await fetch(`/api/world-simulation/archetypes/${id}`, { method: 'DELETE' });
     const data = await parseJsonSafe(res);
     setArchetypes((current) => current.filter((a) => a.id !== id));
     return (data ?? { success: res.ok, removedActiveEntities: 0, updatedRoutes: 0, updatedSpawnRules: 0 }) as {
@@ -216,12 +231,14 @@ export function useWorldArchetypes() {
     };
   };
 
-  return { archetypes, loading, create, update, remove };
+  /** Replace local archetypes list (e.g. after import). */
+  const reload = (next: WorldNpcArchetype[]) => setArchetypes(next);
+
+  return { archetypes, loading, create, update, remove, reload };
 }
 
-/**
- * Хук для управления маршрутами.
- */
+// ─── useWorldRoutes ───────────────────────────────────────────────────────
+
 export function useWorldRoutes() {
   const [routes, setRoutes] = useState<WorldRoute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -229,14 +246,8 @@ export function useWorldRoutes() {
   useEffect(() => {
     fetch('/api/world-simulation/routes')
       .then((r) => parseJsonSafe(r))
-      .then((data) => {
-        setRoutes(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setRoutes([]);
-        setLoading(false);
-      });
+      .then((data) => { setRoutes(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => { setRoutes([]); setLoading(false); });
   }, []);
 
   const create = async (route: WorldRoute) => {
@@ -246,7 +257,7 @@ export function useWorldRoutes() {
       body: JSON.stringify(route),
     });
     const data = await res.json();
-    setRoutes([...routes, data as WorldRoute]);
+    setRoutes((current) => [...current, data as WorldRoute]);
     return data;
   };
 
@@ -257,16 +268,27 @@ export function useWorldRoutes() {
       body: JSON.stringify(updates),
     });
     const data = await res.json();
-    setRoutes(routes.map((r) => (r.id === id ? data as WorldRoute : r)));
+    setRoutes((current) => current.map((r) => (r.id === id ? (data as WorldRoute) : r)));
     return data;
   };
 
-  return { routes, loading, create, update };
+  const remove = async (id: string) => {
+    const res = await fetch(`/api/world-simulation/routes/${id}`, { method: 'DELETE' });
+    const data = await parseJsonSafe(res);
+    setRoutes((current) => current.filter((r) => r.id !== id));
+    return (data ?? { success: res.ok, removedActiveEntities: 0 }) as {
+      success: boolean;
+      removedActiveEntities: number;
+    };
+  };
+
+  const reload = (next: WorldRoute[]) => setRoutes(next);
+
+  return { routes, loading, create, update, remove, reload };
 }
 
-/**
- * Хук для управления правилами спавна.
- */
+// ─── useWorldSpawnRules ───────────────────────────────────────────────────
+
 export function useWorldSpawnRules() {
   const [rules, setRules] = useState<WorldSpawnRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -274,14 +296,8 @@ export function useWorldSpawnRules() {
   useEffect(() => {
     fetch('/api/world-simulation/spawn-rules')
       .then((r) => parseJsonSafe(r))
-      .then((data) => {
-        setRules(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setRules([]);
-        setLoading(false);
-      });
+      .then((data) => { setRules(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => { setRules([]); setLoading(false); });
   }, []);
 
   const create = async (rule: WorldSpawnRule) => {
@@ -291,7 +307,7 @@ export function useWorldSpawnRules() {
       body: JSON.stringify(rule),
     });
     const data = await res.json();
-    setRules([...rules, data as WorldSpawnRule]);
+    setRules((current) => [...current, data as WorldSpawnRule]);
     return data;
   };
 
@@ -302,16 +318,24 @@ export function useWorldSpawnRules() {
       body: JSON.stringify(updates),
     });
     const data = await res.json();
-    setRules(rules.map((r) => (r.id === id ? data as WorldSpawnRule : r)));
+    setRules((current) => current.map((r) => (r.id === id ? (data as WorldSpawnRule) : r)));
     return data;
   };
 
-  return { rules, loading, create, update };
+  const remove = async (id: string) => {
+    const res = await fetch(`/api/world-simulation/spawn-rules/${id}`, { method: 'DELETE' });
+    const data = await parseJsonSafe(res);
+    setRules((current) => current.filter((r) => r.id !== id));
+    return (data ?? { success: res.ok }) as { success: boolean };
+  };
+
+  const reload = (next: WorldSpawnRule[]) => setRules(next);
+
+  return { rules, loading, create, update, remove, reload };
 }
 
-/**
- * Хук для управления активными сущностями (GM commands).
- */
+// ─── useActiveWorldEntities ───────────────────────────────────────────────
+
 export function useActiveWorldEntities() {
   const [entities, setEntities] = useState<ActiveWorldEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -325,16 +349,13 @@ export function useActiveWorldEntities() {
   };
 
   useEffect(() => {
-    refresh();
-
-    const interval = setInterval(refresh, 1000);
+    void refresh();
+    const interval = setInterval(() => void refresh(), 1000);
     return () => clearInterval(interval);
   }, []);
 
   const killEntity = async (id: string) => {
-    await fetch(`/api/world-simulation/active-entities/${id}/kill`, {
-      method: 'POST',
-    });
+    await fetch(`/api/world-simulation/active-entities/${id}/kill`, { method: 'POST' });
     await refresh();
   };
 

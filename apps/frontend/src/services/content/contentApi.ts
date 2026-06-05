@@ -391,6 +391,14 @@ export async function uploadContentAudioAsset(payload: { id?: string; name?: str
   return entry;
 }
 
+export async function writeStaticAudioFile(payload: { targetPath: string; dataUrl: string; mimeType?: string }): Promise<{ publicUrl: string; mimeType: string }> {
+  await ensureContentBackendReady();
+  return requestJson<{ publicUrl: string; mimeType: string }>('/content/assets/audio/static', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });
+}
+
 export async function updateContentEntry<T>(collection: ContentCollectionName, id: string, payload: Partial<T>): Promise<T> {
   await ensureContentBackendReady();
   const entry = await requestJson<T>(`/content/${collection}/${encodeURIComponent(id)}`, {

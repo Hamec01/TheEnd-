@@ -123,8 +123,9 @@ export function ImageSheetPicker({
       const normalizedValue = imageSrc.trim();
       const fallbackId = String(uploadSuggestedId ?? '').trim();
       let replaceId = '';
+      const SYSTEM_PLACEHOLDER_IDS = new Set(['unknown', 'default', 'none', 'placeholder']);
 
-      if (normalizedValue && !isDirectImageSource(normalizedValue)) {
+      if (normalizedValue && !SYSTEM_PLACEHOLDER_IDS.has(normalizedValue) && !isDirectImageSource(normalizedValue)) {
         replaceId = normalizedValue;
       } else if (fallbackId) {
         const existing = await imageService.get(fallbackId);

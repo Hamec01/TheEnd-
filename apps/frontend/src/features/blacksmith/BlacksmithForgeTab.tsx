@@ -287,6 +287,7 @@ export function BlacksmithForgeTab({
   onComplete,
 }: BlacksmithForgeTabProps) {
   const [lastAction, setLastAction] = useState<BlacksmithActionId | null>(null);
+  const [isShaking, setIsShaking] = useState(false);
   const bonuses = useMemo(
     () => resolveBonuses(forgeTiers, modules, tools, skillBonuses),
     [forgeTiers, modules, tools, skillBonuses],
@@ -302,6 +303,18 @@ export function BlacksmithForgeTab({
     () => (customForgePlan && customForgeTemplate ? calculateCustomForgeDifficulty(customForgePlan, materials, customForgeTemplate) : null),
     [customForgePlan, customForgeTemplate, materials],
   );
+
+  const heatGlowStyle = useMemo(() => {
+    if (!session) {
+      return {};
+    }
+    const intensity = Math.max(0, Math.min(1, (session.heat - 35) / 55));
+    return {
+      '--heat-intensity': intensity,
+      boxShadow: `0 0 ${15 + intensity * 25}px rgba(255, ${60 + (1 - intensity) * 80}, 0, ${0.15 + intensity * 0.55})`,
+      borderColor: `rgba(255, ${160 + (1 - intensity) * 80}, 100, ${0.34 + intensity * 0.46})`,
+    } as React.CSSProperties;
+  }, [session?.heat]);
 
   const sceneBackgroundSrc = resolveImageRef('/art/blacksmith/scene/forge_background.png');
   const furnaceSrc = resolveImageRef('/art/blacksmith/scene/furnace_ui.png');
@@ -641,6 +654,10 @@ export function BlacksmithForgeTab({
     };
     playBlacksmithUiSound(soundByAction[action]);
     setLastAction(action);
+    if (action.includes('strike')) {
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 400);
+    }
     const next = applyBlacksmithAction(session, action, bonuses).state;
     onSessionChange(next);
   }
@@ -754,13 +771,13 @@ export function BlacksmithForgeTab({
       {session ? (
         <div className="blacksmith-forge-scene-wrap">
           <div
-            className={`blacksmith-forge-scene ${qualityToneClass}`}
+            className={`blacksmith-forge-scene ${qualityToneClass} ${isShaking ? 'is-shaking' : ''}`}
             style={{ backgroundImage: sceneBackgroundSrc ? `url(${sceneBackgroundSrc})` : undefined }}
           >
             {forgeGlowSrc ? <img className="forge-overlay forge-overlay--glow" src={forgeGlowSrc} alt="" aria-hidden="true" /> : null}
             {embersSrc ? <img className="forge-overlay forge-overlay--embers" src={embersSrc} alt="" aria-hidden="true" /> : null}
             {sparksSrc ? <img className={`forge-overlay forge-overlay--sparks ${highlightedStation.sparks ? 'is-active' : ''}`} src={sparksSrc} alt="" aria-hidden="true" /> : null}
-            {smokeSrc ? <img className="forge-overlay forge-overlay--smoke" src={smokeSrc} alt="" aria-hidden="true" /> : null}
+            {smokeSrc ? <img className={`forge-overlay forge-overlay--smoke ${highlightedStation.quench ? 'is-active' : ''}`} src={smokeSrc} alt="" aria-hidden="true" /> : null}
 
             {furnaceSrc ? <img className={`forge-station forge-station--furnace ${highlightedStation.furnace ? 'is-active' : ''}`} src={furnaceSrc} alt="Горн" /> : null}
             {anvilSrc ? <img className={`forge-station forge-station--anvil ${highlightedStation.anvil ? 'is-active' : ''}`} src={anvilSrc} alt="Наковальня" /> : null}
@@ -768,7 +785,7 @@ export function BlacksmithForgeTab({
             {quenchVatSrc ? <img className={`forge-station forge-station--quench ${highlightedStation.quench ? 'is-active' : ''}`} src={quenchVatSrc} alt="Ванна закалки" /> : null}
 
             {directCentralObject?.imageRef ? (
-              <div className="forge-central-object forge-central-object--image" title="Текущая заготовка">
+              <div className="forge-central-object forge-central-object--image" style={heatGlowStyle} title="Текущая заготовка">
                 <GameImageView
                   imageRef={directCentralObject.imageRef}
                   legacyImagePath={directCentralObject.legacyImagePath}
@@ -779,14 +796,25 @@ export function BlacksmithForgeTab({
                   className="forge-central-object-image"
                   fallbackText="?"
                 />
+                <div 
+                  className="forge-heat-glow-overlay" 
+                  style={{ opacity: session ? Math.max(0, Math.min(0.75, (session.heat - 35) / 55)) : 0 }} 
+                />
                 {defectOverlaySource ? <img className="forge-central-overlay" src={defectOverlaySource} alt="" aria-hidden="true" /> : null}
               </div>
             ) : (
               <div
                 className="forge-central-object forge-central-object--sheet"
-                style={frameStyle(OBJECT_SHEET_SRC, objectFrame, OBJECT_FRAME_SIZE, OBJECT_SHEET_COLUMNS, 144)}
+                style={{
+                  ...frameStyle(OBJECT_SHEET_SRC, objectFrame, OBJECT_FRAME_SIZE, OBJECT_SHEET_COLUMNS, 144),
+                  ...heatGlowStyle,
+                }}
                 title="Текущая заготовка"
               >
+                <div 
+                  className="forge-heat-glow-overlay" 
+                  style={{ opacity: session ? Math.max(0, Math.min(0.75, (session.heat - 35) / 55)) : 0 }} 
+                />
                 {defectOverlaySource ? <img className="forge-central-overlay" src={defectOverlaySource} alt="" aria-hidden="true" /> : null}
               </div>
             )}
@@ -825,18 +853,215 @@ export function BlacksmithForgeTab({
           </div>
 
           <div className="blacksmith-action-grid">
-            <button type="button" onClick={() => runAction('prepare_blank')}>Подготовка</button>
-            <button type="button" onClick={() => runAction('add_heat')}>Поддать жару</button>
-            <button type="button" onClick={() => runAction('stabilize_heat')}>Стабилизировать жар</button>
-            <button type="button" onClick={() => runAction('light_strike')}>Лёгкий удар</button>
-            <button type="button" onClick={() => runAction('medium_strike')}>Средний удар</button>
-            <button type="button" onClick={() => runAction('heavy_strike')}>Тяжёлый удар</button>
-            <button type="button" onClick={() => runAction('quench_water')}>Закалка (вода)</button>
-            <button type="button" onClick={() => runAction('quench_oil')}>Закалка (масло)</button>
-            <button type="button" onClick={() => runAction('finish_polish')}>Финишная обработка</button>
-            <button type="button" onClick={() => completeSession(session)}>Забрать результат сейчас</button>
-            <button type="button" onClick={() => onSessionChange(null)}>Сброс</button>
+            {/* ── Подготовка ── */}
+            <button type="button" className="forge-btn forge-btn--prep" onClick={() => runAction('prepare_blank')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="13" width="14" height="4" rx="1.5" fill="currentColor" opacity="0.7"/>
+                  <rect x="7" y="4" width="6" height="9" rx="1" fill="currentColor"/>
+                  <path d="M5 7h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Подготовка</span>
+            </button>
+
+            {/* ── Жар ── */}
+            <button type="button" className="forge-btn forge-btn--heat" onClick={() => runAction('add_heat')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 3C10 3 6 7 6 11a4 4 0 008 0C14 7 10 3 10 3z" fill="currentColor"/>
+                  <path d="M10 10c0 0-2 2-2 3.5a2 2 0 004 0C12 12 10 10 10 10z" fill="white" opacity="0.45"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Поддать жару</span>
+            </button>
+
+            <button type="button" className="forge-btn forge-btn--heat" onClick={() => runAction('stabilize_heat')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 13c1-4 3-5 6-5s5 1 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+                  <circle cx="10" cy="8" r="2.5" fill="currentColor" opacity="0.6"/>
+                  <path d="M8 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Стабилизировать жар</span>
+            </button>
+
+            {/* ── Удары ── */}
+            <button type="button" className="forge-btn forge-btn--strike forge-btn--strike-light" onClick={() => runAction('light_strike')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="12" width="12" height="4" rx="2" fill="currentColor" opacity="0.5"/>
+                  <path d="M10 3v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M7 7l3-4 3 4" fill="currentColor"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Лёгкий удар</span>
+            </button>
+
+            <button type="button" className="forge-btn forge-btn--strike forge-btn--strike-medium" onClick={() => runAction('medium_strike')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="12" width="12" height="4" rx="2" fill="currentColor" opacity="0.6"/>
+                  <path d="M10 2v10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                  <path d="M6.5 6.5l3.5-4.5 3.5 4.5" fill="currentColor"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Средний удар</span>
+            </button>
+
+            <button type="button" className="forge-btn forge-btn--strike forge-btn--strike-heavy" onClick={() => runAction('heavy_strike')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="12" width="14" height="5" rx="2" fill="currentColor" opacity="0.7"/>
+                  <path d="M10 1v11" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M5.5 6l4.5-5 4.5 5" fill="currentColor"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Тяжёлый удар</span>
+            </button>
+
+            {/* ── Закалка ── */}
+            <button type="button" className="forge-btn forge-btn--quench forge-btn--quench-water" onClick={() => runAction('quench_water')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 3C10 3 5 9 5 13a5 5 0 0010 0C15 9 10 3 10 3z" fill="currentColor" opacity="0.75"/>
+                  <path d="M8 13.5C8 13.5 9 15 10 13.5" stroke="white" strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Закалка (вода)</span>
+            </button>
+
+            <button type="button" className="forge-btn forge-btn--quench forge-btn--quench-oil" onClick={() => runAction('quench_oil')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <ellipse cx="10" cy="14" rx="6" ry="3" fill="currentColor" opacity="0.55"/>
+                  <path d="M10 4c0 0-3 4-3 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M10 4c0 0 3 4 3 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <ellipse cx="10" cy="11" rx="3" ry="1.5" fill="currentColor" opacity="0.4"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Закалка (масло)</span>
+            </button>
+
+            {/* ── Финиш ── */}
+            <button type="button" className="forge-btn forge-btn--finish" onClick={() => runAction('finish_polish')}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 16l3-3 9-9-3-3-9 9 3 3z" fill="currentColor" opacity="0.8"/>
+                  <circle cx="15" cy="6" r="1.5" fill="white" opacity="0.7"/>
+                  <path d="M13 14l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Финишная обработка</span>
+            </button>
+
+            {/* ── Забрать / Сброс ── */}
+            <button type="button" className="forge-btn forge-btn--take" onClick={() => completeSession(session)}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 17h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M10 3v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  <path d="M6 9l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Забрать результат</span>
+            </button>
+
+            <button type="button" className="forge-btn forge-btn--reset" onClick={() => onSessionChange(null)}>
+              <span className="forge-btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 10a6 6 0 1012 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  <path d="M4 6v4h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+              <span className="forge-btn-label">Сброс</span>
+            </button>
           </div>
+        </div>
+      ) : null}
+
+      {/* ── Итог ковки ── показывается сразу после завершения */}
+      {session && session.stage === 'completed' ? (
+        <div className={`forge-result-card ${qualityToneClass}`}>
+          <div className="forge-result-left">
+            {directCentralObject?.imageRef ? (
+              <div className="forge-result-image-wrap">
+                <GameImageView
+                  imageRef={directCentralObject.imageRef}
+                  legacyImagePath={directCentralObject.legacyImagePath}
+                  runtimeImages={runtimeImages}
+                  alt="Результат ковки"
+                  size={80}
+                  fit="contain"
+                  className="forge-result-image"
+                  fallbackText="?"
+                />
+                <div className="forge-result-image-glow" />
+              </div>
+            ) : (
+              <div
+                className="forge-result-image-wrap forge-result-image-sheet"
+                style={frameStyle(OBJECT_SHEET_SRC, objectFrame, OBJECT_FRAME_SIZE, OBJECT_SHEET_COLUMNS, 80)}
+              />
+            )}
+          </div>
+
+          <div className="forge-result-info">
+            <div className="forge-result-title">
+              {mode === 'recipe' && selectedRecipe ? selectedRecipe.name
+                : mode === 'custom_forge' && customForgeTemplate ? customForgeTemplate.name
+                : mode === 'item_work' && itemWorkItem ? itemWorkItem.name
+                : 'Предмет'}
+            </div>
+            <div className={`forge-result-quality ${qualityToneClass}`}>
+              {currentQualityTier?.name ?? 'Неизвестное качество'}
+            </div>
+            <div className="forge-result-score">Итог: {currentScore} баллов</div>
+
+            {/* Список использованных материалов */}
+            {mode === 'recipe' && selectedRecipe ? (
+              <div className="forge-result-materials">
+                {(selectedRecipe.inputMaterials ?? []).map((entry) => (
+                  <span key={`rmat-${entry.materialId}`} className="forge-result-mat-chip">
+                    {materialsById.get(entry.materialId)?.name ?? entry.materialId} ×{entry.quantity}
+                  </span>
+                ))}
+                {(selectedRecipe.inputItems ?? []).map((entry) => (
+                  <span key={`ritem-${entry.itemId}`} className="forge-result-mat-chip">
+                    {itemsById.get(entry.itemId)?.name ?? entry.itemId} ×{entry.quantity}
+                  </span>
+                ))}
+              </div>
+            ) : mode === 'custom_forge' && customForgePlan ? (
+              <div className="forge-result-materials">
+                {customForgePlan.selectedMaterials.map((entry) => (
+                  <span key={`cfmat-${entry.slotId}:${entry.materialId}`} className="forge-result-mat-chip">
+                    {materialsById.get(entry.materialId)?.name ?? entry.materialId} ×{entry.quantity}
+                  </span>
+                ))}
+              </div>
+            ) : mode === 'item_work' && itemWorkAction ? (
+              <div className="forge-result-materials">
+                {(itemWorkAction.materialCosts ?? []).map((entry) => (
+                  <span key={`iwmat-${entry.materialId}`} className="forge-result-mat-chip">
+                    {materialsById.get(entry.materialId)?.name ?? entry.materialId} ×{entry.quantity}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <button type="button" className="forge-btn forge-btn--take forge-result-take-btn" onClick={() => completeSession(session)}>
+            <span className="forge-btn-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 17h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M10 3v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M6 9l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            <span className="forge-btn-label">Забрать</span>
+          </button>
         </div>
       ) : null}
 
@@ -887,6 +1112,16 @@ export function BlacksmithForgeTab({
           background-size: cover;
           background-position: center;
           border: 1px solid rgba(164, 141, 110, 0.28);
+          transition: border-color 0.25s ease;
+        }
+        .blacksmith-forge-scene.is-shaking {
+          animation: scene-shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes scene-shake {
+          10%, 90% { transform: translate3d(-1px, -1px, 0); }
+          20%, 80% { transform: translate3d(2px, 1px, 0); }
+          30%, 50%, 70% { transform: translate3d(-4px, -2px, 0); }
+          40%, 60% { transform: translate3d(4px, 2px, 0); }
         }
         .forge-overlay {
           position: absolute;
@@ -897,7 +1132,16 @@ export function BlacksmithForgeTab({
         .forge-overlay--embers { left: 42%; bottom: 8%; width: 200px; opacity: 0.62; }
         .forge-overlay--sparks { right: 22%; top: 24%; width: 200px; opacity: 0.12; transition: opacity 140ms ease, transform 140ms ease; }
         .forge-overlay--sparks.is-active { opacity: 0.72; transform: scale(1.06); animation: forge-spark-pulse 0.32s ease-in-out infinite alternate; }
-        .forge-overlay--smoke { right: 30%; top: 3%; width: 210px; opacity: 0.34; }
+        .forge-overlay--smoke { right: 30%; top: 3%; width: 210px; opacity: 0.34; transition: opacity 300ms ease, transform 300ms ease; }
+        .forge-overlay--smoke.is-active {
+          opacity: 0.85;
+          animation: steam-rise 1.5s ease-out infinite;
+        }
+        @keyframes steam-rise {
+          0% { transform: translateY(0) scale(1) rotate(0deg); opacity: 0.85; }
+          50% { transform: translateY(-15px) scale(1.15) rotate(5deg); opacity: 0.55; }
+          100% { transform: translateY(-30px) scale(1.3) rotate(10deg); opacity: 0; }
+        }
         .forge-station {
           position: absolute;
           object-fit: contain;
@@ -910,10 +1154,54 @@ export function BlacksmithForgeTab({
           transform: scale(1.04);
           filter: drop-shadow(0 0 18px rgba(255, 173, 84, 0.42)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
         }
-        .forge-station--furnace { width: 170px; left: 6%; top: 18%; }
+        .forge-station--furnace { width: 170px; left: 6%; top: 31%; }
+        .forge-station--furnace.is-active {
+          animation: furnace-burn 1.5s ease-in-out infinite alternate;
+        }
+        @keyframes furnace-burn {
+          0% {
+            filter: drop-shadow(0 0 10px rgba(255, 69, 0, 0.65)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: scale(1.02);
+          }
+          50% {
+            filter: drop-shadow(0 0 18px rgba(255, 140, 0, 0.88)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: scale(1.05) rotate(0.5deg);
+          }
+          100% {
+            filter: drop-shadow(0 0 12px rgba(255, 69, 0, 0.72)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: scale(1.03) rotate(-0.5deg);
+          }
+        }
         .forge-station--anvil { width: 160px; right: 8%; top: 36%; }
         .forge-station--bellows { width: 120px; left: 18%; bottom: 16%; }
+        .forge-station--bellows.is-active {
+          animation: bellows-pump 0.8s ease-in-out infinite;
+          transform-origin: bottom center;
+        }
+        @keyframes bellows-pump {
+          0% { transform: scale(1.04, 1.04); }
+          30% { transform: scale(1.12, 0.85); }
+          60% { transform: scale(0.95, 1.08); }
+          100% { transform: scale(1.04, 1.04); }
+        }
         .forge-station--quench { width: 120px; right: 22%; bottom: 9%; }
+        .forge-station--quench.is-active {
+          animation: quench-bubble 1s ease-in-out infinite alternate;
+        }
+        @keyframes quench-bubble {
+          0% {
+            filter: drop-shadow(0 0 8px rgba(0, 191, 255, 0.5)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: translateY(0) scale(1.02);
+          }
+          50% {
+            filter: drop-shadow(0 0 16px rgba(30, 144, 255, 0.8)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: translateY(-2px) scale(1.04);
+          }
+          100% {
+            filter: drop-shadow(0 0 10px rgba(0, 191, 255, 0.6)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.62));
+            transform: translateY(0) scale(1.03);
+          }
+        }
         .forge-central-object {
           position: absolute;
           width: 144px;
@@ -929,6 +1217,26 @@ export function BlacksmithForgeTab({
           display: flex;
           align-items: center;
           justify-content: center;
+          animation: object-float 3s ease-in-out infinite;
+        }
+        @keyframes object-float {
+          0% { transform: translate(-50%, -50%) translateY(0px); }
+          50% { transform: translate(-50%, -50%) translateY(-6px); }
+          100% { transform: translate(-50%, -50%) translateY(0px); }
+        }
+        .forge-heat-glow-overlay {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle, rgba(255, 69, 0, 0.6) 0%, rgba(255, 0, 0, 0.2) 70%, transparent 100%);
+          mix-blend-mode: color-dodge;
+          pointer-events: none;
+          transition: opacity 200ms ease;
+          z-index: 1;
+          animation: heat-pulse 2s ease-in-out infinite alternate;
+        }
+        @keyframes heat-pulse {
+          0% { transform: scale(1); filter: brightness(1); }
+          100% { transform: scale(1.05); filter: brightness(1.2); }
         }
         .forge-central-object--sheet {
           background-size: 1344px auto;
@@ -952,15 +1260,35 @@ export function BlacksmithForgeTab({
           opacity: 0.64;
           mix-blend-mode: screen;
           filter: drop-shadow(0 0 10px rgba(255, 140, 65, 0.18));
+          z-index: 2;
         }
         .blacksmith-forge-hud {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 8px;
         }
+        .profession-overview-item {
+          border: 1px solid rgba(164, 141, 110, 0.22);
+          border-radius: 8px;
+          background: rgba(25, 20, 16, 0.82);
+          padding: 0.55rem;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .profession-overview-item span {
+          font-size: 0.74rem;
+          color: #bca98a;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .profession-overview-item strong {
+          font-size: 1rem;
+          color: #fff3dd;
+        }
         .blacksmith-action-panel {
           display: grid;
-          gap: 8px;
+          gap: 10px;
         }
         .blacksmith-tool-strip {
           display: flex;
@@ -985,8 +1313,244 @@ export function BlacksmithForgeTab({
         .blacksmith-action-grid {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          gap: 7px;
         }
+        /* ── Forge action buttons ── */
+        .forge-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 13px 6px 9px;
+          border-radius: 8px;
+          border: 1px solid rgba(164, 141, 110, 0.28);
+          background: rgba(28, 22, 16, 0.88);
+          color: #ddc9a3;
+          font-size: 0.78rem;
+          font-weight: 600;
+          letter-spacing: 0.03em;
+          cursor: pointer;
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .forge-btn::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: rgba(255,255,255,0);
+          transition: background 0.12s ease;
+          pointer-events: none;
+        }
+        .forge-btn:hover::after { background: rgba(255,255,255,0.04); }
+        .forge-btn:active { transform: scale(0.96); }
+        .forge-btn-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          flex-shrink: 0;
+          opacity: 0.9;
+        }
+        .forge-btn-icon svg {
+          width: 100%;
+          height: 100%;
+        }
+        .forge-btn-label {
+          white-space: nowrap;
+        }
+        /* Prep */
+        .forge-btn--prep {
+          border-color: rgba(180, 155, 110, 0.4);
+          background: rgba(38, 30, 18, 0.9);
+          color: #e2c98a;
+        }
+        .forge-btn--prep:hover {
+          background: rgba(55, 42, 24, 0.95);
+          border-color: rgba(210, 175, 120, 0.55);
+          box-shadow: 0 0 8px rgba(210, 175, 80, 0.18);
+        }
+        /* Heat */
+        .forge-btn--heat {
+          border-color: rgba(220, 80, 20, 0.45);
+          background: rgba(45, 18, 8, 0.9);
+          color: #f0956a;
+        }
+        .forge-btn--heat:hover {
+          background: rgba(65, 25, 10, 0.95);
+          border-color: rgba(255, 110, 40, 0.65);
+          box-shadow: 0 0 10px rgba(255, 100, 30, 0.25);
+        }
+        /* Strike light */
+        .forge-btn--strike {
+          border-color: rgba(140, 140, 160, 0.4);
+          background: rgba(22, 22, 30, 0.9);
+          color: #c8c8de;
+        }
+        .forge-btn--strike:hover {
+          border-color: rgba(180, 180, 210, 0.6);
+          box-shadow: 0 0 10px rgba(160, 160, 200, 0.2);
+        }
+        .forge-btn--strike-light { color: #aab5d0; }
+        .forge-btn--strike-medium { color: #c0c8e8; border-color: rgba(160, 160, 200, 0.45); }
+        .forge-btn--strike-heavy {
+          color: #e0e4ff;
+          border-color: rgba(180, 180, 255, 0.5);
+          background: rgba(20, 20, 40, 0.92);
+        }
+        .forge-btn--strike-heavy:hover {
+          border-color: rgba(200, 200, 255, 0.7);
+          box-shadow: 0 0 14px rgba(160, 160, 255, 0.28);
+        }
+        /* Quench */
+        .forge-btn--quench {
+          border-color: rgba(40, 100, 180, 0.45);
+          background: rgba(10, 20, 40, 0.92);
+          color: #80b4e8;
+        }
+        .forge-btn--quench:hover {
+          border-color: rgba(60, 140, 220, 0.65);
+          box-shadow: 0 0 12px rgba(40, 120, 200, 0.25);
+        }
+        .forge-btn--quench-oil {
+          color: #c8a060;
+          border-color: rgba(160, 110, 30, 0.45);
+          background: rgba(30, 20, 8, 0.92);
+        }
+        .forge-btn--quench-oil:hover {
+          border-color: rgba(200, 140, 50, 0.65);
+          box-shadow: 0 0 12px rgba(180, 120, 30, 0.25);
+        }
+        /* Finish */
+        .forge-btn--finish {
+          border-color: rgba(120, 200, 120, 0.4);
+          background: rgba(14, 28, 14, 0.92);
+          color: #88dd88;
+        }
+        .forge-btn--finish:hover {
+          border-color: rgba(140, 220, 140, 0.6);
+          box-shadow: 0 0 12px rgba(100, 200, 100, 0.22);
+        }
+        /* Take */
+        .forge-btn--take {
+          border-color: rgba(210, 168, 54, 0.55);
+          background: linear-gradient(135deg, rgba(60, 44, 12, 0.95) 0%, rgba(38, 30, 10, 0.95) 100%);
+          color: #f0d060;
+          font-weight: 700;
+        }
+        .forge-btn--take:hover {
+          border-color: rgba(240, 195, 70, 0.75);
+          box-shadow: 0 0 16px rgba(220, 170, 40, 0.32);
+        }
+        /* Reset */
+        .forge-btn--reset {
+          border-color: rgba(160, 60, 60, 0.38);
+          background: rgba(30, 12, 12, 0.88);
+          color: #d08080;
+        }
+        .forge-btn--reset:hover {
+          border-color: rgba(200, 80, 80, 0.58);
+          box-shadow: 0 0 10px rgba(180, 60, 60, 0.2);
+        }
+        /* ── Result card ── */
+        .forge-result-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(210, 165, 60, 0.45);
+          background: linear-gradient(135deg, rgba(30, 22, 10, 0.96) 0%, rgba(18, 14, 8, 0.98) 100%);
+          box-shadow: 0 0 22px rgba(200, 155, 40, 0.18), inset 0 0 0 1px rgba(255, 220, 100, 0.06);
+          animation: result-appear 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes result-appear {
+          from { opacity: 0; transform: translateY(10px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .forge-result-left { flex-shrink: 0; }
+        .forge-result-image-wrap {
+          position: relative;
+          width: 80px;
+          height: 80px;
+          border-radius: 10px;
+          border: 1px solid rgba(210, 165, 60, 0.35);
+          background: rgba(18, 14, 8, 0.9);
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .forge-result-image-sheet {
+          background-size: 320px auto;
+          image-rendering: crisp-edges;
+        }
+        .forge-result-image {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+        .forge-result-image-glow {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle, rgba(255, 200, 60, 0.18) 0%, transparent 70%);
+          pointer-events: none;
+          animation: result-glow-pulse 2s ease-in-out infinite alternate;
+        }
+        @keyframes result-glow-pulse {
+          from { opacity: 0.6; }
+          to   { opacity: 1; }
+        }
+        .forge-result-info { flex: 1; min-width: 0; }
+        .forge-result-title {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #f5e4be;
+          margin-bottom: 3px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .forge-result-quality {
+          font-size: 0.82rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-bottom: 5px;
+        }
+        .quality-legendary .forge-result-quality { color: #f0c844; text-shadow: 0 0 8px rgba(240, 200, 60, 0.5); }
+        .quality-masterwork .forge-result-quality { color: #c090f0; }
+        .quality-excellent .forge-result-quality { color: #60a8d0; }
+        .quality-good .forge-result-quality { color: #70c870; }
+        .quality-normal .forge-result-quality { color: #a8a08a; }
+        .quality-crude .forge-result-quality { color: #887860; }
+        .quality-broken .forge-result-quality { color: #c05050; }
+        .forge-result-score {
+          font-size: 0.72rem;
+          color: #9a8870;
+          margin-bottom: 8px;
+        }
+        .forge-result-materials {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .forge-result-mat-chip {
+          font-size: 0.7rem;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(210, 165, 60, 0.3);
+          background: rgba(40, 30, 10, 0.8);
+          color: #c8a860;
+          white-space: nowrap;
+        }
+        .forge-result-take-btn {
+          flex-shrink: 0;
+          flex-direction: column;
+          gap: 4px;
+          padding: 10px 14px;
+        }
+        .forge-result-take-btn .forge-btn-icon { width: 28px; height: 28px; }
         .quality-broken { border-color: rgba(123, 59, 59, 0.8); box-shadow: inset 0 0 0 1px rgba(123, 59, 59, 0.45); }
         .quality-crude { border-color: rgba(130, 110, 86, 0.8); box-shadow: inset 0 0 0 1px rgba(130, 110, 86, 0.35); }
         .quality-normal { border-color: rgba(132, 124, 111, 0.7); box-shadow: inset 0 0 0 1px rgba(132, 124, 111, 0.28); }

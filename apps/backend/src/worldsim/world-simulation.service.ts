@@ -7,6 +7,7 @@ import type {
   EconomicEvent,
   WorldNpcArchetype,
   WorldRoute,
+  WorldSimConfig,
   WorldSpawnRule,
   WorldSimulationSnapshot,
 } from './types/world-simulation.types';
@@ -767,7 +768,7 @@ export class WorldSimulationService {
       }
     }
 
-    // Загрузить в память (только если не уже загружены через API)
+    // Шаг 1: загрузить дефолты в память
     for (const a of defaultArchetypes) {
       if (!this.archetypes.has(a.id)) this.archetypes.set(a.id, a);
     }
@@ -776,6 +777,22 @@ export class WorldSimulationService {
     }
     for (const s of defaultSpawnRules) {
       if (!this.spawnRules.has(s.id)) this.spawnRules.set(s.id, s);
+    }
+
+    // Шаг 2: загрузить сохранённый конфиг из ContentService (перекрывает дефолты)
+    try {
+      const persistedConfig = this.contentService.getWorldSimConfig();
+      for (const a of persistedConfig.npcArchetypes) {
+        if (a.id) this.archetypes.set(a.id, this.normalizeArchetype(a));
+      }
+      for (const r of persistedConfig.routes) {
+        if (r.id) this.routes.set(r.id, this.sanitizeRouteForBanditPolicy(r));
+      }
+      for (const s of persistedConfig.spawnRules) {
+        if (s.id) this.spawnRules.set(s.id, s);
+      }
+    } catch (err) {
+      this.logger.warn(`Could not load persisted worldSim config: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // Enforce policy: bandits do not use city stop metadata and camp on the road.
@@ -1185,14 +1202,111 @@ export class WorldSimulationService {
    * === АДМИН-ОПЕРАЦИИ (для админки) ===
    */
 
-  // Управление архетипами
-  createArchetype(archetype: WorldNpcArchetype): WorldNpcArchetype {
+  // ─── Persistence ─────────────────────────────────────────────────────────
+
+  private buildCurrentConfig(): WorldSimConfig {
+    return {
+      version: 1,
+      updatedAt: this.simulationTime.toISOString(),
+      npcArchetypes: Array.from(this.archetypes.values()),
+      routes: Array.from(this.routes.values()),
+      spawnRules: Array.from(this.spawnRules.values()),
+    };
+  }
+
+  private async persistWorldSimConfig(): Promise<void> {
+    try {
+      await this.contentService.updateWorldSimConfig(this.buildCurrentConfig());
+    } catch (err) {
+      this.logger.error(`Failed to persist worldSim config: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // ─── Validation ──────────────────────────────────────────────────────────
+
+  validateWorldSimConfig(config: WorldSimConfig): string[] {
+    const errors: string[] = [];
+    const archetypeIds = new Set<string>();
+    const routeIds = new Set<string>();
+    const spawnRuleIds = new Set<string>();
+
+    for (const a of config.npcArchetypes ?? []) {
+      if (!a || !a.id) { errors.push('NPC archetype entry missing id'); continue; }
+      if (archetypeIds.has(a.id)) { errors.push(`Duplicate npcArchetype id: ${a.id}`); continue; }
+      archetypeIds.add(a.id);
+    }
+
+    for (const r of config.routes ?? []) {
+      if (!r || !r.id) { errors.push('Route entry missing id'); continue; }
+      if (routeIds.has(r.id)) { errors.push(`Duplicate route id: ${r.id}`); continue; }
+      routeIds.add(r.id);
+      if (!Array.isArray(r.waypoints) || r.waypoints.length === 0) {
+        errors.push(`Route '${r.id}' has no waypoints`);
+      }
+      for (const archetypeId of r.allowedArchetypes ?? []) {
+        if (!archetypeIds.has(archetypeId)) {
+          errors.push(`Route '${r.id}' references unknown archetype '${archetypeId}'`);
+        }
+      }
+    }
+
+    for (const s of config.spawnRules ?? []) {
+      if (!s || !s.id) { errors.push('SpawnRule entry missing id'); continue; }
+      if (spawnRuleIds.has(s.id)) { errors.push(`Duplicate spawnRule id: ${s.id}`); continue; }
+      spawnRuleIds.add(s.id);
+      if (s.minGroupSize < 1) errors.push(`SpawnRule '${s.id}' minGroupSize must be >= 1`);
+      if (s.maxGroupSize < s.minGroupSize) errors.push(`SpawnRule '${s.id}' maxGroupSize must be >= minGroupSize`);
+      if (s.spawnWeight < 0 || s.spawnWeight > 1) errors.push(`SpawnRule '${s.id}' spawnWeight must be 0..1`);
+      for (const archetypeId of s.archetypeIds ?? []) {
+        if (!archetypeIds.has(archetypeId)) {
+          errors.push(`SpawnRule '${s.id}' references unknown archetype '${archetypeId}'`);
+        }
+      }
+    }
+
+    return errors;
+  }
+
+  // ─── Config import/export ─────────────────────────────────────────────────
+
+  getConfig(): WorldSimConfig {
+    return this.buildCurrentConfig();
+  }
+
+  async importConfig(mode: 'replace' | 'merge', incoming: WorldSimConfig): Promise<{ ok: boolean; errors: string[]; config: WorldSimConfig }> {
+    const errors = this.validateWorldSimConfig(incoming);
+    if (errors.length > 0) {
+      return { ok: false, errors, config: this.buildCurrentConfig() };
+    }
+
+    if (mode === 'replace') {
+      this.archetypes.clear();
+      this.routes.clear();
+      this.spawnRules.clear();
+      for (const a of incoming.npcArchetypes) this.archetypes.set(a.id, this.normalizeArchetype(a));
+      for (const r of incoming.routes) this.routes.set(r.id, this.sanitizeRouteForBanditPolicy(r));
+      for (const s of incoming.spawnRules) this.spawnRules.set(s.id, s);
+    } else {
+      // merge: new wins over existing by id
+      for (const a of incoming.npcArchetypes) this.archetypes.set(a.id, this.normalizeArchetype(a));
+      for (const r of incoming.routes) this.routes.set(r.id, this.sanitizeRouteForBanditPolicy(r));
+      for (const s of incoming.spawnRules) this.spawnRules.set(s.id, s);
+    }
+
+    await this.persistWorldSimConfig();
+    return { ok: true, errors: [], config: this.buildCurrentConfig() };
+  }
+
+  // ─── Архетипы ─────────────────────────────────────────────────────────────
+
+  async createArchetype(archetype: WorldNpcArchetype): Promise<WorldNpcArchetype> {
     const normalized = this.normalizeArchetype(archetype);
     this.archetypes.set(normalized.id, normalized);
+    await this.persistWorldSimConfig();
     return normalized;
   }
 
-  updateArchetype(archetypeId: string, updates: Partial<WorldNpcArchetype>): WorldNpcArchetype | null {
+  async updateArchetype(archetypeId: string, updates: Partial<WorldNpcArchetype>): Promise<WorldNpcArchetype | null> {
     const archetype = this.archetypes.get(archetypeId);
     if (!archetype) {
       return null;
@@ -1203,6 +1317,7 @@ export class WorldSimulationService {
       updatedAt: this.simulationTime.toISOString(),
     });
     this.archetypes.set(archetypeId, updated);
+    await this.persistWorldSimConfig();
     return updated;
   }
 
@@ -1214,38 +1329,28 @@ export class WorldSimulationService {
     return Array.from(this.archetypes.values());
   }
 
-  deleteArchetype(archetypeId: string): {
+  async deleteArchetype(archetypeId: string): Promise<{
     success: boolean;
     removedActiveEntities: number;
     updatedRoutes: number;
     updatedSpawnRules: number;
-  } {
+  }> {
     if (!this.archetypes.has(archetypeId)) {
-      return {
-        success: false,
-        removedActiveEntities: 0,
-        updatedRoutes: 0,
-        updatedSpawnRules: 0,
-      };
+      return { success: false, removedActiveEntities: 0, updatedRoutes: 0, updatedSpawnRules: 0 };
     }
 
     this.archetypes.delete(archetypeId);
 
     let removedActiveEntities = 0;
     for (const [entityId, entity] of this.activeEntities.entries()) {
-      if (entity.archetypeId !== archetypeId) {
-        continue;
-      }
+      if (entity.archetypeId !== archetypeId) continue;
       this.activeEntities.delete(entityId);
       removedActiveEntities += 1;
     }
 
     let updatedRoutes = 0;
     for (const [routeId, route] of this.routes.entries()) {
-      if (!route.allowedArchetypes.includes(archetypeId)) {
-        continue;
-      }
-
+      if (!route.allowedArchetypes.includes(archetypeId)) continue;
       const allowedArchetypes = route.allowedArchetypes.filter((id) => id !== archetypeId);
       this.routes.set(routeId, {
         ...route,
@@ -1258,10 +1363,7 @@ export class WorldSimulationService {
 
     let updatedSpawnRules = 0;
     for (const [ruleId, rule] of this.spawnRules.entries()) {
-      if (!rule.archetypeIds.includes(archetypeId)) {
-        continue;
-      }
-
+      if (!rule.archetypeIds.includes(archetypeId)) continue;
       const archetypeIds = rule.archetypeIds.filter((id) => id !== archetypeId);
       this.spawnRules.set(ruleId, {
         ...rule,
@@ -1272,33 +1374,47 @@ export class WorldSimulationService {
       updatedSpawnRules += 1;
     }
 
-    return {
-      success: true,
-      removedActiveEntities,
-      updatedRoutes,
-      updatedSpawnRules,
-    };
+    await this.persistWorldSimConfig();
+    return { success: true, removedActiveEntities, updatedRoutes, updatedSpawnRules };
   }
 
-  // Управление маршрутами
-  createRoute(route: WorldRoute): WorldRoute {
+  // ─── Маршруты ─────────────────────────────────────────────────────────────
+
+  async createRoute(route: WorldRoute): Promise<WorldRoute> {
     const normalized = this.sanitizeRouteForBanditPolicy(route);
     this.routes.set(normalized.id, normalized);
+    await this.persistWorldSimConfig();
     return normalized;
   }
 
-  updateRoute(routeId: string, updates: Partial<WorldRoute>): WorldRoute | null {
+  async updateRoute(routeId: string, updates: Partial<WorldRoute>): Promise<WorldRoute | null> {
     const route = this.routes.get(routeId);
-    if (!route) {
-      return null;
-    }
+    if (!route) return null;
     const updated = this.sanitizeRouteForBanditPolicy({
       ...route,
       ...updates,
       updatedAt: this.simulationTime.toISOString(),
     });
     this.routes.set(routeId, updated);
+    await this.persistWorldSimConfig();
     return updated;
+  }
+
+  async deleteRoute(routeId: string): Promise<{ success: boolean; removedActiveEntities: number }> {
+    if (!this.routes.has(routeId)) {
+      return { success: false, removedActiveEntities: 0 };
+    }
+    this.routes.delete(routeId);
+
+    let removedActiveEntities = 0;
+    for (const [entityId, entity] of this.activeEntities.entries()) {
+      if (entity.routeId !== routeId) continue;
+      this.activeEntities.delete(entityId);
+      removedActiveEntities += 1;
+    }
+
+    await this.persistWorldSimConfig();
+    return { success: true, removedActiveEntities };
   }
 
   getRoute(routeId: string): WorldRoute | null {
@@ -1309,20 +1425,28 @@ export class WorldSimulationService {
     return Array.from(this.routes.values());
   }
 
-  // Управление правилами спавна
-  createSpawnRule(rule: WorldSpawnRule): WorldSpawnRule {
+  // ─── Правила спавна ───────────────────────────────────────────────────────
+
+  async createSpawnRule(rule: WorldSpawnRule): Promise<WorldSpawnRule> {
     this.spawnRules.set(rule.id, rule);
+    await this.persistWorldSimConfig();
     return rule;
   }
 
-  updateSpawnRule(ruleId: string, updates: Partial<WorldSpawnRule>): WorldSpawnRule | null {
+  async updateSpawnRule(ruleId: string, updates: Partial<WorldSpawnRule>): Promise<WorldSpawnRule | null> {
     const rule = this.spawnRules.get(ruleId);
-    if (!rule) {
-      return null;
-    }
+    if (!rule) return null;
     const updated = { ...rule, ...updates, updatedAt: this.simulationTime.toISOString() };
     this.spawnRules.set(ruleId, updated);
+    await this.persistWorldSimConfig();
     return updated;
+  }
+
+  async deleteSpawnRule(ruleId: string): Promise<{ success: boolean }> {
+    if (!this.spawnRules.has(ruleId)) return { success: false };
+    this.spawnRules.delete(ruleId);
+    await this.persistWorldSimConfig();
+    return { success: true };
   }
 
   getSpawnRule(ruleId: string): WorldSpawnRule | null {
@@ -1333,16 +1457,15 @@ export class WorldSimulationService {
     return Array.from(this.spawnRules.values());
   }
 
-  // Управление активными сущностями (GM commands)
+  // ─── GM commands ─────────────────────────────────────────────────────────
+
   listActiveEntities(): ActiveWorldEntity[] {
     return Array.from(this.activeEntities.values());
   }
 
   killEntity(entityId: string): boolean {
     const entity = this.activeEntities.get(entityId);
-    if (!entity) {
-      return false;
-    }
+    if (!entity) return false;
     entity.state = 'dead';
     entity.frozenUntil = new Date(this.simulationTime.getTime() + 24 * 3600 * 1000).toISOString();
     return true;
@@ -1350,9 +1473,7 @@ export class WorldSimulationService {
 
   teleportEntity(entityId: string, zoneId: string, coordinates: { x: number; y: number }): boolean {
     const entity = this.activeEntities.get(entityId);
-    if (!entity) {
-      return false;
-    }
+    if (!entity) return false;
     entity.visibility.anchorZoneId = zoneId;
     entity.visibility.anchorCoordinates = coordinates;
     entity.routePolyline = undefined;
@@ -1362,9 +1483,7 @@ export class WorldSimulationService {
 
   freezeEntity(entityId: string, durationHours: number): boolean {
     const entity = this.activeEntities.get(entityId);
-    if (!entity) {
-      return false;
-    }
+    if (!entity) return false;
     entity.state = 'frozen';
     entity.frozenUntil = new Date(this.simulationTime.getTime() + durationHours * 3600 * 1000).toISOString();
     return true;

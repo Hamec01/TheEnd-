@@ -168,3 +168,22 @@ export interface WorldSimulationSnapshot {
   cityMarkets: CityMarketState[];
   events: EconomicEvent[];
 }
+
+/**
+ * Persistent World-Sim configuration stored in ContentDatabase.
+ * Only editor data — activeEntities are runtime and not persisted.
+ */
+export interface WorldSimConfig {
+  version: 1;
+  updatedAt?: string;
+  npcArchetypes: WorldNpcArchetype[];
+  routes: WorldRoute[];
+  spawnRules: WorldSpawnRule[];
+}
+
+/** Result from import/validate config endpoints */
+export interface WorldSimImportResult {
+  ok: boolean;
+  errors: string[];
+  config: WorldSimConfig;
+}

@@ -274,6 +274,14 @@ export class ContentController {
     return this.contentService.uploadAudioAsset(payload);
   }
 
+  @Post('assets/audio/static')
+  async writeStaticAudio(
+    @Body() payload: { targetPath: string; dataUrl: string; mimeType?: string },
+  ): Promise<{ publicUrl: string; mimeType: string }> {
+    await this.contentService.ensureInitialized();
+    return this.contentService.writeStaticAudio(payload);
+  }
+
   @Get('assets/audio/:id/raw')
   async getAudioRaw(@Param('id') id: string, @Res() response: Response): Promise<void> {
     await this.contentService.ensureInitialized();

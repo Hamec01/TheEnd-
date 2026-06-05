@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   useWorldArchetypes,
   useWorldRoutes,
@@ -6,7 +6,12 @@ import {
   useActiveWorldEntities,
   useWorldMapZones,
   useWorldSnapshot,
+  fetchWorldSimConfig,
+  importWorldSimConfig,
+  validateWorldSimConfig,
+  downloadWorldSimJson,
 } from '../../services/useWorldSimulation';
+import type { WorldSimConfig } from '../../types/world-simulation.types';
 import { getContentSnapshot } from '../../services/content/contentApi';
 import { imageService } from '../../services/content/imageService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
@@ -23,7 +28,7 @@ import './WorldSimulationAdmin.css';
  * Вкладки: Архетипы, Маршруты, Правила спавна, Монитор активных сущностей.
  */
 export function WorldSimulationAdmin() {
-  const [activeTab, setActiveTab] = useState<'archetypes' | 'routes' | 'rules' | 'monitor'>('archetypes');
+  const [activeTab, setActiveTab] = useState<'archetypes' | 'routes' | 'rules' | 'monitor' | 'importExport'>('archetypes');
 
   return (
     <div className="world-simulation-admin">
@@ -45,6 +50,9 @@ export function WorldSimulationAdmin() {
         <button className={activeTab === 'monitor' ? 'active' : ''} onClick={() => setActiveTab('monitor')}>
           Монитор
         </button>
+        <button className={activeTab === 'importExport' ? 'active' : ''} onClick={() => setActiveTab('importExport')}>
+          Import / Export JSON
+        </button>
       </div>
 
       <LiveWorldRuntimeTuningPanel />
@@ -53,6 +61,7 @@ export function WorldSimulationAdmin() {
       {activeTab === 'routes' && <RoutesTab />}
       {activeTab === 'rules' && <SpawnRulesTab />}
       {activeTab === 'monitor' && <MonitorTab />}
+      {activeTab === 'importExport' && <ImportExportTab />}
     </div>
   );
 }
@@ -592,7 +601,7 @@ function ArchetypesTab() {
  * Вкладка Маршруты.
  */
 function RoutesTab() {
-  const { routes, create, update } = useWorldRoutes();
+  const { routes, create, update, remove } = useWorldRoutes();
   const { archetypes } = useWorldArchetypes();
   const { zones } = useWorldMapZones();
   const [editing, setEditing] = useState<string | null>(null);
@@ -879,6 +888,16 @@ function RoutesTab() {
               >
                 ✏️ Редактировать
               </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`Удалить маршрут ${route.name}?\nАктивные сущности на этом маршруте будут удалены.`)) {
+                    void remove(route.id);
+                  }
+                }}
+              >
+                🗑 Удалить
+              </button>
             </div>
             <div className="item-details">
               <small>Узлов: {route.waypoints.length}</small>
@@ -896,7 +915,7 @@ function RoutesTab() {
  * Вкладка Правила спавна.
  */
 function SpawnRulesTab() {
-  const { rules, create, update } = useWorldSpawnRules();
+  const { rules, create, update, remove } = useWorldSpawnRules();
   const { archetypes } = useWorldArchetypes();
   const [editing, setEditing] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
@@ -1179,6 +1198,16 @@ function SpawnRulesTab() {
               >
                 ✏️ Редактировать
               </button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  if (window.confirm(`Удалить правило спавна ${rule.name}?`)) {
+                    void remove(rule.id);
+                  }
+                }}
+              >
+                🗑 Удалить
+              </button>
             </div>
             <div className="item-details">
               <small>Архетипов: {rule.archetypeIds.length}</small>
@@ -1252,6 +1281,233 @@ function MonitorTab() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Import / Export Tab ─────────────────────────────────────────────────────
+
+function ImportExportTab() {
+  const { archetypes, reload: reloadArchetypes } = useWorldArchetypes();
+  const { routes, reload: reloadRoutes } = useWorldRoutes();
+  const { rules, reload: reloadRules } = useWorldSpawnRules();
+
+  const [config, setConfig] = useState<WorldSimConfig | null>(null);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [status, setStatus] = useState<string>('');
+  const [isApplying, setIsApplying] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadConfig = async () => {
+    setLoadingConfig(true);
+    setStatus('');
+    try {
+      const cfg = await fetchWorldSimConfig();
+      setConfig(cfg);
+    } catch (err) {
+      setStatus(`Ошибка загрузки конфига: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadConfig();
+  }, []);
+
+  const configJson = config ? JSON.stringify(config, null, 2) : '';
+
+  const handleExport = () => {
+    if (!config) return;
+    downloadWorldSimJson(config);
+  };
+
+  const handleCopy = async () => {
+    if (!configJson) return;
+    try {
+      await navigator.clipboard.writeText(configJson);
+      setStatus('JSON скопирован в буфер обмена.');
+    } catch {
+      setStatus('Не удалось скопировать. Попробуйте вручную.');
+    }
+  };
+
+  const handleFileLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportText(String(ev.target?.result ?? ''));
+      setValidationErrors([]);
+      setStatus('Файл загружен. Нажми Валидировать или Применить импорт.');
+    };
+    reader.readAsText(file);
+    e.currentTarget.value = '';
+  };
+
+  const parseImportText = (): WorldSimConfig | null => {
+    try {
+      return JSON.parse(importText) as WorldSimConfig;
+    } catch {
+      setValidationErrors(['Невалидный JSON: не удалось распарсить.']);
+      return null;
+    }
+  };
+
+  const handleValidate = async () => {
+    const parsed = parseImportText();
+    if (!parsed) return;
+    setStatus('Валидация...');
+    try {
+      const result = await validateWorldSimConfig(parsed);
+      setValidationErrors(result.errors);
+      setStatus(result.ok ? '✅ Конфиг валиден.' : `❌ Ошибки валидации: ${result.errors.length}`);
+    } catch (err) {
+      setStatus(`Ошибка валидации: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleApplyImport = async () => {
+    const parsed = parseImportText();
+    if (!parsed) return;
+    setIsApplying(true);
+    setValidationErrors([]);
+    setStatus('Применение импорта...');
+    try {
+      const result = await importWorldSimConfig(importMode, parsed);
+      setConfig(result.config);
+      // Reload individual hooks so other tabs reflect the new data
+      reloadArchetypes(result.config.npcArchetypes);
+      reloadRoutes(result.config.routes);
+      reloadRules(result.config.spawnRules);
+      setStatus(`✅ Импорт применён (${importMode}). Архетипов: ${result.config.npcArchetypes.length}, маршрутов: ${result.config.routes.length}, правил: ${result.config.spawnRules.length}.`);
+      setImportText('');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatus(`❌ Ошибка импорта: ${msg}`);
+      try {
+        const parsed2 = JSON.parse(msg);
+        if (Array.isArray(parsed2?.errors)) setValidationErrors(parsed2.errors);
+      } catch { /* not JSON */ }
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  return (
+    <div className="admin-tab-content">
+      <h3>Import / Export — World Simulation JSON</h3>
+
+      {/* ── Export ─────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 16 }}>
+        <h4>Экспорт текущего конфига</h4>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleExport}
+            disabled={!config}
+          >
+            ⬇ Скачать JSON
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleCopy}
+            disabled={!config}
+          >
+            📋 Копировать JSON
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={loadConfig}
+            disabled={loadingConfig}
+          >
+            🔄 Обновить
+          </button>
+        </div>
+        {config && (
+          <p className="muted" style={{ marginTop: 6 }}>
+            Архетипов: {config.npcArchetypes.length} · Маршрутов: {config.routes.length} · Правил: {config.spawnRules.length} · Обновлён: {config.updatedAt ?? '—'}
+          </p>
+        )}
+      </div>
+
+      {/* ── Import ─────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 16 }}>
+        <h4>Импорт конфига</h4>
+
+        <label style={{ display: 'block', marginBottom: 8 }}>
+          Режим импорта:
+          <select
+            value={importMode}
+            onChange={(e) => setImportMode(e.target.value as 'replace' | 'merge')}
+            style={{ marginLeft: 8 }}
+          >
+            <option value="replace">replace — полная замена</option>
+            <option value="merge">merge — слияние по ID</option>
+          </select>
+        </label>
+
+        <label style={{ display: 'block', marginBottom: 8 }}>
+          Загрузить .json файл:
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFileLoad}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+
+        <label style={{ display: 'block', marginBottom: 8 }}>
+          Или вставить JSON:
+          <textarea
+            rows={10}
+            style={{ display: 'block', width: '100%', marginTop: 4, fontFamily: 'monospace', fontSize: 12 }}
+            placeholder='{"version":1,"npcArchetypes":[...],"routes":[...],"spawnRules":[...]}'
+            value={importText}
+            onChange={(e) => { setImportText(e.target.value); setValidationErrors([]); }}
+          />
+        </label>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <button className="btn btn-secondary" onClick={handleValidate} disabled={!importText}>
+            🔍 Валидировать JSON
+          </button>
+          <button
+            className="btn btn-success"
+            onClick={handleApplyImport}
+            disabled={!importText || isApplying}
+          >
+            {isApplying ? 'Применяется...' : '✅ Применить импорт'}
+          </button>
+          <button
+            className="btn btn-cancel"
+            onClick={() => { setImportText(''); setValidationErrors([]); setStatus(''); }}
+            disabled={!importText}
+          >
+            ✗ Очистить
+          </button>
+        </div>
+      </div>
+
+      {/* ── Status & errors ────────────────────────────────────── */}
+      {status && (
+        <p style={{ marginTop: 8, fontWeight: 'bold', color: status.startsWith('❌') ? '#a00' : status.startsWith('✅') ? '#080' : undefined }}>
+          {status}
+        </p>
+      )}
+
+      {validationErrors.length > 0 && (
+        <div style={{ marginTop: 8, padding: 12, background: '#fff3f3', border: '1px solid #f00', borderRadius: 4 }}>
+          <strong>Ошибки валидации ({validationErrors.length}):</strong>
+          <ul style={{ margin: '6px 0 0 0', paddingLeft: 20 }}>
+            {validationErrors.map((e, i) => <li key={i} style={{ color: '#a00', fontSize: 13 }}>{e}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

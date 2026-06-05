@@ -1,5 +1,6 @@
 import type { BlacksmithQualityTier } from '../../services/content/models';
 import { BlacksmithCrudEditor } from './BlacksmithCrudEditor';
+import { AdminImageField } from '../AdminImageField';
 
 const DEFAULT_DRAFT: BlacksmithQualityTier = {
   id: '',
@@ -28,7 +29,14 @@ export function BlacksmithQualityEditor() {
           <label><span className="muted">Price multiplier</span><input type="number" step="0.01" value={draft.priceMultiplier} onChange={(e) => setDraft({ ...draft, priceMultiplier: Number(e.target.value) || 0 })} /></label>
           <label><span className="muted">XP multiplier</span><input type="number" step="0.01" value={draft.xpMultiplier} onChange={(e) => setDraft({ ...draft, xpMultiplier: Number(e.target.value) || 0 })} /></label>
           <label><span className="muted">Stat multiplier</span><input type="number" step="0.01" value={draft.statMultiplier} onChange={(e) => setDraft({ ...draft, statMultiplier: Number(e.target.value) || 0 })} /></label>
-          <label><span className="muted">Frame image ref</span><input value={draft.frameImageRef ?? ''} onChange={(e) => setDraft({ ...draft, frameImageRef: e.target.value })} /></label>
+          <AdminImageField
+            value={draft.frameImageRef}
+            onChange={(next) => setDraft({ ...draft, frameImageRef: next })}
+            presetId="item-icon"
+            label="Frame image ref"
+            suggestedId={`${draft.id || 'quality'}_frame`}
+            suggestedName={`${draft.name || 'Quality'} Frame`}
+          />
           <label><input type="checkbox" checked={draft.isFailureTier} onChange={(e) => setDraft({ ...draft, isFailureTier: e.target.checked })} /> Failure tier</label>
         </>
       )}

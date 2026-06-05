@@ -1,4 +1,5 @@
 import type { ActorBattleVisualConfig, AdminSkillDefinition, BattleMapDefinition, PrimaryStat, VisualFxDefinition } from '@theend/rpg-domain';
+import type { WorldSimConfig } from '../worldsim/types/world-simulation.types';
 
 export type StatKey = PrimaryStat;
 
@@ -1546,6 +1547,7 @@ export interface ContentDatabase {
   blacksmithItemTemplates?: BlacksmithItemTemplate[];
   blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
   worldMap: WorldMapContent;
+  worldSim?: WorldSimConfig;
 }
 
 export type ContentImportMode = 'replace' | 'merge' | 'dryRun' | 'add_missing_only';

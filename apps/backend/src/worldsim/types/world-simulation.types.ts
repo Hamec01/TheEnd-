@@ -211,6 +211,19 @@ export interface EconomicEvent {
 }
 
 /**
+ * Конфигурация World-Sim, которая сохраняется в ContentDatabase.
+ * Содержит только редакторские данные (архетипы, маршруты, правила спавна).
+ * activeEntities — рантайм, не сохраняется.
+ */
+export interface WorldSimConfig {
+  version: 1;
+  updatedAt?: string;
+  npcArchetypes: WorldNpcArchetype[];
+  routes: WorldRoute[];
+  spawnRules: WorldSpawnRule[];
+}
+
+/**
  * Снимок мира для отправки на фронтенд (игроку).
  */
 export interface WorldSimulationSnapshot {

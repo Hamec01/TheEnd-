@@ -1,6 +1,73 @@
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { extname, isAbsolute, join, resolve } from 'path';
+import { dirname, extname, isAbsolute, join, resolve } from 'path';
+
+// ── Static public file writer ─────────────────────────────────────────────
+// Resolves the frontend `public/` directory and writes the file there so
+// the Vite dev server (and production build) can serve it at a known URL.
+
+function resolveFrontendPublicDir(): string {
+  const configured = String(process.env.FRONTEND_PUBLIC_DIR ?? '').trim();
+  if (configured) {
+    return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
+  }
+  const workspaceRoot = resolveWorkspaceRoot();
+  // Try common monorepo layouts: apps/frontend/public
+  const candidates = [
+    join(workspaceRoot, 'apps', 'frontend', 'public'),
+    join(workspaceRoot, 'frontend', 'public'),
+    join(workspaceRoot, 'public'),
+  ];
+  return candidates.find(existsSync) ?? join(workspaceRoot, 'apps', 'frontend', 'public');
+}
+
+export interface StaticAudioWriteInput {
+  /** Relative path inside public/, e.g. "audio/blacksmith/sfx/buttons/button_heat.ogg" */
+  targetRelativePath: string;
+  dataUrl: string;
+  mimeType?: string;
+}
+
+/**
+ * Writes an audio file to an exact path inside the frontend public/ folder.
+ * The file will be accessible at `/<targetRelativePath>` by the game client.
+ */
+export function writeStaticAudioFile(input: StaticAudioWriteInput): { publicUrl: string; mimeType: string } {
+  const dataUrl = input.dataUrl.trim();
+  const match = /^data:(audio\/[a-z0-9.+-]+);base64,(.+)$/i.exec(dataUrl);
+  if (!match) {
+    throw new Error('Expected audio data URL for static write.');
+  }
+
+  const mimeType = input.mimeType?.trim() || match[1] || 'audio/ogg';
+  const bytes = Buffer.from(match[2] ?? '', 'base64');
+
+  // Sanitize path — block directory traversal
+  const safePath = input.targetRelativePath
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((part) => part.length > 0 && part !== '..' && part !== '.')
+    .join('/');
+
+  if (!safePath) {
+    throw new Error('targetRelativePath is empty or invalid.');
+  }
+
+  const publicDir = resolveFrontendPublicDir();
+  const absolutePath = join(publicDir, safePath);
+  const absoluteDir = dirname(absolutePath);
+
+  if (!existsSync(absoluteDir)) {
+    mkdirSync(absoluteDir, { recursive: true });
+  }
+
+  writeFileSync(absolutePath, bytes);
+
+  return {
+    publicUrl: `/${safePath}`,
+    mimeType,
+  };
+}
 
 const DEFAULT_PUBLIC_PREFIX = '/assets/upload';
 

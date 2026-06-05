@@ -22,7 +22,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
-import { isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStoredAudioAsset, writeStoredImageAsset } from './content-assets';
+import { isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStaticAudioFile, writeStoredAudioAsset, writeStoredImageAsset } from './content-assets';
 import type {
   AdminItem,
   AdminMerchant,
@@ -67,6 +67,12 @@ import type {
   WorldMapContent,
   WorldMapZone,
 } from './content.types';
+import type {
+  WorldNpcArchetype,
+  WorldRoute,
+  WorldSimConfig,
+  WorldSpawnRule,
+} from '../worldsim/types/world-simulation.types';
 import { aggregateArenaCombatEquipmentModifiers } from './arena-combat-modifiers';
 import { applyPassiveStatBonusesToStatBlock, resolveCharacterEquipmentModifiers } from './item-effects.resolver';
 
@@ -686,10 +692,10 @@ function seedBlacksmithVisualPresets(): BlacksmithVisualPreset[] {
       backgroundImageRef: 'unknown',
       anvilImageRef: 'unknown',
       furnaceImageRef: 'unknown',
-      hammerImageRefs: ['unknown'],
-      defectOverlayRefs: ['unknown'],
-      blankImageRefs: ['unknown'],
-      qualityFrameRefs: ['unknown'],
+      hammerImageRefs: [],
+      defectOverlayRefs: [],
+      blankImageRefs: [],
+      qualityFrameRefs: [],
     },
   ];
 }
@@ -3056,6 +3062,108 @@ function resolveStorageMode(): ContentStorageMode {
   return getContentStorageMode();
 }
 
+// ─── WorldSim config normalization ───────────────────────────────────────────
+
+function normalizeWorldNpcArchetype(raw: unknown): WorldNpcArchetype {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    id: String(r.id ?? '').trim(),
+    name: String(r.name ?? '').trim() || String(r.id ?? '').trim(),
+    kind: (r.kind as WorldNpcArchetype['kind']) ?? 'merchant',
+    npcTemplateId: r.npcTemplateId ? String(r.npcTemplateId).trim() : undefined,
+    merchantId: r.merchantId ? String(r.merchantId).trim() : undefined,
+    sourceType: (r.sourceType as WorldNpcArchetype['sourceType']) ?? undefined,
+    sourceId: r.sourceId ? String(r.sourceId).trim() : undefined,
+    economyProfile: r.economyProfile && typeof r.economyProfile === 'object' ? (r.economyProfile as WorldNpcArchetype['economyProfile']) : undefined,
+    escorts: r.escorts && typeof r.escorts === 'object' ? (r.escorts as WorldNpcArchetype['escorts']) : undefined,
+    worldSpriteId: String(r.worldSpriteId ?? 'trader_world_sprite').trim() || 'trader_world_sprite',
+    restingWorldSpriteId: r.restingWorldSpriteId ? String(r.restingWorldSpriteId).trim() : undefined,
+    portraitId: r.portraitId ? String(r.portraitId).trim() : undefined,
+    isEnabled: r.isEnabled !== false,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso(),
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : nowIso(),
+  };
+}
+
+function normalizeWorldRoute(raw: unknown): WorldRoute {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    id: String(r.id ?? '').trim(),
+    name: String(r.name ?? '').trim() || String(r.id ?? '').trim(),
+    waypoints: Array.isArray(r.waypoints)
+      ? r.waypoints.filter(Boolean).map((wp: unknown) => {
+          const w = (wp && typeof wp === 'object' ? wp : {}) as Record<string, unknown>;
+          return {
+            zoneId: String(w.zoneId ?? '').trim(),
+            cityId: w.cityId ? String(w.cityId).trim() : undefined,
+            stopDurationMin: typeof w.stopDurationMin === 'number' ? w.stopDurationMin : undefined,
+            stopDurationMax: typeof w.stopDurationMax === 'number' ? w.stopDurationMax : undefined,
+          };
+        })
+      : [],
+    travelTimingDevMinutes: typeof r.travelTimingDevMinutes === 'number' ? r.travelTimingDevMinutes : 10,
+    travelTimingReleaseHours: typeof r.travelTimingReleaseHours === 'number' ? r.travelTimingReleaseHours : 6,
+    dangerLevel: typeof r.dangerLevel === 'number' ? r.dangerLevel : 3,
+    restChance: typeof r.restChance === 'number' ? r.restChance : 0.25,
+    allowedArchetypes: Array.isArray(r.allowedArchetypes) ? r.allowedArchetypes.map((a: unknown) => String(a ?? '').trim()).filter(Boolean) : [],
+    isActive: r.isActive !== false,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso(),
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : nowIso(),
+  };
+}
+
+function normalizeWorldSpawnRule(raw: unknown): WorldSpawnRule {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    id: String(r.id ?? '').trim(),
+    name: String(r.name ?? '').trim() || String(r.id ?? '').trim(),
+    spawnType: (r.spawnType as WorldSpawnRule['spawnType']) ?? 'time_based',
+    spawnTimeDevMinutes: typeof r.spawnTimeDevMinutes === 'number' ? r.spawnTimeDevMinutes : undefined,
+    spawnTimeReleaseHours: typeof r.spawnTimeReleaseHours === 'number' ? r.spawnTimeReleaseHours : undefined,
+    archetypeIds: Array.isArray(r.archetypeIds) ? r.archetypeIds.map((a: unknown) => String(a ?? '').trim()).filter(Boolean) : [],
+    minGroupSize: typeof r.minGroupSize === 'number' ? Math.max(1, r.minGroupSize) : 1,
+    maxGroupSize: typeof r.maxGroupSize === 'number' ? Math.max(1, r.maxGroupSize) : 1,
+    spawnWeight: typeof r.spawnWeight === 'number' ? Math.min(1, Math.max(0, r.spawnWeight)) : 1,
+    conditions: r.conditions && typeof r.conditions === 'object' ? (r.conditions as WorldSpawnRule['conditions']) : undefined,
+    cooldownDev: typeof r.cooldownDev === 'number' ? r.cooldownDev : undefined,
+    cooldownRelease: typeof r.cooldownRelease === 'number' ? r.cooldownRelease : undefined,
+    lastSpawnTime: typeof r.lastSpawnTime === 'string' ? r.lastSpawnTime : undefined,
+    isActive: r.isActive !== false,
+    createdAt: typeof r.createdAt === 'string' ? r.createdAt : nowIso(),
+    updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : nowIso(),
+  };
+}
+
+export function normalizeWorldSimConfig(input: unknown): WorldSimConfig {
+  const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+
+  // Support legacy field aliases
+  const archetypesRaw = Array.isArray(raw.npcArchetypes)
+    ? raw.npcArchetypes
+    : Array.isArray((raw as any).archetypes)
+    ? (raw as any).archetypes
+    : [];
+
+  const routesRaw = Array.isArray(raw.routes)
+    ? raw.routes
+    : Array.isArray((raw as any).npcRoutes)
+    ? (raw as any).npcRoutes
+    : [];
+
+  const spawnRulesRaw = Array.isArray(raw.spawnRules)
+    ? raw.spawnRules
+    : Array.isArray((raw as any).rules)
+    ? (raw as any).rules
+    : [];
+
+  return {
+    version: 1,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : nowIso(),
+    npcArchetypes: archetypesRaw.filter(Boolean).map(normalizeWorldNpcArchetype),
+    routes: routesRaw.filter(Boolean).map(normalizeWorldRoute),
+    spawnRules: spawnRulesRaw.filter(Boolean).map(normalizeWorldSpawnRule),
+  };
+}
 
 function contentFromMaybeEnvelope(raw: unknown): Partial<ContentDatabase> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'content' in raw) {
@@ -3708,6 +3816,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
             questMarkers: [],
             updatedAt: nowIso(),
           },
+      // Preserve worldSim config if present
+      worldSim: raw.worldSim != null ? normalizeWorldSimConfig(raw.worldSim) : undefined,
     };
   }
 
@@ -4320,6 +4430,27 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async writeStaticAudio(payload: { targetPath: string; dataUrl: string; mimeType?: string }): Promise<{ publicUrl: string; mimeType: string }> {
+    const dataUrl = String(payload.dataUrl ?? '').trim();
+    if (!isEmbeddedAudioDataUrl(dataUrl)) {
+      throw new BadRequestException('Audio upload payload must include an audio dataUrl.');
+    }
+    const targetPath = String(payload.targetPath ?? '').trim();
+    if (!targetPath) {
+      throw new BadRequestException('targetPath is required.');
+    }
+    try {
+      return writeStaticAudioFile({
+        targetRelativePath: targetPath,
+        dataUrl,
+        mimeType: payload.mimeType,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to write static audio to '${targetPath}': ${message}`);
+    }
+  }
+
   async createCollectionEntry<K extends ContentCollectionName>(name: K | string, payload: ContentCollectionMap[K]): Promise<ContentCollectionMap[K]> {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
@@ -4681,6 +4812,19 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     };
     await this.persist(db);
     return clone(db.worldMap);
+  }
+
+  getWorldSimConfig(): WorldSimConfig {
+    const db = this.ensureLoaded();
+    return normalizeWorldSimConfig(db.worldSim);
+  }
+
+  async updateWorldSimConfig(config: WorldSimConfig): Promise<WorldSimConfig> {
+    const db = this.ensureLoaded();
+    const normalized = normalizeWorldSimConfig(config);
+    db.worldSim = normalized;
+    await this.persist(db);
+    return clone(normalized);
   }
 
   toDomainItemDefinition(adminItem: AdminItem): ItemDefinition {

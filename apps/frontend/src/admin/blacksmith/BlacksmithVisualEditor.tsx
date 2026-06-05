@@ -3,6 +3,7 @@ import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import type { BlacksmithVisualPreset, GameImageRef } from '../../services/content/models';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { BlacksmithCrudEditor } from './BlacksmithCrudEditor';
+import type { ImagePresetId } from '../../services/content/imagePresets';
 
 const DEFAULT_DRAFT: BlacksmithVisualPreset = {
   id: '',
@@ -15,6 +16,97 @@ const DEFAULT_DRAFT: BlacksmithVisualPreset = {
   blankImageRefs: [],
   qualityFrameRefs: [],
 };
+
+interface VisualListFieldProps {
+  title: string;
+  presetId: ImagePresetId;
+  values: string[];
+  onChange: (nextList: string[]) => void;
+  suggestedPrefix: string;
+  draftId: string;
+  draftName: string;
+}
+
+function VisualListField({
+  title,
+  presetId,
+  values,
+  onChange,
+  suggestedPrefix,
+  draftId,
+  draftName,
+}: VisualListFieldProps) {
+  const list = values || [];
+
+  return (
+    <div className="admin-visual-list-field" style={{
+      border: '1px solid #443',
+      padding: '15px',
+      borderRadius: '4px',
+      marginBottom: '20px',
+      backgroundColor: 'rgba(0, 0, 0, 0.2)'
+    }}>
+      <h4 style={{ margin: '0 0 15px 0', borderBottom: '1px solid #443', paddingBottom: '5px' }}>{title}</h4>
+      
+      {list.map((val, index) => (
+        <div key={index} style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', marginBottom: '15px' }}>
+          <div style={{ flex: 1 }}>
+            <AdminImageField
+              value={val}
+              onChange={(next) => {
+                const copy = [...list];
+                copy[index] = next;
+                onChange(copy);
+              }}
+              presetId={presetId}
+              label={`${title} #${index + 1}`}
+              suggestedId={`${draftId || 'blacksmith'}_${suggestedPrefix}_${index}_${Math.random().toString(36).substring(2, 7)}`}
+              suggestedName={`${draftName || 'Blacksmith'} ${title} ${index + 1}`}
+            />
+          </div>
+          <button
+            type="button"
+            className="admin-btn-delete"
+            style={{
+              marginTop: '35px',
+              padding: '6px 12px',
+              backgroundColor: '#833',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+            onClick={() => {
+              const copy = [...list];
+              copy.splice(index, 1);
+              onChange(copy);
+            }}
+          >
+            Удалить
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        className="admin-btn-add"
+        style={{
+          padding: '8px 16px',
+          backgroundColor: '#353',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer'
+        }}
+        onClick={() => {
+          onChange([...list, '']);
+        }}
+      >
+        + Добавить {title}
+      </button>
+    </div>
+  );
+}
 
 export function BlacksmithVisualEditor() {
   return (
@@ -70,9 +162,36 @@ export function BlacksmithVisualEditor() {
                 setDraft({ ...draft, hammerImageRefs: src ? [src, ...tail] : tail });
               }}
             />
-            <label><span className="muted">Defect overlays (через запятую)</span><input value={draft.defectOverlayRefs.join(', ')} onChange={(e) => setDraft({ ...draft, defectOverlayRefs: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></label>
-            <label><span className="muted">Blank images (через запятую)</span><input value={draft.blankImageRefs.join(', ')} onChange={(e) => setDraft({ ...draft, blankImageRefs: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></label>
-            <label><span className="muted">Quality frames (через запятую)</span><input value={draft.qualityFrameRefs.join(', ')} onChange={(e) => setDraft({ ...draft, qualityFrameRefs: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></label>
+            
+            <VisualListField
+              title="Defect Overlay"
+              presetId="item-icon"
+              values={draft.defectOverlayRefs}
+              onChange={(next) => setDraft({ ...draft, defectOverlayRefs: next })}
+              suggestedPrefix="defect"
+              draftId={draft.id}
+              draftName={draft.name}
+            />
+
+            <VisualListField
+              title="Blank Image"
+              presetId="item-icon"
+              values={draft.blankImageRefs}
+              onChange={(next) => setDraft({ ...draft, blankImageRefs: next })}
+              suggestedPrefix="blank"
+              draftId={draft.id}
+              draftName={draft.name}
+            />
+
+            <VisualListField
+              title="Quality Frame"
+              presetId="item-icon"
+              values={draft.qualityFrameRefs}
+              onChange={(next) => setDraft({ ...draft, qualityFrameRefs: next })}
+              suggestedPrefix="frame"
+              draftId={draft.id}
+              draftName={draft.name}
+            />
           </>
         );
       }}

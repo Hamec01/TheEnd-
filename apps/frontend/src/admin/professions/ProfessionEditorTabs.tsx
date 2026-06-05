@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import type { ProfessionDefinition } from '../../types/profession';
 import { BlacksmithBalanceEditor } from '../blacksmith/BlacksmithBalanceEditor';
+import { BlacksmithAudioUploader } from '../blacksmith/BlacksmithAudioUploader';
 import { BlacksmithForgeTierEditor } from '../blacksmith/BlacksmithForgeTierEditor';
 import { BlacksmithModuleEditor } from '../blacksmith/BlacksmithModuleEditor';
 import { BlacksmithQualityEditor } from '../blacksmith/BlacksmithQualityEditor';
@@ -9,6 +11,13 @@ import { BlacksmithVisualEditor } from '../blacksmith/BlacksmithVisualEditor';
 import { MiningBlocksTab, MiningDepthsTab, MiningHazardsTab, MiningLootTab, MiningMinesTab, MiningToolsTab } from '../mining/MiningTabPlaceholders';
 import { ProfessionBranchEditor } from './ProfessionBranchEditor';
 import { ProfessionSkillEditor } from './ProfessionSkillEditor';
+import {
+  downloadProfessionBundle,
+  exportProfessionBundle,
+  importProfessionBundle,
+  readProfessionBundleFromFile,
+  type ProfessionImportMode,
+} from './professionTransfer';
 
 type TabType =
   | 'general'
@@ -56,6 +65,11 @@ const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: TabType; label: strin
 
 export function ProfessionEditorTabs({ professionId, professionName, onBack }: ProfessionEditorTabsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('general');
+  const [importMode, setImportMode] = useState<ProfessionImportMode>('merge');
+  const [transferStatus, setTransferStatus] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+  const [contentRevision, setContentRevision] = useState(0);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const commonTabs: Array<{ id: TabType; label: string }> = [
     { id: 'general', label: 'Общее' },
@@ -65,13 +79,89 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
 
   const customTabs = PROFESSION_SPECIFIC_TABS[professionId] ?? [];
   const allTabs = [...commonTabs, ...customTabs];
+  const supportsTransfer = professionId === 'mining' || professionId === 'blacksmithing';
+
+  const professionDefinition = useMemo<ProfessionDefinition>(() => ({
+    id: professionId,
+    name: professionName,
+    description: '',
+    category: professionId === 'mining' ? 'gathering' : 'crafting',
+    maxLevel: 100,
+    isEnabled: true,
+  }), [professionId, professionName]);
+
+  async function handleExportBundle() {
+    setIsBusy(true);
+    setTransferStatus('');
+    try {
+      const bundle = await exportProfessionBundle(professionDefinition);
+      downloadProfessionBundle(bundle);
+      setTransferStatus(`Экспортирован пакет профессии ${professionName}.`);
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Не удалось экспортировать профессию.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    setIsBusy(true);
+    setTransferStatus('');
+    try {
+      const bundle = await readProfessionBundleFromFile(file);
+      if (bundle.professionId !== professionId) {
+        throw new Error(`Этот файл относится к профессии ${bundle.professionName}, а открыт редактор ${professionName}.`);
+      }
+      const summary = await importProfessionBundle(bundle, importMode);
+      setContentRevision((value) => value + 1);
+      setTransferStatus(`Импорт завершён (${summary.mode}). Обновлены разделы: ${summary.updatedSections.join(', ')}.`);
+    } catch (error) {
+      setTransferStatus(error instanceof Error ? error.message : 'Не удалось импортировать файл профессии.');
+    } finally {
+      setIsBusy(false);
+      if (importInputRef.current) {
+        importInputRef.current.value = '';
+      }
+    }
+  }
 
   return (
     <div className="profession-editor-tabs">
       <div className="profession-editor-header">
         <button onClick={onBack} className="btn-back">← Назад к профессиям</button>
         <h2>{professionName}</h2>
+        {supportsTransfer ? (
+          <div className="profession-transfer-bar">
+            <select
+              value={importMode}
+              onChange={(event) => setImportMode(event.target.value as ProfessionImportMode)}
+              disabled={isBusy}
+            >
+              <option value="merge">Merge by ID</option>
+              <option value="replace">Full Replace</option>
+            </select>
+            <button type="button" onClick={() => void handleExportBundle()} disabled={isBusy}>
+              Export JSON
+            </button>
+            <button type="button" onClick={() => importInputRef.current?.click()} disabled={isBusy}>
+              Import JSON
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void handleImportFile(file);
+                }
+              }}
+            />
+          </div>
+        ) : null}
       </div>
+      {transferStatus ? <p className="muted" style={{ margin: 0 }}>{transferStatus}</p> : null}
 
       <div className="tabs-container">
         <div className="tabs-nav">
@@ -91,6 +181,13 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
             <div className="tab-pane">
               {professionId === 'mining' ? (
                 <div style={{ display: 'grid', gap: '1rem', maxWidth: 980 }}>
+                  <div className="card">
+                    <h3 style={{ marginTop: 0 }}>Экспорт / импорт пакета</h3>
+                    <p className="muted" style={{ marginBottom: 0 }}>
+                      Export JSON выгружает весь пакет горняка целиком: навыки, ветки, шахты, глубины, блоки, опасности, таблицы опасностей, добычу и инструменты.
+                      Merge by ID добавляет новые записи и обновляет существующие по id. Full Replace полностью заменяет содержимое разделов горняка в локальном редакторе.
+                    </p>
+                  </div>
                   <div className="card">
                     <h3 style={{ marginTop: 0 }}>Как собрать горняка от и до</h3>
                     <p className="muted" style={{ marginBottom: 0 }}>
@@ -122,37 +219,52 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
                   </div>
                 </div>
               ) : (
-                <p className="muted">Базовые параметры профессии "{professionName}".</p>
+                <div style={{ display: 'grid', gap: '1rem', maxWidth: 980 }}>
+                  {professionId === 'blacksmithing' ? (
+                    <div className="card">
+                      <h3 style={{ marginTop: 0 }}>Экспорт / импорт пакета</h3>
+                      <p className="muted" style={{ marginBottom: 0 }}>
+                        Для кузнеца экспортируется доступный редакторный пакет: навыки, ветки, кузни, модули, инструменты,
+                        качество, визуалы и баланс с этапами. Merge by ID обновляет записи по id, а Full Replace заменяет
+                        содержимое этих коллекций полностью.
+                      </p>
+                    </div>
+                  ) : null}
+                  {professionId === 'blacksmithing' ? (
+                    <BlacksmithAudioUploader />
+                  ) : null}
+                  <p className="muted">Базовые параметры профессии "{professionName}".</p>
+                </div>
               )}
             </div>
           ) : null}
 
           {activeTab === 'skills' ? (
             <div className="tab-pane">
-              <ProfessionSkillEditor professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
+              <ProfessionSkillEditor key={`skills:${professionId}:${contentRevision}`} professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
             </div>
           ) : null}
 
           {activeTab === 'branches' ? (
             <div className="tab-pane">
-              <ProfessionBranchEditor professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
+              <ProfessionBranchEditor key={`branches:${professionId}:${contentRevision}`} professions={[{ id: professionId, name: professionName }]} filterByProfession={professionId} />
             </div>
           ) : null}
 
-          {professionId === 'mining' && activeTab === 'mines' ? <div className="tab-pane"><MiningMinesTab professionName={professionName} /></div> : null}
-          {professionId === 'mining' && activeTab === 'depths' ? <div className="tab-pane"><MiningDepthsTab professionName={professionName} /></div> : null}
-          {professionId === 'mining' && activeTab === 'blocks' ? <div className="tab-pane"><MiningBlocksTab professionName={professionName} /></div> : null}
-          {professionId === 'mining' && activeTab === 'hazards' ? <div className="tab-pane"><MiningHazardsTab professionName={professionName} /></div> : null}
-          {professionId === 'mining' && activeTab === 'loot' ? <div className="tab-pane"><MiningLootTab professionName={professionName} /></div> : null}
-          {professionId === 'mining' && activeTab === 'tools' ? <div className="tab-pane"><MiningToolsTab professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'mines' ? <div className="tab-pane"><MiningMinesTab key={`mines:${contentRevision}`} professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'depths' ? <div className="tab-pane"><MiningDepthsTab key={`depths:${contentRevision}`} professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'blocks' ? <div className="tab-pane"><MiningBlocksTab key={`blocks:${contentRevision}`} professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'hazards' ? <div className="tab-pane"><MiningHazardsTab key={`hazards:${contentRevision}`} professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'loot' ? <div className="tab-pane"><MiningLootTab key={`loot:${contentRevision}`} professionName={professionName} /></div> : null}
+          {professionId === 'mining' && activeTab === 'tools' ? <div className="tab-pane"><MiningToolsTab key={`tools:${contentRevision}`} professionName={professionName} /></div> : null}
 
-          {professionId === 'blacksmithing' && activeTab === 'forgeTiers' ? <div className="tab-pane"><BlacksmithForgeTierEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'modules' ? <div className="tab-pane"><BlacksmithModuleEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'blacksmithTools' ? <div className="tab-pane"><BlacksmithToolEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'stages' ? <div className="tab-pane"><BlacksmithStageConfigEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'quality' ? <div className="tab-pane"><BlacksmithQualityEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'visual' ? <div className="tab-pane"><BlacksmithVisualEditor /></div> : null}
-          {professionId === 'blacksmithing' && activeTab === 'balance' ? <div className="tab-pane"><BlacksmithBalanceEditor /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'forgeTiers' ? <div className="tab-pane"><BlacksmithForgeTierEditor key={`forgeTiers:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'modules' ? <div className="tab-pane"><BlacksmithModuleEditor key={`modules:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'blacksmithTools' ? <div className="tab-pane"><BlacksmithToolEditor key={`blacksmithTools:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'stages' ? <div className="tab-pane"><BlacksmithStageConfigEditor key={`stages:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'quality' ? <div className="tab-pane"><BlacksmithQualityEditor key={`quality:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'visual' ? <div className="tab-pane"><BlacksmithVisualEditor key={`visual:${contentRevision}`} /></div> : null}
+          {professionId === 'blacksmithing' && activeTab === 'balance' ? <div className="tab-pane"><BlacksmithBalanceEditor key={`balance:${contentRevision}`} /></div> : null}
         </div>
       </div>
 
@@ -167,10 +279,21 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           align-items: center;
           gap: 1rem;
           margin-bottom: 1rem;
+          flex-wrap: wrap;
         }
         .profession-editor-header h2 {
           margin: 0;
           flex: 1;
+        }
+        .profession-transfer-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          align-items: center;
+        }
+        .profession-transfer-bar select,
+        .profession-transfer-bar button {
+          min-height: 36px;
         }
         .btn-back {
           padding: 0.5rem 1rem;

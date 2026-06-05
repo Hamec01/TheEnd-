@@ -10935,6 +10935,49 @@ body:has(.page.page--scroll) {
   min-width: 0;
 }
 
+.character-item-craft-materials {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(169, 139, 87, 0.24);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top left, rgba(210, 148, 73, 0.08), transparent 34%),
+    rgba(15, 11, 8, 0.52);
+}
+
+.character-item-craft-materials strong {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e7d2ad;
+}
+
+.character-item-craft-material-list {
+  display: grid;
+  gap: 8px;
+}
+
+.character-item-craft-material-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(169, 139, 87, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.character-item-craft-material-row span {
+  font-weight: 700;
+  color: #f0dfc2;
+}
+
+.character-item-craft-material-row small {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .character-item-compare-items {
   gap: 8px;
 }

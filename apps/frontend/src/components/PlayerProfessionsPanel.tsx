@@ -15,10 +15,17 @@ import { BlacksmithCustomForgeTab } from '../features/blacksmith/BlacksmithCusto
 import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
 import { BlacksmithRecipesTab } from '../features/blacksmith/BlacksmithRecipesTab';
 import {
-  applyItemWorkToCharacter,
-  grantCustomForgeItemToCharacter,
-  grantRecipeOutputsToCharacter,
+  applyItemWorkToCharacterV2,
+  buildWorkedItemV2,
+  calculateCustomForgePriceBreakdown,
+  calculateItemWorkPriceBreakdown,
+  calculateRecipeCraftPriceBreakdown,
+  createForgedItemFromBase,
+  createForgedItemFromTemplateV2,
+  grantCustomForgeItemToCharacterV2,
+  grantRecipeOutputsToCharacterV2,
   type BlacksmithItemWorkSelection,
+  type BlacksmithPriceBreakdown,
 } from '../features/blacksmith/blacksmithRecipeMaterials';
 import { resolveBlacksmithSkillBonuses } from '../features/blacksmith/blacksmithSkillEffects';
 import {
@@ -55,8 +62,10 @@ import type {
 } from '../services/content/models';
 import { loadMiningToolsFromStorage } from '../services/miningRepository';
 import { loadMiningCareerStats, type MiningCareerStats } from '../services/miningCareerStats';
+import { itemsService } from '../services/content/itemsService';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
 import { SkillTreeView } from '../features/professions/SkillTreeView';
+import { GameImageView } from '../admin/components/GameImageView';
 
 interface PlayerProfessionsPanelProps {
   characterId: string;
@@ -77,6 +86,59 @@ function shouldAutoActivateProfessionBranch(professionId: string, branch: Profes
     return branch.id === 'blacksmith_start';
   }
   return !branch.exclusiveGroupId;
+}
+
+interface PendingBlacksmithReward {
+  mode: 'recipe' | 'custom_forge' | 'item_work';
+  previewItem: AdminItem;
+  priceBreakdown: BlacksmithPriceBreakdown;
+  qualityTierId: string;
+  score: number;
+  xp: number;
+  success: boolean;
+  draftName: string;
+  draftDescription: string;
+  finalize: (draft: { name: string; description: string }) => Promise<void>;
+}
+
+function formatBlacksmithItemStats(item: AdminItem): string[] {
+  const parts: string[] = [];
+  if (typeof item.damageMin === 'number' || typeof item.damageMax === 'number') {
+    parts.push(`Урон ${item.damageMin ?? 0}-${item.damageMax ?? item.damageMin ?? 0}`);
+  }
+  if (typeof item.armorValue === 'number') {
+    parts.push(`Броня ${item.armorValue}`);
+  }
+  if (typeof item.attackRange === 'number') {
+    parts.push(`Дистанция ${item.attackRange}`);
+  }
+  parts.push(`Редкость ${item.rarity}`);
+  parts.push(`Слот ${item.slot}`);
+  parts.push(`Гнёзда ${item.augmentSlots?.length ?? 0}/${item.maxAugmentSlots ?? item.augmentSlots?.length ?? 0}`);
+  parts.push(`Цена ${item.price}`);
+  return parts;
+}
+
+function formatBlacksmithItemProperties(item: AdminItem): string[] {
+  const props: string[] = [];
+  if (item.type === 'weapon' && item.handsRequired === 2) {
+    props.push('Двуручное');
+  }
+  if (item.canAddAugmentSlots) {
+    props.push('Можно расширять гнёзда');
+  }
+  if (item.canHaveRuneComplex) {
+    props.push('Поддерживает рунный комплекс');
+  }
+  for (const effect of item.equipmentEffects ?? []) {
+    if (effect.type === 'stat_bonus' && effect.stat) {
+      props.push(`Бонус к ${effect.stat}: ${effect.value ?? 0}`);
+    }
+    if (effect.type === 'status_resistance' && effect.statusId) {
+      props.push(`Сопротивление ${effect.statusId}: ${effect.percent ?? 0}%`);
+    }
+  }
+  return Array.from(new Set(props)).slice(0, 8);
 }
 
 export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
@@ -105,6 +167,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [preparedItemWork, setPreparedItemWork] = useState<BlacksmithItemWorkSelection | null>(null);
   const [blacksmithMode, setBlacksmithMode] = useState<'recipe' | 'custom_forge' | 'item_work'>('recipe');
   const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
+  const [pendingBlacksmithReward, setPendingBlacksmithReward] = useState<PendingBlacksmithReward | null>(null);
 
   const definitionById = useMemo(
     () => new Map(PROFESSION_DEFINITIONS.map((entry) => [entry.id, entry])),
@@ -510,12 +573,52 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     ? Math.round((miningCareerStats.escapedRuns / miningCareerStats.totalRuns) * 100)
     : 0;
 
+  async function persistCraftedPresentation(item: AdminItem | null | undefined, draft: { name: string; description: string }): Promise<AdminItem | null> {
+    if (!item) {
+      return null;
+    }
+    const trimmedName = draft.name.trim();
+    const trimmedDescription = draft.description.trim();
+    if (!trimmedName && !trimmedDescription) {
+      return item;
+    }
+    const next: AdminItem = {
+      ...item,
+      name: trimmedName || item.name,
+      loreDescription: trimmedDescription ? `${trimmedDescription} ${item.loreDescription}`.trim() : item.loreDescription,
+    };
+    try {
+      return await itemsService.update(item.id, next);
+    } catch {
+      return next;
+    }
+  }
+
+  function applyBlacksmithProgressAndStatus(payload: {
+    xp: number;
+    score: number;
+    success: boolean;
+    qualityTierId: string;
+    rewardMessage: string;
+  }) {
+    const normalized = normalizePlayerProfessionsState(professionsState);
+    const next = applyBlacksmithCraftResult(normalized, 'blacksmithing', {
+      xpReward: payload.xp,
+      score: payload.score,
+      success: payload.success,
+      isQualityCraft: payload.qualityTierId === 'quality_fine' || payload.qualityTierId === 'quality_masterwork',
+      isMasterwork: payload.qualityTierId === 'quality_masterwork',
+    });
+    onChange(next);
+    onStatus(`Ковка завершена: ${payload.score}/100 (${payload.qualityTierId}). Получено XP: ${payload.xp}.${payload.rewardMessage}`);
+  }
+
   return (
     <div className="battle-overlay" role="dialog" aria-modal="true">
       <section className="card battle-window wm-modal profession-modal">
         <div className="battle-window-head">
           <h2>Профессии</h2>
-          <button onClick={onClose}>×</button>
+          <button onClick={onClose} disabled={Boolean(pendingBlacksmithReward)}>×</button>
         </div>
 
         {unlockedProfessions.length === 0 ? <p>У вас пока нет профессий. Найдите наставника, чтобы изучить первую профессию.</p> : null}
@@ -656,6 +759,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   runtimeImages={runtimeImages}
                   inventory={inventory}
                   inventoryRevision={runtimeInventoryRevision}
+                  blacksmithLevel={selectedProfession.state.level}
                   initialTemplateId={preparedCustomForgeTemplateId}
                   onPreparePlan={({ template, plan }) => {
                     setPreparedCustomForgeTemplateId(template.id);
@@ -697,15 +801,194 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 onInventoryChange={onInventoryChange}
                 onComplete={async ({ xp, score, qualityTierId, success, mode }) => {
                   const qualityTier = blacksmithQualityTiers.find((entry) => entry.id === qualityTierId) ?? null;
+                  const openRewardModal = (
+                    previewItem: AdminItem,
+                    priceBreakdown: BlacksmithPriceBreakdown,
+                    finalizeGrant: (draft: { name: string; description: string }) => Promise<{ rewardMessage: string; createdItem?: AdminItem | null }>,
+                  ) => {
+                    setPendingBlacksmithReward({
+                      mode,
+                      previewItem,
+                      priceBreakdown,
+                      qualityTierId,
+                      score,
+                      xp,
+                      success,
+                      draftName: previewItem.name,
+                      draftDescription: '',
+                      finalize: async (draft) => {
+                        const result = await finalizeGrant(draft);
+                        if (result.createdItem) {
+                          await persistCraftedPresentation(result.createdItem, draft);
+                        }
+                        setPendingBlacksmithReward(null);
+                        applyBlacksmithProgressAndStatus({
+                          xp,
+                          score,
+                          success,
+                          qualityTierId,
+                          rewardMessage: result.rewardMessage,
+                        });
+                      },
+                    });
+                  };
+
+                  if (mode === 'recipe' && success && selectedBlacksmithRecipe) {
+                    const craftedOutput = selectedBlacksmithRecipe.outputItems?.find((entry) => {
+                      const item = itemsCatalog.find((candidate) => candidate.id === entry.itemId) ?? null;
+                      return item && !item.stackable && (item.type === 'weapon' || item.type === 'armor') && (entry.quantity ?? 0) === 1;
+                    });
+
+                    if (craftedOutput) {
+                      const baseItem = itemsCatalog.find((entry) => entry.id === craftedOutput.itemId) ?? null;
+                      if (baseItem) {
+                        const priceBreakdown = calculateRecipeCraftPriceBreakdown({
+                          recipe: selectedBlacksmithRecipe,
+                          itemsCatalog,
+                          materialsCatalog,
+                          score,
+                          qualityTier,
+                        });
+                        const recipePreviewMaterials = (selectedBlacksmithRecipe.inputMaterials ?? []).flatMap((entry) => {
+                          const material = materialsCatalog.find((candidate) => candidate.id === entry.materialId) ?? null;
+                          return material ? Array.from({ length: Math.max(1, Math.floor(entry.quantity ?? 1)) }, () => material) : [];
+                        });
+                        const previewItem = createForgedItemFromBase(
+                          baseItem,
+                          selectedBlacksmithRecipe,
+                          qualityTier,
+                          characterId,
+                          { priceOverride: priceBreakdown.totalPrice },
+                          recipePreviewMaterials,
+                          selectedProfession.state.level,
+                        );
+                        openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
+                          const rewardResult = await grantRecipeOutputsToCharacterV2({
+                            characterId,
+                            recipe: selectedBlacksmithRecipe,
+                            baseInventory: inventory,
+                            itemsCatalog,
+                            materialsCatalog,
+                            qualityTier,
+                            blacksmithLevel: selectedProfession.state.level,
+                            overrides: {
+                              customName: draft.name.trim() || undefined,
+                              customDescription: draft.description.trim() || undefined,
+                              priceOverride: priceBreakdown.totalPrice,
+                            },
+                          });
+                          if (rewardResult.inventory) {
+                            onInventoryChange(rewardResult.inventory);
+                          }
+                          return {
+                            rewardMessage: ` Создан предмет: ${draft.name.trim() || rewardResult.createdItem?.name || baseItem.name}.`,
+                            createdItem: rewardResult.createdItem,
+                          };
+                        });
+                        return;
+                      }
+                    }
+                  }
+
+                  if (mode === 'custom_forge' && preparedCustomForgePlan && selectedBlacksmithTemplate && success && !(qualityTier?.isFailureTier ?? false) && score >= 20) {
+                    const priceBreakdown = calculateCustomForgePriceBreakdown({
+                      plan: preparedCustomForgePlan,
+                      template: selectedBlacksmithTemplate,
+                      materialsCatalog,
+                      score,
+                      qualityTier,
+                    });
+                    const previewItem = createForgedItemFromTemplateV2({
+                      template: selectedBlacksmithTemplate,
+                      plan: preparedCustomForgePlan,
+                      materials: materialsCatalog,
+                      qualityTier,
+                      score,
+                      characterId,
+                      blacksmithLevel: selectedProfession.state.level,
+                      overrides: { priceOverride: priceBreakdown.totalPrice },
+                    });
+                    openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
+                      const forgeResult = await grantCustomForgeItemToCharacterV2({
+                        characterId,
+                        template: selectedBlacksmithTemplate,
+                        plan: preparedCustomForgePlan,
+                        materialsCatalog,
+                        qualityTier,
+                        score,
+                        blacksmithLevel: selectedProfession.state.level,
+                        overrides: {
+                          customName: draft.name.trim() || undefined,
+                          customDescription: draft.description.trim() || undefined,
+                          priceOverride: priceBreakdown.totalPrice,
+                        },
+                      });
+                      if (forgeResult.inventory) {
+                        onInventoryChange(forgeResult.inventory);
+                      }
+                      setPreparedCustomForgePlan(null);
+                      setPreparedCustomForgeTemplateId(null);
+                      setBlacksmithMode('recipe');
+                      return {
+                        rewardMessage: ` Создан предмет: ${draft.name.trim() || forgeResult.createdItem?.name || selectedBlacksmithTemplate.name}.`,
+                        createdItem: forgeResult.createdItem,
+                      };
+                    });
+                    return;
+                  }
+
+                  if (mode === 'item_work' && selectedItemWorkAction && selectedItemWorkItem && selectedItemWorkAction.actionType !== 'dismantle') {
+                    const priceBreakdown = calculateItemWorkPriceBreakdown({
+                      action: selectedItemWorkAction,
+                      materialsCatalog,
+                      itemsCatalog,
+                      score,
+                      qualityTier,
+                    });
+                    const previewItem = buildWorkedItemV2(
+                      selectedItemWorkItem,
+                      selectedItemWorkAction,
+                      score,
+                      selectedProfession.state.level,
+                      { priceOverride: priceBreakdown.totalPrice },
+                    );
+                    openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
+                      const workResult = await applyItemWorkToCharacterV2({
+                        characterId,
+                        action: selectedItemWorkAction,
+                        baseItem: selectedItemWorkItem,
+                        score,
+                        blacksmithLevel: selectedProfession.state.level,
+                        inventory,
+                        overrides: {
+                          customName: draft.name.trim() || undefined,
+                          customDescription: draft.description.trim() || undefined,
+                          priceOverride: priceBreakdown.totalPrice,
+                        },
+                      });
+                      if (workResult.inventory) {
+                        onInventoryChange(workResult.inventory);
+                      }
+                      setPreparedItemWork(null);
+                      setBlacksmithMode('recipe');
+                      return {
+                        rewardMessage: ` ${workResult.message}`,
+                        createdItem: workResult.createdItem,
+                      };
+                    });
+                    return;
+                  }
+
                   let rewardMessage = '';
                   if (mode === 'recipe' && success && selectedBlacksmithRecipe) {
-                    const rewardResult = await grantRecipeOutputsToCharacter({
+                    const rewardResult = await grantRecipeOutputsToCharacterV2({
                       characterId,
                       recipe: selectedBlacksmithRecipe,
                       baseInventory: inventory,
                       itemsCatalog,
                       materialsCatalog,
                       qualityTier,
+                      blacksmithLevel: selectedProfession.state.level,
                     });
                     if (rewardResult.inventory) {
                       onInventoryChange(rewardResult.inventory);
@@ -713,13 +996,14 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     rewardMessage = ' Результат рецепта добавлен в инвентарь.';
                   }
                   if (mode === 'custom_forge' && preparedCustomForgePlan && selectedBlacksmithTemplate) {
-                    const forgeResult = await grantCustomForgeItemToCharacter({
+                    const forgeResult = await grantCustomForgeItemToCharacterV2({
                       characterId,
                       template: selectedBlacksmithTemplate,
                       plan: preparedCustomForgePlan,
                       materialsCatalog,
                       qualityTier,
                       score,
+                      blacksmithLevel: selectedProfession.state.level,
                     });
                     if (forgeResult.inventory) {
                       onInventoryChange(forgeResult.inventory);
@@ -732,11 +1016,12 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     setBlacksmithMode('recipe');
                   }
                   if (mode === 'item_work' && selectedItemWorkAction && selectedItemWorkItem) {
-                    const workResult = await applyItemWorkToCharacter({
+                    const workResult = await applyItemWorkToCharacterV2({
                       characterId,
                       action: selectedItemWorkAction,
                       baseItem: selectedItemWorkItem,
                       score,
+                      blacksmithLevel: selectedProfession.state.level,
                       inventory,
                     });
                     if (workResult.inventory) {
@@ -834,8 +1119,97 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
           </section>
         ) : null}
 
+        {pendingBlacksmithReward ? (
+          <div className="profession-reward-overlay" role="dialog" aria-modal="true">
+            <section className="profession-reward-modal">
+              <div className="profession-reward-head">
+                <div>
+                  <h3>{pendingBlacksmithReward.previewItem.name}</h3>
+                  <p className="wm-stat-hint" style={{ margin: 0 }}>
+                    Итог ковки: {pendingBlacksmithReward.score}/100 • {pendingBlacksmithReward.qualityTierId}
+                  </p>
+                </div>
+              </div>
+
+              <div className="profession-reward-body">
+                <div className="profession-reward-visual">
+                  <GameImageView
+                    imageRef={pendingBlacksmithReward.previewItem.imageRef}
+                    legacyImagePath={pendingBlacksmithReward.previewItem.imagePath}
+                    runtimeImages={runtimeImages}
+                    alt={pendingBlacksmithReward.previewItem.name}
+                    size={132}
+                    fit="contain"
+                    fallbackText={(pendingBlacksmithReward.previewItem.name.trim().charAt(0) || 'К').toUpperCase()}
+                  />
+                </div>
+
+                <div className="profession-reward-copy">
+                  <div className="profession-reward-chip-grid">
+                    {formatBlacksmithItemStats(pendingBlacksmithReward.previewItem).map((entry) => (
+                      <span key={entry}>{entry}</span>
+                    ))}
+                  </div>
+
+                  <div className="profession-reward-properties">
+                    <strong>Свойства</strong>
+                    <div className="profession-reward-chip-grid">
+                      {formatBlacksmithItemProperties(pendingBlacksmithReward.previewItem).length > 0
+                        ? formatBlacksmithItemProperties(pendingBlacksmithReward.previewItem).map((entry) => <span key={entry}>{entry}</span>)
+                        : <span>Без дополнительных свойств</span>}
+                    </div>
+                  </div>
+
+                  <div className="profession-reward-price">
+                    <strong>Цена предмета</strong>
+                    <div className="profession-reward-price-grid">
+                      <div><span>Материалы</span><strong>{pendingBlacksmithReward.priceBreakdown.materialsCost}</strong></div>
+                      <div><span>Работа кузнеца</span><strong>{pendingBlacksmithReward.priceBreakdown.laborCost}</strong></div>
+                      <div><span>Итог</span><strong>{pendingBlacksmithReward.priceBreakdown.totalPrice}</strong></div>
+                    </div>
+                  </div>
+
+                  <label className="profession-reward-field">
+                    <span>Имя предмета</span>
+                    <input
+                      value={pendingBlacksmithReward.draftName}
+                      maxLength={64}
+                      onChange={(event) => setPendingBlacksmithReward((current) => current ? { ...current, draftName: event.target.value } : current)}
+                    />
+                  </label>
+
+                  <label className="profession-reward-field">
+                    <span>Описание предмета</span>
+                    <textarea
+                      rows={4}
+                      value={pendingBlacksmithReward.draftDescription}
+                      placeholder="Что делает этот клинок особенным?"
+                      onChange={(event) => setPendingBlacksmithReward((current) => current ? { ...current, draftDescription: event.target.value } : current)}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="profession-reward-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void pendingBlacksmithReward.finalize({
+                      name: pendingBlacksmithReward.draftName,
+                      description: pendingBlacksmithReward.draftDescription,
+                    });
+                  }}
+                >
+                  Завершить ковку и забрать предмет
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         <style>{`
           .profession-modal {
+            position: relative;
             width: min(1500px, 96vw);
             height: min(920px, 94vh);
             max-width: 96vw;
@@ -997,12 +1371,122 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
             height: 100%;
             object-fit: cover;
           }
+          .profession-reward-overlay {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(8, 6, 5, 0.72);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            padding: 2rem;
+          }
+          .profession-reward-modal {
+            width: min(880px, calc(100vw - 48px));
+            max-height: min(860px, calc(100vh - 48px));
+            overflow: auto;
+            border: 1px solid rgba(205, 154, 89, 0.42);
+            border-radius: 22px;
+            background:
+              radial-gradient(circle at top left, rgba(255, 170, 91, 0.1), transparent 30%),
+              linear-gradient(180deg, rgba(46, 30, 21, 0.985), rgba(20, 14, 11, 0.99));
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+            padding: 1.35rem;
+            display: grid;
+            gap: 1.1rem;
+          }
+          .profession-reward-head h3 {
+            margin: 0 0 0.25rem;
+            font-size: 1.45rem;
+          }
+          .profession-reward-body {
+            display: grid;
+            grid-template-columns: 210px minmax(0, 1fr);
+            gap: 1.1rem;
+            align-items: start;
+          }
+          .profession-reward-visual {
+            border: 1px solid rgba(224, 179, 108, 0.28);
+            border-radius: 18px;
+            background:
+              radial-gradient(circle at 50% 35%, rgba(255, 145, 67, 0.18), rgba(15, 11, 9, 0.96));
+            min-height: 210px;
+            display: grid;
+            place-items: center;
+            padding: 0.85rem;
+          }
+          .profession-reward-copy {
+            display: grid;
+            gap: 0.9rem;
+          }
+          .profession-reward-chip-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+          }
+          .profession-reward-chip-grid span {
+            border: 1px solid rgba(164, 141, 110, 0.28);
+            border-radius: 999px;
+            background: rgba(56, 38, 24, 0.74);
+            color: #f1e1c4;
+            padding: 0.32rem 0.66rem;
+            font-size: 0.82rem;
+          }
+          .profession-reward-properties,
+          .profession-reward-price {
+            display: grid;
+            gap: 0.5rem;
+          }
+          .profession-reward-price-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.6rem;
+          }
+          .profession-reward-price-grid > div {
+            border: 1px solid rgba(164, 141, 110, 0.2);
+            border-radius: 12px;
+            background: rgba(24, 19, 14, 0.72);
+            padding: 0.7rem;
+            display: grid;
+            gap: 0.25rem;
+          }
+          .profession-reward-price-grid span,
+          .profession-reward-field span {
+            color: #c8b18e;
+            font-size: 0.8rem;
+          }
+          .profession-reward-field {
+            display: grid;
+            gap: 0.35rem;
+          }
+          .profession-reward-field input,
+          .profession-reward-field textarea {
+            border-radius: 12px;
+            border: 1px solid rgba(183, 142, 86, 0.42);
+            background: rgba(255, 255, 255, 0.03);
+            color: #f1e1c4;
+            padding: 0.78rem 0.9rem;
+          }
+          .profession-reward-actions {
+            display: flex;
+            justify-content: flex-end;
+          }
+          .profession-reward-actions button {
+            min-width: 260px;
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            font-weight: 700;
+          }
           @media (max-width: 1180px) {
             .profession-cards-grid {
               grid-template-columns: repeat(2, minmax(0, 1fr));
             }
             .profession-overview-grid {
               grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .profession-reward-body,
+            .profession-reward-price-grid {
+              grid-template-columns: 1fr;
             }
           }
           @media (max-width: 780px) {

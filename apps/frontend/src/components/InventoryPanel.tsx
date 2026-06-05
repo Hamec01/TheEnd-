@@ -315,6 +315,70 @@ function formatItemStatRows(stats: Record<string, number> | undefined): Array<{ 
     }));
 }
 
+function formatEquipmentEffectLabel(effect: NonNullable<AdminItem['equipmentEffects']>[number]): string {
+  switch (effect.type) {
+    case 'stat_bonus':
+      return `${formatItemStatLabel(effect.stat ?? 'stat')} ${effect.value && effect.value > 0 ? `+${effect.value}` : effect.value ?? 0}`;
+    case 'status_resistance':
+      return `Сопротивление ${effect.statusId ?? 'status'} ${effect.percent ?? 0}%`;
+    case 'outgoing_damage_modifier':
+      return `Урон ${effect.elementType ?? effect.damageCategory ?? 'общий'} ${effect.percent ?? 0}%`;
+    case 'block_chance_modifier':
+      return `Блок ${effect.percent ?? 0}%`;
+    case 'hit_chance_modifier':
+      return `Меткость ${effect.percent ?? 0}%`;
+    case 'crit_damage_modifier':
+      return `Крит. урон ${effect.percent ?? 0}%`;
+    default:
+      return effect.type;
+  }
+}
+
+function formatEquipmentEffectRows(effects: AdminItem['equipmentEffects'] | undefined): string[] {
+  return (effects ?? []).map(formatEquipmentEffectLabel).filter(Boolean);
+}
+
+function describeCraftMaterial(material: Material): string[] {
+  const rows: string[] = [];
+  const smith = material.craftingProperties?.blacksmith;
+  const physical = material.craftingProperties?.physical;
+  const elemental = material.craftingProperties?.elemental;
+  const magical = material.craftingProperties?.magical;
+
+  if (typeof smith?.damageMultiplier === 'number' && smith.damageMultiplier !== 1) {
+    rows.push(`урон x${smith.damageMultiplier.toFixed(2)}`);
+  }
+  if (typeof smith?.armorMultiplier === 'number' && smith.armorMultiplier !== 1) {
+    rows.push(`броня x${smith.armorMultiplier.toFixed(2)}`);
+  }
+  if (typeof smith?.qualityBonus === 'number' && smith.qualityBonus !== 0) {
+    rows.push(`качество ${smith.qualityBonus > 0 ? '+' : ''}${smith.qualityBonus}`);
+  }
+  if ((physical?.durability ?? 0) > 0) {
+    rows.push(`прочность +${physical?.durability}`);
+  }
+  if ((elemental?.firePower ?? 0) > 0) {
+    rows.push(`огонь +${elemental?.firePower}`);
+  }
+  if ((elemental?.waterPower ?? 0) > 0) {
+    rows.push(`вода +${elemental?.waterPower}`);
+  }
+  if ((elemental?.earthPower ?? 0) > 0) {
+    rows.push(`земля +${elemental?.earthPower}`);
+  }
+  if ((elemental?.airPower ?? 0) > 0) {
+    rows.push(`воздух +${elemental?.airPower}`);
+  }
+  if ((magical?.magicPower ?? 0) > 0) {
+    rows.push(`магия +${magical?.magicPower}`);
+  }
+  if ((magical?.manaConductivity ?? 0) > 0) {
+    rows.push(`проводимость +${magical?.manaConductivity}`);
+  }
+
+  return rows;
+}
+
 const FOCUS_SECTION_COLUMN: Record<CharacterPageFocus, 'left' | 'center' | 'right'> = {
   character: 'left',
   equipment: 'left',
@@ -1004,6 +1068,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedLoreDescription = selectedAdminItem?.loreDescription?.trim() || '';
   const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedItem?.requiredStats as Record<string, number> | undefined));
   const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedItem?.bonuses as Record<string, number> | undefined));
+  const selectedEffectRows = formatEquipmentEffectRows(selectedAdminItem?.equipmentEffects);
+  const selectedCraftMaterials = useMemo(() => {
+    const tags = selectedAdminItem?.tags ?? [];
+    return tags
+      .filter((tag) => tag.startsWith('material:'))
+      .map((tag) => tag.slice('material:'.length))
+      .map((materialId) => materialById.get(materialId) ?? null)
+      .filter((entry): entry is Material => Boolean(entry));
+  }, [materialById, selectedAdminItem?.tags]);
   const equippedSetSummaries = useMemo(
     () => getEquippedItemSetSummaries({
       equipment,
@@ -1863,6 +1936,22 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}
               </p>
               <p className="muted">
+                Свойства: {selectedEffectRows.join(', ') || 'нет'}
+              </p>
+              {selectedCraftMaterials.length > 0 ? (
+                <div className="character-item-craft-materials">
+                  <strong>Материалы ковки</strong>
+                  <div className="character-item-craft-material-list">
+                    {selectedCraftMaterials.map((material) => (
+                      <div key={material.id} className="character-item-craft-material-row">
+                        <span>{material.name}</span>
+                        <small>{describeCraftMaterial(material).join(' • ') || 'даёт базовый вклад в ковку'}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <p className="muted">
                 Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}
               </p>
               {renderSelectedItemSetDetails()}
@@ -2230,6 +2319,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     if (!hoverPreview || !hoverItem) {
       return null;
     }
+    const hoverAdminItem = resolveAdminItemById ? resolveAdminItemById(hoverItem.id) : null;
 
     return (
       <aside className="character-item-hover-card" style={{ left: hoverPreview.x, top: hoverPreview.y }} role="tooltip">
@@ -2239,6 +2329,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         </div>
         <p className="muted">{hoverItem.description || 'Описание отсутствует.'}</p>
         <p className="muted">Бонусы: {Object.entries(hoverItem.bonuses).map(([key, value]) => `${formatItemStatLabel(key)} ${value ?? 0}`).join(', ') || 'нет'}</p>
+        <p className="muted">Свойства: {formatEquipmentEffectRows(hoverAdminItem?.equipmentEffects).join(', ') || 'нет'}</p>
         <p className="muted">Требования: {Object.entries(hoverItem.requiredStats).map(([key, value]) => `${formatItemStatLabel(key)} ${value ?? 0}`).join(', ') || 'нет'}</p>
         <div className="character-item-inline-compare-head">
           <span>Сравнение со слотом</span>
@@ -2281,6 +2372,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <p className="muted">Защита: {selectedAdminItem.armorValue}</p>
             ) : null}
             <p className="muted">Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}</p>
+            <p className="muted">Свойства: {selectedEffectRows.join(', ') || 'нет'}</p>
             <p className="muted">Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}</p>
             {renderSelectedItemSetDetails()}
             <div className="character-item-inline-compare-head">
