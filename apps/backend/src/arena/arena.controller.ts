@@ -1,9 +1,13 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { BuyItemDto } from './dto.buy-item.dto';
+import { DeleteItemInstanceDto } from './dto.delete-item-instance.dto';
 import { EquipItemDto } from './dto.equip-item.dto';
+import { EquipItemInstanceDto } from './dto.equip-item-instance.dto';
 import { SellItemDto } from './dto.sell-item.dto';
 import { SocketAugmentDto } from './dto.socket-augment.dto';
+import { SyncItemInstanceDto } from './dto.sync-item-instance.dto';
 import { UnequipItemDto } from './dto.unequip-item.dto';
+import { UnequipItemInstanceDto } from './dto.unequip-item-instance.dto';
 import { UnsocketAugmentDto } from './dto.unsocket-augment.dto';
 import { UseItemDto } from './dto.use-item.dto';
 import { ArenaService } from './arena.service';
@@ -40,9 +44,19 @@ export class ArenaController {
     return this.arenaService.equipItem(dto.characterId, dto.itemId, dto.slot);
   }
 
+  @Post('equip-instance')
+  equipInstance(@Body() dto: EquipItemInstanceDto) {
+    return this.arenaService.equipItemInstance(dto.characterId, dto.itemInstanceId, dto.slot);
+  }
+
   @Post('unequip')
   unequip(@Body() dto: UnequipItemDto) {
     return this.arenaService.unequipItem(dto.characterId, dto.slot);
+  }
+
+  @Post('unequip-instance')
+  unequipInstance(@Body() dto: UnequipItemInstanceDto) {
+    return this.arenaService.unequipItemInstance(dto.characterId, dto.itemInstanceId);
   }
 
   @Post('use-item')
@@ -67,5 +81,21 @@ export class ArenaController {
       dto.itemInstanceId,
       dto.socketId,
     );
+  }
+
+  @Post('sync-item-instance')
+  syncItemInstance(@Body() dto: SyncItemInstanceDto) {
+    return this.arenaService.upsertCharacterItemInstance({
+      characterId: dto.characterId,
+      itemId: dto.itemId,
+      itemInstanceId: dto.itemInstanceId,
+      state: (dto.state ?? null) as any,
+    });
+  }
+
+  @Post('delete-item-instance')
+  async deleteItemInstance(@Body() dto: DeleteItemInstanceDto) {
+    await this.arenaService.deleteCharacterItemInstance(dto.characterId, dto.itemId, dto.itemInstanceId);
+    return { ok: true };
   }
 }

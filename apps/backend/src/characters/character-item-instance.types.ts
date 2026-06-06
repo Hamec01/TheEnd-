@@ -1,4 +1,23 @@
 import type { Equipment } from '@theend/rpg-domain';
+import type { AdminItem, ItemEffect, ItemSocket } from '../content/content.types';
+
+export interface CharacterItemInstanceStatOverrides {
+  damageMin?: number;
+  damageMax?: number;
+  armorValue?: number;
+  price?: number;
+  attackRange?: number;
+  pierceTargets?: number;
+  splashRadius?: number;
+  splashCenterMultiplier?: number;
+  splashOuterMultiplier?: number;
+  bonuses?: Partial<Record<'hp' | 'mp' | 'stamina' | 'strength' | 'constitution' | 'dexterity' | 'intelligence' | 'luck' | 'perception' | 'willpower', number>>;
+  equipmentEffects?: ItemEffect[];
+  augmentSlots?: ItemSocket[];
+  maxAugmentSlots?: number;
+  canAddAugmentSlots?: boolean;
+  canHaveRuneComplex?: boolean;
+}
 
 /**
  * Версия контракта instance-state.
@@ -28,9 +47,20 @@ export interface CharacterItemSocketState {
 export interface CharacterItemInstanceState {
   version: CharacterItemInstanceStateVersion;
   augmentSlots?: CharacterItemSocketState[];
+  sourceItemId?: string;
+  itemSnapshot?: AdminItem;
+  customName?: string;
+  statOverrides?: CharacterItemInstanceStatOverrides;
+  qualityTierId?: string;
   qualityTier?: number;
+  forgeScore?: number;
   forgedAtIso?: string;
   ownerTag?: string;
+  craftedFromTemplateId?: string;
+  craftedMaterialIds?: string[];
+  craftedByProfession?: 'blacksmithing';
+  tags?: string[];
+  notes?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -81,6 +111,19 @@ export function normalizeCharacterItemInstanceState(value: unknown): CharacterIt
     return null;
   }
 
+  const normalizeAdminItemSnapshot = (rawValue: unknown): AdminItem | undefined => {
+    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+      return undefined;
+    }
+    const record = rawValue as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const name = typeof record.name === 'string' ? record.name.trim() : '';
+    if (!id || !name) {
+      return undefined;
+    }
+    return record as unknown as AdminItem;
+  };
+
   const augmentSlotsRaw = raw.augmentSlots;
   const augmentSlots = Array.isArray(augmentSlotsRaw)
     ? augmentSlotsRaw.reduce<CharacterItemSocketState[]>((acc, entry) => {
@@ -113,14 +156,36 @@ export function normalizeCharacterItemInstanceState(value: unknown): CharacterIt
     }, [])
     : undefined;
 
+  const statOverridesRaw = raw.statOverrides;
+  const statOverrides = statOverridesRaw && typeof statOverridesRaw === 'object' && !Array.isArray(statOverridesRaw)
+    ? (statOverridesRaw as CharacterItemInstanceStatOverrides)
+    : undefined;
+
   return {
     version,
     augmentSlots,
+    sourceItemId: typeof raw.sourceItemId === 'string' ? raw.sourceItemId : undefined,
+    itemSnapshot: normalizeAdminItemSnapshot(raw.itemSnapshot),
+    customName: typeof raw.customName === 'string' ? raw.customName : undefined,
+    statOverrides,
+    qualityTierId: typeof raw.qualityTierId === 'string' ? raw.qualityTierId : undefined,
     qualityTier: typeof raw.qualityTier === 'number' && Number.isFinite(raw.qualityTier)
       ? Math.max(0, Math.floor(raw.qualityTier))
       : undefined,
+    forgeScore: typeof raw.forgeScore === 'number' && Number.isFinite(raw.forgeScore)
+      ? raw.forgeScore
+      : undefined,
     forgedAtIso: typeof raw.forgedAtIso === 'string' ? raw.forgedAtIso : undefined,
     ownerTag: typeof raw.ownerTag === 'string' ? raw.ownerTag : undefined,
+    craftedFromTemplateId: typeof raw.craftedFromTemplateId === 'string' ? raw.craftedFromTemplateId : undefined,
+    craftedMaterialIds: Array.isArray(raw.craftedMaterialIds)
+      ? raw.craftedMaterialIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : undefined,
+    craftedByProfession: raw.craftedByProfession === 'blacksmithing' ? 'blacksmithing' : undefined,
+    tags: Array.isArray(raw.tags)
+      ? raw.tags.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : undefined,
+    notes: typeof raw.notes === 'string' ? raw.notes : undefined,
     metadata: raw.metadata && typeof raw.metadata === 'object' && !Array.isArray(raw.metadata)
       ? (raw.metadata as Record<string, unknown>)
       : undefined,

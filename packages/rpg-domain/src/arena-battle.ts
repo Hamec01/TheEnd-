@@ -132,8 +132,12 @@ export interface ArenaCombatEntity {
   hasShield?: boolean;
   /** Currently equipped weapon item id (admin item id, updated by weapon_swap). */
   activeWeaponItemId?: string | null;
+  /** Currently equipped unique weapon instance id when combat is driven by item instances. */
+  activeWeaponInstanceId?: string | null;
   /** Currently equipped off-hand item id (admin item id, e.g. shield). Cleared when two-handed weapon equipped. */
   offHandItemId?: string | null;
+  /** Currently equipped unique off-hand instance id when combat is driven by item instances. */
+  offHandInstanceId?: string | null;
   /** Пассивные модификаторы из экипировки и сетов (агрегируются на бэкенде). */
   combatModifiers?: ArenaCombatEquipmentModifiers;
   /** Наложенные статусы (яд, оглушение и т.д.). */

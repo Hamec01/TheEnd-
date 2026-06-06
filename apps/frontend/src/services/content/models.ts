@@ -551,6 +551,41 @@ export interface AdminItem {
   updatedAt: string;
 }
 
+export interface ItemInstance {
+  id: string;
+  itemId: string;
+  ownerId?: string;
+  sourceItemId?: string;
+  itemSnapshot?: AdminItem;
+  customName?: string;
+  statOverrides?: {
+    damageMin?: number;
+    damageMax?: number;
+    armorValue?: number;
+    price?: number;
+    attackRange?: number;
+    pierceTargets?: number;
+    splashRadius?: number;
+    splashCenterMultiplier?: number;
+    splashOuterMultiplier?: number;
+    bonuses?: Partial<Record<StatKey, number>>;
+    equipmentEffects?: ItemEffect[];
+    augmentSlots?: ItemSocket[];
+    maxAugmentSlots?: number;
+    canAddAugmentSlots?: boolean;
+    canHaveRuneComplex?: boolean;
+  };
+  qualityTierId?: string;
+  forgeScore?: number;
+  craftedFromTemplateId?: string;
+  craftedMaterialIds?: string[];
+  craftedByProfession?: 'blacksmithing';
+  tags?: string[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type MerchantType =
   | 'blacksmith'
   | 'alchemist'
@@ -996,3 +1031,98 @@ export type AdminQuest = QuestDefinition;
 export type AdminQuestInteraction = QuestInteractionDefinition;
 export type AdminQuestItem = QuestItemDefinition;
 export type AdminQuestMarker = QuestMarkerDefinition;
+
+export type SoundCategory =
+  | 'ui'
+  | 'footsteps'
+  | 'combat'
+  | 'weapons'
+  | 'magic'
+  | 'skills'
+  | 'items'
+  | 'inventory'
+  | 'quests'
+  | 'dialogues'
+  | 'npc'
+  | 'cities'
+  | 'kingdoms'
+  | 'locations'
+  | 'battle_maps'
+  | 'ambient'
+  | 'weather'
+  | 'resources'
+  | 'professions'
+  | 'events'
+  | 'system';
+
+export type SoundKind = 'sfx' | 'music' | 'ambient' | 'voice' | 'loop' | 'one_shot';
+
+export interface SoundBinding {
+  id: string;
+  targetType:
+    | 'global'
+    | 'ui'
+    | 'kingdom'
+    | 'city'
+    | 'location'
+    | 'battle_map'
+    | 'npc'
+    | 'item'
+    | 'weapon'
+    | 'armor'
+    | 'skill'
+    | 'quest'
+    | 'resource'
+    | 'profession'
+    | 'event'
+    | 'terrain';
+  targetId?: string;
+  event:
+    | 'click'
+    | 'hover'
+    | 'open'
+    | 'close'
+    | 'enter'
+    | 'leave'
+    | 'attack'
+    | 'hit'
+    | 'miss'
+    | 'crit'
+    | 'block'
+    | 'dodge'
+    | 'cast'
+    | 'impact'
+    | 'start'
+    | 'complete'
+    | 'fail'
+    | 'loot'
+    | 'equip'
+    | 'unequip'
+    | 'step'
+    | 'idle'
+    | 'ambient';
+  priority?: number;
+  conditions?: unknown[];
+}
+
+export interface SoundDefinition {
+  id: string;
+  name: string;
+  status: 'active' | 'draft' | 'disabled';
+  category: SoundCategory;
+  kind: SoundKind;
+  description?: string;
+  assetUrl: string;
+  assetKey?: string;
+  volume?: number;
+  loop?: boolean;
+  randomPitch?: boolean;
+  pitchMin?: number;
+  pitchMax?: number;
+  cooldownMs?: number;
+  tags?: string[];
+  bindings?: SoundBinding[];
+  adminNotes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}

@@ -42,7 +42,9 @@ import {
   type CharacterSkillLoadout,
   type CharacterSkillRow,
   type CustomArenaNpcPayload,
+  type ArenaEquipmentState,
   equipArenaItem,
+  equipArenaItemInstance,
   getArenaHubState,
   getArenaMerchantStock,
   grantSkill,
@@ -62,6 +64,8 @@ import {
   updateSkillLoadout,
   sellArenaItem,
   unequipArenaItem,
+  type ArenaItemInstanceRecord,
+  unequipArenaItemInstance,
   useArenaItem as arenaUseItem,
   useSkillOutOfCombat as arenaUseSkillOutOfCombat,
 } from './api';
@@ -77,7 +81,7 @@ import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/Godm
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
-import type { AdminItem, AdminMerchant, AdminSkill, Material, StoredImage } from './services/content/models';
+import type { AdminItem, AdminMerchant, AdminSkill, ItemInstance, Material, StoredImage } from './services/content/models';
 import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
   CHARACTER_CREATION_AVATAR_PRESETS,
@@ -104,6 +108,11 @@ import {
 } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource, resolveStoredImageSource } from './services/content/runtimeImageService';
 import { getDomainItemWithFallback } from './services/content/seedService';
+import {
+  buildEffectiveAdminItems,
+  readPlayerItemInstances,
+  resolveEffectiveAdminItem,
+} from './services/playerItemInstances';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps, loadBattleMapsFromStore } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 import { cityService } from './services/cityRepository';
@@ -240,6 +249,8 @@ interface HubStatePayload {
   character: ArenaCharacter;
   inventory: InventoryState;
   equipment: Equipment;
+  itemInstances?: ArenaItemInstanceRecord[];
+  equipmentState?: ArenaEquipmentState | null;
   actionSlots: CharacterActionSlot[];
 }
 
@@ -1406,6 +1417,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
   const [equipment, setEquipment] = useState<Equipment>({ ...EMPTY_EQUIPMENT });
+  const [arenaItemInstances, setArenaItemInstances] = useState<ArenaItemInstanceRecord[]>([]);
+  const [arenaEquipmentState, setArenaEquipmentState] = useState<ArenaEquipmentState | null>(null);
   const [actionSlots, setActionSlots] = useState<CharacterActionSlot[]>(() => createEmptyActionSlots());
   const [runtimeInventoryRevision, setRuntimeInventoryRevision] = useState(0);
   const [godmodeTravelRequest, setGodmodeTravelRequest] = useState<GodmodeTravelRequest | null>(null);
@@ -1500,6 +1513,33 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     () => mergeInventoryWithRuntimeOverlay(inventory),
     [inventory, runtimeInventoryRevision],
   );
+  const playerItemInstances = useMemo<ItemInstance[]>(() => {
+    const localInstances = readPlayerItemInstances();
+    const byItemId = new Map(localInstances.map((entry) => [entry.itemId, entry] as const));
+
+    for (const entry of arenaItemInstances) {
+      byItemId.set(entry.itemId, {
+        id: entry.id,
+        itemId: entry.itemId,
+        ownerId: entry.characterId,
+        sourceItemId: typeof entry.state?.sourceItemId === 'string' ? entry.state.sourceItemId : undefined,
+        itemSnapshot: (entry.state?.itemSnapshot as AdminItem | undefined) ?? undefined,
+        customName: typeof entry.state?.customName === 'string' ? entry.state.customName : undefined,
+        statOverrides: entry.state?.statOverrides as ItemInstance['statOverrides'] | undefined,
+        qualityTierId: typeof entry.state?.qualityTierId === 'string' ? entry.state.qualityTierId : undefined,
+        forgeScore: typeof entry.state?.forgeScore === 'number' ? entry.state.forgeScore : undefined,
+        craftedFromTemplateId: typeof entry.state?.craftedFromTemplateId === 'string' ? entry.state.craftedFromTemplateId : undefined,
+        craftedMaterialIds: Array.isArray(entry.state?.craftedMaterialIds) ? entry.state?.craftedMaterialIds : undefined,
+        craftedByProfession: entry.state?.craftedByProfession === 'blacksmithing' ? 'blacksmithing' : undefined,
+        tags: Array.isArray(entry.state?.tags) ? entry.state.tags.filter((tag): tag is string => typeof tag === 'string') : undefined,
+        notes: typeof entry.state?.notes === 'string' ? entry.state.notes : undefined,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      });
+    }
+
+    return Array.from(byItemId.values());
+  }, [actionSlots, arenaItemInstances, equipment, inventory, runtimeInventoryRevision]);
   const isGodmodeAccount = accountId !== null && login.trim().toLowerCase() === GODMODE_LOGIN;
 
   const runtimeVisualItems = useMemo<AdminItem[]>(() => {
@@ -1526,8 +1566,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         updatedAt: material.updatedAt,
       });
     }
-    return entries;
-  }, [runtimeAdminItems, runtimeAdminMaterials]);
+    return buildEffectiveAdminItems(entries, playerItemInstances);
+  }, [playerItemInstances, runtimeAdminItems, runtimeAdminMaterials]);
 
   const resolveRuntimeItemById = useCallback(
     (itemId: string) => getDomainItemWithFallback(itemId, runtimeVisualItems),
@@ -1535,8 +1575,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   );
 
   const resolveAdminVisualItemById = useCallback(
-    (itemId: string) => runtimeVisualItems.find((item) => item.id === itemId) ?? null,
-    [runtimeVisualItems],
+    (itemId: string) => resolveEffectiveAdminItem(itemId, runtimeVisualItems, playerItemInstances),
+    [playerItemInstances, runtimeVisualItems],
   );
 
   function resolveItem(itemId: string): ItemDefinition {
@@ -2600,6 +2640,8 @@ function applyHubState(hub: HubStatePayload): void {
     savePlayerProfessionsState(hub.character.id, mergedProfessions);
     setInventory(hub.inventory);
     setEquipment(hub.equipment);
+    setArenaItemInstances(hub.itemInstances ?? []);
+    setArenaEquipmentState(hub.equipmentState ?? null);
     setActionSlots(hub.actionSlots ?? createEmptyActionSlots());
     const profile = loadCharacterProfile(hub.character.id);
     if (profile?.avatarUrl) {
@@ -3083,6 +3125,27 @@ function applyHubState(hub: HubStatePayload): void {
     setStatus('Аватар сброшен к расовому портрету по умолчанию.');
   }
 
+  function getEquippedInstanceIdForSlot(slot: keyof Equipment): string | null {
+    return arenaEquipmentState?.slots?.[slot]?.itemInstanceId ?? null;
+  }
+
+  function findPreferredInventoryInstanceId(itemId: string, preferredSlot?: keyof Equipment): string | null {
+    const occupiedIds = new Set(
+      Object.values(arenaEquipmentState?.slots ?? {})
+        .map((entry) => entry?.itemInstanceId ?? null)
+        .filter((entry): entry is string => Boolean(entry)),
+    );
+
+    if (preferredSlot) {
+      const equippedInPreferredSlot = arenaEquipmentState?.slots?.[preferredSlot]?.itemInstanceId ?? null;
+      if (equippedInPreferredSlot) {
+        occupiedIds.delete(equippedInPreferredSlot);
+      }
+    }
+
+    return arenaItemInstances.find((entry) => entry.itemId === itemId && !occupiedIds.has(entry.id))?.id ?? null;
+  }
+
   async function handleEquip(itemId: string, preferredSlot?: keyof Equipment): Promise<void> {
     if (!character) {
       return;
@@ -3093,7 +3156,10 @@ function applyHubState(hub: HubStatePayload): void {
     const isTwoHandedWeapon = item.itemType === 'weapon' && getItemHandsRequired(item) === 2;
 
     try {
-      const hub = await equipArenaItem(character.id, itemId, preferredSlot);
+      const itemInstanceId = findPreferredInventoryInstanceId(itemId, preferredSlot);
+      const hub = itemInstanceId
+        ? await equipArenaItemInstance(character.id, itemInstanceId, preferredSlot)
+        : await equipArenaItem(character.id, itemId, preferredSlot);
       applyHubState(hub);
       if (isTwoHandedWeapon && previousShieldId && !hub.equipment.shield) {
         setStatus(`Экипировано: ${item.name}. Предмет из левой руки снят и остался в инвентаре, потому что оружие двуручное.`);
@@ -3112,7 +3178,10 @@ function applyHubState(hub: HubStatePayload): void {
     }
 
     try {
-      const hub = await unequipArenaItem(character.id, slot);
+      const equippedInstanceId = getEquippedInstanceIdForSlot(slot);
+      const hub = equippedInstanceId
+        ? await unequipArenaItemInstance(character.id, equippedInstanceId)
+        : await unequipArenaItem(character.id, slot);
       applyHubState(hub);
       setStatus(`Снято из слота: ${slot}`);
     } catch (error) {

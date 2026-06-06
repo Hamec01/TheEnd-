@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-05T15:13:28.239Z",
+  "exportedAt": "2026-06-05T20:23:15.323Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -13,7 +13,7 @@
     "locations": 4,
     "materials": 152,
     "lootTables": 0,
-    "images": 293,
+    "images": 296,
     "dialogues": 24,
     "npcs": 32,
     "quests": 10,
@@ -880,10 +880,10 @@
         "createdAt": "2026-04-28T19:46:07.999Z",
         "damageMax": 9,
         "damageMin": 5,
-        "imagePath": "unknown",
+        "imagePath": "starter_sword_01",
         "isEnabled": true,
         "stackable": false,
-        "updatedAt": "2026-04-28T19:46:07.999Z",
+        "updatedAt": "2026-06-05T20:21:56.641Z",
         "physicalType": "slash",
         "handsRequired": 1,
         "requiredStats": {
@@ -896,12 +896,12 @@
         "canHaveRuneComplex": false,
         "imageRef": {
           "type": "image",
-          "src": "unknown"
+          "src": "starter_sword_01"
         }
       },
       {
         "id": "starter_leather_armor_01",
-        "name": "Starter Leather Armor",
+        "name": "нагрудник бедняка",
         "slot": "chest",
         "type": "armor",
         "price": 30,
@@ -912,10 +912,10 @@
         "subtype": "leather",
         "maxStack": 1,
         "createdAt": "2026-04-28T19:46:07.999Z",
-        "imagePath": "unknown",
+        "imagePath": "starter_leather_armor_01",
         "isEnabled": true,
         "stackable": false,
-        "updatedAt": "2026-04-28T19:46:07.999Z",
+        "updatedAt": "2026-06-05T20:22:54.266Z",
         "armorValue": 3,
         "handsRequired": 1,
         "requiredStats": {},
@@ -925,12 +925,12 @@
         "canHaveRuneComplex": false,
         "imageRef": {
           "type": "image",
-          "src": "unknown"
+          "src": "starter_leather_armor_01"
         }
       },
       {
         "id": "starter_healing_potion_01",
-        "name": "Starter Healing Potion",
+        "name": "малая лечка",
         "slot": "quick",
         "type": "potion",
         "price": 12,
@@ -939,10 +939,10 @@
         "subtype": "healing",
         "maxStack": 20,
         "createdAt": "2026-04-28T19:46:07.999Z",
-        "imagePath": "unknown",
+        "imagePath": "starter_healing_potion_01",
         "isEnabled": true,
         "stackable": true,
-        "updatedAt": "2026-04-28T19:46:07.999Z",
+        "updatedAt": "2026-06-05T20:23:14.975Z",
         "handsRequired": 1,
         "requiredStats": {},
         "loreDescription": "Brewed by local alchemists for recruits.",
@@ -951,7 +951,7 @@
         "canHaveRuneComplex": false,
         "imageRef": {
           "type": "image",
-          "src": "unknown"
+          "src": "starter_healing_potion_01"
         }
       },
       {
@@ -8651,7 +8651,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-05T14:15:48.411Z",
+        "updatedAt": "2026-06-05T20:11:47.630Z",
         "kind": "single",
         "stages": []
       },
@@ -8707,7 +8707,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-05T14:15:48.411Z",
+        "updatedAt": "2026-06-05T20:11:47.630Z",
         "kind": "single",
         "stages": []
       },
@@ -8766,7 +8766,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-05T14:15:48.411Z",
+        "updatedAt": "2026-06-05T20:11:47.630Z",
         "kind": "single",
         "stages": []
       }
@@ -37988,6 +37988,36 @@
         "dataUrl": "/assets/upload/images/worldsim/archetypes/wild_wolf_pack/wild_wolf_pack_world_sprite-wild_wolf_pack-world-sprite.png",
         "createdAt": "2026-06-05T15:13:26.280Z",
         "updatedAt": "2026-06-05T15:13:26.280Z"
+      },
+      {
+        "id": "starter_sword_01",
+        "name": "starter_sword_01-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/items/weapon/starter_sword_01-starter_sword_01-icon.png",
+        "createdAt": "2026-06-05T20:21:49.667Z",
+        "updatedAt": "2026-06-05T20:21:49.667Z"
+      },
+      {
+        "id": "starter_leather_armor_01",
+        "name": "starter_leather_armor_01-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/items/armor/leather/starter_leather_armor_01-starter_leather_armor_01-icon.png",
+        "createdAt": "2026-06-05T20:22:35.697Z",
+        "updatedAt": "2026-06-05T20:22:35.697Z"
+      },
+      {
+        "id": "starter_healing_potion_01",
+        "name": "starter_healing_potion_01-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/items/potion/healing/starter_healing_potion_01-starter_healing_potion_01-icon.png",
+        "createdAt": "2026-06-05T20:23:09.429Z",
+        "updatedAt": "2026-06-05T20:23:09.429Z"
       }
     ],
     "dialogues": [

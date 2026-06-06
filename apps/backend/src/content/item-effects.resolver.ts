@@ -58,6 +58,7 @@ export interface EquippedItemEffectsArgs {
   equipment: Partial<Equipment> | Equipment | null | undefined;
   items: ReadonlyArray<AdminItem>;
   activationContexts?: string[];
+  equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>;
 }
 
 /**
@@ -116,6 +117,7 @@ export interface ResolveCharacterEquipmentModifiersArgs {
   itemSets?: ReadonlyArray<ItemSet>;
   activeStatuses?: ReadonlyArray<ActiveStatusInput>;
   activationContexts?: string[];
+  equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>;
 }
 
 /**
@@ -137,7 +139,7 @@ export function getEquippedItemEffects(args: EquippedItemEffectsArgs): EquippedI
       continue;
     }
 
-    const equippedItem = itemById.get(itemId);
+    const equippedItem = args.equippedItemsBySlot?.[slot as keyof Equipment] ?? itemById.get(itemId);
     if (!equippedItem || equippedItem.isEnabled === false) {
       continue;
     }
@@ -376,6 +378,7 @@ export function resolveCharacterEquipmentModifiers(
     equipment: args.equipment,
     items: args.items,
     activationContexts: args.activationContexts,
+    equippedItemsBySlot: args.equippedItemsBySlot,
   });
 
   const activeSetBonuses = getActiveItemSetBonuses({

@@ -1,5 +1,5 @@
 import type { InventoryState } from '@theend/rpg-domain';
-import { adjustDevInventoryItem } from '../../api';
+import { adjustDevInventoryItem, deleteArenaItemInstance, syncArenaItemInstance } from '../../api';
 import type {
   AdminItem,
   BlacksmithCustomForgePlan,
@@ -13,6 +13,14 @@ import type {
   StatKey,
 } from '../../services/content/models';
 import { itemsService } from '../../services/content/itemsService';
+import {
+  PLAYER_HIDDEN_RUNTIME_ITEM_TAG,
+  PLAYER_RUNTIME_ITEM_TAG,
+  getPlayerItemInstanceByItemId,
+  isRuntimeItemDefinition,
+  removePlayerItemInstanceByItemId,
+  upsertPlayerItemInstance,
+} from '../../services/playerItemInstances';
 import {
   PLAYER_ITEMS_STORAGE_KEY,
   PLAYER_MATERIAL_IDS_STORAGE_KEY,
@@ -79,6 +87,65 @@ interface CraftedItemOverrides {
   customName?: string;
   customDescription?: string;
   priceOverride?: number;
+}
+
+function ensureRuntimeItemPayload(
+  item: Omit<AdminItem, 'createdAt' | 'updatedAt'>,
+  characterId: string,
+): Omit<AdminItem, 'createdAt' | 'updatedAt'> {
+  const tags = new Set(item.tags ?? []);
+  tags.add(PLAYER_RUNTIME_ITEM_TAG);
+  tags.add(PLAYER_HIDDEN_RUNTIME_ITEM_TAG);
+  tags.add(`crafted_owner:${characterId}`);
+  return {
+    ...item,
+    tags: Array.from(tags),
+  };
+}
+
+async function syncItemInstanceRecord(params: {
+  item: AdminItem;
+  characterId: string;
+  sourceItemId?: string;
+  qualityTierId?: string | null;
+  forgeScore?: number;
+  statOverrides?: Record<string, unknown>;
+  craftedFromTemplateId?: string;
+  craftedMaterialIds?: string[];
+  notes?: string;
+}): Promise<void> {
+  const { item, characterId, sourceItemId, qualityTierId, forgeScore, statOverrides, craftedFromTemplateId, craftedMaterialIds, notes } = params;
+  const instance = upsertPlayerItemInstance({
+    itemId: item.id,
+    ownerId: characterId,
+    sourceItemId: sourceItemId?.trim() || undefined,
+    itemSnapshot: item,
+    customName: item.name?.trim() || undefined,
+    statOverrides: statOverrides as any,
+    qualityTierId: qualityTierId ?? undefined,
+    forgeScore,
+    craftedFromTemplateId: craftedFromTemplateId?.trim() || undefined,
+    craftedMaterialIds: craftedMaterialIds?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
+    craftedByProfession: 'blacksmithing',
+    tags: item.tags,
+    notes,
+  });
+  await syncArenaItemInstance(characterId, item.id, {
+    version: 1,
+    sourceItemId: sourceItemId?.trim() || undefined,
+    itemSnapshot: item,
+    customName: item.name?.trim() || undefined,
+    statOverrides: statOverrides ?? undefined,
+    qualityTierId: qualityTierId ?? undefined,
+    forgeScore,
+    forgedAtIso: instance.updatedAt,
+    ownerTag: characterId,
+    craftedFromTemplateId: craftedFromTemplateId?.trim() || undefined,
+    craftedMaterialIds: craftedMaterialIds?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
+    craftedByProfession: 'blacksmithing',
+    tags: item.tags,
+    notes,
+  }, instance.id).catch(() => undefined);
 }
 
 function formatItemCoreStats(item: AdminItem): string[] {
@@ -1471,12 +1538,12 @@ export async function applyItemWorkToCharacter(params: {
 
   if (action.actionType === 'add_socket') {
     if (baseItem.canAddAugmentSlots !== true) {
-      return { success: false, message: 'Этот предмет не поддерживает дополнительные слоты.' };
+      return { success: false, message: 'Р­С‚РѕС‚ РїСЂРµРґРјРµС‚ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ СЃР»РѕС‚С‹.' };
     }
     const currentSlots = baseItem.augmentSlots?.length ?? 0;
     const maxSlots = baseItem.maxAugmentSlots ?? currentSlots;
     if (currentSlots >= maxSlots) {
-      return { success: false, message: `Достигнут максимум слотов (${maxSlots}).` };
+      return { success: false, message: `Р”РѕСЃС‚РёРіРЅСѓС‚ РјР°РєСЃРёРјСѓРј СЃР»РѕС‚РѕРІ (${maxSlots}).` };
     }
   }
 
@@ -1484,6 +1551,11 @@ export async function applyItemWorkToCharacter(params: {
     let latestInventory = inventory ?? undefined;
     const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
     latestInventory = removeHub.inventory;
+    if (isRuntimeItemDefinition(baseItem) || getPlayerItemInstanceByItemId(baseItem.id)) {
+      removePlayerItemInstanceByItemId(baseItem.id);
+      await deleteArenaItemInstance(characterId, baseItem.id).catch(() => undefined);
+      await itemsService.delete(baseItem.id).catch(() => undefined);
+    }
     const salvage = inferDismantleMaterials(baseItem);
     const materialMap = { ...readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY) };
     for (const [materialId, quantity] of Object.entries(salvage)) {
@@ -1494,20 +1566,40 @@ export async function applyItemWorkToCharacter(params: {
       inventory: latestInventory,
       salvagedMaterials: salvage,
       success: true,
-      message: 'Предмет разобран на материалы.',
+      message: 'РџСЂРµРґРјРµС‚ СЂР°Р·РѕР±СЂР°РЅ РЅР° РјР°С‚РµСЂРёР°Р»С‹.',
     };
   }
 
-  const nextDefinition = await itemsService.create(buildWorkedItem(baseItem, action, score, overrides));
-  const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
-  const addHub = await adjustDevInventoryItem(characterId, { itemId: nextDefinition.id, quantityDelta: 1 });
+  const runtimeBacked = isRuntimeItemDefinition(baseItem) || Boolean(getPlayerItemInstanceByItemId(baseItem.id));
+  const existingInstance = getPlayerItemInstanceByItemId(baseItem.id);
+  const nextDraft = ensureRuntimeItemPayload(buildWorkedItem(baseItem, action, score, overrides), characterId);
+  let nextDefinition: AdminItem;
+  let latestInventory = inventory ?? undefined;
+
+  if (runtimeBacked) {
+    nextDefinition = await itemsService.update(baseItem.id, { ...nextDraft, id: baseItem.id });
+  } else {
+    nextDefinition = await itemsService.create(nextDraft);
+    const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
+    const addHub = await adjustDevInventoryItem(characterId, { itemId: nextDefinition.id, quantityDelta: 1 });
+    latestInventory = addHub.inventory ?? removeHub.inventory;
+  }
+
+  await syncItemInstanceRecord({
+    item: nextDefinition,
+    characterId,
+    sourceItemId: runtimeBacked ? (existingInstance?.sourceItemId ?? baseItem.id) : baseItem.id,
+    forgeScore: score,
+    notes: action.name,
+  });
+
   const beforeStats = formatItemCoreStats(baseItem).join(', ');
   const afterStats = formatItemCoreStats(nextDefinition).join(', ');
   return {
-    inventory: addHub.inventory ?? removeHub.inventory,
+    inventory: latestInventory,
     createdItem: nextDefinition,
     success: true,
-    message: `${action.name}: ${baseItem.name} -> ${nextDefinition.name}. Было: ${beforeStats}. Стало: ${afterStats}.`,
+    message: `${action.name}: ${baseItem.name} -> ${nextDefinition.name}. Р‘С‹Р»Рѕ: ${beforeStats}. РЎС‚Р°Р»Рѕ: ${afterStats}.`,
   };
 }
 
@@ -1529,7 +1621,7 @@ export async function grantCustomForgeItemToCharacter(params: {
     writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, salvageMap);
     return { success: false };
   }
-  const created = await itemsService.create(createForgedItemFromTemplate({
+  const createdDraft = ensureRuntimeItemPayload(createForgedItemFromTemplate({
     template,
     plan,
     materials: materialsCatalog,
@@ -1537,7 +1629,17 @@ export async function grantCustomForgeItemToCharacter(params: {
     score,
     characterId,
     overrides,
-  }));
+  }), characterId);
+  const created = await itemsService.create(createdDraft);
+  await syncItemInstanceRecord({
+    item: created,
+    characterId,
+    qualityTierId: qualityTier?.id ?? null,
+    forgeScore: score,
+    craftedFromTemplateId: template.id,
+    craftedMaterialIds: plan.selectedMaterials.map((entry) => entry.materialId),
+    notes: 'custom_forge',
+  });
   const hub = await adjustDevInventoryItem(characterId, { itemId: created.id, quantityDelta: 1 });
   return { inventory: hub.inventory, createdItem: created, success: true };
 }
@@ -1595,14 +1697,23 @@ export async function grantRecipeOutputsToCharacter(params: {
 
     if (exactItem && shouldCreateForgedVariant(exactItem)) {
       for (let index = 0; index < quantity; index += 1) {
-        const crafted = await itemsService.create(createForgedItemFromBase(
+        const craftedDraft = ensureRuntimeItemPayload(createForgedItemFromBase(
           exactItem,
           recipe!,
           qualityTier ?? null,
           characterId,
           !appliedOverride && quantity === 1 ? overrides : undefined,
           recipeSourceMaterials,
-        ));
+        ), characterId);
+        const crafted = await itemsService.create(craftedDraft);
+        await syncItemInstanceRecord({
+          item: crafted,
+          characterId,
+          sourceItemId: exactItem.id,
+          qualityTierId: qualityTier?.id ?? null,
+          craftedMaterialIds: recipeSourceMaterials.map((material) => material.id),
+          notes: `recipe:${recipe?.id ?? 'unknown'}`,
+        });
         const hub = await adjustDevInventoryItem(characterId, { itemId: crafted.id, quantityDelta: 1 });
         latestInventory = hub.inventory;
         createdItem = createdItem ?? crafted;
@@ -1640,16 +1751,36 @@ export async function applyItemWorkToCharacterV2(params: {
     return applyItemWorkToCharacter({ characterId, action, baseItem, score, inventory, overrides });
   }
 
-  const nextDefinition = await itemsService.create(buildWorkedItemV2(baseItem, action, score, blacksmithLevel, overrides));
-  const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
-  const addHub = await adjustDevInventoryItem(characterId, { itemId: nextDefinition.id, quantityDelta: 1 });
+  const runtimeBacked = isRuntimeItemDefinition(baseItem) || Boolean(getPlayerItemInstanceByItemId(baseItem.id));
+  const existingInstance = getPlayerItemInstanceByItemId(baseItem.id);
+  const nextDraft = ensureRuntimeItemPayload(buildWorkedItemV2(baseItem, action, score, blacksmithLevel, overrides), characterId);
+  let nextDefinition: AdminItem;
+  let latestInventory = inventory ?? undefined;
+
+  if (runtimeBacked) {
+    nextDefinition = await itemsService.update(baseItem.id, { ...nextDraft, id: baseItem.id });
+  } else {
+    nextDefinition = await itemsService.create(nextDraft);
+    const removeHub = await adjustDevInventoryItem(characterId, { itemId: baseItem.id, quantityDelta: -1 });
+    const addHub = await adjustDevInventoryItem(characterId, { itemId: nextDefinition.id, quantityDelta: 1 });
+    latestInventory = addHub.inventory ?? removeHub.inventory;
+  }
+
+  await syncItemInstanceRecord({
+    item: nextDefinition,
+    characterId,
+    sourceItemId: runtimeBacked ? (existingInstance?.sourceItemId ?? baseItem.id) : baseItem.id,
+    forgeScore: score,
+    notes: `${action.name}:v2`,
+  });
+
   const beforeStats = formatItemCoreStats(baseItem).join(', ');
   const afterStats = formatItemCoreStats(nextDefinition).join(', ');
   return {
-    inventory: addHub.inventory ?? removeHub.inventory,
+    inventory: latestInventory,
     createdItem: nextDefinition,
     success: true,
-    message: `${action.name}: ${baseItem.name} -> ${nextDefinition.name}. Было: ${beforeStats}. Стало: ${afterStats}.`,
+    message: `${action.name}: ${baseItem.name} -> ${nextDefinition.name}. Р‘С‹Р»Рѕ: ${beforeStats}. РЎС‚Р°Р»Рѕ: ${afterStats}.`,
   };
 }
 
@@ -1672,7 +1803,7 @@ export async function grantCustomForgeItemToCharacterV2(params: {
     writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, salvageMap);
     return { success: false };
   }
-  const created = await itemsService.create(createForgedItemFromTemplateV2({
+  const createdDraft = ensureRuntimeItemPayload(createForgedItemFromTemplateV2({
     template,
     plan,
     materials: materialsCatalog,
@@ -1681,7 +1812,17 @@ export async function grantCustomForgeItemToCharacterV2(params: {
     characterId,
     blacksmithLevel,
     overrides,
-  }));
+  }), characterId);
+  const created = await itemsService.create(createdDraft);
+  await syncItemInstanceRecord({
+    item: created,
+    characterId,
+    qualityTierId: qualityTier?.id ?? null,
+    forgeScore: score,
+    craftedFromTemplateId: template.id,
+    craftedMaterialIds: plan.selectedMaterials.map((entry) => entry.materialId),
+    notes: 'custom_forge_v2',
+  });
   const hub = await adjustDevInventoryItem(characterId, { itemId: created.id, quantityDelta: 1 });
   return { inventory: hub.inventory, createdItem: created, success: true };
 }
@@ -1728,7 +1869,7 @@ export async function grantRecipeOutputsToCharacterV2(params: {
 
     if (exactItem && shouldCreateForgedVariant(exactItem)) {
       for (let index = 0; index < quantity; index += 1) {
-        const crafted = await itemsService.create(createForgedItemFromBase(
+        const craftedDraft = ensureRuntimeItemPayload(createForgedItemFromBase(
           exactItem,
           recipe!,
           qualityTier ?? null,
@@ -1736,7 +1877,16 @@ export async function grantRecipeOutputsToCharacterV2(params: {
           !appliedOverride && quantity === 1 ? overrides : undefined,
           recipeSourceMaterials,
           blacksmithLevel,
-        ));
+        ), characterId);
+        const crafted = await itemsService.create(craftedDraft);
+        await syncItemInstanceRecord({
+          item: crafted,
+          characterId,
+          sourceItemId: exactItem.id,
+          qualityTierId: qualityTier?.id ?? null,
+          craftedMaterialIds: recipeSourceMaterials.map((material) => material.id),
+          notes: `recipe:${recipe?.id ?? 'unknown'}:v2`,
+        });
         const hub = await adjustDevInventoryItem(characterId, { itemId: crafted.id, quantityDelta: 1 });
         latestInventory = hub.inventory;
         createdItem = createdItem ?? crafted;

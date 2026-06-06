@@ -1516,6 +1516,101 @@ export interface City {
   updatedAt: string;
 }
 
+export type SoundCategory =
+  | 'ui'
+  | 'footsteps'
+  | 'combat'
+  | 'weapons'
+  | 'magic'
+  | 'skills'
+  | 'items'
+  | 'inventory'
+  | 'quests'
+  | 'dialogues'
+  | 'npc'
+  | 'cities'
+  | 'kingdoms'
+  | 'locations'
+  | 'battle_maps'
+  | 'ambient'
+  | 'weather'
+  | 'resources'
+  | 'professions'
+  | 'events'
+  | 'system';
+
+export type SoundKind = 'sfx' | 'music' | 'ambient' | 'voice' | 'loop' | 'one_shot';
+
+export interface SoundBinding {
+  id: string;
+  targetType:
+    | 'global'
+    | 'ui'
+    | 'kingdom'
+    | 'city'
+    | 'location'
+    | 'battle_map'
+    | 'npc'
+    | 'item'
+    | 'weapon'
+    | 'armor'
+    | 'skill'
+    | 'quest'
+    | 'resource'
+    | 'profession'
+    | 'event'
+    | 'terrain';
+  targetId?: string;
+  event:
+    | 'click'
+    | 'hover'
+    | 'open'
+    | 'close'
+    | 'enter'
+    | 'leave'
+    | 'attack'
+    | 'hit'
+    | 'miss'
+    | 'crit'
+    | 'block'
+    | 'dodge'
+    | 'cast'
+    | 'impact'
+    | 'start'
+    | 'complete'
+    | 'fail'
+    | 'loot'
+    | 'equip'
+    | 'unequip'
+    | 'step'
+    | 'idle'
+    | 'ambient';
+  priority?: number;
+  conditions?: unknown[];
+}
+
+export interface SoundDefinition {
+  id: string;
+  name: string;
+  status: 'active' | 'draft' | 'disabled';
+  category: SoundCategory;
+  kind: SoundKind;
+  description?: string;
+  assetUrl: string;
+  assetKey?: string;
+  volume?: number;
+  loop?: boolean;
+  randomPitch?: boolean;
+  pitchMin?: number;
+  pitchMax?: number;
+  cooldownMs?: number;
+  tags?: string[];
+  bindings?: SoundBinding[];
+  adminNotes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ContentDatabase {
   version: 1;
   items: AdminItem[];
@@ -1546,6 +1641,7 @@ export interface ContentDatabase {
   blacksmithBalance?: BlacksmithBalance[];
   blacksmithItemTemplates?: BlacksmithItemTemplate[];
   blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
+  sounds?: SoundDefinition[];
   worldMap: WorldMapContent;
   worldSim?: WorldSimConfig;
 }
@@ -1635,7 +1731,8 @@ export type ContentCollectionName =
   | 'blacksmithVisualPresets'
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
-  | 'blacksmithItemWorkActions';
+  | 'blacksmithItemWorkActions'
+  | 'sounds';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1666,6 +1763,7 @@ export interface ContentCollectionMap {
   blacksmithBalance: BlacksmithBalance;
   blacksmithItemTemplates: BlacksmithItemTemplate;
   blacksmithItemWorkActions: BlacksmithItemWorkAction;
+  sounds: SoundDefinition;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

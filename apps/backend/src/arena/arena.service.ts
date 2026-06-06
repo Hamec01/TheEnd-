@@ -321,6 +321,8 @@ export class ArenaService implements OnModuleInit {
       },
       inventory,
       equipment,
+      itemInstances: [],
+      equipmentState: null,
       actionSlots,
     };
   }
@@ -424,6 +426,24 @@ export class ArenaService implements OnModuleInit {
   }
 
   private getCharacterItemInstanceModel(): {
+    findFirst(args: {
+      where: { characterId: string; itemId?: string; id?: string };
+      select?: {
+        id: true;
+        characterId: true;
+        itemId: true;
+        state: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    }): Promise<{
+      id: string;
+      characterId: string;
+      itemId: string;
+      state: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    } | null>;
     findMany(args: {
       where: { characterId: string };
       orderBy?: { createdAt: 'asc' | 'desc' };
@@ -462,9 +482,46 @@ export class ArenaService implements OnModuleInit {
       createdAt: Date;
       updatedAt: Date;
     }>;
+    create(args: {
+      data: { characterId: string; itemId: string; state: Record<string, unknown> | null };
+      select?: {
+        id: true;
+        characterId: true;
+        itemId: true;
+        state: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    }): Promise<{
+      id: string;
+      characterId: string;
+      itemId: string;
+      state: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+    delete(args: { where: { id: string } }): Promise<unknown>;
   } | null {
     return (this.prisma as unknown as {
       characterItemInstance?: {
+        findFirst(args: {
+          where: { characterId: string; itemId?: string; id?: string };
+          select?: {
+            id: true;
+            characterId: true;
+            itemId: true;
+            state: true;
+            createdAt: true;
+            updatedAt: true;
+          };
+        }): Promise<{
+          id: string;
+          characterId: string;
+          itemId: string;
+          state: unknown;
+          createdAt: Date;
+          updatedAt: Date;
+        } | null>;
         findMany(args: {
           where: { characterId: string };
           orderBy?: { createdAt: 'asc' | 'desc' };
@@ -503,6 +560,25 @@ export class ArenaService implements OnModuleInit {
           createdAt: Date;
           updatedAt: Date;
         }>;
+        create(args: {
+          data: { characterId: string; itemId: string; state: Record<string, unknown> | null };
+          select?: {
+            id: true;
+            characterId: true;
+            itemId: true;
+            state: true;
+            createdAt: true;
+            updatedAt: true;
+          };
+        }): Promise<{
+          id: string;
+          characterId: string;
+          itemId: string;
+          state: unknown;
+          createdAt: Date;
+          updatedAt: Date;
+        }>;
+        delete(args: { where: { id: string } }): Promise<unknown>;
       };
     }).characterItemInstance ?? null;
   }
@@ -778,6 +854,90 @@ export class ArenaService implements OnModuleInit {
     }
 
     return next;
+  }
+
+  private cloneAdminItem<T extends AdminItem>(item: T): T {
+    return JSON.parse(JSON.stringify(item)) as T;
+  }
+
+  private buildEffectiveEquippedItemsBySlot(
+    equipment: Equipment,
+    equipmentState: CharacterEquipmentState | null,
+    itemInstances: CharacterItemInstanceRecord[],
+  ): Partial<Record<keyof Equipment, AdminItem | null>> {
+    const byInstanceId = new Map(itemInstances.map((entry) => [entry.id, entry] as const));
+    const next: Partial<Record<keyof Equipment, AdminItem | null>> = {};
+
+    for (const slot of Object.keys(equipment) as Array<keyof Equipment>) {
+      const itemId = equipment[slot];
+      if (!itemId) {
+        next[slot] = null;
+        continue;
+      }
+
+      const baseItem = this.contentService.resolveAdminItemById(itemId);
+      if (!baseItem) {
+        next[slot] = null;
+        continue;
+      }
+
+      const itemInstanceId = equipmentState?.slots?.[slot]?.itemInstanceId ?? null;
+      const instance = itemInstanceId ? byInstanceId.get(itemInstanceId) ?? null : null;
+      const cloned = this.applyItemInstanceOverlay(baseItem, instance?.state ?? null);
+      const socketOverrides = instance?.state?.augmentSlots ?? [];
+
+      if (socketOverrides.length > 0) {
+        const bySocketId = new Map(socketOverrides.map((entry) => [entry.socketId, entry] as const));
+        cloned.augmentSlots = (cloned.augmentSlots ?? []).map((socket) => {
+          const override = bySocketId.get(socket.id);
+          return override
+            ? {
+              ...socket,
+              socketedAugmentItemId: override.socketedAugmentItemId ?? undefined,
+              isLocked: override.isLocked ?? socket.isLocked,
+              source: override.source ?? socket.source,
+            }
+            : socket;
+        });
+      }
+
+      next[slot] = cloned;
+    }
+
+    return next;
+  }
+
+  private applyItemInstanceOverlay(item: AdminItem, state: CharacterItemInstanceState | null): AdminItem {
+    const snapshot = state?.itemSnapshot && state.itemSnapshot.isEnabled !== false
+      ? this.cloneAdminItem(state.itemSnapshot)
+      : this.cloneAdminItem(item);
+    const bonuses = state?.statOverrides?.bonuses
+      ? {
+        ...(snapshot.bonuses ?? {}),
+        ...state.statOverrides.bonuses,
+      }
+      : snapshot.bonuses;
+    return {
+      ...snapshot,
+      id: item.id,
+      name: state?.customName?.trim() || snapshot.name,
+      damageMin: state?.statOverrides?.damageMin ?? snapshot.damageMin,
+      damageMax: state?.statOverrides?.damageMax ?? snapshot.damageMax,
+      armorValue: state?.statOverrides?.armorValue ?? snapshot.armorValue,
+      price: state?.statOverrides?.price ?? snapshot.price,
+      attackRange: state?.statOverrides?.attackRange ?? snapshot.attackRange,
+      pierceTargets: state?.statOverrides?.pierceTargets ?? snapshot.pierceTargets,
+      splashRadius: state?.statOverrides?.splashRadius ?? snapshot.splashRadius,
+      splashCenterMultiplier: state?.statOverrides?.splashCenterMultiplier ?? snapshot.splashCenterMultiplier,
+      splashOuterMultiplier: state?.statOverrides?.splashOuterMultiplier ?? snapshot.splashOuterMultiplier,
+      bonuses,
+      equipmentEffects: state?.statOverrides?.equipmentEffects ?? snapshot.equipmentEffects,
+      augmentSlots: state?.statOverrides?.augmentSlots ?? snapshot.augmentSlots,
+      maxAugmentSlots: state?.statOverrides?.maxAugmentSlots ?? snapshot.maxAugmentSlots,
+      canAddAugmentSlots: state?.statOverrides?.canAddAugmentSlots ?? snapshot.canAddAugmentSlots,
+      canHaveRuneComplex: state?.statOverrides?.canHaveRuneComplex ?? snapshot.canHaveRuneComplex,
+      tags: Array.from(new Set([...(snapshot.tags ?? []), ...(state?.tags ?? [])])),
+    };
   }
 
   private async readMap<TMap extends Record<string, unknown>>(key: string): Promise<TMap> {
@@ -1986,6 +2146,9 @@ export class ArenaService implements OnModuleInit {
     });
 
     const equipment = sanitized.equipment;
+    const equipmentState = this.getEquipmentStateFromRecord(character.equipment);
+    const itemInstances = await this.getCharacterItemInstances(characterId);
+    const equippedItemsBySlot = this.buildEffectiveEquippedItemsBySlot(equipment, equipmentState, itemInstances);
     const actionSlots = await this.getOrCreateActionSlots(characterId);
     const physicalSlotIds = await this.readCharacterPhysicalItemSlots(characterId);
     const inventory: InventoryState = {
@@ -2001,7 +2164,7 @@ export class ArenaService implements OnModuleInit {
     };
 
     const baseStats = this.toBaseStats(character);
-    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment, equippedItemsBySlot);
     const resources = await this.getCharacterResources(characterId);
     const metadata = await this.metadataStore.get(characterId);
 
@@ -2030,6 +2193,8 @@ export class ArenaService implements OnModuleInit {
       },
       inventory,
       equipment,
+      itemInstances,
+      equipmentState,
       actionSlots,
     };
   }
@@ -2664,6 +2829,104 @@ export class ArenaService implements OnModuleInit {
     }
 
     return match;
+  }
+
+  async upsertCharacterItemInstance(params: {
+    characterId: string;
+    itemId: string;
+    itemInstanceId?: string;
+    state: CharacterItemInstanceState | null;
+  }): Promise<CharacterItemInstanceRecord> {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    await this.ensureCharacterExists(params.characterId);
+    const model = this.getCharacterItemInstanceModel();
+    if (!model) {
+      throw new InternalServerErrorException('Character item instance model is unavailable.');
+    }
+
+    const normalizedItemId = String(params.itemId ?? '').trim();
+    const normalizedInstanceId = String(params.itemInstanceId ?? '').trim();
+    if (!normalizedItemId) {
+      throw new BadRequestException('itemId is required.');
+    }
+
+    const existing = normalizedInstanceId
+      ? await model.findFirst({
+        where: { characterId: params.characterId, id: normalizedInstanceId },
+        select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+      })
+      : await model.findFirst({
+        where: { characterId: params.characterId, itemId: normalizedItemId },
+        select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+      });
+
+    if (existing) {
+      const row = await model.update({
+        where: { id: existing.id },
+        data: { state: this.toPersistedItemInstanceState(params.state) },
+        select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+      });
+      return {
+        id: row.id,
+        characterId: row.characterId,
+        itemId: row.itemId,
+        state: normalizeCharacterItemInstanceState(row.state),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    }
+
+    const row = await model.create({
+      data: {
+        characterId: params.characterId,
+        itemId: normalizedItemId,
+        state: this.toPersistedItemInstanceState(params.state),
+      },
+      select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+    });
+    return {
+      id: row.id,
+      characterId: row.characterId,
+      itemId: row.itemId,
+      state: normalizeCharacterItemInstanceState(row.state),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  async deleteCharacterItemInstance(characterId: string, itemId: string, itemInstanceId?: string): Promise<void> {
+    if (isFileStorageMode()) {
+      throw new ServiceUnavailableException('Item instances are not available in local file mode.');
+    }
+
+    this.assertDatabaseEnabled();
+    await this.ensureCharacterExists(characterId);
+    const model = this.getCharacterItemInstanceModel();
+    if (!model) {
+      return;
+    }
+
+    const normalizedItemId = String(itemId ?? '').trim();
+    const normalizedInstanceId = String(itemInstanceId ?? '').trim();
+    const existing = normalizedInstanceId
+      ? await model.findFirst({
+        where: { characterId, id: normalizedInstanceId },
+        select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+      })
+      : await model.findFirst({
+        where: { characterId, itemId: normalizedItemId },
+        select: { id: true, characterId: true, itemId: true, state: true, createdAt: true, updatedAt: true },
+      });
+
+    if (!existing) {
+      return;
+    }
+
+    await model.delete({ where: { id: existing.id } });
   }
 
   async equipItemInstance(characterId: string, itemInstanceId: string, preferredSlot?: keyof Equipment) {

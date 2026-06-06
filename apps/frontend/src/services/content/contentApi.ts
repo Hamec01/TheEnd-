@@ -28,6 +28,7 @@ import type {
   LootTable,
   Material,
   RuneComplex,
+  SoundDefinition,
   StoredImage,
 } from './models';
 import { notifyContentSync } from './contentSync';
@@ -66,7 +67,8 @@ export type ContentCollectionName =
   | 'blacksmithVisualPresets'
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
-  | 'blacksmithItemWorkActions';
+  | 'blacksmithItemWorkActions'
+  | 'sounds';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -149,6 +151,7 @@ export interface ContentSnapshot {
   blacksmithBalance: BlacksmithBalance[];
   blacksmithItemTemplates: BlacksmithItemTemplate[];
   blacksmithItemWorkActions: BlacksmithItemWorkAction[];
+  sounds: SoundDefinition[];
   worldMap: WorldMapContent;
 }
 

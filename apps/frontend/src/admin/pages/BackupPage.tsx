@@ -27,6 +27,7 @@ const CONTENT_KEYS = [
   'craftingRecipes',
   'itemSets',
   'runeComplexes',
+  'sounds',
 ] as const;
 
 const ROOT_METADATA_KEYS = new Set(['schemaVersion', 'game', 'exportedAt', 'exportedBy', 'appEnv', 'gitCommit', 'contentCounts', 'content']);
@@ -110,6 +111,7 @@ function countContent(content: Partial<ContentSnapshot>): CountMap {
     craftingRecipes: Array.isArray(content.craftingRecipes) ? content.craftingRecipes.length : 0,
     itemSets: Array.isArray(content.itemSets) ? content.itemSets.length : 0,
     runeComplexes: Array.isArray(content.runeComplexes) ? content.runeComplexes.length : 0,
+    sounds: Array.isArray(content.sounds) ? content.sounds.length : 0,
     zones: Array.isArray(worldMap?.zones) ? worldMap.zones.length : 0,
     markers: (Array.isArray(content.questMarkers) ? content.questMarkers.length : 0)
       + (Array.isArray(worldMap?.questMarkers) ? worldMap.questMarkers.length : 0),
@@ -333,6 +335,7 @@ function CountList({ counts }: { counts: CountMap }) {
       <div><dt>visualFx</dt><dd>{counts.visualFx}</dd></div>
       <div><dt>cities</dt><dd>{counts.cities}</dd></div>
       <div><dt>maps / zones / markers</dt><dd>{counts.battleMaps} / {counts.zones} / {counts.markers}</dd></div>
+      <div><dt>sounds</dt><dd>{counts.sounds ?? 0}</dd></div>
     </dl>
   );
 }

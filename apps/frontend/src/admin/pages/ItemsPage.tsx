@@ -40,6 +40,7 @@ import { getContentCollection, getItemPreview, type ItemPreviewResponse } from '
 import { visualFxService } from '../../services/content/visualFxService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { BATTLE_EFFECT_IDS } from '../../phaser/effects/effectRegistry';
+import { PLAYER_HIDDEN_RUNTIME_ITEM_TAG, PLAYER_RUNTIME_ITEM_TAG } from '../../services/playerItemInstances';
 import {
   AdminFieldLabel,
   translateAdminErrorMessage,
@@ -176,6 +177,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   const [typeFilter, setTypeFilter] = useState<'all' | ItemType>('all');
   const [rarityFilter, setRarityFilter] = useState<'all' | ItemRarity>('all');
   const [showLegacyMaterials, setShowLegacyMaterials] = useState(false);
+  const [showPlayerRuntimeItems, setShowPlayerRuntimeItems] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
@@ -243,6 +245,11 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   const visibleItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
+      const tags = new Set(item.tags ?? []);
+      const isHiddenRuntimeItem = tags.has(PLAYER_RUNTIME_ITEM_TAG) || tags.has(PLAYER_HIDDEN_RUNTIME_ITEM_TAG);
+      if (!showPlayerRuntimeItems && isHiddenRuntimeItem) {
+        return false;
+      }
       if (!showLegacyMaterials && item.type === 'material') {
         return false;
       }
@@ -257,7 +264,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       }
       return true;
     });
-  }, [items, query, rarityFilter, showLegacyMaterials, typeFilter]);
+  }, [items, query, rarityFilter, showLegacyMaterials, showPlayerRuntimeItems, typeFilter]);
 
   const selectedItem = useMemo(
     () => (selectedId ? items.find((item) => item.id === selectedId) ?? null : null),
@@ -1490,6 +1497,17 @@ export function ItemsPage(props: ItemsPageProps = {}) {
               onChange={(event) => setShowLegacyMaterials(event.target.checked)}
             />
             <span>Показывать материалы</span>
+          </label>
+          <label
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+            title="Показывает служебные игроковые предметы, созданные кузнецом для конкретных персонажей."
+          >
+            <input
+              type="checkbox"
+              checked={showPlayerRuntimeItems}
+              onChange={(event) => setShowPlayerRuntimeItems(event.target.checked)}
+            />
+            <span>Показывать игроковые экземпляры</span>
           </label>
           <button type="button" disabled={isImporting} onClick={exportItemsJson}>
             Экспорт JSON

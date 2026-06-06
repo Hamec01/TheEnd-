@@ -82,6 +82,7 @@ import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-ru
 import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto } from './dto.start-combat.dto';
 import type { AdminItem, ItemEffect } from '../content/content.types';
 import { resolveCharacterEquipmentModifiers } from '../content/item-effects.resolver';
+import type { CharacterEquipmentState, CharacterItemInstanceRecord } from '../characters/character-item-instance.types';
 import { RuntimeCharacterStore } from '../characters/runtime-character-store';
 import { isFileStorageMode } from '../config/storage-mode';
 
@@ -100,6 +101,8 @@ interface CharacterRecord {
   speed: number;
   willpower: number;
   equipment?: Partial<Equipment> | null;
+  equipmentState?: CharacterEquipmentState | null;
+  itemInstances?: CharacterItemInstanceRecord[];
 }
 
 type CombatEquipmentPayload = Partial<Equipment> | null | undefined;
@@ -122,6 +125,7 @@ interface CombatSession {
   guardStates: Map<string, CombatGuardState>;
   /** Снимок экипировки по id сущности (для прок-эффектов и сетов). */
   equipmentByActorId: Map<string, Equipment>;
+  effectiveEquippedItemsByActorId: Map<string, Partial<Record<keyof Equipment, AdminItem | null>>>;
 }
 
 interface NormalizedItemEffect {
@@ -1481,19 +1485,111 @@ export class CombatService {
     return this.contentService.normalizeEquipment(merged);
   }
 
-  private getResolvedCombatItemEffects(equipment: Equipment): ItemEffect[] {
+  private buildEffectiveEquippedItemsBySlot(
+    equipment: Equipment,
+    equipmentState?: CharacterEquipmentState | null,
+    itemInstances?: CharacterItemInstanceRecord[],
+  ): Partial<Record<keyof Equipment, AdminItem | null>> {
+    const next: Partial<Record<keyof Equipment, AdminItem | null>> = {};
+    const byInstanceId = new Map((itemInstances ?? []).map((entry) => [entry.id, entry] as const));
+
+    for (const slot of Object.keys(equipment) as Array<keyof Equipment>) {
+      const itemId = equipment[slot];
+      if (!itemId) {
+        next[slot] = null;
+        continue;
+      }
+
+      const baseItem = this.contentService.resolveAdminItemById(itemId);
+      if (!baseItem) {
+        next[slot] = null;
+        continue;
+      }
+
+      const instanceId = equipmentState?.slots?.[slot]?.itemInstanceId ?? null;
+      const instance = instanceId ? byInstanceId.get(instanceId) ?? null : null;
+      const cloned = this.applyItemInstanceOverlay(baseItem, instance?.state ?? null);
+      const socketOverrides = instance?.state?.augmentSlots ?? [];
+
+      if (socketOverrides.length > 0) {
+        const bySocketId = new Map(socketOverrides.map((entry) => [entry.socketId, entry] as const));
+        cloned.augmentSlots = (cloned.augmentSlots ?? []).map((socket) => {
+          const override = bySocketId.get(socket.id);
+          return override
+            ? {
+              ...socket,
+              socketedAugmentItemId: override.socketedAugmentItemId ?? undefined,
+              isLocked: override.isLocked ?? socket.isLocked,
+              source: override.source ?? socket.source,
+            }
+            : socket;
+        });
+      }
+
+      next[slot] = cloned;
+    }
+
+    return next;
+  }
+
+  private applyItemInstanceOverlay(item: AdminItem, state: CharacterItemInstanceRecord['state']): AdminItem {
+    const snapshot = state?.itemSnapshot && state.itemSnapshot.isEnabled !== false
+      ? JSON.parse(JSON.stringify(state.itemSnapshot)) as AdminItem
+      : JSON.parse(JSON.stringify(item)) as AdminItem;
+    const bonuses = state?.statOverrides?.bonuses
+      ? {
+        ...(snapshot.bonuses ?? {}),
+        ...state.statOverrides.bonuses,
+      }
+      : snapshot.bonuses;
+    return {
+      ...snapshot,
+      id: item.id,
+      name: state?.customName?.trim() || snapshot.name,
+      damageMin: state?.statOverrides?.damageMin ?? snapshot.damageMin,
+      damageMax: state?.statOverrides?.damageMax ?? snapshot.damageMax,
+      armorValue: state?.statOverrides?.armorValue ?? snapshot.armorValue,
+      price: state?.statOverrides?.price ?? snapshot.price,
+      attackRange: state?.statOverrides?.attackRange ?? snapshot.attackRange,
+      pierceTargets: state?.statOverrides?.pierceTargets ?? snapshot.pierceTargets,
+      splashRadius: state?.statOverrides?.splashRadius ?? snapshot.splashRadius,
+      splashCenterMultiplier: state?.statOverrides?.splashCenterMultiplier ?? snapshot.splashCenterMultiplier,
+      splashOuterMultiplier: state?.statOverrides?.splashOuterMultiplier ?? snapshot.splashOuterMultiplier,
+      bonuses,
+      equipmentEffects: state?.statOverrides?.equipmentEffects ?? snapshot.equipmentEffects,
+      augmentSlots: state?.statOverrides?.augmentSlots ?? snapshot.augmentSlots,
+      maxAugmentSlots: state?.statOverrides?.maxAugmentSlots ?? snapshot.maxAugmentSlots,
+      canAddAugmentSlots: state?.statOverrides?.canAddAugmentSlots ?? snapshot.canAddAugmentSlots,
+      canHaveRuneComplex: state?.statOverrides?.canHaveRuneComplex ?? snapshot.canHaveRuneComplex,
+      tags: Array.from(new Set([...(snapshot.tags ?? []), ...(state?.tags ?? [])])),
+    };
+  }
+
+  private getActorEffectiveEquippedItems(
+    session: CombatSession,
+    actorId: string,
+  ): Partial<Record<keyof Equipment, AdminItem | null>> | undefined {
+    return session.effectiveEquippedItemsByActorId.get(actorId);
+  }
+
+  private getResolvedCombatItemEffects(
+    equipment: Equipment,
+    equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>,
+  ): ItemEffect[] {
     return resolveCharacterEquipmentModifiers({
       equipment,
       items: this.contentService.listCollection('items'),
       itemSets: this.contentService.listCollection('itemSets'),
       activeStatuses: [],
       activationContexts: ['combat'],
+      equippedItemsBySlot,
     }).effects;
   }
 
   private buildTargetStatusDefenseProfile(session: CombatSession, target: ArenaCombatEntity) {
     const equipment = this.getActorEquipmentSnapshot(session, target);
-    return buildStatusResistanceImmunityProfile(this.getResolvedCombatItemEffects(equipment));
+    const equippedItemsBySlot = this.getActorEffectiveEquippedItems(session, target.id);
+    return buildStatusResistanceImmunityProfile(this.getResolvedCombatItemEffects(equipment, equippedItemsBySlot));
   }
 
   private emitTryApplyStatusResult(
@@ -1552,7 +1648,8 @@ export class CombatService {
       return;
     }
     const equipment = this.getActorEquipmentSnapshot(params.session, params.attacker);
-    const effects = this.getResolvedCombatItemEffects(equipment).filter(
+    const equippedItemsBySlot = this.getActorEffectiveEquippedItems(params.session, params.attacker.id);
+    const effects = this.getResolvedCombatItemEffects(equipment, equippedItemsBySlot).filter(
       (e) => e.trigger === params.trigger && e.type === 'apply_status',
     );
     if (effects.length === 0) {
@@ -1597,7 +1694,8 @@ export class CombatService {
       return;
     }
     const equipment = this.getActorEquipmentSnapshot(params.session, params.actor);
-    const effects = this.getResolvedCombatItemEffects(equipment).filter(
+    const equippedItemsBySlot = this.getActorEffectiveEquippedItems(params.session, params.actor.id);
+    const effects = this.getResolvedCombatItemEffects(equipment, equippedItemsBySlot).filter(
       (e) => e.trigger === 'on_hit' && e.type === 'lifesteal',
     );
     if (effects.length === 0) {
@@ -2824,6 +2922,7 @@ export class CombatService {
 
         // Update entity weapon state
         actor.activeWeaponItemId = nextWeaponId;
+        actor.activeWeaponInstanceId = command.payload?.weaponInstanceId ?? null;
         actor.attackRange = adminItem.attackRange;
         actor.combatStyleHint = adminItem.damageCategory === 'magic'
           ? 'MAGIC'
@@ -2836,6 +2935,7 @@ export class CombatService {
         // Two-handed weapon removes off-hand (shield)
         if (isTwoHanded) {
           actor.offHandItemId = null;
+          actor.offHandInstanceId = null;
           actor.hasShield = false;
         }
 
@@ -2872,6 +2972,12 @@ export class CombatService {
 
         const eq = this.getActorEquipmentSnapshot(session, actor);
         session.equipmentByActorId.set(actor.id, { ...eq, weapon: nextWeaponId });
+        const effective = this.getActorEffectiveEquippedItems(session, actor.id) ?? {};
+        session.effectiveEquippedItemsByActorId.set(actor.id, {
+          ...effective,
+          weapon: JSON.parse(JSON.stringify(adminItem)) as AdminItem,
+          shield: isTwoHanded ? null : effective.shield ?? null,
+        });
         break;
       }
       case 'basic_attack':
@@ -4523,9 +4629,14 @@ export class CombatService {
   private toCombatEntity(character: CharacterRecord, team: TeamSide, position: number) {
     const baseStats = this.toBaseStats(character);
     const equipment = this.normalizeEquipment(character.equipment);
-    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
-    const weaponProfile = this.resolveWeaponCombatProfile(equipment);
-    const combatModifiers = this.contentService.getArenaCombatEquipmentModifiers(equipment);
+    const equippedItemsBySlot = this.buildEffectiveEquippedItemsBySlot(
+      equipment,
+      character.equipmentState,
+      character.itemInstances,
+    );
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment, equippedItemsBySlot);
+    const weaponProfile = this.resolveWeaponCombatProfile(equipment, equippedItemsBySlot);
+    const combatModifiers = this.contentService.getArenaCombatEquipmentModifiers(equipment, equippedItemsBySlot);
 
     const entity = this.toCombatEntityFromStats({
       id: character.id,
@@ -4545,18 +4656,25 @@ export class CombatService {
 
     entity.activeWeaponItemId = equipment.weapon ?? null;
     entity.offHandItemId = equipment.shield ?? null;
+    entity.activeWeaponInstanceId = character.equipmentState?.slots?.weapon?.itemInstanceId ?? null;
+    entity.offHandInstanceId = character.equipmentState?.slots?.shield?.itemInstanceId ?? null;
     entity.hasShield = Boolean(equipment.shield);
 
     return entity;
   }
 
-  private resolveWeaponCombatProfile(equipment: Equipment): WeaponCombatProfile {
+  private resolveWeaponCombatProfile(
+    equipment: Equipment,
+    equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>,
+  ): WeaponCombatProfile {
     if (!equipment.weapon) {
       return { combatStyleHint: 'MELEE' };
     }
 
     const weaponId = String(equipment.weapon ?? '').trim();
-    const adminWeapon = this.contentService.listCollection('items').find((item) => item.id === weaponId) ?? null;
+    const adminWeapon = equippedItemsBySlot?.weapon
+      ?? this.contentService.listCollection('items').find((item) => item.id === weaponId)
+      ?? null;
     if (adminWeapon) {
       const isMagicWeapon = Boolean(adminWeapon.magicSchool) || adminWeapon.damageCategory === 'magic';
       const hasRange = typeof adminWeapon.attackRange === 'number' && adminWeapon.attackRange > 1;
@@ -4948,7 +5066,12 @@ export class CombatService {
       throw new NotFoundException('Character not found.');
     }
 
-    return character as unknown as CharacterRecord;
+    const itemInstances = await this.arenaService.getCharacterItemInstances(characterId);
+    return {
+      ...(character as unknown as CharacterRecord),
+      equipmentState: (character.equipment?.equipmentState ?? null) as CharacterEquipmentState | null,
+      itemInstances,
+    };
   }
 
   async startCombat(
@@ -5020,14 +5143,25 @@ export class CombatService {
     state.lootContainers = [];
 
     const equipmentByActorId = new Map<string, Equipment>();
+    const effectiveEquippedItemsByActorId = new Map<string, Partial<Record<keyof Equipment, AdminItem | null>>>();
     equipmentByActorId.set(player.id, this.normalizeEquipment(character.equipment));
+    effectiveEquippedItemsByActorId.set(
+      player.id,
+      this.buildEffectiveEquippedItemsBySlot(
+        this.normalizeEquipment(character.equipment),
+        character.equipmentState,
+        character.itemInstances,
+      ),
+    );
     for (let i = 0; i < enemies.length; i++) {
       const enemy = enemies[i]!;
       if (normalizedCustomEnemies.length > 0) {
         const tpl = normalizedCustomEnemies[i];
         equipmentByActorId.set(enemy.id, this.normalizeEquipment(tpl?.equipment));
+        effectiveEquippedItemsByActorId.set(enemy.id, {});
       } else {
         equipmentByActorId.set(enemy.id, this.normalizeEquipment({}));
+        effectiveEquippedItemsByActorId.set(enemy.id, {});
       }
     }
 
@@ -5042,6 +5176,7 @@ export class CombatService {
       skillCooldowns: [],
       guardStates: new Map<string, CombatGuardState>(),
       equipmentByActorId,
+      effectiveEquippedItemsByActorId,
     };
 
     this.primeSequentialTurnState(session);

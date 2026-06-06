@@ -4,63 +4,90 @@ import type { ContentAutosaveStatus } from '../services/content/contentApi';
 import { getContentAutosaveStatus, triggerContentAutosave } from '../services/content/contentApi';
 import { AdminLayout } from './AdminLayout';
 import { AdminLogin } from './AdminLogin';
-import { DashboardPage } from './pages/DashboardPage';
+import { BackupPage } from './pages/BackupPage';
 import { BattleMapsPage } from './pages/BattleMapsPage';
+import { CitiesPage } from './pages/CitiesPage';
+import { CraftingRecipesPage } from './pages/CraftingRecipesPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { DialoguesPage } from './pages/DialoguesPage';
 import { ImagesPage } from './pages/ImagesPage';
+import { ItemInstancesPage } from './pages/ItemInstancesPage';
+import { ItemSetsPage } from './pages/ItemSetsPage';
 import { ItemsPage } from './pages/ItemsPage';
+import { LocationsPage } from './pages/LocationsPage';
 import { LootTablesPage } from './pages/LootTablesPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { MerchantsPage } from './pages/MerchantsPage';
-import { QuestItemsPage } from './pages/QuestItemsPage';
+import { NpcsPage } from './pages/NpcsPage';
+import { ProfessionsPage } from './pages/ProfessionsPage';
 import { QuestInteractionsPage } from './pages/QuestInteractionsPage';
+import { QuestItemsPage } from './pages/QuestItemsPage';
 import { QuestsPage } from './pages/QuestsPage';
 import { SkillsPage } from './pages/SkillsPage';
+import { SoundsPage } from './pages/SoundsPage';
 import { VisualFxPage } from './pages/VisualFxPage';
-import { NpcsPage } from './pages/NpcsPage';
-import { DialoguesPage } from './pages/DialoguesPage';
-import { ZoneEditorPage } from './pages/ZoneEditorPage';
-import { CitiesPage } from './pages/CitiesPage';
-import { BackupPage } from './pages/BackupPage';
-import { CraftingRecipesPage } from './pages/CraftingRecipesPage';
-import { ItemSetsPage } from './pages/ItemSetsPage';
-import { LocationsPage } from './pages/LocationsPage';
 import { WorldSimulationAdmin } from './pages/WorldSimulationAdmin';
-import { ProfessionsPage } from './pages/ProfessionsPage';
+import { ZoneEditorPage } from './pages/ZoneEditorPage';
 
 interface AdminAppProps {
   currentPath: string;
   onNavigate: (path: string) => void;
 }
 
-type AdminRoute = '/admin' | '/admin/items' | '/admin/item-sets' | '/admin/crafting-recipes' | '/admin/skills' | '/admin/visual-fx' | '/admin/quests' | '/admin/quest-items' | '/admin/quest-interactions' | '/admin/merchants' | '/admin/materials' | '/admin/npcs' | '/admin/dialogues' | '/admin/loot-tables' | '/admin/images' | '/admin/battle-maps' | '/admin/zone-editor' | '/admin/cities' | '/admin/locations' | '/admin/backup' | '/admin/world-sim' | '/admin/professions';
+type AdminRoute =
+  | '/admin'
+  | '/admin/items'
+  | '/admin/item-instances'
+  | '/admin/item-sets'
+  | '/admin/crafting-recipes'
+  | '/admin/skills'
+  | '/admin/visual-fx'
+  | '/admin/quests'
+  | '/admin/quest-items'
+  | '/admin/quest-interactions'
+  | '/admin/merchants'
+  | '/admin/materials'
+  | '/admin/npcs'
+  | '/admin/dialogues'
+  | '/admin/loot-tables'
+  | '/admin/images'
+  | '/admin/battle-maps'
+  | '/admin/zone-editor'
+  | '/admin/cities'
+  | '/admin/locations'
+  | '/admin/backup'
+  | '/admin/world-sim'
+  | '/admin/sounds'
+  | '/admin/professions';
 
 function normalizeAdminPath(path: string): AdminRoute {
-  if (
-    path === '/admin/items'
-    || path === '/admin/item-sets'
-    || path === '/admin/crafting-recipes'
-    || path === '/admin/skills'
-    || path === '/admin/visual-fx'
-    || path === '/admin/quests'
-    || path === '/admin/quest-items'
-    || path === '/admin/quest-interactions'
-    || path === '/admin/merchants'
-    || path === '/admin/materials'
-    || path === '/admin/npcs'
-    || path === '/admin/dialogues'
-    || path === '/admin/loot-tables'
-    || path === '/admin/images'
-    || path === '/admin/battle-maps'
-    || path === '/admin/zone-editor'
-    || path === '/admin/cities'
-    || path === '/admin/locations'
-    || path === '/admin/backup'
-    || path === '/admin/world-sim'
-    || path === '/admin/professions'
-  ) {
-    return path;
-  }
-  return '/admin';
+  const allowed = new Set<AdminRoute>([
+    '/admin',
+    '/admin/items',
+    '/admin/item-instances',
+    '/admin/item-sets',
+    '/admin/crafting-recipes',
+    '/admin/skills',
+    '/admin/visual-fx',
+    '/admin/quests',
+    '/admin/quest-items',
+    '/admin/quest-interactions',
+    '/admin/merchants',
+    '/admin/materials',
+    '/admin/npcs',
+    '/admin/dialogues',
+    '/admin/loot-tables',
+    '/admin/images',
+    '/admin/battle-maps',
+    '/admin/zone-editor',
+    '/admin/cities',
+    '/admin/locations',
+    '/admin/backup',
+    '/admin/world-sim',
+    '/admin/sounds',
+    '/admin/professions',
+  ]);
+  return allowed.has(path as AdminRoute) ? (path as AdminRoute) : '/admin';
 }
 
 export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
@@ -73,6 +100,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     switch (route) {
       case '/admin/items':
         return 'Предметы';
+      case '/admin/item-instances':
+        return 'Item Instances';
       case '/admin/item-sets':
         return 'Сеты предметов';
       case '/admin/crafting-recipes':
@@ -111,6 +140,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Backup / Content Tools';
       case '/admin/world-sim':
         return '🌍 Живой мир';
+      case '/admin/sounds':
+        return '🎵 Звуки';
       case '/admin/professions':
         return '💼 Карьера';
       default:
@@ -183,6 +214,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     case '/admin/items':
       page = <ItemsPage onNavigate={onNavigate} />;
       break;
+    case '/admin/item-instances':
+      page = <ItemInstancesPage />;
+      break;
     case '/admin/item-sets':
       page = <ItemSetsPage onNavigate={onNavigate} />;
       break;
@@ -239,6 +273,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/world-sim':
       page = <WorldSimulationAdmin />;
+      break;
+    case '/admin/sounds':
+      page = <SoundsPage />;
       break;
     case '/admin/professions':
       page = <ProfessionsPage />;

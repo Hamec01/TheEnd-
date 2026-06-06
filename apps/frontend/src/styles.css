@@ -12500,3 +12500,582 @@ body:has(.page.page--scroll) {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── SoundsPage ──────────────────────────────────────────────────────────── */
+
+.admin-sounds-page {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+}
+
+.admin-sounds-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(166, 132, 82, 0.28);
+}
+
+.admin-sounds-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(360px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+/* sidebar */
+.admin-sounds-sidebar {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+}
+
+.admin-sounds-filters {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-sounds-filters input,
+.admin-sounds-filters select {
+  width: 100%;
+}
+
+.admin-sounds-count {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.admin-sounds-list {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.admin-sounds-card {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.3;
+  font-size: 0.8rem;
+  min-height: 64px;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 8px 10px;
+  border: 1px solid rgba(166, 132, 82, 0.5);
+  border-radius: 8px;
+  background: rgba(28, 22, 16, 0.86);
+  transition: border-color 0.14s, background 0.14s;
+}
+
+.admin-sounds-card:hover:enabled {
+  transform: none;
+  background: rgba(50, 38, 26, 0.9);
+}
+
+.admin-sounds-card.is-active {
+  border-color: var(--panel-border-strong);
+  background: rgba(60, 46, 28, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(255, 228, 170, 0.12);
+}
+
+.admin-sounds-card-name {
+  font-weight: 700;
+  color: #f2dfbc;
+  font-size: 0.88rem;
+}
+
+.admin-sounds-card-id {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.72rem;
+}
+
+.admin-sounds-card-meta {
+  font-size: 0.72rem;
+}
+
+.admin-sounds-card-bindings {
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
+.admin-sounds-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.admin-sounds-status--active { color: #8ef5a0; }
+.admin-sounds-status--draft  { color: #f5d985; }
+.admin-sounds-status--disabled { color: #ff9696; }
+
+/* editor */
+.admin-sounds-editor {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.admin-sounds-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+
+.admin-sounds-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-sounds-danger {
+  background: linear-gradient(180deg, rgba(102, 28, 28, 0.94), rgba(64, 18, 18, 0.98)) !important;
+  border-color: rgba(220, 80, 80, 0.6) !important;
+  color: #ffc8c8 !important;
+}
+
+.admin-sounds-danger:hover:enabled {
+  background: linear-gradient(180deg, rgba(140, 40, 40, 0.98), rgba(88, 24, 24, 1)) !important;
+}
+
+.admin-sounds-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(166, 132, 82, 0.35);
+  border-radius: 8px;
+  background: rgba(20, 16, 10, 0.7);
+}
+
+.admin-sounds-play-btn {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+.admin-sounds-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-sounds-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-sounds-row .admin-field-label {
+  flex: 1 1 100px;
+}
+
+/* validation */
+.admin-sounds-validation {
+  padding: 12px 14px;
+  border: 1px solid rgba(166, 132, 82, 0.28);
+  border-radius: 8px;
+  background: rgba(20, 16, 10, 0.6);
+}
+
+.admin-sounds-validation h3 {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+}
+
+.admin-sounds-validation-errors,
+.admin-sounds-validation-warnings {
+  margin: 6px 0;
+  padding-left: 20px;
+  font-size: 0.82rem;
+}
+
+.admin-sounds-validation-errors li { color: #ff9090; }
+.admin-sounds-validation-warnings li { color: #f5d985; }
+
+/* import result */
+.admin-sounds-import-result {
+  padding: 12px 14px;
+  border: 1px solid rgba(166, 132, 82, 0.42);
+  border-radius: 8px;
+  background: rgba(16, 26, 18, 0.78);
+}
+
+.admin-sounds-import-result h3 {
+  margin: 0 0 8px;
+  color: #d4f5b5;
+}
+
+.admin-sounds-import-result p {
+  margin: 4px 0;
+  font-size: 0.84rem;
+}
+
+.admin-sounds-import-result ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: #ff9090;
+}
+
+@media (max-width: 900px) {
+  .admin-sounds-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sounds-list {
+    max-height: 320px;
+  }
+}
+
+/* ── Sounds page top bar (tabs + toolbar) ── */
+
+.admin-sounds-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(166, 132, 82, 0.28);
+}
+
+.admin-sounds-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.admin-sounds-tab {
+  padding: 6px 16px;
+  min-height: 34px;
+  border: 1px solid rgba(166, 132, 82, 0.35);
+  border-radius: 8px 8px 0 0;
+  background: rgba(28, 22, 16, 0.7);
+  color: rgba(255, 227, 168, 0.65);
+  font-size: 0.83rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.admin-sounds-tab:hover:not(.is-active) {
+  background: rgba(45, 35, 22, 0.9);
+  color: rgba(255, 227, 168, 0.85);
+}
+
+.admin-sounds-tab.is-active {
+  border-color: rgba(220, 182, 97, 0.65);
+  border-bottom-color: transparent;
+  background: rgba(55, 42, 26, 0.98);
+  color: #ffe6ad;
+}
+
+/* ─── SoundSlotsPanel ─────────────────────────────────────────────────────── */
+
+.ssp-panel {
+  display: grid;
+  grid-template-columns: 200px minmax(360px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+/* category sidebar */
+.ssp-categories {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.ssp-cat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.2;
+  min-height: 34px;
+  height: auto;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 227, 168, 0.65);
+  font-size: 0.79rem;
+  font-weight: 600;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.ssp-cat-btn:hover:not(.is-active) {
+  background: rgba(44, 34, 20, 0.75);
+  color: rgba(255, 227, 168, 0.9);
+  transform: none;
+}
+
+.ssp-cat-btn.is-active {
+  border-color: rgba(220, 182, 97, 0.5);
+  background: rgba(55, 42, 26, 0.96);
+  color: #ffe6ad;
+}
+
+.ssp-cat-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssp-cat-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 227, 168, 0.5);
+}
+
+.ssp-cat-badge.is-partial {
+  background: rgba(245, 200, 80, 0.18);
+  color: #f5d985;
+}
+
+.ssp-cat-badge.is-full {
+  background: rgba(100, 210, 110, 0.18);
+  color: #8ef5a0;
+}
+
+/* slots area */
+.ssp-slots-area {
+  border: 1px solid rgba(164, 141, 110, 0.22);
+  border-radius: 12px;
+  background: rgba(20, 16, 12, 0.88);
+  overflow: hidden;
+}
+
+.ssp-slots-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(164, 141, 110, 0.15);
+  background: rgba(35, 28, 18, 0.6);
+}
+
+.ssp-slots-header-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin-top: 2px;
+  color: #c8a060;
+  opacity: 0.85;
+}
+
+.ssp-slots-header-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ssp-slots-title {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e8d4a8;
+}
+
+.ssp-slots-desc {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #9a8870;
+  line-height: 1.5;
+}
+
+.ssp-slots-desc code {
+  font-family: Consolas, "Courier New", monospace;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #c8b48a;
+}
+
+.ssp-slots-desc strong {
+  color: #bfaa88;
+}
+
+/* slot list */
+.ssp-slot-list {
+  display: grid;
+  gap: 0;
+}
+
+.ssp-empty {
+  padding: 16px 18px;
+}
+
+.ssp-slot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(164, 141, 110, 0.1);
+  transition: background 0.12s ease;
+}
+
+.ssp-slot:last-child {
+  border-bottom: none;
+}
+
+.ssp-slot:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ssp-slot.is-filled {
+  background: rgba(60, 80, 55, 0.08);
+}
+
+.ssp-slot.is-filled:hover {
+  background: rgba(60, 80, 55, 0.14);
+}
+
+.ssp-slot-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 4px 0;
+  font-size: 0.72rem;
+  color: #d07060;
+}
+
+/* slot info */
+.ssp-slot-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ssp-slot-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #ddc9a3;
+}
+
+.ssp-slot-path {
+  font-size: 0.69rem;
+  font-family: Consolas, "Courier New", monospace;
+  color: #7a6a52;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ssp-slot-hint {
+  font-size: 0.71rem;
+  color: #7a6a52;
+}
+
+/* slot controls */
+.ssp-slot-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* play button */
+.ssp-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(164, 141, 110, 0.3);
+  background: rgba(40, 32, 20, 0.9);
+  color: #c8a860;
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s;
+}
+
+.ssp-play-btn:hover:enabled {
+  background: rgba(60, 47, 26, 0.95);
+  border-color: rgba(210, 170, 80, 0.5);
+  transform: none;
+}
+
+.ssp-play-btn.is-playing {
+  background: rgba(80, 120, 80, 0.85);
+  border-color: rgba(100, 200, 100, 0.5);
+  color: #b0f0b0;
+}
+
+/* upload button (label) */
+.ssp-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(164, 141, 110, 0.3);
+  background: rgba(40, 32, 20, 0.9);
+  color: #c8a860;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.13s, border-color 0.13s, box-shadow 0.13s;
+}
+
+.ssp-upload-btn:hover {
+  background: rgba(55, 43, 24, 0.95);
+  border-color: rgba(210, 170, 80, 0.5);
+  box-shadow: 0 0 8px rgba(200, 160, 60, 0.18);
+}
+
+.ssp-upload-btn.is-uploading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ssp-upload-btn.is-done {
+  border-color: rgba(100, 180, 100, 0.45);
+  background: rgba(20, 38, 20, 0.9);
+  color: #80cc80;
+}
+
+.ssp-upload-icon {
+  display: flex;
+  align-items: center;
+}
+
+/* responsive */
+@media (max-width: 900px) {
+  .ssp-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ssp-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0;
+  }
+
+  .ssp-cat-btn {
+    flex: 0 0 auto;
+  }
+}

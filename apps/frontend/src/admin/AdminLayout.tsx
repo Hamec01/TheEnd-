@@ -19,6 +19,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
     links: [
       { path: '/admin', label: 'Overview' },
       { path: '/admin/backup', label: 'Backup' },
+      { path: '/admin/sounds', label: '🎵 Звуки' },
       { path: '/admin/world-sim', label: '🌍 Живой мир' },
     ],
   },
@@ -26,6 +27,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
     title: 'Content',
     links: [
       { path: '/admin/items', label: 'Предметы' },
+      { path: '/admin/item-instances', label: 'Item Instances' },
       { path: '/admin/materials', label: 'Материалы' },
       { path: '/admin/loot-tables', label: 'Таблицы добычи' },
       { path: '/admin/crafting-recipes', label: 'Рецепты / Производство' },

@@ -63,6 +63,7 @@ import type {
   QuestInteractionRequirement,
   QuestItemDefinition,
   QuestMarkerDefinition,
+  SoundDefinition,
   StoredImage,
   WorldMapContent,
   WorldMapZone,
@@ -106,6 +107,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'blacksmithBalance',
   'blacksmithItemTemplates',
   'blacksmithItemWorkActions',
+  'sounds',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -194,6 +196,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
     blacksmithBalance: (db.blacksmithBalance ?? []).length,
     blacksmithItemTemplates: (db.blacksmithItemTemplates ?? []).length,
     blacksmithItemWorkActions: (db.blacksmithItemWorkActions ?? []).length,
+    sounds: (db.sounds ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -555,6 +558,7 @@ function createEmptyDatabase(): ContentDatabase {
     blacksmithBalance: [],
     blacksmithItemTemplates: [],
     blacksmithItemWorkActions: [],
+    sounds: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -3801,6 +3805,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithItemWorkActions: sanitizeIdObjectArray<BlacksmithItemWorkAction>(raw.blacksmithItemWorkActions)
         .map((entry) => normalizeBlacksmithItemWorkActionInput(entry))
         .filter((entry) => Boolean(entry.id)),
+      sounds: sanitizeIdObjectArray<SoundDefinition>(raw.sounds).filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
@@ -3913,6 +3918,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithBalance: mergeById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: mergeById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       blacksmithItemWorkActions: mergeById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
+      sounds: mergeById(existing.sounds ?? [], incoming.sounds ?? []),
       worldMap: {
         zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -3957,6 +3963,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithBalance: addMissingById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: addMissingById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       blacksmithItemWorkActions: addMissingById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
+      sounds: addMissingById(existing.sounds ?? [], incoming.sounds ?? []),
       worldMap: {
         zones: addMissingById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: addMissingById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -4044,6 +4051,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         blacksmithBalance: filterCollection('blacksmithBalance', incoming.blacksmithBalance, existing.blacksmithBalance ?? []) as BlacksmithBalance[] | undefined,
         blacksmithItemTemplates: filterCollection('blacksmithItemTemplates', incoming.blacksmithItemTemplates, existing.blacksmithItemTemplates ?? []) as BlacksmithItemTemplate[] | undefined,
         blacksmithItemWorkActions: filterCollection('blacksmithItemWorkActions', incoming.blacksmithItemWorkActions, existing.blacksmithItemWorkActions ?? []) as BlacksmithItemWorkAction[] | undefined,
+        sounds: filterCollection('sounds', incoming.sounds, existing.sounds ?? []) as SoundDefinition[] | undefined,
         worldMap,
       },
       actions,
@@ -4872,17 +4880,22 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     return adminItem ? clone(adminItem) : null;
   }
 
-  getStatsWithEquipment(baseStats: StatBlock, equipment: Equipment): StatBlock {
+  getStatsWithEquipment(
+    baseStats: StatBlock,
+    equipment: Equipment,
+    equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>,
+  ): StatBlock {
     const next = { ...baseStats };
 
-    for (const itemId of Object.values(equipment)) {
+    for (const [slot, itemId] of Object.entries(equipment) as Array<[keyof Equipment, string | null]>) {
       if (!itemId) {
         continue;
       }
 
       try {
-        const item = this.resolveItemById(itemId);
-        for (const [stat, value] of Object.entries(item.bonuses)) {
+        const overlayItem = equippedItemsBySlot?.[slot];
+        const item = overlayItem ?? this.resolveItemById(itemId);
+        for (const [stat, value] of Object.entries(item.bonuses ?? {})) {
           const key = stat as keyof StatBlock;
           next[key] = (next[key] ?? 0) + (value ?? 0);
         }
@@ -4897,28 +4910,33 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       items: db.items,
       itemSets: db.itemSets ?? [],
       activationContexts: ['combat', 'arena'],
+      equippedItemsBySlot,
     });
     applyPassiveStatBonusesToStatBlock(next, resolved.effects);
 
     return next;
   }
 
-  getArenaCombatEquipmentModifiers(equipment: Equipment): ArenaCombatEquipmentModifiers {
+  getArenaCombatEquipmentModifiers(
+    equipment: Equipment,
+    equippedItemsBySlot?: Partial<Record<keyof Equipment, AdminItem | null>>,
+  ): ArenaCombatEquipmentModifiers {
     const db = this.ensureLoaded();
     const resolved = resolveCharacterEquipmentModifiers({
       equipment,
       items: db.items,
       itemSets: db.itemSets ?? [],
       activationContexts: ['combat', 'arena'],
+      equippedItemsBySlot,
     });
     const modifiers = aggregateArenaCombatEquipmentModifiers(resolved.effects);
 
     let totalArmorValue = 0;
-    for (const itemId of Object.values(equipment)) {
+    for (const [slot, itemId] of Object.entries(equipment) as Array<[keyof Equipment, string | null]>) {
       if (!itemId) {
         continue;
       }
-      const adminItem = db.items.find((item) => item.id === itemId && item.isEnabled);
+      const adminItem = equippedItemsBySlot?.[slot] ?? db.items.find((item) => item.id === itemId && item.isEnabled) ?? null;
       if (!adminItem || typeof adminItem.armorValue !== 'number' || !Number.isFinite(adminItem.armorValue)) {
         continue;
       }

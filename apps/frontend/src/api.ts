@@ -75,6 +75,8 @@ export interface ArenaHubState {
   };
   inventory: InventoryState;
   equipment: Equipment;
+  itemInstances?: ArenaItemInstanceRecord[];
+  equipmentState?: ArenaEquipmentState | null;
   actionSlots: CharacterActionSlot[];
 }
 
@@ -130,9 +132,20 @@ export interface ArenaItemInstanceState {
     isLocked?: boolean;
     source?: 'base' | 'blacksmith_added' | 'scripted';
   }>;
+  sourceItemId?: string;
+  itemSnapshot?: Record<string, unknown>;
+  customName?: string;
+  statOverrides?: Record<string, unknown>;
+  qualityTierId?: string;
   qualityTier?: number;
+  forgeScore?: number;
   forgedAtIso?: string;
   ownerTag?: string;
+  craftedFromTemplateId?: string;
+  craftedMaterialIds?: string[];
+  craftedByProfession?: 'blacksmithing';
+  tags?: string[];
+  notes?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -143,6 +156,18 @@ export interface ArenaItemInstanceRecord {
   state: ArenaItemInstanceState | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ArenaEquipmentStateSlot {
+  itemId?: string | null;
+  itemInstanceId?: string | null;
+  equippedAtIso?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ArenaEquipmentState {
+  version: 1;
+  slots: Partial<Record<keyof Equipment, ArenaEquipmentStateSlot>>;
 }
 
 export interface ArenaSocketState {
@@ -650,6 +675,22 @@ export async function equipArenaItem(
   return res.json();
 }
 
+export async function equipArenaItemInstance(
+  characterId: string,
+  itemInstanceId: string,
+  slot?: keyof Equipment,
+): Promise<ArenaHubState> {
+  const res = await fetch(`${API_BASE}/arena/equip-instance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemInstanceId, slot }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
 export async function unequipArenaItem(
   characterId: string,
   slot: keyof Equipment,
@@ -658,6 +699,21 @@ export async function unequipArenaItem(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ characterId, slot }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function unequipArenaItemInstance(
+  characterId: string,
+  itemInstanceId: string,
+): Promise<ArenaHubState> {
+  const res = await fetch(`${API_BASE}/arena/unequip-instance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemInstanceId }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -696,6 +752,38 @@ export async function unsocketArenaAugment(
     throw new Error(await readErrorMessage(res));
   }
   return res.json();
+}
+
+export async function syncArenaItemInstance(
+  characterId: string,
+  itemId: string,
+  state: Record<string, unknown> | null,
+  itemInstanceId?: string,
+): Promise<ArenaItemInstanceRecord> {
+  const res = await fetch(`${API_BASE}/arena/sync-item-instance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemId, itemInstanceId, state }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json();
+}
+
+export async function deleteArenaItemInstance(
+  characterId: string,
+  itemId: string,
+  itemInstanceId?: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/arena/delete-item-instance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId, itemId, itemInstanceId }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
 }
 
 export async function startCombat(
