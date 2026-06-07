@@ -5,7 +5,7 @@ import type {
   ItemDefinition,
   StatBlock,
 } from "@theend/rpg-domain";
-import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS, Race } from "@theend/rpg-domain";
+import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS, Race, type ProfessionId } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
 import type { CustomArenaNpcPayload, NearbyPvpPlayer } from "../api";
 import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
@@ -100,7 +100,7 @@ import {
   getZoneLinkedLocation,
   isLinkedLocationVisibleToPlayer,
 } from "./zoneLocationLinking";
-import type { AdminMerchant, StoredImage } from "../services/content/models";
+import type { AdminMerchant, StoredImage, TreeDefinition, AdminItem } from "../services/content/models";
 import {
   getContentSnapshot,
   type ContentSnapshot,
@@ -1134,10 +1134,11 @@ interface WorldMapScreenProps {
   ) => string | undefined;
   playerAvatarUrl?: string;
   devTravelRequest?: {
-    mode: 'world' | 'city' | 'location' | 'mine';
+    mode: 'world' | 'city' | 'location' | 'mine' | 'carpenter_game';
     targetId?: string | null;
     mineAction?: 'open' | 'close' | 'finish';
     mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
+    carpenterGameType?: 'woodcutting' | 'sawing' | 'workshop' | 'branches' | null;
     token: number;
   } | null;
   initialMode?: WorldMapMode;
@@ -1362,6 +1363,29 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [activeMineRun, setActiveMineRun] = useState<InternalMineRunState | null>(null);
   const [activeMineEffects, setActiveMineEffects] = useState<ActiveMiningEffect[] | null>(null);
   const [activeMineLoading, setActiveMineLoading] = useState(false);
+
+  // Woodcutting & Carpenter states
+  const [forestPanelOpen, setForestPanelOpen] = useState(false);
+  const [branchCollectingOpen, setBranchCollectingOpen] = useState(false);
+  const [activeWoodcuttingTree, setActiveWoodcuttingTree] = useState<TreeDefinition | null>(null);
+  const [woodcuttingHp, setWoodcuttingHp] = useState(0);
+  const [woodcuttingStability, setWoodcuttingStability] = useState(100);
+  const [woodcuttingFallDirection, setWoodcuttingFallDirection] = useState<'left' | 'right' | 'forward' | 'backward' | null>(null);
+  const [woodcuttingAimed, setWoodcuttingAimed] = useState(false);
+  const [woodcuttingSteppedBack, setWoodcuttingSteppedBack] = useState(false);
+  const [sawingModalOpen, setSawingModalOpen] = useState(false);
+  const [sawingActiveLog, setSawingActiveLog] = useState<string | null>(null);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
+
+  const materialCatalogById = useMemo(
+    () => new Map((contentSnapshot?.materials ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
+    [contentSnapshot?.materials],
+  );
+  const itemCatalogById = useMemo(
+    () => new Map((contentSnapshot?.items ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
+    [contentSnapshot?.items],
+  );
+
   const [questJournalOpen, setQuestJournalOpen] = useState(false);
   const [pvpBrowserOpen, setPvpBrowserOpen] = useState(false);
   const [pvpPlayers, setPvpPlayers] = useState<NearbyPvpPlayer[]>([]);
@@ -1501,10 +1525,128 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     string | null
   >(null);
 
+  // Carpenter Tool Durability Helpers (Top-Level)
+  const getToolDurability = useCallback((toolId: string, maxDurability: number): number => {
+    if (typeof window === "undefined") return maxDurability;
+    const key = `theend.tool_durability.${character.id}.${toolId}`;
+    const stored = window.localStorage.getItem(key);
+    if (stored === null) return maxDurability;
+    const parsed = parseInt(stored, 10);
+    return isNaN(parsed) ? maxDurability : parsed;
+  }, [character.id]);
+
+  const updateToolDurability = useCallback((toolId: string, durability: number) => {
+    if (typeof window === "undefined") return;
+    const key = `theend.tool_durability.${character.id}.${toolId}`;
+    window.localStorage.setItem(key, String(durability));
+  }, [character.id]);
+
+  // Resolve best woodcutting axe from inventory (highest tier, durability > 0)
+  const bestAxe = useMemo(() => {
+    let best: { item: AdminItem; durability: number } | null = null;
+    for (const invItem of inventory.items) {
+      if (invItem.quantity <= 0) continue;
+      const def = itemCatalogById.get(invItem.itemId);
+      if (!def) continue;
+      if (def.type === 'profession_tool' && def.profession === 'carpenter' && def.toolKind === 'woodcutting_axe') {
+        const durability = getToolDurability(def.id, def.maxDurability ?? 100);
+        if (durability <= 0) continue;
+        if (!best || (def.tier ?? 0) > (best.item.tier ?? 0)) {
+          best = { item: def, durability };
+        }
+      }
+    }
+    return best;
+  }, [inventory.items, itemCatalogById, getToolDurability]);
+
+  // Resolve best saw from inventory (highest tier, durability > 0)
+  const bestSaw = useMemo(() => {
+    let best: { item: AdminItem; durability: number } | null = null;
+    for (const invItem of inventory.items) {
+      if (invItem.quantity <= 0) continue;
+      const def = itemCatalogById.get(invItem.itemId);
+      if (!def) continue;
+      if (def.type === 'profession_tool' && def.profession === 'carpenter' && def.toolKind === 'saw') {
+        const durability = getToolDurability(def.id, def.maxDurability ?? 100);
+        if (durability <= 0) continue;
+        if (!best || (def.tier ?? 0) > (best.item.tier ?? 0)) {
+          best = { item: def, durability };
+        }
+      }
+    }
+    return best;
+  }, [inventory.items, itemCatalogById, getToolDurability]);
+
+  // Helper to find a tool from inventory
+  const getToolFromInventory = useCallback((toolId: string) => {
+    const invItem = inventory.items.find(item => item.itemId === toolId && item.quantity > 0);
+    if (!invItem) return null;
+    const def = itemCatalogById.get(toolId);
+    if (!def) return null;
+    const durability = getToolDurability(toolId, def.maxDurability ?? 100);
+    return { item: def, durability };
+  }, [inventory.items, itemCatalogById, getToolDurability]);
+
+  // Active Carpenter level
+  const carpenterLevel = useMemo(() => {
+    const state = normalizePlayerProfessionsState(character.professions);
+    return getPlayerProfession(state, 'carpenter')?.level ?? 0;
+  }, [character.professions]);
+
+  // Cart / transport carrying capacity and speed multiplier
+  const cartState = useMemo(() => {
+    let isRented = false;
+    if (typeof window !== "undefined") {
+      const rentedUntil = window.localStorage.getItem(`theend.cart_rented_until.${character.id}`);
+      if (rentedUntil) {
+        const time = new Date(rentedUntil).getTime();
+        if (!isNaN(time) && time > Date.now()) {
+          isRented = true;
+        }
+      }
+    }
+
+    let bestOwned: AdminItem | null = null;
+    for (const invItem of inventory.items) {
+      if (invItem.quantity <= 0) continue;
+      const def = itemCatalogById.get(invItem.itemId);
+      if (def && def.type === 'profession_transport' && def.profession === 'carpenter') {
+        if (!bestOwned || (def.capacityLogs ?? 0) > (bestOwned.capacityLogs ?? 0)) {
+          bestOwned = def;
+        }
+      }
+    }
+
+    const hasCart = isRented || !!bestOwned;
+    const capacityLogs = bestOwned ? (bestOwned.capacityLogs ?? 2) : (isRented ? 8 : 2);
+    const speedMultiplier = bestOwned ? (bestOwned.speed ?? 1.0) : (isRented ? 0.9 : 1.0);
+
+    return {
+      isRented,
+      hasOwned: !!bestOwned,
+      ownedItem: bestOwned,
+      hasCart,
+      capacityLogs,
+      speedMultiplier
+    };
+  }, [character.id, inventory.items, itemCatalogById]);
+
+  // Stamina consumption helper
+  const consumeStamina = useCallback((amount: number): boolean => {
+    const currentStamina = Math.max(0, Math.floor(battleStats.stamina));
+    if (currentStamina < amount) {
+      onStatus("Недостаточно выносливости!");
+      return false;
+    }
+    onTravelStaminaChange?.(currentStamina - amount);
+    return true;
+  }, [battleStats.stamina, onTravelStaminaChange, onStatus]);
+
   const travelMoveSpeed = useMemo(() => {
     const dexterity = Number(character.activeStats?.dexterity ?? 0);
-    return WORLD_MAP_BASE_TRAVEL_SPEED + Math.max(0, dexterity) * WORLD_MAP_DEXTERITY_SPEED_STEP;
-  }, [character.activeStats?.dexterity]);
+    const baseSpeed = WORLD_MAP_BASE_TRAVEL_SPEED + Math.max(0, dexterity) * WORLD_MAP_DEXTERITY_SPEED_STEP;
+    return baseSpeed * cartState.speedMultiplier;
+  }, [character.activeStats?.dexterity, cartState.speedMultiplier]);
 
   const staminaRegenPerSecond = useMemo(
     () => Math.max(10, Math.floor(character.maxStamina * 0.1)),
@@ -4607,6 +4749,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    if (currentZone.resourceKind === 'forest') {
+      const hasCarpenter = playerHasProfessionCompat(questRuntimeProfessionCompat, 'carpenter');
+      if (hasCarpenter) {
+        setForestPanelOpen(true);
+      } else {
+        setBranchCollectingOpen(true);
+      }
+      return;
+    }
+
     if (!hasPassiveResourceAreas && !inspectPoint) {
       onStatus("Поблизости не найдено мест добычи.");
     }
@@ -6099,14 +6251,849 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, currentGold + normalized);
   }, []);
 
-  const materialCatalogById = useMemo(
-    () => new Map((contentSnapshot?.materials ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
-    [contentSnapshot?.materials],
-  );
-  const itemCatalogById = useMemo(
-    () => new Map((contentSnapshot?.items ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
-    [contentSnapshot?.items],
-  );
+  // Carpenter Bottom-Level Helpers (below addGoldToPlayerInventory to access it)
+  const removeItemsFromPlayerInventory = useCallback((itemsToRemove: Array<{ itemId: string; quantity: number }>) => {
+    const currentItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+    const nextItems = [...currentItems];
+    for (const stack of itemsToRemove) {
+      const amount = Math.max(0, Math.floor(Number(stack.quantity ?? 0)));
+      for (let i = 0; i < amount; i++) {
+        const idx = nextItems.indexOf(stack.itemId);
+        if (idx !== -1) {
+          nextItems.splice(idx, 1);
+        }
+      }
+    }
+    writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, nextItems);
+    onRuntimeInventoryChanged?.();
+  }, [onRuntimeInventoryChanged]);
+
+  const removeGoldFromPlayerInventory = useCallback((goldAmount: number) => {
+    const normalized = Math.max(0, Math.floor(Number(goldAmount ?? 0)));
+    if (normalized <= 0) return;
+    const currentGold = Math.max(0, Math.floor(readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0)));
+    writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, Math.max(0, currentGold - normalized));
+    onRuntimeInventoryChanged?.();
+  }, [onRuntimeInventoryChanged]);
+
+  const currentZoneTrees = useMemo(() => {
+    if (!currentZone || !contentSnapshot) return [];
+    
+    let treeIds: string[] = [];
+    const zonePool = (currentZone as any).treePool;
+    if (Array.isArray(zonePool)) {
+      treeIds = zonePool;
+    } else if (typeof zonePool === 'string' && zonePool.trim()) {
+      treeIds = zonePool.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+
+    if (treeIds.length === 0) {
+      const biome = contentSnapshot.biomes?.find(b => b.id === currentZone.biomeId);
+      if (biome) {
+        treeIds = biome.resourcePools?.forest ?? biome.defaultTreePool ?? [];
+      }
+    }
+
+    return treeIds
+      .map(id => contentSnapshot.trees?.find(t => t.id === id))
+      .filter((t): t is TreeDefinition => Boolean(t && t.enabled));
+  }, [currentZone, contentSnapshot]);
+
+  const playerLogs = useMemo(() => {
+    return inventory.items
+      .filter(item => item.quantity > 0)
+      .map(item => ({ item: itemCatalogById.get(item.itemId), quantity: item.quantity }))
+      .filter((entry): entry is { item: AdminItem; quantity: number } => {
+        const item = entry.item;
+        if (!item) return false;
+        return Boolean(item.tags?.includes('wood') || item.id.toLowerCase().includes('log') || item.subtype === 'log');
+      });
+  }, [inventory.items, itemCatalogById]);
+
+  const handleFellingComplete = useCallback((tree: TreeDefinition) => {
+    let lootItems: Array<{ itemId: string; quantity: number }> = [];
+    const matchingLootTable = contentSnapshot?.lootTables?.find(
+      lt => lt.sourceType === 'tree' && lt.sourceId === tree.id
+    );
+
+    if (matchingLootTable && matchingLootTable.entries.length > 0) {
+      for (const entry of matchingLootTable.entries) {
+        if (entry.isEnabled && Math.random() * 100 < entry.chance) {
+          const qty = Math.floor(Math.random() * (entry.maxQuantity - entry.minQuantity + 1)) + entry.minQuantity;
+          if (qty > 0) {
+            lootItems.push({ itemId: entry.itemId, quantity: qty });
+          }
+        }
+      }
+    } else if (tree.drops && tree.drops.length > 0) {
+      for (const drop of tree.drops) {
+        if (Math.random() * 100 < drop.chance) {
+          const qty = Math.floor(Math.random() * (drop.max - drop.min + 1)) + drop.min;
+          if (qty > 0) {
+            lootItems.push({ itemId: drop.itemId, quantity: qty });
+          }
+        }
+      }
+    } else {
+      lootItems.push({ itemId: 'item_firewood_common', quantity: 2 });
+    }
+
+    const countLogsInInventory = () => {
+      let count = 0;
+      for (const item of inventory.items) {
+        if (item.quantity > 0) {
+          const def = itemCatalogById.get(item.itemId);
+          if (def && (def.tags?.includes('wood') || def.id.toLowerCase().includes('log') || def.subtype === 'log')) {
+            count += item.quantity;
+          }
+        }
+      }
+      const runtimeItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+      for (const rId of runtimeItems) {
+        const def = itemCatalogById.get(rId);
+        if (def && (def.tags?.includes('wood') || def.id.toLowerCase().includes('log') || def.subtype === 'log')) {
+          count += 1;
+        }
+      }
+      return count;
+    };
+
+    const currentLogs = countLogsInInventory();
+    const capacityLimit = cartState.capacityLogs;
+    let logsAdded = 0;
+    const finalLoot: Array<{ itemId: string; quantity: number }> = [];
+
+    for (const loot of lootItems) {
+      const def = itemCatalogById.get(loot.itemId);
+      const isLog = def && (def.tags?.includes('wood') || def.id.toLowerCase().includes('log') || def.subtype === 'log');
+      if (isLog) {
+        const spaceLeft = Math.max(0, capacityLimit - (currentLogs + logsAdded));
+        if (spaceLeft > 0) {
+          const toAdd = Math.min(loot.quantity, spaceLeft);
+          if (toAdd > 0) {
+            finalLoot.push({ itemId: loot.itemId, quantity: toAdd });
+            logsAdded += toAdd;
+          }
+          if (toAdd < loot.quantity) {
+            onStatus(`Некоторые бревна не поместились в повозку/инвентарь (лимит: ${capacityLimit}).`);
+          }
+        } else {
+          onStatus(`Нет места для бревен (лимит: ${capacityLimit}). Возьмите повозку большего размера!`);
+        }
+      } else {
+        finalLoot.push(loot);
+      }
+    }
+
+    if (finalLoot.length > 0) {
+      addItemsToPlayerInventory(finalLoot);
+      const lootDesc = finalLoot.map(f => `${itemCatalogById.get(f.itemId)?.name ?? f.itemId} x${f.quantity}`).join(', ');
+      onStatus(`Вы срубили ${tree.name} и получили: ${lootDesc}`);
+    } else {
+      onStatus(`Вы срубили ${tree.name}, но не смогли унести добычу.`);
+    }
+
+    const xpAward = tree.baseXp ?? 10;
+    const currentProfessions = normalizePlayerProfessionsState(character.professions);
+    const nextProfessions = addProfessionXp(currentProfessions, 'carpenter', xpAward);
+    const lvlBefore = currentProfessions.professions.find(p => p.professionId === 'carpenter')?.level ?? 0;
+    const lvlAfter = nextProfessions.professions.find(p => p.professionId === 'carpenter')?.level ?? 0;
+
+    if (onPlayerProfessionsChange && JSON.stringify(nextProfessions) !== JSON.stringify(currentProfessions)) {
+      onPlayerProfessionsChange(nextProfessions);
+    }
+
+    if (lvlAfter > lvlBefore) {
+      onStatus(`Поздравляем! Ваш уровень Плотника повысился до ${lvlAfter}!`);
+    } else {
+      onStatus(`Получено опыта плотника: +${xpAward} XP`);
+    }
+
+    setActiveWoodcuttingTree(null);
+  }, [contentSnapshot, inventory.items, cartState.capacityLogs, addItemsToPlayerInventory, character.professions, onPlayerProfessionsChange, onStatus, itemCatalogById]);
+
+  // Forest Panel Modal Element
+  const forestPanelElement = useMemo(() => {
+    if (!forestPanelOpen || !currentZone) return null;
+
+    const hasAxe = !!bestAxe;
+    const canChopTree = (tree: TreeDefinition) => {
+      if (!hasAxe) return false;
+      return (carpenterLevel >= (tree.requiredWoodcuttingTier ?? 0)) &&
+             ((bestAxe.item.tier ?? 0) >= (tree.requiredToolTier ?? 0));
+    };
+
+    return (
+      <div className="wm-modal-overlay" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(10, 8, 6, 0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div style={{
+          width: '560px', background: '#1d1511', border: '2px solid #a87e58', borderRadius: '12px',
+          color: '#f4ede6', padding: '24px', boxShadow: '0 12px 36px rgba(0,0,0,0.6)'
+        }}>
+          <h2 style={{ margin: '0 0 8px 0', fontSize: '22px', borderBottom: '1px solid #a87e58', paddingBottom: '8px', color: '#ffb97b' }}>
+            🌳 Лесная делянка: {currentZone.name}
+          </h2>
+          <p style={{ fontSize: '14px', color: '#d0c3b5', marginTop: '0', marginBottom: '20px' }}>
+            {currentZone.description || "Подходящее место для заготовки древесины."}
+          </p>
+
+          <div style={{ display: 'grid', gap: '16px', maxHeight: '320px', overflowY: 'auto', marginBottom: '20px', paddingRight: '4px' }}>
+            {currentZoneTrees.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#8c7e72', padding: '20px 0' }}>Деревьев для рубки не обнаружено.</div>
+            ) : (
+              currentZoneTrees.map((tree) => {
+                const chopAllowed = canChopTree(tree);
+                return (
+                  <div key={tree.id} style={{
+                    backgroundColor: '#2b1f1a', border: '1px solid #4a362b', borderRadius: '8px',
+                    padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#f2d6a3' }}>{tree.name}</div>
+                      <div style={{ fontSize: '12px', color: '#b6a798', marginTop: '4px' }}>
+                        Здоровье: {tree.hp} HP | Твердость: {tree.hardness}
+                      </div>
+                      <div style={{ fontSize: '11px', marginTop: '6px' }}>
+                        {carpenterLevel < (tree.requiredWoodcuttingTier ?? 0) && (
+                          <div style={{ color: '#ff7c7c' }}>⚠ Требуется уровень плотника: {tree.requiredWoodcuttingTier} (у вас: {carpenterLevel})</div>
+                        )}
+                        {hasAxe && (bestAxe.item.tier ?? 0) < (tree.requiredToolTier ?? 0) && (
+                          <div style={{ color: '#ff7c7c' }}>⚠ Требуется топор тира: {tree.requiredToolTier} (у вас: {bestAxe.item.tier ?? 1})</div>
+                        )}
+                        {!hasAxe && (
+                          <div style={{ color: '#ff7c7c' }}>⚠ Нет подходящего топора</div>
+                        )}
+                        {chopAllowed && (
+                          <div style={{ color: '#a2e896' }}>✓ Рубка разрешена</div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      disabled={!chopAllowed}
+                      onClick={() => {
+                        setActiveWoodcuttingTree(tree);
+                        setWoodcuttingHp(tree.hp);
+                        setWoodcuttingStability(tree.stability ?? 100);
+                        setWoodcuttingFallDirection(['left', 'right', 'forward', 'backward'][Math.floor(Math.random() * 4)] as any);
+                        setWoodcuttingAimed(false);
+                        setWoodcuttingSteppedBack(false);
+                        setForestPanelOpen(false);
+                      }}
+                      style={{
+                        padding: '8px 16px', backgroundColor: chopAllowed ? '#8b5a2b' : '#3d3029',
+                        color: chopAllowed ? '#fdecd2' : '#8c7e72', border: '1px solid #a87e58',
+                        borderRadius: '6px', cursor: chopAllowed ? 'pointer' : 'not-allowed', fontWeight: 'bold'
+                      }}
+                    >
+                      Рубить
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #4a362b', paddingTop: '16px' }}>
+            <button
+              onClick={() => {
+                setForestPanelOpen(false);
+                setSawingModalOpen(true);
+              }}
+              style={{
+                padding: '10px 20px', backgroundColor: '#4a362b', color: '#f2d6a3',
+                border: '1px solid #8b5a2b', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
+              }}
+            >
+              🪚 Распил брёвен
+            </button>
+            <button
+              onClick={() => setForestPanelOpen(false)}
+              style={{
+                padding: '10px 20px', backgroundColor: '#33221a', color: '#b6a798',
+                border: '1px solid #553f34', borderRadius: '6px', cursor: 'pointer'
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [forestPanelOpen, currentZone, currentZoneTrees, bestAxe, carpenterLevel]);
+
+  // Branch Collecting Modal Element
+  const branchCollectingElement = useMemo(() => {
+    if (!branchCollectingOpen) return null;
+    const zoneName = currentZone?.name ?? "Заповедный Лес (Чит)";
+
+    return (
+      <div className="wm-modal-overlay" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(10, 8, 6, 0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div style={{
+          width: '420px', backgroundColor: '#1d1511', border: '2px solid #8b5a2b',
+          borderRadius: '12px', color: '#f4ede6', padding: '24px', boxShadow: '0 12px 36px rgba(0,0,0,0.6)'
+        }}>
+          <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#ffb97b', borderBottom: '1px solid #8b5a2b', paddingBottom: '8px' }}>
+            🌿 Лесная зона: {zoneName}
+          </h3>
+          <p style={{ fontSize: '14px', color: '#d0c3b5', lineHeight: '1.4', marginBottom: '20px' }}>
+            Вы не владеете плотницким искусством, поэтому не можете рубить здесь деревья. Однако вы можете осмотреть подлесок в поисках упавших веток и коры.
+          </p>
+
+          <div style={{ backgroundColor: '#2b1f1a', border: '1px solid #4a362b', borderRadius: '8px', padding: '12px', marginBottom: '20px' }}>
+            <div style={{ fontSize: '13px', color: '#f2d6a3' }}>Сбор хвороста и сухих веток:</div>
+            <div style={{ fontSize: '12px', color: '#b6a798', marginTop: '4px' }}>Расход выносливости: 10 Stamina</div>
+            <div style={{ fontSize: '12px', color: '#b6a798' }}>Вероятность успеха: Высокая</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => {
+                if (!consumeStamina(10)) return;
+
+                const roll = Math.random();
+                if (roll < 0.7) {
+                  addItemsToPlayerInventory([{ itemId: 'item_firewood_common', quantity: 2 }]);
+                  onStatus("Вы нашли сухие поленья: +2 шт.");
+                } else {
+                  addItemsToPlayerInventory([{ itemId: 'item_tree_bark_common', quantity: 1 }]);
+                  onStatus("Вы нашли немного древесной коры.");
+                }
+                setBranchCollectingOpen(false);
+              }}
+              style={{
+                padding: '10px 20px', backgroundColor: '#8b5a2b', color: '#fdecd2',
+                border: '1px solid #a87e58', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
+              }}
+            >
+              Собрать ветки
+            </button>
+            <button
+              onClick={() => setBranchCollectingOpen(false)}
+              style={{
+                padding: '10px 20px', backgroundColor: '#33221a', color: '#b6a798',
+                border: '1px solid #553f34', borderRadius: '6px', cursor: 'pointer'
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [branchCollectingOpen, currentZone, consumeStamina, addItemsToPlayerInventory, onStatus]);
+
+  // Woodcutting Game Element
+  const woodcuttingModalElement = useMemo(() => {
+    if (!activeWoodcuttingTree) return null;
+
+    const tree = activeWoodcuttingTree as TreeDefinition;
+    const axeStaminaModifier = bestAxe?.item.staminaCostModifier ?? 0;
+    const strikeStaminaCost = Math.max(1, Math.round(8 * (1 + axeStaminaModifier)));
+    const strikeDamage = Math.max(1, 2 + Math.round((character.activeStats?.strength ?? 10) / 3) + (bestAxe?.item.treeDamageBonus ?? 0));
+
+    const handleStrike = () => {
+      if (!consumeStamina(strikeStaminaCost)) return;
+
+      if (bestAxe) {
+        const nextDur = Math.max(0, bestAxe.durability - 1);
+        updateToolDurability(bestAxe.item.id, nextDur);
+        if (nextDur <= 0) {
+          onStatus(`Ваш топор ${bestAxe.item.name} сломался!`);
+        }
+      }
+
+      let finalDamage = strikeDamage;
+      let finalStabilityReduction = 5 + (tree.fallRisk ?? 10) / 5;
+
+      if (woodcuttingAimed) {
+        finalDamage *= 2;
+        finalStabilityReduction = 2;
+        setWoodcuttingAimed(false);
+      }
+
+      if (woodcuttingSteppedBack) {
+        finalDamage = Math.max(1, Math.round(finalDamage * 0.5));
+      }
+
+      const nextHp = Math.max(0, woodcuttingHp - finalDamage);
+      const nextStability = Math.max(0, woodcuttingStability - finalStabilityReduction);
+
+      setWoodcuttingHp(nextHp);
+      setWoodcuttingStability(nextStability);
+
+      if (nextHp <= 0) {
+        handleFellingComplete(tree);
+        return;
+      }
+
+      if (nextStability <= 0) {
+        if (!woodcuttingSteppedBack) {
+          onStatus("Дерево рухнуло прямо на вас! Вы получили ушибы и потеряли 30 выносливости.");
+          consumeStamina(30);
+        } else {
+          onStatus("Дерево благополучно упало в сторону. Вы в безопасности.");
+        }
+        handleFellingComplete(tree);
+        return;
+      }
+
+      if (nextStability < 40 && !woodcuttingSteppedBack && Math.random() < 0.3) {
+        onStatus("Дерево начинает опасно крениться! Шагните назад!");
+      }
+    };
+
+    return (
+      <div className="wm-modal-overlay" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(10, 8, 6, 0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div style={{
+          width: '480px', backgroundColor: '#1d1511', border: '2px solid #8b5a2b',
+          borderRadius: '12px', color: '#f4ede6', padding: '24px', boxShadow: '0 12px 36px rgba(0,0,0,0.6)'
+        }}>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#ffb97b' }}>
+            🪓 Валка дерева: {tree.name}
+          </h3>
+          <div style={{ fontSize: '12px', color: '#8c7e72', borderBottom: '1px solid #4a362b', paddingBottom: '8px', marginBottom: '16px' }}>
+            Используется топор: {bestAxe?.item.name ?? "Кулаки"} (Прочность: {bestAxe ? `${bestAxe.durability}/${bestAxe.item.maxDurability}` : "0"})
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+              <span>Прочность ствола:</span>
+              <strong>{woodcuttingHp} / {tree.hp} HP</strong>
+            </div>
+            <div style={{ width: '100%', height: '12px', backgroundColor: '#3d2b20', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ width: `${(woodcuttingHp / tree.hp) * 100}%`, height: '100%', backgroundColor: '#ff7373', transition: 'width 0.2s' }}></div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+              <span>Устойчивость дерева:</span>
+              <strong>{woodcuttingStability}% (Крен: {
+                woodcuttingFallDirection === 'left' ? 'Влево' :
+                woodcuttingFallDirection === 'right' ? 'Вправо' :
+                woodcuttingFallDirection === 'forward' ? 'Вперед' : 'Назад'
+              })</strong>
+            </div>
+            <div style={{ width: '100%', height: '12px', backgroundColor: '#3d2b20', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ width: `${woodcuttingStability}%`, height: '100%', backgroundColor: woodcuttingStability > 50 ? '#a2e896' : woodcuttingStability > 25 ? '#ffb97b' : '#ff7c7c', transition: 'width 0.2s' }}></div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            {woodcuttingAimed && (
+              <span style={{ backgroundColor: '#2e3d20', border: '1px solid #5fa83b', color: '#a2e896', borderRadius: '4px', padding: '2px 8px', fontSize: '11px' }}>
+                🎯 Прицельный удар готов
+              </span>
+            )}
+            {woodcuttingSteppedBack && (
+              <span style={{ backgroundColor: '#1f343d', border: '1px solid #3b8ba8', color: '#8bd5ff', borderRadius: '4px', padding: '2px 8px', fontSize: '11px' }}>
+                🛡 Безопасное расстояние
+               </span>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <button
+              onClick={handleStrike}
+              style={{
+                gridColumn: 'span 2', padding: '12px', backgroundColor: '#8b5a2b',
+                color: '#fdecd2', border: '1px solid #a87e58', borderRadius: '6px',
+                cursor: 'pointer', fontWeight: 'bold', fontSize: '15px'
+              }}
+            >
+              Ударить топором ({strikeStaminaCost} вын.)
+            </button>
+            <button
+              disabled={woodcuttingAimed}
+              onClick={() => {
+                if (consumeStamina(10)) {
+                  setWoodcuttingAimed(true);
+                }
+              }}
+              style={{
+                padding: '10px', backgroundColor: woodcuttingAimed ? '#3d3029' : '#4a362b',
+                color: woodcuttingAimed ? '#8c7e72' : '#f2d6a3', border: '1px solid #8b5a2b',
+                borderRadius: '6px', cursor: woodcuttingAimed ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Прицелиться (10 вын.)
+            </button>
+            {woodcuttingSteppedBack ? (
+              <button
+                onClick={() => {
+                  if (consumeStamina(5)) {
+                    setWoodcuttingSteppedBack(false);
+                  }
+                }}
+                style={{
+                  padding: '10px', backgroundColor: '#4a362b', color: '#f2d6a3',
+                  border: '1px solid #8b5a2b', borderRadius: '6px', cursor: 'pointer'
+                }}
+              >
+                Приблизиться (5 вын.)
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (consumeStamina(10)) {
+                    setWoodcuttingSteppedBack(true);
+                  }
+                }}
+                style={{
+                  padding: '10px', backgroundColor: '#33221a', color: '#ffb97b',
+                  border: '1px solid #553f34', borderRadius: '6px', cursor: 'pointer'
+                }}
+              >
+                Отойти назад (10 вын.)
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={() => setActiveWoodcuttingTree(null)}
+            style={{
+              width: '100%', padding: '10px', backgroundColor: '#1a100c',
+              color: '#8c7e72', border: '1px solid #422a1f', borderRadius: '6px', cursor: 'pointer'
+            }}
+          >
+            Отступить
+          </button>
+        </div>
+      </div>
+    );
+  }, [activeWoodcuttingTree, woodcuttingHp, woodcuttingStability, woodcuttingAimed, woodcuttingSteppedBack, woodcuttingFallDirection, bestAxe, consumeStamina, handleFellingComplete, character.activeStats?.strength, onStatus]);
+
+  // Sawing (Sawmill) Modal Element
+  const sawingModalElement = useMemo(() => {
+    if (!sawingModalOpen) return null;
+
+    const hasSaw = !!bestSaw;
+    const activeLog = sawingActiveLog || (playerLogs.length > 0 ? playerLogs[0].item?.id : null);
+
+    const sawingRecipes = [
+      { id: 'plank', name: 'Обычная доска', outputId: 'item_wood_plank_common', qty: 2, stamina: 8, xp: 3 },
+      { id: 'beam', name: 'Обычная балка', outputId: 'item_wood_beam_common', qty: 1, stamina: 10, xp: 4 },
+      { id: 'handle', name: 'Простая деревянная рукоять', outputId: 'item_wood_handle_common', qty: 3, stamina: 6, xp: 3 },
+      { id: 'core', name: 'Простая основа посоха', outputId: 'item_staff_core_common', qty: 1, stamina: 12, xp: 5 },
+      { id: 'firewood', name: 'Поленья', outputId: 'item_firewood_common', qty: 4, stamina: 4, xp: 2 },
+    ];
+
+    const handleSaw = (recipe: typeof sawingRecipes[number]) => {
+      if (!hasSaw) {
+         onStatus("У вас нет подходящей пилы.");
+         return;
+      }
+      if (!activeLog) {
+         onStatus("Выберите бревно для распила.");
+         return;
+      }
+      if (!consumeStamina(recipe.stamina)) return;
+
+      const nextDur = Math.max(0, bestSaw.durability - 1);
+      updateToolDurability(bestSaw.item.id, nextDur);
+      if (nextDur <= 0) {
+        onStatus(`Ваша пила ${bestSaw.item.name} сломалась!`);
+      }
+
+      removeItemsFromPlayerInventory([{ itemId: activeLog, quantity: 1 }]);
+      addItemsToPlayerInventory([{ itemId: recipe.outputId, quantity: recipe.qty }]);
+
+      const currentProfessions = normalizePlayerProfessionsState(character.professions);
+      const nextProfessions = addProfessionXp(currentProfessions, 'carpenter', recipe.xp);
+      if (onPlayerProfessionsChange && JSON.stringify(nextProfessions) !== JSON.stringify(currentProfessions)) {
+        onPlayerProfessionsChange(nextProfessions);
+      }
+
+      onStatus(`Вы распилили бревно и получили: ${recipe.name} x${recipe.qty} (+${recipe.xp} XP)`);
+
+      const nextLogsCount = inventory.items.find(i => i.itemId === activeLog)?.quantity ?? 0;
+      if (nextLogsCount <= 1) {
+        setSawingActiveLog(null);
+      }
+    };
+
+    return (
+      <div className="wm-modal-overlay" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(10, 8, 6, 0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div style={{
+          width: '520px', backgroundColor: '#1d1511', border: '2px solid #8b5a2b',
+          borderRadius: '12px', color: '#f4ede6', padding: '24px', boxShadow: '0 12px 36px rgba(0,0,0,0.6)'
+        }}>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#ffb97b' }}>
+            🪚 Распил брёвен (Пилорама)
+          </h3>
+          <div style={{ fontSize: '12px', color: '#8c7e72', borderBottom: '1px solid #4a362b', paddingBottom: '8px', marginBottom: '16px' }}>
+            Используется пила: {bestSaw?.item.name ?? "Нет пилы"} (Прочность: {bestSaw ? `${bestSaw.durability}/${bestSaw.item.maxDurability}` : "0"})
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px', color: '#f2d6a3' }}>Выберите бревно из инвентаря:</label>
+            {playerLogs.length === 0 ? (
+              <div style={{ padding: '10px', backgroundColor: '#2b1f1a', border: '1px solid #4a362b', borderRadius: '6px', color: '#8c7e72', textAlign: 'center' }}>
+                У вас нет бревен в инвентаре.
+              </div>
+            ) : (
+              <select
+                value={activeLog || ""}
+                onChange={(e) => setSawingActiveLog(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px', backgroundColor: '#2b1f1a', color: '#fdecd2',
+                  border: '1px solid #8b5a2b', borderRadius: '6px', fontSize: '14px'
+                }}
+              >
+                {playerLogs.map(entry => (
+                  <option key={entry.item?.id} value={entry.item?.id}>
+                    {entry.item?.name} (Доступно: {entry.quantity} шт.)
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gap: '10px', maxHeight: '280px', overflowY: 'auto', marginBottom: '20px', paddingRight: '4px' }}>
+            {sawingRecipes.map((recipe) => {
+              const canProduce = hasSaw && !!activeLog;
+              return (
+                <div key={recipe.id} style={{
+                  backgroundColor: '#2b1f1a', border: '1px solid #4a362b', borderRadius: '8px',
+                  padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#fdecd2' }}>{recipe.name} x{recipe.qty}</div>
+                    <div style={{ fontSize: '11px', color: '#b6a798', marginTop: '2px' }}>
+                      Выносливость: {recipe.stamina} | Опыт: +{recipe.xp} XP
+                    </div>
+                  </div>
+                  <button
+                    disabled={!canProduce}
+                    onClick={() => handleSaw(recipe)}
+                    style={{
+                      padding: '6px 12px', backgroundColor: canProduce ? '#8b5a2b' : '#3d3029',
+                      color: canProduce ? '#fdecd2' : '#8c7e72', border: '1px solid #a87e58',
+                      borderRadius: '4px', cursor: canProduce ? 'pointer' : 'not-allowed', fontSize: '13px'
+                    }}
+                  >
+                    Распилить
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => setSawingModalOpen(false)}
+            style={{
+              width: '100%', padding: '10px', backgroundColor: '#33221a',
+              color: '#b6a798', border: '1px solid #553f34', borderRadius: '6px', cursor: 'pointer'
+            }}
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    );
+  }, [sawingModalOpen, sawingActiveLog, playerLogs, bestSaw, consumeStamina, addItemsToPlayerInventory, removeItemsFromPlayerInventory, character.professions, onPlayerProfessionsChange, onStatus, inventory.items]);
+
+  // Carpenter Workshop Modal Element
+  const workshopModalElement = useMemo(() => {
+    if (!workshopOpen) return null;
+
+    const recipes = [
+      {
+        id: 'drying',
+        name: 'Сушка бревна',
+        toolId: 'tool_drying_rack_basic',
+        toolName: 'Сушильный стеллаж',
+        inputs: [{ itemId: 'item_wood_log_common', quantity: 1 }],
+        outputs: [{ itemId: 'item_wood_plank_common', quantity: 1 }],
+        gold: 10,
+        xp: 5,
+        stamina: 5
+      },
+      {
+        id: 'planing',
+        name: 'Строгание и шлифовка досок',
+        toolId: 'tool_planer_basic',
+        toolName: 'Рубанок',
+        inputs: [{ itemId: 'item_wood_plank_common', quantity: 2 }],
+        outputs: [{ itemId: 'item_wood_beam_common', quantity: 1 }],
+        gold: 15,
+        xp: 8,
+        stamina: 8
+      },
+      {
+        id: 'carving',
+        name: 'Резьба рукоятей',
+        toolId: 'tool_chisel_basic',
+        toolName: 'Стамеска',
+        inputs: [{ itemId: 'item_wood_plank_common', quantity: 1 }],
+        outputs: [{ itemId: 'item_wood_handle_common', quantity: 2 }],
+        gold: 12,
+        xp: 7,
+        stamina: 6
+      },
+      {
+        id: 'assembly',
+        name: 'Сборка основы посоха',
+        toolId: 'tool_hammer_basic',
+        toolName: 'Плотницкий молоток',
+        inputs: [{ itemId: 'item_wood_beam_common', quantity: 1 }, { itemId: 'item_wood_handle_common', quantity: 1 }],
+        outputs: [{ itemId: 'item_staff_core_common', quantity: 1 }],
+        gold: 25,
+        xp: 12,
+        stamina: 12
+      }
+    ];
+
+    const hasItemQty = (itemId: string, requiredQty: number) => {
+      const item = inventory.items.find(i => i.itemId === itemId);
+      const runtimeItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+      const runtimeCount = runtimeItems.filter(rId => rId === itemId).length;
+      return ((item?.quantity ?? 0) + runtimeCount) >= requiredQty;
+    };
+
+    const handleCraft = (recipe: typeof recipes[number]) => {
+      const tool = getToolFromInventory(recipe.toolId);
+      if (!tool) {
+        onStatus(`У вас нет инструмента: ${recipe.toolName}`);
+        return;
+      }
+      if (tool.durability <= 0) {
+        onStatus(`Инструмент ${recipe.toolName} сломан! Отремонтируйте его.`);
+        return;
+      }
+
+      for (const input of recipe.inputs) {
+        if (!hasItemQty(input.itemId, input.quantity)) {
+          const inputDef = resolveItemById?.(input.itemId);
+          onStatus(`Недостаточно материалов: ${inputDef?.name ?? input.itemId}`);
+          return;
+        }
+      }
+
+      if (!consumeStamina(recipe.stamina)) return;
+
+      const nextDur = Math.max(0, tool.durability - 1);
+      updateToolDurability(recipe.toolId, nextDur);
+      if (nextDur <= 0) {
+        onStatus(`Ваш инструмент ${recipe.toolName} сломался!`);
+      }
+
+      removeItemsFromPlayerInventory(recipe.inputs);
+      addItemsToPlayerInventory(recipe.outputs);
+      addGoldToPlayerInventory(recipe.gold);
+
+      const currentProfessions = normalizePlayerProfessionsState(character.professions);
+      const nextProfessions = addProfessionXp(currentProfessions, 'carpenter', recipe.xp);
+      if (onPlayerProfessionsChange && JSON.stringify(nextProfessions) !== JSON.stringify(currentProfessions)) {
+        onPlayerProfessionsChange(nextProfessions);
+      }
+
+      onStatus(`Вы изготовили ${recipe.name}! Получено: +${recipe.gold} золота, +${recipe.xp} XP`);
+    };
+
+    return (
+      <div className="wm-modal-overlay" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(10, 8, 6, 0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}>
+        <div style={{
+          width: '640px', backgroundColor: '#1d1511', border: '2px solid #a87e58',
+          borderRadius: '12px', color: '#f4ede6', padding: '24px', boxShadow: '0 12px 36px rgba(0,0,0,0.6)'
+        }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '22px', color: '#ffb97b', borderBottom: '1px solid #a87e58', paddingBottom: '8px' }}>
+            🔨 Деревообрабатывающая мастерская
+          </h3>
+
+          <div style={{ display: 'grid', gap: '16px', maxHeight: '400px', overflowY: 'auto', marginBottom: '20px', paddingRight: '4px' }}>
+            {recipes.map((recipe) => {
+              const tool = getToolFromInventory(recipe.toolId);
+              const hasTool = !!tool && tool.durability > 0;
+              const hasInputs = recipe.inputs.every(input => hasItemQty(input.itemId, input.quantity));
+              const canCraft = hasTool && hasInputs;
+
+              return (
+                <div key={recipe.id} style={{
+                  backgroundColor: '#2b1f1a', border: '1px solid #4a362b', borderRadius: '8px',
+                  padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#fdecd2' }}>{recipe.name}</span>
+                    <span style={{ fontSize: '12px', color: '#ffb97b' }}>+{recipe.xp} XP | +{recipe.gold} зол.</span>
+                  </div>
+
+                  <div style={{ fontSize: '13px', display: 'grid', gridTemplateColumns: '120px 1fr', gap: '4px' }}>
+                    <span style={{ color: '#8c7e72' }}>Инструмент:</span>
+                    <span style={{ color: hasTool ? '#a2e896' : '#ff7c7c' }}>
+                      {recipe.toolName} {tool ? `(Прочность: ${tool.durability}/${tool.item.maxDurability})` : '(Отсутствует)'}
+                    </span>
+
+                    <span style={{ color: '#8c7e72' }}>Ресурсы:</span>
+                    <div>
+                      {recipe.inputs.map(input => {
+                        const def = resolveItemById?.(input.itemId);
+                        const baseQty = inventory.items.find(i => i.itemId === input.itemId)?.quantity ?? 0;
+                        const runQty = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY).filter(rId => rId === input.itemId).length;
+                        const hasQty = baseQty + runQty;
+                        const met = hasQty >= input.quantity;
+                        return (
+                          <div key={input.itemId} style={{ color: met ? '#d0c3b5' : '#ff7c7c' }}>
+                            • {def?.name ?? input.itemId} x{input.quantity} (У вас: {hasQty})
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', borderTop: '1px solid #3d2b20', paddingTop: '8px' }}>
+                    <span style={{ fontSize: '12px', color: '#b6a798' }}>Выносливость: {recipe.stamina}</span>
+                    <button
+                      disabled={!canCraft}
+                      onClick={() => handleCraft(recipe)}
+                      style={{
+                        padding: '8px 16px', backgroundColor: canCraft ? '#8b5a2b' : '#3d3029',
+                        color: canCraft ? '#fdecd2' : '#8c7e72', border: '1px solid #a87e58',
+                        borderRadius: '6px', cursor: canCraft ? 'pointer' : 'not-allowed', fontWeight: 'bold'
+                      }}
+                    >
+                      Изготовить
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => setWorkshopOpen(false)}
+            style={{
+              width: '100%', padding: '10px', backgroundColor: '#33221a',
+              color: '#b6a798', border: '1px solid #553f34', borderRadius: '6px', cursor: 'pointer'
+            }}
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    );
+  }, [workshopOpen, inventory.items, getToolFromInventory, resolveItemById, consumeStamina, addItemsToPlayerInventory, removeItemsFromPlayerInventory, addGoldToPlayerInventory, character.professions, onPlayerProfessionsChange, onStatus]);
+
+  // Moved catalogs to the top to avoid block-scoping errors
 
 
   const resolveMineItemName = useCallback((itemId: string) => {
@@ -6420,6 +7407,54 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
 
+    if (devTravelRequest.mode === 'carpenter_game') {
+      const gameType = devTravelRequest.carpenterGameType;
+      if (gameType === 'woodcutting') {
+        const tree = contentSnapshot?.trees?.find((t) => t.enabled) || {
+          id: 'dev_oak',
+          name: 'Тестовый Дуб (Чит)',
+          hp: 150,
+          hardness: 1,
+          stability: 100,
+          fallRisk: 10,
+          requiredWoodcuttingTier: 0,
+          requiredToolTier: 0,
+          baseXp: 15,
+          weight: 10,
+          drops: [],
+          enabled: true,
+          region: 'all',
+          biomeIds: [],
+          rarity: 'common'
+        };
+        setActiveWoodcuttingTree(tree as TreeDefinition);
+        setWoodcuttingHp(tree.hp);
+        setWoodcuttingStability(tree.stability ?? 100);
+        setWoodcuttingFallDirection(['left', 'right', 'forward', 'backward'][Math.floor(Math.random() * 4)] as any);
+        setWoodcuttingAimed(false);
+        setWoodcuttingSteppedBack(false);
+        onStatus('GODMODE: Запущена рубка дерева.');
+        return;
+      }
+      if (gameType === 'sawing') {
+        setSawingModalOpen(true);
+        onStatus('GODMODE: Открыт распил брёвен.');
+        return;
+      }
+      if (gameType === 'workshop') {
+        setWorkshopOpen(true);
+        onStatus('GODMODE: Открыта мастерская.');
+        return;
+      }
+      if (gameType === 'branches') {
+        setBranchCollectingOpen(true);
+        onStatus('GODMODE: Открыт сбор хвороста.');
+        return;
+      }
+      onStatus('GODMODE: Неизвестная мини-игра плотника.');
+      return;
+    }
+
     if (devTravelRequest.mode === 'world') {
       setActiveCityId(null);
       setActiveLocationId(null);
@@ -6691,6 +7726,37 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
       let modalClosed = false;
       for (const intent of result.intents ?? []) {
+        if (intent.type === "LEARN_PROFESSION") {
+          const rawId = intent.professionId || 'carpenter';
+          const profId = ((rawId === 'carpentry' || rawId === 'carpenter') ? 'carpenter' : rawId) as ProfessionId;
+          const currentProfessions = normalizePlayerProfessionsState(character.professions);
+          const hasProf = currentProfessions.professions.some(p => p.professionId === profId);
+          if (!hasProf) {
+            const nextProfessions = {
+              ...currentProfessions,
+              professions: [
+                ...currentProfessions.professions,
+                {
+                  professionId: profId,
+                  level: 1,
+                  xp: 0,
+                  xpToNextLevel: 100,
+                  skillPoints: 0,
+                  learnedSkillIds: [] as string[],
+                  selectedBranchIds: [] as string[],
+                  unlockedAt: new Date().toISOString(),
+                }
+              ]
+            };
+            if (onPlayerProfessionsChange) {
+              onPlayerProfessionsChange(nextProfessions);
+            }
+            onStatus(`Вы обучились профессии: ${profId === 'carpenter' ? 'Плотник' : profId}!`);
+          } else {
+            onStatus(`Вы уже владеете профессией: ${profId === 'carpenter' ? 'Плотник' : profId}.`);
+          }
+          continue;
+        }
         if (intent.type === "HEAL_PLAYER_FULL") {
           if (!onApplyHealingService) {
             onStatus("\u041b\u0435\u0447\u0435\u043d\u0438\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e.");
@@ -7828,6 +8894,95 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               {"\u0410\u0442\u0430\u043a\u043e\u0432\u0430\u0442\u044c"}
             </button>
           ) : null}
+          {npc?.professionTrainer === 'carpenter' && (
+            <>
+              {!playerHasProfessionCompat(questRuntimeProfessionCompat, 'carpenter') && (
+                <button
+                  onClick={() => {
+                    const profId = 'carpenter' as ProfessionId;
+                    const currentProfessions = normalizePlayerProfessionsState(character.professions);
+                    const nextProfessions = {
+                      ...currentProfessions,
+                      professions: [
+                        ...currentProfessions.professions,
+                        {
+                          professionId: profId,
+                          level: 1,
+                          xp: 0,
+                          xpToNextLevel: 100,
+                          skillPoints: 0,
+                          learnedSkillIds: [] as string[],
+                          selectedBranchIds: [] as string[],
+                          unlockedAt: new Date().toISOString(),
+                        }
+                      ]
+                    };
+                    if (onPlayerProfessionsChange) {
+                      onPlayerProfessionsChange(nextProfessions);
+                    }
+                    onStatus("Вы обучились плотницкому делу!");
+                  }}
+                >
+                  {"\u041e\u0431\u0443\u0447\u0438\u0442\u044c\u0441\u044f \u043f\u043b\u043e\u0442\u043d\u0438\u0446\u043a\u043e\u043c\u0443 \u0434\u0435\u043b\u0443"}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  closeModal();
+                  onOpenMerchant('merchant_carpenter_master');
+                }}
+              >
+                {"\u041a\u0443\u043f\u0438\u0442\u044c \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u044b"}
+              </button>
+              <button
+                onClick={() => {
+                  const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+                  const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+                  const totalGold = currentGold + runtimeGold;
+                  if (totalGold < 25) {
+                    onStatus("Недостаточно золота для аренды повозки (требуется 25 золотых).");
+                    return;
+                  }
+                  removeGoldFromPlayerInventory(25);
+                  const rentedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+                  window.localStorage.setItem(`theend.cart_rented_until.${character.id}`, rentedUntil);
+                  onStatus("Вы арендовали повозку на 24 часа!");
+                }}
+              >
+                {"\u0410\u0440\u0435\u043d\u0434\u043e\u0432\u0430\u0442\u044c \u043f\u043e\u0432\u043e\u0437\u043a\u0443 (25 \u0437\u043e\u043b\u043e\u0442\u044b\u0445)"}
+              </button>
+              <button
+                onClick={() => {
+                  const currentGold = Math.max(0, Math.floor(Number(inventory.gold ?? 0)));
+                  const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
+                  const totalGold = currentGold + runtimeGold;
+                  if (totalGold < 750) {
+                    onStatus("Недостаточно золота для покупки повозки (требуется 750 золотых).");
+                    return;
+                  }
+                  const hasCart = inventory.items.some(item => item.itemId === 'cart_wooden_basic' && item.quantity > 0)
+                    || readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY).includes('cart_wooden_basic');
+                  if (hasCart) {
+                    onStatus("У вас уже есть деревянная повозка.");
+                    return;
+                  }
+                  removeGoldFromPlayerInventory(750);
+                  addItemsToPlayerInventory([{ itemId: 'cart_wooden_basic', quantity: 1 }]);
+                  onStatus("Вы купили деревянную повозку!");
+                }}
+              >
+                {"\u041a\u0443\u043f\u0438\u0442\u044c \u043f\u043e\u0432\u043e\u0437\u043a\u0443 (750 \u0437\u043e\u043b\u043e\u0442\u044b\u0445)"}
+              </button>
+              <button
+                onClick={() => {
+                  closeModal();
+                  setWorkshopOpen(true);
+                }}
+              >
+                {"\u0414\u0435\u0440\u0435\u0432\u043e\u043e\u0431\u0440\u0430\u0431\u0430\u0442\u044b\u0432\u0430\u044e\u0449\u0430\u044f \u043c\u0430\u0441\u0442\u0435\u0440\u0441\u043a\u0430\u044f"}
+              </button>
+            </>
+          )}
           <button
             onClick={() => {
               onStatus(
@@ -9509,6 +10664,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         {pvpBrowserElement}
         {randomEventModalElement}
         {npcQuestSceneModalElement}
+        {forestPanelElement}
+        {branchCollectingElement}
+        {woodcuttingModalElement}
+        {sawingModalElement}
+        {workshopModalElement}
         <QuestJournalModal
           isOpen={questJournalOpen}
           onClose={() => setQuestJournalOpen(false)}

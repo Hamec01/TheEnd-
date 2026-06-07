@@ -4,7 +4,7 @@ export function ProfessionSkillsPage() {
   return <ProfessionSkillEditor professions={[
     { id: 'mining', name: 'Горняк' },
     { id: 'blacksmithing', name: 'Кузнец' },
-    { id: 'carpentry', name: 'Плотник' },
+    { id: 'carpenter', name: 'Плотник' },
     { id: 'leatherworking', name: 'Кожевник' },
     { id: 'jewelcrafting', name: 'Ювелир' },
     { id: 'runecrafting', name: 'Рунорез' },

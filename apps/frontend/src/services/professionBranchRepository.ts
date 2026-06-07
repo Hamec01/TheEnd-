@@ -38,6 +38,8 @@ function normalizeBranch(value: unknown): ProfessionBranch | null {
     requiredBranchIds: normalizeStringArray(raw.requiredBranchIds),
     locksBranchIds: normalizeStringArray(raw.locksBranchIds),
     isFinalBranch: raw.isFinalBranch === true,
+    icon: typeof raw.icon === 'string' && raw.icon.trim() ? raw.icon.trim() : undefined,
+    iconImageRef: raw.iconImageRef ? (raw.iconImageRef as any) : undefined,
     isEnabled: raw.isEnabled !== false,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined,
@@ -276,24 +278,75 @@ function createDefaultBlacksmithBranches(): ProfessionBranch[] {
   ];
 }
 
+function createDefaultCarpentryBranches(): ProfessionBranch[] {
+  const now = new Date().toISOString();
+  const branch = (params: {
+    id: string;
+    name: string;
+    description?: string;
+    exclusiveGroupId?: string;
+    requiredSkillIds?: string[];
+    requiredBranchIds?: string[];
+    locksBranchIds?: string[];
+    isFinalBranch?: boolean;
+  }): ProfessionBranch => ({
+    id: params.id,
+    professionId: 'carpenter',
+    name: params.name,
+    description: params.description ?? params.name,
+    exclusiveGroupId: params.exclusiveGroupId,
+    requiredSkillIds: params.requiredSkillIds ?? [],
+    requiredBranchIds: params.requiredBranchIds ?? [],
+    locksBranchIds: params.locksBranchIds ?? [],
+    isFinalBranch: params.isFinalBranch ?? false,
+    isEnabled: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return [
+    branch({
+      id: 'carpentry_branch_woodcutting',
+      name: 'Рубка',
+      description: 'Искусство валки деревьев и добычи ценного леса.',
+    }),
+    branch({
+      id: 'carpentry_branch_sawing',
+      name: 'Распил',
+      description: 'Навыки точной распиловки брёвен на доски, балки и заготовки.',
+    }),
+    branch({
+      id: 'carpentry_branch_joinery',
+      name: 'Столярное дело',
+      description: 'Создание деревянных конструкций, мебели и основ для магических предметов.',
+    }),
+  ];
+}
+
 function mergeWithMiningDefaults(branches: ProfessionBranch[]): ProfessionBranch[] {
   const defaults = [
     ...createDefaultMiningBranches(),
     ...createDefaultBlacksmithBranches(),
+    ...createDefaultCarpentryBranches(),
   ];
   const defaultIds = new Set(defaults.map((entry) => entry.id));
   const existingById = new Map(branches.map((entry) => [entry.id, entry]));
-  const preserved = branches.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing');
+  const preserved = branches.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing' && entry.professionId !== 'carpenter');
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
     if (!existing) {
       return entry;
     }
     return {
-      ...existing,
       ...entry,
+      ...existing,
+      requiredSkillIds: existing.requiredSkillIds ?? entry.requiredSkillIds,
+      requiredBranchIds: existing.requiredBranchIds ?? entry.requiredBranchIds,
+      locksBranchIds: existing.locksBranchIds ?? entry.locksBranchIds,
+      icon: existing.icon?.trim() ? existing.icon : entry.icon,
+      iconImageRef: existing.iconImageRef ?? entry.iconImageRef,
       createdAt: existing.createdAt ?? entry.createdAt,
-      updatedAt: entry.updatedAt ?? existing.updatedAt,
+      updatedAt: existing.updatedAt ?? entry.updatedAt,
     };
   });
   return [...preserved, ...mergedDefaults];
@@ -303,6 +356,7 @@ function readStorage(): ProfessionBranch[] {
   const defaults = [
     ...createDefaultMiningBranches(),
     ...createDefaultBlacksmithBranches(),
+    ...createDefaultCarpentryBranches(),
   ];
   if (typeof window === 'undefined') {
     return defaults;

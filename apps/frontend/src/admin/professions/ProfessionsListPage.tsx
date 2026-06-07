@@ -8,7 +8,7 @@ interface ProfessionsListPageProps {
 const DEFAULT_PROFESSIONS: ProfessionDefinition[] = [
   { id: 'mining', name: 'Горняк', description: 'Добыча полезных ископаемых', category: 'gathering', maxLevel: 100, isEnabled: true, icon: '⛏️' },
   { id: 'blacksmithing', name: 'Кузнец', description: 'Изготовление оружия и доспехов', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🔨' },
-  { id: 'carpentry', name: 'Плотник', description: 'Работа с деревом', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🪵' },
+  { id: 'carpenter', name: 'Плотник', description: 'Работа с деревом', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🪵' },
   { id: 'leatherworking', name: 'Кожевник', description: 'Изготовление кожаных изделий', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🧥' },
   { id: 'jewelcrafting', name: 'Ювелир', description: 'Изготовление украшений', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '💍' },
   { id: 'runecrafting', name: 'Рунорез', description: 'Создание магических рун', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '✨' },

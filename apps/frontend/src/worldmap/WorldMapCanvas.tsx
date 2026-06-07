@@ -206,6 +206,8 @@ export interface WorldMapCanvasProps {
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
   discoveredLocationIds?: Set<string>;
   discoveredZoneIds?: Set<string>;
+  showProfessionResourceZones?: boolean;
+  selectedProfessionOverlay?: string;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -427,6 +429,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     lockedWorldEntityCoordinates = null,
     discoveredLocationIds,
     discoveredZoneIds,
+    showProfessionResourceZones = false,
+    selectedProfessionOverlay = 'none',
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1258,7 +1262,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       if (hoveredMarker) {
         return;
       }
-      if (!hovered || !shouldShowPlayModeHoverTooltip(hovered)) {
+      if (!hovered || (!shouldShowPlayModeHoverTooltip(hovered) && !(showProfessionResourceZones && selectedProfessionOverlay === 'carpenter' && hovered.resourceKind === 'forest'))) {
         setTooltip(null);
         return;
       }
@@ -1557,24 +1561,65 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         }
       }
 
-      for (const zone of zones) {
-        const isHovered = hoverZone?.id === zone.id;
-        if (!isHovered) {
-          continue;
-        }
-
-        if (zone.shape === 'circle') {
-          const x = ((zone.x ?? 0) - camera.left) / camera.width * canvas.width;
-          const y = ((zone.y ?? 0) - camera.top) / camera.height * canvas.height;
-          const radius = (zone.radius ?? 0.03) * canvas.width / camera.width;
+      if (showProfessionResourceZones && selectedProfessionOverlay === 'carpenter') {
+        ctx.save();
+        for (const zone of zones) {
+          if (zone.resourceKind !== 'forest') {
+            continue;
+          }
           ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = withAlpha(getResolvedZoneColor(zone), 0.16);
+          if (zone.shape === 'circle') {
+            const x = ((zone.x ?? 0) - camera.left) / camera.width * canvas.width;
+            const y = ((zone.y ?? 0) - camera.top) / camera.height * canvas.height;
+            const radius = (zone.radius ?? 0.03) * canvas.width / camera.width;
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+          } else {
+            const points = zone.points ?? [];
+            if (points.length > 0) {
+              points.forEach(([px, py], index) => {
+                const screenX = ((px - camera.left) / camera.width) * canvas.width;
+                const screenY = ((py - camera.top) / camera.height) * canvas.height;
+                if (index === 0) ctx.moveTo(screenX, screenY);
+                else ctx.lineTo(screenX, screenY);
+              });
+              ctx.closePath();
+            }
+          }
+          ctx.fillStyle = 'rgba(74, 117, 89, 0.25)';
           ctx.fill();
-          ctx.lineWidth = isHovered ? 2 : 1;
-          ctx.strokeStyle = isHovered ? '#f2d28f' : '#efe5d1';
+          ctx.strokeStyle = 'rgba(139, 90, 43, 0.6)';
+          ctx.lineWidth = 2;
           ctx.stroke();
         }
+        ctx.restore();
+      }
+
+      if (hoverZone) {
+        ctx.save();
+        ctx.beginPath();
+        if (hoverZone.shape === 'circle') {
+          const x = ((hoverZone.x ?? 0) - camera.left) / camera.width * canvas.width;
+          const y = ((hoverZone.y ?? 0) - camera.top) / camera.height * canvas.height;
+          const radius = (hoverZone.radius ?? 0.03) * canvas.width / camera.width;
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+        } else {
+          const points = hoverZone.points ?? [];
+          if (points.length > 0) {
+            points.forEach(([px, py], index) => {
+              const screenX = ((px - camera.left) / camera.width) * canvas.width;
+              const screenY = ((py - camera.top) / camera.height) * canvas.height;
+              if (index === 0) ctx.moveTo(screenX, screenY);
+              else ctx.lineTo(screenX, screenY);
+            });
+            ctx.closePath();
+          }
+        }
+        ctx.fillStyle = withAlpha(getResolvedZoneColor(hoverZone), 0.25);
+        ctx.fill();
+        ctx.strokeStyle = '#f2d28f';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
       }
 
       for (const marker of playQuestMarkers) {
@@ -2044,10 +2089,21 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
               </div>
               {markerObjectiveText(tooltip.marker) ? <p>{markerObjectiveText(tooltip.marker)}</p> : null}
             </div>
-          ) : (tooltip.zone && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone))) ? (
+          ) : (tooltip.zone && (mode === 'editor' || shouldShowPlayModeHoverTooltip(tooltip.zone) || (showProfessionResourceZones && selectedProfessionOverlay === 'carpenter' && tooltip.zone.resourceKind === 'forest'))) ? (
             <div className="wm-zone-tooltip" style={{ left: `${tooltip.x + 14}px`, top: `${tooltip.y + 14}px` }}>
               <strong>{tooltip.zone.name}</strong>
-              <p>{tooltip.zone.description}</p>
+              {tooltip.zone.resourceKind === 'forest' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ color: '#8cc284', fontWeight: 'bold' }}>Ресурс: древесина</span>
+                  <span>Уровень рубки: {tooltip.zone.woodcuttingTier ?? 1}</span>
+                  <span>Деревья: {Array.isArray(tooltip.zone.treePool) ? tooltip.zone.treePool.map(t => t.replace('tree_', '').replace('_common', '').replace('_argos', '')).join(', ') : 'сосна, дуб, береза'}</span>
+                  <span style={{ color: '#c9a35a', fontWeight: 'bold' }}>Требуется профессия: Плотник</span>
+                </div>
+              ) : tooltip.zone.tooltip ? (
+                <div style={{ whiteSpace: 'pre-line' }}>{tooltip.zone.tooltip}</div>
+              ) : (
+                <p>{tooltip.zone.description}</p>
+              )}
             </div>
           ) : null
         ) : null}

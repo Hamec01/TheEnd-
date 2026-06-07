@@ -1,22 +1,22 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-05T20:23:15.323Z",
+  "exportedAt": "2026-06-07T22:59:12.975Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
-    "items": 190,
+    "items": 226,
     "skills": 17,
     "visualFx": 3,
-    "merchants": 5,
+    "merchants": 7,
     "cities": 7,
     "locations": 4,
     "materials": 152,
     "lootTables": 0,
-    "images": 296,
-    "dialogues": 24,
-    "npcs": 32,
-    "quests": 10,
+    "images": 319,
+    "dialogues": 25,
+    "npcs": 33,
+    "quests": 11,
     "questInteractions": 1,
     "questItems": 4,
     "questMarkers": 1,
@@ -33,8 +33,9 @@
     "blacksmithBalance": 1,
     "blacksmithItemTemplates": 0,
     "blacksmithItemWorkActions": 0,
+    "sounds": 0,
     "maps": 4,
-    "zones": 14,
+    "zones": 16,
     "markers": 3,
     "regions": 3
   },
@@ -4601,13 +4602,18 @@
         "loreDescription": "Хорошее древко должно быть прямым, сухим и послушным руке мастера.",
         "isEnabled": true,
         "createdAt": "2026-06-02T23:57:30.623Z",
-        "updatedAt": "2026-06-02T23:57:30.623Z",
+        "updatedAt": "2026-06-06T22:50:40.688Z",
         "requiredStats": {},
         "bonuses": {},
         "slot": "none",
         "handsRequired": 1,
         "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false
+        "canHaveRuneComplex": false,
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 3
+        }
       },
       {
         "id": "mat_iron_bloom",
@@ -4901,13 +4907,18 @@
         "loreDescription": "Такое древко не коробит от жара кузни и не ведёт в бою при первом ударе.",
         "isEnabled": true,
         "createdAt": "2026-06-02T23:57:36.353Z",
-        "updatedAt": "2026-06-02T23:57:36.353Z",
+        "updatedAt": "2026-06-06T22:50:51.423Z",
         "requiredStats": {},
         "bonuses": {},
         "slot": "none",
         "handsRequired": 1,
         "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false
+        "canHaveRuneComplex": false,
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 4
+        }
       },
       {
         "id": "mat_silver_ingot",
@@ -5090,776 +5101,6 @@
         "canHaveRuneComplex": false
       },
       {
-        "id": "worked_item_mage_cold_gesture_gloves_01_blacksmith_itemwork_improve_06e26e1531be",
-        "name": "Перчатки холодного жеста (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 98,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:26:05.270Z",
-        "updatedAt": "2026-06-04T22:26:05.270Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "worked_worked_item_mage_cold_gesture_gloves_01_blacksmi_blacksmith_itemwork_improve_775688700906",
-        "name": "Перчатки холодного жеста (Улучшить предмет) (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 113,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:27:15.117Z",
-        "updatedAt": "2026-06-04T22:27:15.117Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "worked_worked_worked_item_mage_cold_gesture_gloves_01_b_blacksmith_itemwork_improve_64680ade30a0",
-        "name": "Перчатки холодного жеста (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 130,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:28:26.093Z",
-        "updatedAt": "2026-06-04T22:28:26.093Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_iron_ore_quality_normal_93e66efb5170",
-        "name": "Железная Одноручный меч (Нормальное)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "rare",
-        "price": 96,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 4,
-        "damageMax": 8,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_normal",
-          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
-          "material:iron_ore",
-          "material:cracked_crystal",
-          "material:zeptyrite_trace",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Железная руда. Качество: Нормальное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:33:29.894Z",
-        "updatedAt": "2026-06-04T22:33:29.894Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_chestplate_iron_ore_quality_normal_85ce63181dfd",
-        "name": "Железная Нагрудник (Нормальное)",
-        "type": "armor",
-        "subtype": "chestplate",
-        "slot": "chest",
-        "handsRequired": 1,
-        "rarity": "rare",
-        "price": 84,
-        "stackable": false,
-        "maxStack": 1,
-        "armorValue": 6,
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_chestplate",
-          "crafted_quality:quality_normal",
-          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
-          "material:iron_ore",
-          "material:gold_nugget",
-          "material:zeptyrite_trace",
-          "material:cracked_crystal",
-          "blacksmith_template",
-          "armor",
-          "chestplate"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Нагрудник. Основной материал: Железная руда. Качество: Нормальное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 11
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:40:48.049Z",
-        "updatedAt": "2026-06-04T22:40:48.049Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_wpn_axe_wood_01_blacksmith_itemwork_improve_8294d02edc82",
-        "name": "Топор лесника (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 40,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:12:46.282Z",
-        "damageMax": 13,
-        "damageMin": 6,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:12:46.282Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_wpn_axe_wood_01_blacksmith_itemwork_impro_blacksmith_itemwork_improve_da8fa2297b86",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 46,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:13:55.154Z",
-        "damageMax": 15,
-        "damageMin": 7,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:13:55.154Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_wpn_axe_wood_01_blacksmith_itemwork_impro_blacksmith_itemwork_improve_9758e56c8c6f",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 46,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:13:56.915Z",
-        "damageMax": 15,
-        "damageMin": 7,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:13:56.915Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_worked_wpn_axe_wood_01_blacksmith_itemwor_blacksmith_itemwork_improve_2eb100d88aea",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 53,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:18:21.889Z",
-        "damageMax": 17,
-        "damageMin": 8,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:18:21.889Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_worked_wpn_axe_wood_01_blacksmith_itemwor_blacksmith_itemwork_improve_723a62db8a5c",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 53,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:18:23.257Z",
-        "damageMax": 17,
-        "damageMin": 8,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:18:23.257Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_iron_ingot_quality_fine_3ebcf1706b5a",
-        "name": "терон",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 612,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_fine",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:iron_ingot",
-          "material:tin_ore",
-          "material:tin_ingot",
-          "material:zeptyrite_trace",
-          "material:gold_nugget",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Железный слиток. Качество: Качественное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T08:28:10.295Z",
-        "updatedAt": "2026-06-05T08:28:10.295Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_6143dc8d8481",
-        "name": "Бурдук",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 1794,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 11,
-        "damageMax": 18,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T08:57:31.475Z",
-        "updatedAt": "2026-06-05T08:57:32.915Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_crafted_blacksmith_template_one_hand_sword_vinta_blacksmith_itemwork_improve_36fd9bc241b4",
-        "name": "Бурдук (Улучшить предмет)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 470,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий. Предмет прошёл кузнечную доработку.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:00:27.777Z",
-        "updatedAt": "2026-06-05T09:00:29.847Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_crafted_blacksmith_template_one_hand_sword_vinta_blacksmith_itemwork_improve_86ea89921e9a",
-        "name": "Бурдук (Улучшить предмет)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 470,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий. Предмет прошёл кузнечную доработку.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:00:30.395Z",
-        "updatedAt": "2026-06-05T09:00:30.395Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_45ccac53803d",
-        "name": "одноручный меч ривика",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 1766,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 11,
-        "damageMax": 18,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {
-          "constitution": 5,
-          "strength": -1,
-          "perception": 1,
-          "willpower": 2,
-          "intelligence": 5,
-          "luck": 52,
-          "dexterity": 2
-        },
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "crit_damage_modifier",
-            "percent": 28,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Материалы: Винтарионовый слиток, Пропитанное древко, Чёрная кожаная заготовка. Свойства ковки: constitution +5, strength -1, perception +1, willpower +2.",
-        "loreDescription": "обычный дорогой меч Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:21:28.233Z",
-        "updatedAt": "2026-06-05T09:21:29.824Z",
-        "requiredStats": {}
-      },
-      {
         "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_ed3af7c032bb",
         "name": "Лаврид",
         "type": "weapon",
@@ -5937,6 +5178,1382 @@
         "createdAt": "2026-06-05T12:43:25.704Z",
         "updatedAt": "2026-06-05T12:43:27.159Z",
         "requiredStats": {}
+      },
+      {
+        "id": "tool_woodcutting_axe_worn",
+        "name": "Старый лесорубный топор",
+        "type": "profession_tool",
+        "subtype": "axe",
+        "slot": "rightHand",
+        "handsRequired": 1,
+        "rarity": "common",
+        "price": 35,
+        "stackable": false,
+        "maxStack": 1,
+        "damageMin": 4,
+        "damageMax": 8,
+        "damageCategory": "physical",
+        "physicalType": "slash",
+        "bonuses": {},
+        "profession": "carpenter",
+        "toolKind": "woodcutting_axe",
+        "tier": 1,
+        "durability": 60,
+        "maxDurability": 60,
+        "efficiency": 1,
+        "breakChanceModifier": 1,
+        "gameplayDescription": "Старый лесорубный топор. Подходит для рубки простых деревьев.",
+        "loreDescription": "Потертое лезвие и простая рукоять.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "treeDamageBonus": 0,
+        "staminaCostModifier": 1,
+        "imageRef": {
+          "type": "image",
+          "src": "tool_axe_worn"
+        },
+        "requiredStats": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_axe_worn"
+      },
+      {
+        "id": "tool_saw_basic",
+        "name": "Простая ручная пила",
+        "type": "profession_tool",
+        "subtype": "saw",
+        "slot": "rightHand",
+        "handsRequired": 1,
+        "rarity": "common",
+        "price": 30,
+        "stackable": false,
+        "maxStack": 1,
+        "damageMin": 1,
+        "damageMax": 3,
+        "damageCategory": "physical",
+        "physicalType": "slash",
+        "bonuses": {},
+        "profession": "carpenter",
+        "toolKind": "saw",
+        "tier": 1,
+        "durability": 50,
+        "maxDurability": 50,
+        "efficiency": 1,
+        "gameplayDescription": "Простая ручная пила для распила брёвен на доски.",
+        "loreDescription": "Обычная пила с деревянной ручкой.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_saw_basic"
+        },
+        "requiredStats": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_saw_basic"
+      },
+      {
+        "id": "item_wood_log_common",
+        "name": "Обычное бревно",
+        "type": "material",
+        "rarity": "common",
+        "price": 5,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Обычное бревно.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_wood_plank_common",
+        "name": "Обычная доска",
+        "type": "material",
+        "rarity": "common",
+        "price": 8,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Обычная доска.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_wood_beam_common",
+        "name": "Обычная балка",
+        "type": "material",
+        "rarity": "common",
+        "price": 12,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Обычная балка.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_wood_handle_common",
+        "name": "Простая деревянная рукоять",
+        "type": "material",
+        "rarity": "common",
+        "price": 10,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Простая деревянная рукоять.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_staff_core_common",
+        "name": "Простая основа посоха",
+        "type": "material",
+        "rarity": "common",
+        "price": 15,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Простая основа посоха.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_tree_bark_common",
+        "name": "Кора дерева",
+        "type": "material",
+        "rarity": "common",
+        "price": 2,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Кора дерева.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_resin_common",
+        "name": "Смола",
+        "type": "material",
+        "rarity": "common",
+        "price": 3,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Смола.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "id": "item_firewood_common",
+        "name": "Поленья",
+        "type": "material",
+        "rarity": "common",
+        "price": 3,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Используется в качестве топлива для костра или печи.",
+        "loreDescription": "Простой древесный материал.",
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:20:58.515Z",
+        "updatedAt": "2026-06-07T09:20:58.515Z",
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.510Z",
+        "updatedAt": "2026-06-07T09:21:01.510Z",
+        "id": "item_wood_log_snow_watchman",
+        "name": "Бревно Снежного Дозорника",
+        "type": "material",
+        "rarity": "common",
+        "price": 15,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Снежного Дозорника.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_sand_lord",
+        "name": "Бревно Песчаного Властелина",
+        "type": "material",
+        "rarity": "common",
+        "price": 18,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Песчаного Властелина.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_green_whisper",
+        "name": "Бревно Зелёного Шёпота",
+        "type": "material",
+        "rarity": "common",
+        "price": 12,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Зелёного Шёпота.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_golden_reaper",
+        "name": "Бревно Золотого Жнеца",
+        "type": "material",
+        "rarity": "common",
+        "price": 20,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Золотого Жнеца.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_mountain_guard",
+        "name": "Бревно Горного Стража",
+        "type": "material",
+        "rarity": "common",
+        "price": 22,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Горного Стража.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_flame_whirl",
+        "name": "Бревно Пламенного Вихря",
+        "type": "material",
+        "rarity": "common",
+        "price": 25,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Пламенного Вихря.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_steel_leaf",
+        "name": "Бревно Сталелиста",
+        "type": "material",
+        "rarity": "common",
+        "price": 30,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Сталелиста.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_sahara_shadow",
+        "name": "Бревно Тени Сахары",
+        "type": "material",
+        "rarity": "common",
+        "price": 28,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Тени Сахары.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_elven_song",
+        "name": "Бревно Эльфийской Песни",
+        "type": "material",
+        "rarity": "common",
+        "price": 35,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Эльфийской Песни.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_royal_cocoon",
+        "name": "Бревно Королевской Куколки",
+        "type": "material",
+        "rarity": "common",
+        "price": 40,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Королевской Куколки.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_dwarf_heart",
+        "name": "Бревно Сердца Гнома",
+        "type": "material",
+        "rarity": "common",
+        "price": 45,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Сердца Гнома.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.511Z",
+        "updatedAt": "2026-06-07T09:21:01.511Z",
+        "id": "item_wood_log_feralas_dance",
+        "name": "Бревно Танца Фераласа",
+        "type": "material",
+        "rarity": "common",
+        "price": 50,
+        "stackable": true,
+        "maxStack": 99,
+        "gameplayDescription": "Древесный материал: Бревно Танца Фераласа.",
+        "loreDescription": "Используется в деревообработке плотника.",
+        "imageRef": {
+          "type": "image",
+          "src": "material_wood_log"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "material_wood_log"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_woodcutting_axe_steel",
+        "name": "Стальной топор дровосека",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "woodcutting_axe",
+        "tier": 2,
+        "price": 250,
+        "durability": 120,
+        "maxDurability": 120,
+        "efficiency": 1.5,
+        "treeDamageBonus": 5,
+        "staminaCostModifier": 0.9,
+        "breakChanceModifier": 0.8,
+        "stackable": false,
+        "rarity": "uncommon",
+        "gameplayDescription": "Качественный стальной топор. Увеличивает урон по дереву.",
+        "loreDescription": "Выкован из закаленной стали, отлично сбалансирован.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_axe_steel"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_axe_steel"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_planer_basic",
+        "name": "Рубанок подмастерья",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "planer",
+        "tier": 1,
+        "price": 45,
+        "durability": 60,
+        "maxDurability": 60,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Применяется для строгания досок в мастерской.",
+        "loreDescription": "Небольшой рубанок с ровной колодкой.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_planer_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_planer_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_chisel_basic",
+        "name": "Набор стамесок",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "chisel",
+        "tier": 1,
+        "price": 40,
+        "durability": 80,
+        "maxDurability": 80,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Используется для художественной резьбы по дереву.",
+        "loreDescription": "Несколько острых стамесок разной ширины.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_chisel_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_chisel_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_hammer_basic",
+        "name": "Столярный молоток",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "hammer",
+        "tier": 1,
+        "price": 25,
+        "durability": 100,
+        "maxDurability": 100,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Необходим для сборки конструкций в мастерской.",
+        "loreDescription": "Удобный молоток с деревянной ручкой.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_hammer_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_hammer_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_carving_knife_basic",
+        "name": "Резчик по дереву",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "carving_knife",
+        "tier": 1,
+        "price": 35,
+        "durability": 70,
+        "maxDurability": 70,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Удобный нож для мелких деталей и заготовок.",
+        "loreDescription": "Короткое, острозаточенное лезвие.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_carving_knife_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_carving_knife_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_workbench_basic",
+        "name": "Переносной верстак",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "workbench",
+        "tier": 1,
+        "price": 150,
+        "durability": 200,
+        "maxDurability": 200,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "uncommon",
+        "gameplayDescription": "Позволяет производить сборку мебели и каркасов.",
+        "loreDescription": "Складной верстак с зажимами.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_workbench_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_workbench_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.513Z",
+        "updatedAt": "2026-06-07T09:21:01.513Z",
+        "id": "tool_drying_rack_basic",
+        "name": "Стойка для сушки досок",
+        "type": "profession_tool",
+        "profession": "carpenter",
+        "toolKind": "drying_rack",
+        "tier": 1,
+        "price": 80,
+        "durability": 150,
+        "maxDurability": 150,
+        "efficiency": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Служит для сушки влажной древесины.",
+        "loreDescription": "Простая решетчатая рама.",
+        "imageRef": {
+          "type": "image",
+          "src": "tool_drying_rack_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "tool_drying_rack_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.514Z",
+        "updatedAt": "2026-06-07T09:21:01.514Z",
+        "id": "cart_wooden_basic",
+        "name": "Простая деревянная повозка",
+        "type": "profession_transport",
+        "profession": "carpenter",
+        "transportKind": "cart",
+        "price": 750,
+        "capacityWeight": 250,
+        "capacityLogs": 8,
+        "durability": 150,
+        "maxDurability": 150,
+        "speed": 0.9,
+        "requiresHorse": false,
+        "tier": 1,
+        "stackable": false,
+        "rarity": "common",
+        "gameplayDescription": "Простая деревянная повозка. Позволяет перевозить до 8 брёвен.",
+        "loreDescription": "Скрипучая, но надежная повозка, которую нужно тянуть самому.",
+        "imageRef": {
+          "type": "image",
+          "src": "transport_cart_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "transport_cart_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.514Z",
+        "updatedAt": "2026-06-07T09:21:01.514Z",
+        "id": "cart_carpenter_reinforced",
+        "name": "Усиленная повозка плотника",
+        "type": "profession_transport",
+        "profession": "carpenter",
+        "transportKind": "cart",
+        "price": 1500,
+        "capacityWeight": 400,
+        "capacityLogs": 12,
+        "durability": 250,
+        "maxDurability": 250,
+        "speed": 0.95,
+        "requiresHorse": false,
+        "tier": 2,
+        "stackable": false,
+        "rarity": "uncommon",
+        "gameplayDescription": "Усиленная железными ободами повозка. Вмещает до 12 брёвен.",
+        "loreDescription": "Укрепленные борта и прочные оси выдержат солидный груз.",
+        "imageRef": {
+          "type": "image",
+          "src": "transport_cart_reinforced"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "transport_cart_reinforced"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.514Z",
+        "updatedAt": "2026-06-07T09:21:01.514Z",
+        "id": "horse_cart_basic",
+        "name": "Конь с простой повозкой",
+        "type": "profession_transport",
+        "profession": "carpenter",
+        "transportKind": "horse_cart",
+        "price": 3000,
+        "capacityWeight": 800,
+        "capacityLogs": 20,
+        "durability": 400,
+        "maxDurability": 400,
+        "speed": 1.1,
+        "requiresHorse": true,
+        "tier": 3,
+        "stackable": false,
+        "rarity": "rare",
+        "gameplayDescription": "Малая конная повозка. Лимит перевозимых брёвен увеличен до 20, скорость выше.",
+        "loreDescription": "Спокойная рабочая лошадь, запряженная в повозку среднего размера.",
+        "imageRef": {
+          "type": "image",
+          "src": "transport_horse_cart_basic"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "transport_horse_cart_basic"
+      },
+      {
+        "isEnabled": true,
+        "createdAt": "2026-06-07T09:21:01.514Z",
+        "updatedAt": "2026-06-07T09:21:01.514Z",
+        "id": "horse_cart_heavy",
+        "name": "Тяжёлый конь с большой повозкой",
+        "type": "profession_transport",
+        "profession": "carpenter",
+        "transportKind": "horse_cart",
+        "price": 6000,
+        "capacityWeight": 1500,
+        "capacityLogs": 35,
+        "durability": 600,
+        "maxDurability": 600,
+        "speed": 1.2,
+        "requiresHorse": true,
+        "tier": 4,
+        "stackable": false,
+        "rarity": "epic",
+        "gameplayDescription": "Большая грузовая повозка с тяжеловозным конем. Позволяет везти до 35 брёвен.",
+        "loreDescription": "Огромный тяжеловоз без труда тащит за собой целую кучу вековых стволов.",
+        "imageRef": {
+          "type": "image",
+          "src": "transport_horse_cart_heavy"
+        },
+        "slot": "none",
+        "handsRequired": 1,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false,
+        "imagePath": "transport_horse_cart_heavy"
+      },
+      {
+        "id": "mat_mountain_guardian_beam",
+        "name": "Балка Горного Стража",
+        "type": "material",
+        "rarity": "common",
+        "price": 24,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Обработанная балка для шахт, ворот, мостков, щитов и укреплённых каркасов.",
+        "loreDescription": "Балка тяжёлая, но надёжная: такую любят шахтёры, сторожа ворот и мастера крепостей.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 0
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:34.501Z",
+        "updatedAt": "2026-06-06T22:50:34.501Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_dwarf_heart_beam",
+        "name": "Балка Сердца Гнома",
+        "type": "material",
+        "rarity": "rare",
+        "price": 68,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Тяжёлая балка для мостов, шахтных механизмов, щитовых каркасов и осадных частей.",
+        "loreDescription": "Гномы говорят: если балка из Сердца Гнома просела, значит, гора тоже устала.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 13
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:34.904Z",
+        "updatedAt": "2026-06-06T22:50:34.904Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_mountain_guardian_log",
+        "name": "Бревно Горного Стража",
+        "type": "material",
+        "rarity": "common",
+        "price": 16,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Крепкое горное бревно для подпорок, щитов, балок и простых укреплений.",
+        "loreDescription": "Горный Страж растёт на каменных склонах Терамора и берёт крепость у самой горы.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 1
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:35.954Z",
+        "updatedAt": "2026-06-06T22:50:35.954Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_flame_whirl_log",
+        "name": "Бревно Пламенного Вихря",
+        "type": "material",
+        "rarity": "rare",
+        "price": 82,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Жаростойкая древесина для огнеупорных щитов, рукоятей и кузнечных приспособлений.",
+        "loreDescription": "Листья Пламенного Вихря будто охвачены огнём, а ствол привык к свету, жару и пеплу.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 14
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:36.984Z",
+        "updatedAt": "2026-06-06T22:50:36.984Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_dwarf_heart_log",
+        "name": "Бревно Сердца Гнома",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 32,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Плотная древесина для гномьих конструкций, щитов, рукоятей и инженерных рам.",
+        "loreDescription": "Невысокое дерево Сердце Гнома редко красиво, зато держит удар лучше многих высоких стволов.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 13
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:38.000Z",
+        "updatedAt": "2026-06-06T22:50:38.000Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_snow_watcher_log",
+        "name": "Бревно Снежного Дозорника",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 24,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Холодостойкая древесина для северных щитов, посохов и тёплых походных деталей.",
+        "loreDescription": "Белая кора Снежного Дозорника медленно собирает тепло и держит его даже там, где ветер режет кожу.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 6
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:39.022Z",
+        "updatedAt": "2026-06-06T22:50:39.022Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_sand_lord_plank",
+        "name": "Доска Песчаного Властелина",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 13,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Материал для лёгких сухостойких изделий: щитов, ящиков, походных рам и пустынных луков.",
+        "loreDescription": "Эта доска почти не пьёт влагу и потому не ведёт её в жаре Тел’фарена.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 7
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:41.402Z",
+        "updatedAt": "2026-06-06T22:50:41.402Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_flame_whirl_plank",
+        "name": "Доска Пламенного Вихря",
+        "type": "material",
+        "rarity": "rare",
+        "price": 98,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Обработанная жаростойкая доска для кузниц, огненных ловушек, щитов и рукоятей.",
+        "loreDescription": "Её режут медленно и в маске: пепельная пыль въедается в горло, но доска стоит риска.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 16
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:42.497Z",
+        "updatedAt": "2026-06-06T22:50:42.497Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_snow_watcher_plank",
+        "name": "Доска Снежного Дозорника",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 14,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Обработанная северная доска для лёгких щитов, саней, рукоятей и зимнего снаряжения.",
+        "loreDescription": "Такая доска не трескается от мороза и ценится мастерами Айлас’сила.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 8
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:43.518Z",
+        "updatedAt": "2026-06-06T22:50:43.518Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_golden_reaper_wood",
+        "name": "Древесина Золотого Жнеца",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 28,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Тёплая древесина для мебели, храмовых предметов и лекарских инструментов.",
+        "loreDescription": "Золотой Жнец славится плодами, но и древесина его несёт спокойное тепло садов Мирил’нуара.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 9
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:44.550Z",
+        "updatedAt": "2026-06-06T22:50:44.550Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_royal_cocoon_wood",
+        "name": "Древесина Королевской Куколки",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 26,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Красивая древесина для мебели, резьбы, украшений и дворцовых предметов.",
+        "loreDescription": "Пышные кроны Королевской Куколки дают древесину мягкого оттенка, любимую мастерами богатых домов.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 10
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:45.571Z",
+        "updatedAt": "2026-06-06T22:50:45.571Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_sahara_shadow_bark",
+        "name": "Кора Тени Сахары",
+        "type": "material",
+        "rarity": "rare",
+        "price": 44,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Кора для защитных покрытий, жаростойких накладок и алхимических пропиток.",
+        "loreDescription": "Тонкий песчаный налёт на коре защищает дерево от солнца и делает её ценным покрытием для дорожного снаряжения.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 17
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:46.590Z",
+        "updatedAt": "2026-06-06T22:50:46.590Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_sand_lord_rootwood",
+        "name": "Корневище Песчаного Властелина",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 22,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Сухая, жилистая древесина для рукоятей, луков и походных конструкций пустыни.",
+        "loreDescription": "Корни Песчаного Властелина уходят глубоко в песок и несут в себе упорство земли, ищущей воду.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 11
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:47.687Z",
+        "updatedAt": "2026-06-06T22:50:47.687Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_green_whisper_bow_limb",
+        "name": "Лучина Зелёного Шёпота",
+        "type": "material",
+        "rarity": "uncommon",
+        "price": 20,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Подготовленная заготовка плеча лука. Хороша для охотничьего и учебного оружия.",
+        "loreDescription": "Лесные мастера сушат такие лучины медленно, чтобы сохранить живую упругость древесины.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 12
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:48.703Z",
+        "updatedAt": "2026-06-06T22:50:48.703Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_steelleaf_plate",
+        "name": "Пластина Сталелиста",
+        "type": "material",
+        "rarity": "rare",
+        "price": 58,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Твёрдая древесно-лиственная пластина для щитов, лёгкой брони и усиленных накладок.",
+        "loreDescription": "Листья Сталелиста так плотны, что неопытный ученик скорее затупит нож, чем срежет их правильно.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 19
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:49.742Z",
+        "updatedAt": "2026-06-06T22:50:49.742Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_elven_song_branch",
+        "name": "Ветвь Эльфийской Песни",
+        "type": "material",
+        "rarity": "rare",
+        "price": 52,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Резонансная ветвь для посохов, тонких луков и музыкальных ремесленных изделий.",
+        "loreDescription": "При ветре тонкие ветви Эльфийской Песни звучат так, будто лес вспоминает старые имена.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 15
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:52.147Z",
+        "updatedAt": "2026-06-06T22:50:52.147Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_green_whisper_branch",
+        "name": "Ветвь Зелёного Шёпота",
+        "type": "material",
+        "rarity": "common",
+        "price": 12,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Гибкая ветвь для простых луков, древков, обручей и лёгкой мебели.",
+        "loreDescription": "Зелёный Шёпот послушен ветру; его ветви легко гнутся, но не любят грубой руки.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 2
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:53.202Z",
+        "updatedAt": "2026-06-06T22:50:53.202Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "mat_lunaan_crystal_branch",
+        "name": "Кристальная ветвь Луна’ан",
+        "type": "material",
+        "rarity": "rare",
+        "price": 120,
+        "stackable": true,
+        "maxStack": 999,
+        "gameplayDescription": "Стеклянно-древесная ветвь для магических фокусов, ловушек, посохов и тёмно-эльфийских изделий.",
+        "loreDescription": "В Лесах Луна’ан ветви искрятся от жара, будто дерево и кристалл заключили суровый союз.",
+        "imageRef": {
+          "type": "tileset",
+          "sheetId": "sheet_mountain_guardian_beam",
+          "frame": 18
+        },
+        "isEnabled": true,
+        "createdAt": "2026-06-06T22:50:54.219Z",
+        "updatedAt": "2026-06-06T22:50:54.219Z",
+        "requiredStats": {},
+        "bonuses": {},
+        "slot": "none",
+        "handsRequired": 1,
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
       }
     ],
     "skills": [
@@ -8651,7 +9268,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-07T15:38:06.138Z",
         "kind": "single",
         "stages": []
       },
@@ -8707,7 +9324,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-07T15:38:06.139Z",
         "kind": "single",
         "stages": []
       },
@@ -8766,7 +9383,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-07T15:38:06.139Z",
         "kind": "single",
         "stages": []
       }
@@ -11046,6 +11663,129 @@
         "worldSimTrader": false,
         "materialTradingEnabled": false,
         "materialTrades": []
+      },
+      {
+        "id": "merchant_carpenter_tools_argos",
+        "name": "Товары плотника Аргоса",
+        "city": "Аргос",
+        "cityId": "argos",
+        "type": "material_trader",
+        "description": "Инструменты, расходники и повозки для дровосеков и плотников.",
+        "priceMultiplier": 1,
+        "isEnabled": true,
+        "items": [
+          {
+            "itemId": "tool_woodcutting_axe_worn",
+            "stock": 10,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_woodcutting_axe_steel",
+            "stock": 2,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_saw_basic",
+            "stock": 10,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_planer_basic",
+            "stock": 5,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_chisel_basic",
+            "stock": 5,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_hammer_basic",
+            "stock": 8,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_carving_knife_basic",
+            "stock": 5,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_workbench_basic",
+            "stock": 2,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_drying_rack_basic",
+            "stock": 4,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "cart_wooden_basic",
+            "stock": 1,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "cart_carpenter_reinforced",
+            "stock": 1,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          }
+        ],
+        "worldSimTrader": false,
+        "materialTradingEnabled": false,
+        "materialTrades": [],
+        "createdAt": "2026-06-07T10:17:59.012Z",
+        "updatedAt": "2026-06-07T10:17:59.012Z"
+      },
+      {
+        "id": "merchant_carpenter_master",
+        "name": "Мастер-плотник",
+        "city": "Аргос",
+        "cityId": "argos",
+        "type": "material_trader",
+        "description": "Продажа инструментов для деревообработки.",
+        "priceMultiplier": 1,
+        "isEnabled": true,
+        "items": [
+          {
+            "itemId": "tool_woodcutting_axe_worn",
+            "infiniteStock": true,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_saw_basic",
+            "infiniteStock": true,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          }
+        ],
+        "createdAt": "2026-06-07T09:20:58.516Z",
+        "updatedAt": "2026-06-07T09:20:58.516Z",
+        "worldSimTrader": false,
+        "materialTradingEnabled": false,
+        "materialTrades": []
       }
     ],
     "cities": [
@@ -11928,7 +12668,7 @@
         "regionId": "teramor",
         "kingdomId": "argos",
         "createdAt": "2026-05-29T09:07:29Z",
-        "updatedAt": "2026-05-29T09:18:36.307Z",
+        "updatedAt": "2026-06-06T23:08:40.900Z",
         "rulerName": "Наместник Разу'гара",
         "rulerTitle": "governor",
         "governmentType": "occupied fortress-city under Argos military rule",
@@ -11988,10 +12728,10 @@
             "type": "mine",
             "shapeType": "rectangle",
             "shape": {
-              "x": 936,
-              "y": 18,
-              "width": 143,
-              "height": 82
+              "x": 934,
+              "y": 24,
+              "width": 193,
+              "height": 112
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12008,10 +12748,10 @@
             "type": "training_camp",
             "shapeType": "rectangle",
             "shape": {
-              "x": 281,
-              "y": 144,
-              "width": 150,
-              "height": 82
+              "x": 268,
+              "y": 137,
+              "width": 127,
+              "height": 69
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12028,10 +12768,10 @@
             "type": "castle",
             "shapeType": "rectangle",
             "shape": {
-              "x": 538,
-              "y": 75,
-              "width": 162,
-              "height": 125
+              "x": 532,
+              "y": 54,
+              "width": 204,
+              "height": 158
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12048,10 +12788,10 @@
             "type": "district",
             "shapeType": "rectangle",
             "shape": {
-              "x": 849,
-              "y": 218,
-              "width": 131,
-              "height": 85
+              "x": 869,
+              "y": 211,
+              "width": 150,
+              "height": 97
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12068,13 +12808,15 @@
             "type": "blacksmith",
             "shapeType": "rectangle",
             "shape": {
-              "x": 78,
-              "y": 252,
-              "width": 192,
-              "height": 125
+              "x": 75,
+              "y": 254,
+              "width": 148,
+              "height": 97
             },
             "cityId": "city_razugar",
-            "npcIds": [],
+            "npcIds": [
+              "npc_carpenter_master_argos"
+            ],
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
@@ -12088,9 +12830,9 @@
             "type": "landmark",
             "shapeType": "circle",
             "shape": {
-              "x": 457,
-              "y": 253,
-              "radius": 80
+              "x": 467,
+              "y": 283,
+              "radius": 74
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12108,9 +12850,9 @@
             "shapeType": "rectangle",
             "shape": {
               "x": 673,
-              "y": 266,
-              "width": 156,
-              "height": 88
+              "y": 271,
+              "width": 129,
+              "height": 73
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12127,10 +12869,10 @@
             "type": "guild",
             "shapeType": "rectangle",
             "shape": {
-              "x": 326,
-              "y": 423,
-              "width": 143,
-              "height": 78
+              "x": 310,
+              "y": 405,
+              "width": 121,
+              "height": 66
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12147,10 +12889,10 @@
             "type": "tavern",
             "shapeType": "rectangle",
             "shape": {
-              "x": 686,
-              "y": 542,
-              "width": 141,
-              "height": 73
+              "x": 703,
+              "y": 531,
+              "width": 110,
+              "height": 57
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12167,10 +12909,10 @@
             "type": "residential",
             "shapeType": "rectangle",
             "shape": {
-              "x": 153,
-              "y": 501,
-              "width": 128,
-              "height": 70
+              "x": 155,
+              "y": 503,
+              "width": 109,
+              "height": 59
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -12187,10 +12929,10 @@
             "type": "gang_district",
             "shapeType": "rectangle",
             "shape": {
-              "x": 935,
-              "y": 509,
-              "width": 187,
-              "height": 108
+              "x": 952,
+              "y": 510,
+              "width": 184,
+              "height": 106
             },
             "cityId": "city_razugar",
             "npcIds": [],
@@ -38018,6 +38760,236 @@
         "dataUrl": "/assets/upload/images/items/potion/healing/starter_healing_potion_01-starter_healing_potion_01-icon.png",
         "createdAt": "2026-06-05T20:23:09.429Z",
         "updatedAt": "2026-06-05T20:23:09.429Z"
+      },
+      {
+        "id": "npc_carpenter_master_argos_portrait",
+        "name": "npc_carpenter_master_argos-portrait",
+        "mimeType": "image/png",
+        "width": 384,
+        "height": 384,
+        "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_portrait-npc_carpenter_master_argos-portrait.png",
+        "createdAt": "2026-06-06T22:52:03.778Z",
+        "updatedAt": "2026-06-06T23:01:58.980Z"
+      },
+      {
+        "id": "npc_carpenter_master_argos_full",
+        "name": "npc_carpenter_master_argos-full",
+        "mimeType": "image/png",
+        "width": 384,
+        "height": 384,
+        "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_full-npc_carpenter_master_argos-full.png",
+        "createdAt": "2026-06-06T22:52:05.197Z",
+        "updatedAt": "2026-06-06T23:02:00.378Z"
+      },
+      {
+        "id": "npc_carpenter_master_argos_combat",
+        "name": "npc_carpenter_master_argos-combat",
+        "mimeType": "image/png",
+        "width": 384,
+        "height": 384,
+        "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_combat-npc_carpenter_master_argos-combat.png",
+        "createdAt": "2026-06-06T22:52:06.536Z",
+        "updatedAt": "2026-06-06T23:02:01.791Z"
+      },
+      {
+        "id": "npc_carpenter_master_argos_icon",
+        "name": "npc_carpenter_master_argos-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_icon-npc_carpenter_master_argos-icon.png",
+        "createdAt": "2026-06-06T22:52:07.917Z",
+        "updatedAt": "2026-06-06T23:02:03.175Z"
+      },
+      {
+        "id": "profession-skill-icon",
+        "name": "profession-skill-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/profession-skill-icon-profession-skill-icon.png",
+        "createdAt": "2026-06-07T11:01:56.848Z",
+        "updatedAt": "2026-06-07T11:01:56.848Z"
+      },
+      {
+        "id": "img_1780833965794_97763f64",
+        "name": "profession-skill-icon",
+        "mimeType": "image/png",
+        "width": 1280,
+        "height": 1280,
+        "dataUrl": "/assets/upload/images/skills/img_1780833965794_97763f64-profession-skill-icon.png",
+        "createdAt": "2026-06-07T12:06:05.795Z",
+        "updatedAt": "2026-06-07T12:06:05.795Z"
+      },
+      {
+        "id": "carpentry_skill_firm_swing-icon",
+        "name": "carpentry_skill_firm_swing-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_firm_swing/carpentry_skill_firm_swing-icon-carpentry_skill_firm_swing-icon.png",
+        "createdAt": "2026-06-07T12:06:13.406Z",
+        "updatedAt": "2026-06-07T12:06:13.406Z"
+      },
+      {
+        "id": "carpentry_skill_tree_reading-icon",
+        "name": "carpentry_skill_tree_reading-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_tree_reading/carpentry_skill_tree_reading-icon-carpentry_skill_tree_reading-icon.png",
+        "createdAt": "2026-06-07T12:06:33.563Z",
+        "updatedAt": "2026-06-07T12:06:33.563Z"
+      },
+      {
+        "id": "carpentry_skill_lumberjack_wedge-icon",
+        "name": "carpentry_skill_lumberjack_wedge-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_lumberjack_wedge/carpentry_skill_lumberjack_wedge-icon-carpentry_skill_lumberjack_wedge-icon.png",
+        "createdAt": "2026-06-07T12:06:49.856Z",
+        "updatedAt": "2026-06-07T12:06:49.856Z"
+      },
+      {
+        "id": "carpentry_skill_silent_felling-icon",
+        "name": "carpentry_skill_silent_felling-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_silent_felling/carpentry_skill_silent_felling-icon-carpentry_skill_silent_felling-icon.png",
+        "createdAt": "2026-06-07T12:07:14.137Z",
+        "updatedAt": "2026-06-07T12:07:14.137Z"
+      },
+      {
+        "id": "carpentry_skill_clean_cut-icon",
+        "name": "carpentry_skill_clean_cut-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_clean_cut/carpentry_skill_clean_cut-icon-carpentry_skill_clean_cut-icon.png",
+        "createdAt": "2026-06-07T12:07:30.599Z",
+        "updatedAt": "2026-06-07T12:07:30.599Z"
+      },
+      {
+        "id": "carpentry_skill_master_hand-icon",
+        "name": "carpentry_skill_master_hand-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_master_hand/carpentry_skill_master_hand-icon-carpentry_skill_master_hand-icon.png",
+        "createdAt": "2026-06-07T12:07:47.907Z",
+        "updatedAt": "2026-06-07T12:07:47.907Z"
+      },
+      {
+        "id": "carpentry_skill_even_sawing-icon",
+        "name": "carpentry_skill_even_sawing-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_even_sawing/carpentry_skill_even_sawing-icon-carpentry_skill_even_sawing-icon.png",
+        "createdAt": "2026-06-07T12:08:06.030Z",
+        "updatedAt": "2026-06-07T12:08:06.030Z"
+      },
+      {
+        "id": "carpentry_skill_gentle_saw-icon",
+        "name": "carpentry_skill_gentle_saw-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_gentle_saw/carpentry_skill_gentle_saw-icon-carpentry_skill_gentle_saw-icon.png",
+        "createdAt": "2026-06-07T12:08:15.508Z",
+        "updatedAt": "2026-06-07T12:08:15.508Z"
+      },
+      {
+        "id": "carpentry_skill_plank_marking-icon",
+        "name": "carpentry_skill_plank_marking-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_plank_marking/carpentry_skill_plank_marking-icon-carpentry_skill_plank_marking-icon.png",
+        "createdAt": "2026-06-07T12:08:32.365Z",
+        "updatedAt": "2026-06-07T12:08:32.365Z"
+      },
+      {
+        "id": "carpentry_skill_dry_core-icon",
+        "name": "carpentry_skill_dry_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_dry_core/carpentry_skill_dry_core-icon-carpentry_skill_dry_core-icon.png",
+        "createdAt": "2026-06-07T12:08:43.647Z",
+        "updatedAt": "2026-06-07T12:08:43.647Z"
+      },
+      {
+        "id": "carpentry_skill_sawmill_eye-icon",
+        "name": "carpentry_skill_sawmill_eye-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_sawmill_eye/carpentry_skill_sawmill_eye-icon-carpentry_skill_sawmill_eye-icon.png",
+        "createdAt": "2026-06-07T12:08:58.518Z",
+        "updatedAt": "2026-06-07T12:08:58.518Z"
+      },
+      {
+        "id": "carpentry_skill_basic_handle-icon",
+        "name": "carpentry_skill_basic_handle-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_basic_handle/carpentry_skill_basic_handle-icon-carpentry_skill_basic_handle-icon.png",
+        "createdAt": "2026-06-07T12:09:09.761Z",
+        "updatedAt": "2026-06-07T12:09:09.761Z"
+      },
+      {
+        "id": "carpentry_skill_apprentice_shaft-icon",
+        "name": "carpentry_skill_apprentice_shaft-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_apprentice_shaft/carpentry_skill_apprentice_shaft-icon-carpentry_skill_apprentice_shaft-icon.png",
+        "createdAt": "2026-06-07T12:09:21.778Z",
+        "updatedAt": "2026-06-07T12:09:21.778Z"
+      },
+      {
+        "id": "carpentry_skill_dry_plank-icon",
+        "name": "carpentry_skill_dry_plank-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_dry_plank/carpentry_skill_dry_plank-icon-carpentry_skill_dry_plank-icon.png",
+        "createdAt": "2026-06-07T12:09:57.941Z",
+        "updatedAt": "2026-06-07T12:09:57.941Z"
+      },
+      {
+        "id": "carpentry_skill_master_frame-icon",
+        "name": "carpentry_skill_master_frame-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_master_frame/carpentry_skill_master_frame-icon-carpentry_skill_master_frame-icon.png",
+        "createdAt": "2026-06-07T12:10:13.502Z",
+        "updatedAt": "2026-06-07T12:10:13.502Z"
+      },
+      {
+        "id": "carpentry_skill_ladder_maker-icon",
+        "name": "carpentry_skill_ladder_maker-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_ladder_maker/carpentry_skill_ladder_maker-icon-carpentry_skill_ladder_maker-icon.png",
+        "createdAt": "2026-06-07T12:10:46.724Z",
+        "updatedAt": "2026-06-07T12:10:46.724Z"
+      },
+      {
+        "id": "carpentry_skill_enchanting_base-icon",
+        "name": "carpentry_skill_enchanting_base-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/skills/carpentry_skill_enchanting_base/carpentry_skill_enchanting_base-icon-carpentry_skill_enchanting_base-icon.png",
+        "createdAt": "2026-06-07T12:11:04.481Z",
+        "updatedAt": "2026-06-07T12:11:04.481Z"
       }
     ],
     "dialogues": [
@@ -41841,6 +42813,118 @@
         ],
         "createdAt": "2026-05-29T13:20:00.000Z",
         "updatedAt": "2026-05-29T13:20:00.000Z"
+      },
+      {
+        "id": "dlg_carpenter_master_argos_intro",
+        "title": "Мастер-плотник",
+        "npcId": "npc_carpenter_master_argos",
+        "status": "active",
+        "startNodeId": "n_intro",
+        "description": "Разговор с мастером-плотником.",
+        "nodes": [
+          {
+            "id": "n_intro",
+            "speaker": "npc",
+            "text": "Приветствую. Я мастер-плотник Аргоса. Интересует работа с деревом?",
+            "choices": [
+              {
+                "id": "c_about",
+                "text": "Расскажи о плотницком деле.",
+                "nextNodeId": "n_about"
+              },
+              {
+                "id": "c_learn",
+                "text": "Я хочу обучиться профессии плотника.",
+                "nextNodeId": "n_learn"
+              },
+              {
+                "id": "c_quest",
+                "text": "Есть ли у тебя работа для меня?",
+                "nextNodeId": "n_quest_offer",
+                "questIconMode": "start"
+              },
+              {
+                "id": "c_shop",
+                "text": "Покажи свои товары и инструменты.",
+                "actions": [
+                  {
+                    "id": "a_open_shop",
+                    "type": "openShop"
+                  }
+                ],
+                "endsDialogue": true
+              },
+              {
+                "id": "c_leave",
+                "text": "До встречи.",
+                "endsDialogue": true
+              }
+            ]
+          },
+          {
+            "id": "n_about",
+            "speaker": "npc",
+            "text": "Плотник — это не просто тот, кто колотит табуретки. Это искусство превращения живого леса в надёжные доски, древки для копий, основы для посохов и прочные строительные балки. Всё начинается с хорошего топора и верного глаза.",
+            "choices": [
+              {
+                "id": "back",
+                "text": "Назад.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          },
+          {
+            "id": "n_learn",
+            "speaker": "npc",
+            "text": "Обучение плотницкому ремеслу требует упорства. Я готов обучить тебя основам.\n\n(Вы получаете профессию Плотник)",
+            "choices": [
+              {
+                "id": "c_confirm_learn",
+                "text": "Обучиться.",
+                "actions": [
+                  {
+                    "id": "a_learn_prof",
+                    "type": "learnProfession",
+                    "professionId": "carpenter"
+                  }
+                ],
+                "endsDialogue": true
+              },
+              {
+                "id": "back_learn",
+                "text": "Я подумаю.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          },
+          {
+            "id": "n_quest_offer",
+            "speaker": "npc",
+            "text": "Если ты хочешь доказать, что плотницкое дело тебе по плечу, отправляйся на Западную лесную делянку Аргоса. Сруби там дерево и принеси мне 2 бревна и 4 обработанные доски.",
+            "choices": [
+              {
+                "id": "c_accept_q",
+                "text": "Я сделаю это.",
+                "actions": [
+                  {
+                    "id": "a_start_q",
+                    "type": "startQuest",
+                    "questId": "quest_carpenter_first_cut"
+                  }
+                ],
+                "endsDialogue": true,
+                "questIconMode": "start"
+              },
+              {
+                "id": "c_decline_q",
+                "text": "Может быть позже.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          }
+        ],
+        "createdAt": "2026-06-07T09:20:58.516Z",
+        "updatedAt": "2026-06-07T09:20:58.516Z"
       }
     ],
     "npcs": [
@@ -44450,11 +45534,14 @@
         "dialogues": [],
         "questBindings": [],
         "createdAt": "2026-06-04T22:15:47.359Z",
-        "updatedAt": "2026-06-04T22:15:47.359Z",
+        "updatedAt": "2026-06-07T22:59:12.873Z",
         "locationId": "arena:combat",
         "inventory": {
           "itemIds": [],
-          "questItemIds": []
+          "questItemIds": [],
+          "lootTableId": null,
+          "goldMin": 0,
+          "goldMax": 0
         },
         "combat": {
           "level": 1,
@@ -44471,9 +45558,107 @@
           "perception": 5,
           "initiative": 8,
           "armorItemIds": [],
-          "skillIds": []
+          "skillIds": [],
+          "weaponItemId": null
         },
-        "worldSimTrader": false
+        "worldSimTrader": false,
+        "trainer": null,
+        "allowedCityIds": [],
+        "conditions": []
+      },
+      {
+        "id": "npc_carpenter_master_argos",
+        "name": "Мастер-плотник",
+        "title": "Мастер древесного дела",
+        "status": "active",
+        "kind": "trainer",
+        "race": "human",
+        "gender": "male",
+        "age": "48",
+        "kingdomId": "argos",
+        "factionId": "argos_citizens",
+        "locationId": "loc_argos_city_wood_workshop",
+        "homeCityId": "argos",
+        "currentCityId": "argos",
+        "cityLocationId": "workshop_wood_basic",
+        "description": "Мастер-плотник обучает рубке леса, распилу брёвен и обработке дерева.",
+        "shortDescription": "Мастер-плотник.",
+        "defaultDisposition": "friendly",
+        "isUnique": true,
+        "canRespawn": false,
+        "canFight": false,
+        "canTalk": true,
+        "canTrade": true,
+        "worldSimTrader": false,
+        "canTrain": true,
+        "canGiveQuests": true,
+        "dialogues": [
+          {
+            "dialogueId": "dlg_carpenter_master_argos_intro",
+            "priority": 1
+          }
+        ],
+        "questBindings": [
+          {
+            "role": "giver",
+            "questId": "quest_carpenter_first_cut"
+          }
+        ],
+        "trainer": {
+          "skillIds": [],
+          "professionIds": [
+            "carpenter"
+          ],
+          "requiresQuestIds": [],
+          "requiresReputation": 0,
+          "priceGold": 0
+        },
+        "professionTrainer": "carpenter",
+        "traderId": "merchant_carpenter_master",
+        "createdAt": "2026-06-07T09:20:58.516Z",
+        "updatedAt": "2026-06-07T09:20:58.516Z",
+        "portraitUrl": "/assets/placeholders/npc_merchant.png",
+        "fullImageUrl": "/assets/placeholders/npc_merchant.png",
+        "iconUrl": "/assets/placeholders/npc_merchant.png",
+        "portraitImageRef": {
+          "type": "image",
+          "src": "/assets/placeholders/npc_merchant.png"
+        },
+        "fullImageRef": {
+          "type": "image",
+          "src": "/assets/placeholders/npc_merchant.png"
+        },
+        "iconImageRef": {
+          "type": "image",
+          "src": "/assets/placeholders/npc_merchant.png"
+        },
+        "merchantId": "merchant_carpenter_tools_argos",
+        "workshopId": "workshop_carpenter_argos_basic",
+        "services": [
+          "learn_profession",
+          "buy_tools",
+          "rent_cart",
+          "buy_cart",
+          "open_workshop"
+        ],
+        "mapBindings": [],
+        "canBeKilled": false,
+        "combat": null,
+        "inventory": {
+          "itemIds": [],
+          "questItemIds": [],
+          "lootTableId": null,
+          "goldMin": 0,
+          "goldMax": 0
+        },
+        "allowedCityIds": [],
+        "conditions": [],
+        "cityId": "razugar",
+        "combatImageUrl": "npc_carpenter_master_argos_combat",
+        "combatImageRef": {
+          "type": "image",
+          "src": "npc_carpenter_master_argos_combat"
+        }
       }
     ],
     "quests": [
@@ -45225,6 +46410,81 @@
         "imageRef": {
           "type": "image",
           "src": "img_1779959715073_c121894a"
+        }
+      },
+      {
+        "id": "quest_carpenter_first_cut",
+        "title": "Первый сруб",
+        "flags": {},
+        "npcId": "npc_carpenter_master_argos",
+        "steps": [
+          {
+            "id": "step_first_cut",
+            "order": 1,
+            "title": "Первый сруб",
+            "questId": "quest_carpenter_first_cut",
+            "objectives": [
+              {
+                "id": "obj_collect_logs",
+                "type": "collect_item",
+                "itemId": "item_wood_log_common",
+                "requiredCount": 2,
+                "description": "Собрать бревна (2 шт.)"
+              },
+              {
+                "id": "obj_collect_planks",
+                "type": "collect_item",
+                "itemId": "item_wood_plank_common",
+                "requiredCount": 4,
+                "description": "Собрать доски (4 шт.)"
+              }
+            ],
+            "journalText": "Мастер-плотник велел тебе срубить первое дерево, распилить его и принести 2 бревна и 4 обработанные доски."
+          }
+        ],
+        "cityId": "argos",
+        "status": "active",
+        "rewards": [
+          {
+            "id": "rw_carpenter_first_gold",
+            "type": "gold",
+            "amount": 150
+          },
+          {
+            "id": "rw_carpenter_first_exp",
+            "type": "experience",
+            "amount": 100
+          }
+        ],
+        "category": "profession",
+        "imageUrl": "/assets/placeholders/npc_merchant.png",
+        "isHidden": false,
+        "minLevel": 1,
+        "triggers": [
+          {
+            "id": "trg_npc_start_carpenter",
+            "type": "npc_dialogue",
+            "npcId": "npc_carpenter_master_argos",
+            "dialogueId": "dlg_carpenter_master_argos_intro"
+          }
+        ],
+        "bannerUrl": "/assets/placeholders/quest_banner.png",
+        "createdAt": "2026-06-07T09:20:58.517Z",
+        "updatedAt": "2026-06-07T09:20:58.517Z",
+        "conditions": [],
+        "portraitUrl": "/assets/placeholders/unknown_portrait.png",
+        "isRepeatable": false,
+        "adminDescription": "Introductory Carpenter quest.",
+        "recommendedLevel": 1,
+        "playerDescription": "Срубите сосну на делянке, распилите на доски и принесите мастеру.",
+        "failureConsequences": [],
+        "portraitImageRef": {
+          "type": "image",
+          "src": "/assets/placeholders/unknown_portrait.png"
+        },
+        "imageRef": {
+          "type": "image",
+          "src": "/assets/placeholders/npc_merchant.png"
         }
       }
     ],
@@ -58664,6 +59924,645 @@
     ],
     "blacksmithItemTemplates": [],
     "blacksmithItemWorkActions": [],
+    "sounds": [],
+    "trees": [
+      {
+        "id": "tree_snow_watchman",
+        "name": "Снежный Дозорник",
+        "description": "Произрастает в вечно холодных краях, древесина очень плотная и устойчива к морозам.",
+        "region": "ailassil",
+        "biomeIds": [
+          "biome_ailassil_frozen_forest"
+        ],
+        "tier": 1,
+        "rarity": "common",
+        "hp": 120,
+        "hardness": 2,
+        "stability": 70,
+        "fallRisk": 12,
+        "requiredWoodcuttingTier": 1,
+        "requiredToolTier": 1,
+        "baseXp": 15,
+        "weight": 35,
+        "drops": [
+          {
+            "itemId": "item_wood_log_snow_watchman",
+            "min": 1,
+            "max": 3,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 2,
+            "chance": 40
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 0,
+            "max": 1,
+            "chance": 20
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.032Z",
+        "updatedAt": "2026-06-07T10:17:59.032Z"
+      },
+      {
+        "id": "tree_sand_lord",
+        "name": "Песчаный Властелин",
+        "description": "Пустынное дерево с волокнистой структурой, удерживающей редкую влагу.",
+        "region": "telfaren",
+        "biomeIds": [
+          "biome_telfaren_desert_woods"
+        ],
+        "tier": 1,
+        "rarity": "common",
+        "hp": 110,
+        "hardness": 2,
+        "stability": 60,
+        "fallRisk": 10,
+        "requiredWoodcuttingTier": 1,
+        "requiredToolTier": 1,
+        "baseXp": 15,
+        "weight": 32,
+        "drops": [
+          {
+            "itemId": "item_wood_log_sand_lord",
+            "min": 1,
+            "max": 3,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 1,
+            "chance": 30
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_green_whisper",
+        "name": "Зелёный Шёпот",
+        "description": "Молодое, гибкое лиственное дерево, характерное для умеренных зон.",
+        "region": "ilaraen",
+        "biomeIds": [
+          "biome_ilaraen_green_forest"
+        ],
+        "tier": 1,
+        "rarity": "common",
+        "hp": 90,
+        "hardness": 1,
+        "stability": 80,
+        "fallRisk": 8,
+        "requiredWoodcuttingTier": 1,
+        "requiredToolTier": 1,
+        "baseXp": 10,
+        "weight": 25,
+        "drops": [
+          {
+            "itemId": "item_wood_log_green_whisper",
+            "min": 1,
+            "max": 3,
+            "chance": 100
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 0,
+            "max": 2,
+            "chance": 30
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_golden_reaper",
+        "name": "Золотой Жнец",
+        "description": "Листья этого дерева отливают золотом, а древесина ценится за медовый оттенок.",
+        "region": "mirilnuar",
+        "biomeIds": [
+          "biome_mirilnuar_blooming_woods"
+        ],
+        "tier": 2,
+        "rarity": "uncommon",
+        "hp": 160,
+        "hardness": 3,
+        "stability": 75,
+        "fallRisk": 15,
+        "requiredWoodcuttingTier": 2,
+        "requiredToolTier": 2,
+        "baseXp": 25,
+        "weight": 40,
+        "drops": [
+          {
+            "itemId": "item_wood_log_golden_reaper",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 2,
+            "chance": 50
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 0,
+            "max": 1,
+            "chance": 30
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_mountain_guard",
+        "name": "Горный Страж",
+        "description": "Вековые хвойные деревья на склонах гор, закаленные сильными ветрами.",
+        "region": "teramor",
+        "biomeIds": [
+          "biome_teramor_mountain_forest"
+        ],
+        "tier": 1,
+        "rarity": "common",
+        "hp": 120,
+        "hardness": 2,
+        "stability": 70,
+        "fallRisk": 12,
+        "requiredWoodcuttingTier": 1,
+        "requiredToolTier": 1,
+        "baseXp": 15,
+        "weight": 35,
+        "drops": [
+          {
+            "itemId": "item_wood_log_mountain_guard",
+            "min": 1,
+            "max": 3,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 2,
+            "chance": 40
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 0,
+            "max": 1,
+            "chance": 20
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_flame_whirl",
+        "name": "Пламенный Вихрь",
+        "description": "Древесина горяча на ощупь, растет в зонах вулканической активности.",
+        "region": "fire_shadows",
+        "biomeIds": [
+          "biome_fire_shadows_burning_woods"
+        ],
+        "tier": 2,
+        "rarity": "uncommon",
+        "hp": 180,
+        "hardness": 4,
+        "stability": 65,
+        "fallRisk": 18,
+        "requiredWoodcuttingTier": 2,
+        "requiredToolTier": 2,
+        "baseXp": 30,
+        "weight": 45,
+        "drops": [
+          {
+            "itemId": "item_wood_log_flame_whirl",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 1,
+            "max": 2,
+            "chance": 60
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_steel_leaf",
+        "name": "Сталелист",
+        "description": "Чрезвычайно прочное дерево, чья кора тверда словно доспех.",
+        "region": "teramor",
+        "biomeIds": [
+          "biome_teramor_mountain_forest"
+        ],
+        "tier": 3,
+        "rarity": "rare",
+        "hp": 250,
+        "hardness": 6,
+        "stability": 85,
+        "fallRisk": 10,
+        "requiredWoodcuttingTier": 3,
+        "requiredToolTier": 2,
+        "baseXp": 50,
+        "weight": 60,
+        "drops": [
+          {
+            "itemId": "item_wood_log_steel_leaf",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 1,
+            "max": 3,
+            "chance": 50
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_sahara_shadow",
+        "name": "Тень Сахары",
+        "description": "Тёмный ствол и редкая крона, выживает в суровом зное глубокой пустыни.",
+        "region": "telfaren",
+        "biomeIds": [
+          "biome_telfaren_desert_woods"
+        ],
+        "tier": 2,
+        "rarity": "uncommon",
+        "hp": 140,
+        "hardness": 3,
+        "stability": 60,
+        "fallRisk": 14,
+        "requiredWoodcuttingTier": 2,
+        "requiredToolTier": 2,
+        "baseXp": 22,
+        "weight": 38,
+        "drops": [
+          {
+            "itemId": "item_wood_log_sahara_shadow",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 2,
+            "chance": 40
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_elven_song",
+        "name": "Эльфийская Песнь",
+        "description": "Древнее священное дерево с прекрасным серебристым стволом, излучающим тихую мелодию.",
+        "region": "mirilnuar",
+        "biomeIds": [
+          "biome_mirilnuar_blooming_woods"
+        ],
+        "tier": 3,
+        "rarity": "rare",
+        "hp": 200,
+        "hardness": 3,
+        "stability": 90,
+        "fallRisk": 5,
+        "requiredWoodcuttingTier": 3,
+        "requiredToolTier": 2,
+        "baseXp": 60,
+        "weight": 30,
+        "drops": [
+          {
+            "itemId": "item_wood_log_elven_song",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 1,
+            "max": 3,
+            "chance": 50
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_royal_cocoon",
+        "name": "Королевская Куколка",
+        "description": "Редчайшее дерево, чья кора свивается словно шелк, а сок заменяет драгоценный лак.",
+        "region": "ilaraen",
+        "biomeIds": [
+          "biome_ilaraen_green_forest"
+        ],
+        "tier": 4,
+        "rarity": "epic",
+        "hp": 300,
+        "hardness": 5,
+        "stability": 80,
+        "fallRisk": 15,
+        "requiredWoodcuttingTier": 4,
+        "requiredToolTier": 2,
+        "baseXp": 100,
+        "weight": 50,
+        "drops": [
+          {
+            "itemId": "item_wood_log_royal_cocoon",
+            "min": 1,
+            "max": 1,
+            "chance": 100
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 2,
+            "max": 4,
+            "chance": 80
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_dwarf_heart",
+        "name": "Сердце Гнома",
+        "description": "Приземистое, невероятно толстое дерево, растущее прямо из скальных расщелин.",
+        "region": "teramor",
+        "biomeIds": [
+          "biome_teramor_mountain_forest"
+        ],
+        "tier": 2,
+        "rarity": "uncommon",
+        "hp": 180,
+        "hardness": 4,
+        "stability": 95,
+        "fallRisk": 5,
+        "requiredWoodcuttingTier": 2,
+        "requiredToolTier": 2,
+        "baseXp": 28,
+        "weight": 55,
+        "drops": [
+          {
+            "itemId": "item_wood_log_dwarf_heart",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 1,
+            "max": 2,
+            "chance": 60
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "tree_feralas_dance",
+        "name": "Танец Фераласа",
+        "description": "Изогнутые стволы переплетаются друг с другом, создавая узорчатые рощи.",
+        "region": "ilaraen",
+        "biomeIds": [
+          "biome_ilaraen_green_forest"
+        ],
+        "tier": 3,
+        "rarity": "rare",
+        "hp": 220,
+        "hardness": 4,
+        "stability": 75,
+        "fallRisk": 20,
+        "requiredWoodcuttingTier": 3,
+        "requiredToolTier": 2,
+        "baseXp": 55,
+        "weight": 42,
+        "drops": [
+          {
+            "itemId": "item_wood_log_feralas_dance",
+            "min": 1,
+            "max": 2,
+            "chance": 100
+          },
+          {
+            "itemId": "item_tree_bark_common",
+            "min": 0,
+            "max": 2,
+            "chance": 50
+          },
+          {
+            "itemId": "item_resin_common",
+            "min": 0,
+            "max": 2,
+            "chance": 40
+          }
+        ],
+        "enabled": true,
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      }
+    ],
+    "biomes": [
+      {
+        "id": "biome_ailassil_frozen_forest",
+        "name": "Морозный лес Айлас’сила",
+        "region": "ailassil",
+        "climate": "arctic_tundra",
+        "dangerLevel": 2,
+        "defaultTreePool": [
+          "tree_snow_watchman"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "herb",
+          "hunting"
+        ],
+        "description": "Вечно замерзшая лесная глушь под покровительством снежных бурь.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "biome_telfaren_desert_woods",
+        "name": "Пустынная роща Тел’фарена",
+        "region": "telfaren",
+        "climate": "arid_desert",
+        "dangerLevel": 3,
+        "defaultTreePool": [
+          "tree_sand_lord",
+          "tree_sahara_shadow"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "herb"
+        ],
+        "description": "Редкие рощи засухоустойчивых деревьев посреди бескрайних барханов.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "biome_ilaraen_green_forest",
+        "name": "Зелёный лес Илар’аэна",
+        "region": "ilaraen",
+        "climate": "temperate_deciduous",
+        "dangerLevel": 1,
+        "defaultTreePool": [
+          "tree_green_whisper",
+          "tree_feralas_dance",
+          "tree_royal_cocoon"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "herb",
+          "hunting"
+        ],
+        "description": "Богатый жизнью лиственный лес, идеален для начинающих лесорубов.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "biome_mirilnuar_blooming_woods",
+        "name": "Цветущий лес Мирил’нуара",
+        "region": "mirilnuar",
+        "climate": "subtropical_humid",
+        "dangerLevel": 2,
+        "defaultTreePool": [
+          "tree_golden_reaper",
+          "tree_elven_song"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "herb",
+          "hunting"
+        ],
+        "description": "Чарующий лес с золотистой листвой и редкими породами древесины.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "biome_teramor_mountain_forest",
+        "name": "Горный лес Терамора",
+        "region": "teramor",
+        "climate": "mountain_temperate",
+        "dangerLevel": 2,
+        "defaultTreePool": [
+          "tree_mountain_guard",
+          "tree_dwarf_heart",
+          "tree_steel_leaf"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "herb",
+          "hunting"
+        ],
+        "description": "Горный лес с крепкими деревьями, подходящими для строительства и шахтных подпорок.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      },
+      {
+        "id": "biome_fire_shadows_burning_woods",
+        "name": "Огненный лес Края Огненных Теней",
+        "region": "fire_shadows",
+        "climate": "volcanic_active",
+        "dangerLevel": 5,
+        "defaultTreePool": [
+          "tree_flame_whirl"
+        ],
+        "allowedResourceKinds": [
+          "forest",
+          "hunting"
+        ],
+        "description": "Жаркие выжженные делянки, где растут редчайшие огнестойкие стволы.",
+        "enabled": true,
+        "hasWater": false,
+        "waterTypes": [],
+        "resourcePools": {
+          "forest": [],
+          "herb": [],
+          "hunting": [],
+          "fishing": [],
+          "monster": [],
+          "event": []
+        },
+        "createdAt": "2026-06-07T10:17:59.033Z",
+        "updatedAt": "2026-06-07T10:17:59.033Z"
+      }
+    ],
     "worldMap": {
       "zones": [
         {
@@ -59306,6 +61205,68 @@
           "x": 0.508071011597535,
           "y": 0.7140973945392182,
           "radius": 0.003269033588225118
+        },
+        {
+          "id": "city_razugar",
+          "name": "Разу'гар",
+          "type": "city",
+          "shape": "circle",
+          "region": "teramor",
+          "faction": "argos",
+          "description": "Великий город, которым когда-то правил сам Разул'гар.",
+          "dangerLevel": 1,
+          "isDiscovered": true,
+          "isVisibleToPlayer": true,
+          "editorLayer": "locations",
+          "interactionMode": "enter",
+          "playerClickable": true,
+          "blocksClick": true,
+          "passiveEffects": false,
+          "color": "#d6b35f",
+          "randomQuestPoolIds": [],
+          "kingdomId": "argos",
+          "cityId": "razugar",
+          "currentState": "active",
+          "stateSprites": {},
+          "createdAt": 1780786749347,
+          "updatedAt": 1780786833892,
+          "x": 0.48764608015884814,
+          "y": 0.6636994633244365,
+          "radius": 0.006793301546295222
+        },
+        {
+          "id": "zone_argos_forest_west",
+          "name": "Западная лесная делянка Аргоса",
+          "type": "rectangle",
+          "editorLayer": "resources",
+          "resourceKind": "forest",
+          "forestId": "forest_argos_west",
+          "biomeId": "biome_teramor_mountain_forest",
+          "treePool": [
+            "tree_mountain_guard",
+            "tree_dwarf_heart",
+            "tree_steel_leaf"
+          ],
+          "woodcuttingTier": 1,
+          "requiresProfession": "carpenter",
+          "isProfessionZone": true,
+          "x": 0.35,
+          "y": 0.52,
+          "width": 0.05,
+          "height": 0.05,
+          "description": "Подходящее место для рубки сосны, дуба и березы.",
+          "tooltip": "Западная лесная делянка Аргоса\nРесурс: древесина\nУровень рубки: 1\nДеревья: сосна, дуб, береза\nТребуется профессия: Плотник",
+          "dangerLevel": 1,
+          "recommendedLevel": 1,
+          "isDiscovered": true,
+          "isVisibleToPlayer": true,
+          "isSafeZone": true,
+          "allowPvP": false,
+          "faction": "Аргос",
+          "shape": "rectangle",
+          "createdAt": 1780824058517,
+          "updatedAt": 1780824058517,
+          "color": "#8b5a2b"
         }
       ],
       "regions": [
@@ -77403,7 +79364,7 @@
           "showOnMiniMap": true
         }
       ],
-      "updatedAt": "2026-06-05T08:24:11.195Z"
+      "updatedAt": "2026-06-06T23:00:38.920Z"
     }
   }
 }

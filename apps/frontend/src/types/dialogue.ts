@@ -182,8 +182,11 @@ export interface DialogueAction {
     | 'restore_hp'
     | 'heal'
     | 'setNpcDisposition'
-    | 'setGlobalFlag';
+    | 'setGlobalFlag'
+    | 'learnProfession'
+    | 'learn_profession';
   npcId?: string;
+  professionId?: string;
   merchantId?: string;
   trainerNpcId?: string;
   questId?: string;

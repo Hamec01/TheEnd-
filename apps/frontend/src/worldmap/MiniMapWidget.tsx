@@ -9,6 +9,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+import type { WorldMapZone } from './zoneEditorTypes';
+
 interface MiniMapWidgetProps {
   mapImagePath: string;
   fallbackMapImagePath?: string;
@@ -17,6 +19,9 @@ interface MiniMapWidgetProps {
   trackedMarkerId?: string | null;
   discoveryMarkers?: MapDiscoveryMarker[];
   onOpenViewer: () => void;
+  zones?: WorldMapZone[];
+  showProfessionResourceZones?: boolean;
+  selectedProfessionOverlay?: string;
 }
 
 export function MiniMapWidget({
@@ -27,6 +32,9 @@ export function MiniMapWidget({
   trackedMarkerId = null,
   discoveryMarkers = [],
   onOpenViewer,
+  zones = [],
+  showProfessionResourceZones = false,
+  selectedProfessionOverlay = 'none',
 }: MiniMapWidgetProps) {
   const [activeImagePath, setActiveImagePath] = useState(mapImagePath);
 
@@ -79,6 +87,42 @@ export function MiniMapWidget({
           draggable={false}
           onError={handleImageError}
         />
+        {showProfessionResourceZones && selectedProfessionOverlay === 'carpenter' ? (
+          <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox="0 0 1 1">
+            {zones.map((zone) => {
+              if (zone.resourceKind !== 'forest') {
+                return null;
+              }
+              if (zone.shape === 'circle') {
+                return (
+                  <circle
+                    key={zone.id}
+                    cx={zone.x ?? 0}
+                    cy={zone.y ?? 0}
+                    r={zone.radius ?? 0.03}
+                    fill="rgba(74, 117, 89, 0.25)"
+                    stroke="rgba(139, 90, 43, 0.6)"
+                    strokeWidth="0.002"
+                  />
+                );
+              } else {
+                const pts = zone.points ?? [];
+                if (pts.length === 0) {
+                  return null;
+                }
+                return (
+                  <polygon
+                    key={zone.id}
+                    points={pts.map((p) => `${p[0]},${p[1]}`).join(' ')}
+                    fill="rgba(74, 117, 89, 0.25)"
+                    stroke="rgba(139, 90, 43, 0.6)"
+                    strokeWidth="0.002"
+                  />
+                );
+              }
+            })}
+          </svg>
+        ) : null}
         {trackedMarker ? (
           <span
             className={`wm-mini-map-tracked-marker${trackedMarkerIcon ? ' has-image' : ''}`}

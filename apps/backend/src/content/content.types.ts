@@ -3,7 +3,7 @@ import type { WorldSimConfig } from '../worldsim/types/world-simulation.types';
 
 export type StatKey = PrimaryStat;
 
-export type ItemType = 'weapon' | 'armor' | 'potion' | 'material' | 'quest' | 'misc';
+export type ItemType = 'weapon' | 'armor' | 'potion' | 'material' | 'quest' | 'misc' | 'profession_tool' | 'profession_transport';
 
 export type ItemSlot =
   | 'head'
@@ -376,7 +376,7 @@ export type CraftingRecipeType =
 export type CraftingProfessionId =
   | 'mining'
   | 'blacksmithing'
-  | 'carpentry'
+  | 'carpenter'
   | 'leatherworking'
   | 'jewelcrafting'
   | 'runecrafting'
@@ -529,6 +529,23 @@ export interface AdminItem {
   imagePath?: string;
   imageRef?: GameImageRef;
   battleVisuals?: ActorBattleVisualConfig;
+  profession?: string;
+  toolKind?: string;
+  durability?: number;
+  maxDurability?: number;
+  efficiency?: number;
+  breakChanceModifier?: number;
+  treeDamageBonus?: number;
+  staminaCostModifier?: number;
+  transportKind?: string;
+  rentPrice?: number;
+  rentDuration?: number;
+  capacityWeight?: number;
+  capacityLogs?: number;
+  speed?: number;
+  requiresHorse?: boolean;
+  tier?: number;
+  requiredLevel?: number;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -938,7 +955,7 @@ export interface Material {
   updatedAt: string;
 }
 
-export type LootSourceType = 'npc' | 'monster' | 'chest' | 'region' | 'quest' | 'merchant_special';
+export type LootSourceType = 'npc' | 'monster' | 'chest' | 'region' | 'quest' | 'merchant_special' | 'tree' | 'plant' | 'beast' | 'fish' | 'event' | 'resource_node';
 
 export interface LootEntry {
   itemId: string;
@@ -1019,6 +1036,10 @@ export interface NpcDefinition {
   mapBindings?: unknown[];
   dialogues?: unknown[];
   questBindings?: unknown[];
+  professionTrainer?: string;
+  merchantId?: string;
+  workshopId?: string;
+  services?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1611,6 +1632,65 @@ export interface SoundDefinition {
   updatedAt?: string;
 }
 
+export interface TreeDrop {
+  itemId: string;
+  min: number;
+  max: number;
+  chance: number;
+}
+
+export interface TreeDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  region: string;
+  biomeIds: string[];
+  tier: number;
+  rarity: ItemRarity;
+  hp: number;
+  hardness: number;
+  stability: number;
+  fallRisk: number;
+  requiredWoodcuttingTier: number;
+  requiredToolTier: number;
+  baseXp: number;
+  weight: number;
+  drops: TreeDrop[];
+  enabled: boolean;
+  imageRef?: GameImageRef;
+  imagePath?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type WaterType = 'river' | 'lake' | 'sea' | 'swamp' | 'pond' | 'underground_water';
+
+export interface BiomeResourcePools {
+  forest?: string[];
+  herb?: string[];
+  hunting?: string[];
+  fishing?: string[];
+  monster?: string[];
+  event?: string[];
+}
+
+export interface BiomeDefinition {
+  id: string;
+  name: string;
+  region: string;
+  climate: string;
+  dangerLevel: number;
+  hasWater: boolean;
+  waterTypes: WaterType[];
+  defaultTreePool: string[];
+  allowedResourceKinds: string[];
+  resourcePools: BiomeResourcePools;
+  description: string;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ContentDatabase {
   version: 1;
   items: AdminItem[];
@@ -1642,6 +1722,8 @@ export interface ContentDatabase {
   blacksmithItemTemplates?: BlacksmithItemTemplate[];
   blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
   sounds?: SoundDefinition[];
+  trees?: TreeDefinition[];
+  biomes?: BiomeDefinition[];
   worldMap: WorldMapContent;
   worldSim?: WorldSimConfig;
 }
@@ -1732,7 +1814,9 @@ export type ContentCollectionName =
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
   | 'blacksmithItemWorkActions'
-  | 'sounds';
+  | 'sounds'
+  | 'trees'
+  | 'biomes';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1764,6 +1848,8 @@ export interface ContentCollectionMap {
   blacksmithItemTemplates: BlacksmithItemTemplate;
   blacksmithItemWorkActions: BlacksmithItemWorkAction;
   sounds: SoundDefinition;
+  trees: TreeDefinition;
+  biomes: BiomeDefinition;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

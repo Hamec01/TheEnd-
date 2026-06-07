@@ -6,7 +6,7 @@ import { ProfessionDefinition } from '../../types/profession';
 const PROFESSIONS: Record<string, ProfessionDefinition> = {
   'mining': { id: 'mining', name: 'Горняк', description: 'Добыча полезных ископаемых', category: 'gathering', maxLevel: 100, isEnabled: true, icon: '⛏️' },
   'blacksmithing': { id: 'blacksmithing', name: 'Кузнец', description: 'Изготовление оружия и доспехов', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🔨' },
-  'carpentry': { id: 'carpentry', name: 'Плотник', description: 'Работа с деревом', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🪵' },
+  'carpenter': { id: 'carpenter', name: 'Плотник', description: 'Работа с деревом', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🪵' },
   'leatherworking': { id: 'leatherworking', name: 'Кожевник', description: 'Изготовление кожаных изделий', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '🧥' },
   'jewelcrafting': { id: 'jewelcrafting', name: 'Ювелир', description: 'Изготовление украшений', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '💍' },
   'runecrafting': { id: 'runecrafting', name: 'Рунорез', description: 'Создание магических рун', category: 'crafting', maxLevel: 100, isEnabled: true, icon: '✨' },

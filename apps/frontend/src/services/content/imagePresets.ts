@@ -5,7 +5,8 @@ export type ImagePresetId =
   | 'battle-map-background'
   | 'world-location-sprite'
   | 'mining-tool-icon'
-  | 'mining-block';
+  | 'mining-block'
+  | 'tree-sprite';
 
 export interface ImagePreset {
   id: ImagePresetId;
@@ -56,5 +57,11 @@ export const IMAGE_PRESETS: Record<ImagePresetId, ImagePreset> = {
     width: 256,
     height: 256,
     label: 'Mining block sprite',
+  },
+  'tree-sprite': {
+    id: 'tree-sprite',
+    width: 512,
+    height: 512,
+    label: 'Tree sprite',
   },
 };

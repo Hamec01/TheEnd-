@@ -59,6 +59,8 @@ export type ValidateWorldMapContentArgs = {
   items?: unknown[];
   professionIds?: string[];
   mineIds?: string[];
+  biomes?: unknown[];
+  trees?: unknown[];
 };
 
 const KNOWN_ZONE_TYPES: Set<ZoneType> = new Set<ZoneType>([
@@ -781,6 +783,78 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
             zoneName: zone.name,
             editorLayer: zoneLayer,
             field: 'mineId',
+          });
+        }
+      }
+
+      if (resourceKind === 'forest') {
+        const forestId = asNonEmptyString((zone as any).forestId);
+        const biomeId = asNonEmptyString((zone as any).biomeId);
+        const treePool = asNonEmptyString((zone as any).treePool);
+        const woodcuttingTier = (zone as any).woodcuttingTier;
+
+        if (!forestId) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.forestId.empty',
+            message: 'Лесная зона требует указания forestId.',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'forestId',
+          });
+        }
+        const dbBiomes = Array.isArray(args.biomes) ? (args.biomes as any[]) : [];
+        const selectedBiome = biomeId ? dbBiomes.find(b => b.id === biomeId) : null;
+
+        if (!biomeId) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.biomeId.empty',
+            message: 'Лесная зона требует указания биома (biomeId).',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'biomeId',
+          });
+        } else if (!selectedBiome) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.biomeId.invalid',
+            message: `Указан несуществующий биом: ${biomeId}`,
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'biomeId',
+          });
+        }
+
+        const hasZoneTrees = treePool !== null && treePool.trim().length > 0;
+        const hasBiomeTrees = selectedBiome && (
+          (Array.isArray(selectedBiome.resourcePools?.forest) && selectedBiome.resourcePools.forest.length > 0) ||
+          (Array.isArray(selectedBiome.defaultTreePool) && selectedBiome.defaultTreePool.length > 0)
+        );
+
+        if (!hasZoneTrees && !hasBiomeTrees) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.treePool.empty',
+            message: 'В этой зоне и выбранном биоме нет доступных деревьев для рубки.',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'treePool',
+          });
+        }
+        if (woodcuttingTier === undefined || woodcuttingTier === null) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.woodcuttingTier.empty',
+            message: 'Лесная зона требует указания уровня рубки (woodcuttingTier).',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'woodcuttingTier',
           });
         }
       } else if (mineId) {
