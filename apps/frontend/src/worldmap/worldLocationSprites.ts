@@ -131,6 +131,8 @@ export function resolveLocationSpritesForViewport(
   options?: ResolveLocationSpritesOptions,
 ): ResolvedLocationSprite[] {
   const sprites: ResolvedLocationSprite[] = [];
+  // screenScale defaults to 1 to ensure sprites maintain fixed screen size regardless of zoom
+  // Position scales with zoom via camera.width/height, but display size remains constant
   const screenScale = Math.max(0.01, Number(options?.screenScale ?? 1));
   for (const zone of zones) {
     if (!isZoneSpriteVisible(zone, discoveredLocationIds, discoveredZoneIds) || !zone.locationSprite) {
@@ -142,9 +144,11 @@ export function resolveLocationSpritesForViewport(
     const capturedBannerSrc = resolveCapturedBannerSource(zone);
     const imageSize = imageSizes.get(imageSrc) ?? { width: 48, height: 48 };
     const [worldX, worldY] = getZoneCenter(zone);
+    // Position scales with zoom - this is correct behavior
     const screenX = ((worldX - camera.left) / camera.width) * viewport.width + zone.locationSprite.offsetX;
     const screenY = ((worldY - camera.top) / camera.height) * viewport.height + zone.locationSprite.offsetY;
     const scale = Math.max(0.01, zone.locationSprite.scale);
+    // Display size is independent of zoom - this ensures fixed screen pixels
     const displayWidth = Math.max(1, imageSize.width * scale * screenScale);
     const displayHeight = Math.max(1, imageSize.height * scale * screenScale);
     const originX = 0.5;

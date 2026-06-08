@@ -295,15 +295,18 @@ class PhaserWorldMapScene extends Phaser.Scene {
       snapshot.discoveredLocationIds,
       snapshot.discoveredZoneIds,
     );
+    const cameraZoom = Math.max(this.cameras.main.zoom || 1, 0.0001);
 
     for (const sprite of sprites) {
       const textureKey = this.ensureDynamicTexture(sprite.imageSrc);
       if (!textureKey || !this.textures.exists(textureKey)) {
         continue;
       }
+      const compensatedWidth = sprite.displayWidth / cameraZoom;
+      const compensatedHeight = sprite.displayHeight / cameraZoom;
       const image = this.add.image(sprite.screenX, sprite.screenY, textureKey)
         .setOrigin(sprite.originX, sprite.originY)
-        .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+        .setDisplaySize(compensatedWidth, compensatedHeight)
         .setScrollFactor(0)
         .setDepth(sprite.zIndex);
       this.locationSpriteLayer.add(image);
@@ -313,7 +316,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
         if (bannerTextureKey && this.textures.exists(bannerTextureKey)) {
           const banner = this.add.image(sprite.screenX, sprite.screenY, bannerTextureKey)
             .setOrigin(sprite.originX, sprite.originY)
-            .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
+            .setDisplaySize(compensatedWidth, compensatedHeight)
             .setScrollFactor(0)
             .setAlpha(0.42)
             .setDepth(sprite.zIndex + 0.1);

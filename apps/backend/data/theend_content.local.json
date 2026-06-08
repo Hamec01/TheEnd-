@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-07T22:59:12.975Z",
+  "exportedAt": "2026-06-08T13:04:05.889Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -34,9 +34,9 @@
     "blacksmithItemTemplates": 0,
     "blacksmithItemWorkActions": 0,
     "sounds": 11,
-    "maps": 0,
+    "maps": 4,
     "zones": 16,
-    "markers": 0,
+    "markers": 3,
     "regions": 3
   },
   "content": {
@@ -9362,7 +9362,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-07T15:38:06.138Z",
+        "updatedAt": "2026-06-08T12:42:54.189Z",
         "kind": "single",
         "stages": []
       },
@@ -9418,7 +9418,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-07T15:38:06.139Z",
+        "updatedAt": "2026-06-08T12:42:54.189Z",
         "kind": "single",
         "stages": []
       },
@@ -9477,7 +9477,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-07T15:38:06.139Z",
+        "updatedAt": "2026-06-08T12:42:54.190Z",
         "kind": "single",
         "stages": []
       }
@@ -12762,7 +12762,7 @@
         "regionId": "teramor",
         "kingdomId": "argos",
         "createdAt": "2026-05-29T09:07:29Z",
-        "updatedAt": "2026-06-06T23:08:40.900Z",
+        "updatedAt": "2026-06-08T09:01:44.044Z",
         "rulerName": "Наместник Разу'гара",
         "rulerTitle": "governor",
         "governmentType": "occupied fortress-city under Argos military rule",
@@ -13333,7 +13333,7 @@
         "regionId": "teramor",
         "kingdomId": "argos",
         "createdAt": "2026-05-29T09:15:00.000Z",
-        "updatedAt": "2026-05-29T11:27:09.566Z",
+        "updatedAt": "2026-06-08T09:01:27.767Z",
         "rulerName": "Элиза Пустынный Шип",
         "rulerTitle": "baroness",
         "governmentType": "southern border military trade rule",
@@ -13389,8 +13389,8 @@
             "type": "castle",
             "shapeType": "rectangle",
             "shape": {
-              "x": 551,
-              "y": 51,
+              "x": 549,
+              "y": 100,
               "width": 165,
               "height": 103
             },
@@ -13409,8 +13409,8 @@
             "type": "market",
             "shapeType": "rectangle",
             "shape": {
-              "x": 457,
-              "y": 452,
+              "x": 483,
+              "y": 468,
               "width": 164,
               "height": 91
             },
@@ -13449,8 +13449,8 @@
             "type": "barracks",
             "shapeType": "rectangle",
             "shape": {
-              "x": 740,
-              "y": 291,
+              "x": 730,
+              "y": 340,
               "width": 140,
               "height": 80
             },
@@ -13469,8 +13469,8 @@
             "type": "castle",
             "shapeType": "rectangle",
             "shape": {
-              "x": 548,
-              "y": 229,
+              "x": 568,
+              "y": 241,
               "width": 175,
               "height": 100
             },
@@ -13489,8 +13489,8 @@
             "type": "guild",
             "shapeType": "rectangle",
             "shape": {
-              "x": 859,
-              "y": 368,
+              "x": 870,
+              "y": 402,
               "width": 170,
               "height": 95
             },
@@ -13509,8 +13509,8 @@
             "type": "blacksmith",
             "shapeType": "rectangle",
             "shape": {
-              "x": 703,
-              "y": 460,
+              "x": 735,
+              "y": 501,
               "width": 135,
               "height": 95
             },
@@ -13529,8 +13529,8 @@
             "type": "tavern",
             "shapeType": "rectangle",
             "shape": {
-              "x": 510,
-              "y": 333,
+              "x": 541,
+              "y": 361,
               "width": 77,
               "height": 40
             },
@@ -13549,8 +13549,8 @@
             "type": "guild",
             "shapeType": "rectangle",
             "shape": {
-              "x": 149,
-              "y": 491,
+              "x": 180,
+              "y": 499,
               "width": 144,
               "height": 83
             },
@@ -13569,8 +13569,8 @@
             "type": "arena",
             "shapeType": "circle",
             "shape": {
-              "x": 216,
-              "y": 149,
+              "x": 239,
+              "y": 195,
               "radius": 54
             },
             "cityId": "city_fellmor",
@@ -13588,8 +13588,8 @@
             "type": "custom",
             "shapeType": "rectangle",
             "shape": {
-              "x": 969,
-              "y": 132,
+              "x": 946,
+              "y": 197,
               "width": 135,
               "height": 120
             },
@@ -13608,8 +13608,8 @@
             "type": "custom",
             "shapeType": "rectangle",
             "shape": {
-              "x": 985,
-              "y": 463,
+              "x": 975,
+              "y": 500,
               "width": 101,
               "height": 53
             },
@@ -13630,8 +13630,8 @@
             "description": "Военная Академия Фэллмора — строгий учебный двор при южном гарнизоне, где готовят офицеров пограничной стражи, караванных командиров, разведчиков и молодых воинов Аргоса. Здесь обучают строевой дисциплине, владению мечом, копьём и щитом, тактике обороны ворот, сопровождению торговых обозов, действиям в ущельях и выживанию на границе пустыни Ликерин. Академия не считается школой магии: в Аргосе относятся к магии с недоверием, поэтому упор делают на оружие, выносливость, порядок, знание местности и подчинение приказу. Для игрока это место может открывать боевые тренировки, задания гарнизона, испытания на ранг, обучение защитным навыкам и квесты, связанные с южными патрулями",
             "shapeType": "circle",
             "shape": {
-              "x": 378,
-              "y": 215,
+              "x": 395,
+              "y": 258,
               "radius": 54
             },
             "npcIds": [],
@@ -13648,8 +13648,8 @@
             "description": "Храм Террагона — каменное святилище бога земли, которого люди знают как Террагона, орки как Кра’гора, а эльфы как Гаеарона. В Фэллморе этот храм стоит как символ стойкости южной границы: сюда приходят солдаты перед дозором, кузнецы перед тяжёлой работой, строители перед укреплением стен и караванщики перед дорогой через камни, пыль и пустынные тропы. Внутри храма нет роскоши: грубые колонны, плиты с резьбой корней, чаши с землёй из разных рубежей Аргоса, каменные алтари и тихие ниши для клятв. Жрецы Террагона благословляют оружие, стены, шахтные инструменты и путников, просят у земли крепости для тела, терпения для духа и защиты от обвалов, предательства и бесплодных дорог. Для игрока храм может служить местом благословений, восстановления, квестов о древних каменных знаках, гномьих реликвиях, погребальных обрядах и тайнах старых подземных ходов.",
             "shapeType": "circle",
             "shape": {
-              "x": 784,
-              "y": 124,
+              "x": 797,
+              "y": 195,
               "radius": 54
             },
             "npcIds": [],
@@ -38259,11 +38259,11 @@
         "id": "city_fellmor_background",
         "name": "city_fellmor-background",
         "mimeType": "image/png",
-        "width": 1536,
-        "height": 1024,
+        "width": 1672,
+        "height": 941,
         "dataUrl": "/assets/upload/images/cities/city_fellmor/city_fellmor_background-city_fellmor-background.png",
         "createdAt": "2026-05-29T10:56:55.801Z",
-        "updatedAt": "2026-05-29T11:06:52.629Z"
+        "updatedAt": "2026-06-08T09:00:49.283Z"
       },
       {
         "id": "img_1780055660933_1a616522",
@@ -45648,7 +45648,7 @@
         "dialogues": [],
         "questBindings": [],
         "createdAt": "2026-06-04T22:15:47.359Z",
-        "updatedAt": "2026-06-07T22:59:12.873Z",
+        "updatedAt": "2026-06-08T13:04:05.294Z",
         "locationId": "arena:combat",
         "inventory": {
           "itemIds": [],
