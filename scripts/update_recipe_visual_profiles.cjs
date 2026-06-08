@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const filePath = path.join(process.cwd(), 'apps', 'backend', 'data', 'theend_content.local.json');
@@ -65,7 +65,7 @@ function chooseProfile(recipe) {
     }
     return 'forging_weapon';
   }
-  if (profession === 'carpentry') return 'material_wood';
+  if (profession === 'carpentry' || profession === 'carpenter') return 'material_wood';
   if (profession === 'leatherworking' || type === 'weaving' || type === 'tanning') return 'material_cloth';
   if (type === 'material_processing') {
     if (name.includes('wood') || outputs.includes('wood')) return 'material_wood';

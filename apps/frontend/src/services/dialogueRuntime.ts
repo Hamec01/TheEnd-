@@ -42,6 +42,7 @@ export type DialogueRuntimeIntent =
   | { type: 'OPEN_TRAINING'; skillId?: string | null; trainerNpcId?: string | null }
   | { type: 'HEAL_PLAYER_FULL'; costGold?: number }
   | { type: 'GRANT_SKILL'; skillId: string }
+  | { type: 'LEARN_PROFESSION'; professionId: string }
   | { type: 'QUEST_STARTED'; questId: string }
   | { type: 'QUEST_ADVANCED'; questId: string }
   | { type: 'QUEST_COMPLETED'; questId: string };
@@ -1013,6 +1014,15 @@ export function executeDialogueActions(
           events.push({ type: 'unlockDialogue', npcId, dialogueId: action.key });
         }
         break;
+      case 'learnProfession':
+      case 'learn_profession': {
+        const professionId = String(action.professionId ?? action.key ?? action.value ?? '').trim();
+        if (professionId) {
+          intents.push({ type: 'LEARN_PROFESSION', professionId });
+          logs.push(`Profession unlocked: ${professionId}`);
+        }
+        break;
+      }
       default:
         logs.push(`Unhandled action: ${action.type}`);
         break;

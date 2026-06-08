@@ -58,6 +58,7 @@ export type ResourceKind =
   | 'herb_patch'
   | 'fishing_spot'
   | 'hunting_ground'
+  | 'forest'
   | 'other';
 
 export interface RegionCell {
@@ -164,6 +165,12 @@ export interface WorldMapZone {
   stateSprites?: LocationStateSprites;
   music?: WorldAudioCue;
   ambientSound?: WorldAudioCue;
+  forestId?: string;
+  biomeId?: string;
+  treePool?: string[];
+  woodcuttingTier?: number;
+  requiresProfession?: string;
+  isProfessionZone?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -229,6 +236,12 @@ export interface ZoneEditorDraft {
   musicUrls: string;
   ambientSoundAssetId: string;
   ambientSoundUrl: string;
+  forestId: string;
+  biomeId: string;
+  treePool: string;
+  woodcuttingTier: number | null;
+  requiresProfession: string;
+  isProfessionZone: boolean;
   createdAt: number;
   updatedAt: number;
   selectedPointIndex: number | null;
@@ -345,6 +358,12 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     musicUrls: '',
     ambientSoundAssetId: '',
     ambientSoundUrl: '',
+    forestId: '',
+    biomeId: '',
+    treePool: '',
+    woodcuttingTier: null,
+    requiresProfession: '',
+    isProfessionZone: false,
     createdAt: now,
     updatedAt: now,
     selectedPointIndex: null,
@@ -434,6 +453,12 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     musicUrls: joinListField(zone.music?.urls),
     ambientSoundAssetId: zone.ambientSound?.assetId ?? '',
     ambientSoundUrl: zone.ambientSound?.url ?? '',
+    forestId: zone.forestId ?? '',
+    biomeId: zone.biomeId ?? '',
+    treePool: (zone.treePool ?? []).join(', '),
+    woodcuttingTier: zone.woodcuttingTier ?? null,
+    requiresProfession: zone.requiresProfession ?? '',
+    isProfessionZone: zone.isProfessionZone === true,
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
     selectedPointIndex: null,
@@ -527,6 +552,12 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     kingdomId: draft.kingdomId.trim() || undefined,
     cityId: draft.cityId.trim() || undefined,
     linkedLocationId: draft.linkedLocationId.trim() || undefined,
+    forestId: draft.forestId.trim() || undefined,
+    biomeId: draft.biomeId.trim() || undefined,
+    treePool: draft.treePool.trim() ? draft.treePool.split(',').map((entry) => entry.trim()).filter(Boolean) : undefined,
+    woodcuttingTier: draft.woodcuttingTier ?? undefined,
+    requiresProfession: draft.requiresProfession.trim() || undefined,
+    isProfessionZone: draft.isProfessionZone || undefined,
     subtype: draft.subtype.trim() || undefined,
     currentState: draft.currentState.trim() || undefined,
     hidden: draft.hidden || undefined,

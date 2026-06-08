@@ -150,6 +150,17 @@ export interface ProfessionBranch {
   requiredBranchIds?: string[];
   locksBranchIds?: string[];
   isFinalBranch?: boolean;
+  icon?: string;
+  iconImageRef?:
+    | {
+      type: 'image';
+      src: string;
+    }
+    | {
+      type: 'tileset';
+      sheetId: string;
+      frame: number;
+    };
   isEnabled: boolean;
   createdAt?: string;
   updatedAt?: string;

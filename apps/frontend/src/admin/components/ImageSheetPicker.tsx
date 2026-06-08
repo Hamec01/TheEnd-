@@ -208,6 +208,41 @@ export function ImageSheetPicker({
     }
   }
 
+  const deletableImageId = useMemo(() => {
+    if (sourceType === 'image') {
+      return imageSrc;
+    }
+    if (sourceType === 'tileset' && activeSheet) {
+      return activeSheet.src;
+    }
+    return '';
+  }, [sourceType, imageSrc, activeSheet]);
+
+  const isDeletable = useMemo(() => {
+    if (!deletableImageId) return false;
+    return runtimeImages.some((img) => img.id === deletableImageId);
+  }, [deletableImageId, runtimeImages]);
+
+  async function handleDeleteImage() {
+    if (!deletableImageId) return;
+    if (!window.confirm(`Вы уверены, что хотите навсегда удалить изображение '${deletableImageId}' с сервера? Это действие сотрет файл на диске.`)) {
+      return;
+    }
+
+    try {
+      await imageService.delete(deletableImageId);
+      onChange(undefined);
+      setSheetsVersion((current) => current + 1);
+      const message = `Изображение '${deletableImageId}' удалено с сервера.`;
+      setInlineStatus(message);
+      onStatus?.(message);
+    } catch (error) {
+      const message = translateAdminErrorMessage((error as Error).message);
+      setInlineStatus(message);
+      onStatus?.(message);
+    }
+  }
+
   return (
     <section className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -215,7 +250,18 @@ export function ImageSheetPicker({
           <h4 style={{ margin: 0 }}>{label}</h4>
           {hint ? <p className="muted" style={{ margin: '6px 0 0' }}>{hint}</p> : null}
         </div>
-        <button type="button" onClick={() => onChange(undefined)}>Сбросить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {isDeletable ? (
+            <button
+              type="button"
+              style={{ background: 'var(--danger)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' }}
+              onClick={handleDeleteImage}
+            >
+              Удалить файл
+            </button>
+          ) : null}
+          <button type="button" onClick={() => onChange(undefined)}>Сбросить</button>
+        </div>
       </div>
 
       <div className="admin-form-grid" style={{ marginTop: 12 }}>

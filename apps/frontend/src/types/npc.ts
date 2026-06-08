@@ -128,6 +128,11 @@ export interface NpcDefinition {
 
   conditions?: NpcCondition[];
 
+  professionTrainer?: string;
+  merchantId?: string;
+  workshopId?: string;
+  services?: string[];
+
   createdAt: string;
   updatedAt: string;
 }

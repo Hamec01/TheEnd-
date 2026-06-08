@@ -28,6 +28,7 @@ import { SoundsPage } from './pages/SoundsPage';
 import { VisualFxPage } from './pages/VisualFxPage';
 import { WorldSimulationAdmin } from './pages/WorldSimulationAdmin';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
+import { LivingWorldPage } from './pages/LivingWorldPage';
 
 interface AdminAppProps {
   currentPath: string;
@@ -58,6 +59,8 @@ type AdminRoute =
   | '/admin/backup'
   | '/admin/world-sim'
   | '/admin/sounds'
+  | '/admin/biomes'
+  | '/admin/trees'
   | '/admin/professions';
 
 function normalizeAdminPath(path: string): AdminRoute {
@@ -85,6 +88,8 @@ function normalizeAdminPath(path: string): AdminRoute {
     '/admin/backup',
     '/admin/world-sim',
     '/admin/sounds',
+    '/admin/biomes',
+    '/admin/trees',
     '/admin/professions',
   ]);
   return allowed.has(path as AdminRoute) ? (path as AdminRoute) : '/admin';
@@ -139,11 +144,15 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       case '/admin/backup':
         return 'Backup / Content Tools';
       case '/admin/world-sim':
-        return '🌍 Живой мир';
+        return '🌍 Симуляция мира';
       case '/admin/sounds':
         return '🎵 Звуки';
       case '/admin/professions':
         return '💼 Карьера';
+      case '/admin/biomes':
+        return '🌍 Живой мир';
+      case '/admin/trees':
+        return '🌍 Живой мир';
       default:
         return 'Обзор';
     }
@@ -279,6 +288,12 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/professions':
       page = <ProfessionsPage />;
+      break;
+    case '/admin/biomes':
+      page = <LivingWorldPage onNavigate={onNavigate} />;
+      break;
+    case '/admin/trees':
+      page = <LivingWorldPage initialTab="trees" onNavigate={onNavigate} />;
       break;
     default:
       page = <DashboardPage />;

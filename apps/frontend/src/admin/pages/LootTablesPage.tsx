@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { AdminItem, LootTable } from '../../services/content/models';
-import { downloadCollectionJson } from '../../services/content/adminJsonImportExport';
+import { downloadCollectionJson, type JsonImportMode } from '../../services/content/adminJsonImportExport';
 import { itemsService } from '../../services/content/itemsService';
 import { extractRawLootTablesFromImportJson, importLootTablesFromJsonEntries, lootTablesService, validateLootTable } from '../../services/content/lootTablesService';
 import { uid } from '../../services/content/storage';
@@ -12,7 +12,17 @@ import {
   translateLootSourceType,
 } from '../adminUi';
 
-const LOOT_SOURCE_TYPES: LootTable['sourceType'][] = ['npc', 'monster', 'chest', 'region', 'quest', 'merchant_special'];
+const LOOT_SOURCE_TYPES: LootTable['sourceType'][] = [
+  'monster',
+  'tree',
+  'plant',
+  'beast',
+  'fish',
+  'chest',
+  'event',
+  'resource_node',
+  'quest'
+];
 
 function emptyLootTable(): LootTable {
   const now = new Date().toISOString();
@@ -34,6 +44,7 @@ export function LootTablesPage() {
   const [draft, setDraft] = useState<LootTable>(emptyLootTable());
   const [status, setStatus] = useState('Готово');
   const [isImporting, setIsImporting] = useState(false);
+  const [importMode, setImportMode] = useState<JsonImportMode>('addOnly');
   const importFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -66,15 +77,22 @@ export function LootTablesPage() {
       return;
     }
 
+    if (importMode === 'replaceAll') {
+      if (!window.confirm('ВНИМАНИЕ: это полностью заменит все записи в этом разделе. Старые данные будут удалены. Продолжить?')) {
+        return;
+      }
+    }
+
     setIsImporting(true);
     try {
       const text = await file.text();
       const payload = JSON.parse(text) as unknown;
       const entries = extractRawLootTablesFromImportJson(payload);
-      const result = await importLootTablesFromJsonEntries(entries);
+      const result = await importLootTablesFromJsonEntries(entries, importMode);
       await refresh();
       const parts = [
         result.created.length ? `создано: ${result.created.length}` : null,
+        result.updated.length ? `обновлено: ${result.updated.length}` : null,
         result.skippedExisting.length ? `пропущено существующих: ${result.skippedExisting.length}` : null,
         result.errors.length ? `ошибок: ${result.errors.length}` : null,
       ].filter(Boolean);
@@ -171,11 +189,21 @@ export function LootTablesPage() {
   return (
     <div className="admin-two-col">
       <section className="admin-list-panel">
-        <div className="admin-list-tools">
-          <button onClick={exportJson}>Экспорт JSON</button>
-          <button disabled={isImporting} onClick={() => importFileRef.current?.click()}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
-          <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
-          <button onClick={() => { setSelectedId(null); setDraft(emptyLootTable()); }}>Новая таблица добычи</button>
+        <div className="admin-list-tools" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', padding: '0.5rem', background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button onClick={exportJson} style={{ padding: '0.4rem 0.8rem' }}>Экспорт JSON</button>
+            <button disabled={isImporting} onClick={() => importFileRef.current?.click()} style={{ padding: '0.4rem 0.8rem' }}>{isImporting ? 'Импорт...' : 'Импорт JSON'}</button>
+            <input ref={importFileRef} type="file" accept="application/json,.json" className="visually-hidden" onChange={handleImportFile} />
+            <button onClick={() => { setSelectedId(null); setDraft(emptyLootTable()); }} style={{ padding: '0.4rem 0.8rem' }}>Новая таблица добычи</button>
+          </div>
+          <label style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <span>Режим импорта:</span>
+            <select value={importMode} onChange={(e) => setImportMode(e.target.value as JsonImportMode)} style={{ padding: '0.2rem', flex: 1, minWidth: '120px' }}>
+              <option value="addOnly">Добавить новые (Add only new)</option>
+              <option value="merge">Обновить и добавить новые (Merge/update)</option>
+              <option value="replaceAll">Полная замена (Replace all) ⚠️</option>
+            </select>
+          </label>
         </div>
         <div className="admin-scroll-list">
           {tables.map((table) => (

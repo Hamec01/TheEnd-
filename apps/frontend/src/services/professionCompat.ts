@@ -3,7 +3,7 @@ import { normalizePlayerProfessionsState, type PlayerProfessionsState, type Prof
 const LEGACY_PROFESSION_ALIASES: Record<ProfessionId, readonly string[]> = {
   mining: ['miner', 'mining'],
   blacksmithing: ['blacksmith'],
-  carpentry: ['carpenter'],
+  carpenter: ['carpentry'],
   leatherworking: ['leatherworker'],
   jewelcrafting: ['jeweler'],
   runecrafting: ['runecrafter'],
@@ -46,7 +46,7 @@ function toProfessionId(value: string): ProfessionId | null {
   const normalized = normalizeId(value);
   if (normalized === 'mining'
     || normalized === 'blacksmithing'
-    || normalized === 'carpentry'
+    || normalized === 'carpenter'
     || normalized === 'leatherworking'
     || normalized === 'jewelcrafting'
     || normalized === 'runecrafting'

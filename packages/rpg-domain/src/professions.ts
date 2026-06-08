@@ -1,7 +1,7 @@
 export type ProfessionId =
   | 'mining'
   | 'blacksmithing'
-  | 'carpentry'
+  | 'carpenter'
   | 'leatherworking'
   | 'jewelcrafting'
   | 'runecrafting'
@@ -91,7 +91,7 @@ export const PROFESSION_DEFINITIONS: ProfessionDefinition[] = [
     isEnabled: true,
   },
   {
-    id: 'carpentry',
+    id: 'carpenter',
     name: 'Плотник',
     description: 'Работа с древесиной, инструментами и конструкциями.',
     category: 'crafting',
@@ -234,10 +234,13 @@ export function normalizePlayerProfessionsState(raw: unknown): PlayerProfessions
     }
 
     const row = entry as Record<string, unknown>;
-    const professionId = row.professionId;
+    let professionId = String(row.professionId ?? '').trim().toLowerCase();
+    if (professionId === 'carpentry') {
+      professionId = 'carpenter';
+    }
     if (professionId !== 'mining'
       && professionId !== 'blacksmithing'
-      && professionId !== 'carpentry'
+      && professionId !== 'carpenter'
       && professionId !== 'leatherworking'
       && professionId !== 'jewelcrafting'
       && professionId !== 'runecrafting'

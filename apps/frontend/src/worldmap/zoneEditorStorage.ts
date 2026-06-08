@@ -421,11 +421,20 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
       || zone.resourceKind === 'herb_patch'
       || zone.resourceKind === 'fishing_spot'
       || zone.resourceKind === 'hunting_ground'
+      || zone.resourceKind === 'forest'
       || zone.resourceKind === 'other'
         ? zone.resourceKind
         : undefined,
     mineId: zone.mineId ? String(zone.mineId) : undefined,
     professionId: zone.professionId ? String(zone.professionId) : undefined,
+    forestId: zone.forestId ? String(zone.forestId) : undefined,
+    biomeId: zone.biomeId ? String(zone.biomeId) : undefined,
+    treePool: Array.isArray(zone.treePool)
+      ? zone.treePool.filter((entry): entry is string => typeof entry === 'string')
+      : undefined,
+    woodcuttingTier: isFiniteNumber(zone.woodcuttingTier) ? zone.woodcuttingTier : undefined,
+    requiresProfession: zone.requiresProfession ? String(zone.requiresProfession) : undefined,
+    isProfessionZone: zone.isProfessionZone === true || undefined,
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,
     editorLayer:

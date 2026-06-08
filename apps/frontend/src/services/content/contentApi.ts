@@ -30,6 +30,8 @@ import type {
   RuneComplex,
   SoundDefinition,
   StoredImage,
+  TreeDefinition,
+  BiomeDefinition,
 } from './models';
 import { notifyContentSync } from './contentSync';
 import { ensureLegacyContentMigrated } from './legacyContentMigration';
@@ -68,7 +70,9 @@ export type ContentCollectionName =
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
   | 'blacksmithItemWorkActions'
-  | 'sounds';
+  | 'sounds'
+  | 'trees'
+  | 'biomes';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -152,6 +156,8 @@ export interface ContentSnapshot {
   blacksmithItemTemplates: BlacksmithItemTemplate[];
   blacksmithItemWorkActions: BlacksmithItemWorkAction[];
   sounds: SoundDefinition[];
+  trees?: TreeDefinition[];
+  biomes?: BiomeDefinition[];
   worldMap: WorldMapContent;
 }
 

@@ -7,7 +7,7 @@ export interface JsonImportResult {
   errors: Array<{ id: string; message: string }>;
 }
 
-export type JsonImportMode = 'addOnly' | 'merge';
+export type JsonImportMode = 'addOnly' | 'merge' | 'replaceAll';
 
 export function formatExportStamp(): string {
   const now = new Date();
@@ -76,15 +76,31 @@ export async function importCollectionFromJsonEntries<T extends { id: string }>(
   getAll: () => Promise<T[]>;
   create: (value: T) => Promise<unknown>;
   update: (id: string, value: T) => Promise<unknown>;
+  delete?: (id: string) => Promise<unknown>;
   mode?: JsonImportMode;
 }): Promise<JsonImportResult> {
   const mode = params.mode ?? 'addOnly';
-  const existingIds = new Set((await params.getAll()).map((entry) => entry.id));
-  const seen = new Set<string>();
   const created: string[] = [];
   const skippedExisting: string[] = [];
   const updated: string[] = [];
   const errors: Array<{ id: string; message: string }> = [];
+
+  if (mode === 'replaceAll') {
+    if (!params.delete) {
+      throw new Error('Удаление (delete) обязательно для режима replaceAll.');
+    }
+    const current = await params.getAll();
+    for (const entry of current) {
+      try {
+        await params.delete(entry.id);
+      } catch (err) {
+        errors.push({ id: entry.id, message: `Ошибка удаления при полной замене: ${(err as Error).message}` });
+      }
+    }
+  }
+
+  const existingIds = new Set((await params.getAll()).map((entry) => entry.id));
+  const seen = new Set<string>();
 
   for (const raw of params.entries) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {

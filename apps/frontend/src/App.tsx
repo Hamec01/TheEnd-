@@ -670,6 +670,7 @@ function getGodmodeHelpLines(): string[] {
     'material add|remove <materialId> [qty] | resource add|remove <resourceId> [qty]',
     'teleport world | teleport city <cityId> | teleport location <locationId>',
     'mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead',
+    'carpenter game <woodcutting|sawing|workshop|branches> | carpenter <chop|saw|work|branch>',
     'panel open inventory|character|stats|skills|equipment|merchant|arena|map | panel close',
     'merchant open <merchantId> | merchant list [filter]',
     'battle map <battleMapId> | battle start [enemyCount] [battleMapId] | battle npc <npcId[,npcId2]> [battleMapId]',
@@ -1107,6 +1108,15 @@ interface AppProps {
   onNavigate?: (path: PlayerPath, options?: { replace?: boolean }) => void;
 }
 
+type GodmodeTravelRequest = {
+  mode: 'world' | 'city' | 'location' | 'mine' | 'carpenter_game';
+  targetId?: string | null;
+  mineAction?: 'open' | 'close' | 'finish';
+  mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
+  carpenterGameType?: 'woodcutting' | 'sawing' | 'workshop' | 'branches' | null;
+  token: number;
+};
+
 type KingdomKey = 'luminor' | 'artalon' | 'kriantar' | 'terimia' | 'argos';
 
 const HUMAN_ORIGIN_TO_KINGDOM_KEY: Partial<Record<string, KingdomKey>> = {
@@ -1128,7 +1138,7 @@ const KINGDOM_KEY_ALIASES: Record<string, KingdomKey> = {
   argos: 'argos',
 };
 
-type GodmodeTravelRequest = {
+type GodmodeTravelRequest_Dup = {
   mode: 'world' | 'city' | 'location' | 'mine';
   targetId?: string | null;
   mineAction?: 'open' | 'close' | 'finish';
@@ -3857,6 +3867,18 @@ function applyHubState(hub: HubStatePayload): void {
       });
     };
 
+    const queueCarpenterGameRequest = (
+      carpenterGameType: NonNullable<GodmodeTravelRequest['carpenterGameType']>,
+    ): void => {
+      onNavigate?.('/map');
+      setOverlayPanel(null);
+      setGodmodeTravelRequest({
+        mode: 'carpenter_game',
+        carpenterGameType,
+        token: Date.now(),
+      });
+    };
+
     const loadBlacksmithRecipes = async () => {
       const recipes = await craftingRecipesService.getAll();
       return recipes.filter((recipe) => (
@@ -4822,6 +4844,37 @@ function applyHubState(hub: HubStatePayload): void {
         }
 
         throw new Error('Use: mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead.');
+      }
+
+      if (head === 'carpenter') {
+        const gameType = String(action ?? '').trim().toLowerCase();
+        if (gameType === 'game') {
+          const subGameType = String(rest[0] ?? '').trim().toLowerCase();
+          if (!['woodcutting', 'sawing', 'workshop', 'branches'].includes(subGameType)) {
+            throw new Error('Use: carpenter game woodcutting|sawing|workshop|branches.');
+          }
+          queueCarpenterGameRequest(subGameType as any);
+          return { ok: true, lines: [`Carpenter game request queued: ${subGameType}.`] };
+        }
+
+        const mappedType: Record<string, 'woodcutting' | 'sawing' | 'workshop' | 'branches'> = {
+          woodcutting: 'woodcutting',
+          chop: 'woodcutting',
+          sawing: 'sawing',
+          saw: 'sawing',
+          workshop: 'workshop',
+          work: 'workshop',
+          branches: 'branches',
+          branch: 'branches',
+        };
+
+        const resolvedGame = mappedType[gameType];
+        if (!resolvedGame) {
+          throw new Error('Use: carpenter game <woodcutting|sawing|workshop|branches> OR carpenter <woodcutting|sawing|workshop|branches|chop|saw|work|branch>.');
+        }
+
+        queueCarpenterGameRequest(resolvedGame);
+        return { ok: true, lines: [`Carpenter game request queued: ${resolvedGame}.`] };
       }
 
       if (head === 'stat') {

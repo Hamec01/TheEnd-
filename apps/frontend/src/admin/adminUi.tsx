@@ -41,6 +41,10 @@ export function translateItemType(value: ItemType): string {
       return 'Квестовый';
     case 'misc':
       return 'Разное';
+    case 'profession_tool':
+      return 'Инструменты профессий';
+    case 'profession_transport':
+      return 'Транспорт профессий';
     default:
       return value;
   }
@@ -254,6 +258,18 @@ export function translateLootSourceType(value: LootSourceType): string {
       return 'Квест';
     case 'merchant_special':
       return 'Особый торговец';
+    case 'tree':
+      return 'Дерево';
+    case 'plant':
+      return 'Растение';
+    case 'beast':
+      return 'Животное';
+    case 'fish':
+      return 'Рыба';
+    case 'event':
+      return 'Событие';
+    case 'resource_node':
+      return 'Ресурсная нода';
     default:
       return value;
   }
