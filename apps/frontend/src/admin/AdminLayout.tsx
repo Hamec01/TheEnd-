@@ -20,7 +20,7 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin', label: 'Overview' },
       { path: '/admin/backup', label: 'Backup' },
       { path: '/admin/sounds', label: '🎵 Звуки' },
-      { path: '/admin/world-sim', label: '🌍 Живой мир' },
+      { path: '/admin/world-sim', label: '🌍 Симуляция мира' },
     ],
   },
   {
@@ -50,7 +50,8 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: st
       { path: '/admin/locations', label: 'Локации' },
       { path: '/admin/zone-editor', label: 'Zone Editor' },
       { path: '/admin/battle-maps', label: 'Battle Maps' },
-      { path: '/admin/world-sim', label: '🌍 Живой мир' },
+      { path: '/admin/world-sim', label: '🌍 Симуляция мира' },
+      { path: '/admin/biomes', label: '🌍 Живой мир' },
     ],
   },
   {

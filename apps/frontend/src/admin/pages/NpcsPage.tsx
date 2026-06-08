@@ -1155,6 +1155,55 @@ export function NpcsPage() {
                   {traderOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.city})</option>)}
                 </select>
               </label>
+              <label>
+                <AdminFieldLabel label="Merchant ID" hint="Идентификатор магазина для услуг NPC." />
+                <select value={draft.merchantId ?? ''} onChange={(event) => patch({ merchantId: event.target.value || undefined })}>
+                  <option value="">Не задано</option>
+                  {traderOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} ({entry.city})</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Мастер-тренер профессии" hint="Тип профессии, которой обучает NPC." />
+                <select value={draft.professionTrainer ?? ''} onChange={(event) => patch({ professionTrainer: event.target.value || undefined })}>
+                  <option value="">Не обучает</option>
+                  <option value="carpenter">Плотник (carpenter)</option>
+                  <option value="mining">Горняк (mining)</option>
+                  <option value="blacksmithing">Кузнец (blacksmithing)</option>
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="ID Мастерской" hint="Например: workshop_carpenter_argos_basic" />
+                <input value={draft.workshopId ?? ''} onChange={(event) => patch({ workshopId: event.target.value || undefined })} />
+              </label>
+              <div style={{ gridColumn: 'span 2', marginTop: '1rem' }}>
+                <AdminFieldLabel label="Доступные услуги NPC (services)" hint="Checklist услуг, отображаемых в диалоге персонажа" />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  {[
+                    { value: 'learn_profession', label: 'Обучить профессии плотника (learn_profession)' },
+                    { value: 'buy_tools', label: 'Купить инструменты (buy_tools)' },
+                    { value: 'rent_cart', label: 'Арендовать повозку (rent_cart)' },
+                    { value: 'buy_cart', label: 'Купить повозку (buy_cart)' },
+                    { value: 'open_workshop', label: 'Войти в мастерскую (open_workshop)' },
+                  ].map((service) => {
+                    const checked = (draft.services ?? []).includes(service.value);
+                    return (
+                      <label key={service.value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const nextServices = checked
+                              ? (draft.services ?? []).filter((s) => s !== service.value)
+                              : [...(draft.services ?? []), service.value];
+                            patch({ services: nextServices });
+                          }}
+                        />
+                        <span>{service.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <div className="admin-actions-row">

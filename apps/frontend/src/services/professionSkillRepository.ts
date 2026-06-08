@@ -932,14 +932,300 @@ function createDefaultBlacksmithSkills(): ProfessionSkill[] {
   ];
 }
 
+function createDefaultCarpentrySkills(): ProfessionSkill[] {
+  const now = createTimestamp();
+  const skill = (params: {
+    id: string;
+    name: string;
+    description: string;
+    requiredLevel: number;
+    skillPointCost: number;
+    branchId: string;
+    requiredSkillIds?: string[];
+    requiredBranchIds?: string[];
+    effects?: ProfessionSkillEffect[];
+    positionX: number;
+    positionY: number;
+  }): ProfessionSkill => ({
+    id: params.id,
+    professionId: 'carpenter',
+    name: params.name,
+    description: params.description,
+    requiredLevel: params.requiredLevel,
+    requiredSkillIds: params.requiredSkillIds ?? [],
+    requiredBranchIds: params.requiredBranchIds ?? [],
+    branchId: params.branchId,
+    skillPointCost: params.skillPointCost,
+    effects: params.effects ?? [],
+    positionX: params.positionX,
+    positionY: params.positionY,
+    isEnabled: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const fx = (id: string, type: string, value?: number, valueType: ProfessionSkillEffectValueType = 'flat', params?: Record<string, unknown>): ProfessionSkillEffect => ({
+    id,
+    type,
+    value,
+    valueType,
+    params,
+  });
+
+  return [
+    // 1. Logging Branch (X = 200)
+    skill({
+      id: 'carpentry_skill_firm_swing',
+      name: 'Верный замах',
+      description: 'Плотник учится бить не силой, а правильным углом. Снижает затраты stamina при рубке на 20% и уменьшает износ топора.',
+      requiredLevel: 1,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_woodcutting',
+      effects: [
+        fx('carpentry_firm_swing_stamina', 'woodcutting_stamina_cost_modifier', -20, 'percent'),
+        fx('carpentry_firm_swing_durability', 'axe_durability_loss_modifier', -10, 'percent')
+      ],
+      positionX: 200,
+      positionY: 900
+    }),
+    skill({
+      id: 'carpentry_skill_tree_reading',
+      name: 'Чтение ствола',
+      description: 'По наклону ствола, трещинам коры и ветру мастер понимает, куда дерево хочет лечь. Снижает шанс опасного падения на 10%.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_woodcutting',
+      requiredSkillIds: ['carpentry_skill_firm_swing'],
+      effects: [
+        fx('carpentry_tree_reading_risk', 'fall_risk_modifier', -10, 'percent')
+      ],
+      positionX: 200,
+      positionY: 800
+    }),
+    skill({
+      id: 'carpentry_skill_lumberjack_wedge',
+      name: 'Клин лесоруба',
+      description: 'Позволяет использовать клинья. Снижает риск потери части древесины и помогает валить крупные деревья.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_woodcutting',
+      requiredSkillIds: ['carpentry_skill_firm_swing'],
+      effects: [
+        fx('carpentry_lumberjack_wedge_efficiency', 'woodcutting_efficiency_bonus', 15, 'percent')
+      ],
+      positionX: 200,
+      positionY: 700
+    }),
+    skill({
+      id: 'carpentry_skill_silent_felling',
+      name: 'Тихая валка',
+      description: 'Снижает шанс привлечь монстров и диких зверей шумом валки леса.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_woodcutting',
+      requiredSkillIds: ['carpentry_skill_tree_reading'],
+      effects: [
+        fx('carpentry_silent_felling_noise', 'felling_noise_reduction', 25, 'percent')
+      ],
+      positionX: 200,
+      positionY: 600
+    }),
+    skill({
+      id: 'carpentry_skill_clean_cut',
+      name: 'Чистый сруб',
+      description: '+10% шанс получить качественное бревно и -10% шанс получить повреждённую древесину.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_woodcutting',
+      requiredSkillIds: ['carpentry_skill_silent_felling'],
+      effects: [
+        fx('carpentry_clean_cut_quality', 'log_quality_bonus', 10, 'percent')
+      ],
+      positionX: 200,
+      positionY: 500
+    }),
+    skill({
+      id: 'carpentry_skill_master_hand',
+      name: 'Рука мастера',
+      description: 'Топор теряет на 15% меньше прочности при рубке, а сама рубка занимает меньше действий.',
+      requiredLevel: 5,
+      skillPointCost: 2,
+      branchId: 'carpentry_branch_woodcutting',
+      requiredSkillIds: ['carpentry_skill_clean_cut'],
+      effects: [
+        fx('carpentry_master_hand_durability', 'axe_durability_save_chance', 15, 'percent')
+      ],
+      positionX: 200,
+      positionY: 400
+    }),
+
+    // 2. Sawing Branch (X = 500)
+    skill({
+      id: 'carpentry_skill_even_sawing',
+      name: 'Ровный распил',
+      description: 'Позволяет получать на 1 дополнительную доску больше с некоторых брёвен.',
+      requiredLevel: 1,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      effects: [
+        fx('carpentry_even_sawing_yield', 'sawing_extra_plank_chance', 20, 'percent')
+      ],
+      positionX: 500,
+      positionY: 900
+    }),
+    skill({
+      id: 'carpentry_skill_gentle_saw',
+      name: 'Бережная пила',
+      description: 'Пила теряет на 10% меньше прочности при распиле.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_even_sawing'],
+      effects: [
+        fx('carpentry_gentle_saw_save', 'saw_durability_save_chance', 10, 'percent')
+      ],
+      positionX: 500,
+      positionY: 800
+    }),
+    skill({
+      id: 'carpentry_skill_plank_marking',
+      name: 'Разметка доски',
+      description: 'Точная разметка перед распилом повышает количество получаемых материалов.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_even_sawing'],
+      effects: [
+        fx('carpentry_plank_marking_yield', 'sawing_yield_bonus', 10, 'percent')
+      ],
+      positionX: 500,
+      positionY: 700
+    }),
+    skill({
+      id: 'carpentry_skill_dry_core',
+      name: 'Сухая сердцевина',
+      description: 'Повышает шанс получить качественную древесину при распиле брёвен.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_gentle_saw'],
+      effects: [
+        fx('carpentry_dry_core_quality', 'sawing_quality_bonus', 15, 'percent')
+      ],
+      positionX: 500,
+      positionY: 600
+    }),
+    skill({
+      id: 'carpentry_skill_sawmill_eye',
+      name: 'Лесопильный глаз',
+      description: 'Мастер видит, какое бревно лучше пустить на доски, а какое — на строительные балки.',
+      requiredLevel: 4,
+      skillPointCost: 2,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_dry_core'],
+      effects: [
+        fx('carpentry_sawmill_eye_hint', 'sawing_optimal_hint', 1, 'boolean')
+      ],
+      positionX: 500,
+      positionY: 500
+    }),
+
+    // 3. Joinery Branch (X = 800)
+    skill({
+      id: 'carpentry_skill_basic_handle',
+      name: 'Простая рукоять',
+      description: 'Открывает создание базовых деревянных рукоятей для ножей, топоров, молотов и древков копий.',
+      requiredLevel: 1,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      effects: [
+        fx('carpentry_basic_handle_unlock', 'unlock_recipe_group', undefined, 'boolean', { group: 'basic_handles' })
+      ],
+      positionX: 800,
+      positionY: 900
+    }),
+    skill({
+      id: 'carpentry_skill_apprentice_shaft',
+      name: 'Древко ученика',
+      description: 'Открывает создание простых магических палочек и древков для учебных посохов без магии.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_basic_handle'],
+      effects: [
+        fx('carpentry_apprentice_shaft_unlock', 'unlock_recipe_group', undefined, 'boolean', { group: 'apprentice_shafts' })
+      ],
+      positionX: 800,
+      positionY: 800
+    }),
+    skill({
+      id: 'carpentry_skill_dry_plank',
+      name: 'Сухая доска',
+      description: 'Снижает шанс брака при создании мебели и открывает сушку древесины.',
+      requiredLevel: 2,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_basic_handle'],
+      effects: [
+        fx('carpentry_dry_plank_save', 'joinery_failure_reduction', 10, 'percent')
+      ],
+      positionX: 800,
+      positionY: 700
+    }),
+    skill({
+      id: 'carpentry_skill_master_frame',
+      name: 'Каркас мастера',
+      description: 'Открывает создание качественных каркасов для сундуков, кроватей, столов и дверей.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_apprentice_shaft'],
+      effects: [
+        fx('carpentry_master_frame_unlock', 'unlock_recipe_group', undefined, 'boolean', { group: 'master_frames' })
+      ],
+      positionX: 800,
+      positionY: 600
+    }),
+    skill({
+      id: 'carpentry_skill_ladder_maker',
+      name: 'Лестничий',
+      description: 'Открывает создание укреплённых строительных балок, перекрытий, мостков и шахтных подпорок.',
+      requiredLevel: 4,
+      skillPointCost: 2,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_master_frame'],
+      effects: [
+        fx('carpentry_ladder_maker_unlock', 'unlock_recipe_group', undefined, 'boolean', { group: 'ladders_and_beams' })
+      ],
+      positionX: 800,
+      positionY: 500
+    }),
+    skill({
+      id: 'carpentry_skill_enchanting_base',
+      name: 'Основа для чар',
+      description: 'Открывает создание элитных деревянных основ посохов и жезлов для зачарования магами.',
+      requiredLevel: 5,
+      skillPointCost: 2,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_ladder_maker'],
+      effects: [
+        fx('carpentry_enchanting_base_unlock', 'unlock_recipe_group', undefined, 'boolean', { group: 'enchanting_bases' })
+      ],
+      positionX: 800,
+      positionY: 400
+    })
+  ];
+}
+
 function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
   const defaults = [
     ...createDefaultProfessionSkills(),
     ...createDefaultBlacksmithSkills(),
+    ...createDefaultCarpentrySkills(),
   ];
   const defaultIds = new Set(defaults.map((entry) => entry.id));
   const existingById = new Map(skills.map((entry) => [entry.id, entry]));
-  const preserved = skills.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing');
+  const preserved = skills.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing' && entry.professionId !== 'carpenter');
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
     const defaultIcon = DEFAULT_MINING_SKILL_ICON_BY_NAME[entry.name];
@@ -951,14 +1237,17 @@ function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
       };
     }
     return {
-      ...existing,
       ...entry,
+      ...existing,
       icon: existing.icon?.trim() ? existing.icon : (entry.icon?.trim() ? entry.icon : defaultIcon),
       iconImageRef: existing.iconImageRef ?? entry.iconImageRef,
       positionX: existing.positionX ?? entry.positionX,
       positionY: existing.positionY ?? entry.positionY,
+      requiredSkillIds: existing.requiredSkillIds ?? entry.requiredSkillIds,
+      requiredBranchIds: existing.requiredBranchIds ?? entry.requiredBranchIds,
+      effects: existing.effects ?? entry.effects,
       createdAt: existing.createdAt ?? entry.createdAt,
-      updatedAt: entry.updatedAt ?? existing.updatedAt,
+      updatedAt: existing.updatedAt ?? entry.updatedAt,
     };
   });
   return [...preserved, ...mergedDefaults];
@@ -968,6 +1257,7 @@ function readStorage(): ProfessionSkill[] {
   const defaults = [
     ...createDefaultProfessionSkills(),
     ...createDefaultBlacksmithSkills(),
+    ...createDefaultCarpentrySkills(),
   ];
   if (typeof window === 'undefined') {
     return defaults;
@@ -1022,6 +1312,7 @@ export function resetProfessionSkillsToDefaults(): ProfessionSkill[] {
   const defaults = [
     ...createDefaultProfessionSkills(),
     ...createDefaultBlacksmithSkills(),
+    ...createDefaultCarpentrySkills(),
   ];
   writeStorage(defaults);
   return clone(defaults);

@@ -11,6 +11,9 @@ import { BlacksmithVisualEditor } from '../blacksmith/BlacksmithVisualEditor';
 import { MiningBlocksTab, MiningDepthsTab, MiningHazardsTab, MiningLootTab, MiningMinesTab, MiningToolsTab } from '../mining/MiningTabPlaceholders';
 import { ProfessionBranchEditor } from './ProfessionBranchEditor';
 import { ProfessionSkillEditor } from './ProfessionSkillEditor';
+import { CarpentryTreesTab } from './CarpentryTreesTab';
+import { CarpentryToolsTab } from './CarpentryToolsTab';
+import { CarpentryTransportTab } from './CarpentryTransportTab';
 import {
   downloadProfessionBundle,
   exportProfessionBundle,
@@ -35,7 +38,9 @@ type TabType =
   | 'stages'
   | 'quality'
   | 'visual'
-  | 'balance';
+  | 'balance'
+  | 'trees'
+  | 'transport';
 
 interface ProfessionEditorTabsProps {
   professionId: string;
@@ -60,6 +65,11 @@ const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: TabType; label: strin
     { id: 'quality', label: 'Качество' },
     { id: 'visual', label: 'Визуал' },
     { id: 'balance', label: 'XP / Баланс' },
+  ],
+  carpenter: [
+    { id: 'trees', label: 'Деревья' },
+    { id: 'tools', label: 'Инструменты' },
+    { id: 'transport', label: 'Транспорт' },
   ],
 };
 
@@ -265,6 +275,10 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           {professionId === 'blacksmithing' && activeTab === 'quality' ? <div className="tab-pane"><BlacksmithQualityEditor key={`quality:${contentRevision}`} /></div> : null}
           {professionId === 'blacksmithing' && activeTab === 'visual' ? <div className="tab-pane"><BlacksmithVisualEditor key={`visual:${contentRevision}`} /></div> : null}
           {professionId === 'blacksmithing' && activeTab === 'balance' ? <div className="tab-pane"><BlacksmithBalanceEditor key={`balance:${contentRevision}`} /></div> : null}
+
+          {professionId === 'carpenter' && activeTab === 'trees' ? <div className="tab-pane"><CarpentryTreesTab key={`trees:${contentRevision}`} /></div> : null}
+          {professionId === 'carpenter' && activeTab === 'tools' ? <div className="tab-pane"><CarpentryToolsTab key={`tools:${contentRevision}`} /></div> : null}
+          {professionId === 'carpenter' && activeTab === 'transport' ? <div className="tab-pane"><CarpentryTransportTab key={`transport:${contentRevision}`} /></div> : null}
         </div>
       </div>
 

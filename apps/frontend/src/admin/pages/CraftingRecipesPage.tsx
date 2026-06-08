@@ -48,7 +48,7 @@ const RECIPE_TYPES: CraftingRecipeType[] = [
 const PROFESSION_OPTIONS: Array<{ id: CraftingProfessionId; label: string }> = [
   { id: 'mining', label: 'Горняк' },
   { id: 'blacksmithing', label: 'Кузнец' },
-  { id: 'carpentry', label: 'Плотник' },
+  { id: 'carpenter', label: 'Плотник' },
   { id: 'leatherworking', label: 'Кожевник' },
   { id: 'jewelcrafting', label: 'Ювелир' },
   { id: 'runecrafting', label: 'Рунорез' },

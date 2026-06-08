@@ -41,6 +41,8 @@ type PhaserWorldMapCanvasProps = Pick<
   | 'lockedWorldEntityCoordinates'
   | 'discoveredLocationIds'
   | 'discoveredZoneIds'
+  | 'showProfessionResourceZones'
+  | 'selectedProfessionOverlay'
 >;
 
 interface WorldCamera {
@@ -67,6 +69,8 @@ interface WorldRendererSnapshot {
   lockedWorldEntityCoordinates?: { x: number; y: number } | null;
   discoveredLocationIds?: Set<string>;
   discoveredZoneIds?: Set<string>;
+  showProfessionResourceZones?: boolean;
+  selectedProfessionOverlay?: string;
   npcMovement: {
     speedScale: number;
     tweenMinMs: number;
@@ -253,6 +257,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
     }
 
     this.drawKingdomBorders(snapshot);
+    this.drawProfessionResourceZones(snapshot);
     this.drawLocationSprites(snapshot);
     this.drawHoverZone(snapshot);
     this.drawQuestMarkers(snapshot);
@@ -426,6 +431,25 @@ class PhaserWorldMapScene extends Phaser.Scene {
       this.mapGraphics.fillPath();
       this.mapGraphics.lineStyle(2, 0xf2d28f, 0.85);
       this.mapGraphics.strokePath();
+    }
+  }
+
+  private drawProfessionResourceZones(snapshot: WorldRendererSnapshot) {
+    if (snapshot.showProfessionResourceZones && snapshot.selectedProfessionOverlay === 'carpenter') {
+      if (!this.mapGraphics) {
+        return;
+      }
+      for (const zone of snapshot.zones) {
+        if (zone.resourceKind !== 'forest') {
+          continue;
+        }
+        if (this.drawZonePath(this.mapGraphics, zone, snapshot)) {
+          this.mapGraphics.fillStyle(0x4a7559, 0.25);
+          this.mapGraphics.fillPath();
+          this.mapGraphics.lineStyle(2, 0x8b5a2b, 0.6);
+          this.mapGraphics.strokePath();
+        }
+      }
     }
   }
 
@@ -1055,6 +1079,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
       lockedWorldEntityCoordinates,
       discoveredLocationIds,
       discoveredZoneIds,
+      showProfessionResourceZones: props.showProfessionResourceZones,
+      selectedProfessionOverlay: props.selectedProfessionOverlay,
       npcMovement: {
         speedScale: runtimeSettings.phaserNpcMoveSpeedScale,
         tweenMinMs: runtimeSettings.phaserNpcMoveTweenMinMs,
@@ -1069,6 +1095,8 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
     lockedWorldEntityId,
     discoveredLocationIds,
     discoveredZoneIds,
+    props.showProfessionResourceZones,
+    props.selectedProfessionOverlay,
     playNpcMarkers,
     playQuestMarkers,
     props.playerAvatarUrl,

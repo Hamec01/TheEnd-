@@ -21,7 +21,7 @@ import type {
 import type { QuestMarkerDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
 import type { WorldLocation } from '../types/location';
-import type { StoredImage } from '../services/content/models';
+import type { StoredImage, BiomeDefinition, TreeDefinition } from '../services/content/models';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import { loadMinesFromStorage } from '../services/miningRepository';
 import { audioService } from '../services/content/audioService';
@@ -102,6 +102,7 @@ const RESOURCE_KIND_OPTIONS: Array<{ value: ResourceKind | ''; label: string }> 
   { value: 'herb_patch', label: 'herb_patch' },
   { value: 'fishing_spot', label: 'fishing_spot' },
   { value: 'hunting_ground', label: 'hunting_ground' },
+  { value: 'forest', label: 'forest' },
   { value: 'other', label: 'other' },
 ];
 
@@ -193,6 +194,8 @@ interface ZoneEditorPanelProps {
   npcOptions?: NpcDefinition[];
   locationOptions?: WorldLocation[];
   locationPreviewImages?: StoredImage[];
+  biomes?: BiomeDefinition[];
+  trees?: TreeDefinition[];
   selectedNpcIdForPlacement?: string;
   onSelectNpcForPlacement?: (id: string) => void;
   onPlaceNpcAtCursor?: () => void;
@@ -310,6 +313,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     npcOptions = [],
     locationOptions = [],
     locationPreviewImages = [],
+    biomes = [],
+    trees = [],
     selectedNpcIdForPlacement = '',
     onSelectNpcForPlacement,
     onPlaceNpcAtCursor,
@@ -565,6 +570,21 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       ...patch,
       updatedAt: Date.now(),
     });
+  }
+
+  const activeTreeIds = useMemo(() => {
+    return (draft?.treePool ?? '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean);
+  }, [draft?.treePool]);
+
+  function handleToggleTreeInPool(treeId: string) {
+    if (!draft) return;
+    const nextTreeIds = activeTreeIds.includes(treeId)
+      ? activeTreeIds.filter(id => id !== treeId)
+      : [...activeTreeIds, treeId];
+    updateDraft({ treePool: nextTreeIds.join(', ') });
   }
 
   async function handleMusicPlaylistUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -1535,6 +1555,147 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
               />
             )}
           </label>
+        ) : null}
+        {draft?.resourceKind === 'forest' ? (
+          <>
+            <label>
+              <span>Forest Id</span>
+              <input
+                disabled={!draft}
+                value={draft?.forestId ?? ''}
+                onChange={(event) => updateDraft({ forestId: event.target.value })}
+                placeholder="forest_argos_west"
+              />
+            </label>
+            <label>
+              <span>Biome Id</span>
+              <select
+                disabled={!draft}
+                value={draft?.biomeId ?? ''}
+                onChange={(event) => {
+                  updateDraft({
+                    biomeId: event.target.value || undefined
+                  });
+                }}
+              >
+                <option value="">-- Выберите биом --</option>
+                {biomes.map(biome => (
+                  <option key={biome.id} value={biome.id}>{biome.name} ({biome.id})</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ margin: '0.5rem 0' }}>
+              <span style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Режим списка деревьев:</span>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    type="radio"
+                    disabled={!draft}
+                    checked={!draft?.treePool}
+                    onChange={() => updateDraft({ treePool: '' })}
+                  />
+                  <span>Использовать деревья из биома</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  <input
+                    type="radio"
+                    disabled={!draft}
+                    checked={!!draft?.treePool}
+                    onChange={() => {
+                      const selectedBiome = biomes.find(b => b.id === draft?.biomeId);
+                      const defaultPool = selectedBiome?.resourcePools?.forest?.length
+                        ? selectedBiome.resourcePools.forest
+                        : (selectedBiome?.defaultTreePool ?? []);
+                      updateDraft({ treePool: defaultPool.join(', ') || ' ' });
+                    }}
+                  />
+                  <span>Переопределить список деревьев</span>
+                </label>
+              </div>
+            </div>
+            {!draft?.treePool ? (
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--panel-border)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                <span className="muted" style={{ fontSize: '0.8rem' }}>Будут использованы следующие деревья из биома:</span>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                  {(() => {
+                    const selectedBiome = biomes.find(b => b.id === draft?.biomeId);
+                    const biomeTrees = selectedBiome?.resourcePools?.forest?.length
+                      ? selectedBiome.resourcePools.forest
+                      : (selectedBiome?.defaultTreePool ?? []);
+                    if (biomeTrees.length === 0) {
+                      return <span style={{ color: '#fc8181', fontSize: '0.85rem' }}>Нет деревьев в выбранном биоме!</span>;
+                    }
+                    return biomeTrees.map(treeId => {
+                      const t = trees.find(x => x.id === treeId);
+                      return (
+                        <span key={treeId} className="badge" style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.3rem', borderRadius: '4px', fontSize: '0.8rem' }}>
+                          {t ? t.name : treeId}
+                        </span>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            ) : (
+              <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+                <span>Tree Pool override</span>
+                <div
+                  style={{
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    border: '1px solid var(--panel-border)',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.5rem',
+                    marginTop: '0.25rem'
+                  }}
+                >
+                  {trees.map(tree => (
+                    <label key={tree.id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                      <input
+                        type="checkbox"
+                        disabled={!draft}
+                        checked={activeTreeIds.includes(tree.id)}
+                        onChange={() => handleToggleTreeInPool(tree.id)}
+                      />
+                      <span>{tree.name} <span className="muted" style={{ fontSize: '0.8rem' }}>({tree.id})</span></span>
+                    </label>
+                  ))}
+                  {trees.length === 0 && <span className="muted">Деревья не найдены.</span>}
+                </div>
+              </label>
+            )}
+            <label>
+              <span>Woodcutting Tier</span>
+              <input
+                type="number"
+                disabled={!draft}
+                value={draft?.woodcuttingTier ?? ''}
+                onChange={(event) => updateDraft({ woodcuttingTier: event.target.value ? parseInt(event.target.value) || 1 : null })}
+                placeholder="1"
+              />
+            </label>
+            <label>
+              <span>Requires Profession</span>
+              <input
+                disabled={!draft}
+                value={draft?.requiresProfession ?? ''}
+                onChange={(event) => updateDraft({ requiresProfession: event.target.value })}
+                placeholder="carpenter"
+              />
+            </label>
+            <label className="zone-editor-checkbox">
+              <input
+                type="checkbox"
+                disabled={!draft}
+                checked={draft?.isProfessionZone === true}
+                onChange={(event) => updateDraft({ isProfessionZone: event.target.checked })}
+              />
+              <span>Is Profession Zone</span>
+            </label>
+          </>
         ) : null}
         <label>
           <span>Profession Id</span>

@@ -440,7 +440,18 @@ export function getHiddenFieldsForLayer(layer: MapEditorLayer): string[] {
     hidden.push('requiredQuestId');
   }
   if (layer !== 'resources') {
-    hidden.push('resourceTableId', 'resourceKind', 'mineId', 'professionId');
+    hidden.push(
+      'resourceTableId',
+      'resourceKind',
+      'mineId',
+      'professionId',
+      'forestId',
+      'biomeId',
+      'treePool',
+      'woodcuttingTier',
+      'requiresProfession',
+      'isProfessionZone'
+    );
   }
   
   return hidden;

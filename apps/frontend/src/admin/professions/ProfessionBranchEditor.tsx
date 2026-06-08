@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ProfessionBranch } from '../../types/profession';
 import {
   loadProfessionBranchesFromStorage,
   saveProfessionBranchesToStorage,
 } from '../../services/professionBranchRepository';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { loadRuntimeImages } from '../../services/content/runtimeImageService';
+import type { StoredImage, GameImageRef } from '../../services/content/models';
 
 interface ProfessionBranchEditorProps {
   professions?: Array<{ id: string; name: string }>;
@@ -17,6 +21,11 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
   const [editForm, setEditForm] = useState<Partial<ProfessionBranch>>({});
   const [newFormOpen, setNewFormOpen] = useState(false);
   const [filterProfession, setFilterProfession] = useState<string>(filterByProfession || '');
+  const [images, setImages] = useState<StoredImage[]>([]);
+
+  useEffect(() => {
+    void loadRuntimeImages().then(setImages).catch(() => setImages([]));
+  }, []);
 
   const filteredBranches = (filterByProfession || filterProfession) ? branches.filter(b => b.professionId === (filterByProfession || filterProfession)) : branches;
 
@@ -84,6 +93,8 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
         locksBranchIds: editForm.locksBranchIds || [],
         isFinalBranch: editForm.isFinalBranch ?? false,
         isEnabled: editForm.isEnabled ?? true,
+        icon: editForm.icon,
+        iconImageRef: editForm.iconImageRef,
       };
       persist([...branches, newBranch]);
       setEditForm({});
@@ -140,6 +151,30 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
             placeholder="Описание"
             value={editForm.description || ''}
             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+          />
+          <ImageSheetPicker
+            label="Иконка ветки"
+            hint="Изображение для ветки навыков."
+            category="other"
+            value={(editForm.iconImageRef as any) ?? null}
+            legacyImagePath={editForm.icon}
+            runtimeImages={images}
+            showUploadForImage
+            disableManualImageInput
+            defaultTilesetFrameWidth={128}
+            defaultTilesetFrameHeight={128}
+            uploadPresetId="item-icon"
+            uploadSuggestedId={editForm.id || undefined}
+            uploadSuggestedName={`${editForm.id || editForm.name || 'profession-branch'}-icon`}
+            uploadFolder={buildUploadFolder('images', 'branches', editForm.id || undefined)}
+            onStatus={() => {}}
+            onChange={(next) => {
+              setEditForm((current) => ({
+                ...current,
+                iconImageRef: next || undefined,
+                icon: next?.type === 'image' ? next.src : undefined,
+              }));
+            }}
           />
           <input
             type="text"
@@ -216,6 +251,30 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
                   value={editForm.description || ''}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                 />
+                <ImageSheetPicker
+                  label="Иконка ветки"
+                  hint="Изображение для ветки навыков."
+                  category="other"
+                  value={(editForm.iconImageRef as any) ?? null}
+                  legacyImagePath={editForm.icon}
+                  runtimeImages={images}
+                  showUploadForImage
+                  disableManualImageInput
+                  defaultTilesetFrameWidth={128}
+                  defaultTilesetFrameHeight={128}
+                  uploadPresetId="item-icon"
+                  uploadSuggestedId={editForm.id || undefined}
+                  uploadSuggestedName={`${editForm.id || editForm.name || 'profession-branch'}-icon`}
+                  uploadFolder={buildUploadFolder('images', 'branches', editForm.id || undefined)}
+                  onStatus={() => {}}
+                  onChange={(next) => {
+                    setEditForm((current) => ({
+                      ...current,
+                      iconImageRef: next || undefined,
+                      icon: next?.type === 'image' ? next.src : undefined,
+                    }));
+                  }}
+                />
                 <input
                   type="text"
                   value={editForm.exclusiveGroupId || ''}
@@ -260,8 +319,21 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
               </div>
             ) : (
               <div className="editor-content">
-                <h4>{branch.name}</h4>
-                <p className="muted">{branch.id} • {branch.professionId}</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                  {branch.iconImageRef?.type === 'image' || branch.icon ? (
+                    <img
+                      src={branch.iconImageRef?.type === 'image' ? branch.iconImageRef.src : branch.icon}
+                      alt={branch.name}
+                      style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(139, 102, 56, 0.4)' }}
+                    />
+                  ) : (
+                    <div style={{ width: 48, height: 48, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(139,102,56,0.3)', fontSize: '20px' }}>⚚</div>
+                  )}
+                  <div>
+                    <h4 style={{ margin: 0 }}>{branch.name}</h4>
+                    <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.85rem' }}>{branch.id} • {branch.professionId}</p>
+                  </div>
+                </div>
                 <p>{branch.description}</p>
                 <div className="meta">
                   {branch.exclusiveGroupId && <span>Группа: {branch.exclusiveGroupId}</span>}

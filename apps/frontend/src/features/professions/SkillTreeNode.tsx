@@ -34,10 +34,16 @@ interface SkillTreeNodeProps {
   showName?: boolean;
   grayUntilLearned?: boolean;
   slotMode?: boolean;
+  isWoodlandTheme?: boolean;
   onSelect: (id: string, event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
-function resolveNodeStyles(state: SkillTreeNodeVisualState, selected: boolean, grayUntilLearned: boolean): React.CSSProperties {
+function resolveNodeStyles(
+  state: SkillTreeNodeVisualState,
+  selected: boolean,
+  grayUntilLearned: boolean,
+  isWoodlandTheme?: boolean
+): React.CSSProperties {
   const base: React.CSSProperties = {
     border: '1px solid rgba(168, 134, 84, 0.52)',
     boxShadow: '0 0 0 1px rgba(27, 19, 12, 0.85) inset',
@@ -45,25 +51,44 @@ function resolveNodeStyles(state: SkillTreeNodeVisualState, selected: boolean, g
     opacity: 1,
   };
 
-  if (state === 'learned') {
-    base.border = '1px solid rgba(248, 201, 116, 0.98)';
-    base.boxShadow = '0 0 0 1px rgba(53, 36, 18, 0.98) inset, 0 0 24px rgba(246, 197, 116, 0.5), 0 0 50px rgba(246, 197, 116, 0.18)';
-  } else if (grayUntilLearned) {
-    base.border = '1px solid rgba(116, 111, 103, 0.74)';
-    base.boxShadow = '0 0 0 1px rgba(40, 38, 34, 0.9) inset';
-    base.filter = state === 'blocked' ? 'grayscale(0.9) brightness(0.62)' : 'grayscale(0.82) brightness(0.78)';
-    base.opacity = state === 'blocked' ? 0.78 : 0.9;
-  } else if (state === 'available') {
-    base.border = '1px solid rgba(239, 183, 92, 0.92)';
-    base.boxShadow = '0 0 0 1px rgba(51, 35, 18, 0.95) inset, 0 0 14px rgba(239, 183, 92, 0.36)';
-  } else if (state === 'blocked') {
-    base.border = '1px solid rgba(103, 78, 49, 0.7)';
-    base.filter = 'grayscale(0.55) brightness(0.72)';
-    base.opacity = 0.82;
+  if (isWoodlandTheme) {
+    base.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.72), inset 0 0 0 1px rgba(35, 24, 15, 0.85)';
+    base.border = '1px solid rgba(168, 134, 84, 0.42)';
+    if (state === 'learned') {
+      base.border = '1px solid rgba(250, 185, 90, 0.98)';
+      base.boxShadow = '0 0 28px rgba(250, 185, 90, 0.45), 0 8px 24px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(53, 36, 18, 0.98)';
+    } else if (state === 'available') {
+      base.border = '1px solid rgba(224, 148, 66, 0.92)';
+      base.boxShadow = '0 0 18px rgba(224, 148, 66, 0.32), 0 6px 16px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(51, 35, 18, 0.95)';
+    } else if (state === 'blocked') {
+      base.border = '1px solid rgba(103, 78, 49, 0.6)';
+      base.filter = 'grayscale(0.65) brightness(0.68)';
+      base.opacity = 0.78;
+    } else {
+      base.border = '1px solid rgba(120, 100, 80, 0.5)';
+      base.filter = 'grayscale(0.3) brightness(0.8)';
+    }
   } else {
-    base.border = '1px solid rgba(104, 89, 71, 0.65)';
-    base.filter = 'grayscale(0.25) brightness(0.9)';
-    base.opacity = 0.94;
+    if (state === 'learned') {
+      base.border = '1px solid rgba(248, 201, 116, 0.98)';
+      base.boxShadow = '0 0 0 1px rgba(53, 36, 18, 0.98) inset, 0 0 24px rgba(246, 197, 116, 0.5), 0 0 50px rgba(246, 197, 116, 0.18)';
+    } else if (grayUntilLearned) {
+      base.border = '1px solid rgba(116, 111, 103, 0.74)';
+      base.boxShadow = '0 0 0 1px rgba(40, 38, 34, 0.9) inset';
+      base.filter = state === 'blocked' ? 'grayscale(0.9) brightness(0.62)' : 'grayscale(0.82) brightness(0.78)';
+      base.opacity = state === 'blocked' ? 0.78 : 0.9;
+    } else if (state === 'available') {
+      base.border = '1px solid rgba(239, 183, 92, 0.92)';
+      base.boxShadow = '0 0 0 1px rgba(51, 35, 18, 0.95) inset, 0 0 14px rgba(239, 183, 92, 0.36)';
+    } else if (state === 'blocked') {
+      base.border = '1px solid rgba(103, 78, 49, 0.7)';
+      base.filter = 'grayscale(0.55) brightness(0.72)';
+      base.opacity = 0.82;
+    } else {
+      base.border = '1px solid rgba(104, 89, 71, 0.65)';
+      base.filter = 'grayscale(0.25) brightness(0.9)';
+      base.opacity = 0.94;
+    }
   }
 
   if (selected) {
@@ -89,17 +114,19 @@ export function SkillTreeNode(props: SkillTreeNodeProps) {
     showName = false,
     grayUntilLearned = false,
     slotMode = false,
+    isWoodlandTheme = false,
     onSelect,
   } = props;
   const nodeWidth = width ?? (isBranch ? MINING_BRANCH_NODE_WIDTH : MINING_SKILL_NODE_WIDTH);
   const nodeHeight = height ?? (isBranch ? MINING_BRANCH_NODE_HEIGHT : MINING_SKILL_NODE_HEIGHT);
-  const nodeStyles = resolveNodeStyles(visualState, isSelected, grayUntilLearned);
+  const nodeStyles = resolveNodeStyles(visualState, isSelected, grayUntilLearned, isWoodlandTheme);
   const iconSize = showName ? 24 : nodeWidth - 8;
   const hasVisualIcon = Boolean(iconFrame?.src || icon);
 
   return (
     <button
       type="button"
+      className="skill-node-btn"
       onClick={(event) => onSelect(id, event)}
       title={name}
       style={{
@@ -109,7 +136,8 @@ export function SkillTreeNode(props: SkillTreeNodeProps) {
         width: nodeWidth,
         height: nodeHeight,
         borderRadius: slotMode ? 4 : (isBranch ? 16 : 10),
-        background: slotMode ? 'transparent' : 'rgba(14, 10, 8, 0.92)',
+        background: slotMode ? 'transparent' : (isWoodlandTheme ? 'rgba(24, 18, 14, 0.92)' : 'rgba(14, 10, 8, 0.92)'),
+        backdropFilter: isWoodlandTheme ? 'blur(8px)' : 'none',
         color: '#f4e6cb',
         padding: slotMode ? 0 : 3,
         cursor: 'pointer',

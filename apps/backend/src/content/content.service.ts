@@ -22,7 +22,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync
 import { dirname, isAbsolute, join } from 'path';
 import { getContentStorageMode, type ContentStorageMode } from '../config/storage-mode';
 import { PrismaService } from '../prisma/prisma.service';
-import { isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStaticAudioFile, writeStoredAudioAsset, writeStoredImageAsset } from './content-assets';
+import { deleteStoredImageAssetFile, isEmbeddedAudioDataUrl, isEmbeddedDataUrl, writeStaticAudioFile, writeStoredAudioAsset, writeStoredImageAsset } from './content-assets';
 import type {
   AdminItem,
   AdminMerchant,
@@ -64,6 +64,8 @@ import type {
   QuestItemDefinition,
   QuestMarkerDefinition,
   SoundDefinition,
+  TreeDefinition,
+  BiomeDefinition,
   StoredImage,
   WorldMapContent,
   WorldMapZone,
@@ -108,6 +110,8 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'blacksmithItemTemplates',
   'blacksmithItemWorkActions',
   'sounds',
+  'trees',
+  'biomes',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -559,6 +563,8 @@ function createEmptyDatabase(): ContentDatabase {
     blacksmithItemTemplates: [],
     blacksmithItemWorkActions: [],
     sounds: [],
+    trees: [],
+    biomes: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -1167,7 +1173,7 @@ const CRAFTING_RECIPE_TYPES = new Set([
 const CRAFTING_PROFESSION_IDS = new Set([
   'mining',
   'blacksmithing',
-  'carpentry',
+  'carpenter',
   'leatherworking',
   'jewelcrafting',
   'runecrafting',
@@ -2400,6 +2406,74 @@ function normalizeMaterialInput(input: Material): Material {
     imagePath: toLegacyImagePath(imageRef, input.imagePath),
     imageRef,
     isEnabled: input.isEnabled !== false,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeTreeInput(input: TreeDefinition): TreeDefinition {
+  const now = nowIso();
+  const imageRef = normalizeGameImageRefInput(input.imageRef, input.imagePath);
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: input.description ? String(input.description).trim() : undefined,
+    region: String(input.region ?? '').trim(),
+    biomeIds: Array.isArray(input.biomeIds) ? input.biomeIds.map(id => String(id).trim()).filter(Boolean) : [],
+    tier: typeof input.tier === 'number' && Number.isFinite(input.tier) ? Math.max(1, Math.round(input.tier)) : 1,
+    rarity: input.rarity || 'common',
+    hp: typeof input.hp === 'number' && Number.isFinite(input.hp) ? Math.max(1, Math.round(input.hp)) : 100,
+    hardness: typeof input.hardness === 'number' && Number.isFinite(input.hardness) ? Math.max(0, Math.round(input.hardness)) : 1,
+    stability: typeof input.stability === 'number' && Number.isFinite(input.stability) ? Math.max(0, Math.round(input.stability)) : 100,
+    fallRisk: typeof input.fallRisk === 'number' && Number.isFinite(input.fallRisk) ? Math.max(0, input.fallRisk) : 10,
+    requiredWoodcuttingTier: typeof input.requiredWoodcuttingTier === 'number' && Number.isFinite(input.requiredWoodcuttingTier) ? Math.max(1, Math.round(input.requiredWoodcuttingTier)) : 1,
+    requiredToolTier: typeof input.requiredToolTier === 'number' && Number.isFinite(input.requiredToolTier) ? Math.max(1, Math.round(input.requiredToolTier)) : 1,
+    baseXp: typeof input.baseXp === 'number' && Number.isFinite(input.baseXp) ? Math.max(0, Math.round(input.baseXp)) : 10,
+    weight: typeof input.weight === 'number' && Number.isFinite(input.weight) ? Math.max(1, Math.round(input.weight)) : 10,
+    drops: Array.isArray(input.drops)
+      ? input.drops.map((drop) => ({
+          itemId: String(drop.itemId ?? '').trim(),
+          min: typeof drop.min === 'number' && Number.isFinite(drop.min) ? Math.max(0, Math.round(drop.min)) : 0,
+          max: typeof drop.max === 'number' && Number.isFinite(drop.max) ? Math.max(0, Math.round(drop.max)) : 0,
+          chance: typeof drop.chance === 'number' && Number.isFinite(drop.chance) ? Math.max(0, Math.min(100, drop.chance)) : 0,
+        })).filter(d => Boolean(d.itemId))
+      : [],
+    enabled: input.enabled !== false,
+    imagePath: toLegacyImagePath(imageRef, input.imagePath),
+    imageRef,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeBiomeInput(input: BiomeDefinition): BiomeDefinition {
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    region: String(input.region ?? '').trim(),
+    climate: String(input.climate ?? '').trim(),
+    dangerLevel: typeof input.dangerLevel === 'number' && Number.isFinite(input.dangerLevel) ? Math.max(0, Math.round(input.dangerLevel)) : 0,
+    hasWater: !!input.hasWater,
+    waterTypes: Array.isArray(input.waterTypes)
+      ? input.waterTypes.map(t => String(t).trim()).filter(Boolean) as any[]
+      : [],
+    defaultTreePool: Array.isArray(input.defaultTreePool) ? input.defaultTreePool.map(id => String(id).trim()).filter(Boolean) : [],
+    allowedResourceKinds: Array.isArray(input.allowedResourceKinds)
+      ? input.allowedResourceKinds.map(kind => String(kind).trim()).filter(kind => kind && kind !== 'ore')
+      : [],
+    resourcePools: {
+      forest: Array.isArray(input.resourcePools?.forest) ? input.resourcePools.forest.map(id => String(id).trim()).filter(Boolean) : [],
+      herb: Array.isArray(input.resourcePools?.herb) ? input.resourcePools.herb.map(id => String(id).trim()).filter(Boolean) : [],
+      hunting: Array.isArray(input.resourcePools?.hunting) ? input.resourcePools.hunting.map(id => String(id).trim()).filter(Boolean) : [],
+      fishing: Array.isArray(input.resourcePools?.fishing) ? input.resourcePools.fishing.map(id => String(id).trim()).filter(Boolean) : [],
+      monster: Array.isArray(input.resourcePools?.monster) ? input.resourcePools.monster.map(id => String(id).trim()).filter(Boolean) : [],
+      event: Array.isArray(input.resourcePools?.event) ? input.resourcePools.event.map(id => String(id).trim()).filter(Boolean) : [],
+    },
+    description: String(input.description ?? '').trim(),
+    enabled: input.enabled !== false,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
   };
@@ -3806,6 +3880,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         .map((entry) => normalizeBlacksmithItemWorkActionInput(entry))
         .filter((entry) => Boolean(entry.id)),
       sounds: sanitizeIdObjectArray<SoundDefinition>(raw.sounds).filter((entry) => Boolean(entry.id)),
+      trees: sanitizeIdObjectArray<TreeDefinition>(raw.trees).map((entry) => normalizeTreeInput(entry)).filter((entry) => Boolean(entry.id)),
+      biomes: sanitizeIdObjectArray<BiomeDefinition>(raw.biomes).map((entry) => normalizeBiomeInput(entry)).filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
@@ -4524,6 +4600,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeBlacksmithItemTemplateInput(payload as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemWorkActions') {
       nextEntry = normalizeBlacksmithItemWorkActionInput(payload as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'trees') {
+      nextEntry = normalizeTreeInput(payload as unknown as TreeDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'biomes') {
+      nextEntry = normalizeBiomeInput(payload as unknown as BiomeDefinition) as unknown as ContentCollectionMap[K];
     } else {
       nextEntry = clone(payload);
     }
@@ -4596,6 +4676,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeBlacksmithItemTemplateInput(mergedBase as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemWorkActions') {
       merged = normalizeBlacksmithItemWorkActionInput(mergedBase as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'trees') {
+      merged = normalizeTreeInput(mergedBase as unknown as TreeDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'biomes') {
+      merged = normalizeBiomeInput(mergedBase as unknown as BiomeDefinition) as unknown as ContentCollectionMap[K];
     } else {
       merged = mergedBase;
     }
@@ -4612,6 +4696,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     const db = this.ensureLoaded();
     const collectionName = ensureCollectionName(name);
     const collections = db as unknown as Record<ContentCollectionName, unknown[]>;
+    if (collectionName === 'images') {
+      const image = db.images?.find((img) => img.id === id);
+      if (image && image.dataUrl) {
+        deleteStoredImageAssetFile(image.dataUrl);
+      }
+    }
     collections[collectionName] = (collections[collectionName] as Array<{ id: string }>).filter((entry) => entry.id !== id);
     if (collectionName === 'items') {
       db.itemSets = removeDeletedItemIdFromItemSets(db.itemSets ?? [], id, nowIso());
@@ -4749,6 +4839,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    if (Array.isArray(payload.trees) && payload.trees.length > 0) {
+      const normalized = payload.trees.map((entry) => normalizeTreeInput(entry as TreeDefinition));
+      db.trees = mergeById(db.trees ?? [], normalized);
+    }
+    if (Array.isArray(payload.biomes) && payload.biomes.length > 0) {
+      const normalized = payload.biomes.map((entry) => normalizeBiomeInput(entry as BiomeDefinition));
+      db.biomes = mergeById(db.biomes ?? [], normalized);
+    }
     return this.persist(db);
   }
 

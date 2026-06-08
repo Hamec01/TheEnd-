@@ -58,7 +58,7 @@ import {
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
 
 const STAT_KEYS: StatKey[] = ['hp', 'mp', 'stamina', 'strength', 'constitution', 'dexterity', 'intelligence', 'luck', 'perception', 'willpower'];
-const ITEM_TYPES: ItemType[] = ['weapon', 'armor', 'potion', 'material', 'quest', 'misc'];
+const ITEM_TYPES: ItemType[] = ['weapon', 'armor', 'potion', 'material', 'quest', 'misc', 'profession_tool', 'profession_transport'];
 const RARITIES: ItemRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'forbidden'];
 const SLOTS: ItemSlot[] = ['head', 'necklace', 'chest', 'outerwear', 'belt', 'leftHand', 'rightHand', 'gloves', 'legs', 'boots', 'ring', 'trinket', 'charm', 'quick', 'none'];
 const DAMAGE_CATEGORIES: DamageCategory[] = ['physical', 'elemental', 'magic', 'shamanic', 'runic', 'poison', 'bleed', 'true'];
@@ -178,6 +178,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
   const [rarityFilter, setRarityFilter] = useState<'all' | ItemRarity>('all');
   const [showLegacyMaterials, setShowLegacyMaterials] = useState(false);
   const [showPlayerRuntimeItems, setShowPlayerRuntimeItems] = useState(false);
+  const [showOnlyCarpenter, setShowOnlyCarpenter] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AdminItem>(emptyItem());
   const [status, setStatus] = useState('Готово');
@@ -253,6 +254,9 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       if (!showLegacyMaterials && item.type === 'material') {
         return false;
       }
+      if (showOnlyCarpenter && item.profession !== 'carpenter') {
+        return false;
+      }
       if (q && !item.id.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) {
         return false;
       }
@@ -264,7 +268,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       }
       return true;
     });
-  }, [items, query, rarityFilter, showLegacyMaterials, showPlayerRuntimeItems, typeFilter]);
+  }, [items, query, rarityFilter, showLegacyMaterials, showPlayerRuntimeItems, typeFilter, showOnlyCarpenter]);
 
   const selectedItem = useMemo(
     () => (selectedId ? items.find((item) => item.id === selectedId) ?? null : null),
@@ -1508,6 +1512,17 @@ export function ItemsPage(props: ItemsPageProps = {}) {
               onChange={(event) => setShowPlayerRuntimeItems(event.target.checked)}
             />
             <span>Показывать игроковые экземпляры</span>
+          </label>
+          <label
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}
+            title="Показывает только предметы профессии Плотник (carpenter)."
+          >
+            <input
+              type="checkbox"
+              checked={showOnlyCarpenter}
+              onChange={(event) => setShowOnlyCarpenter(event.target.checked)}
+            />
+            <span>Только Плотник (carpenter)</span>
           </label>
           <button type="button" disabled={isImporting} onClick={exportItemsJson}>
             Экспорт JSON

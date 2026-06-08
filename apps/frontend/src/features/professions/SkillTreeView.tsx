@@ -77,6 +77,9 @@ function darkBackgroundForProfession(professionId: string): string {
   if (professionId === 'mining') {
     return 'radial-gradient(circle at 14% 18%, rgba(125, 74, 19, 0.26), transparent 44%), radial-gradient(circle at 82% 12%, rgba(35, 92, 122, 0.24), transparent 42%), linear-gradient(180deg, rgba(11, 9, 8, 0.95), rgba(7, 6, 6, 0.96))';
   }
+  if (professionId === 'carpenter') {
+    return 'radial-gradient(circle at 18% 24%, rgba(92, 60, 36, 0.26), transparent 42%), linear-gradient(180deg, rgba(14, 11, 9, 0.95), rgba(8, 6, 5, 0.98))';
+  }
   return 'radial-gradient(circle at 18% 24%, rgba(70, 50, 34, 0.28), transparent 42%), linear-gradient(180deg, rgba(18, 14, 11, 0.9), rgba(10, 8, 7, 0.95))';
 }
 
@@ -314,6 +317,17 @@ const BLACKSMITH_SPARKS = [
   { left: '78%', bottom: '12%', delay: '0.4s', duration: '5.5s', size: 3 },
   { left: '86%', bottom: '24%', delay: '1.9s', duration: '4.5s', size: 2 },
   { left: '92%', bottom: '10%', delay: '0.6s', duration: '5.3s', size: 2 },
+];
+
+const CARPENTER_LEAVES = [
+  { left: '8%', delay: '0s', duration: '12s', fontSize: 16 },
+  { left: '20%', delay: '3.2s', duration: '15s', fontSize: 20 },
+  { left: '32%', delay: '1.1s', duration: '10s', fontSize: 14 },
+  { left: '45%', delay: '5.3s', duration: '18s', fontSize: 22 },
+  { left: '58%', delay: '2.4s', duration: '14s', fontSize: 18 },
+  { left: '70%', delay: '7.1s', duration: '16s', fontSize: 15 },
+  { left: '82%', delay: '4.5s', duration: '12s', fontSize: 20 },
+  { left: '92%', delay: '8.2s', duration: '19s', fontSize: 17 },
 ];
 
 export function SkillTreeView(props: SkillTreeViewProps) {
@@ -705,11 +719,14 @@ export function SkillTreeView(props: SkillTreeViewProps) {
       return null;
     }
 
+    const iconData = resolveBranchIconData(branch);
     return {
       type: 'branch',
       id: branch.id,
       name: branch.name,
       description: branch.description,
+      icon: iconData.icon,
+      iconFrame: iconData.iconFrame,
       item: branch,
       blockedReason: state.blockedReason,
       missingRequirements: state.missingRequirements,
@@ -741,6 +758,11 @@ export function SkillTreeView(props: SkillTreeViewProps) {
         if (state === 'learned') return 'rgba(255, 176, 104, 0.94)';
         if (state === 'available') return 'rgba(255, 144, 62, 0.72)';
         return 'rgba(130, 90, 58, 0.46)';
+      }
+      if (professionId === 'carpenter') {
+        if (state === 'learned') return 'rgba(244, 194, 98, 0.96)';
+        if (state === 'available') return 'rgba(224, 148, 66, 0.74)';
+        return 'rgba(110, 80, 56, 0.48)';
       }
       if (state === 'learned') return 'rgba(255, 255, 255, 0.95)';
       if (state === 'available') return 'rgba(255, 255, 255, 0.72)';
@@ -847,6 +869,53 @@ export function SkillTreeView(props: SkillTreeViewProps) {
     const source = resolveGameImageRefSource(imageRef, runtimeImages) ?? resolveIcon?.(sheet.src) ?? sheet.src;
     if (!source) {
       return { icon: resolveTreeIcon(skill.name, skill.icon) };
+    }
+    const frame = getTilesetFrameRect(sheet, imageRef.frame);
+    return {
+      iconFrame: {
+        src: source,
+        frameX: frame.x,
+        frameY: frame.y,
+        frameWidth: Math.max(1, sheet.frameWidth),
+        frameHeight: Math.max(1, sheet.frameHeight),
+        sheetWidth: Math.max(1, sheet.columns * sheet.frameWidth),
+        sheetHeight: Math.max(1, sheet.rows * sheet.frameHeight),
+      },
+    };
+  }
+
+  function resolveBranchIconData(branch: ProfessionBranch): {
+    icon?: string;
+    iconFrame?: {
+      src: string;
+      frameX: number;
+      frameY: number;
+      frameWidth: number;
+      frameHeight: number;
+      sheetWidth: number;
+      sheetHeight: number;
+    };
+  } {
+    const imageRef = normalizeGameImageRef(branch.iconImageRef as never, branch.icon);
+    if (!imageRef) {
+      const autoIconSource = runtimeImages.find((image) => image.id === branch.id)?.dataUrl ?? resolveIcon?.(branch.id);
+      if (autoIconSource) {
+        return { icon: autoIconSource };
+      }
+      return { icon: resolveTreeIcon(branch.name, branch.icon) };
+    }
+
+    if (imageRef.type === 'image') {
+      return { icon: resolveGameImageRefSource(imageRef, runtimeImages) ?? resolveIcon?.(imageRef.src) ?? imageRef.src };
+    }
+
+    const sheet = getImageSheet(imageRef.sheetId);
+    if (!sheet) {
+      return { icon: resolveTreeIcon(branch.name, branch.icon) };
+    }
+    const source = resolveGameImageRefSource(imageRef, runtimeImages) ?? resolveIcon?.(sheet.src) ?? sheet.src;
+    if (!source) {
+      return { icon: resolveTreeIcon(branch.name, branch.icon) };
     }
     const frame = getTilesetFrameRect(sheet, imageRef.frame);
     return {
@@ -1048,7 +1117,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
               justifyContent: 'center',
             }}
           >
-            <div
+             <div
               style={{
                 position: 'relative',
                 width: stageWidth,
@@ -1058,6 +1127,38 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                   : 'radial-gradient(circle at 20% 78%, rgba(194, 107, 32, 0.15), transparent 42%), radial-gradient(circle at 76% 24%, rgba(40, 116, 148, 0.15), transparent 40%)',
               }}
             >
+              <style>{`
+                @keyframes blacksmithSparkRise { 0% { transform: translateY(0) scale(1); opacity: 0.9; } 100% { transform: translateY(-240px) scale(0.25); opacity: 0; } }
+                @keyframes leafFall {
+                  0% {
+                    transform: translateY(0) translateX(0) rotate(0deg) scale(0.7);
+                    opacity: 0;
+                  }
+                  10% {
+                    opacity: 0.85;
+                  }
+                  50% {
+                    transform: translateY(300px) translateX(60px) rotate(180deg) scale(1);
+                  }
+                  95% {
+                    opacity: 0.85;
+                  }
+                  100% {
+                    transform: translateY(620px) translateX(-30px) rotate(360deg) scale(0.7);
+                    opacity: 0;
+                  }
+                }
+                .skill-node-btn {
+                  transition: transform 0.18s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.18s ease, border-color 0.18s ease, filter 0.18s ease !important;
+                }
+                .skill-node-btn:hover {
+                  transform: scale(1.04) translateY(-2px) !important;
+                  z-index: 10 !important;
+                }
+                .skill-node-btn:active {
+                  transform: scale(0.98) translateY(0) !important;
+                }
+              `}</style>
               {professionId === 'blacksmithing' ? (
                 <div
                   style={{
@@ -1074,29 +1175,64 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                   }}
                 />
               ) : null}
-              {professionId === 'blacksmithing' ? (
+              {professionId === 'carpenter' ? (
                 <>
-                  <style>{`@keyframes blacksmithSparkRise { 0% { transform: translateY(0) scale(1); opacity: 0.9; } 100% { transform: translateY(-240px) scale(0.25); opacity: 0; } }`}</style>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: 'url(/art/professions/wood_skills.jpg)',
+                      backgroundPosition: 'center',
+                      backgroundSize: '100% 100%',
+                      backgroundRepeat: 'no-repeat',
+                      opacity: 0.62,
+                      filter: 'saturate(0.75) contrast(1.1) brightness(0.65)',
+                      pointerEvents: 'none',
+                      zIndex: 1,
+                    }}
+                  />
                   <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 2 }}>
-                    {BLACKSMITH_SPARKS.map((spark) => (
+                    {CARPENTER_LEAVES.map((leaf, idx) => (
                       <span
-                        key={`${spark.left}-${spark.bottom}-${spark.delay}`}
+                        key={`leaf-${idx}`}
                         style={{
                           position: 'absolute',
-                          left: spark.left,
-                          bottom: spark.bottom,
-                          width: spark.size,
-                          height: spark.size,
-                          borderRadius: 999,
-                          background: 'rgba(255, 132, 42, 0.95)',
-                          boxShadow: '0 0 8px rgba(255, 132, 42, 0.72)',
-                          animation: `blacksmithSparkRise ${spark.duration} linear infinite`,
-                          animationDelay: spark.delay,
+                          left: leaf.left,
+                          top: -40,
+                          fontSize: leaf.fontSize,
+                          animation: `leafFall ${leaf.duration} linear infinite`,
+                          animationDelay: leaf.delay,
+                          opacity: 0,
+                          pointerEvents: 'none',
+                          userSelect: 'none',
                         }}
-                      />
+                      >
+                        {idx % 2 === 0 ? '🍃' : '🍂'}
+                      </span>
                     ))}
                   </div>
                 </>
+              ) : null}
+              {professionId === 'blacksmithing' ? (
+                <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 2 }}>
+                  {BLACKSMITH_SPARKS.map((spark) => (
+                    <span
+                      key={`${spark.left}-${spark.bottom}-${spark.delay}`}
+                      style={{
+                        position: 'absolute',
+                        left: spark.left,
+                        bottom: spark.bottom,
+                        width: spark.size,
+                        height: spark.size,
+                        borderRadius: 999,
+                        background: 'rgba(255, 132, 42, 0.95)',
+                        boxShadow: '0 0 8px rgba(255, 132, 42, 0.72)',
+                        animation: `blacksmithSparkRise ${spark.duration} linear infinite`,
+                        animationDelay: spark.delay,
+                      }}
+                    />
+                  ))}
+                </div>
               ) : null}
               <div
                 style={{
@@ -1116,7 +1252,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                     stroke={line.color}
                     strokeWidth={2}
                     strokeLinecap="round"
-                    style={{ filter: professionId === 'blacksmithing' ? 'drop-shadow(0 0 8px rgba(255, 141, 62, 0.38))' : 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.35))' }}
+                    style={{ filter: professionId === 'blacksmithing' ? 'drop-shadow(0 0 8px rgba(255, 141, 62, 0.38))' : (professionId === 'carpenter' ? 'drop-shadow(0 0 8px rgba(244, 194, 98, 0.45))' : 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.35))') }}
                   />
                 ))}
               </svg>
@@ -1141,6 +1277,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                     showName={professionId !== 'mining' && professionId !== 'blacksmithing'}
                     grayUntilLearned={professionId === 'blacksmithing'}
                     slotMode={false}
+                    isWoodlandTheme={professionId === 'carpenter'}
                     onSelect={(id, event) => handleSelectNode('skill', id, event)}
                   />
                 );
@@ -1148,12 +1285,14 @@ export function SkillTreeView(props: SkillTreeViewProps) {
               {visibleBranches.map((branch) => {
                 const position = positions.get(`branch:${branch.id}`);
                 if (!position) return null;
+                const iconData = resolveBranchIconData(branch);
                 return (
                   <SkillTreeNode
                     key={branch.id}
                     id={branch.id}
                     name={branch.name}
-                    icon={resolveTreeIcon(branch.name)}
+                    icon={iconData.icon}
+                    iconFrame={iconData.iconFrame}
                     x={position.x}
                     y={position.y}
                     width={nodeSize.branchWidth}
@@ -1163,6 +1302,7 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                     isSelected={selectedNode?.type === 'branch' && selectedNode.id === branch.id}
                     showName={professionId !== 'mining'}
                     grayUntilLearned={professionId === 'blacksmithing'}
+                    isWoodlandTheme={professionId === 'carpenter'}
                     onSelect={(id, event) => handleSelectNode('branch', id, event)}
                   />
                 );

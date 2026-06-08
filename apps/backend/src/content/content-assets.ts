@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { dirname, extname, isAbsolute, join, resolve } from 'path';
 
 // ── Static public file writer ─────────────────────────────────────────────
@@ -250,6 +250,18 @@ export function writeStoredImageAsset(input: StoredImageAssetInput): StoredImage
 
   writeFileSync(join(targetDir, fileName), bytes);
 
+  // Copy to frontend public folder
+  try {
+    const publicDir = resolveFrontendPublicDir();
+    const targetPublicDir = folderSegments.length > 0 ? join(publicDir, 'assets', 'upload', ...folderSegments) : join(publicDir, 'assets', 'upload');
+    if (!existsSync(targetPublicDir)) {
+      mkdirSync(targetPublicDir, { recursive: true });
+    }
+    writeFileSync(join(targetPublicDir, fileName), bytes);
+  } catch (error) {
+    console.error(`Failed to copy stored image asset to frontend public folder: ${error instanceof Error ? error.message : error}`);
+  }
+
   const publicPath = folderSegments.length > 0
     ? `${getContentAssetsPublicPrefix()}/${folderSegments.join('/')}/${fileName}`
     : `${getContentAssetsPublicPrefix()}/${fileName}`;
@@ -284,6 +296,18 @@ export function writeStoredAudioAsset(input: StoredAudioAssetInput): StoredAudio
 
   writeFileSync(join(targetDir, fileName), bytes);
 
+  // Copy to frontend public folder
+  try {
+    const publicDir = resolveFrontendPublicDir();
+    const targetPublicDir = folderSegments.length > 0 ? join(publicDir, 'assets', 'upload', ...folderSegments) : join(publicDir, 'assets', 'upload');
+    if (!existsSync(targetPublicDir)) {
+      mkdirSync(targetPublicDir, { recursive: true });
+    }
+    writeFileSync(join(targetPublicDir, fileName), bytes);
+  } catch (error) {
+    console.error(`Failed to copy stored audio asset to frontend public folder: ${error instanceof Error ? error.message : error}`);
+  }
+
   const publicPath = folderSegments.length > 0
     ? `${getContentAssetsPublicPrefix()}/${folderSegments.join('/')}/${fileName}`
     : `${getContentAssetsPublicPrefix()}/${fileName}`;
@@ -292,4 +316,39 @@ export function writeStoredAudioAsset(input: StoredAudioAssetInput): StoredAudio
     publicUrl: publicPath,
     mimeType,
   };
+}
+
+export function deleteStoredImageAssetFile(dataUrl: string): void {
+  const url = String(dataUrl ?? '').trim();
+  const prefix = getContentAssetsPublicPrefix();
+  if (!url.startsWith(prefix)) {
+    return;
+  }
+  const relativePath = url.slice(prefix.length).replace(/^\/+/, '');
+  if (!relativePath || relativePath.includes('..')) {
+    return;
+  }
+  const relativeParts = relativePath.split('/');
+
+  // 1. Delete from Content Assets directory (Resurse/assets/upload)
+  try {
+    const assetsDir = resolveContentAssetsDir();
+    const filePath = join(assetsDir, ...relativeParts);
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.error(`Failed to delete content asset file: ${error instanceof Error ? error.message : error}`);
+  }
+
+  // 2. Delete from Frontend Public directory (apps/frontend/public/assets/upload)
+  try {
+    const publicDir = resolveFrontendPublicDir();
+    const filePath = join(publicDir, 'assets', 'upload', ...relativeParts);
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.error(`Failed to delete frontend public asset file: ${error instanceof Error ? error.message : error}`);
+  }
 }

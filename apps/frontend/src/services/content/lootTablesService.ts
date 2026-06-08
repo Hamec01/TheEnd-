@@ -1,6 +1,6 @@
 import type { LootTable } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
-import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult } from './adminJsonImportExport';
+import { extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportResult, type JsonImportMode } from './adminJsonImportExport';
 import { nowIso, uid } from './storage';
 
 export function validateLootTable(table: LootTable): string[] {
@@ -23,7 +23,7 @@ export function extractRawLootTablesFromImportJson(payload: unknown): unknown[] 
   return extractRawCollectionFromImportJson(payload, 'lootTables');
 }
 
-export async function importLootTablesFromJsonEntries(entries: unknown[]): Promise<JsonImportResult> {
+export async function importLootTablesFromJsonEntries(entries: unknown[], mode?: JsonImportMode): Promise<JsonImportResult> {
   const defaults = (): LootTable => ({
     id: '',
     name: '',
@@ -42,6 +42,8 @@ export async function importLootTablesFromJsonEntries(entries: unknown[]): Promi
     getAll: () => lootTablesService.getAll(),
     create: (value) => lootTablesService.create(value),
     update: (id, value) => lootTablesService.update(id, value),
+    delete: (id) => lootTablesService.delete(id),
+    mode,
   });
 }
 
