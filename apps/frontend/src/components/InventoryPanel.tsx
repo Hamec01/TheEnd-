@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
@@ -125,6 +125,7 @@ interface InventoryPanelProps {
   onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
+  onDiscardItem?: (itemId: string) => Promise<void>;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -472,6 +473,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onSaveActionSlots,
   onSaveHotbar,
   onUseItem,
+  onDiscardItem,
   onChangeFocus,
   playerAvatarUrl,
   resolveItemById,
@@ -1184,6 +1186,25 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     try {
       await onUseItem(selectedItem.id);
+      setItemDetailOpen(false);
+    } catch {
+      // parent already reports error status
+    }
+  }
+
+  async function handleDiscardSelectedItem(): Promise<void> {
+    if (!selectedItem || !onDiscardItem) {
+      onStatus('Выбрасывание предмета недоступно.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Вы уверены, что хотите выбросить ${selectedItem.name}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await onDiscardItem(selectedItem.id);
       setItemDetailOpen(false);
     } catch {
       // parent already reports error status
@@ -1971,6 +1992,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     Снять
                   </button>
                 ) : null}
+                {selectedItem && selectedInventoryEntry && onDiscardItem ? (
+                  <button type="button" className="btn-discard" onClick={() => void handleDiscardSelectedItem()}>
+                    Выбросить
+                  </button>
+                ) : null}
               </div>
             </section>
             <section className="character-item-compare">
@@ -2424,6 +2450,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   Снять
                 </button>
               ) : null}
+              {selectedItem && selectedInventoryEntry && onDiscardItem ? (
+                <button type="button" className="btn-discard" onClick={() => void handleDiscardSelectedItem()}>
+                  Выбросить
+                </button>
+              ) : null}
             </div>
           </>
         ) : (
@@ -2475,45 +2506,69 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   ) {
     return (
       <div className={`character-inventory-grid ${compact ? 'is-compact' : ''}`}>
-        {entries.map((entry) => (
-          <button
-            key={entry.item.id}
-            type="button"
-            className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
-            onMouseEnter={(event) => {
-              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
-              const cardWidth = Math.min(360, window.innerWidth - 24);
-              const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
-              const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
-              setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
-              setSelectedItemId(entry.item.id);
-            }}
-            onFocus={() => { setSelectedItemId(entry.item.id); }}
-            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
-            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
-            onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
-            onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
-            draggable
-            onDragStart={(event) => {
-              event.dataTransfer.setData('text/theend-item-id', entry.item.id);
-              event.dataTransfer.effectAllowed = 'move';
-            }}
-          >
-            <span
-              className="character-item-icon"
-              style={resolveItemImage?.(entry.item)
-                ? {
-                    backgroundImage: `url("${resolveItemImage(entry.item)}")`,
-                    backgroundSize: 'contain',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'center',
-                  }
-                : undefined}
-            />
-            <span className="character-item-name">{entry.item.name}</span>
-            <span className="character-item-qty">x{entry.quantity}</span>
-          </button>
-        ))}
+        {entries.map((entry) => {
+          const item = entry.item;
+          const adminItem = resolveAdminItemById ? resolveAdminItemById(item.id) : null;
+          const imageRef = adminItem?.imageRef ?? resolveItemImageRef?.(item);
+          const legacyImagePath = adminItem?.imagePath ?? resolveItemLegacyImagePath?.(item);
+          const imageUrl = resolveItemImage?.(item) ?? adminItem?.imagePath ?? undefined;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`character-item-card ${selectedItemId === item.id ? 'is-active' : ''}`}
+              onMouseEnter={(event) => {
+                const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                const cardWidth = Math.min(360, window.innerWidth - 24);
+                const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
+                const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+                setHoverPreview({ itemId: item.id, x: nextX, y: nextY });
+                setSelectedItemId(item.id);
+              }}
+              onFocus={() => { setSelectedItemId(item.id); }}
+              onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === item.id ? null : current)); }}
+              onBlur={() => { setHoverPreview((current) => (current?.itemId === item.id ? null : current)); }}
+              onClick={() => { setHoverPreview(null); setSelectedItemId(item.id); setItemDetailOpen(true); }}
+              onDoubleClick={() => { void handleDoubleClickInventoryItem(item.id); }}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData('text/theend-item-id', item.id);
+                event.dataTransfer.effectAllowed = 'move';
+              }}
+            >
+              <span className="character-item-icon">
+                {imageRef ? (
+                  <GameImageView
+                    imageRef={imageRef}
+                    legacyImagePath={legacyImagePath}
+                    runtimeImages={runtimeImages}
+                    alt={item.name}
+                    size={compact ? 34 : 24}
+                    fit="contain"
+                    fallbackText={item.name.trim().charAt(0).toUpperCase() || '?'}
+                    className="character-item-icon-image"
+                  />
+                ) : legacyImagePath || imageUrl ? (
+                  <span
+                    className="character-item-icon-legacy"
+                    style={{
+                      backgroundImage: `url("${imageUrl || legacyImagePath}")`,
+                      backgroundSize: 'contain',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'center',
+                    }}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  item.name.trim().charAt(0).toUpperCase() || '?'
+                )}
+              </span>
+              <span className="character-item-name">{item.name}</span>
+              <span className="character-item-qty">x{entry.quantity}</span>
+            </button>
+          );
+        })}
       </div>
     );
   }
@@ -2556,17 +2611,17 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   legacyImagePath={entry.legacyImagePath}
                   runtimeImages={runtimeImages}
                   alt={entry.name}
-                  size={56}
+                  size={24}
                   fit="contain"
                   fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
-                  className="item-slot-icon-image"
+                  className="character-item-icon-image"
                 />
               ) : (
                 <span
-                  className="item-slot-icon-image item-slot-icon-image--legacy"
-                  style={entry.imageUrl
+                  className="character-item-icon-legacy"
+                  style={entry.imageUrl || entry.legacyImagePath
                     ? {
-                        backgroundImage: `url("${entry.imageUrl}")`,
+                        backgroundImage: `url("${entry.imageUrl || entry.legacyImagePath}")`,
                         backgroundSize: 'contain',
                         backgroundRepeat: 'no-repeat',
                         backgroundPosition: 'center',

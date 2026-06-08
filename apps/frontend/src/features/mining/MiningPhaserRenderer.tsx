@@ -5,6 +5,7 @@ import { itemsService } from '../../services/content/itemsService';
 import { materialsService } from '../../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import type { StoredImage } from '../../services/content/models';
+import { playRegisteredSound } from '../../services/soundRuntime';
 
 interface MiningPhaserRendererProps {
   mine: MineDefinition;
@@ -718,7 +719,10 @@ class MiningScene extends Phaser.Scene {
           duration: 70,
           ease: 'Cubic.easeIn',
           onComplete: () => {
-            this.playSfx(MINING_SFX.mineHit, 0.24);
+            void playRegisteredSound('res_mine_hit', {
+              fallbackUrl: MINING_SFX.mineHit,
+              volumeMultiplier: 0.3,
+            });
             this.cameras.main.shake(64, 0.0016, true);
             this.playImpactFx(hitX, hitY);
             const originX = blockNode.x;

@@ -1757,7 +1757,8 @@ export class ArenaService implements OnModuleInit {
       throw new BadRequestException('quantityDelta must be a non-zero number.');
     }
 
-    this.contentService.resolveItemById(normalizedItemId);
+    // NOTE: intentionally skip resolveItemById here — dev discard must work
+    // even for unknown/legacy/disabled items that are stuck in the inventory.
 
     if (isFileStorageMode()) {
       await this.requireRuntimeCharacter(characterId);

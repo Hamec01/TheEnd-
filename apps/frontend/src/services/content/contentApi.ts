@@ -402,6 +402,11 @@ export async function writeStaticAudioFile(payload: { targetPath: string; dataUr
   }, { timeoutMs: IMAGE_UPLOAD_TIMEOUT_MS });
 }
 
+export async function listAudioAssets(): Promise<string[]> {
+  await ensureContentBackendReady();
+  return requestJson<string[]>('/content/assets/audio/list');
+}
+
 export async function updateContentEntry<T>(collection: ContentCollectionName, id: string, payload: Partial<T>): Promise<T> {
   await ensureContentBackendReady();
   const entry = await requestJson<T>(`/content/${collection}/${encodeURIComponent(id)}`, {

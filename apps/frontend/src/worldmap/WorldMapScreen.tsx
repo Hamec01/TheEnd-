@@ -100,7 +100,7 @@ import {
   getZoneLinkedLocation,
   isLinkedLocationVisibleToPlayer,
 } from "./zoneLocationLinking";
-import type { AdminMerchant, StoredImage } from "../services/content/models";
+import type { AdminMerchant, GameImageRef, StoredImage } from "../services/content/models";
 import {
   getContentSnapshot,
   type ContentSnapshot,
@@ -1129,6 +1129,12 @@ interface WorldMapScreenProps {
   resolveItemImage?: (
     item: ItemDefinition | null | undefined,
   ) => string | undefined;
+  resolveItemImageRef?: (
+    item: ItemDefinition | null | undefined,
+  ) => GameImageRef | undefined;
+  resolveItemLegacyImagePath?: (
+    item: ItemDefinition | null | undefined,
+  ) => string | undefined;
   resolveMerchantImage?: (
     merchant: AdminMerchant | null | undefined,
   ) => string | undefined;
@@ -1187,6 +1193,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     cityMerchants = [],
     resolveItemById,
     resolveItemImage,
+    resolveItemImageRef,
+    resolveItemLegacyImagePath,
     resolveMerchantImage,
     playerAvatarUrl,
     devTravelRequest,
@@ -2564,6 +2572,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     if (worldMapMode !== 'play' || locationView !== 'map' || playerState !== 'moving') {
+      for (const audio of footstepAudioPoolRef.current) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
       return;
     }
 
@@ -9114,6 +9126,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             quickActions={quickButtons}
             resolveItemById={resolveItemById}
             resolveItemImage={resolveItemImage}
+            resolveItemImageRef={resolveItemImageRef}
+            resolveItemLegacyImagePath={resolveItemLegacyImagePath}
+            runtimeImages={runtimeImages}
             worldStatusLines={[
               `\u041b\u043e\u043a\u0430\u0446\u0438\u044f: ${selectedLocationName}`,
               `\u041a\u043e\u043e\u0440\u0434: ${playerPosition.x.toFixed(3)}, ${playerPosition.y.toFixed(3)}`,

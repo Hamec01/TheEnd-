@@ -4,7 +4,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { basename, extname, join } from 'path';
 import type { ContentAutosaveStatus, ContentBackupEnvelope, ContentDatabase, ContentImportMode, ContentImportResult, StoredImage, WorldMapContent } from './content.types';
 import { ContentService } from './content.service';
-import { resolveContentAssetsDir } from './content-assets';
+import { resolveContentAssetsDir, resolveFrontendPublicDir } from './content-assets';
 import { buildItemPreview, buildItemSetPreview, buildRuneComplexPreview } from './admin-preview.builder';
 import type { ItemPreviewQueryBody, ItemPreviewResponse, ItemSetPreviewResponse, RuneComplexPreviewResponse } from './admin-preview.types';
 
@@ -280,6 +280,45 @@ export class ContentController {
   ): Promise<{ publicUrl: string; mimeType: string }> {
     await this.contentService.ensureInitialized();
     return this.contentService.writeStaticAudio(payload);
+  }
+
+  @Get('assets/audio/list')
+  async listAudioAssets(): Promise<string[]> {
+    const audioUrls: string[] = [];
+
+    // 1. Scan Frontend Public directory
+    try {
+      const publicDir = resolveFrontendPublicDir();
+      if (existsSync(publicDir)) {
+        const files = this.collectAssetFiles(publicDir);
+        for (const file of files) {
+          const ext = extname(file).toLowerCase();
+          if (this.audioMimeByExt[ext]) {
+            audioUrls.push(`/${file.replace(/\\/g, '/')}`);
+          }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // 2. Scan Upload Assets directory
+    try {
+      const assetsDir = resolveContentAssetsDir();
+      if (existsSync(assetsDir)) {
+        const files = this.collectAssetFiles(assetsDir);
+        for (const file of files) {
+          const ext = extname(file).toLowerCase();
+          if (this.audioMimeByExt[ext]) {
+            audioUrls.push(`/assets/upload/${file.replace(/\\/g, '/')}`);
+          }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    return Array.from(new Set(audioUrls)).sort();
   }
 
   @Get('assets/audio/:id/raw')

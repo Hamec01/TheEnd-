@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { App } from './App';
 import { AdminApp } from './admin/AdminApp';
+import { installGlobalUiSoundBindings, primeSoundRegistry } from './services/soundRuntime';
 
 export type PlayerPath = '/' | '/inventory' | '/map' | '/combat' | '/merchant' | '/character' | '/stats' | '/skills' | '/equipment' | '/journal';
 
@@ -27,6 +28,11 @@ export function RootApp() {
     const onPop = () => setPath(normalizePath(window.location.pathname));
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useEffect(() => {
+    void primeSoundRegistry();
+    return installGlobalUiSoundBindings();
   }, []);
 
   const navigate = useCallback((nextPath: string, options?: { replace?: boolean }) => {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, StatBlock } from '@theend/rpg-domain';
 import { normalizeActorVisualSource } from '../phaser/assets/actorVisualResolver';
+import type { GameImageRef, StoredImage } from '../services/content/models';
+import { GameImageView } from '../admin/components/GameImageView';
 
 interface QuickActionButton {
   id: string;
@@ -24,11 +26,31 @@ interface PlayerQuickPanelProps {
   quickActions: QuickActionButton[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  resolveItemImageRef?: (item: ItemDefinition | null | undefined) => GameImageRef | undefined;
+  resolveItemLegacyImagePath?: (item: ItemDefinition | null | undefined) => string | undefined;
+  runtimeImages?: StoredImage[];
   worldStatusLines?: string[];
 }
 
 export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
-  const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage, worldStatusLines = [] } = props;
+  const {
+    name,
+    avatarLetter,
+    avatarUrl,
+    hpText,
+    mpText,
+    staminaText,
+    activeStats,
+    equipment,
+    inventory,
+    quickActions,
+    resolveItemById,
+    resolveItemImage,
+    resolveItemImageRef,
+    resolveItemLegacyImagePath,
+    runtimeImages = [],
+    worldStatusLines = []
+  } = props;
   const [hasAvatarError, setHasAvatarError] = useState(false);
   const resolvedAvatarUrl = useMemo(() => normalizeActorVisualSource(avatarUrl), [avatarUrl]);
 
@@ -92,19 +114,43 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
       <div className="wm-inventory-grid">
         {inventory.items.slice(0, 16).map((entry) => {
           const item = resolveItemById?.(entry.itemId) ?? null;
-          const image = resolveItemImage?.(item);
+          const imageRef = item ? resolveItemImageRef?.(item) : undefined;
+          const legacyImagePath = item ? resolveItemLegacyImagePath?.(item) : undefined;
+          const directImage = item ? resolveItemImage?.(item) : undefined;
+          const hasImage = !!(imageRef || legacyImagePath || directImage);
+
           return (
             <div key={entry.itemId} className="wm-item-cell" title={item?.name ?? entry.itemId}>
-              <span
-                className={`wm-item-cell-icon${image ? ' has-image' : ''}`}
-                style={image ? {
-                  backgroundImage: `url("${image}")`,
-                  backgroundSize: 'contain',
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'center',
-                } : undefined}
-              >
-                {!image ? (item?.name.slice(0, 2).toUpperCase() ?? entry.itemId.slice(0, 2).toUpperCase()) : null}
+              <span className={`wm-item-cell-icon${hasImage ? ' has-image' : ''}`}>
+                {hasImage ? (
+                  imageRef ? (
+                    <GameImageView
+                      imageRef={imageRef}
+                      legacyImagePath={legacyImagePath}
+                      runtimeImages={runtimeImages}
+                      alt={item?.name ?? ''}
+                      size={24}
+                      fit="contain"
+                      fallbackText={item?.name.slice(0, 2).toUpperCase() ?? '?'}
+                      className="character-item-icon-image"
+                    />
+                  ) : (
+                    <span
+                      className="character-item-icon-legacy"
+                      style={directImage || legacyImagePath ? {
+                        backgroundImage: `url("${directImage || legacyImagePath}")`,
+                        backgroundSize: 'contain',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'center',
+                        width: '100%',
+                        height: '100%',
+                        display: 'block',
+                      } : undefined}
+                    />
+                  )
+                ) : (
+                  item?.name.slice(0, 2).toUpperCase() ?? entry.itemId.slice(0, 2).toUpperCase()
+                )}
               </span>
               <small>{entry.quantity}</small>
             </div>

@@ -6,7 +6,7 @@ import { dirname, extname, isAbsolute, join, resolve } from 'path';
 // Resolves the frontend `public/` directory and writes the file there so
 // the Vite dev server (and production build) can serve it at a known URL.
 
-function resolveFrontendPublicDir(): string {
+export function resolveFrontendPublicDir(): string {
   const configured = String(process.env.FRONTEND_PUBLIC_DIR ?? '').trim();
   if (configured) {
     return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);

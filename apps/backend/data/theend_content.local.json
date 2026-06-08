@@ -1,19 +1,19 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-05T20:23:15.323Z",
+  "exportedAt": "2026-06-06T11:06:22.308Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
-    "items": 190,
+    "items": 175,
     "skills": 17,
     "visualFx": 3,
     "merchants": 5,
-    "cities": 7,
+    "cities": 27,
     "locations": 4,
     "materials": 152,
     "lootTables": 0,
-    "images": 296,
+    "images": 298,
     "dialogues": 24,
     "npcs": 32,
     "quests": 10,
@@ -33,6 +33,7 @@
     "blacksmithBalance": 1,
     "blacksmithItemTemplates": 0,
     "blacksmithItemWorkActions": 0,
+    "sounds": 11,
     "maps": 4,
     "zones": 14,
     "markers": 3,
@@ -5090,815 +5091,56 @@
         "canHaveRuneComplex": false
       },
       {
-        "id": "worked_item_mage_cold_gesture_gloves_01_blacksmith_itemwork_improve_06e26e1531be",
-        "name": "Перчатки холодного жеста (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 98,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:26:05.270Z",
-        "updatedAt": "2026-06-04T22:26:05.270Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "worked_worked_item_mage_cold_gesture_gloves_01_blacksmi_blacksmith_itemwork_improve_775688700906",
-        "name": "Перчатки холодного жеста (Улучшить предмет) (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 113,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:27:15.117Z",
-        "updatedAt": "2026-06-04T22:27:15.117Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "worked_worked_worked_item_mage_cold_gesture_gloves_01_b_blacksmith_itemwork_improve_64680ade30a0",
-        "name": "Перчатки холодного жеста (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "type": "armor",
-        "subtype": "Магические перчатки",
-        "slot": "gloves",
-        "handsRequired": 1,
-        "rarity": "uncommon",
-        "price": 130,
-        "stackable": false,
-        "maxStack": 1,
-        "requiredStats": {
-          "intelligence": 5,
-          "perception": 3
-        },
-        "bonuses": {
-          "intelligence": 3,
-          "perception": 1
-        },
-        "gameplayDescription": "Перчатки для точных магических жестов. Даёт intelligence, perception и бонус к hit chance. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "Тонкие перчатки из тёмной кожи, усиленные серебристой прошивкой. На ладонях видны бледные линии, похожие на каналы заклинания. Когда маг складывает пальцы в знак, линии на миг становятся холодно-голубыми. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "imagePath": "img_1778626288808_lkgoqyd2",
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:28:26.093Z",
-        "updatedAt": "2026-06-04T22:28:26.093Z",
-        "armorValue": 2,
-        "equipmentEffects": [
-          {
-            "type": "hit_chance_modifier",
-            "percent": 5,
-            "trigger": "always"
-          }
-        ],
-        "useEffects": [],
-        "tags": [
-          "mage",
-          "starter_mage",
-          "gloves",
-          "spell_accuracy",
-          "cold_gesture",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1778626288808_lkgoqyd2"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_iron_ore_quality_normal_93e66efb5170",
-        "name": "Железная Одноручный меч (Нормальное)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "rare",
-        "price": 96,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 4,
-        "damageMax": 8,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_normal",
-          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
-          "material:iron_ore",
-          "material:cracked_crystal",
-          "material:zeptyrite_trace",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Железная руда. Качество: Нормальное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:33:29.894Z",
-        "updatedAt": "2026-06-04T22:33:29.894Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_chestplate_iron_ore_quality_normal_85ce63181dfd",
-        "name": "Железная Нагрудник (Нормальное)",
-        "type": "armor",
-        "subtype": "chestplate",
-        "slot": "chest",
-        "handsRequired": 1,
-        "rarity": "rare",
-        "price": 84,
-        "stackable": false,
-        "maxStack": 1,
-        "armorValue": 6,
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_chestplate",
-          "crafted_quality:quality_normal",
-          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
-          "material:iron_ore",
-          "material:gold_nugget",
-          "material:zeptyrite_trace",
-          "material:cracked_crystal",
-          "blacksmith_template",
-          "armor",
-          "chestplate"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Нагрудник. Основной материал: Железная руда. Качество: Нормальное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 11
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-04T22:40:48.049Z",
-        "updatedAt": "2026-06-04T22:40:48.049Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_wpn_axe_wood_01_blacksmith_itemwork_improve_8294d02edc82",
-        "name": "Топор лесника (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 40,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:12:46.282Z",
-        "damageMax": 13,
-        "damageMin": 6,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:12:46.282Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_wpn_axe_wood_01_blacksmith_itemwork_impro_blacksmith_itemwork_improve_da8fa2297b86",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 46,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:13:55.154Z",
-        "damageMax": 15,
-        "damageMin": 7,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:13:55.154Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_wpn_axe_wood_01_blacksmith_itemwork_impro_blacksmith_itemwork_improve_9758e56c8c6f",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 46,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:13:56.915Z",
-        "damageMax": 15,
-        "damageMin": 7,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:13:56.915Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_worked_wpn_axe_wood_01_blacksmith_itemwor_blacksmith_itemwork_improve_2eb100d88aea",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 53,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:18:21.889Z",
-        "damageMax": 17,
-        "damageMin": 8,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:18:21.889Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "worked_worked_worked_wpn_axe_wood_01_blacksmith_itemwor_blacksmith_itemwork_improve_723a62db8a5c",
-        "name": "Топор лесника (Улучшить предмет) (Улучшить предмет) (Улучшить предмет)",
-        "slot": "rightHand",
-        "type": "weapon",
-        "price": 53,
-        "rarity": "common",
-        "bonuses": {},
-        "subtype": "Топор",
-        "maxStack": 1,
-        "createdAt": "2026-06-04T23:18:23.257Z",
-        "damageMax": 17,
-        "damageMin": 8,
-        "imagePath": "img_1777167985864_dudnze14",
-        "isEnabled": true,
-        "stackable": false,
-        "updatedAt": "2026-06-04T23:18:23.257Z",
-        "physicalType": "cleave",
-        "handsRequired": 1,
-        "requiredStats": {
-          "stamina": 4,
-          "strength": 5
-        },
-        "damageCategory": "physical",
-        "loreDescription": "Используется жителями Мирилнуара и Терамора для заготовки древесины. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку. Предмет прошёл кузнечную доработку.",
-        "gameplayDescription": "Простой топор, предназначенный для рубки деревьев. Надежен и тяжел, способен нанести серьезный урон в бою. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет. Доработка кузнецом: Улучшить предмет.",
-        "canAddAugmentSlots": false,
-        "canHaveRuneComplex": false,
-        "imageRef": {
-          "type": "image",
-          "src": "img_1777167985864_dudnze14"
-        },
-        "augmentSlots": [],
-        "maxAugmentSlots": 0,
-        "tags": [
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ]
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_iron_ingot_quality_fine_3ebcf1706b5a",
-        "name": "терон",
+        "id": "crafted_blacksmith_template_one_hand_sword_kelerite_memory_core_quality_normal_010552bf7368",
+        "name": "Ядро памяти Келерита Одноручный меч (Нормальное)",
         "type": "weapon",
         "subtype": "sword",
         "slot": "rightHand",
         "handsRequired": 1,
         "rarity": "legendary",
-        "price": 612,
+        "price": 9208,
         "stackable": false,
         "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_fine",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:iron_ingot",
-          "material:tin_ore",
-          "material:tin_ingot",
-          "material:zeptyrite_trace",
-          "material:gold_nugget",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Железный слиток. Качество: Качественное.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T08:28:10.295Z",
-        "updatedAt": "2026-06-05T08:28:10.295Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_6143dc8d8481",
-        "name": "Бурдук",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 1794,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 11,
-        "damageMax": 18,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T08:57:31.475Z",
-        "updatedAt": "2026-06-05T08:57:32.915Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_crafted_blacksmith_template_one_hand_sword_vinta_blacksmith_itemwork_improve_36fd9bc241b4",
-        "name": "Бурдук (Улучшить предмет)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 470,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий. Предмет прошёл кузнечную доработку.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:00:27.777Z",
-        "updatedAt": "2026-06-05T09:00:29.847Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "worked_crafted_blacksmith_template_one_hand_sword_vinta_blacksmith_itemwork_improve_86ea89921e9a",
-        "name": "Бурдук (Улучшить предмет)",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 470,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 13,
-        "damageMax": 21,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {},
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword",
-          "item_work:improve_stats",
-          "item_work_action:blacksmith_itemwork_improve"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Доработка кузнецом: Улучшить предмет.",
-        "loreDescription": "эпический мечь Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий. Предмет прошёл кузнечную доработку.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:00:30.395Z",
-        "updatedAt": "2026-06-05T09:00:30.395Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_45ccac53803d",
-        "name": "одноручный меч ривика",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 1766,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 11,
-        "damageMax": 18,
+        "damageMin": 28,
+        "damageMax": 39,
         "damageCategory": "physical",
         "physicalType": "slash",
         "bonuses": {
-          "constitution": 5,
-          "strength": -1,
-          "perception": 1,
-          "willpower": 2,
-          "intelligence": 5,
-          "luck": 52,
-          "dexterity": 2
-        },
-        "equipmentEffects": [
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
-            "trigger": "always"
-          },
-          {
-            "type": "crit_damage_modifier",
-            "percent": 28,
-            "trigger": "always"
-          },
-          {
-            "type": "stat_bonus",
-            "stat": "willpower",
-            "value": 1,
-            "trigger": "always"
-          }
-        ],
-        "augmentSlots": [],
-        "canAddAugmentSlots": true,
-        "maxAugmentSlots": 2,
-        "canHaveRuneComplex": true,
-        "tags": [
-          "crafted",
-          "blacksmith_forged",
-          "custom_forge",
-          "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
-          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
-          "blacksmith_template",
-          "weapon",
-          "sword"
-        ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Качество: Шедевр. Материалы: Винтарионовый слиток, Пропитанное древко, Чёрная кожаная заготовка. Свойства ковки: constitution +5, strength -1, perception +1, willpower +2.",
-        "loreDescription": "обычный дорогой меч Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
-        "imageRef": {
-          "type": "tileset",
-          "sheetId": "blacksmith_forge_objects_384",
-          "frame": 7
-        },
-        "isEnabled": true,
-        "createdAt": "2026-06-05T09:21:28.233Z",
-        "updatedAt": "2026-06-05T09:21:29.824Z",
-        "requiredStats": {}
-      },
-      {
-        "id": "crafted_blacksmith_template_one_hand_sword_vintarion_ingot_quality_masterwork_ed3af7c032bb",
-        "name": "Лаврид",
-        "type": "weapon",
-        "subtype": "sword",
-        "slot": "rightHand",
-        "handsRequired": 1,
-        "rarity": "legendary",
-        "price": 3128,
-        "stackable": false,
-        "maxStack": 1,
-        "damageMin": 35,
-        "damageMax": 51,
-        "damageCategory": "physical",
-        "physicalType": "slash",
-        "bonuses": {
-          "constitution": 25,
-          "strength": -3,
-          "perception": 5,
+          "constitution": 18,
+          "strength": 0,
+          "dexterity": 13,
+          "perception": 3,
           "willpower": 10,
-          "intelligence": 25,
-          "luck": 260,
-          "dexterity": 11
+          "luck": 165
         },
         "equipmentEffects": [
           {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
+            "type": "status_resistance",
+            "percent": 14,
+            "statusId": "burning",
             "trigger": "always"
           },
           {
-            "type": "stat_bonus",
-            "stat": "intelligence",
-            "flat": 2,
+            "type": "outgoing_damage_modifier",
+            "percent": 5,
+            "damageCategory": "magic",
+            "trigger": "always"
+          },
+          {
+            "type": "outgoing_damage_modifier",
+            "percent": 22,
+            "elementType": "fire",
             "trigger": "always"
           },
           {
             "type": "crit_damage_modifier",
-            "percent": 138,
+            "percent": 73,
+            "trigger": "always"
+          },
+          {
+            "type": "status_resistance",
+            "percent": 10,
+            "statusId": "burning",
             "trigger": "always"
           },
           {
@@ -5917,25 +5159,29 @@
           "blacksmith_forged",
           "custom_forge",
           "template:blacksmith_template_one_hand_sword",
-          "crafted_quality:quality_masterwork",
+          "crafted_quality:quality_normal",
           "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
-          "material:vintarion_ingot",
-          "material:treated_wooden_shaft",
-          "material:black_leather_roll",
+          "material:kelerite_memory_core",
+          "material:solarite_sun_core",
+          "material:wooden_shaft",
+          "material:tanned_leather",
+          "material:death_obsidian",
           "blacksmith_template",
           "weapon",
-          "sword"
+          "sword",
+          "runtime_instance",
+          "player_runtime_hidden"
         ],
-        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Винтарионовый слиток. Смесь: Винтарионовый слиток x5, Пропитанное древко x5, Чёрная кожаная заготовка x5. Качество: Шедевр. Материалы: Винтарионовый слиток, Винтарионовый слиток, Винтарионовый слиток, Винтарионовый слиток. Свойства ковки: constitution +25, strength -5, perception +5, willpower +10. Уровень кузнеца добавил силу удара: +5 к базовому урону.",
-        "loreDescription": "Этот предмет выкован вручную игроком и отличается от стандартных ремесленных изделий.",
+        "gameplayDescription": "Предмет создан в свободной кузнечной ковке. Шаблон: Одноручный меч. Основной материал: Ядро памяти Келерита. Смесь: Ядро памяти Келерита x1, Солнечное ядро Соларита x1, Деревянное древко x5, Дублёная кожа x5, Обсидиан смерти x1. Качество: Нормальное. Материалы: Ядро памяти Келерита, Солнечное ядро Соларита, Деревянное древко, Деревянное древко. Свойства ковки: constitution +18, strength -2, dexterity +12, perception +3. Уровень кузнеца добавил силу удара: +5 к базовому урону.",
+        "loreDescription": "Меч Келерита Меч Келерита",
         "imageRef": {
           "type": "tileset",
           "sheetId": "blacksmith_forge_objects_384",
           "frame": 7
         },
         "isEnabled": true,
-        "createdAt": "2026-06-05T12:43:25.704Z",
-        "updatedAt": "2026-06-05T12:43:27.159Z",
+        "createdAt": "2026-06-06T11:02:49.540Z",
+        "updatedAt": "2026-06-06T11:02:51.620Z",
         "requiredStats": {}
       }
     ],
@@ -8651,7 +7897,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-06T08:40:17.338Z",
         "kind": "single",
         "stages": []
       },
@@ -8707,7 +7953,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-06T08:40:17.338Z",
         "kind": "single",
         "stages": []
       },
@@ -8766,7 +8012,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-05T20:11:47.630Z",
+        "updatedAt": "2026-06-06T08:40:17.338Z",
         "kind": "single",
         "stages": []
       }
@@ -12824,6 +12070,3049 @@
           }
         ],
         "backgroundImageId": "city_fellmor_background"
+      },
+      {
+        "id": "city_soleymar",
+        "name": "Солеймар",
+        "slug": "soleymar",
+        "status": "active",
+        "climate": "pearl_sea_coastal",
+        "regionId": "luminor_coast",
+        "kingdomId": "luminor",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Артарион Светлый / граф Элориан Вечный Луч",
+        "rulerTitle": "king_and_count",
+        "governmentType": "royal port monarchy",
+        "cultureTags": [
+          "luminor",
+          "capital",
+          "diplomacy",
+          "golden_city",
+          "sea_trade"
+        ],
+        "economyTags": [
+          "port",
+          "trade",
+          "diplomacy",
+          "art",
+          "rare_goods"
+        ],
+        "visualTheme": "bright white-stone coastal capital, golden ornaments, pearl sea harbor, clean luminous streets",
+        "dangerLevel": 3,
+        "recommendedLevel": 4,
+        "populationTotal": 120000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 87,
+            "role": "горожане, купцы, моряки, чиновники и знать Луминора"
+          },
+          {
+            "raceId": "high_elf",
+            "percent": 8,
+            "role": "дипломаты, маги, советники и мастера искусства"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 5,
+            "role": "портовые инженеры, камнерезы, мастера механизмов"
+          }
+        ],
+        "shortDescription": "Сияющая столица Луминора и главный порт на побережье Жемчужного Моря.",
+        "fullDescription": "Солеймар расположен на побережье Жемчужного Моря, недалеко от устья реки Талиндра. Это богатый портовый город с белокаменными улицами, золотыми орнаментами, дипломатическими домами, оживлёнными пристанями и рынками, куда сходятся купцы со всего Аталиона.",
+        "connectedCityIds": [
+          "city_elmora",
+          "city_lorenheim"
+        ],
+        "connectedZoneIds": [
+          "zone_pearl_sea",
+          "zone_talindra_mouth",
+          "zone_luminor"
+        ],
+        "worldZoneId": "zone_city_soleymar",
+        "locations": [
+          {
+            "id": "location_soleymar_dvorets_sveta",
+            "name": "Дворец Света",
+            "type": "castle",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_soleymar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Резиденция короля Артариона Светлого и политическое сердце Луминора. Здесь проходят королевские приёмы, советы, дипломатические встречи и утверждение торговых договоров."
+          },
+          {
+            "id": "location_soleymar_bolshoy_port_soleymara",
+            "name": "Большой Порт Солеймара",
+            "type": "port",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_soleymar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "port",
+            "description": "Главная гавань королевства, где швартуются торговые и дипломатические корабли. Здесь можно размещать купцов, морские задания, караваны и внешние связи Луминора."
+          },
+          {
+            "id": "location_soleymar_hram_solnechnogo_lotosa",
+            "name": "Храм Солнечного Лотоса",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_soleymar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Главное религиозное святилище города, связанное с культом света, очищения и мирного процветания."
+          },
+          {
+            "id": "location_soleymar_rynok_sveta",
+            "name": "Рынок Света",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_soleymar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Богатая торговая площадь с редкими товарами, произведениями искусства, украшениями, тканями и дарами заморских купцов."
+          }
+        ],
+        "backgroundImageId": "city_soleymar_background"
+      },
+      {
+        "id": "city_elmora",
+        "name": "Элмора",
+        "slug": "elmora",
+        "status": "active",
+        "climate": "temperate_forest",
+        "regionId": "luminor_forests",
+        "kingdomId": "luminor",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Айлита Зелёная Ветвь",
+        "rulerTitle": "baroness",
+        "governmentType": "craft barony",
+        "cultureTags": [
+          "luminor",
+          "woodcraft",
+          "forest",
+          "shipbuilding",
+          "craftsmanship"
+        ],
+        "economyTags": [
+          "woodworking",
+          "shipbuilding",
+          "herbs",
+          "furniture",
+          "magic_wood"
+        ],
+        "visualTheme": "warm forest craft city, oak and ash groves, timber workshops, river road",
+        "dangerLevel": 2,
+        "recommendedLevel": 3,
+        "populationTotal": 50000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 94,
+            "role": "ремесленники, лесорубы, корабельщики и жители ремесленных кварталов"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 4,
+            "role": "лесные советники, травники и хранители рощ"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 2,
+            "role": "мастера инструментов, креплений и механизмов верфей"
+          }
+        ],
+        "shortDescription": "Лесной ремесленный город Луминора у реки Велориан.",
+        "fullDescription": "Элмора расположена южнее Солеймара, недалеко от реки Велориан, среди дубовых и ясеневых лесов. Город славится обработкой древесины, созданием магических деревянных предметов, мебелью, корабельными заготовками и бережным отношением к лесам.",
+        "connectedCityIds": [
+          "city_soleymar",
+          "city_lorenheim"
+        ],
+        "connectedZoneIds": [
+          "zone_velorian_river",
+          "zone_luminor_forests",
+          "zone_luminor"
+        ],
+        "worldZoneId": "zone_city_elmora",
+        "locations": [
+          {
+            "id": "location_elmora_zal_remesla",
+            "name": "Зал Ремесла",
+            "type": "guild_hall",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_elmora",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "crafting",
+            "description": "Учебный и административный центр мастеров Элморы. Здесь обучают плотников, резчиков, корабельных мастеров и ремесленников по работе с магической древесиной."
+          },
+          {
+            "id": "location_elmora_sady_tihogo_vetra",
+            "name": "Сады Тихого Ветра",
+            "type": "garden",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_elmora",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "garden",
+            "description": "Парк с редкими деревьями, травами и тихими тропами, где лесные эльфы помогают сохранять равновесие природы."
+          },
+          {
+            "id": "location_elmora_masterskie_lesnogo_reztsa",
+            "name": "Мастерские Лесного Резца",
+            "type": "workshop",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_elmora",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "workshop",
+            "description": "Комплекс мастерских по созданию мебели, корабельных деталей, луков, резных украшений и деревянных магических предметов."
+          }
+        ],
+        "backgroundImageId": "city_elmora_background"
+      },
+      {
+        "id": "city_lorenheim",
+        "name": "Лоренхайм",
+        "slug": "lorenheim",
+        "status": "active",
+        "climate": "mild_plains",
+        "regionId": "flowering_valleys",
+        "kingdomId": "luminor",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Эвелин Звёздная Песня",
+        "rulerTitle": "countess",
+        "governmentType": "cultural countship",
+        "cultureTags": [
+          "luminor",
+          "culture",
+          "university",
+          "theater",
+          "science"
+        ],
+        "economyTags": [
+          "education",
+          "books",
+          "art",
+          "magic_study",
+          "festivals"
+        ],
+        "visualTheme": "cultured bright valley city, libraries, theaters, university towers, festival squares",
+        "dangerLevel": 2,
+        "recommendedLevel": 4,
+        "populationTotal": 80000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 94,
+            "role": "учёные, актёры, горожане, писцы, студенты и ремесленники"
+          },
+          {
+            "raceId": "ancient_elf",
+            "percent": 4,
+            "role": "редкие наставники, хранители знаний и магические советники"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 2,
+            "role": "инженеры библиотек, мастера сцены и городские механики"
+          }
+        ],
+        "shortDescription": "Культурная столица Луминора, город библиотек, театров и университетов.",
+        "fullDescription": "Лоренхайм находится южнее Элморы, на равнинах Цветущих Долин. Это центр философии, искусства, науки и магии, где университетские дворы соседствуют с театрами, библиотеками, площадями фестивалей и мастерскими учёных.",
+        "connectedCityIds": [
+          "city_elmora",
+          "city_soleymar"
+        ],
+        "connectedZoneIds": [
+          "zone_flowering_valleys",
+          "zone_luminor"
+        ],
+        "worldZoneId": "zone_city_lorenheim",
+        "locations": [
+          {
+            "id": "location_lorenheim_velikaya_biblioteka_luminora",
+            "name": "Великая Библиотека Луминора",
+            "type": "library",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_lorenheim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "library",
+            "description": "Главное хранилище знаний королевства: летописи, карты, магические трактаты, судебные записи и философские труды."
+          },
+          {
+            "id": "location_lorenheim_teatr_zolotogo_solntsa",
+            "name": "Театр Золотого Солнца",
+            "type": "theater",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_lorenheim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "theater",
+            "description": "Главный культурный центр города, где проходят пьесы, музыкальные вечера, публичные чтения и придворные представления."
+          },
+          {
+            "id": "location_lorenheim_universitet_lorenhayma",
+            "name": "Университет Лоренхайма",
+            "type": "academy",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_lorenheim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "academy",
+            "description": "Центр обучения философии, магии, истории, дипломатии и естественным наукам."
+          },
+          {
+            "id": "location_lorenheim_ploshchad_iskusstv",
+            "name": "Площадь Искусств",
+            "type": "square",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_lorenheim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "square",
+            "description": "Открытая площадь для фестивалей, выставок, диспутов, уличных музыкантов и городских праздников."
+          }
+        ],
+        "backgroundImageId": "city_lorenheim_background"
+      },
+      {
+        "id": "city_gildenfort",
+        "name": "Гильденфорт",
+        "slug": "gildenfort",
+        "status": "active",
+        "climate": "mountain_fortress_desert",
+        "regionId": "telfaren",
+        "kingdomId": "artalon",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Элерида Железное Сердце / генерал Тарен Бурелом",
+        "rulerTitle": "queen_and_general",
+        "governmentType": "military royal capital",
+        "cultureTags": [
+          "artalon",
+          "capital",
+          "military",
+          "mountain_fortress",
+          "red_cloaks"
+        ],
+        "economyTags": [
+          "fortress",
+          "weapons",
+          "armor",
+          "administration",
+          "parades"
+        ],
+        "visualTheme": "massive mountain fortress city, red cloaks, bronze and sandstone, military terraces",
+        "dangerLevel": 6,
+        "recommendedLevel": 5,
+        "populationTotal": 90000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 94,
+            "role": "солдаты столицы, ремесленники, знать, чиновники и горожане"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 5,
+            "role": "инженеры, мастера укреплений, кузнецы и каменщики"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 1,
+            "role": "наёмники, следопыты и редкие разведчики"
+          }
+        ],
+        "shortDescription": "Столица Арталона, горная крепость и политическое сердце военного королевства.",
+        "fullDescription": "Гильденфорт расположен в центре Арталона, среди горных хребтов Тел’фарена. Его стены укреплены гномами, а город делится на верхние уровни знати и командования и нижние кварталы ремесленников, торговцев и солдат. Это сердце королевства и главный узел военной власти.",
+        "connectedCityIds": [
+          "city_drakkenholm",
+          "city_harrowdell"
+        ],
+        "connectedZoneIds": [
+          "zone_telfaren",
+          "zone_artalon_mountains",
+          "zone_artalon"
+        ],
+        "worldZoneId": "zone_city_gildenfort",
+        "locations": [
+          {
+            "id": "location_gildenfort_korolevskiy_zamok_zheleznogo_serdtsa",
+            "name": "Королевский Замок Железного Сердца",
+            "type": "castle",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_gildenfort",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Резиденция королевы Элерида Железное Сердце, расположенная на верхнем уровне города. Здесь находятся тронный зал, военные карты, королевская стража и архивы приказов."
+          },
+          {
+            "id": "location_gildenfort_ploshchad_voinskoy_slavy",
+            "name": "Площадь Воинской Славы",
+            "type": "square",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_gildenfort",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "square",
+            "description": "Главная площадь для военных парадов, праздников, присяг, награждений и публичных обращений командования."
+          },
+          {
+            "id": "location_gildenfort_kuzni_ognennogo_gorna",
+            "name": "Кузни Огненного Горна",
+            "type": "blacksmith",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_gildenfort",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "blacksmith",
+            "description": "Огромный комплекс мастерских, где производятся доспехи, оружие, крепёж, осадные машины и военные припасы столицы."
+          }
+        ],
+        "backgroundImageId": "city_gildenfort_background"
+      },
+      {
+        "id": "city_drakkenholm",
+        "name": "Драккенхольм",
+        "slug": "drakkenholm",
+        "status": "active",
+        "climate": "mountain_desert_forge",
+        "regionId": "telfaren",
+        "kingdomId": "artalon",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Ульрих Крепкий Щит",
+        "rulerTitle": "baron",
+        "governmentType": "military forge governorship",
+        "cultureTags": [
+          "artalon",
+          "forge_city",
+          "mining",
+          "military",
+          "telfaren"
+        ],
+        "economyTags": [
+          "mining",
+          "blacksmithing",
+          "metallurgy",
+          "military_supply",
+          "caravans"
+        ],
+        "visualTheme": "dark mountain forge citadel, magical furnaces, black masks, heavy legion barracks",
+        "dangerLevel": 7,
+        "recommendedLevel": 6,
+        "populationTotal": 75000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 86,
+            "role": "солдаты кузнечных легионов, горожане, купцы, семьи ремесленников"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 10,
+            "role": "шахтёры, инженеры, литейщики, мастера кваррилита и оружейники"
+          },
+          {
+            "raceId": "other",
+            "percent": 4,
+            "role": "ученики академий, караванщики и редкие гости"
+          }
+        ],
+        "shortDescription": "Город Молота и Огня: рудный, кузнечный и военный центр Арталона.",
+        "fullDescription": "Драккенхольм расположен в горных долинах юга Арталона, ближе к пустыне Ликерин. Это мощная цитадель с подземными шахтами редких минералов, гигантскими кузницами, военными кварталами, купеческими рынками и железной дисциплиной кузнечных легионов.",
+        "connectedCityIds": [
+          "city_gildenfort",
+          "city_harrowdell"
+        ],
+        "connectedZoneIds": [
+          "zone_telfaren",
+          "zone_likerin_desert",
+          "zone_artalon"
+        ],
+        "worldZoneId": "zone_city_drakkenholm",
+        "locations": [
+          {
+            "id": "location_drakkenholm_gornye_shahty_ognya",
+            "name": "Горные Шахты Огня",
+            "type": "mine",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "mine",
+            "description": "Подземные шахты редких минералов, где добывают Пирраксит, Инсералит, Кваррилит, Аури’шель и другие материалы для оружия, брони и артефактов."
+          },
+          {
+            "id": "location_drakkenholm_hram_drakonego_klyka",
+            "name": "Храм Драконьего Клыка",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Древнее святилище, посвящённое войне, огню, клятвам легионеров и памяти погибших в пустынных походах."
+          },
+          {
+            "id": "location_drakkenholm_krepost_yuzhnyh_vetrov",
+            "name": "Крепость Южных Ветров",
+            "type": "fortress",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Гарнизон и командный узел, защищающий город от нападений со стороны пустыни Ликерин и южных троп."
+          },
+          {
+            "id": "location_drakkenholm_zheleznye_ryady",
+            "name": "Железные Ряды",
+            "type": "blacksmith",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "blacksmith",
+            "description": "Кузнечный квартал с огромными горнами, литейными дворами и башней-кузницей «Сердце Огня»."
+          },
+          {
+            "id": "location_drakkenholm_rynki_plameni",
+            "name": "Рынки Пламени",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Купеческий квартал с караванными складами, гильдиями, тавернами, торговлей зерном, рудой, тканями и специями."
+          },
+          {
+            "id": "location_drakkenholm_molot_drakona",
+            "name": "Молот Дракона",
+            "type": "barracks",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 820,
+              "y": 325,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "barracks",
+            "description": "Военный квартал с казармами, строевыми площадями, складами оружия и припасов кузнечных легионов."
+          },
+          {
+            "id": "location_drakkenholm_zal_kamnya",
+            "name": "Зал Камня",
+            "type": "academy",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 500,
+              "y": 535,
+              "width": 210,
+              "height": 100
+            },
+            "cityId": "city_drakkenholm",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "academy",
+            "description": "Учёный квартал малых академий алхимии, металлургии и тактики, куда приезжают ученики из столицы."
+          }
+        ],
+        "backgroundImageId": "city_drakkenholm_background"
+      },
+      {
+        "id": "city_harrowdell",
+        "name": "Харроуделл",
+        "slug": "harrowdell",
+        "status": "active",
+        "climate": "coastal_desert",
+        "regionId": "arin_tal_bay",
+        "kingdomId": "artalon",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Аэлин Бурный Прилив",
+        "rulerTitle": "marquis",
+        "governmentType": "maritime military marquisate",
+        "cultureTags": [
+          "artalon",
+          "port",
+          "navy",
+          "trade",
+          "diplomacy"
+        ],
+        "economyTags": [
+          "shipbuilding",
+          "sea_trade",
+          "fishing",
+          "naval_supply",
+          "markets"
+        ],
+        "visualTheme": "coastal fortress port, shipyards, blue-striped shields, sea wind and stone piers",
+        "dangerLevel": 5,
+        "recommendedLevel": 4,
+        "populationTotal": 50000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 96,
+            "role": "моряки, портовые рабочие, купцы, солдаты и семьи корабелов"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 2,
+            "role": "портовые следопыты, разведчики и корабельные лучники"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 2,
+            "role": "корабельные инженеры, строители и мастера креплений"
+          }
+        ],
+        "shortDescription": "Порт Арталона на Заливе Арин’Тал, торговый и морской разведывательный узел.",
+        "fullDescription": "Харроуделл расположен на побережье Залива Арин’Тал. Это портовый город, через который Арталон ведёт торговлю, морскую разведку, снабжение армии и дипломатические контакты. Здесь военная суровость Арталона соединяется с морской торговлей и корабельными ремёслами.",
+        "connectedCityIds": [
+          "city_gildenfort",
+          "city_drakkenholm"
+        ],
+        "connectedZoneIds": [
+          "zone_arin_tal_bay",
+          "zone_artalon_coast",
+          "zone_telfaren"
+        ],
+        "worldZoneId": "zone_city_harrowdell",
+        "locations": [
+          {
+            "id": "location_harrowdell_krepost_morskogo_vetra",
+            "name": "Крепость Морского Ветра",
+            "type": "fortress",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_harrowdell",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Береговая крепость, охраняющая гавань, маяки, арсеналы и вход в город от морских угроз."
+          },
+          {
+            "id": "location_harrowdell_verfi_harroudella",
+            "name": "Верфи Харроуделла",
+            "type": "shipyard",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_harrowdell",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "shipyard",
+            "description": "Комплекс мастерских, где строятся, ремонтируются и вооружаются торговые и боевые корабли Арталона."
+          },
+          {
+            "id": "location_harrowdell_rynok_morskoy_zvezdy",
+            "name": "Рынок Морской Звезды",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_harrowdell",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Торговая площадь с товарами, привезёнными из других регионов: специями, тканями, рыбой, древесиной, металлом и редкими морскими находками."
+          }
+        ],
+        "backgroundImageId": "city_harrowdell_background"
+      },
+      {
+        "id": "city_veridal",
+        "name": "Веридал",
+        "slug": "veridal",
+        "status": "active",
+        "climate": "temperate_plains",
+        "regionId": "ilar_aen",
+        "kingdomId": "kriantar",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Калдир Речной Лев / архонт Тириан Золотой Лист",
+        "rulerTitle": "king_and_archon",
+        "governmentType": "human elven allied monarchy",
+        "cultureTags": [
+          "kriantar",
+          "capital",
+          "high_elves",
+          "diplomacy",
+          "union"
+        ],
+        "economyTags": [
+          "trade",
+          "magic_art",
+          "diplomacy",
+          "luxury_goods",
+          "education"
+        ],
+        "visualTheme": "elegant human-elven capital, fountains, carved bridges, glowing lamps, river lion banners",
+        "dangerLevel": 3,
+        "recommendedLevel": 5,
+        "populationTotal": 85000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 59,
+            "role": "горожане, торговцы, чиновники, солдаты и ремесленники"
+          },
+          {
+            "raceId": "high_elf",
+            "percent": 35,
+            "role": "учёные, маги, аристократия, дипломаты и художники"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 3,
+            "role": "мастера мостов, фонтанов, механизмов и камня"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 3,
+            "role": "садовники, проводники, травники и лесные посредники"
+          }
+        ],
+        "shortDescription": "Столица Криантара, город союза людей и высших эльфов.",
+        "fullDescription": "Веридал стоит на равнине к югу от гор Айлас’Сил, у пересечения торговых путей к Аэл’арону и Тел’Фарану. Город сочетает эльфийскую изящность и человеческую практичность: фонтаны, резные мосты, магические светильники, дворцы и крупные рынки.",
+        "connectedCityIds": [
+          "city_windhaven",
+          "city_westgard",
+          "city_aelaron"
+        ],
+        "connectedZoneIds": [
+          "zone_ilar_aen",
+          "zone_ailas_sil_roads",
+          "zone_kriantar"
+        ],
+        "worldZoneId": "zone_city_veridal",
+        "locations": [
+          {
+            "id": "location_veridal_dvorets_rechnogo_lva",
+            "name": "Дворец Речного Льва",
+            "type": "castle",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_veridal",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Резиденция короля Калдара Речного Льва, украшенная эльфийскими витражами, рельефами и символами союза людей и высших эльфов."
+          },
+          {
+            "id": "location_veridal_elfiyskiy_kvartal",
+            "name": "Эльфийский квартал",
+            "type": "district",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_veridal",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "district",
+            "description": "Район высших эльфов с мастерскими магов, художников, учёных и аристократическими домами."
+          },
+          {
+            "id": "location_veridal_grand_rynok",
+            "name": "Гранд-рынок",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_veridal",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Огромная торговая площадь, где продаются товары из Аэл’арона, Тел’Фарана и других регионов Аталиона."
+          },
+          {
+            "id": "location_veridal_hram_edinstva",
+            "name": "Храм Единства",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_veridal",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Святилище, посвящённое миру между людьми и эльфами, месту клятв, перемирий и дипломатических обрядов."
+          }
+        ],
+        "backgroundImageId": "city_veridal_background"
+      },
+      {
+        "id": "city_windhaven",
+        "name": "Виндхейвен",
+        "slug": "windhaven",
+        "status": "active",
+        "climate": "mountain_magic",
+        "regionId": "ailas_sil_foothills",
+        "kingdomId": "kriantar",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Лаэль Серебряная Корона",
+        "rulerTitle": "magister",
+        "governmentType": "magisterial fortress city",
+        "cultureTags": [
+          "kriantar",
+          "magic",
+          "fortress",
+          "high_elves",
+          "elemental"
+        ],
+        "economyTags": [
+          "artifacts",
+          "magic_ingredients",
+          "military_supply",
+          "education"
+        ],
+        "visualTheme": "mountain magic fortress, elemental towers, windy terraces, silver banners",
+        "dangerLevel": 5,
+        "recommendedLevel": 6,
+        "populationTotal": 50000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 50,
+            "role": "солдаты, жители, ремесленники и ученики магических башен"
+          },
+          {
+            "raceId": "high_elf",
+            "percent": 40,
+            "role": "маги стихий, наставники, аристократия и исследователи"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 10,
+            "role": "мастера башен, укреплений, механизмов и горных ворот"
+          }
+        ],
+        "shortDescription": "Магический и стратегический город Криантара в предгорьях Айлас’Сил.",
+        "fullDescription": "Виндхейвен находится в предгорьях Айлас’Сил, ближе к Священным Руинам. В городе силы стихий, исходящие от гор, соединяются с наследием высших эльфов: здесь стоят башни, магические укрепления, рынки артефактов и северные гарнизоны.",
+        "connectedCityIds": [
+          "city_veridal",
+          "city_westgard"
+        ],
+        "connectedZoneIds": [
+          "zone_ailas_sil",
+          "zone_sacred_ruins",
+          "zone_kriantar"
+        ],
+        "worldZoneId": "zone_city_windhaven",
+        "locations": [
+          {
+            "id": "location_windhaven_bashnya_stihiy",
+            "name": "Башня Стихий",
+            "type": "tower",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_windhaven",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tower",
+            "description": "Магическая крепость и башня, где изучают, направляют и контролируют силу стихий, исходящую от гор Айлас’Сил."
+          },
+          {
+            "id": "location_windhaven_krepost_vetrov",
+            "name": "Крепость Ветров",
+            "type": "fortress",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_windhaven",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Гарнизон, защищающий северные границы Криантара и дороги к Священным Руинам."
+          },
+          {
+            "id": "location_windhaven_rynok_magii",
+            "name": "Рынок Магии",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_windhaven",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Торговая зона редких артефактов, ингредиентов, кристаллов, свитков и услуг магов."
+          }
+        ],
+        "backgroundImageId": "city_windhaven_background"
+      },
+      {
+        "id": "city_westgard",
+        "name": "Вестгард",
+        "slug": "westgard",
+        "status": "active",
+        "climate": "fortified_plains",
+        "regionId": "ailas_sil_plains",
+        "kingdomId": "kriantar",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Элирэн Золотой Луч",
+        "rulerTitle": "baroness",
+        "governmentType": "border protector city",
+        "cultureTags": [
+          "kriantar",
+          "border",
+          "fortress",
+          "sacred_ruins",
+          "trade_road"
+        ],
+        "economyTags": [
+          "military",
+          "trade",
+          "pilgrimage",
+          "ruin_guardianship"
+        ],
+        "visualTheme": "walled plains fortress, watchtowers, sacred ruins nearby, gold ray banners",
+        "dangerLevel": 5,
+        "recommendedLevel": 5,
+        "populationTotal": 40000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 75,
+            "role": "солдаты, жители, караванщики, ремесленники и стража торгового пути"
+          },
+          {
+            "raceId": "high_elf",
+            "percent": 20,
+            "role": "магические советники, офицеры, жрецы и хранители руин"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 5,
+            "role": "следопыты и разведчики окрестных равнин"
+          }
+        ],
+        "shortDescription": "Город-защитник Криантара у Священных Руин и торговых путей.",
+        "fullDescription": "Вестгард находится у подножия Айлас’Сил, рядом со Священными Руинами. Это стратегический город с мощными стенами, башнями, военными площадями и контролем над важной дорогой между человеческими и эльфийскими землями.",
+        "connectedCityIds": [
+          "city_veridal",
+          "city_windhaven"
+        ],
+        "connectedZoneIds": [
+          "zone_ailas_sil",
+          "zone_sacred_ruins",
+          "zone_kriantar"
+        ],
+        "worldZoneId": "zone_city_westgard",
+        "locations": [
+          {
+            "id": "location_westgard_tsitadel_vestmarka",
+            "name": "Цитадель Вестмарка",
+            "type": "citadel",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_westgard",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Военная крепость, откуда координируются оборонительные операции, караваны, патрули и охрана торговых дорог."
+          },
+          {
+            "id": "location_westgard_ploshchad_strazhey",
+            "name": "Площадь Стражей",
+            "type": "square",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_westgard",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "square",
+            "description": "Центр города для военных парадов, собраний, присяг и городских объявлений."
+          },
+          {
+            "id": "location_westgard_svyashchennye_ruiny",
+            "name": "Священные Руины",
+            "type": "ruins",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_westgard",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "ruins",
+            "description": "Древний эльфийский памятник неподалёку от города, почитаемый как место памяти и возможный центр будущих квестов."
+          }
+        ],
+        "backgroundImageId": "city_westgard_background"
+      },
+      {
+        "id": "city_bromkar",
+        "name": "Бром’кар",
+        "slug": "bromkar",
+        "status": "active",
+        "climate": "industrial_forest_mountain",
+        "regionId": "teramor",
+        "kingdomId": "terimia",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Гаррон Огненный Молот",
+        "rulerTitle": "baron",
+        "governmentType": "industrial barony",
+        "cultureTags": [
+          "terimia",
+          "industrial",
+          "blacksmithing",
+          "dark_military",
+          "dwarf_baron"
+        ],
+        "economyTags": [
+          "weapons",
+          "armor",
+          "mining",
+          "wood",
+          "ore_processing"
+        ],
+        "visualTheme": "dark industrial forge city, smoky foundries, stone and fire market, forest edge",
+        "dangerLevel": 6,
+        "recommendedLevel": 6,
+        "populationTotal": 60000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 83,
+            "role": "рабочие, солдаты, угольщики, возчики и горожане Теримии"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 14,
+            "role": "кузнецы, литейщики, мастера брони, инженеры и шахтёры"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 3,
+            "role": "лесозаготовители, проводники и поставщики древесины"
+          }
+        ],
+        "shortDescription": "Промышленное сердце Теримии к западу от Брейнхольда.",
+        "fullDescription": "Бром’кар расположен к западу от Брейнхольда, у подножия гор и на берегу притока Лунная. Это город кузниц, шахт, лесозаготовок и военных поставок, где создаются лучшие доспехи и оружие для армии Теримии.",
+        "connectedCityIds": [
+          "city_brainhold",
+          "city_gurlok"
+        ],
+        "connectedZoneIds": [
+          "zone_teramor",
+          "zone_lunnai_river",
+          "zone_terimia"
+        ],
+        "worldZoneId": "zone_city_bromkar",
+        "locations": [
+          {
+            "id": "location_bromkar_velikaya_kuznya_bromkara",
+            "name": "Великая Кузня Бром’кара",
+            "type": "blacksmith",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_bromkar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "blacksmith",
+            "description": "Центр производства оружия, брони, цепей, шлемов, осадных деталей и тяжёлого снаряжения для армии Теримии."
+          },
+          {
+            "id": "location_bromkar_rynok_kamnya_i_ognya",
+            "name": "Рынок Камня и Огня",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_bromkar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Торговая площадь изделий из металла, древесины, руды, угля, инструментов и военных заказов."
+          },
+          {
+            "id": "location_bromkar_bashnya_ognennogo_metalla",
+            "name": "Башня Огненного Металла",
+            "type": "tower",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_bromkar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tower",
+            "description": "Школа и исследовательская башня, где изучают магию и технику обработки руд, сплавов и кузнечного жара."
+          }
+        ],
+        "backgroundImageId": "city_bromkar_background"
+      },
+      {
+        "id": "city_gurlok",
+        "name": "Гур’лок",
+        "slug": "gurlok",
+        "status": "active",
+        "climate": "volcanic_fog",
+        "regionId": "teramor",
+        "kingdomId": "terimia",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Элара Ночная Тень",
+        "rulerTitle": "necromancer_lady",
+        "governmentType": "necromantic fortress rule",
+        "cultureTags": [
+          "terimia",
+          "necromancy",
+          "dark_magic",
+          "volcanic",
+          "fog"
+        ],
+        "economyTags": [
+          "dark_artifacts",
+          "rituals",
+          "military",
+          "alchemy",
+          "forbidden_magic"
+        ],
+        "visualTheme": "fog-covered necromantic city, volcanic ravines, ash altars, black ritual academy",
+        "dangerLevel": 8,
+        "recommendedLevel": 8,
+        "populationTotal": 40000,
+        "racePopulation": [
+          {
+            "raceId": "human",
+            "percent": 87,
+            "role": "некроманты, солдаты, горожане, слуги и ученики Чёрного Обряда"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 8,
+            "role": "изгои, беглецы, разведчики и тёмные служители"
+          },
+          {
+            "raceId": "other",
+            "percent": 5,
+            "role": "рабы, слуги, пленники и редкие прислужники тёмных культов"
+          }
+        ],
+        "shortDescription": "Юго-восточный оплот некромантии Теримии у Огненных Жерл.",
+        "fullDescription": "Гур’лок находится на юго-востоке Терамора, рядом с вулканическим регионом Огненных Жерл. Город скрыт густыми туманами, окружён скалистыми ущельями и служит центром некромантии, тёмной магии, ритуалов и военных баз Теримии.",
+        "connectedCityIds": [
+          "city_brainhold",
+          "city_bromkar"
+        ],
+        "connectedZoneIds": [
+          "zone_teramor",
+          "zone_fiery_vents",
+          "zone_terimia"
+        ],
+        "worldZoneId": "zone_city_gurlok",
+        "locations": [
+          {
+            "id": "location_gurlok_obitel_chernogo_obryada",
+            "name": "Обитель Чёрного Обряда",
+            "type": "academy",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_gurlok",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "academy",
+            "description": "Главная академия некромантии, где обучают магов смерти, проклятиям, ритуалам крови и управлению мёртвыми."
+          },
+          {
+            "id": "location_gurlok_krepost_pepelnogo_vetra",
+            "name": "Крепость Пепельного Ветра",
+            "type": "fortress",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_gurlok",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Военная база, защищающая город, ущелья и окрестные территории от вторжений и бунтов."
+          },
+          {
+            "id": "location_gurlok_altar_pepelnogo_shipa",
+            "name": "Алтарь Пепельного Шипа",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_gurlok",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Место самых сильных ритуалов смерти, пепла и тёмных клятв."
+          }
+        ],
+        "backgroundImageId": "city_gurlok_background"
+      },
+      {
+        "id": "city_teranvil",
+        "name": "Теран’вил",
+        "slug": "teranvil",
+        "status": "active",
+        "climate": "deep_forest",
+        "regionId": "teramor",
+        "kingdomId": "wood_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Каладриэль Тихий Лист",
+        "rulerTitle": "archdruid",
+        "governmentType": "druidic forest city",
+        "cultureTags": [
+          "wood_elves",
+          "druidic",
+          "forest_city",
+          "spirits",
+          "living_trees"
+        ],
+        "economyTags": [
+          "bows",
+          "woodcraft",
+          "herbs",
+          "amulets",
+          "forest_trade"
+        ],
+        "visualTheme": "living tree city, luminous bridges, forest spirits, moon valley market",
+        "dangerLevel": 4,
+        "recommendedLevel": 5,
+        "populationTotal": 95000,
+        "racePopulation": [
+          {
+            "raceId": "wood_elf",
+            "percent": 79,
+            "role": "охотники, друиды, ремесленники, стражники и хранители леса"
+          },
+          {
+            "raceId": "human",
+            "percent": 13,
+            "role": "торговцы, работники внешних дворов и редкие поселенцы"
+          },
+          {
+            "raceId": "ancient_elf",
+            "percent": 6,
+            "role": "наставники, хранители древних ритуалов и духовные советники"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 2,
+            "role": "мастера механизмов для лесных общин"
+          }
+        ],
+        "shortDescription": "Крупный город лесных эльфов, скрытый в непроходимых лесах Терамора.",
+        "fullDescription": "Теран’вил скрыт в густых лесах центрального Терамора. Его дома, храмы и мастерские встроены в живые деревья, а город окружён стеной из древесных стражей. Рядом течёт тихая река, питающая город и нижние торговые уровни.",
+        "connectedCityIds": [
+          "city_feldan",
+          "city_eduntar"
+        ],
+        "connectedZoneIds": [
+          "zone_teramor_forests",
+          "zone_wood_elves"
+        ],
+        "worldZoneId": "zone_city_teranvil",
+        "locations": [
+          {
+            "id": "location_teranvil_arintelan_tsentralnoe_drevo",
+            "name": "Арин’тэлан — Центральное древо",
+            "type": "sacred_tree",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_teranvil",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tree",
+            "description": "Огромное древо в центре города. Внутри него находятся залы Верховного друида, собрания, хранилища артефактов и Зеркало Леса."
+          },
+          {
+            "id": "location_teranvil_rynok_lunnoy_doliny",
+            "name": "Рынок Лунной Долины",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_teranvil",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Нижняя торговая площадь с эльфийскими амулетами, лекарствами, древесными изделиями и дарами леса."
+          },
+          {
+            "id": "location_teranvil_svetovye_mosty",
+            "name": "Световые мосты",
+            "type": "bridge",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_teranvil",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "bridge",
+            "description": "Магические мосты между домами на деревьях, излучающие мягкий свет ночью."
+          },
+          {
+            "id": "location_teranvil_hram_drevnih_vetvey",
+            "name": "Храм Древних Ветвей",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_teranvil",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Главное святилище друидов, где проходят обряды защиты леса и общения с духами."
+          },
+          {
+            "id": "location_teranvil_remeslennye_masterskie",
+            "name": "Ремесленные мастерские",
+            "type": "workshop",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_teranvil",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "workshop",
+            "description": "Мастерские луков, амулетов, резных изделий и гномьих механизмов для лесных общин."
+          }
+        ],
+        "backgroundImageId": "city_teranvil_background"
+      },
+      {
+        "id": "city_feldan",
+        "name": "Фел’дан",
+        "slug": "feldan",
+        "status": "active",
+        "climate": "southern_deep_forest_swamp",
+        "regionId": "teramor",
+        "kingdomId": "wood_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Каладриэль Тихий Лист",
+        "rulerTitle": "archdruid",
+        "governmentType": "hidden druidic city",
+        "cultureTags": [
+          "wood_elves",
+          "swamp_magic",
+          "hidden_city",
+          "druids",
+          "illusions"
+        ],
+        "economyTags": [
+          "healing_elixirs",
+          "bows",
+          "herbs",
+          "forest_goods"
+        ],
+        "visualTheme": "hidden swamp forest city, council grove, druid hall, channels and hunter lodges",
+        "dangerLevel": 5,
+        "recommendedLevel": 5,
+        "populationTotal": 65000,
+        "racePopulation": [
+          {
+            "raceId": "wood_elf",
+            "percent": 80,
+            "role": "хранители природы, охотники, воины, друиды и ремесленники"
+          },
+          {
+            "raceId": "ancient_elf",
+            "percent": 9,
+            "role": "наставники друидов и хранители магических знаний"
+          },
+          {
+            "raceId": "human",
+            "percent": 8,
+            "role": "торговцы, редкие ремесленники и гости нижнего города"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 3,
+            "role": "кузнецы и мастера обработки металла"
+          }
+        ],
+        "shortDescription": "Скрытый южный лесной город, защищённый болотами, иллюзиями и природными духами.",
+        "fullDescription": "Фел’дан находится в южных густых лесах Терамора, в изолированной области между тенистыми рощами, болотами и скрытыми тропами. Город питается болотными водами и известен магией природы, охотничьими залами и тихим сопротивлением внешнему влиянию.",
+        "connectedCityIds": [
+          "city_teranvil",
+          "city_eduntar"
+        ],
+        "connectedZoneIds": [
+          "zone_southern_teramor_forests",
+          "zone_swamps",
+          "zone_wood_elves"
+        ],
+        "worldZoneId": "zone_city_feldan",
+        "locations": [
+          {
+            "id": "location_feldan_roshcha_soveta",
+            "name": "Роща Совета",
+            "type": "sacred_grove",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_feldan",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tree",
+            "description": "Центральная роща с самыми высокими деревьями, где проходят собрания друидов и принимаются решения города."
+          },
+          {
+            "id": "location_feldan_zal_druidov",
+            "name": "Зал Друидов",
+            "type": "academy",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_feldan",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "academy",
+            "description": "Главное место обучения магии природы, куда допускают только избранных учеников."
+          },
+          {
+            "id": "location_feldan_ohotnichi_zaly",
+            "name": "Охотничьи залы",
+            "type": "barracks",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_feldan",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "barracks",
+            "description": "Военный и охотничий центр с луками, трофеями, картами лесов и подготовкой стражей."
+          },
+          {
+            "id": "location_feldan_bolotnye_kanaly",
+            "name": "Болотные каналы",
+            "type": "waterworks",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_feldan",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "water",
+            "description": "Магическая система водоснабжения и рыболовства на окраинах города."
+          },
+          {
+            "id": "location_feldan_rynok_tsvetushchih_teney",
+            "name": "Рынок Цветущих Теней",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_feldan",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Нижний рынок для людей, гномов, путешественников и торговли лекарствами, травами и ремесленными товарами."
+          }
+        ],
+        "backgroundImageId": "city_feldan_background"
+      },
+      {
+        "id": "city_eduntar",
+        "name": "Эдун’тар",
+        "slug": "eduntar",
+        "status": "active",
+        "climate": "golden_lake_forest_hills",
+        "regionId": "teramor",
+        "kingdomId": "wood_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Эрилан Тихая Тропа",
+        "rulerTitle": "forest_lord",
+        "governmentType": "sacred forest lake city",
+        "cultureTags": [
+          "wood_elves",
+          "golden_lake",
+          "sacred_city",
+          "illusion_protection",
+          "forest_hills"
+        ],
+        "economyTags": [
+          "potions",
+          "woodcraft",
+          "sacred_water",
+          "herbs",
+          "trade"
+        ],
+        "visualTheme": "forest hill city beside golden lake, glowing tree, ritual shore, hidden illusion veil",
+        "dangerLevel": 5,
+        "recommendedLevel": 6,
+        "populationTotal": 85000,
+        "racePopulation": [
+          {
+            "raceId": "wood_elf",
+            "percent": 76,
+            "role": "друиды, хранители природы, охотники, воины и ремесленники"
+          },
+          {
+            "raceId": "ancient_elf",
+            "percent": 12,
+            "role": "наставники, учёные и хранители магических знаний"
+          },
+          {
+            "raceId": "human",
+            "percent": 9,
+            "role": "торговцы, травники и искатели приключений с редким доверием местных"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 3,
+            "role": "мастера механизмов и обработки металлов"
+          }
+        ],
+        "shortDescription": "Сакральный город лесных эльфов на западном берегу Золотого Озера.",
+        "fullDescription": "Эдун’тар расположен на юго-востоке Терамора, на западном берегу Золотого Озера и к востоку от реки Талиндра. Город стоит среди лесистых холмов, скрыт иллюзиями и связан с природной магией озера, ритуалами полнолуния и древними туннелями.",
+        "connectedCityIds": [
+          "city_teranvil",
+          "city_feldan",
+          "city_mograk"
+        ],
+        "connectedZoneIds": [
+          "zone_golden_lake",
+          "zone_talindra_river",
+          "zone_wood_elves"
+        ],
+        "worldZoneId": "zone_city_eduntar",
+        "locations": [
+          {
+            "id": "location_eduntar_holm_zvezdnogo_vetra",
+            "name": "Холм Звёздного Ветра",
+            "type": "sacred_hill",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_eduntar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tree",
+            "description": "Центр города, где стоит Древо Света — гигантское дерево с магическим сиянием и источник силы друидов."
+          },
+          {
+            "id": "location_eduntar_bereg_zolotogo_ozera",
+            "name": "Берег Золотого Озера",
+            "type": "shore",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_eduntar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "water",
+            "description": "Ритуальный берег, где в полнолуние проходят священные обряды, а воды озера сияют золотом."
+          },
+          {
+            "id": "location_eduntar_rynok_talindry",
+            "name": "Рынок Талиндры",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_eduntar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Крупный торговый центр у реки: зелья, травы, эльфийские изделия из дерева и металла."
+          },
+          {
+            "id": "location_eduntar_hram_lesnoy_tishiny",
+            "name": "Храм Лесной Тишины",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_eduntar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Святилище друидов и духов города, окружённое кольцом деревьев для обрядов очищения и посвящения."
+          },
+          {
+            "id": "location_eduntar_sklony_zashchitnikov",
+            "name": "Склоны Защитников",
+            "type": "fortification",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_eduntar",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Северные холмы с укреплениями и дозорными башнями, защищающими город."
+          }
+        ],
+        "backgroundImageId": "city_eduntar_background"
+      },
+      {
+        "id": "city_mirkant",
+        "name": "Мир’кант",
+        "slug": "mirkant",
+        "status": "active",
+        "climate": "lake_forest_mist",
+        "regionId": "ilar_aen",
+        "kingdomId": "ancient_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Исалдор Тень Леса",
+        "rulerTitle": "ancient_elven_lord",
+        "governmentType": "ancient elven sacred city",
+        "cultureTags": [
+          "ancient_elves",
+          "sacred_lake",
+          "nature_magic",
+          "old_traditions",
+          "mist"
+        ],
+        "economyTags": [
+          "artifacts",
+          "healing_water",
+          "enchanted_items",
+          "knowledge"
+        ],
+        "visualTheme": "ancient forest-lake city, white stone palace, whispering lake, misty hills",
+        "dangerLevel": 4,
+        "recommendedLevel": 7,
+        "populationTotal": 75000,
+        "racePopulation": [
+          {
+            "raceId": "ancient_elf",
+            "percent": 80,
+            "role": "хранители традиций, маги, мудрецы и жители древесных домов"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 13,
+            "role": "стражи священных рощ, охотники и помощники природы"
+          },
+          {
+            "raceId": "human",
+            "percent": 4,
+            "role": "учёные, маги и торговцы с разрешением на проживание"
+          },
+          {
+            "raceId": "other",
+            "percent": 3,
+            "role": "гномы и редкие высшие эльфы"
+          }
+        ],
+        "shortDescription": "Древнеэльфийский город у Озера Шепчущих Волн.",
+        "fullDescription": "Мир’кант находится на северо-западе Илар’аэна, у южного берега Озера Шепчущих Волн. Город расположен на возвышенности среди лесов и болот, где дома вырезаны из гигантских деревьев, а магия природы защищает улицы и священные рощи.",
+        "connectedCityIds": [
+          "city_iserkel",
+          "city_isimel"
+        ],
+        "connectedZoneIds": [
+          "zone_ilar_aen",
+          "zone_whispering_waves_lake",
+          "zone_ancient_elves"
+        ],
+        "worldZoneId": "zone_city_mirkant",
+        "locations": [
+          {
+            "id": "location_mirkant_hram_vechnoy_pesni",
+            "name": "Храм Вечной Песни",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_mirkant",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Главное святилище на берегу озера, где древние эльфы проводят обряды и молятся духам природы."
+          },
+          {
+            "id": "location_mirkant_dvorets_tihoy_vody",
+            "name": "Дворец Тихой Воды",
+            "type": "palace",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_mirkant",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Резиденция Исалдора Тень Леса из белого камня и древесины, возвышающаяся над городом."
+          },
+          {
+            "id": "location_mirkant_roshcha_drevnih_glasov",
+            "name": "Роща Древних Гласов",
+            "type": "sacred_grove",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_mirkant",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tree",
+            "description": "Магическое место общения с духами леса и посвящения молодых друидов."
+          },
+          {
+            "id": "location_mirkant_masterskie_lunnogo_sveta",
+            "name": "Мастерские Лунного Света",
+            "type": "workshop",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_mirkant",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "workshop",
+            "description": "Ремесленные мастерские артефактов, зачарованных предметов и тонкой эльфийской работы."
+          },
+          {
+            "id": "location_mirkant_tumannye_holmy",
+            "name": "Туманные Холмы",
+            "type": "watchpost",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_mirkant",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Укреплённая дозорная часть города на холмах."
+          }
+        ],
+        "backgroundImageId": "city_mirkant_background"
+      },
+      {
+        "id": "city_serkel",
+        "name": "Сер’кел",
+        "slug": "serkel",
+        "status": "active",
+        "climate": "mist_swamp_edge",
+        "regionId": "ilar_aen",
+        "kingdomId": "ancient_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Эланна Песнь Ветра",
+        "rulerTitle": "high_priestess",
+        "governmentType": "spiritual city rule",
+        "cultureTags": [
+          "ancient_elves",
+          "swamp_spirits",
+          "mist_magic",
+          "priesthood",
+          "talindra"
+        ],
+        "economyTags": [
+          "rare_plants",
+          "magical_tools",
+          "knowledge_trade",
+          "potions"
+        ],
+        "visualTheme": "misty sacred city, swamp spirit tower, golden branch temple, fireflies and living wood",
+        "dangerLevel": 5,
+        "recommendedLevel": 7,
+        "populationTotal": 60000,
+        "racePopulation": [
+          {
+            "raceId": "ancient_elf",
+            "percent": 83,
+            "role": "мудрецы, маги, защитники, жрицы и жители священных кварталов"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 10,
+            "role": "стражи лесов и болотных границ"
+          },
+          {
+            "raceId": "human",
+            "percent": 5,
+            "role": "торговцы и искатели знаний"
+          },
+          {
+            "raceId": "other",
+            "percent": 2,
+            "role": "гномы и редкие гости"
+          }
+        ],
+        "shortDescription": "Магический город древних эльфов у болот Чёрного Мха и реки Талиндра.",
+        "fullDescription": "Сер’кел расположен на востоке Илар’аэна, рядом с болотами Чёрного Мха и рекой Талиндра. Город стоит на возвышенности, защищённой от разливов, и известен магией тумана, духовными ритуалами, священными садами и защитой болот.",
+        "connectedCityIds": [
+          "city_mirkant",
+          "city_kaldor"
+        ],
+        "connectedZoneIds": [
+          "zone_ilar_aen",
+          "zone_black_moss_swamps",
+          "zone_talindra_river"
+        ],
+        "worldZoneId": "zone_city_serkel",
+        "locations": [
+          {
+            "id": "location_serkel_bashnya_duhov_bolota",
+            "name": "Башня Духов Болота",
+            "type": "tower",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_serkel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tower",
+            "description": "Башня в центре города, откуда жрицы связываются с духами болот; резиденция Эланны Песнь Ветра."
+          },
+          {
+            "id": "location_serkel_hram_zolotoy_vetvi",
+            "name": "Храм Золотой Ветви",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_serkel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Древнее святилище богов природы, где хранятся артефакты и проводятся важные ритуалы."
+          },
+          {
+            "id": "location_serkel_sady_tumana",
+            "name": "Сады Тумана",
+            "type": "garden",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_serkel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "garden",
+            "description": "Магические сады редких растений для зелий, лекарств и ритуальных компонентов."
+          },
+          {
+            "id": "location_serkel_rynok_vechnyh_voln",
+            "name": "Рынок Вечных Волн",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_serkel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Торговый центр, где древние эльфы обмениваются товарами с лесными эльфами, людьми и гномами."
+          },
+          {
+            "id": "location_serkel_rubezh_zashchitnikov",
+            "name": "Рубеж Защитников",
+            "type": "fortification",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_serkel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Укрепления вдоль дороги к болотам и реке, защищающие город от нежелательных гостей."
+          }
+        ],
+        "backgroundImageId": "city_serkel_background"
+      },
+      {
+        "id": "city_isimel",
+        "name": "Иси’мел",
+        "slug": "isimel",
+        "status": "active",
+        "climate": "ancient_forest",
+        "regionId": "ilar_aen",
+        "kingdomId": "ancient_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Исилме",
+        "rulerTitle": "first_elf_king",
+        "governmentType": "ancient sacred monarchy",
+        "cultureTags": [
+          "ancient_elves",
+          "isimel",
+          "sacred_capital",
+          "magic_barrier",
+          "isilme"
+        ],
+        "economyTags": [
+          "knowledge",
+          "sacred_artifacts",
+          "healing",
+          "moon_market"
+        ],
+        "visualTheme": "ancient sacred forest city, giant tree temple, white light tower, dream valley",
+        "dangerLevel": 3,
+        "recommendedLevel": 9,
+        "populationTotal": 100000,
+        "racePopulation": [
+          {
+            "raceId": "ancient_elf",
+            "percent": 80,
+            "role": "маги, друиды, хранители истории и жители древних древесных кварталов"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 10,
+            "role": "охрана леса и хозяйственные задачи"
+          },
+          {
+            "raceId": "human",
+            "percent": 8,
+            "role": "торговцы, травники и маги, принятые за заслуги"
+          },
+          {
+            "raceId": "other",
+            "percent": 2,
+            "role": "гномы и крайне редкие высшие эльфы"
+          }
+        ],
+        "shortDescription": "Сердце древнеэльфийской цивилизации и город Исилме.",
+        "fullDescription": "Иси’мел расположен на северо-западе Илар’аэна, у Туманного Леса. Это одна из древнейших столиц древних эльфов, почти полностью сливающаяся с природой. Город окружён магическим щитом, а его здания вырастают из живых деревьев без вреда для леса.",
+        "connectedCityIds": [
+          "city_mirkant",
+          "city_kaldor"
+        ],
+        "connectedZoneIds": [
+          "zone_ilar_aen",
+          "zone_misty_forest",
+          "zone_ancient_elves"
+        ],
+        "worldZoneId": "zone_city_isimel",
+        "locations": [
+          {
+            "id": "location_isimel_drevo_hram_materi",
+            "name": "Древо-Храм Матери",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_isimel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Главный храм города вокруг гигантского древа, связанного с богиней природы; место важнейших ритуалов и собраний."
+          },
+          {
+            "id": "location_isimel_sady_vechnoy_pamyati",
+            "name": "Сады Вечной Памяти",
+            "type": "library",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_isimel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "library",
+            "description": "Огромные рощи-хранилища древних артефактов, свитков и истории мира."
+          },
+          {
+            "id": "location_isimel_bashnya_tihogo_sveta",
+            "name": "Башня Тихого Света",
+            "type": "tower",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_isimel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tower",
+            "description": "Высокая структура из белого камня и древесины, где живёт Исилме; окружена магическими барьерами."
+          },
+          {
+            "id": "location_isimel_rynok_lunnoy_doliny",
+            "name": "Рынок Лунной Долины",
+            "type": "market",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_isimel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "market",
+            "description": "Торговая площадь для обмена товарами между древними эльфами и жителями соседних лесов."
+          },
+          {
+            "id": "location_isimel_dolina_snov",
+            "name": "Долина Снов",
+            "type": "ritual_ground",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_isimel",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "ritual",
+            "description": "Уединённое место обрядов взросления и обучения молодых эльфов магии."
+          }
+        ],
+        "backgroundImageId": "city_isimel_background"
+      },
+      {
+        "id": "city_kaldor",
+        "name": "Каль’дор",
+        "slug": "kaldor",
+        "status": "active",
+        "climate": "floating_swamps",
+        "regionId": "ilar_aen",
+        "kingdomId": "ancient_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Арвен’тир Зелёный Щит",
+        "rulerTitle": "warden_lord",
+        "governmentType": "swamp guardian city",
+        "cultureTags": [
+          "ancient_elves",
+          "swamps",
+          "floating_city",
+          "relic_guardians",
+          "water_magic"
+        ],
+        "economyTags": [
+          "rare_plants",
+          "boats",
+          "magic_artifacts",
+          "medicine",
+          "swamp_trade"
+        ],
+        "visualTheme": "floating swamp city, bridges, lily gardens, stilt houses, hidden fortifications",
+        "dangerLevel": 6,
+        "recommendedLevel": 8,
+        "populationTotal": 85000,
+        "racePopulation": [
+          {
+            "raceId": "ancient_elf",
+            "percent": 76,
+            "role": "маги, хранители болотных тайн, правители и защитники реликвий"
+          },
+          {
+            "raceId": "wood_elf",
+            "percent": 18,
+            "role": "охрана земель, ремёсла и поддержание природных границ"
+          },
+          {
+            "raceId": "human",
+            "percent": 4,
+            "role": "торговцы и путешественники нижних частей города"
+          },
+          {
+            "raceId": "other",
+            "percent": 2,
+            "role": "гномы и редкие высшие эльфы"
+          }
+        ],
+        "shortDescription": "Древнеэльфийский болотный город среди Плывущих Топей.",
+        "fullDescription": "Каль’дор находится в центральной части Илар’аэна, среди заболоченных земель Плывущих Топей. Город построен на возвышенностях и искусственных островах, соединённых мостами и магическими переходами; вода, лилии и болотная магия определяют всю жизнь города.",
+        "connectedCityIds": [
+          "city_serkel",
+          "city_isimel"
+        ],
+        "connectedZoneIds": [
+          "zone_ilar_aen",
+          "zone_floating_marshes",
+          "zone_ancient_elves"
+        ],
+        "worldZoneId": "zone_city_kaldor",
+        "locations": [
+          {
+            "id": "location_kaldor_zal_hraniteley_bolot",
+            "name": "Зал Хранителей Болот",
+            "type": "hall",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_kaldor",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "hall",
+            "description": "Главная резиденция Арвен’тира на центральном острове, где хранятся реликвии и свитки древних эльфов."
+          },
+          {
+            "id": "location_kaldor_hram_tekushchih_voln",
+            "name": "Храм Текущих Волн",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_kaldor",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Святилище природы и воды, где проходят ритуалы очищения и гармонии."
+          },
+          {
+            "id": "location_kaldor_plavuchie_remeslennye_kvartaly",
+            "name": "Плавучие Ремесленные Кварталы",
+            "type": "workshop",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_kaldor",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "workshop",
+            "description": "Районы на платформах, где лесные эльфы и гномы создают артефакты, корабли и оружие."
+          },
+          {
+            "id": "location_kaldor_sady_lunnyh_liliy",
+            "name": "Сады Лунных Лилий",
+            "type": "garden",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_kaldor",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "garden",
+            "description": "Плавающие платформы с редкими растениями для медицины и магии."
+          },
+          {
+            "id": "location_kaldor_bolotnye_ukrepleniya",
+            "name": "Болотные Укрепления",
+            "type": "fortification",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_kaldor",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "fortress",
+            "description": "Скрытая магией система защитных сооружений на границах города."
+          }
+        ],
+        "backgroundImageId": "city_kaldor_background"
+      },
+      {
+        "id": "city_targrim",
+        "name": "Тар’грим",
+        "slug": "targrim",
+        "status": "active",
+        "climate": "underground_mountain",
+        "regionId": "teramor",
+        "kingdomId": "dwarf_clans",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Таргваар",
+        "rulerTitle": "dwarf_prince",
+        "governmentType": "nominal dwarven fortress rule",
+        "cultureTags": [
+          "dwarf",
+          "underground",
+          "embrian_mountain",
+          "forge",
+          "mechanical_magic"
+        ],
+        "economyTags": [
+          "blacksmithing",
+          "artifacts",
+          "crystals",
+          "engineering",
+          "weapons"
+        ],
+        "visualTheme": "vast underground dwarven fortress, dark stone gates, glowing crystals, giant forge hall",
+        "dangerLevel": 7,
+        "recommendedLevel": 9,
+        "populationTotal": 120000,
+        "racePopulation": [
+          {
+            "raceId": "dwarf",
+            "percent": 87,
+            "role": "кузнецы, воины, инженеры, шахтёры, камнерезы и мастера артефактов"
+          },
+          {
+            "raceId": "human",
+            "percent": 8,
+            "role": "торговцы и ремесленники, допущенные к обмену"
+          },
+          {
+            "raceId": "ancient_elf",
+            "percent": 4,
+            "role": "магические исследователи и дипломатические посредники"
+          },
+          {
+            "raceId": "other",
+            "percent": 1,
+            "role": "редкие лесные эльфы и гости по приглашению"
+          }
+        ],
+        "shortDescription": "Скрытый подземный город-крепость гномов в сердце горы Эмбриал.",
+        "fullDescription": "Тар’грим находится в горной цепи Терамора, внутри горы Эмбриал. Его ворота вырезаны из тёмного камня и защищены магическими и механическими ловушками. Это подземная крепость кузниц, библиотек, артефактов, кристаллов и гномьих военных традиций.",
+        "connectedCityIds": [
+          "city_grankor"
+        ],
+        "connectedZoneIds": [
+          "zone_teramor_mountains",
+          "zone_embrian_mountain",
+          "zone_dwarf_deep_roads"
+        ],
+        "worldZoneId": "zone_city_targrim",
+        "locations": [
+          {
+            "id": "location_targrim_zal_gornogo_ognya",
+            "name": "Зал Горного Огня",
+            "type": "blacksmith",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_targrim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "blacksmith",
+            "description": "Центральный зал города с гигантской кузницей, базальтовыми колоннами и производством оружия и доспехов."
+          },
+          {
+            "id": "location_targrim_biblioteka_podzemnyh_tayn",
+            "name": "Библиотека Подземных Тайн",
+            "type": "library",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_targrim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "library",
+            "description": "Хранилище древних книг, карт, инженерных записей и сведений о путешествиях Таргваара."
+          },
+          {
+            "id": "location_targrim_hram_sofii",
+            "name": "Храм Софии",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_targrim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Святилище богини мудрости, где гномы просят благословения для труда, изобретений и знаний."
+          },
+          {
+            "id": "location_targrim_galereya_artefaktov",
+            "name": "Галерея Артефактов",
+            "type": "museum",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_targrim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "artifact",
+            "description": "Зал великих артефактов, механизмов и изобретений мастеров Тар’грима."
+          },
+          {
+            "id": "location_targrim_vrata_ispytaniy",
+            "name": "Врата Испытаний",
+            "type": "gate",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_targrim",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "gate",
+            "description": "Укреплённые ворота города, защищённые ловушками, барьерами и гномьими механизмами."
+          }
+        ],
+        "backgroundImageId": "city_targrim_background"
+      },
+      {
+        "id": "city_aelaron",
+        "name": "Аэл’арон",
+        "slug": "aelaron",
+        "status": "active",
+        "climate": "frozen_high_mountain",
+        "regionId": "ailas_sil",
+        "kingdomId": "high_elves",
+        "createdAt": "2026-06-06T11:05:00Z",
+        "updatedAt": "2026-06-06T11:05:00Z",
+        "rulerName": "Совет Вечных Звёзд",
+        "rulerTitle": "council",
+        "governmentType": "high elven oligarchic council",
+        "cultureTags": [
+          "high_elves",
+          "ailas_sil",
+          "frozen_city",
+          "council",
+          "isolation"
+        ],
+        "economyTags": [
+          "artifacts",
+          "magic_devices",
+          "ice_minerals",
+          "luxury_trade",
+          "gladiator_games"
+        ],
+        "visualTheme": "high elven ice city, glacier walls, luminous bridges, white marble terraces, star temple",
+        "dangerLevel": 7,
+        "recommendedLevel": 10,
+        "populationTotal": 120000,
+        "racePopulation": [
+          {
+            "raceId": "high_elf",
+            "percent": 71,
+            "role": "аристократия, маги, ремесленники, военная каста и жители верхних террас"
+          },
+          {
+            "raceId": "human",
+            "percent": 17,
+            "role": "торговцы, наёмники, слуги и жители нижних уровней"
+          },
+          {
+            "raceId": "dwarf",
+            "percent": 8,
+            "role": "кузнецы, механики магических устройств и добытчики ледниковых минералов"
+          },
+          {
+            "raceId": "other",
+            "percent": 4,
+            "role": "лесные и древние эльфы, редкие гости и мелкие торговцы"
+          }
+        ],
+        "shortDescription": "Ледяная столица высших эльфов на вершинах Айлас’Сила.",
+        "fullDescription": "Аэл’арон стоит на вершине Айлас’Сила среди вечных ледников и обрывов. После смерти Аэндора власть перешла к Совету Вечных Звёзд. Город скрыт за горами, его террасы соединены магическими мостами, а дворцы, башни и храмы хранят остатки прежнего величия высших эльфов.",
+        "connectedCityIds": [
+          "city_veridal",
+          "city_windhaven"
+        ],
+        "connectedZoneIds": [
+          "zone_ailas_sil",
+          "zone_high_elves",
+          "zone_frozen_peaks"
+        ],
+        "worldZoneId": "zone_city_aelaron",
+        "locations": [
+          {
+            "id": "location_aelaron_tsentralnaya_terrasa_i_dvorets_aendora",
+            "name": "Центральная терраса и дворец Аэндора",
+            "type": "palace",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 130,
+              "y": 80,
+              "width": 170,
+              "height": 105
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "castle",
+            "description": "Сердце Аэл’арона, где стоит заброшенный дворец Аэндора с потемневшими мраморными стенами и сохранившимися магическими барьерами."
+          },
+          {
+            "id": "location_aelaron_hram_zvezd",
+            "name": "Храм Звёзд",
+            "type": "temple",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 430,
+              "y": 75,
+              "width": 185,
+              "height": 110
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "temple",
+            "description": "Святое место высших эльфов, куда допускаются только избранные; здесь хранятся древние артефакты и проходят религиозные обряды."
+          },
+          {
+            "id": "location_aelaron_bashnya_sveta",
+            "name": "Башня Света",
+            "type": "tower",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 755,
+              "y": 80,
+              "width": 175,
+              "height": 105
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "tower",
+            "description": "Обсерватория и символ города, откуда видны снежные равнины Айлас’Сила."
+          },
+          {
+            "id": "location_aelaron_kvartaly_remeslennikov",
+            "name": "Кварталы ремесленников",
+            "type": "workshop",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 175,
+              "y": 335,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "workshop",
+            "description": "Район гномов и эльфийских мастеров, где создаются артефакты, оружие и магические устройства."
+          },
+          {
+            "id": "location_aelaron_nizhniy_gorod",
+            "name": "Нижний город",
+            "type": "district",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 510,
+              "y": 315,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "district",
+            "description": "Смешанный район людей, торговцев, лесных эльфов и слуг, более шумный и хаотичный, чем верхние террасы."
+          },
+          {
+            "id": "location_aelaron_arena_nizhnego_goroda",
+            "name": "Арена Нижнего Города",
+            "type": "arena",
+            "shapeType": "rectangle",
+            "shape": {
+              "x": 820,
+              "y": 325,
+              "width": 190,
+              "height": 110
+            },
+            "cityId": "city_aelaron",
+            "npcIds": [],
+            "shopIds": [],
+            "questIds": [],
+            "isVisible": true,
+            "isUnlocked": true,
+            "markerIcon": "arena",
+            "description": "Место гладиаторских боёв и публичных зрелищ, где городская власть отвлекает жителей от внутренних конфликтов."
+          }
+        ],
+        "backgroundImageId": "city_aelaron_background"
       }
     ],
     "locations": [
@@ -38018,6 +40307,26 @@
         "dataUrl": "/assets/upload/images/items/potion/healing/starter_healing_potion_01-starter_healing_potion_01-icon.png",
         "createdAt": "2026-06-05T20:23:09.429Z",
         "updatedAt": "2026-06-05T20:23:09.429Z"
+      },
+      {
+        "id": "zone_mine_teramor_old_iron_active_world_sprite",
+        "name": "zone_mine_teramor_old_iron-active-world-sprite",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/locations/zone_mine_teramor_old_iron/states/zone_mine_teramor_old_iron_active_world_sprite-zone_mine_teramor_old_iron-active-world-sprite.png",
+        "createdAt": "2026-06-06T10:51:57.492Z",
+        "updatedAt": "2026-06-06T10:52:27.829Z"
+      },
+      {
+        "id": "zone_mine_teramor_old_iron_world_sprite",
+        "name": "zone_mine_teramor_old_iron-world-sprite",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/locations/zone_mine_teramor_old_iron/world-sprite/zone_mine_teramor_old_iron_world_sprite-zone_mine_teramor_old_iron-world-sprite.png",
+        "createdAt": "2026-06-06T10:52:35.407Z",
+        "updatedAt": "2026-06-06T10:52:35.407Z"
       }
     ],
     "dialogues": [
@@ -44450,11 +46759,14 @@
         "dialogues": [],
         "questBindings": [],
         "createdAt": "2026-06-04T22:15:47.359Z",
-        "updatedAt": "2026-06-04T22:15:47.359Z",
+        "updatedAt": "2026-06-06T10:44:44.591Z",
         "locationId": "arena:combat",
         "inventory": {
           "itemIds": [],
-          "questItemIds": []
+          "questItemIds": [],
+          "lootTableId": null,
+          "goldMin": 0,
+          "goldMax": 0
         },
         "combat": {
           "level": 1,
@@ -44471,9 +46783,13 @@
           "perception": 5,
           "initiative": 8,
           "armorItemIds": [],
-          "skillIds": []
+          "skillIds": [],
+          "weaponItemId": null
         },
-        "worldSimTrader": false
+        "worldSimTrader": false,
+        "trainer": null,
+        "allowedCityIds": [],
+        "conditions": []
       }
     ],
     "quests": [
@@ -58664,6 +60980,252 @@
     ],
     "blacksmithItemTemplates": [],
     "blacksmithItemWorkActions": [],
+    "sounds": [
+      {
+        "id": "music_kingdom_argos",
+        "name": "Тема королевства: королевство Аргос (3)",
+        "status": "active",
+        "category": "kingdoms",
+        "kind": "music",
+        "assetUrl": "/assets/upload/audio/world/argos_kingdom/audio_1780227390642_09ecfe65-Argos_worldmap_music_12.mp3",
+        "assetKey": "music_kingdom_argos",
+        "volume": 1,
+        "loop": true,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [],
+        "bindings": [
+          {
+            "id": "bind_music_kingdom_argos_enter",
+            "targetType": "kingdom",
+            "targetId": "argos_kingdom",
+            "event": "enter",
+            "priority": 10
+          }
+        ],
+        "adminNotes": "Создано из legacy: worldMapZones/argos_kingdom (music.urls.2)",
+        "createdAt": "2026-06-06T06:51:44.258Z",
+        "updatedAt": "2026-06-06T07:06:05.696Z",
+        "source": "registry",
+        "description": null,
+        "problems": null
+      },
+      {
+        "id": "legacy_fx_projectile_ice_arrow",
+        "name": "Звук эффекта: Ice Arrow Projectile",
+        "status": "active",
+        "category": "combat",
+        "kind": "sfx",
+        "assetUrl": "/assets/upload/audio/fx/projectile/ice/projectile_ice_arrow/projectile_ice_arrow_sound-projectile_ice_arrow-sound.mp3",
+        "assetKey": "legacy_fx_projectile_ice_arrow",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [],
+        "bindings": [],
+        "adminNotes": "Создано из legacy: visualFx/projectile_ice_arrow (audio.defaultSoundId)",
+        "createdAt": "2026-06-06T06:52:23.004Z",
+        "updatedAt": "2026-06-06T07:06:09.063Z",
+        "source": "registry",
+        "description": null,
+        "problems": null
+      },
+      {
+        "id": "test_sound_id",
+        "name": "Test Sound",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "assetUrl": "/assets/test.mp3"
+      },
+      {
+        "id": "ui_click_primary",
+        "name": "Клик (основной)",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Основной клик по кнопке, подтверждение выбора.",
+        "assetUrl": "/audio/sfx/ui/click_primary.ogg",
+        "assetKey": "ui_click_primary",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:26:42.447Z",
+        "updatedAt": "2026-06-06T09:26:42.447Z"
+      },
+      {
+        "id": "ui_click_secondary",
+        "name": "Клик (второстепенный)",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Мягкий клик, второстепенные кнопки.",
+        "assetUrl": "/audio/sfx/ui/click_secondary.ogg",
+        "assetKey": "ui_click_secondary",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:26:45.098Z",
+        "updatedAt": "2026-06-06T09:26:45.098Z"
+      },
+      {
+        "id": "ui_hover",
+        "name": "Hover",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Тихий звук при наведении на кнопку.",
+        "assetUrl": "/audio/sfx/ui/hover.ogg",
+        "assetKey": "ui_hover",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:26:47.300Z",
+        "updatedAt": "2026-06-06T09:37:49.902Z",
+        "adminNotes": null,
+        "source": "registry",
+        "problems": null
+      },
+      {
+        "id": "ui_open_menu",
+        "name": "Открыть меню",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Звук открытия панели / инвентаря / меню.",
+        "assetUrl": "/audio/sfx/ui/open_menu.ogg",
+        "assetKey": "ui_open_menu",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:30:54.495Z",
+        "updatedAt": "2026-06-06T09:37:46.656Z",
+        "adminNotes": null,
+        "source": "registry",
+        "problems": null
+      },
+      {
+        "id": "ui_close_menu",
+        "name": "Закрыть меню",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Звук закрытия панели / меню.",
+        "assetUrl": "/audio/sfx/ui/close_menu.ogg",
+        "assetKey": "ui_close_menu",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:30:58.619Z",
+        "updatedAt": "2026-06-06T09:30:58.619Z"
+      },
+      {
+        "id": "ui_confirm",
+        "name": "Подтвердить",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Звук подтверждения действия (OK, Принять, Готово).",
+        "assetUrl": "/audio/sfx/ui/confirm.ogg",
+        "assetKey": "ui_confirm",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:36:00.220Z",
+        "updatedAt": "2026-06-06T09:36:00.220Z"
+      },
+      {
+        "id": "ui_cancel",
+        "name": "Отмена",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Звук отмены / выхода назад.",
+        "assetUrl": "/audio/sfx/ui/cancel.ogg",
+        "assetKey": "ui_cancel",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:36:43.252Z",
+        "updatedAt": "2026-06-06T09:36:43.252Z"
+      },
+      {
+        "id": "ui_error",
+        "name": "Ошибка",
+        "status": "active",
+        "category": "ui",
+        "kind": "sfx",
+        "description": "Звук ошибки, недоступного действия.",
+        "assetUrl": "/audio/sfx/ui/error.ogg",
+        "assetKey": "ui_error",
+        "volume": 1,
+        "loop": false,
+        "randomPitch": false,
+        "pitchMin": 0.9,
+        "pitchMax": 1.1,
+        "cooldownMs": 0,
+        "tags": [
+          "ui"
+        ],
+        "bindings": [],
+        "createdAt": "2026-06-06T09:36:46.213Z",
+        "updatedAt": "2026-06-06T09:36:46.213Z"
+      }
+    ],
     "worldMap": {
       "zones": [
         {
@@ -59088,34 +61650,6 @@
           ]
         },
         {
-          "id": "zone_mine_teramor_old_iron",
-          "name": "Старая шахта Терамора",
-          "type": "profession",
-          "shape": "circle",
-          "region": "teramor",
-          "faction": "kriatar",
-          "description": "Холодный воздух выходит из расщелины. Где-то внутри слышится глухой стук камня.",
-          "tooltip": "Старая шахта с железом и следами зептирита.",
-          "dangerLevel": 1,
-          "isDiscovered": true,
-          "isVisibleToPlayer": true,
-          "resourceKind": "mine",
-          "mineId": "mine_teramor_old_iron",
-          "professionId": "mining",
-          "editorLayer": "resources",
-          "interactionMode": "enter",
-          "playerClickable": true,
-          "blocksClick": false,
-          "passiveEffects": [],
-          "color": "#000000",
-          "randomQuestPoolIds": [],
-          "createdAt": 1779654941500,
-          "updatedAt": 1779662711201,
-          "x": 0.4019592997731772,
-          "y": 0.49150372801760334,
-          "radius": 0.005484026630049162
-        },
-        {
           "id": "city_omtara",
           "name": "Ом'тара",
           "type": "city",
@@ -59306,6 +61840,50 @@
           "x": 0.508071011597535,
           "y": 0.7140973945392182,
           "radius": 0.003269033588225118
+        },
+        {
+          "id": "zone_mine_teramor_old_iron",
+          "name": "Старая шахта Терамора",
+          "type": "profession",
+          "shape": "circle",
+          "region": "teramor",
+          "faction": "kriatar",
+          "description": "Холодный воздух выходит из расщелины. Где-то внутри слышится глухой стук камня.",
+          "tooltip": "Старая шахта с железом и следами зептирита.",
+          "dangerLevel": 1,
+          "isDiscovered": true,
+          "isVisibleToPlayer": true,
+          "resourceKind": "mine",
+          "mineId": "mine_teramor_old_iron",
+          "professionId": "mining",
+          "editorLayer": "resources",
+          "interactionMode": "enter",
+          "playerClickable": true,
+          "blocksClick": false,
+          "passiveEffects": [],
+          "color": "#000000",
+          "randomQuestPoolIds": [],
+          "subtype": "mine",
+          "currentState": "active",
+          "locationSprite": {
+            "imageUrl": "zone_mine_teramor_old_iron_world_sprite",
+            "assetKey": "zone_mine_teramor_old_iron_world_sprite",
+            "visibleOnWorldMap": true,
+            "visibleInLocationView": true,
+            "anchor": "center",
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 0.16,
+            "zIndex": 10
+          },
+          "stateSprites": {
+            "active": "zone_mine_teramor_old_iron_active_world_sprite"
+          },
+          "createdAt": 1779654941500,
+          "updatedAt": 1780743255626,
+          "x": 0.4019592997731772,
+          "y": 0.49150372801760334,
+          "radius": 0.003590857112888243
         }
       ],
       "regions": [
@@ -77403,7 +79981,7 @@
           "showOnMiniMap": true
         }
       ],
-      "updatedAt": "2026-06-05T08:24:11.195Z"
+      "updatedAt": "2026-06-06T11:06:22.277Z"
     }
   }
 }

@@ -68,6 +68,7 @@ import {
   unequipArenaItemInstance,
   useArenaItem as arenaUseItem,
   useSkillOutOfCombat as arenaUseSkillOutOfCombat,
+  deleteArenaItemInstance,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -3682,6 +3683,41 @@ function applyHubState(hub: HubStatePayload): void {
     }
   }
 
+  async function handleDiscardItem(itemId: string): Promise<void> {
+    try {
+      if (!character) {
+        setStatus('Character is not selected.');
+        return;
+      }
+
+      const isEquipped = Object.values(equipment).includes(itemId);
+      if (isEquipped) {
+        setStatus('Нельзя выбросить экипированный предмет. Сначала снимите его.');
+        return;
+      }
+
+      const entry = inventory.items.find((e) => e.itemId === itemId);
+      if (!entry) {
+        setStatus('Предмет не найден в инвентаре.');
+        return;
+      }
+
+      const quantity = entry.quantity;
+      const updatedHub = await adjustDevInventoryItem(character.id, { itemId, quantityDelta: -quantity });
+
+      const instance = arenaItemInstances.find((inst) => inst.itemId === itemId || inst.id === itemId);
+      if (instance) {
+        await deleteArenaItemInstance(character.id, instance.itemId, instance.id).catch(() => undefined);
+      }
+
+      applyHubState(updatedHub);
+      setStatus(`${resolveItem(itemId).name} выброшен.`);
+    } catch (error) {
+      setStatus(`Discard error: ${(error as Error).message}`);
+    }
+  }
+
+
   async function handleUseSkillOutOfCombat(skillId: string): Promise<void> {
     try {
       if (!character) {
@@ -5908,6 +5944,8 @@ function applyHubState(hub: HubStatePayload): void {
           cityMerchants={enabledRuntimeMerchants}
           resolveItemById={resolveRuntimeItemById}
           resolveItemImage={resolveItemImage}
+          resolveItemImageRef={resolveItemImageRef}
+          resolveItemLegacyImagePath={resolveItemLegacyImagePath}
           resolveMerchantImage={resolveMerchantImage}
           devTravelRequest={godmodeTravelRequest}
         />
@@ -5946,6 +5984,7 @@ function applyHubState(hub: HubStatePayload): void {
             onSaveHotbar={handleSaveCharacterHotbar}
             onUseItem={handleUseConsumable}
             onUseSkillOutOfCombat={handleUseSkillOutOfCombat}
+            onDiscardItem={handleDiscardItem}
             onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={effectivePlayerAvatarUrl}
             resolveItemById={resolveRuntimeItemById}

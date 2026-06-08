@@ -1041,6 +1041,7 @@ export function MiningScreen({
             justify-content: center;
             align-items: center;
             z-index: 41;
+            isolation: isolate;
           }
           .mining-skill-wheel-icon {
             position: absolute;
@@ -1059,6 +1060,7 @@ export function MiningScreen({
             transform-origin: center;
             will-change: transform;
             transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+            z-index: 44;
           }
           .mining-skill-wheel-icon img {
             width: 100%;
@@ -1069,11 +1071,13 @@ export function MiningScreen({
             transform: translate(-50%, -50%) scale(1.12) !important;
             border-color: rgba(240, 203, 139, 0.9);
             box-shadow: 0 0 0 2px rgba(240, 203, 139, 0.2), 0 10px 22px rgba(0, 0, 0, 0.45);
+            z-index: 45;
           }
           .mining-skill-wheel button.mining-skill-wheel-icon:focus-visible {
             transform: translate(-50%, -50%) scale(1.12) !important;
             border-color: rgba(240, 203, 139, 0.9);
             box-shadow: 0 0 0 2px rgba(240, 203, 139, 0.2), 0 10px 22px rgba(0, 0, 0, 0.45);
+            z-index: 45;
           }
           .mining-skill-wheel button.mining-skill-wheel-icon:active:enabled {
             transform: translate(-50%, -50%) scale(1.06) !important;
