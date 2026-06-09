@@ -92,7 +92,14 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
       <div className="wm-inventory-grid">
         {inventory.items.slice(0, 16).map((entry) => {
           const item = resolveItemById?.(entry.itemId) ?? null;
-          const image = resolveItemImage?.(item);
+          const image = resolveItemImage?.(item)
+            ?? (() => {
+              const iconPath = String(item?.icon ?? '').trim();
+              if (!iconPath || iconPath.toLowerCase() === 'unknown') {
+                return undefined;
+              }
+              return normalizeActorVisualSource(iconPath);
+            })();
           return (
             <div key={entry.itemId} className="wm-item-cell" title={item?.name ?? entry.itemId}>
               <span
@@ -106,7 +113,7 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
               >
                 {!image ? (item?.name.slice(0, 2).toUpperCase() ?? entry.itemId.slice(0, 2).toUpperCase()) : null}
               </span>
-              <small>{entry.quantity}</small>
+              <small className="wm-item-cell-qty">{entry.quantity}</small>
             </div>
           );
         })}

@@ -3,6 +3,7 @@ import { resolveCharacterScopedStorageKey } from '../services/characterScopedSto
 
 export const PLAYER_GOLD_STORAGE_KEY = 'theend.player.gold';
 export const PLAYER_ITEMS_STORAGE_KEY = 'theend.player.items';
+export const PLAYER_INVENTORY_REMOVALS_STORAGE_KEY = 'theend.player.inventoryRemovals';
 export const PLAYER_ITEM_INSTANCES_STORAGE_KEY = 'theend.player.itemInstances';
 export const PLAYER_QUEST_ITEMS_STORAGE_KEY = 'theend.player.questItems';
 export const PLAYER_MATERIAL_IDS_STORAGE_KEY = 'theend.player.materialIds';
@@ -204,11 +205,26 @@ export function normalizeInventoryState(rawInventory: unknown): InventoryState {
 export function mergeInventoryWithRuntimeOverlay(baseInventory: InventoryState): InventoryState {
   const normalizedBase = normalizeInventoryState(baseInventory);
   const runtimeItemIds = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY).map(migrateLegacyItemId);
+  const persistedRemovals = readStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY);
   const runtimeGold = Math.max(0, readNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0));
 
   const quantityByItemId = new Map<string, number>();
   for (const entry of normalizedBase.items) {
     quantityByItemId.set(entry.itemId, (quantityByItemId.get(entry.itemId) ?? 0) + entry.quantity);
+  }
+  for (const [rawItemId, rawQuantity] of Object.entries(persistedRemovals)) {
+    const itemId = migrateLegacyItemId(rawItemId);
+    const quantity = Math.max(0, Math.floor(Number(rawQuantity) || 0));
+    if (!itemId || quantity <= 0) {
+      continue;
+    }
+    const current = quantityByItemId.get(itemId) ?? 0;
+    const next = Math.max(0, current - quantity);
+    if (next > 0) {
+      quantityByItemId.set(itemId, next);
+    } else {
+      quantityByItemId.delete(itemId);
+    }
   }
   for (const itemId of runtimeItemIds) {
     quantityByItemId.set(itemId, (quantityByItemId.get(itemId) ?? 0) + 1);

@@ -125,6 +125,7 @@ interface InventoryPanelProps {
   onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
+  onDropItem?: (itemId: string, quantity?: number) => Promise<void> | void;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -472,6 +473,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onSaveActionSlots,
   onSaveHotbar,
   onUseItem,
+  onDropItem,
   onChangeFocus,
   playerAvatarUrl,
   resolveItemById,
@@ -875,6 +877,106 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       || (Array.isArray(adminItem?.combatEffects) && adminItem.combatEffects.length > 0);
   }
 
+  function resolveDropBlockedReason(item: ItemDefinition | null): string | null {
+    if (!item) {
+      return 'Предмет не выбран.';
+    }
+
+    const adminItem = (resolveAdminItemById ? resolveAdminItemById(item.id) : null) as (AdminItem & Record<string, unknown>) | null;
+    const tags = Array.isArray(adminItem?.tags)
+      ? adminItem.tags.map((entry) => String(entry ?? '').toLowerCase().trim())
+      : [];
+    const typeValue = String((adminItem as Record<string, unknown> | null)?.type ?? '').toLowerCase();
+    const categoryValue = String((adminItem as Record<string, unknown> | null)?.category ?? '').toLowerCase();
+    const isQuestItem = typeValue === 'quest'
+      || categoryValue === 'quest'
+      || (adminItem as Record<string, unknown> | null)?.isQuestItem === true
+      || typeof (adminItem as Record<string, unknown> | null)?.questItemId === 'string';
+    if (isQuestItem) {
+      return 'Квестовый предмет нельзя выбросить.';
+    }
+
+    const isBound = (adminItem as Record<string, unknown> | null)?.isBound === true
+      || (adminItem as Record<string, unknown> | null)?.bound === true
+      || tags.includes('bound')
+      || tags.includes('soulbound');
+    if (isBound) {
+      return 'Этот предмет привязан к персонажу.';
+    }
+
+    const isLocked = (adminItem as Record<string, unknown> | null)?.isLocked === true
+      || (adminItem as Record<string, unknown> | null)?.locked === true
+      || tags.includes('locked');
+    if (isLocked) {
+      return 'Этот предмет заблокирован.';
+    }
+
+    const isSystemItem = tags.includes('system')
+      || tags.includes('no-drop')
+      || tags.includes('nodrop')
+      || (adminItem as Record<string, unknown> | null)?.isSystemItem === true
+      || (adminItem as Record<string, unknown> | null)?.systemItem === true;
+    if (isSystemItem) {
+      return 'Системный предмет нельзя выбросить.';
+    }
+
+    const canDropFlag = (adminItem as Record<string, unknown> | null)?.canDrop;
+    if (typeof canDropFlag === 'boolean' && !canDropFlag) {
+      return 'Этот предмет нельзя выбросить.';
+    }
+
+    const droppableFlag = (adminItem as Record<string, unknown> | null)?.droppable;
+    if (typeof droppableFlag === 'boolean' && !droppableFlag) {
+      return 'Этот предмет нельзя выбросить.';
+    }
+
+    if (equippedItemIds.has(item.id)) {
+      return 'Сначала снимите предмет.';
+    }
+
+    const entry = inventoryByItemId.get(item.id);
+    if (!entry || entry.quantity <= 0) {
+      return 'Предмет отсутствует в рюкзаке.';
+    }
+
+    return null;
+  }
+
+  async function handleDropSelectedItem(): Promise<void> {
+    if (!selectedItem) {
+      onStatus('Предмет не выбран.');
+      return;
+    }
+
+    if (!onDropItem) {
+      onStatus('Выброс предметов сейчас недоступен.');
+      return;
+    }
+
+    const blockedReason = resolveDropBlockedReason(selectedItem);
+    if (blockedReason) {
+      onStatus(blockedReason);
+      return;
+    }
+
+    const entry = inventoryByItemId.get(selectedItem.id);
+    const currentQuantity = entry?.quantity ?? 1;
+    const stackText = currentQuantity > 1 ? ` (1 шт. из ${currentQuantity})` : '';
+    const confirmed = window.confirm(`Вы точно хотите выбросить: ${selectedItem.name}${stackText}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await onDropItem(selectedItem.id, selectedDropQuantity);
+      if (currentQuantity <= selectedDropQuantity) {
+        setItemDetailOpen(false);
+      }
+    } catch {
+      // parent already reports error status
+    }
+  }
+
   async function assignItemToActionSlot(slotId: EquipmentSlotId, itemId: string | null): Promise<void> {
     const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
     if (slotIndex < 0) {
@@ -947,6 +1049,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return findEquippedSlotId(selectedItem.id);
   }, [equipment, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
+  const selectedDropBlockedReason = useMemo(
+    () => resolveDropBlockedReason(selectedItem),
+    [equippedItemIds, inventoryByItemId, resolveAdminItemById, selectedItem],
+  );
+  const selectedDropQuantity = selectedInventoryEntry && selectedInventoryEntry.quantity > 1 ? 1 : 1;
 
   const getComparisonForItem = (item: ItemDefinition | null) => {
     if (!item) {
@@ -1971,7 +2078,21 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     Снять
                   </button>
                 ) : null}
+                {onDropItem ? (
+                  <button
+                    type="button"
+                    className="inventory-action-danger"
+                    disabled={Boolean(selectedDropBlockedReason)}
+                    title={selectedDropBlockedReason ?? undefined}
+                    onClick={() => void handleDropSelectedItem()}
+                  >
+                    Выбросить
+                  </button>
+                ) : null}
               </div>
+              {selectedInventoryEntry && selectedInventoryEntry.quantity > 1 && !selectedDropBlockedReason ? (
+                <p className="muted">При выбросе будет удалена 1 штука из стака.</p>
+              ) : null}
             </section>
             <section className="character-item-compare">
               <div className="character-item-compare-items">
@@ -2424,7 +2545,21 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   Снять
                 </button>
               ) : null}
+              {onDropItem ? (
+                <button
+                  type="button"
+                  className="inventory-action-danger"
+                  disabled={Boolean(selectedDropBlockedReason)}
+                  title={selectedDropBlockedReason ?? undefined}
+                  onClick={() => void handleDropSelectedItem()}
+                >
+                  Выбросить
+                </button>
+              ) : null}
             </div>
+            {selectedInventoryEntry && selectedInventoryEntry.quantity > 1 && !selectedDropBlockedReason ? (
+              <p className="muted">При выбросе будет удалена 1 штука из стака.</p>
+            ) : null}
           </>
         ) : (
           <p className="muted">{emptyText}</p>
@@ -2556,7 +2691,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   legacyImagePath={entry.legacyImagePath}
                   runtimeImages={runtimeImages}
                   alt={entry.name}
-                  size={56}
+                  size={22}
                   fit="contain"
                   fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
                   className="item-slot-icon-image"
