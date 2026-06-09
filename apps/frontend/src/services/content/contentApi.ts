@@ -427,6 +427,18 @@ export async function updateContentEntry<T>(collection: ContentCollectionName, i
   return entry;
 }
 
+export async function replaceProfessionSkillsCollection(
+  skills: import('../../types/profession').ProfessionSkill[],
+): Promise<import('../../types/profession').ProfessionSkill[]> {
+  await ensureContentBackendReady();
+  const entries = await requestJson<import('../../types/profession').ProfessionSkill[]>('/content/professionSkills/replace-all', {
+    method: 'PUT',
+    body: JSON.stringify({ skills }),
+  });
+  notifyContentSync('content');
+  return entries;
+}
+
 export async function replaceContentImage(id: string, payload: Partial<StoredImage> & { dataUrl: string }): Promise<StoredImage> {
   await ensureContentBackendReady();
   const entry = await requestJson<StoredImage>(`/content/images/${encodeURIComponent(id)}/upload`, {

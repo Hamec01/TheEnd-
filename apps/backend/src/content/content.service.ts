@@ -205,6 +205,10 @@ function countContent(db: ContentDatabase): Record<string, number> {
     blacksmithItemTemplates: (db.blacksmithItemTemplates ?? []).length,
     blacksmithItemWorkActions: (db.blacksmithItemWorkActions ?? []).length,
     sounds: (db.sounds ?? []).length,
+    trees: (db.trees ?? []).length,
+    biomes: (db.biomes ?? []).length,
+    imageSheets: (db.imageSheets ?? []).length,
+    professionSkills: (db.professionSkills ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -4003,6 +4007,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithItemTemplates: mergeById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       blacksmithItemWorkActions: mergeById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: mergeById(existing.sounds ?? [], incoming.sounds ?? []),
+      trees: mergeById(existing.trees ?? [], incoming.trees ?? []),
+      biomes: mergeById(existing.biomes ?? [], incoming.biomes ?? []),
+      imageSheets: mergeById(existing.imageSheets ?? [], incoming.imageSheets ?? []),
+      professionSkills: mergeById(existing.professionSkills ?? [], incoming.professionSkills ?? []),
       worldMap: {
         zones: mergeById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: mergeById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -4048,6 +4056,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithItemTemplates: addMissingById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       blacksmithItemWorkActions: addMissingById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: addMissingById(existing.sounds ?? [], incoming.sounds ?? []),
+      trees: addMissingById(existing.trees ?? [], incoming.trees ?? []),
+      biomes: addMissingById(existing.biomes ?? [], incoming.biomes ?? []),
+      imageSheets: addMissingById(existing.imageSheets ?? [], incoming.imageSheets ?? []),
+      professionSkills: addMissingById(existing.professionSkills ?? [], incoming.professionSkills ?? []),
       worldMap: {
         zones: addMissingById(existing.worldMap.zones, incoming.worldMap.zones),
         regions: addMissingById(existing.worldMap.regions, incoming.worldMap.regions),
@@ -4136,6 +4148,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         blacksmithItemTemplates: filterCollection('blacksmithItemTemplates', incoming.blacksmithItemTemplates, existing.blacksmithItemTemplates ?? []) as BlacksmithItemTemplate[] | undefined,
         blacksmithItemWorkActions: filterCollection('blacksmithItemWorkActions', incoming.blacksmithItemWorkActions, existing.blacksmithItemWorkActions ?? []) as BlacksmithItemWorkAction[] | undefined,
         sounds: filterCollection('sounds', incoming.sounds, existing.sounds ?? []) as SoundDefinition[] | undefined,
+        trees: filterCollection('trees', incoming.trees, existing.trees ?? []) as TreeDefinition[] | undefined,
+        biomes: filterCollection('biomes', incoming.biomes, existing.biomes ?? []) as BiomeDefinition[] | undefined,
+        imageSheets: filterCollection('imageSheets', incoming.imageSheets, existing.imageSheets ?? []) as ImageSheetDefinition[] | undefined,
+        professionSkills: filterCollection('professionSkills', incoming.professionSkills, existing.professionSkills ?? []) as ProfessionSkillDefinition[] | undefined,
         worldMap,
       },
       actions,
@@ -4855,7 +4871,26 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       const normalized = payload.biomes.map((entry) => normalizeBiomeInput(entry as BiomeDefinition));
       db.biomes = mergeById(db.biomes ?? [], normalized);
     }
+    if (Array.isArray(payload.imageSheets) && payload.imageSheets.length > 0) {
+      db.imageSheets = mergeById(db.imageSheets ?? [], clone(payload.imageSheets));
+    }
+    if (Array.isArray(payload.professionSkills) && payload.professionSkills.length > 0) {
+      db.professionSkills = mergeById(
+        db.professionSkills ?? [],
+        clone(sanitizeIdObjectArray<ProfessionSkillDefinition>(payload.professionSkills)),
+      );
+    }
     return this.persist(db);
+  }
+
+  async replaceProfessionSkillsCollection(payload: unknown[]): Promise<ProfessionSkillDefinition[]> {
+    const db = this.ensureLoaded();
+    const normalized = clone(
+      sanitizeIdObjectArray<ProfessionSkillDefinition>(payload).filter((entry) => Boolean(entry.id)),
+    );
+    db.professionSkills = normalized;
+    await this.persist(db);
+    return clone(db.professionSkills ?? []);
   }
 
   async seedDefaultsIfEmpty(): Promise<{ seeded: boolean; message: string }> {

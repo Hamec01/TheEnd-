@@ -414,6 +414,7 @@ interface WoodcuttingRunResult {
   staminaSpent: number;
   hpDamage: number;
   axeDurabilitySpent: number;
+  treesFelled?: number;
   reason?: "no_stamina" | "axe_broken" | "tree_fall_hit" | "tree_fall" | "player_injured" | "cancelled";
 }
 
@@ -477,6 +478,9 @@ const MIN_CITY_ZOOM = 1;
 const MAX_CITY_ZOOM = 1.4;
 const WORLD_MAP_BASE_TRAVEL_SPEED = 0.0001;
 const WORLD_MAP_DEXTERITY_SPEED_STEP = 0.00001;
+const WORLD_MAP_STAMINA_REGEN_FRACTION = 0.1;
+const WORLD_MAP_STAMINA_REGEN_MIN_PER_SECOND = 10;
+const WORLD_MAP_WALK_STAMINA_COST_FRACTION = 0.1;
 const WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER = 1;
 const WORLD_MAP_SPRINT_STAMINA_COST_MULTIPLIER = 1.2;
 
@@ -1553,6 +1557,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     player: dialoguePlayer,
     onStartQuest: refreshPlayerQuestStates,
   });
+  const hasBlockingUi = Boolean(
+    dialogueRunner.state.isOpen
+    || npcQuestSceneModal
+    || randomEventModal
+    || activeInteraction
+    || arcadeMode
+    || sawingModalOpen
+    || workshopOpen
+    || activeMineRun,
+  );
+  const playMovementLockedWithUi = playMovementLocked || hasBlockingUi;
+  const playMovementLockReasonWithUi = hasBlockingUi ? "ui_blocking" : playMovementLockReason;
 
   useEffect(() => {
     return () => {
@@ -1754,13 +1770,13 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.activeStats?.dexterity, cartState.speedMultiplier]);
 
   const staminaRegenPerSecond = useMemo(
-    () => Math.max(10, Math.floor(character.maxStamina * 0.1)),
+    () => Math.max(WORLD_MAP_STAMINA_REGEN_MIN_PER_SECOND, Math.floor(character.maxStamina * WORLD_MAP_STAMINA_REGEN_FRACTION)),
     [character.maxStamina],
   );
 
   const walkStaminaCostPerSecond = useMemo(
-    () => Math.max(1, Math.floor(staminaRegenPerSecond * WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER)),
-    [staminaRegenPerSecond],
+    () => Math.max(1, Math.floor(character.maxStamina * WORLD_MAP_WALK_STAMINA_COST_FRACTION * WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER)),
+    [character.maxStamina],
   );
 
   const sprintStaminaCostPerSecond = useMemo(
@@ -5975,7 +5991,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     defaultPlayerSpeed: runtimeSettings.playerSpeed,
     playerSpeed: travelMoveSpeed,
     gameplayPaused: worldMapViewerOpen,
-    movementLocked: playMovementLocked,
+    movementLocked: playMovementLockedWithUi,
     controlScheme: movementControlScheme,
     sprintActive,
     zones: playVisibleZones,
@@ -6022,8 +6038,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       movementTarget: worldRuntime.player.targetX !== null && worldRuntime.player.targetY !== null
         ? { x: worldRuntime.player.targetX, y: worldRuntime.player.targetY }
         : null,
-      movementLocked: playMovementLocked,
-      movementLockReason: playMovementLockReason,
+      movementLocked: playMovementLockedWithUi,
+      movementLockReason: playMovementLockReasonWithUi,
       controlScheme: movementControlScheme,
       camera: playCamera,
       zones: playVisibleZones,
@@ -6449,6 +6465,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onRuntimeInventoryChanged?.();
   }, [onRuntimeInventoryChanged]);
 
+  const removeBrokenToolIfNeeded = useCallback((toolId: string, durabilityAfterUse: number) => {
+    if (durabilityAfterUse > 0) {
+      return;
+    }
+    removeItemsFromPlayerInventory([{ itemId: toolId, quantity: 1 }]);
+    if (typeof window !== "undefined") {
+      const key = `theend.tool_durability.${character.id}.${toolId}`;
+      window.localStorage.removeItem(key);
+    }
+  }, [character.id, removeItemsFromPlayerInventory]);
+
   const removeGoldFromPlayerInventory = useCallback((goldAmount: number) => {
     const normalized = Math.max(0, Math.floor(Number(goldAmount ?? 0)));
     if (normalized <= 0) return;
@@ -6708,6 +6735,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       updateToolDurability(bestAxe.item.id, nextDurability);
       if (nextDurability <= 0) {
         onStatus(`Ваш топор ${bestAxe.item.name} сломался.`);
+        removeBrokenToolIfNeeded(bestAxe.item.id, nextDurability);
       }
     }
 
@@ -6717,8 +6745,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const effectiveTree = contentSnapshot?.trees?.find((entry) => entry.id === result.treeId) ?? tree;
-    handleFellingComplete(effectiveTree);
-  }, [applyResourceDeltas, bestAxe, contentSnapshot?.trees, handleFellingComplete, onStatus, updateToolDurability]);
+    const felledTrees =
+      result.treesFelled === undefined
+        ? 1
+        : Math.max(0, Math.floor(result.treesFelled));
+    for (let i = 0; i < felledTrees; i += 1) {
+      handleFellingComplete(effectiveTree);
+    }
+  }, [applyResourceDeltas, bestAxe, contentSnapshot?.trees, handleFellingComplete, onStatus, removeBrokenToolIfNeeded, updateToolDurability]);
 
   const applySawingResult = useCallback((result: SawingRunResult) => {
     applyResourceDeltas({ staminaSpent: result.staminaSpent, hpDamage: result.hpDamage });
@@ -6728,6 +6762,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       updateToolDurability(bestSaw.item.id, nextDurability);
       if (nextDurability <= 0) {
         onStatus(`Ваша пила ${bestSaw.item.name} сломалась.`);
+        removeBrokenToolIfNeeded(bestSaw.item.id, nextDurability);
       }
     }
 
@@ -6755,6 +6790,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onPlayerProfessionsChange,
     onRuntimeInventoryChanged,
     onStatus,
+    removeBrokenToolIfNeeded,
     removeItemsFromPlayerInventory,
     updateToolDurability,
   ]);
@@ -6773,9 +6809,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         staminaSpent: woodResult.staminaSpent,
         hpDamage: woodResult.hpDamage,
         axeDurabilitySpent: woodResult.durabilitySpent,
+        treesFelled: woodResult.treesFelled,
       };
       applyWoodcuttingResult(tree, normalizedResult);
       setActiveWoodcuttingTree(null);
+      setForestPanelOpen(true);
       setArcadeMode(null);
       return;
     }
@@ -6797,8 +6835,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         hpDamage: sawingResult.hpDamage,
         sawDurabilitySpent: sawingResult.durabilitySpent,
       });
-      setSawingModalOpen(false);
-      setArcadeMode(null);
+      // Keep arcade sawing open after each successful cut.
+      // Player exits manually, or session ends on failure (e.g. broken saw / injured).
+      setSawingActiveLog(null);
+      setSawingHeat(0);
+      setSawingProgress(0);
+      return;
     }
   }, [
     activeWoodcuttingTree,
@@ -6808,6 +6850,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onStatus,
     sawingRecipes,
     selectedSawingRecipe,
+    setSawingActiveLog,
+    setSawingHeat,
+    setSawingProgress,
   ]);
 
   const handleArcadeFail = useCallback((result: WoodcuttingArcadeResult | SawingArcadeResult) => {
@@ -6834,6 +6879,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         reason: reasonMap[String(woodResult.reason ?? "cancelled")] ?? "cancelled",
       });
       setActiveWoodcuttingTree(null);
+      setForestPanelOpen(true);
       setArcadeMode(null);
       return;
     }
@@ -6859,6 +6905,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           reason: reasonMap[String(sawingResult.reason ?? "cancelled")] ?? "cancelled",
         });
       }
+      setForestPanelOpen(true);
       setSawingModalOpen(false);
       setArcadeMode(null);
     }
@@ -7005,7 +7052,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   return;
                 }
                 if (!playerLogs[0]?.item?.id) {
-                  onStatus("Для аркадного распила нужно бревно в инвентаре.");
+                  onStatus("Нет поваленных деревьев для распила.");
                   return;
                 }
                 setForestPanelOpen(false);
@@ -7039,7 +7086,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
       </div>
     );
-  }, [forestPanelOpen, currentZone, currentZoneTrees, bestAxe, carpenterLevel]);
+  }, [
+    bestAxe,
+    bestSaw,
+    carpenterLevel,
+    currentZone,
+    currentZoneTrees,
+    forestPanelOpen,
+    onStatus,
+    playerLogs,
+  ]);
 
   // Branch Collecting Modal Element
   const branchCollectingElement = useMemo(() => {
@@ -8131,7 +8187,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           return;
         }
         if (playerLogs.length === 0) {
-          onStatus('GODMODE: для распила нужно бревно в инвентаре.');
+          onStatus('GODMODE: нет поваленных деревьев для распила.');
           return;
         }
         setSawingActiveLog(playerLogs[0]?.item.id ?? null);
@@ -11037,7 +11093,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   playQuestMarkers={playQuestMarkers}
                   playNpcMarkers={playNpcMarkers}
                   onHoverZone={handleHoverZone}
-                  movementLocked={playMovementLocked}
+                  movementLocked={playMovementLockedWithUi}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
@@ -11059,7 +11115,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   playQuestMarkers={playQuestMarkers}
                   playNpcMarkers={playNpcMarkers}
                   onHoverZone={handleHoverZone}
-                  movementLocked={playMovementLocked}
+                  movementLocked={playMovementLockedWithUi}
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
@@ -11596,6 +11652,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               });
             }
             setActiveWoodcuttingTree(null);
+            setForestPanelOpen(true);
             setArcadeMode(null);
           }}
         />
@@ -11619,6 +11676,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 reason: "cancelled",
               });
             }
+            setForestPanelOpen(true);
             setSawingModalOpen(false);
             setArcadeMode(null);
           }}

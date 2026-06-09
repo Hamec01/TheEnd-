@@ -2,6 +2,7 @@ import type { ProfessionSkill } from '../types/profession';
 import {
   createContentEntry,
   getContentCollection,
+  replaceProfessionSkillsCollection,
   updateContentEntry,
 } from './content/contentApi';
 
@@ -15,6 +16,18 @@ export async function loadProfessionSkillsFromBackend(): Promise<ProfessionSkill
 }
 
 export async function syncProfessionSkillsToBackend(skills: ProfessionSkill[]): Promise<void> {
+  const normalized = skills.filter((skill) => Boolean(skill.id?.trim()));
+  if (normalized.length === 0) {
+    return;
+  }
+
+  try {
+    await replaceProfessionSkillsCollection(normalized);
+    return;
+  } catch {
+    // Fallback for older backends: upsert entry-by-entry.
+  }
+
   let current: ProfessionSkill[] = [];
   try {
     current = await getContentCollection<ProfessionSkill>('professionSkills');
@@ -23,10 +36,7 @@ export async function syncProfessionSkillsToBackend(skills: ProfessionSkill[]): 
   }
 
   const currentById = new Map(current.map((entry) => [entry.id, entry]));
-  for (const skill of skills) {
-    if (!skill.id?.trim()) {
-      continue;
-    }
+  for (const skill of normalized) {
     if (currentById.has(skill.id)) {
       await updateContentEntry('professionSkills', skill.id, skill);
     } else {

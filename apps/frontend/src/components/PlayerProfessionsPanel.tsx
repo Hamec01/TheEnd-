@@ -34,7 +34,7 @@ import {
   getBlockedByExclusiveSkillGroupReason,
   getExclusiveGroupMax,
 } from '../services/professionSkillTreeUtils';
-import { loadProfessionSkillsFromStorage } from '../services/professionSkillRepository';
+import { loadProfessionSkillsFromStorage, reloadProfessionSkillsFromContent } from '../services/professionSkillRepository';
 import { loadProfessionBranchesFromStorage } from '../services/professionBranchRepository';
 import { getBlockedBySelectedExclusiveBranchReason } from '../services/miningSkillValidation';
 import { loadRuntimeImages, resolveStoredImageSource } from '../services/content/runtimeImageService';
@@ -225,17 +225,30 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   );
 
   useEffect(() => {
-    setProfessionSkills(loadProfessionSkillsFromStorage());
+    let cancelled = false;
+    const reloadSkills = () => {
+      void reloadProfessionSkillsFromContent()
+        .then((next) => {
+          if (!cancelled) {
+            setProfessionSkills(next);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setProfessionSkills(loadProfessionSkillsFromStorage());
+          }
+        });
+    };
+    reloadSkills();
     setProfessionBranches(loadProfessionBranchesFromStorage());
     setMiningCareerStats(loadMiningCareerStats(characterId));
-    let cancelled = false;
     void refreshProfessionAssets().catch(() => undefined);
 
     const unsubscribe = subscribeToContentSync((payload) => {
       if (cancelled || (payload.scope !== 'content' && payload.scope !== 'all')) {
         return;
       }
-      setProfessionSkills(loadProfessionSkillsFromStorage());
+      reloadSkills();
       void refreshProfessionAssets().catch(() => undefined);
     });
 

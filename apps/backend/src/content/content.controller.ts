@@ -397,6 +397,12 @@ export class ContentController {
     return buildRuneComplexPreview(complex, db.items);
   }
 
+  @Put('professionSkills/replace-all')
+  async replaceProfessionSkills(@Body() payload: { skills?: unknown[] }) {
+    await this.contentService.ensureInitialized();
+    return this.contentService.replaceProfessionSkillsCollection(Array.isArray(payload?.skills) ? payload.skills : []);
+  }
+
   @Get(':collection')
   async listCollection(@Param('collection') collection: string) {
     await this.contentService.ensureInitialized();

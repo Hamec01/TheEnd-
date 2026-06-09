@@ -6,7 +6,7 @@ import type {
   ProfessionSkillEffectValueType,
 } from '../types/profession';
 import type { GameImageRef } from './content/models';
-import { syncProfessionSkillsToBackend } from './professionSkillsService';
+import { loadProfessionSkillsFromBackend, syncProfessionSkillsToBackend } from './professionSkillsService';
 
 const STORAGE_KEY = 'theend.professionSkills.v2';
 
@@ -1366,6 +1366,15 @@ export function loadProfessionSkillsFromStorage(): ProfessionSkill[] {
   return clone(readStorage());
 }
 
+export async function reloadProfessionSkillsFromContent(): Promise<ProfessionSkill[]> {
+  try {
+    const remote = await loadProfessionSkillsFromBackend();
+    return hydrateProfessionSkillsFromBackend(remote);
+  } catch {
+    return loadProfessionSkillsFromStorage();
+  }
+}
+
 function mergeRemoteProfessionSkills(local: ProfessionSkill[], remote: ProfessionSkill[]): ProfessionSkill[] {
   if (remote.length === 0) {
     return local;
@@ -1401,7 +1410,9 @@ export function saveProfessionSkillsToStorage(skills: ProfessionSkill[]): Profes
   );
   writeStorage(normalized);
   if (typeof window !== 'undefined') {
-    void syncProfessionSkillsToBackend(normalized).catch(() => undefined);
+    void syncProfessionSkillsToBackend(normalized).catch((error) => {
+      console.warn('[professionSkills] Failed to sync skills to backend content:', error);
+    });
   }
   return clone(normalized);
 }
@@ -1411,14 +1422,15 @@ export function hydrateProfessionSkillsFromBackend(remoteSkills: ProfessionSkill
     remoteSkills.map(normalizeSkill).filter((entry): entry is ProfessionSkill => Boolean(entry)),
   );
   const local = readStorage();
-  if (normalizedRemote.length === 0) {
-    if (typeof window !== 'undefined') {
-      void syncProfessionSkillsToBackend(local).catch(() => undefined);
-    }
-    return clone(local);
-  }
-  const merged = mergeWithMiningDefaults(mergeRemoteProfessionSkills(local, normalizedRemote));
+  const merged = normalizedRemote.length === 0
+    ? local
+    : mergeWithMiningDefaults(mergeRemoteProfessionSkills(local, normalizedRemote));
   writeStorage(merged);
+  if (typeof window !== 'undefined') {
+    void syncProfessionSkillsToBackend(merged).catch((error) => {
+      console.warn('[professionSkills] Failed to hydrate skills into backend content:', error);
+    });
+  }
   return clone(merged);
 }
 

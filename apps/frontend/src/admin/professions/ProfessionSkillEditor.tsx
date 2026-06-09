@@ -3,6 +3,7 @@ import { AdminFieldLabel } from '../adminUi';
 import {
   getProfessionSkillsByProfessionId,
   loadProfessionSkillsFromStorage,
+  reloadProfessionSkillsFromContent,
   resetProfessionSkillsToDefaults,
   saveProfessionSkillsToStorage,
 } from '../../services/professionSkillRepository';
@@ -193,15 +194,32 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
   const effectiveProfessionId = filterByProfession || filterProfession;
 
   useEffect(() => {
-    setSkills(loadProfessionSkillsFromStorage());
+    let cancelled = false;
+    const reloadSkills = () => {
+      void reloadProfessionSkillsFromContent()
+        .then((next) => {
+          if (!cancelled) {
+            setSkills(next);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSkills(loadProfessionSkillsFromStorage());
+          }
+        });
+    };
+    reloadSkills();
     void loadRuntimeImages().then(setImages).catch(() => setImages([]));
     const unsubscribe = subscribeToContentSync((payload) => {
       if (payload.scope !== 'content' && payload.scope !== 'all') {
         return;
       }
-      setSkills(loadProfessionSkillsFromStorage());
+      reloadSkills();
     });
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -388,6 +406,30 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
             <label>
               <AdminFieldLabel label="Branch ID" hint="Опциональная ветка профессии." />
               <input value={draft.branchId ?? ''} onChange={(event) => setDraft((current) => ({ ...current, branchId: event.target.value || undefined }))} />
+            </label>
+
+            <label>
+              <AdminFieldLabel label="Position X" hint="Позиция узла на дереве навыков." />
+              <input
+                type="number"
+                value={draft.positionX ?? ''}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  positionX: event.target.value === '' ? undefined : Number(event.target.value),
+                }))}
+              />
+            </label>
+
+            <label>
+              <AdminFieldLabel label="Position Y" hint="Позиция узла на дереве навыков." />
+              <input
+                type="number"
+                value={draft.positionY ?? ''}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  positionY: event.target.value === '' ? undefined : Number(event.target.value),
+                }))}
+              />
             </label>
 
             <label className="profession-skill-grid-span">
