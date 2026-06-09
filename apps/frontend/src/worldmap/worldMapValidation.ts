@@ -104,6 +104,22 @@ function asNonEmptyString(value: unknown): string | null {
   return next.length > 0 ? next : null;
 }
 
+function toTreePoolIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function asLayer(value: unknown): MapEditorLayer | null {
   if (value === 'areas' || value === 'locations' || value === 'quests' || value === 'resources' || value === 'zones') {
     return value;
@@ -694,7 +710,10 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
           field: 'resourceTableId',
         });
       }
-      if (!resourceTableId && resourceKind !== 'mine') {
+      const biomeId = asNonEmptyString((zone as WorldMapZone & { biomeId?: string }).biomeId);
+      const zoneTreePoolIds = toTreePoolIds((zone as WorldMapZone & { treePool?: unknown }).treePool);
+      const canResolveForestWithoutResourceTable = resourceKind === 'forest' && (Boolean(biomeId) || zoneTreePoolIds.length > 0);
+      if (!resourceTableId && resourceKind !== 'mine' && !canResolveForestWithoutResourceTable) {
         pushIssue(issues, nextId, {
           severity: 'warning',
           code: 'zone.resourceTable.empty',
@@ -789,8 +808,7 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
 
       if (resourceKind === 'forest') {
         const forestId = asNonEmptyString((zone as any).forestId);
-        const biomeId = asNonEmptyString((zone as any).biomeId);
-        const treePool = asNonEmptyString((zone as any).treePool);
+        const zoneTreePool = toTreePoolIds((zone as any).treePool);
         const woodcuttingTier = (zone as any).woodcuttingTier;
 
         if (!forestId) {
@@ -804,8 +822,10 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
             field: 'forestId',
           });
         }
-        const dbBiomes = Array.isArray(args.biomes) ? (args.biomes as any[]) : [];
-        const selectedBiome = biomeId ? dbBiomes.find(b => b.id === biomeId) : null;
+        const dbBiomes = Array.isArray(args.biomes) ? (args.biomes as Array<Record<string, unknown>>) : [];
+        const selectedBiome = biomeId
+          ? dbBiomes.find((entry) => typeof entry.id === 'string' && entry.id === biomeId) ?? null
+          : null;
 
         if (!biomeId) {
           pushIssue(issues, nextId, {
@@ -829,13 +849,19 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
           });
         }
 
-        const hasZoneTrees = treePool !== null && treePool.trim().length > 0;
-        const hasBiomeTrees = selectedBiome && (
-          (Array.isArray(selectedBiome.resourcePools?.forest) && selectedBiome.resourcePools.forest.length > 0) ||
-          (Array.isArray(selectedBiome.defaultTreePool) && selectedBiome.defaultTreePool.length > 0)
-        );
+        const resourcePools = isRecord(selectedBiome) && isRecord(selectedBiome.resourcePools)
+          ? selectedBiome.resourcePools
+          : null;
+        const biomeForestPool = Array.isArray(resourcePools?.forest)
+          ? resourcePools.forest
+          : [];
+        const biomeDefaultPool = Array.isArray((selectedBiome as { defaultTreePool?: unknown[] } | null)?.defaultTreePool)
+          ? ((selectedBiome as { defaultTreePool?: unknown[] }).defaultTreePool ?? [])
+          : [];
+        const resolvedBiomeTrees = (biomeForestPool.length > 0 ? biomeForestPool : biomeDefaultPool)
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 
-        if (!hasZoneTrees && !hasBiomeTrees) {
+        if (zoneTreePool.length === 0 && resolvedBiomeTrees.length === 0) {
           pushIssue(issues, nextId, {
             severity: 'warning',
             code: 'zone.treePool.empty',
@@ -851,6 +877,16 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
             severity: 'warning',
             code: 'zone.woodcuttingTier.empty',
             message: 'Лесная зона требует указания уровня рубки (woodcuttingTier).',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'woodcuttingTier',
+          });
+        } else if (typeof woodcuttingTier !== 'number' || !Number.isFinite(woodcuttingTier)) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.woodcuttingTier.invalid',
+            message: 'woodcuttingTier должен быть числом.',
             zoneId: zone.id,
             zoneName: zone.name,
             editorLayer: zoneLayer,

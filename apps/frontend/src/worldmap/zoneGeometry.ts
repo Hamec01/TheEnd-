@@ -40,10 +40,13 @@ export function mapNormalizedToScreen(x: number, y: number, viewport: EditorView
 }
 
 export function pointInCircle(point: [number, number], zone: WorldMapZone): boolean {
-  if (zone.shape !== 'circle' || zone.x === undefined || zone.y === undefined || zone.radius === undefined) {
+  if (zone.shape !== 'circle' || zone.x === undefined || zone.y === undefined) {
     return false;
   }
-  return distance(point, [zone.x, zone.y]) <= zone.radius;
+  const radius = Number.isFinite(zone.radius) && (zone.radius ?? 0) > 0
+    ? (zone.radius as number)
+    : 0.03;
+  return distance(point, [zone.x, zone.y]) <= radius;
 }
 
 export function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {

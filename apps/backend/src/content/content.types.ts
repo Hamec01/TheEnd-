@@ -1632,6 +1632,27 @@ export interface SoundDefinition {
   updatedAt?: string;
 }
 
+export interface ProfessionSkillDefinition {
+  id: string;
+  professionId: string;
+  name: string;
+  description: string;
+  requiredLevel: number;
+  requiredSkillIds?: string[];
+  requiredBranchIds?: string[];
+  branchId?: string;
+  exclusiveSkillGroupId?: string;
+  skillPointCost: number;
+  effects?: unknown[];
+  icon?: string;
+  iconImageRef?: GameImageRef;
+  positionX?: number;
+  positionY?: number;
+  isEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface TreeDrop {
   itemId: string;
   min: number;
@@ -1725,6 +1746,7 @@ export interface ContentDatabase {
   trees?: TreeDefinition[];
   biomes?: BiomeDefinition[];
   imageSheets?: ImageSheetDefinition[];
+  professionSkills?: ProfessionSkillDefinition[];
   worldMap: WorldMapContent;
   worldSim?: WorldSimConfig;
 }
@@ -1818,7 +1840,8 @@ export type ContentCollectionName =
   | 'sounds'
   | 'trees'
   | 'biomes'
-  | 'imageSheets';
+  | 'imageSheets'
+  | 'professionSkills';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1853,6 +1876,7 @@ export interface ContentCollectionMap {
   trees: TreeDefinition;
   biomes: BiomeDefinition;
   imageSheets: ImageSheetDefinition;
+  professionSkills: ProfessionSkillDefinition;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

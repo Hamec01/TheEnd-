@@ -14,6 +14,7 @@ import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { loadProfessionBranchesFromStorage } from '../../services/professionBranchRepository';
 import { validateMiningSkillConnectivity } from '../../services/miningSkillValidation';
 import { materializeTilesetFrameToPreset } from '../../services/content/materializeTilesetFrame';
+import { subscribeToContentSync } from '../../services/content/contentSync';
 import type {
   MiningSkillEffectType,
   ProfessionSkill,
@@ -194,6 +195,13 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
   useEffect(() => {
     setSkills(loadProfessionSkillsFromStorage());
     void loadRuntimeImages().then(setImages).catch(() => setImages([]));
+    const unsubscribe = subscribeToContentSync((payload) => {
+      if (payload.scope !== 'content' && payload.scope !== 'all') {
+        return;
+      }
+      setSkills(loadProfessionSkillsFromStorage());
+    });
+    return unsubscribe;
   }, []);
 
   useEffect(() => {

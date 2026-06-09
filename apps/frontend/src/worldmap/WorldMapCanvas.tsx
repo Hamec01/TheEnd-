@@ -35,8 +35,10 @@ import type { MovementControlScheme } from './playerMovementSettings';
 import type { WorldSceneCommand, WorldSceneSnapshot } from './worldSceneTypes';
 import { resolveWorldClickInteraction } from './worldInteractionCommands';
 import { resolveVisibleWorldOverlayZones } from './worldOverlayVisibility';
-import { findClickedLocationSprite, resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef } from './worldLocationSprites';
+import { findClickedLocationSprite, resolveCapturedBannerSource, resolveLocationSpritesForViewport, resolveWorldImageSource, resolveZoneSpriteImageRef, buildWorldSpriteCameraFromEditorViewport, EDITOR_ZONE_LABEL_FONT_SIZE_PX } from './worldLocationSprites';
 import { getQuestMarkerRuntimeMeta } from './questVisuals';
+import type { BiomeDefinition, TreeDefinition } from '../services/content/models';
+import { formatForestZoneTreesLabel } from './resolveForestZoneTrees';
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
@@ -208,6 +210,8 @@ export interface WorldMapCanvasProps {
   discoveredZoneIds?: Set<string>;
   showProfessionResourceZones?: boolean;
   selectedProfessionOverlay?: string;
+  contentBiomes?: BiomeDefinition[];
+  contentTrees?: TreeDefinition[];
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -431,6 +435,8 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     discoveredZoneIds,
     showProfessionResourceZones = false,
     selectedProfessionOverlay = 'none',
+    contentBiomes,
+    contentTrees,
   } = props;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -904,14 +910,11 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     if (!editorViewport) {
       return null;
     }
-    const scaledWidth = editorViewport.imageWidth * editorViewport.zoom;
-    const scaledHeight = editorViewport.imageHeight * editorViewport.zoom;
-    return {
-      left: -editorViewport.panX / Math.max(1, scaledWidth),
-      top: -editorViewport.panY / Math.max(1, scaledHeight),
-      width: canvasSize.width / Math.max(1, scaledWidth),
-      height: canvasSize.height / Math.max(1, scaledHeight),
-    };
+    return buildWorldSpriteCameraFromEditorViewport(
+      editorViewport,
+      canvasSize.width,
+      canvasSize.height,
+    );
   }
 
   function patchZoneSprite(zoneId: string, patch: Partial<NonNullable<WorldMapZone['locationSprite']>>) {
@@ -952,6 +955,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
       locationSpriteImageSizes,
       new Set(candidates.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
       new Set(candidates.map((zone) => zone.id)),
+      editorViewport ? { mapZoom: editorViewport.zoom } : undefined,
     );
   }
 
@@ -1531,6 +1535,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         locationSpriteImageSizes,
         discoveredLocationIds,
         discoveredZoneIds,
+        worldImage ? { mapImageWidth: worldImage.naturalWidth } : undefined,
       );
       for (const sprite of locationSprites) {
         const image = locationSpriteImages.get(sprite.imageSrc);
@@ -1831,6 +1836,7 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
         locationSpriteImageSizes,
         new Set(editorSpriteZones.map((zone) => zone.linkedLocationId ?? zone.linkedLocation ?? zone.id)),
         new Set(editorSpriteZones.map((zone) => zone.id)),
+        { mapZoom: editorViewport.zoom },
       );
       for (const sprite of editorLocationSprites) {
         const image = locationSpriteImages.get(sprite.imageSrc);
@@ -1940,13 +1946,16 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
     }
 
     if (editorSettings.showLabels) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#fff4d4';
-      ctx.font = '600 11px Georgia';
+      ctx.font = `600 ${EDITOR_ZONE_LABEL_FONT_SIZE_PX}px Georgia`;
       zones.forEach((zone) => {
         const [centerX, centerY] = getZoneCenter(zone);
         const [screenX, screenY] = mapNormalizedToScreen(centerX, centerY, editorViewport);
         ctx.fillText(zone.name, screenX + 10, screenY - 10);
       });
+      ctx.restore();
     }
 
     if (dragState?.kind === 'measure') {
@@ -2094,10 +2103,10 @@ export const WorldMapCanvas = forwardRef<WorldMapCanvasHandle, WorldMapCanvasPro
               <strong>{tooltip.zone.name}</strong>
               {tooltip.zone.resourceKind === 'forest' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ color: '#8cc284', fontWeight: 'bold' }}>Ресурс: древесина</span>
+                  <span>Биом: {tooltip.zone.biomeId ?? '—'}</span>
                   <span>Уровень рубки: {tooltip.zone.woodcuttingTier ?? 1}</span>
-                  <span>Деревья: {Array.isArray(tooltip.zone.treePool) ? tooltip.zone.treePool.map(t => t.replace('tree_', '').replace('_common', '').replace('_argos', '')).join(', ') : 'сосна, дуб, береза'}</span>
-                  <span style={{ color: '#c9a35a', fontWeight: 'bold' }}>Требуется профессия: Плотник</span>
+                  <span>Требуется профессия: {tooltip.zone.requiresProfession ?? 'carpenter'}</span>
+                  <span>Деревья: {formatForestZoneTreesLabel(tooltip.zone, contentBiomes, contentTrees)}</span>
                 </div>
               ) : tooltip.zone.tooltip ? (
                 <div style={{ whiteSpace: 'pre-line' }}>{tooltip.zone.tooltip}</div>

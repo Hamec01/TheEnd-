@@ -287,6 +287,10 @@ class PhaserWorldMapScene extends Phaser.Scene {
       }
     }
 
+    const worldMapTexture = this.textures.get('world-map-main');
+    const worldMapSource = worldMapTexture?.getSourceImage() as HTMLImageElement | HTMLCanvasElement | undefined;
+    const mapImageWidth = worldMapSource?.width ?? snapshot.widthPx;
+
     const sprites = resolveLocationSpritesForViewport(
       snapshot.zones,
       snapshot.camera,
@@ -294,19 +298,17 @@ class PhaserWorldMapScene extends Phaser.Scene {
       imageSizes,
       snapshot.discoveredLocationIds,
       snapshot.discoveredZoneIds,
+      { mapImageWidth },
     );
-    const cameraZoom = Math.max(this.cameras.main.zoom || 1, 0.0001);
 
     for (const sprite of sprites) {
       const textureKey = this.ensureDynamicTexture(sprite.imageSrc);
       if (!textureKey || !this.textures.exists(textureKey)) {
         continue;
       }
-      const compensatedWidth = sprite.displayWidth / cameraZoom;
-      const compensatedHeight = sprite.displayHeight / cameraZoom;
       const image = this.add.image(sprite.screenX, sprite.screenY, textureKey)
         .setOrigin(sprite.originX, sprite.originY)
-        .setDisplaySize(compensatedWidth, compensatedHeight)
+        .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
         .setScrollFactor(0)
         .setDepth(sprite.zIndex);
       this.locationSpriteLayer.add(image);
@@ -316,7 +318,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
         if (bannerTextureKey && this.textures.exists(bannerTextureKey)) {
           const banner = this.add.image(sprite.screenX, sprite.screenY, bannerTextureKey)
             .setOrigin(sprite.originX, sprite.originY)
-            .setDisplaySize(compensatedWidth, compensatedHeight)
+            .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
             .setScrollFactor(0)
             .setAlpha(0.42)
             .setDepth(sprite.zIndex + 0.1);
@@ -943,7 +945,7 @@ class PhaserWorldMapScene extends Phaser.Scene {
       fontStyle: '600',
       stroke: '#1f1712',
       strokeThickness: 2,
-    });
+    }).setScrollFactor(0);
     this.labelLayer.add(label);
   }
 }

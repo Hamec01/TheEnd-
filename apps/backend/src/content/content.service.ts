@@ -67,6 +67,7 @@ import type {
   TreeDefinition,
   BiomeDefinition,
   ImageSheetDefinition,
+  ProfessionSkillDefinition,
   StoredImage,
   WorldMapContent,
   WorldMapZone,
@@ -114,6 +115,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'trees',
   'biomes',
   'imageSheets',
+  'professionSkills',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -568,6 +570,7 @@ function createEmptyDatabase(): ContentDatabase {
     trees: [],
     biomes: [],
     imageSheets: [],
+    professionSkills: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -3886,6 +3889,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       trees: sanitizeIdObjectArray<TreeDefinition>(raw.trees).map((entry) => normalizeTreeInput(entry)).filter((entry) => Boolean(entry.id)),
       biomes: sanitizeIdObjectArray<BiomeDefinition>(raw.biomes).map((entry) => normalizeBiomeInput(entry)).filter((entry) => Boolean(entry.id)),
       imageSheets: clone(sanitizeIdObjectArray<ImageSheetDefinition>(raw.imageSheets)),
+      professionSkills: clone(sanitizeIdObjectArray<ProfessionSkillDefinition>(raw.professionSkills)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),

@@ -66,6 +66,11 @@ import { itemsService } from '../services/content/itemsService';
 import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
 import { SkillTreeView } from '../features/professions/SkillTreeView';
 import { GameImageView } from '../admin/components/GameImageView';
+import {
+  isCarpenterForestZonesOverlayEnabled,
+  setCarpenterForestZonesOverlayEnabled,
+  subscribeProfessionOverlayChanges,
+} from '../services/professionOverlayStorage';
 
 interface PlayerProfessionsPanelProps {
   characterId: string;
@@ -76,6 +81,7 @@ interface PlayerProfessionsPanelProps {
   onStatus: (text: string) => void;
   onChange: (next: PlayerProfessionsState) => void;
   onInventoryChange: (next: InventoryState) => void;
+  onLaunchCarpenterGame?: (gameType: 'woodcutting' | 'sawing') => void;
 }
 
 function shouldAutoActivateProfessionBranch(professionId: string, branch: ProfessionBranch): boolean {
@@ -142,7 +148,17 @@ function formatBlacksmithItemProperties(item: AdminItem): string[] {
 }
 
 export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
-  const { characterId, inventory, runtimeInventoryRevision, professionsState, onClose, onStatus, onChange, onInventoryChange } = props;
+  const {
+    characterId,
+    inventory,
+    runtimeInventoryRevision,
+    professionsState,
+    onClose,
+    onStatus,
+    onChange,
+    onInventoryChange,
+    onLaunchCarpenterGame,
+  } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'customForge' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
@@ -168,6 +184,9 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [blacksmithMode, setBlacksmithMode] = useState<'recipe' | 'custom_forge' | 'item_work'>('recipe');
   const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
   const [pendingBlacksmithReward, setPendingBlacksmithReward] = useState<PendingBlacksmithReward | null>(null);
+  const [carpenterForestZonesOverlay, setCarpenterForestZonesOverlay] = useState(
+    () => isCarpenterForestZonesOverlayEnabled(characterId),
+  );
 
   const definitionById = useMemo(
     () => new Map(PROFESSION_DEFINITIONS.map((entry) => [entry.id, entry])),
@@ -216,6 +235,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       if (cancelled || (payload.scope !== 'content' && payload.scope !== 'all')) {
         return;
       }
+      setProfessionSkills(loadProfessionSkillsFromStorage());
       void refreshProfessionAssets().catch(() => undefined);
     });
 
@@ -228,6 +248,18 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   useEffect(() => {
     setMiningCareerStats(loadMiningCareerStats(characterId));
   }, [characterId, professionsState]);
+
+  useEffect(() => {
+    setCarpenterForestZonesOverlay(isCarpenterForestZonesOverlayEnabled(characterId));
+    return subscribeProfessionOverlayChanges(() => {
+      setCarpenterForestZonesOverlay(isCarpenterForestZonesOverlayEnabled(characterId));
+    });
+  }, [characterId]);
+
+  const hasCarpenterProfession = useMemo(
+    () => professionsState.professions.some((entry) => entry.professionId === 'carpenter'),
+    [professionsState.professions],
+  );
 
   const unlockedProfessions = useMemo(
     () => professionsState.professions.map((entry) => ({
@@ -688,28 +720,70 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
             </header>
 
             {activeTab === 'overview' ? (
-              <div className="profession-overview-grid">
-                <div className="profession-overview-item"><span>Уровень</span><strong>{selectedProfession.state.level}</strong></div>
-                <div className="profession-overview-item"><span>XP</span><strong>{selectedProfession.state.xp} / {selectedProfession.state.xpToNextLevel}</strong></div>
-                <div className="profession-overview-item"><span>До следующего уровня</span><strong>{xpToNext}</strong></div>
-                <div className="profession-overview-item"><span>Очки навыков</span><strong>{selectedProfession.state.skillPoints}</strong></div>
-                <div className="profession-overview-item"><span>Изучено навыков</span><strong>{learnedSkillCount}</strong></div>
-                <div className="profession-overview-item"><span>Выбрано веток</span><strong>{selectedProfession.state.selectedBranchIds?.length ?? 0}</strong></div>
-                {selectedProfession.state.professionId === 'blacksmithing' ? (
-                  <>
-                    <div className="profession-overview-item"><span>Лучший ранг качества</span><strong>{blacksmithOverview.bestTier}</strong></div>
-                    <div className="profession-overview-item"><span>Всего выковано</span><strong>{blacksmithOverview.totalCrafts}</strong></div>
-                    <div className="profession-overview-item"><span>Брак</span><strong>{blacksmithOverview.failedCrafts}</strong></div>
-                    <div className="profession-overview-item"><span>Мастерских результатов</span><strong>{blacksmithOverview.masterworkCrafts}</strong></div>
-                    <div className="profession-overview-item"><span>Текущий статус кузни</span><strong>{blacksmithOverview.forgeStatus}</strong></div>
-                    <div className="profession-overview-item"><span>Открытые типы работ</span><strong>{blacksmithOverview.openedWorkTypes.length > 0 ? blacksmithOverview.openedWorkTypes.join(', ') : 'нет'}</strong></div>
-                    <div className="profession-overview-item"><span>Открытые металлы</span><strong>{blacksmithOverview.openedMetals.length > 0 ? blacksmithOverview.openedMetals.join(', ') : 'нет'}</strong></div>
-                    <div className="profession-overview-item"><span>Лучший score</span><strong>{blacksmithOverview.bestScore}</strong></div>
-                    <div className="profession-overview-item"><span>Успешных ковок</span><strong>{blacksmithOverview.successfulCrafts}</strong></div>
-                    <div className="profession-overview-item"><span>Качественных изделий</span><strong>{blacksmithOverview.qualityCrafts}</strong></div>
-                  </>
+              <>
+                <div className="profession-overview-grid">
+                  <div className="profession-overview-item"><span>Уровень</span><strong>{selectedProfession.state.level}</strong></div>
+                  <div className="profession-overview-item"><span>XP</span><strong>{selectedProfession.state.xp} / {selectedProfession.state.xpToNextLevel}</strong></div>
+                  <div className="profession-overview-item"><span>До следующего уровня</span><strong>{xpToNext}</strong></div>
+                  <div className="profession-overview-item"><span>Очки навыков</span><strong>{selectedProfession.state.skillPoints}</strong></div>
+                  <div className="profession-overview-item"><span>Изучено навыков</span><strong>{learnedSkillCount}</strong></div>
+                  <div className="profession-overview-item"><span>Выбрано веток</span><strong>{selectedProfession.state.selectedBranchIds?.length ?? 0}</strong></div>
+                  {selectedProfession.state.professionId === 'blacksmithing' ? (
+                    <>
+                      <div className="profession-overview-item"><span>Лучший ранг качества</span><strong>{blacksmithOverview.bestTier}</strong></div>
+                      <div className="profession-overview-item"><span>Всего выковано</span><strong>{blacksmithOverview.totalCrafts}</strong></div>
+                      <div className="profession-overview-item"><span>Брак</span><strong>{blacksmithOverview.failedCrafts}</strong></div>
+                      <div className="profession-overview-item"><span>Мастерских результатов</span><strong>{blacksmithOverview.masterworkCrafts}</strong></div>
+                      <div className="profession-overview-item"><span>Текущий статус кузни</span><strong>{blacksmithOverview.forgeStatus}</strong></div>
+                      <div className="profession-overview-item"><span>Открытые типы работ</span><strong>{blacksmithOverview.openedWorkTypes.length > 0 ? blacksmithOverview.openedWorkTypes.join(', ') : 'нет'}</strong></div>
+                      <div className="profession-overview-item"><span>Открытые металлы</span><strong>{blacksmithOverview.openedMetals.length > 0 ? blacksmithOverview.openedMetals.join(', ') : 'нет'}</strong></div>
+                      <div className="profession-overview-item"><span>Лучший score</span><strong>{blacksmithOverview.bestScore}</strong></div>
+                      <div className="profession-overview-item"><span>Успешных ковок</span><strong>{blacksmithOverview.successfulCrafts}</strong></div>
+                      <div className="profession-overview-item"><span>Качественных изделий</span><strong>{blacksmithOverview.qualityCrafts}</strong></div>
+                    </>
+                  ) : null}
+                </div>
+                {hasCarpenterProfession && selectedProfession.state.professionId === 'carpenter' ? (
+                  <section className="profession-overlay-settings">
+                    <h4 className="profession-overlay-settings-title">Профессиональное отображение</h4>
+                    <label className="profession-overlay-toggle">
+                      <input
+                        type="checkbox"
+                        checked={carpenterForestZonesOverlay}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          setCarpenterForestZonesOverlayEnabled(characterId, enabled);
+                          setCarpenterForestZonesOverlay(enabled);
+                        }}
+                      />
+                      <span>Показывать зоны рубки деревьев на карте и миникарте</span>
+                    </label>
+                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="wm-button"
+                        onClick={() => {
+                          onLaunchCarpenterGame?.('woodcutting');
+                        }}
+                      >
+                        🪓 Запустить аркадную рубку
+                      </button>
+                      <button
+                        type="button"
+                        className="wm-button"
+                        onClick={() => {
+                          onLaunchCarpenterGame?.('sawing');
+                        }}
+                      >
+                        🪚 Запустить аркадный распил
+                      </button>
+                    </div>
+                    <p className="wm-stat-hint" style={{ marginTop: '8px' }}>
+                      Запуск доступен только в лесной зоне на карте (forest).
+                    </p>
+                  </section>
                 ) : null}
-              </div>
+              </>
             ) : null}
 
             {activeTab === 'inventory' && selectedProfession.state.professionId === 'mining' ? (
@@ -1338,6 +1412,31 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
           }
           .profession-overview-item strong {
             font-size: 1.02rem;
+          }
+          .profession-overlay-settings {
+            margin-top: 0.85rem;
+            border: 1px solid rgba(164, 141, 110, 0.22);
+            border-radius: 8px;
+            background: rgba(25, 20, 16, 0.82);
+            padding: 0.75rem;
+            display: grid;
+            gap: 0.55rem;
+          }
+          .profession-overlay-settings-title {
+            margin: 0;
+            font-size: 0.92rem;
+            color: #f1d7a8;
+          }
+          .profession-overlay-toggle {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.55rem;
+            font-size: 0.84rem;
+            color: #d8c29a;
+            cursor: pointer;
+          }
+          .profession-overlay-toggle input {
+            margin-top: 0.15rem;
           }
           .profession-mining-tools-list {
             display: grid;

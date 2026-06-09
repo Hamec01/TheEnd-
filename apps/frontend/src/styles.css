@@ -6331,15 +6331,33 @@ h3 {
 
 .wm-grid {
   display: grid;
-  grid-template-columns: clamp(220px, 14vw, 280px) minmax(0, 1.9fr) clamp(240px, 16vw, 320px);
+  grid-template-columns: clamp(220px, 14vw, 280px) minmax(0, 1fr) clamp(240px, 16vw, 320px);
   gap: 0;
-  min-height: 640px;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.wm-left-panel {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .wm-main-column {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
-  grid-template-rows: minmax(520px, 1fr) auto;
+  grid-template-rows: minmax(480px, 1fr) auto;
   min-height: 0;
+  min-width: 0;
+}
+
+.wm-right-panel {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .wm-main-column .wm-map {
@@ -8381,12 +8399,13 @@ body:has(.page.page--scroll) {
 
 .wm-shell {
   height: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 
 .wm-grid {
   height: 100%;
-  grid-template-columns: 300px minmax(0, 1fr) 340px;
+  min-height: 0;
 }
 
 .wm-left,
@@ -11280,7 +11299,7 @@ body:has(.page.page--scroll) {
 }
 
 .wm-grid {
-  height: auto;
+  height: 100%;
   min-height: 0;
 }
 

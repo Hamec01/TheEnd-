@@ -146,8 +146,11 @@ export function getDistanceToZoneCenter(zone: Zone, x: number, y: number): numbe
 }
 
 export function isInsideZone(zone: Zone, x: number, y: number, extraRadius = 0): boolean {
-  if (zone.shape === 'circle' && zone.radius !== undefined && zone.x !== undefined && zone.y !== undefined) {
-    const radius = Math.max(0.001, zone.radius + extraRadius);
+  if (zone.shape === 'circle' && zone.x !== undefined && zone.y !== undefined) {
+    const baseRadius = Number.isFinite(zone.radius) && (zone.radius ?? 0) > 0
+      ? (zone.radius as number)
+      : 0.03;
+    const radius = Math.max(0.001, baseRadius + extraRadius);
     return Math.hypot(zone.x - x, zone.y - y) <= radius;
   }
 

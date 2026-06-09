@@ -579,6 +579,32 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
       .filter(Boolean);
   }, [draft?.treePool]);
 
+  const enabledBiomes = useMemo(
+    () => (biomes ?? []).filter((biome) => biome.enabled !== false),
+    [biomes],
+  );
+
+  const enabledTrees = useMemo(
+    () => (trees ?? []).filter((tree) => tree.enabled !== false),
+    [trees],
+  );
+
+  const selectedBiome = useMemo(
+    () => enabledBiomes.find((biome) => biome.id === draft?.biomeId) ?? null,
+    [draft?.biomeId, enabledBiomes],
+  );
+
+  const resolvedBiomeTreeIds = useMemo(() => {
+    if (!selectedBiome) {
+      return [] as string[];
+    }
+    const fromResourcePools = selectedBiome.resourcePools?.forest ?? [];
+    if (fromResourcePools.length > 0) {
+      return fromResourcePools;
+    }
+    return selectedBiome.defaultTreePool ?? [];
+  }, [selectedBiome]);
+
   function handleToggleTreeInPool(treeId: string) {
     if (!draft) return;
     const nextTreeIds = activeTreeIds.includes(treeId)
@@ -1339,6 +1365,9 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <label><span>Offset X</span><input disabled={!draft} type="number" value={draft?.locationSprite.offsetX ?? 0} onChange={(event) => updateLocationSprite({ offsetX: Number(event.target.value) || 0 })} /></label>
           <label><span>Offset Y</span><input disabled={!draft} type="number" value={draft?.locationSprite.offsetY ?? 0} onChange={(event) => updateLocationSprite({ offsetY: Number(event.target.value) || 0 })} /></label>
           <label><span>Scale</span><input disabled={!draft} type="number" step={0.05} min={0.01} value={draft?.locationSprite.scale ?? 1} onChange={(event) => updateLocationSprite({ scale: Number(event.target.value) || 1 })} /></label>
+          <small style={{ display: 'block', marginTop: -4, opacity: 0.78 }}>
+            Scale is the sprite size on the map image; it grows and shrinks with map zoom.
+          </small>
           <label><span>Z-index</span><input disabled={!draft} type="number" value={draft?.locationSprite.zIndex ?? 10} onChange={(event) => updateLocationSprite({ zIndex: Number(event.target.value) || 0 })} /></label>
           {spriteScaleWarning || spriteUrlWarning ? (
             <div className="zone-validation-errors">
@@ -1579,11 +1608,16 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
                 }}
               >
                 <option value="">-- Выберите биом --</option>
-                {biomes.map(biome => (
+                {enabledBiomes.map((biome) => (
                   <option key={biome.id} value={biome.id}>{biome.name} ({biome.id})</option>
                 ))}
               </select>
             </label>
+            {draft?.biomeId && !selectedBiome ? (
+              <p style={{ color: '#fc8181', marginTop: '-0.25rem', marginBottom: '0.4rem' }}>
+                Биом не найден в базе: {draft.biomeId}
+              </p>
+            ) : null}
             <div style={{ margin: '0.5rem 0' }}>
               <span style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem', fontWeight: 'bold' }}>Режим списка деревьев:</span>
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
@@ -1602,11 +1636,7 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
                     disabled={!draft}
                     checked={!!draft?.treePool}
                     onChange={() => {
-                      const selectedBiome = biomes.find(b => b.id === draft?.biomeId);
-                      const defaultPool = selectedBiome?.resourcePools?.forest?.length
-                        ? selectedBiome.resourcePools.forest
-                        : (selectedBiome?.defaultTreePool ?? []);
-                      updateDraft({ treePool: defaultPool.join(', ') || ' ' });
+                      updateDraft({ treePool: activeTreeIds.join(', ') || ' ' });
                     }}
                   />
                   <span>Переопределить список деревьев</span>
@@ -1617,23 +1647,18 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
               <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--panel-border)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
                 <span className="muted" style={{ fontSize: '0.8rem' }}>Будут использованы следующие деревья из биома:</span>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                  {(() => {
-                    const selectedBiome = biomes.find(b => b.id === draft?.biomeId);
-                    const biomeTrees = selectedBiome?.resourcePools?.forest?.length
-                      ? selectedBiome.resourcePools.forest
-                      : (selectedBiome?.defaultTreePool ?? []);
-                    if (biomeTrees.length === 0) {
-                      return <span style={{ color: '#fc8181', fontSize: '0.85rem' }}>Нет деревьев в выбранном биоме!</span>;
-                    }
-                    return biomeTrees.map(treeId => {
-                      const t = trees.find(x => x.id === treeId);
+                  {resolvedBiomeTreeIds.length === 0 ? (
+                    <span style={{ color: '#fc8181', fontSize: '0.85rem' }}>Нет деревьев в выбранном биоме.</span>
+                  ) : (
+                    resolvedBiomeTreeIds.map((treeId) => {
+                      const tree = enabledTrees.find((entry) => entry.id === treeId) ?? trees.find((entry) => entry.id === treeId);
                       return (
                         <span key={treeId} className="badge" style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.3rem', borderRadius: '4px', fontSize: '0.8rem' }}>
-                          {t ? t.name : treeId}
+                          {tree ? tree.name : treeId}
                         </span>
                       );
-                    });
-                  })()}
+                    })
+                  )}
                 </div>
               </div>
             ) : (
@@ -1652,7 +1677,9 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
                     marginTop: '0.25rem'
                   }}
                 >
-                  {trees.map(tree => (
+                  {enabledTrees.map((tree) => {
+                    const isInBiome = resolvedBiomeTreeIds.includes(tree.id);
+                    return (
                     <label key={tree.id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.9rem' }}>
                       <input
                         type="checkbox"
@@ -1660,10 +1687,14 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
                         checked={activeTreeIds.includes(tree.id)}
                         onChange={() => handleToggleTreeInPool(tree.id)}
                       />
-                      <span>{tree.name} <span className="muted" style={{ fontSize: '0.8rem' }}>({tree.id})</span></span>
+                      <span>
+                        {tree.name} <span className="muted" style={{ fontSize: '0.8rem' }}>({tree.id})</span>
+                        {isInBiome ? <span style={{ marginLeft: '0.35rem', color: '#9ae6b4', fontSize: '0.75rem' }}>[биом]</span> : null}
+                      </span>
                     </label>
-                  ))}
-                  {trees.length === 0 && <span className="muted">Деревья не найдены.</span>}
+                    );
+                  })}
+                  {enabledTrees.length === 0 && <span className="muted">В справочнике деревьев нет записей.</span>}
                 </div>
               </label>
             )}

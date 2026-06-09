@@ -73,7 +73,8 @@ export type ContentCollectionName =
   | 'sounds'
   | 'trees'
   | 'biomes'
-  | 'imageSheets';
+  | 'imageSheets'
+  | 'professionSkills';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -160,6 +161,7 @@ export interface ContentSnapshot {
   trees?: TreeDefinition[];
   biomes?: BiomeDefinition[];
   imageSheets?: import('./models').ImageSheetDefinition[];
+  professionSkills?: import('../../types/profession').ProfessionSkill[];
   worldMap: WorldMapContent;
 }
 

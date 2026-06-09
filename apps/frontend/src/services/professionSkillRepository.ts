@@ -6,8 +6,41 @@ import type {
   ProfessionSkillEffectValueType,
 } from '../types/profession';
 import type { GameImageRef } from './content/models';
+import { syncProfessionSkillsToBackend } from './professionSkillsService';
 
 const STORAGE_KEY = 'theend.professionSkills.v2';
+
+const CARPENTRY_SKILL_IDS = [
+  'carpentry_skill_firm_swing',
+  'carpentry_skill_tree_reading',
+  'carpentry_skill_lumberjack_wedge',
+  'carpentry_skill_silent_felling',
+  'carpentry_skill_clean_cut',
+  'carpentry_skill_master_hand',
+  'carpentry_skill_even_sawing',
+  'carpentry_skill_gentle_saw',
+  'carpentry_skill_plank_marking',
+  'carpentry_skill_dry_core',
+  'carpentry_skill_sawmill_eye',
+  'carpentry_skill_basic_handle',
+  'carpentry_skill_apprentice_shaft',
+  'carpentry_skill_dry_plank',
+  'carpentry_skill_master_frame',
+  'carpentry_skill_ladder_maker',
+  'carpentry_skill_enchanting_base',
+] as const;
+
+function buildCarpentrySkillIconPath(skillId: string): string {
+  return `/assets/upload/images/skills/${skillId}/${skillId}-icon-${skillId}-icon.png`;
+}
+
+function buildCarpentrySkillIconRef(skillId: string): GameImageRef {
+  return { type: 'image', src: buildCarpentrySkillIconPath(skillId) };
+}
+
+const DEFAULT_CARPENTRY_SKILL_ICON_BY_ID: Record<string, string> = Object.fromEntries(
+  CARPENTRY_SKILL_IDS.map((skillId) => [skillId, buildCarpentrySkillIconPath(skillId)]),
+);
 
 const DEFAULT_MINING_SKILL_ICON_BY_NAME: Record<string, string> = {
   'Крепкий замах': '/art/mining-skills/Крепкий замах.png',
@@ -972,7 +1005,7 @@ function createDefaultCarpentrySkills(): ProfessionSkill[] {
     params,
   });
 
-  return [
+  const skills = [
     // 1. Logging Branch (X = 200)
     skill({
       id: 'carpentry_skill_firm_swing',
@@ -1215,6 +1248,46 @@ function createDefaultCarpentrySkills(): ProfessionSkill[] {
       positionY: 400
     })
   ];
+
+  return skills.map((entry) => {
+    const icon = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[entry.id];
+    if (!icon) {
+      return entry;
+    }
+    return {
+      ...entry,
+      icon,
+      iconImageRef: buildCarpentrySkillIconRef(entry.id),
+    };
+  });
+}
+
+function resolveDefaultSkillIcon(skill: ProfessionSkill): string | undefined {
+  return DEFAULT_MINING_SKILL_ICON_BY_NAME[skill.name]
+    ?? DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
+}
+
+function resolveDefaultSkillIconRef(skill: ProfessionSkill): GameImageRef | undefined {
+  const carpentryPath = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
+  if (carpentryPath) {
+    return buildCarpentrySkillIconRef(skill.id);
+  }
+  return undefined;
+}
+
+function applyDefaultSkillIcons(skills: ProfessionSkill[]): ProfessionSkill[] {
+  return skills.map((skill) => {
+    const defaultIcon = resolveDefaultSkillIcon(skill);
+    const defaultIconRef = resolveDefaultSkillIconRef(skill);
+    if (!defaultIcon && !defaultIconRef) {
+      return skill;
+    }
+    return {
+      ...skill,
+      icon: skill.icon?.trim() ? skill.icon : defaultIcon,
+      iconImageRef: skill.iconImageRef ?? defaultIconRef,
+    };
+  });
 }
 
 function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
@@ -1228,19 +1301,20 @@ function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
   const preserved = skills.filter((entry) => !defaultIds.has(entry.id) && entry.professionId !== 'blacksmithing' && entry.professionId !== 'carpenter');
   const mergedDefaults = defaults.map((entry) => {
     const existing = existingById.get(entry.id);
-    const defaultIcon = DEFAULT_MINING_SKILL_ICON_BY_NAME[entry.name];
+    const defaultIcon = resolveDefaultSkillIcon(entry);
+    const defaultIconRef = resolveDefaultSkillIconRef(entry);
     if (!existing) {
-      return {
+      return applyDefaultSkillIcons([{
         ...entry,
         icon: entry.icon?.trim() ? entry.icon : defaultIcon,
-        iconImageRef: entry.iconImageRef,
-      };
+        iconImageRef: entry.iconImageRef ?? defaultIconRef,
+      }])[0];
     }
-    return {
+    return applyDefaultSkillIcons([{
       ...entry,
       ...existing,
       icon: existing.icon?.trim() ? existing.icon : (entry.icon?.trim() ? entry.icon : defaultIcon),
-      iconImageRef: existing.iconImageRef ?? entry.iconImageRef,
+      iconImageRef: existing.iconImageRef ?? entry.iconImageRef ?? defaultIconRef,
       positionX: existing.positionX ?? entry.positionX,
       positionY: existing.positionY ?? entry.positionY,
       requiredSkillIds: existing.requiredSkillIds ?? entry.requiredSkillIds,
@@ -1248,9 +1322,9 @@ function mergeWithMiningDefaults(skills: ProfessionSkill[]): ProfessionSkill[] {
       effects: existing.effects ?? entry.effects,
       createdAt: existing.createdAt ?? entry.createdAt,
       updatedAt: existing.updatedAt ?? entry.updatedAt,
-    };
+    }])[0];
   });
-  return [...preserved, ...mergedDefaults];
+  return applyDefaultSkillIcons([...preserved, ...mergedDefaults]);
 }
 
 function readStorage(): ProfessionSkill[] {
@@ -1265,7 +1339,7 @@ function readStorage(): ProfessionSkill[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     writeStorage(defaults);
-    return defaults;
+    return clone(defaults);
   }
   try {
     const parsed = JSON.parse(raw);
@@ -1274,10 +1348,10 @@ function readStorage(): ProfessionSkill[] {
       : [];
     const merged = mergeWithMiningDefaults(skills);
     writeStorage(merged);
-    return merged;
+    return clone(merged);
   } catch {
     writeStorage(defaults);
-    return defaults;
+    return clone(defaults);
   }
 }
 
@@ -1292,12 +1366,60 @@ export function loadProfessionSkillsFromStorage(): ProfessionSkill[] {
   return clone(readStorage());
 }
 
+function mergeRemoteProfessionSkills(local: ProfessionSkill[], remote: ProfessionSkill[]): ProfessionSkill[] {
+  if (remote.length === 0) {
+    return local;
+  }
+  const remoteById = new Map(remote.map((entry) => [entry.id, entry]));
+  return local.map((entry) => {
+    const fromRemote = remoteById.get(entry.id);
+    if (!fromRemote) {
+      return entry;
+    }
+    const remoteUpdatedAt = Date.parse(fromRemote.updatedAt ?? '');
+    const localUpdatedAt = Date.parse(entry.updatedAt ?? '');
+    const remoteIsNewer = Number.isFinite(remoteUpdatedAt)
+      && (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt >= localUpdatedAt);
+    if (!remoteIsNewer) {
+      return entry;
+    }
+    return {
+      ...entry,
+      ...fromRemote,
+      icon: fromRemote.icon?.trim() ? fromRemote.icon : entry.icon,
+      iconImageRef: fromRemote.iconImageRef ?? entry.iconImageRef,
+      positionX: fromRemote.positionX ?? entry.positionX,
+      positionY: fromRemote.positionY ?? entry.positionY,
+      effects: fromRemote.effects ?? entry.effects,
+    };
+  });
+}
+
 export function saveProfessionSkillsToStorage(skills: ProfessionSkill[]): ProfessionSkill[] {
   const normalized = mergeWithMiningDefaults(
     skills.map(normalizeSkill).filter((entry): entry is ProfessionSkill => Boolean(entry)),
   );
   writeStorage(normalized);
+  if (typeof window !== 'undefined') {
+    void syncProfessionSkillsToBackend(normalized).catch(() => undefined);
+  }
   return clone(normalized);
+}
+
+export function hydrateProfessionSkillsFromBackend(remoteSkills: ProfessionSkill[]): ProfessionSkill[] {
+  const normalizedRemote = mergeWithMiningDefaults(
+    remoteSkills.map(normalizeSkill).filter((entry): entry is ProfessionSkill => Boolean(entry)),
+  );
+  const local = readStorage();
+  if (normalizedRemote.length === 0) {
+    if (typeof window !== 'undefined') {
+      void syncProfessionSkillsToBackend(local).catch(() => undefined);
+    }
+    return clone(local);
+  }
+  const merged = mergeWithMiningDefaults(mergeRemoteProfessionSkills(local, normalizedRemote));
+  writeStorage(merged);
+  return clone(merged);
 }
 
 export function getProfessionSkillsByProfessionId(professionId: string): ProfessionSkill[] {

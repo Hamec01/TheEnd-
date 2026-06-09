@@ -14,7 +14,64 @@ export interface WorldSpriteViewport {
 }
 
 export interface ResolveLocationSpritesOptions {
-  screenScale?: number;
+  /** Natural width of the world map image in pixels. Used with camera to derive map-space scaling. */
+  mapImageWidth?: number;
+  /** Explicit map zoom multiplier (editor viewport zoom). Overrides derived scale when set. */
+  mapZoom?: number;
+}
+
+export interface EditorSpriteViewportInput {
+  panX: number;
+  panY: number;
+  zoom: number;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+export const EDITOR_ZONE_LABEL_FONT_SIZE_PX = 11;
+
+export function buildWorldSpriteCameraFromEditorViewport(
+  viewport: EditorSpriteViewportInput,
+  canvasWidth: number,
+  canvasHeight: number,
+): WorldSpriteCamera {
+  const scaledWidth = viewport.imageWidth * viewport.zoom;
+  const scaledHeight = viewport.imageHeight * viewport.zoom;
+  return {
+    left: -viewport.panX / Math.max(1, scaledWidth),
+    top: -viewport.panY / Math.max(1, scaledHeight),
+    width: canvasWidth / Math.max(1, scaledWidth),
+    height: canvasHeight / Math.max(1, scaledHeight),
+  };
+}
+
+export function resolveMapPixelToScreenScale(
+  camera: WorldSpriteCamera,
+  viewport: WorldSpriteViewport,
+  options?: ResolveLocationSpritesOptions,
+): number {
+  if (options?.mapZoom != null && Number.isFinite(options.mapZoom)) {
+    return Math.max(0.01, options.mapZoom);
+  }
+  const mapImageWidth = options?.mapImageWidth;
+  if (mapImageWidth != null && mapImageWidth > 0) {
+    return Math.max(0.01, viewport.width / (camera.width * mapImageWidth));
+  }
+  return 1;
+}
+
+export function resolveWorldSpaceDisplaySize(
+  imageWidth: number,
+  imageHeight: number,
+  spriteScale: number,
+  mapPixelToScreenScale: number,
+): { displayWidth: number; displayHeight: number } {
+  const scale = Math.max(0.01, spriteScale);
+  const zoom = Math.max(0.01, mapPixelToScreenScale);
+  return {
+    displayWidth: Math.max(1, imageWidth * scale * zoom),
+    displayHeight: Math.max(1, imageHeight * scale * zoom),
+  };
 }
 
 export interface ResolvedLocationSprite {
@@ -131,9 +188,7 @@ export function resolveLocationSpritesForViewport(
   options?: ResolveLocationSpritesOptions,
 ): ResolvedLocationSprite[] {
   const sprites: ResolvedLocationSprite[] = [];
-  // screenScale defaults to 1 to ensure sprites maintain fixed screen size regardless of zoom
-  // Position scales with zoom via camera.width/height, but display size remains constant
-  const screenScale = Math.max(0.01, Number(options?.screenScale ?? 1));
+  const mapPixelToScreenScale = resolveMapPixelToScreenScale(camera, viewport, options);
   for (const zone of zones) {
     if (!isZoneSpriteVisible(zone, discoveredLocationIds, discoveredZoneIds) || !zone.locationSprite) {
       continue;
@@ -144,13 +199,14 @@ export function resolveLocationSpritesForViewport(
     const capturedBannerSrc = resolveCapturedBannerSource(zone);
     const imageSize = imageSizes.get(imageSrc) ?? { width: 48, height: 48 };
     const [worldX, worldY] = getZoneCenter(zone);
-    // Position scales with zoom - this is correct behavior
     const screenX = ((worldX - camera.left) / camera.width) * viewport.width + zone.locationSprite.offsetX;
     const screenY = ((worldY - camera.top) / camera.height) * viewport.height + zone.locationSprite.offsetY;
-    const scale = Math.max(0.01, zone.locationSprite.scale);
-    // Display size is independent of zoom - this ensures fixed screen pixels
-    const displayWidth = Math.max(1, imageSize.width * scale * screenScale);
-    const displayHeight = Math.max(1, imageSize.height * scale * screenScale);
+    const { displayWidth, displayHeight } = resolveWorldSpaceDisplaySize(
+      imageSize.width,
+      imageSize.height,
+      zone.locationSprite.scale,
+      mapPixelToScreenScale,
+    );
     const originX = 0.5;
     const originY = zone.locationSprite.anchor === 'center' ? 0.5 : 1;
 

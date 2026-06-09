@@ -124,7 +124,8 @@ import { materialsService } from './services/content/materialsService';
 import { craftingRecipesService } from './services/content/craftingRecipesService';
 import { ensureDialoguesLoaded, getAllDialogues } from './services/dialogueRepository';
 import { loadProfessionBranchesFromStorage } from './services/professionBranchRepository';
-import { loadProfessionSkillsFromStorage } from './services/professionSkillRepository';
+import { hydrateProfessionSkillsFromBackend, loadProfessionSkillsFromStorage } from './services/professionSkillRepository';
+import { loadProfessionSkillsFromBackend } from './services/professionSkillsService';
 import { locationService } from './services/locationRepository';
 import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npcRepository';
 import { deletePlayerQuestState, ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests, getQuestById } from './services/questRepository';
@@ -673,6 +674,7 @@ function getGodmodeHelpLines(): string[] {
     'material add|remove <materialId> [qty] | resource add|remove <resourceId> [qty]',
     'teleport world | teleport city <cityId> | teleport location <locationId>',
     'mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead',
+    'carpenter game <woodcutting|sawing|workshop|branches> | carpenter <chop|saw|work|branch>',
     'panel open inventory|character|stats|skills|equipment|merchant|arena|map | panel close',
     'merchant open <merchantId> | merchant list [filter]',
     'battle map <battleMapId> | battle start [enemyCount] [battleMapId] | battle npc <npcId[,npcId2]> [battleMapId]',
@@ -1132,10 +1134,11 @@ const KINGDOM_KEY_ALIASES: Record<string, KingdomKey> = {
 };
 
 type GodmodeTravelRequest = {
-  mode: 'world' | 'city' | 'location' | 'mine';
+  mode: 'world' | 'city' | 'location' | 'mine' | 'carpenter_game';
   targetId?: string | null;
   mineAction?: 'open' | 'close' | 'finish';
   mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
+  carpenterGameType?: 'woodcutting' | 'sawing' | 'workshop' | 'branches' | null;
   token: number;
 };
 
@@ -2054,13 +2057,15 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       materialsService.getAll(),
       loadRuntimeImages(),
       imageSheetsService.getAll(),
+      loadProfessionSkillsFromBackend(),
       ensureDialoguesLoaded(options?.force === true),
       ensureNpcsLoaded(options?.force === true),
       ensureQuestsLoaded(options?.force === true),
       ensureQuestMarkersLoaded(options?.force === true),
     ])
-      .then(([content, materials, images, imageSheets]) => {
+      .then(([content, materials, images, imageSheets, remoteProfessionSkills]) => {
         hydrateImageSheetsFromContent(imageSheets);
+        hydrateProfessionSkillsFromBackend(remoteProfessionSkills);
         setRuntimeAdminItems(content.items);
         setRuntimeAdminMerchants(content.merchants);
         setRuntimeAdminSkills(content.skills);
@@ -3316,12 +3321,14 @@ function applyHubState(hub: HubStatePayload): void {
     setStatus(`Открыт торговец: ${merchant.name}`);
   }
 
-  function openSkillsOverlay(trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string): void {
+  function openSkillsOverlay(trainerNpcId?: unknown, trainerSkillIds?: unknown, trainerNpcName?: unknown): void {
     onNavigate?.('/skills');
     setCharacterPageFocus('skills');
     setOverlayPanel('character');
-    const resolvedTrainerId = trainerNpcId?.trim() ? trainerNpcId.trim() : null;
-    const resolvedTrainerName = trainerNpcName?.trim() ? trainerNpcName.trim() : null;
+    const resolvedTrainerIdRaw = typeof trainerNpcId === 'string' ? trainerNpcId : String(trainerNpcId ?? '');
+    const resolvedTrainerNameRaw = typeof trainerNpcName === 'string' ? trainerNpcName : String(trainerNpcName ?? '');
+    const resolvedTrainerId = resolvedTrainerIdRaw.trim() ? resolvedTrainerIdRaw.trim() : null;
+    const resolvedTrainerName = resolvedTrainerNameRaw.trim() ? resolvedTrainerNameRaw.trim() : null;
     setActiveTrainerNpcId(resolvedTrainerId);
     setActiveTrainerNpcName(resolvedTrainerName);
     setActiveTrainerSkillIds(trainerSkillIds ?? null);
@@ -4050,6 +4057,18 @@ function applyHubState(hub: HubStatePayload): void {
         targetId: mineId ?? null,
         mineAction,
         mineResult,
+        token: Date.now(),
+      });
+    };
+
+    const queueCarpenterGameRequest = (
+      carpenterGameType: NonNullable<GodmodeTravelRequest['carpenterGameType']>,
+    ): void => {
+      onNavigate?.('/map');
+      setOverlayPanel(null);
+      setGodmodeTravelRequest({
+        mode: 'carpenter_game',
+        carpenterGameType,
         token: Date.now(),
       });
     };
@@ -5019,6 +5038,37 @@ function applyHubState(hub: HubStatePayload): void {
         }
 
         throw new Error('Use: mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead.');
+      }
+
+      if (head === 'carpenter') {
+        const gameType = String(action ?? '').trim().toLowerCase();
+        if (gameType === 'game') {
+          const subGameType = String(rest[0] ?? '').trim().toLowerCase();
+          if (!['woodcutting', 'sawing', 'workshop', 'branches'].includes(subGameType)) {
+            throw new Error('Use: carpenter game woodcutting|sawing|workshop|branches.');
+          }
+          queueCarpenterGameRequest(subGameType as NonNullable<GodmodeTravelRequest['carpenterGameType']>);
+          return { ok: true, lines: [`Carpenter game request queued: ${subGameType}.`] };
+        }
+
+        const mappedType: Record<string, NonNullable<GodmodeTravelRequest['carpenterGameType']>> = {
+          woodcutting: 'woodcutting',
+          chop: 'woodcutting',
+          sawing: 'sawing',
+          saw: 'sawing',
+          workshop: 'workshop',
+          work: 'workshop',
+          branches: 'branches',
+          branch: 'branches',
+        };
+
+        const resolvedGame = mappedType[gameType];
+        if (!resolvedGame) {
+          throw new Error('Use: carpenter game <woodcutting|sawing|workshop|branches> OR carpenter <woodcutting|sawing|workshop|branches|chop|saw|work|branch>.');
+        }
+
+        queueCarpenterGameRequest(resolvedGame);
+        return { ok: true, lines: [`Carpenter game request queued: ${resolvedGame}.`] };
       }
 
       if (head === 'stat') {
@@ -6245,6 +6295,16 @@ function applyHubState(hub: HubStatePayload): void {
             onStatus={setStatus}
             onChange={handlePlayerProfessionsChange}
             onInventoryChange={setInventory}
+            onLaunchCarpenterGame={(gameType) => {
+              onNavigate?.('/map');
+              setOverlayPanel(null);
+              setGodmodeTravelRequest({
+                mode: 'carpenter_game',
+                carpenterGameType: gameType,
+                token: Date.now(),
+              });
+              setStatus(`Запрос на запуск мини-игры плотника: ${gameType}.`);
+            }}
           />
         ) : null}
 

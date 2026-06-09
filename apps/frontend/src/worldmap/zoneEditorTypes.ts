@@ -46,6 +46,7 @@ export interface LocationSpriteConfig {
   anchor: LocationSpriteAnchor;
   offsetX: number;
   offsetY: number;
+  /** Multiplier for the source image size in map/world space. Scales with map zoom. */
   scale: number;
   zIndex: number;
 }
