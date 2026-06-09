@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, PrimaryStat, StatBlock } from '@theend/rpg-domain';
 import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgress } from '@theend/rpg-domain';
 import type { ArenaCharacter } from '../arena/types';
@@ -125,7 +125,7 @@ interface InventoryPanelProps {
   onSaveActionSlots?: (slots: Array<{ slotId: CharacterActionBarSlot['slotId']; order?: number; entryKind: 'skill' | 'item' | 'weapon' | 'empty'; skillId?: string; itemId?: string; itemInstanceId?: string | null; weaponItemId?: string; weaponInstanceId?: string | null }>) => Promise<void>;
   onSaveHotbar?: (slots: Array<{ slotIndex: number; itemId: string | null; itemInstanceId?: string | null }>) => Promise<void>;
   onUseItem?: (itemId: string) => Promise<void>;
-  onDiscardItem?: (itemId: string) => Promise<void>;
+  onDropItem?: (itemId: string, quantity?: number) => Promise<void> | void;
   onChangeFocus?: (focus: CharacterPageFocus) => void;
   playerAvatarUrl?: string;
   resolveItemById?: (itemId: string) => ItemDefinition | null;
@@ -473,7 +473,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   onSaveActionSlots,
   onSaveHotbar,
   onUseItem,
-  onDiscardItem,
+  onDropItem,
   onChangeFocus,
   playerAvatarUrl,
   resolveItemById,
@@ -877,6 +877,106 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       || (Array.isArray(adminItem?.combatEffects) && adminItem.combatEffects.length > 0);
   }
 
+  function resolveDropBlockedReason(item: ItemDefinition | null): string | null {
+    if (!item) {
+      return 'Предмет не выбран.';
+    }
+
+    const adminItem = (resolveAdminItemById ? resolveAdminItemById(item.id) : null) as (AdminItem & Record<string, unknown>) | null;
+    const tags = Array.isArray(adminItem?.tags)
+      ? adminItem.tags.map((entry) => String(entry ?? '').toLowerCase().trim())
+      : [];
+    const typeValue = String((adminItem as Record<string, unknown> | null)?.type ?? '').toLowerCase();
+    const categoryValue = String((adminItem as Record<string, unknown> | null)?.category ?? '').toLowerCase();
+    const isQuestItem = typeValue === 'quest'
+      || categoryValue === 'quest'
+      || (adminItem as Record<string, unknown> | null)?.isQuestItem === true
+      || typeof (adminItem as Record<string, unknown> | null)?.questItemId === 'string';
+    if (isQuestItem) {
+      return 'Квестовый предмет нельзя выбросить.';
+    }
+
+    const isBound = (adminItem as Record<string, unknown> | null)?.isBound === true
+      || (adminItem as Record<string, unknown> | null)?.bound === true
+      || tags.includes('bound')
+      || tags.includes('soulbound');
+    if (isBound) {
+      return 'Этот предмет привязан к персонажу.';
+    }
+
+    const isLocked = (adminItem as Record<string, unknown> | null)?.isLocked === true
+      || (adminItem as Record<string, unknown> | null)?.locked === true
+      || tags.includes('locked');
+    if (isLocked) {
+      return 'Этот предмет заблокирован.';
+    }
+
+    const isSystemItem = tags.includes('system')
+      || tags.includes('no-drop')
+      || tags.includes('nodrop')
+      || (adminItem as Record<string, unknown> | null)?.isSystemItem === true
+      || (adminItem as Record<string, unknown> | null)?.systemItem === true;
+    if (isSystemItem) {
+      return 'Системный предмет нельзя выбросить.';
+    }
+
+    const canDropFlag = (adminItem as Record<string, unknown> | null)?.canDrop;
+    if (typeof canDropFlag === 'boolean' && !canDropFlag) {
+      return 'Этот предмет нельзя выбросить.';
+    }
+
+    const droppableFlag = (adminItem as Record<string, unknown> | null)?.droppable;
+    if (typeof droppableFlag === 'boolean' && !droppableFlag) {
+      return 'Этот предмет нельзя выбросить.';
+    }
+
+    if (equippedItemIds.has(item.id)) {
+      return 'Сначала снимите предмет.';
+    }
+
+    const entry = inventoryByItemId.get(item.id);
+    if (!entry || entry.quantity <= 0) {
+      return 'Предмет отсутствует в рюкзаке.';
+    }
+
+    return null;
+  }
+
+  async function handleDropSelectedItem(): Promise<void> {
+    if (!selectedItem) {
+      onStatus('Предмет не выбран.');
+      return;
+    }
+
+    if (!onDropItem) {
+      onStatus('Выброс предметов сейчас недоступен.');
+      return;
+    }
+
+    const blockedReason = resolveDropBlockedReason(selectedItem);
+    if (blockedReason) {
+      onStatus(blockedReason);
+      return;
+    }
+
+    const entry = inventoryByItemId.get(selectedItem.id);
+    const currentQuantity = entry?.quantity ?? 1;
+    const stackText = currentQuantity > 1 ? ` (1 шт. из ${currentQuantity})` : '';
+    const confirmed = window.confirm(`Вы точно хотите выбросить: ${selectedItem.name}${stackText}?`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await onDropItem(selectedItem.id, selectedDropQuantity);
+      if (currentQuantity <= selectedDropQuantity) {
+        setItemDetailOpen(false);
+      }
+    } catch {
+      // parent already reports error status
+    }
+  }
+
   async function assignItemToActionSlot(slotId: EquipmentSlotId, itemId: string | null): Promise<void> {
     const slotIndex = QUICK_SLOT_IDS.indexOf(slotId);
     if (slotIndex < 0) {
@@ -949,6 +1049,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     return findEquippedSlotId(selectedItem.id);
   }, [equipment, selectedItem]);
   const selectedAlreadyEquipped = Boolean(selectedItem && equippedItemIds.has(selectedItem.id));
+  const selectedDropBlockedReason = useMemo(
+    () => resolveDropBlockedReason(selectedItem),
+    [equippedItemIds, inventoryByItemId, resolveAdminItemById, selectedItem],
+  );
+  const selectedDropQuantity = selectedInventoryEntry && selectedInventoryEntry.quantity > 1 ? 1 : 1;
 
   const getComparisonForItem = (item: ItemDefinition | null) => {
     if (!item) {
@@ -1186,25 +1291,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     try {
       await onUseItem(selectedItem.id);
-      setItemDetailOpen(false);
-    } catch {
-      // parent already reports error status
-    }
-  }
-
-  async function handleDiscardSelectedItem(): Promise<void> {
-    if (!selectedItem || !onDiscardItem) {
-      onStatus('Выбрасывание предмета недоступно.');
-      return;
-    }
-
-    const confirmed = window.confirm(`Вы уверены, что хотите выбросить ${selectedItem.name}?`);
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      await onDiscardItem(selectedItem.id);
       setItemDetailOpen(false);
     } catch {
       // parent already reports error status
@@ -1992,12 +2078,21 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     Снять
                   </button>
                 ) : null}
-                {selectedItem && selectedInventoryEntry && onDiscardItem ? (
-                  <button type="button" className="btn-discard" onClick={() => void handleDiscardSelectedItem()}>
+                {onDropItem ? (
+                  <button
+                    type="button"
+                    className="inventory-action-danger"
+                    disabled={Boolean(selectedDropBlockedReason)}
+                    title={selectedDropBlockedReason ?? undefined}
+                    onClick={() => void handleDropSelectedItem()}
+                  >
                     Выбросить
                   </button>
                 ) : null}
               </div>
+              {selectedInventoryEntry && selectedInventoryEntry.quantity > 1 && !selectedDropBlockedReason ? (
+                <p className="muted">При выбросе будет удалена 1 штука из стака.</p>
+              ) : null}
             </section>
             <section className="character-item-compare">
               <div className="character-item-compare-items">
@@ -2450,12 +2545,21 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   Снять
                 </button>
               ) : null}
-              {selectedItem && selectedInventoryEntry && onDiscardItem ? (
-                <button type="button" className="btn-discard" onClick={() => void handleDiscardSelectedItem()}>
+              {onDropItem ? (
+                <button
+                  type="button"
+                  className="inventory-action-danger"
+                  disabled={Boolean(selectedDropBlockedReason)}
+                  title={selectedDropBlockedReason ?? undefined}
+                  onClick={() => void handleDropSelectedItem()}
+                >
                   Выбросить
                 </button>
               ) : null}
             </div>
+            {selectedInventoryEntry && selectedInventoryEntry.quantity > 1 && !selectedDropBlockedReason ? (
+              <p className="muted">При выбросе будет удалена 1 штука из стака.</p>
+            ) : null}
           </>
         ) : (
           <p className="muted">{emptyText}</p>
@@ -2506,69 +2610,45 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   ) {
     return (
       <div className={`character-inventory-grid ${compact ? 'is-compact' : ''}`}>
-        {entries.map((entry) => {
-          const item = entry.item;
-          const adminItem = resolveAdminItemById ? resolveAdminItemById(item.id) : null;
-          const imageRef = adminItem?.imageRef ?? resolveItemImageRef?.(item);
-          const legacyImagePath = adminItem?.imagePath ?? resolveItemLegacyImagePath?.(item);
-          const imageUrl = resolveItemImage?.(item) ?? adminItem?.imagePath ?? undefined;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`character-item-card ${selectedItemId === item.id ? 'is-active' : ''}`}
-              onMouseEnter={(event) => {
-                const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                const cardWidth = Math.min(360, window.innerWidth - 24);
-                const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
-                const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
-                setHoverPreview({ itemId: item.id, x: nextX, y: nextY });
-                setSelectedItemId(item.id);
-              }}
-              onFocus={() => { setSelectedItemId(item.id); }}
-              onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === item.id ? null : current)); }}
-              onBlur={() => { setHoverPreview((current) => (current?.itemId === item.id ? null : current)); }}
-              onClick={() => { setHoverPreview(null); setSelectedItemId(item.id); setItemDetailOpen(true); }}
-              onDoubleClick={() => { void handleDoubleClickInventoryItem(item.id); }}
-              draggable
-              onDragStart={(event) => {
-                event.dataTransfer.setData('text/theend-item-id', item.id);
-                event.dataTransfer.effectAllowed = 'move';
-              }}
-            >
-              <span className="character-item-icon">
-                {imageRef ? (
-                  <GameImageView
-                    imageRef={imageRef}
-                    legacyImagePath={legacyImagePath}
-                    runtimeImages={runtimeImages}
-                    alt={item.name}
-                    size={compact ? 34 : 24}
-                    fit="contain"
-                    fallbackText={item.name.trim().charAt(0).toUpperCase() || '?'}
-                    className="character-item-icon-image"
-                  />
-                ) : legacyImagePath || imageUrl ? (
-                  <span
-                    className="character-item-icon-legacy"
-                    style={{
-                      backgroundImage: `url("${imageUrl || legacyImagePath}")`,
-                      backgroundSize: 'contain',
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'center',
-                    }}
-                    aria-hidden="true"
-                  />
-                ) : (
-                  item.name.trim().charAt(0).toUpperCase() || '?'
-                )}
-              </span>
-              <span className="character-item-name">{item.name}</span>
-              <span className="character-item-qty">x{entry.quantity}</span>
-            </button>
-          );
-        })}
+        {entries.map((entry) => (
+          <button
+            key={entry.item.id}
+            type="button"
+            className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+            onMouseEnter={(event) => {
+              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+              const cardWidth = Math.min(360, window.innerWidth - 24);
+              const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
+              const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+              setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
+              setSelectedItemId(entry.item.id);
+            }}
+            onFocus={() => { setSelectedItemId(entry.item.id); }}
+            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
+            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
+            onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
+            onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData('text/theend-item-id', entry.item.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+          >
+            <span
+              className="character-item-icon"
+              style={resolveItemImage?.(entry.item)
+                ? {
+                    backgroundImage: `url("${resolveItemImage(entry.item)}")`,
+                    backgroundSize: 'contain',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'center',
+                  }
+                : undefined}
+            />
+            <span className="character-item-name">{entry.item.name}</span>
+            <span className="character-item-qty">x{entry.quantity}</span>
+          </button>
+        ))}
       </div>
     );
   }
@@ -2611,17 +2691,17 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                   legacyImagePath={entry.legacyImagePath}
                   runtimeImages={runtimeImages}
                   alt={entry.name}
-                  size={24}
+                  size={22}
                   fit="contain"
                   fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
-                  className="character-item-icon-image"
+                  className="item-slot-icon-image"
                 />
               ) : (
                 <span
-                  className="character-item-icon-legacy"
-                  style={entry.imageUrl || entry.legacyImagePath
+                  className="item-slot-icon-image item-slot-icon-image--legacy"
+                  style={entry.imageUrl
                     ? {
-                        backgroundImage: `url("${entry.imageUrl || entry.legacyImagePath}")`,
+                        backgroundImage: `url("${entry.imageUrl}")`,
                         backgroundSize: 'contain',
                         backgroundRepeat: 'no-repeat',
                         backgroundPosition: 'center',

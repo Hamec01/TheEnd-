@@ -68,7 +68,6 @@ import {
   unequipArenaItemInstance,
   useArenaItem as arenaUseItem,
   useSkillOutOfCombat as arenaUseSkillOutOfCombat,
-  deleteArenaItemInstance,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
 import { BattlePanel } from './battle/BattlePanel';
@@ -132,6 +131,7 @@ import type { NpcDefinition, NpcRace } from './types/npc';
 import {
   PLAYER_FLAGS_STORAGE_KEY,
   PLAYER_GOLD_STORAGE_KEY,
+  PLAYER_INVENTORY_REMOVALS_STORAGE_KEY,
   PLAYER_ITEMS_STORAGE_KEY,
   PLAYER_MATERIAL_IDS_STORAGE_KEY,
   PLAYER_MATERIALS_STORAGE_KEY,
@@ -670,7 +670,6 @@ function getGodmodeHelpLines(): string[] {
     'material add|remove <materialId> [qty] | resource add|remove <resourceId> [qty]',
     'teleport world | teleport city <cityId> | teleport location <locationId>',
     'mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead',
-    'carpenter game <woodcutting|sawing|workshop|branches> | carpenter <chop|saw|work|branch>',
     'panel open inventory|character|stats|skills|equipment|merchant|arena|map | panel close',
     'merchant open <merchantId> | merchant list [filter]',
     'battle map <battleMapId> | battle start [enemyCount] [battleMapId] | battle npc <npcId[,npcId2]> [battleMapId]',
@@ -1108,15 +1107,6 @@ interface AppProps {
   onNavigate?: (path: PlayerPath, options?: { replace?: boolean }) => void;
 }
 
-type GodmodeTravelRequest = {
-  mode: 'world' | 'city' | 'location' | 'mine' | 'carpenter_game';
-  targetId?: string | null;
-  mineAction?: 'open' | 'close' | 'finish';
-  mineResult?: 'escaped' | 'retreated' | 'failed' | 'dead';
-  carpenterGameType?: 'woodcutting' | 'sawing' | 'workshop' | 'branches' | null;
-  token: number;
-};
-
 type KingdomKey = 'luminor' | 'artalon' | 'kriantar' | 'terimia' | 'argos';
 
 const HUMAN_ORIGIN_TO_KINGDOM_KEY: Partial<Record<string, KingdomKey>> = {
@@ -1138,7 +1128,7 @@ const KINGDOM_KEY_ALIASES: Record<string, KingdomKey> = {
   argos: 'argos',
 };
 
-type GodmodeTravelRequest_Dup = {
+type GodmodeTravelRequest = {
   mode: 'world' | 'city' | 'location' | 'mine';
   targetId?: string | null;
   mineAction?: 'open' | 'close' | 'finish';
@@ -3693,40 +3683,192 @@ function applyHubState(hub: HubStatePayload): void {
     }
   }
 
-  async function handleDiscardItem(itemId: string): Promise<void> {
+  async function handleDropInventoryItem(itemId: string, quantity = 1): Promise<void> {
     try {
       if (!character) {
         setStatus('Character is not selected.');
         return;
       }
 
-      const isEquipped = Object.values(equipment).includes(itemId);
-      if (isEquipped) {
-        setStatus('Нельзя выбросить экипированный предмет. Сначала снимите его.');
+      const normalizedItemId = String(itemId ?? '').trim();
+      const canonicalItemId = normalizedItemId.toLowerCase();
+      const matchesItemId = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase() === canonicalItemId;
+      if (!normalizedItemId) {
+        setStatus('Не удалось выбросить предмет: пустой id.');
         return;
       }
 
-      const entry = inventory.items.find((e) => e.itemId === itemId);
-      if (!entry) {
-        setStatus('Предмет не найден в инвентаре.');
+      const worldEntry = worldInventory.items.find((entry) => matchesItemId(entry.itemId));
+      if (!worldEntry || worldEntry.quantity <= 0) {
+        setStatus('Предмет отсутствует в рюкзаке.');
         return;
       }
 
-      const quantity = entry.quantity;
-      const updatedHub = await adjustDevInventoryItem(character.id, { itemId, quantityDelta: -quantity });
-
-      const instance = arenaItemInstances.find((inst) => inst.itemId === itemId || inst.id === itemId);
-      if (instance) {
-        await deleteArenaItemInstance(character.id, instance.itemId, instance.id).catch(() => undefined);
+      if (Object.values(equipment).some((equippedId) => equippedId === normalizedItemId)) {
+        setStatus('Сначала снимите предмет.');
+        return;
       }
 
-      applyHubState(updatedHub);
-      setStatus(`${resolveItem(itemId).name} выброшен.`);
+      const adminItem = resolveAdminVisualItemById(normalizedItemId) as (AdminItem & Record<string, unknown>) | null;
+      const tags = Array.isArray(adminItem?.tags)
+        ? adminItem.tags.map((entry) => String(entry ?? '').toLowerCase().trim())
+        : [];
+      const typeValue = String((adminItem as Record<string, unknown> | null)?.type ?? '').toLowerCase();
+      const categoryValue = String((adminItem as Record<string, unknown> | null)?.category ?? '').toLowerCase();
+      const isQuestItem = typeValue === 'quest'
+        || categoryValue === 'quest'
+        || (adminItem as Record<string, unknown> | null)?.isQuestItem === true
+        || typeof (adminItem as Record<string, unknown> | null)?.questItemId === 'string';
+      if (isQuestItem) {
+        setStatus('Квестовый предмет нельзя выбросить.');
+        return;
+      }
+
+      const isBound = (adminItem as Record<string, unknown> | null)?.isBound === true
+        || (adminItem as Record<string, unknown> | null)?.bound === true
+        || tags.includes('bound')
+        || tags.includes('soulbound');
+      if (isBound) {
+        setStatus('Этот предмет привязан к персонажу.');
+        return;
+      }
+
+      const isLocked = (adminItem as Record<string, unknown> | null)?.isLocked === true
+        || (adminItem as Record<string, unknown> | null)?.locked === true
+        || tags.includes('locked');
+      if (isLocked) {
+        setStatus('Этот предмет заблокирован.');
+        return;
+      }
+
+      const isSystemItem = tags.includes('system')
+        || tags.includes('no-drop')
+        || tags.includes('nodrop')
+        || (adminItem as Record<string, unknown> | null)?.isSystemItem === true
+        || (adminItem as Record<string, unknown> | null)?.systemItem === true;
+      if (isSystemItem) {
+        setStatus('Системный предмет нельзя выбросить.');
+        return;
+      }
+
+      const canDropFlag = (adminItem as Record<string, unknown> | null)?.canDrop;
+      if (typeof canDropFlag === 'boolean' && !canDropFlag) {
+        setStatus('Этот предмет нельзя выбросить.');
+        return;
+      }
+
+      const droppableFlag = (adminItem as Record<string, unknown> | null)?.droppable;
+      if (typeof droppableFlag === 'boolean' && !droppableFlag) {
+        setStatus('Этот предмет нельзя выбросить.');
+        return;
+      }
+
+      const requestedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+      const safeQuantity = Math.max(1, Math.min(requestedQuantity, worldEntry.quantity));
+      const backendQuantity = inventory.items.find((entry) => matchesItemId(entry.itemId))?.quantity ?? 0;
+
+      // Runtime overlay items are merged into worldInventory from localStorage and must be decremented locally.
+      const runtimeItems = readStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY);
+      const candidateIds = new Set(getMaterialLikeCandidates(normalizedItemId));
+      const candidateCanonicalIds = new Set(Array.from(candidateIds).map((entry) => entry.toLowerCase()));
+      let runtimeRemoved = 0;
+      const remainingRuntimeItems: string[] = [];
+      for (const entryId of runtimeItems) {
+        const canonicalEntryId = entryId.trim().toLowerCase();
+        if (runtimeRemoved < safeQuantity && (canonicalEntryId === canonicalItemId || candidateCanonicalIds.has(canonicalEntryId))) {
+          runtimeRemoved += 1;
+          continue;
+        }
+        remainingRuntimeItems.push(entryId);
+      }
+      if (runtimeRemoved > 0) {
+        writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, remainingRuntimeItems);
+      }
+
+      const requestedBackendRemoval = Math.max(0, safeQuantity - runtimeRemoved);
+      const backendRemoval = Math.min(requestedBackendRemoval, backendQuantity);
+      let backendRemoved = 0;
+      let usedLocalBackendFallback = false;
+      const consumePersistedRemovalCounter = (removedQuantity: number) => {
+        if (removedQuantity <= 0) {
+          return;
+        }
+        const persisted = readStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY);
+        const current = Math.max(0, Math.floor(Number(persisted[normalizedItemId]) || 0));
+        const next = Math.max(0, current - removedQuantity);
+        if (next <= 0) {
+          delete persisted[normalizedItemId];
+        } else {
+          persisted[normalizedItemId] = next;
+        }
+        writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, persisted);
+      };
+      const applyLocalBackendFallbackRemoval = () => {
+        setInventory((current) => {
+          let remainingToRemove = backendRemoval;
+          const nextItems = current.items
+            .map((entry) => {
+              if (!matchesItemId(entry.itemId)) {
+                return entry;
+              }
+              const removalForEntry = Math.min(remainingToRemove, Math.max(0, entry.quantity));
+              remainingToRemove -= removalForEntry;
+              return {
+                ...entry,
+                quantity: Math.max(0, entry.quantity - removalForEntry),
+              };
+            })
+            .filter((entry) => entry.quantity > 0);
+          return {
+            ...current,
+            items: nextItems,
+          };
+        });
+        backendRemoved = backendRemoval;
+        usedLocalBackendFallback = true;
+
+        const persisted = readStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY);
+        persisted[normalizedItemId] = Math.max(0, Math.floor(Number(persisted[normalizedItemId]) || 0)) + backendRemoval;
+        writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, persisted);
+      };
+      if (backendRemoval > 0) {
+        try {
+          const updatedHub = await adjustDevInventoryItem(character.id, {
+            itemId: normalizedItemId,
+            quantityDelta: -backendRemoval,
+          });
+          applyHubState(updatedHub);
+          backendRemoved = backendRemoval;
+          consumePersistedRemovalCounter(backendRemoved);
+        } catch (error) {
+          // Keep drop working even when backend endpoint/proxy is unavailable.
+          console.warn('Drop backend removal failed, applying local fallback:', error);
+          applyLocalBackendFallbackRemoval();
+        }
+      }
+
+      if (runtimeRemoved > 0) {
+        handleRuntimeInventoryChanged();
+      }
+
+      const removedTotal = runtimeRemoved + backendRemoved;
+      if (removedTotal <= 0) {
+        setStatus('Не удалось выбросить предмет: запись не найдена в backend/runtime.');
+        return;
+      }
+
+      const baseStatus = removedTotal > 1
+        ? `Выброшено ${removedTotal} x ${resolveItem(normalizedItemId).name}.`
+        : `Выброшен предмет: ${resolveItem(normalizedItemId).name}.`;
+      setStatus(
+        usedLocalBackendFallback
+          ? `${baseStatus} (inventory/dev недоступен, применён локальный fallback)`
+          : baseStatus,
+      );
     } catch (error) {
-      setStatus(`Discard error: ${(error as Error).message}`);
+      setStatus(`Ошибка выброса предмета: ${(error as Error).message}`);
     }
   }
-
 
   async function handleUseSkillOutOfCombat(skillId: string): Promise<void> {
     try {
@@ -3863,18 +4005,6 @@ function applyHubState(hub: HubStatePayload): void {
         targetId: mineId ?? null,
         mineAction,
         mineResult,
-        token: Date.now(),
-      });
-    };
-
-    const queueCarpenterGameRequest = (
-      carpenterGameType: NonNullable<GodmodeTravelRequest['carpenterGameType']>,
-    ): void => {
-      onNavigate?.('/map');
-      setOverlayPanel(null);
-      setGodmodeTravelRequest({
-        mode: 'carpenter_game',
-        carpenterGameType,
         token: Date.now(),
       });
     };
@@ -4846,37 +4976,6 @@ function applyHubState(hub: HubStatePayload): void {
         throw new Error('Use: mine open <mineId> | mine close | mine finish escaped|retreated|failed|dead.');
       }
 
-      if (head === 'carpenter') {
-        const gameType = String(action ?? '').trim().toLowerCase();
-        if (gameType === 'game') {
-          const subGameType = String(rest[0] ?? '').trim().toLowerCase();
-          if (!['woodcutting', 'sawing', 'workshop', 'branches'].includes(subGameType)) {
-            throw new Error('Use: carpenter game woodcutting|sawing|workshop|branches.');
-          }
-          queueCarpenterGameRequest(subGameType as any);
-          return { ok: true, lines: [`Carpenter game request queued: ${subGameType}.`] };
-        }
-
-        const mappedType: Record<string, 'woodcutting' | 'sawing' | 'workshop' | 'branches'> = {
-          woodcutting: 'woodcutting',
-          chop: 'woodcutting',
-          sawing: 'sawing',
-          saw: 'sawing',
-          workshop: 'workshop',
-          work: 'workshop',
-          branches: 'branches',
-          branch: 'branches',
-        };
-
-        const resolvedGame = mappedType[gameType];
-        if (!resolvedGame) {
-          throw new Error('Use: carpenter game <woodcutting|sawing|workshop|branches> OR carpenter <woodcutting|sawing|workshop|branches|chop|saw|work|branch>.');
-        }
-
-        queueCarpenterGameRequest(resolvedGame);
-        return { ok: true, lines: [`Carpenter game request queued: ${resolvedGame}.`] };
-      }
-
       if (head === 'stat') {
         const player = requireCharacter();
         const statName = String(rest[0] ?? '').trim().toLowerCase();
@@ -5413,12 +5512,14 @@ function applyHubState(hub: HubStatePayload): void {
         }
         if (scope === 'runtimeitems') {
           writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
+          writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, {});
           writeNumberStorage(PLAYER_GOLD_STORAGE_KEY, 0);
           handleRuntimeInventoryChanged();
           return { ok: true, lines: ['Cleared runtime item overlay and runtime gold overlay.'] };
         }
         if (scope === 'allruntime') {
           writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
+          writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, {});
           writeStringArrayStorage(PLAYER_QUEST_ITEMS_STORAGE_KEY, []);
           writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, {});
           writeStringNumberRecordStorage(PLAYER_RESOURCES_STORAGE_KEY, {});
@@ -5448,6 +5549,7 @@ function applyHubState(hub: HubStatePayload): void {
         if (runtimeItems.length > 0) {
           writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, []);
         }
+        writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, {});
 
         handleRuntimeInventoryChanged();
         return {
@@ -5997,8 +6099,6 @@ function applyHubState(hub: HubStatePayload): void {
           cityMerchants={enabledRuntimeMerchants}
           resolveItemById={resolveRuntimeItemById}
           resolveItemImage={resolveItemImage}
-          resolveItemImageRef={resolveItemImageRef}
-          resolveItemLegacyImagePath={resolveItemLegacyImagePath}
           resolveMerchantImage={resolveMerchantImage}
           devTravelRequest={godmodeTravelRequest}
         />
@@ -6036,8 +6136,8 @@ function applyHubState(hub: HubStatePayload): void {
             onSaveActionSlots={handleSaveCharacterActionSlots}
             onSaveHotbar={handleSaveCharacterHotbar}
             onUseItem={handleUseConsumable}
+            onDropItem={handleDropInventoryItem}
             onUseSkillOutOfCombat={handleUseSkillOutOfCombat}
-            onDiscardItem={handleDiscardItem}
             onChangeFocus={changeCharacterOverlayFocus}
             playerAvatarUrl={effectivePlayerAvatarUrl}
             resolveItemById={resolveRuntimeItemById}
