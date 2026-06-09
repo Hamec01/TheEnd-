@@ -2351,6 +2351,11 @@ h3 {
 
 .admin-editor-page {
   min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .admin-editor-status {
@@ -7832,6 +7837,15 @@ h3 {
 
 .wm-editor-shell.is-admin-editor .wm-editor-map-area {
   height: 100%;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.wm-editor-shell.is-admin-editor .wm-editor-map-area > .wm-map.is-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
 .wm-editor-sidebar {
@@ -11647,12 +11661,8 @@ body:has(.page.page--scroll) {
   }
 }
 
-.admin-editor-page {
+.admin-editor-page > .wm-shell-admin-editor {
   min-height: 0;
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
   overflow: hidden;
 }
 

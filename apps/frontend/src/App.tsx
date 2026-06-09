@@ -107,7 +107,7 @@ import {
   loadRuntimeAdminContent,
 } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource, resolveStoredImageSource } from './services/content/runtimeImageService';
-import { getCustomImageSheets, hydrateImageSheetsFromContent } from './services/content/gameImageRefs';
+import { hydrateImageSheetsFromContent } from './services/content/gameImageRefs';
 import { imageSheetsService } from './services/content/imageSheetsService';
 import { migrateTilesetCatalogImages } from './services/content/migrateTilesetCatalogImages';
 import { getDomainItemWithFallback } from './services/content/seedService';
@@ -1366,6 +1366,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const pendingRouteSyncRef = useRef<{ from: PlayerPath; to: PlayerPath } | null>(null);
   const runtimeContentRefreshRef = useRef<Promise<void> | null>(null);
   const lastRuntimeContentRefreshAtRef = useRef(0);
+  const tilesetMigrationStartedRef = useRef(false);
+  const contentSyncDebounceRef = useRef<number | null>(null);
   const battleStartSnapshotRef = useRef<BattleStartSnapshot | null>(null);
   const arenaNpcInitializedRef = useRef(false);
   const arenaNpcSyncedIdsRef = useRef<Set<string>>(new Set());
@@ -2059,23 +2061,11 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     ])
       .then(([content, materials, images, imageSheets]) => {
         hydrateImageSheetsFromContent(imageSheets);
-        for (const sheet of getCustomImageSheets()) {
-          void imageSheetsService.upsert(sheet);
-        }
         setRuntimeAdminItems(content.items);
         setRuntimeAdminMerchants(content.merchants);
         setRuntimeAdminSkills(content.skills);
         setRuntimeAdminMaterials(materials.filter((material) => material.isEnabled));
         setRuntimeImages(images);
-        void migrateTilesetCatalogImages({
-          materials,
-          items: content.items,
-          runtimeImages: images,
-        }).then((changed) => {
-          if (changed) {
-            void refreshRuntimeContent({ force: true });
-          }
-        });
       })
       .catch(() => {
         // Keep hardcoded fallback content if backend content is unavailable.
@@ -2089,6 +2079,28 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     runtimeContentRefreshRef.current = refreshPromise;
     return refreshPromise;
   }, []);
+
+  useEffect(() => {
+    if (tilesetMigrationStartedRef.current || runtimeImages.length === 0) {
+      return;
+    }
+    if (runtimeAdminItems.length === 0) {
+      return;
+    }
+
+    tilesetMigrationStartedRef.current = true;
+    void (async () => {
+      const materials = await materialsService.getAll();
+      const changed = await migrateTilesetCatalogImages({
+        materials,
+        items: runtimeAdminItems,
+        runtimeImages,
+      });
+      if (changed) {
+        await refreshRuntimeContent({ force: true });
+      }
+    })();
+  }, [refreshRuntimeContent, runtimeAdminItems, runtimeImages]);
 
   const refreshCharacterSkills = useCallback(async (characterId: string) => {
     const [skills, loadout, actionSlotResult] = await Promise.allSettled([
@@ -2245,10 +2257,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
 
     const unsubscribe = subscribeToContentSync((payload) => {
       if (payload.scope === 'content' || payload.scope === 'all') {
-        void refreshRuntimeContent({ force: true });
-        if (overlayPanel !== 'arenaNpc') {
-          void loadArenaNpcTemplatesFromBackend(true).catch(() => undefined);
+        if (contentSyncDebounceRef.current !== null) {
+          window.clearTimeout(contentSyncDebounceRef.current);
         }
+        contentSyncDebounceRef.current = window.setTimeout(() => {
+          contentSyncDebounceRef.current = null;
+          void refreshRuntimeContent({ force: true });
+          if (overlayPanel !== 'arenaNpc') {
+            void loadArenaNpcTemplatesFromBackend(true).catch(() => undefined);
+          }
+        }, 400);
       }
     });
 
@@ -2266,6 +2284,9 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      if (contentSyncDebounceRef.current !== null) {
+        window.clearTimeout(contentSyncDebounceRef.current);
+      }
       unsubscribe();
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
