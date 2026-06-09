@@ -22,6 +22,7 @@ import {
   toLegacyImagePath,
   validateGameImageRef,
 } from '../../services/content/gameImageRefs';
+import { ensureItemImagePersisted } from '../../services/content/ensureItemImagePersisted';
 import {
   createAdminItemDefaults,
   extractRawItemsFromImportJson,
@@ -528,11 +529,16 @@ export function ItemsPage(props: ItemsPageProps = {}) {
 
     const id = draft.id.trim() || uid('item');
     const normalizedImageRef = normalizeGameImageRef(draft.imageRef, draft.imagePath);
+    const persistedImage = await ensureItemImagePersisted(normalizedImageRef, draft.imagePath, {
+      entityId: id,
+      entityKind: 'items',
+      runtimeImages,
+    });
     const normalized: AdminItem = {
       ...draft,
       id,
-      imageRef: normalizedImageRef,
-      imagePath: toLegacyImagePath(normalizedImageRef),
+      imageRef: persistedImage.imageRef ?? normalizedImageRef,
+      imagePath: persistedImage.imagePath ?? toLegacyImagePath(normalizedImageRef),
       handsRequired: draft.type === 'weapon' && draft.handsRequired === 2 ? 2 : 1,
       maxStack: draft.stackable ? Math.max(2, draft.maxStack ?? 2) : 1,
       updatedAt: new Date().toISOString(),

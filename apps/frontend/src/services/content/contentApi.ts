@@ -72,7 +72,8 @@ export type ContentCollectionName =
   | 'blacksmithItemWorkActions'
   | 'sounds'
   | 'trees'
-  | 'biomes';
+  | 'biomes'
+  | 'imageSheets';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -158,6 +159,7 @@ export interface ContentSnapshot {
   sounds: SoundDefinition[];
   trees?: TreeDefinition[];
   biomes?: BiomeDefinition[];
+  imageSheets?: import('./models').ImageSheetDefinition[];
   worldMap: WorldMapContent;
 }
 

@@ -107,6 +107,9 @@ import {
   loadRuntimeAdminContent,
 } from './services/content/runtimeContentService';
 import { loadRuntimeImages, resolveItemImageSource, resolveMerchantImageSource, resolveStoredImageSource } from './services/content/runtimeImageService';
+import { getCustomImageSheets, hydrateImageSheetsFromContent } from './services/content/gameImageRefs';
+import { imageSheetsService } from './services/content/imageSheetsService';
+import { migrateTilesetCatalogImages } from './services/content/migrateTilesetCatalogImages';
 import { getDomainItemWithFallback } from './services/content/seedService';
 import {
   buildEffectiveAdminItems,
@@ -1613,6 +1616,13 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         if (!adminItem) {
           continue;
         }
+        const legacyPath = adminItem.imagePath?.trim();
+        if (legacyPath) {
+          const fromLegacy = resolveStoredImageSource(legacyPath, runtimeImages);
+          if (fromLegacy) {
+            return fromLegacy;
+          }
+        }
         const normalized = normalizeGameImageRef(adminItem.imageRef, adminItem.imagePath);
         if (normalized?.type === 'tileset') {
           continue;
@@ -2041,17 +2051,31 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
       loadRuntimeAdminContent(),
       materialsService.getAll(),
       loadRuntimeImages(),
+      imageSheetsService.getAll(),
       ensureDialoguesLoaded(options?.force === true),
       ensureNpcsLoaded(options?.force === true),
       ensureQuestsLoaded(options?.force === true),
       ensureQuestMarkersLoaded(options?.force === true),
     ])
-      .then(([content, materials, images]) => {
+      .then(([content, materials, images, imageSheets]) => {
+        hydrateImageSheetsFromContent(imageSheets);
+        for (const sheet of getCustomImageSheets()) {
+          void imageSheetsService.upsert(sheet);
+        }
         setRuntimeAdminItems(content.items);
         setRuntimeAdminMerchants(content.merchants);
         setRuntimeAdminSkills(content.skills);
         setRuntimeAdminMaterials(materials.filter((material) => material.isEnabled));
         setRuntimeImages(images);
+        void migrateTilesetCatalogImages({
+          materials,
+          items: content.items,
+          runtimeImages: images,
+        }).then((changed) => {
+          if (changed) {
+            void refreshRuntimeContent({ force: true });
+          }
+        });
       })
       .catch(() => {
         // Keep hardcoded fallback content if backend content is unavailable.

@@ -164,6 +164,18 @@ export function registerCustomImageSheet(input: ImageSheetDefinition): ImageShee
   return normalized;
 }
 
+export function hydrateImageSheetsFromContent(sheets: ImageSheetDefinition[]): void {
+  for (const sheet of sheets) {
+    const normalized = normalizeSheetDefinition(sheet);
+    if (!normalized) {
+      continue;
+    }
+    const cache = ensureCustomImageSheetsLoaded();
+    cache[normalized.id] = normalized;
+  }
+  persistCustomImageSheets();
+}
+
 export function removeCustomImageSheet(sheetId: string): void {
   const normalizedId = normalizeSheetId(sheetId);
   if (!normalizedId) {

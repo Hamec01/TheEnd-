@@ -5,6 +5,7 @@ import { downloadCollectionJson } from '../../services/content/adminJsonImportEx
 import { extractRawMaterialsFromImportJson, importMaterialsFromJsonEntries, materialsService, validateMaterial } from '../../services/content/materialsService';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
 import { normalizeGameImageRef, toLegacyImagePath, validateGameImageRef } from '../../services/content/gameImageRefs';
+import { ensureItemImagePersisted } from '../../services/content/ensureItemImagePersisted';
 import { uid } from '../../services/content/storage';
 import { GameImageView } from '../components/GameImageView';
 import { ImageSheetPicker } from '../components/ImageSheetPicker';
@@ -407,11 +408,16 @@ export function MaterialsPage() {
   async function createOrUpdate() {
     const id = draft.id.trim() || uid('mat');
     const normalizedImageRef = normalizeGameImageRef(draft.imageRef, draft.imagePath);
+    const persistedImage = await ensureItemImagePersisted(normalizedImageRef, draft.imagePath, {
+      entityId: id,
+      entityKind: 'materials',
+      runtimeImages: images,
+    });
     const normalized: Material = {
       ...draft,
       id,
-      imageRef: normalizedImageRef,
-      imagePath: toLegacyImagePath(normalizedImageRef),
+      imageRef: persistedImage.imageRef ?? normalizedImageRef,
+      imagePath: persistedImage.imagePath ?? toLegacyImagePath(normalizedImageRef),
       updatedAt: new Date().toISOString(),
     };
 

@@ -13,6 +13,7 @@ import {
   registerCustomImageSheet,
   toLegacyImagePath,
 } from '../../services/content/gameImageRefs';
+import { imageSheetsService } from '../../services/content/imageSheetsService';
 import { GameImageView } from './GameImageView';
 
 export interface ImageSheetPickerProps {
@@ -187,12 +188,18 @@ export function ImageSheetPicker({
         id: sheetId,
         name: String(tilesetName).trim() || `${label} (${uploaded.name})`,
         category: category ?? 'other',
-        src: uploaded.id,
+        src: uploaded.dataUrl?.trim() || uploaded.id,
         frameWidth,
         frameHeight,
         columns,
         rows,
       });
+
+      try {
+        await imageSheetsService.upsert(registeredSheet);
+      } catch {
+        // Local sheet registration still allows editing in this session.
+      }
 
       onChange({ type: 'tileset', sheetId: registeredSheet.id, frame: 0 });
       setSheetsVersion((current) => current + 1);

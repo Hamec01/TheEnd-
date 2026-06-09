@@ -1724,6 +1724,7 @@ export interface ContentDatabase {
   sounds?: SoundDefinition[];
   trees?: TreeDefinition[];
   biomes?: BiomeDefinition[];
+  imageSheets?: ImageSheetDefinition[];
   worldMap: WorldMapContent;
   worldSim?: WorldSimConfig;
 }
@@ -1816,7 +1817,8 @@ export type ContentCollectionName =
   | 'blacksmithItemWorkActions'
   | 'sounds'
   | 'trees'
-  | 'biomes';
+  | 'biomes'
+  | 'imageSheets';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -1850,6 +1852,7 @@ export interface ContentCollectionMap {
   sounds: SoundDefinition;
   trees: TreeDefinition;
   biomes: BiomeDefinition;
+  imageSheets: ImageSheetDefinition;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

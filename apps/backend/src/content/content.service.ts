@@ -66,6 +66,7 @@ import type {
   SoundDefinition,
   TreeDefinition,
   BiomeDefinition,
+  ImageSheetDefinition,
   StoredImage,
   WorldMapContent,
   WorldMapZone,
@@ -112,6 +113,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'sounds',
   'trees',
   'biomes',
+  'imageSheets',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -565,6 +567,7 @@ function createEmptyDatabase(): ContentDatabase {
     sounds: [],
     trees: [],
     biomes: [],
+    imageSheets: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -3882,6 +3885,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       sounds: sanitizeIdObjectArray<SoundDefinition>(raw.sounds).filter((entry) => Boolean(entry.id)),
       trees: sanitizeIdObjectArray<TreeDefinition>(raw.trees).map((entry) => normalizeTreeInput(entry)).filter((entry) => Boolean(entry.id)),
       biomes: sanitizeIdObjectArray<BiomeDefinition>(raw.biomes).map((entry) => normalizeBiomeInput(entry)).filter((entry) => Boolean(entry.id)),
+      imageSheets: clone(sanitizeIdObjectArray<ImageSheetDefinition>(raw.imageSheets)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),

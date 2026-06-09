@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-08T13:04:05.889Z",
+  "exportedAt": "2026-06-09T09:00:42.016Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -13,7 +13,7 @@
     "locations": 4,
     "materials": 152,
     "lootTables": 0,
-    "images": 321,
+    "images": 385,
     "dialogues": 25,
     "npcs": 33,
     "quests": 11,
@@ -9362,7 +9362,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-08T12:42:54.189Z",
+        "updatedAt": "2026-06-09T08:54:36.429Z",
         "kind": "single",
         "stages": []
       },
@@ -9418,7 +9418,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-08T12:42:54.189Z",
+        "updatedAt": "2026-06-09T08:54:36.429Z",
         "kind": "single",
         "stages": []
       },
@@ -9477,7 +9477,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-08T12:42:54.190Z",
+        "updatedAt": "2026-06-09T08:54:36.429Z",
         "kind": "single",
         "stages": []
       }
@@ -15498,11 +15498,10 @@
         "loreDescription": "Хорошее древко должно быть прямым, сухим и послушным руке мастера.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-05T06:18:04.739Z",
+        "updatedAt": "2026-06-09T08:32:18.066Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_mountain_guardian_beam",
-          "frame": 3
+          "type": "image",
+          "src": "/assets/upload/images/materials/wooden_shaft/wooden_shaft-wooden_shaft-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -15614,7 +15613,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/wooden_shaft/wooden_shaft-wooden_shaft-icon.png"
       },
       {
         "id": "treated_wooden_shaft",
@@ -15632,11 +15632,10 @@
         "loreDescription": "Такое древко не коробит от жара кузни и не ведёт в бою при первом ударе.",
         "isEnabled": true,
         "createdAt": "2026-06-01T18:30:00.000Z",
-        "updatedAt": "2026-06-05T06:17:04.199Z",
+        "updatedAt": "2026-06-09T08:32:20.779Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_mountain_guardian_beam",
-          "frame": 4
+          "type": "image",
+          "src": "/assets/upload/images/materials/treated_wooden_shaft/treated_wooden_shaft-treated_wooden_shaft-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -15748,7 +15747,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/treated_wooden_shaft/treated_wooden_shaft-treated_wooden_shaft-icon.png"
       },
       {
         "id": "beeswax",
@@ -16159,11 +16159,10 @@
         "loreDescription": "Обычная железная руда с глубин Терамора.",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:04.159Z",
-        "updatedAt": "2026-06-05T06:17:05.747Z",
+        "updatedAt": "2026-06-09T08:32:22.827Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 11
+          "type": "image",
+          "src": "/assets/upload/images/materials/iron_ore/iron_ore-iron_ore-icon.png"
         },
         "averageMarketPrice": 14,
         "craftingProperties": {
@@ -16268,7 +16267,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/iron_ore/iron_ore-iron_ore-icon.png"
       },
       {
         "id": "coal_lumps",
@@ -16536,11 +16536,10 @@
         "loreDescription": "Слитки Гранкора клеймят знаком клана. За такое железо платят больше, потому что в нём меньше пустой породы.",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:16.955Z",
-        "updatedAt": "2026-06-05T06:17:06.709Z",
+        "updatedAt": "2026-06-09T08:32:26.115Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_iron_bloom",
-          "frame": 33
+          "type": "image",
+          "src": "/assets/upload/images/materials/iron_ingot/iron_ingot-iron_ingot-icon.png"
         },
         "averageMarketPrice": 30,
         "craftingProperties": {
@@ -16662,7 +16661,8 @@
             "illegalValue": 0,
             "exportValue": 25
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/iron_ingot/iron_ingot-iron_ingot-icon.png"
       },
       {
         "id": "dwarf_tools",
@@ -17551,11 +17551,10 @@
         "loreDescription": "Черножелезо Брейнхольда темнеет даже рядом с чистым огнём. Кузнецы спорят, металл это или привычка города.",
         "isEnabled": true,
         "createdAt": "2026-05-20T07:31:43.309Z",
-        "updatedAt": "2026-06-05T06:17:09.838Z",
+        "updatedAt": "2026-06-09T08:32:27.457Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_iron_bloom",
-          "frame": 45
+          "type": "image",
+          "src": "/assets/upload/images/materials/black_iron_blank/black_iron_blank-black_iron_blank-icon.png"
         },
         "averageMarketPrice": 0,
         "craftingProperties": {
@@ -17685,7 +17684,8 @@
             "illegalValue": 0,
             "exportValue": 32
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/black_iron_blank/black_iron_blank-black_iron_blank-icon.png"
       },
       {
         "id": "war_chains",
@@ -18811,11 +18811,10 @@
         "loreDescription": "Грубый камень, который шахтёры выносят мешками.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:20.376Z",
-        "updatedAt": "2026-06-05T06:17:13.279Z",
+        "updatedAt": "2026-06-09T08:32:30.961Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 0
+          "type": "image",
+          "src": "/assets/upload/images/materials/raw_stone/raw_stone-raw_stone-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -18918,7 +18917,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/raw_stone/raw_stone-raw_stone-icon.png"
       },
       {
         "id": "hard_stone",
@@ -18938,11 +18938,10 @@
         "loreDescription": "Плотная тераморская порода, которую гномы любят использовать для шахтных распорок и тяжёлых оснований.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:20.708Z",
-        "updatedAt": "2026-06-05T06:17:13.859Z",
+        "updatedAt": "2026-06-09T08:32:33.806Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 1
+          "type": "image",
+          "src": "/assets/upload/images/materials/hard_stone/hard_stone-hard_stone-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -19044,7 +19043,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/hard_stone/hard_stone-hard_stone-icon.png"
       },
       {
         "id": "granite_block",
@@ -19064,11 +19064,10 @@
         "loreDescription": "Гранит Терамора звенит сухо и глухо, будто в нём застрял голос глубины.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:20.919Z",
-        "updatedAt": "2026-06-05T06:17:14.174Z",
+        "updatedAt": "2026-06-09T08:32:38.754Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 2
+          "type": "image",
+          "src": "/assets/upload/images/materials/granite_block/granite_block-granite_block-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -19172,7 +19171,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/granite_block/granite_block-granite_block-icon.png"
       },
       {
         "id": "black_basalt",
@@ -19192,11 +19192,10 @@
         "loreDescription": "Застывшая память лавы. На поверхности часто сохраняет тонкие красные прожилки.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:21.726Z",
-        "updatedAt": "2026-06-05T06:17:14.495Z",
+        "updatedAt": "2026-06-09T08:32:44.412Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 3
+          "type": "image",
+          "src": "/assets/upload/images/materials/black_basalt/black_basalt-black_basalt-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -19307,7 +19306,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/black_basalt/black_basalt-black_basalt-icon.png"
       },
       {
         "id": "coal_chunk",
@@ -19327,11 +19327,10 @@
         "loreDescription": "Старый уголь, пахнущий пылью и потом шахтёров. Нужен почти каждой кузнице.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:22.129Z",
-        "updatedAt": "2026-06-05T06:17:14.830Z",
+        "updatedAt": "2026-06-09T08:32:53.093Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 4
+          "type": "image",
+          "src": "/assets/upload/images/materials/coal_chunk/coal_chunk-coal_chunk-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -19438,7 +19437,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/coal_chunk/coal_chunk-coal_chunk-icon.png"
       },
       {
         "id": "deep_coal",
@@ -19458,11 +19458,10 @@
         "loreDescription": "Горит дольше обычного и даёт плотный жар, за что ценится у мастеров, работающих с тяжёлыми металлами.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:22.735Z",
-        "updatedAt": "2026-06-05T06:17:15.411Z",
+        "updatedAt": "2026-06-09T08:33:03.019Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 5
+          "type": "image",
+          "src": "/assets/upload/images/materials/deep_coal/deep_coal-deep_coal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -19567,7 +19566,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/deep_coal/deep_coal-deep_coal-icon.png"
       },
       {
         "id": "sulfur_crust",
@@ -19587,11 +19587,10 @@
         "loreDescription": "Жёлтая крошливая корка, от которой першит в горле. В Краю Огненных Теней её счищают с горячих трещин.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:23.147Z",
-        "updatedAt": "2026-06-05T06:17:15.721Z",
+        "updatedAt": "2026-06-09T08:33:23.839Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 6
+          "type": "image",
+          "src": "/assets/upload/images/materials/sulfur_crust/sulfur_crust-sulfur_crust-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -19693,7 +19692,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/sulfur_crust/sulfur_crust-sulfur_crust-icon.png"
       },
       {
         "id": "cave_salt",
@@ -19713,11 +19713,10 @@
         "loreDescription": "Соль, выросшая в тишине пещер. Её добавляют в смеси для сохранения кожи, пищи и некоторых ритуальных веществ.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:23.848Z",
-        "updatedAt": "2026-06-05T06:17:16.030Z",
+        "updatedAt": "2026-06-09T08:33:28.251Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 7
+          "type": "image",
+          "src": "/assets/upload/images/materials/cave_salt/cave_salt-cave_salt-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -19821,7 +19820,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/cave_salt/cave_salt-cave_salt-icon.png"
       },
       {
         "id": "flint_shard",
@@ -19841,11 +19841,10 @@
         "loreDescription": "Малый острый камень, полезный и в кузне, и в походе.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:24.230Z",
-        "updatedAt": "2026-06-05T06:17:16.384Z",
+        "updatedAt": "2026-06-09T08:33:40.009Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 8
+          "type": "image",
+          "src": "/assets/upload/images/materials/flint_shard/flint_shard-flint_shard-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -19947,7 +19946,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/flint_shard/flint_shard-flint_shard-icon.png"
       },
       {
         "id": "glowing_cave_moss_stone",
@@ -19967,11 +19967,10 @@
         "loreDescription": "Камень, на котором держится светящийся мох. Шахтёры используют такие куски как естественные метки пути.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:24.927Z",
-        "updatedAt": "2026-06-05T06:17:16.957Z",
+        "updatedAt": "2026-06-09T08:33:46.418Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 9
+          "type": "image",
+          "src": "/assets/upload/images/materials/glowing_cave_moss_stone/glowing_cave_moss_stone-glowing_cave_moss_stone-icon.png"
         },
         "craftingProperties": {
           "roles": [],
@@ -20073,7 +20072,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/glowing_cave_moss_stone/glowing_cave_moss_stone-glowing_cave_moss_stone-icon.png"
       },
       {
         "id": "rich_iron_ore",
@@ -20094,11 +20094,10 @@
         "loreDescription": "В такой руде железо видно тёмными плотными прожилками. Гномы говорят: 'меньше камня, больше дела'.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:25.327Z",
-        "updatedAt": "2026-06-05T06:17:17.264Z",
+        "updatedAt": "2026-06-09T08:34:10.391Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 12
+          "type": "image",
+          "src": "/assets/upload/images/materials/rich_iron_ore/rich_iron_ore-rich_iron_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20208,7 +20207,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/rich_iron_ore/rich_iron_ore-rich_iron_ore-icon.png"
       },
       {
         "id": "copper_ore",
@@ -20229,11 +20229,10 @@
         "loreDescription": "Мягкий металл для первых инструментов, оправ и проводящих деталей.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:26.026Z",
-        "updatedAt": "2026-06-05T06:17:17.573Z",
+        "updatedAt": "2026-06-09T08:34:11.918Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 13
+          "type": "image",
+          "src": "/assets/upload/images/materials/copper_ore/copper_ore-copper_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20346,7 +20345,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/copper_ore/copper_ore-copper_ore-icon.png"
       },
       {
         "id": "tin_ore",
@@ -20366,11 +20366,10 @@
         "loreDescription": "Сама по себе слаба, но в сплавах становится частью крепкой работы.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:26.385Z",
-        "updatedAt": "2026-06-05T06:17:17.927Z",
+        "updatedAt": "2026-06-09T08:34:18.984Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 14
+          "type": "image",
+          "src": "/assets/upload/images/materials/tin_ore/tin_ore-tin_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20478,7 +20477,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/tin_ore/tin_ore-tin_ore-icon.png"
       },
       {
         "id": "silver_vein_ore",
@@ -20499,11 +20499,10 @@
         "loreDescription": "Холодное серебро Айлас'сила редко блестит ярко; оно скорее мерцает, будто вспоминает лунный свет.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:27.088Z",
-        "updatedAt": "2026-06-05T06:17:18.503Z",
+        "updatedAt": "2026-06-09T08:34:48.762Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 15
+          "type": "image",
+          "src": "/assets/upload/images/materials/silver_vein_ore/silver_vein_ore-silver_vein_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20616,7 +20615,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/silver_vein_ore/silver_vein_ore-silver_vein_ore-icon.png"
       },
       {
         "id": "gold_nugget",
@@ -20633,11 +20633,10 @@
         "loreDescription": "Редкая находка, за которую торговцы охотно платят.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:27.469Z",
-        "updatedAt": "2026-06-05T06:17:18.818Z",
+        "updatedAt": "2026-06-09T08:34:49.083Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 16
+          "type": "image",
+          "src": "/assets/upload/images/materials/gold_nugget/gold_nugget-gold_nugget-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20741,7 +20740,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/gold_nugget/gold_nugget-gold_nugget-icon.png"
       },
       {
         "id": "large_gold_nugget",
@@ -20761,11 +20761,10 @@
         "loreDescription": "Тяжёлый кусок золота, который часто находят там, где песок Тел'фарена светится слишком ярко.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:28.160Z",
-        "updatedAt": "2026-06-05T06:17:19.128Z",
+        "updatedAt": "2026-06-09T08:35:09.685Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 17
+          "type": "image",
+          "src": "/assets/upload/images/materials/large_gold_nugget/large_gold_nugget-large_gold_nugget-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -20884,7 +20883,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/large_gold_nugget/large_gold_nugget-large_gold_nugget-icon.png"
       },
       {
         "id": "zeptyrite_trace",
@@ -20901,11 +20901,10 @@
         "loreDescription": "Слабый зептиритовый след, по которому охотятся мастера и алхимики.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:28.550Z",
-        "updatedAt": "2026-06-05T06:17:19.473Z",
+        "updatedAt": "2026-06-09T08:37:36.857Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 18
+          "type": "image",
+          "src": "/assets/upload/images/materials/zeptyrite_trace/zeptyrite_trace-zeptyrite_trace-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21008,7 +21007,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/zeptyrite_trace/zeptyrite_trace-zeptyrite_trace-icon.png"
       },
       {
         "id": "zeptyrite_ore",
@@ -21029,11 +21029,10 @@
         "loreDescription": "Тяжёлый и прочный металл с тусклым жёлтым блеском. Его добывают в глубинах Терамора для доспехов и инструментов.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:29.247Z",
-        "updatedAt": "2026-06-05T06:17:20.055Z",
+        "updatedAt": "2026-06-09T08:37:52.046Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 19
+          "type": "image",
+          "src": "/assets/upload/images/materials/zeptyrite_ore/zeptyrite_ore-zeptyrite_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21142,7 +21141,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/zeptyrite_ore/zeptyrite_ore-zeptyrite_ore-icon.png"
       },
       {
         "id": "pure_zeptyrite_core",
@@ -21163,11 +21163,10 @@
         "loreDescription": "Кусок Зептирита почти без пустой породы. В руках кажется тяжелее, чем должен быть.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:29.611Z",
-        "updatedAt": "2026-06-05T06:17:20.365Z",
+        "updatedAt": "2026-06-09T08:38:04.213Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 20
+          "type": "image",
+          "src": "/assets/upload/images/materials/pure_zeptyrite_core/pure_zeptyrite_core-pure_zeptyrite_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21290,7 +21289,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/pure_zeptyrite_core/pure_zeptyrite_core-pure_zeptyrite_core-icon.png"
       },
       {
         "id": "felendar_ore",
@@ -21311,11 +21311,10 @@
         "loreDescription": "Коричнево-красный огнеупорный металл Края Огненных Теней. Его жилы часто идут рядом с лавовыми трещинами.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:30.301Z",
-        "updatedAt": "2026-06-05T06:17:20.677Z",
+        "updatedAt": "2026-06-09T08:38:32.945Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 21
+          "type": "image",
+          "src": "/assets/upload/images/materials/felendar_ore/felendar_ore-felendar_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21435,7 +21434,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/felendar_ore/felendar_ore-felendar_ore-icon.png"
       },
       {
         "id": "felendar_hot_core",
@@ -21456,11 +21456,10 @@
         "loreDescription": "Такой кусок долго остаётся тёплым даже вдали от огня. Орочьи кузнецы считают его сердцем будущего клинка.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:30.727Z",
-        "updatedAt": "2026-06-05T06:17:21.023Z",
+        "updatedAt": "2026-06-09T08:38:34.913Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 22
+          "type": "image",
+          "src": "/assets/upload/images/materials/felendar_hot_core/felendar_hot_core-felendar_hot_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21593,7 +21592,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/felendar_hot_core/felendar_hot_core-felendar_hot_core-icon.png"
       },
       {
         "id": "vintarion_ore",
@@ -21614,11 +21614,10 @@
         "loreDescription": "Тёмно-серебристый металл с мягким сиянием, похожим на блеск звёзд в холодном небе.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:31.418Z",
-        "updatedAt": "2026-06-05T06:17:21.591Z",
+        "updatedAt": "2026-06-09T08:39:02.796Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 23
+          "type": "image",
+          "src": "/assets/upload/images/materials/vintarion_ore/vintarion_ore-vintarion_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21734,7 +21733,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/vintarion_ore/vintarion_ore-vintarion_ore-icon.png"
       },
       {
         "id": "vintarion_star_core",
@@ -21755,11 +21755,10 @@
         "loreDescription": "Редкое ядро Винтариона, в котором свет не отражается, а словно живёт внутри металла.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:31.826Z",
-        "updatedAt": "2026-06-05T06:17:21.903Z",
+        "updatedAt": "2026-06-09T08:39:03.925Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 24
+          "type": "image",
+          "src": "/assets/upload/images/materials/vintarion_star_core/vintarion_star_core-vintarion_star_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -21892,7 +21891,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/vintarion_star_core/vintarion_star_core-vintarion_star_core-icon.png"
       },
       {
         "id": "aquarion_nodule",
@@ -21913,11 +21913,10 @@
         "loreDescription": "Светло-синий металл со слабым свечением. Обычно его промывают из речных и озёрных отложений.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:32.531Z",
-        "updatedAt": "2026-06-05T06:17:22.235Z",
+        "updatedAt": "2026-06-09T08:37:30.483Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 25
+          "type": "image",
+          "src": "/assets/upload/images/materials/aquarion_nodule/aquarion_nodule-aquarion_nodule-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22046,7 +22045,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/aquarion_nodule/aquarion_nodule-aquarion_nodule-icon.png"
       },
       {
         "id": "pure_aquarion_pearl",
@@ -22067,11 +22067,10 @@
         "loreDescription": "Гладкий голубой узел металла, похожий на жемчужину. Ценится ювелирами больше обычной руды.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:32.890Z",
-        "updatedAt": "2026-06-05T06:17:22.818Z",
+        "updatedAt": "2026-06-09T08:37:33.461Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 26
+          "type": "image",
+          "src": "/assets/upload/images/materials/pure_aquarion_pearl/pure_aquarion_pearl-pure_aquarion_pearl-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22200,7 +22199,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/pure_aquarion_pearl/pure_aquarion_pearl-pure_aquarion_pearl-icon.png"
       },
       {
         "id": "luminium_shard",
@@ -22221,11 +22221,10 @@
         "loreDescription": "Лёгкий прочный металл, светящийся белым в темноте. Находится там, где магия долго касалась земли.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:33.582Z",
-        "updatedAt": "2026-06-05T06:17:23.206Z",
+        "updatedAt": "2026-06-09T08:37:32.373Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 27
+          "type": "image",
+          "src": "/assets/upload/images/materials/luminium_shard/luminium_shard-luminium_shard-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22353,7 +22352,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/luminium_shard/luminium_shard-luminium_shard-icon.png"
       },
       {
         "id": "luminium_white_vein",
@@ -22374,11 +22374,10 @@
         "loreDescription": "Когда по такой жиле бьют киркой, на миг кажется, что в породе вспыхивает рассвет.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:33.974Z",
-        "updatedAt": "2026-06-05T06:17:23.517Z",
+        "updatedAt": "2026-06-09T08:37:41.575Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 28
+          "type": "image",
+          "src": "/assets/upload/images/materials/luminium_white_vein/luminium_white_vein-luminium_white_vein-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22506,7 +22505,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/luminium_white_vein/luminium_white_vein-luminium_white_vein-icon.png"
       },
       {
         "id": "solarite_ore",
@@ -22527,11 +22527,10 @@
         "loreDescription": "Оранжевый солнечный металл, способный накапливать тепло пустыни.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:34.704Z",
-        "updatedAt": "2026-06-05T06:17:23.829Z",
+        "updatedAt": "2026-06-09T08:37:55.291Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 29
+          "type": "image",
+          "src": "/assets/upload/images/materials/solarite_ore/solarite_ore-solarite_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22661,7 +22660,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/solarite_ore/solarite_ore-solarite_ore-icon.png"
       },
       {
         "id": "solarite_sun_core",
@@ -22682,11 +22682,10 @@
         "loreDescription": "Такой Соларит обжигает ладонь даже ночью. Его перевозят в песчаных сосудах.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:35.103Z",
-        "updatedAt": "2026-06-05T06:17:24.201Z",
+        "updatedAt": "2026-06-09T08:54:47.902Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 30
+          "type": "image",
+          "src": "/assets/upload/images/materials/solarite_sun_core/solarite_sun_core-solarite_sun_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22810,7 +22809,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/solarite_sun_core/solarite_sun_core-solarite_sun_core-icon.png"
       },
       {
         "id": "verdantin_ore",
@@ -22831,11 +22831,10 @@
         "loreDescription": "Зеленоватый металл Мирил'нуара, устойчивый к влаге и коррозии.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:35.809Z",
-        "updatedAt": "2026-06-05T06:17:24.773Z",
+        "updatedAt": "2026-06-09T08:54:49.322Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 31
+          "type": "image",
+          "src": "/assets/upload/images/materials/verdantin_ore/verdantin_ore-verdantin_ore-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -22952,7 +22951,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/verdantin_ore/verdantin_ore-verdantin_ore-icon.png"
       },
       {
         "id": "verdantin_living_vein",
@@ -22973,11 +22973,10 @@
         "loreDescription": "Внутри такого куска видны зелёные линии, напоминающие прожилки листа.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:36.173Z",
-        "updatedAt": "2026-06-05T06:17:25.094Z",
+        "updatedAt": "2026-06-09T08:54:52.211Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 32
+          "type": "image",
+          "src": "/assets/upload/images/materials/verdantin_living_vein/verdantin_living_vein-verdantin_living_vein-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23094,7 +23093,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/verdantin_living_vein/verdantin_living_vein-verdantin_living_vein-icon.png"
       },
       {
         "id": "miridian_splinter",
@@ -23115,11 +23115,10 @@
         "loreDescription": "Молочный редчайший металл с мерцающим светом. Гномы используют его в тонких устройствах, усиливающих энергию.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:36.858Z",
-        "updatedAt": "2026-06-05T06:17:25.403Z",
+        "updatedAt": "2026-06-09T08:54:56.810Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 33
+          "type": "image",
+          "src": "/assets/upload/images/materials/miridian_splinter/miridian_splinter-miridian_splinter-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23245,7 +23244,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/miridian_splinter/miridian_splinter-miridian_splinter-icon.png"
       },
       {
         "id": "miridian_pure_thread",
@@ -23266,11 +23266,10 @@
         "loreDescription": "Тонкая жила Миридиана, похожая на молочную молнию в камне. Её не ломают, а осторожно вырезают из породы.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:37.253Z",
-        "updatedAt": "2026-06-05T06:17:25.765Z",
+        "updatedAt": "2026-06-09T08:55:06.942Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 34
+          "type": "image",
+          "src": "/assets/upload/images/materials/miridian_pure_thread/miridian_pure_thread-miridian_pure_thread-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23396,7 +23395,8 @@
             "illegalValue": 0,
             "exportValue": 45
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/miridian_pure_thread/miridian_pure_thread-miridian_pure_thread-icon.png"
       },
       {
         "id": "kelerite_fragment",
@@ -23417,11 +23417,10 @@
         "loreDescription": "Синий металл с изумрудными прожилками. Даже после удара стремится вернуть прежнюю форму.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:37.948Z",
-        "updatedAt": "2026-06-05T06:17:26.340Z",
+        "updatedAt": "2026-06-09T08:55:15.126Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 35
+          "type": "image",
+          "src": "/assets/upload/images/materials/kelerite_fragment/kelerite_fragment-kelerite_fragment-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23552,7 +23551,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/kelerite_fragment/kelerite_fragment-kelerite_fragment-icon.png"
       },
       {
         "id": "kelerite_memory_core",
@@ -23573,11 +23573,10 @@
         "loreDescription": "Кусок Келерита, который будто помнит не только форму, но и руку, державшую его раньше.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:38.326Z",
-        "updatedAt": "2026-06-05T06:17:26.654Z",
+        "updatedAt": "2026-06-09T08:55:41.364Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 36
+          "type": "image",
+          "src": "/assets/upload/images/materials/kelerite_memory_core/kelerite_memory_core-kelerite_memory_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23701,7 +23700,8 @@
             "illegalValue": 0,
             "exportValue": 45
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/kelerite_memory_core/kelerite_memory_core-kelerite_memory_core-icon.png"
       },
       {
         "id": "astarion_meteor_shard",
@@ -23722,11 +23722,10 @@
         "loreDescription": "Светящийся фиолетовый металл космического происхождения. Его находят только после звездопадов.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:39.043Z",
-        "updatedAt": "2026-06-05T06:17:26.976Z",
+        "updatedAt": "2026-06-09T08:55:48.199Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 37
+          "type": "image",
+          "src": "/assets/upload/images/materials/astarion_meteor_shard/astarion_meteor_shard-astarion_meteor_shard-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23850,7 +23849,8 @@
             "illegalValue": 0,
             "exportValue": 45
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/astarion_meteor_shard/astarion_meteor_shard-astarion_meteor_shard-icon.png"
       },
       {
         "id": "astarion_gravity_heart",
@@ -23871,11 +23871,10 @@
         "loreDescription": "Камень-металл, возле которого мелкая пыль то падает, то поднимается сама. Нести его трудно не из-за веса, а из-за того, что вес меняется.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:39.408Z",
-        "updatedAt": "2026-06-05T06:17:27.318Z",
+        "updatedAt": "2026-06-09T08:55:53.061Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 72
+          "type": "image",
+          "src": "/assets/upload/images/materials/astarion_gravity_heart/astarion_gravity_heart-astarion_gravity_heart-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -23999,7 +23998,8 @@
             "illegalValue": 0,
             "exportValue": 50
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/astarion_gravity_heart/astarion_gravity_heart-astarion_gravity_heart-icon.png"
       },
       {
         "id": "cracked_crystal",
@@ -24016,11 +24016,10 @@
         "loreDescription": "Неидеальный, но всё ещё красивый шахтный кристалл.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:40.076Z",
-        "updatedAt": "2026-06-05T06:17:27.895Z",
+        "updatedAt": "2026-06-09T08:56:20.601Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 41
+          "type": "image",
+          "src": "/assets/upload/images/materials/cracked_crystal/cracked_crystal-cracked_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24124,7 +24123,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/cracked_crystal/cracked_crystal-cracked_crystal-icon.png"
       },
       {
         "id": "clear_quartz",
@@ -24144,11 +24144,10 @@
         "loreDescription": "Прозрачный кристалл, который хорошо принимает гравировку и слабые зачарования.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:40.455Z",
-        "updatedAt": "2026-06-05T06:17:28.204Z",
+        "updatedAt": "2026-06-09T08:56:23.699Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 42
+          "type": "image",
+          "src": "/assets/upload/images/materials/clear_quartz/clear_quartz-clear_quartz-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24265,7 +24264,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/clear_quartz/clear_quartz-clear_quartz-icon.png"
       },
       {
         "id": "mountain_sapphire",
@@ -24286,11 +24286,10 @@
         "loreDescription": "Синий самоцвет, рождённый под снегами Айлас'сила. Его блеск холоден и строг.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:41.089Z",
-        "updatedAt": "2026-06-05T06:17:28.513Z",
+        "updatedAt": "2026-06-09T08:56:48.015Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 43
+          "type": "image",
+          "src": "/assets/upload/images/materials/mountain_sapphire/mountain_sapphire-mountain_sapphire-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24400,7 +24399,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/mountain_sapphire/mountain_sapphire-mountain_sapphire-icon.png"
       },
       {
         "id": "desert_topaz",
@@ -24421,11 +24421,10 @@
         "loreDescription": "Жёлто-золотой камень, будто хранящий свет двух солнц.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:41.486Z",
-        "updatedAt": "2026-06-05T06:17:28.877Z",
+        "updatedAt": "2026-06-09T08:56:48.021Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 44
+          "type": "image",
+          "src": "/assets/upload/images/materials/desert_topaz/desert_topaz-desert_topaz-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24548,7 +24547,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/desert_topaz/desert_topaz-desert_topaz-icon.png"
       },
       {
         "id": "forest_emerald",
@@ -24569,11 +24569,10 @@
         "loreDescription": "Зелёный камень, который лесные эльфы считают застывшей росой старых деревьев.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:42.079Z",
-        "updatedAt": "2026-06-05T06:17:29.462Z",
+        "updatedAt": "2026-06-09T08:57:10.616Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 45
+          "type": "image",
+          "src": "/assets/upload/images/materials/forest_emerald/forest_emerald-forest_emerald-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24683,7 +24682,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/forest_emerald/forest_emerald-forest_emerald-icon.png"
       },
       {
         "id": "mirror_lake_opal",
@@ -24704,11 +24704,10 @@
         "loreDescription": "Опал, в котором отражение появляется раньше, чем сам предмет.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:42.474Z",
-        "updatedAt": "2026-06-05T06:17:29.773Z",
+        "updatedAt": "2026-06-09T08:57:10.808Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 46
+          "type": "image",
+          "src": "/assets/upload/images/materials/mirror_lake_opal/mirror_lake_opal-mirror_lake_opal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24825,7 +24824,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/mirror_lake_opal/mirror_lake_opal-mirror_lake_opal-icon.png"
       },
       {
         "id": "black_onyx",
@@ -24846,11 +24846,10 @@
         "loreDescription": "Чёрный камень, хорошо держащий холодные и тёмные формулы.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:43.146Z",
-        "updatedAt": "2026-06-05T06:17:30.083Z",
+        "updatedAt": "2026-06-09T08:57:26.701Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 47
+          "type": "image",
+          "src": "/assets/upload/images/materials/black_onyx/black_onyx-black_onyx-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -24978,7 +24977,8 @@
             "illegalValue": 42,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/black_onyx/black_onyx-black_onyx-icon.png"
       },
       {
         "id": "blood_garnet",
@@ -24999,11 +24999,10 @@
         "loreDescription": "Красный камень, который при свете факела кажется влажным.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:43.538Z",
-        "updatedAt": "2026-06-05T06:17:30.454Z",
+        "updatedAt": "2026-06-09T08:57:45.502Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 48
+          "type": "image",
+          "src": "/assets/upload/images/materials/blood_garnet/blood_garnet-blood_garnet-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25128,7 +25127,8 @@
             "illegalValue": 52,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/blood_garnet/blood_garnet-blood_garnet-icon.png"
       },
       {
         "id": "ember_crystal",
@@ -25149,11 +25149,10 @@
         "loreDescription": "Тускло-красный кристалл, выросший в породе, которую долго грела лава.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:44.131Z",
-        "updatedAt": "2026-06-05T06:17:31.030Z",
+        "updatedAt": "2026-06-09T08:57:45.712Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 49
+          "type": "image",
+          "src": "/assets/upload/images/materials/ember_crystal/ember_crystal-ember_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25269,7 +25268,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/ember_crystal/ember_crystal-ember_crystal-icon.png"
       },
       {
         "id": "fire_heart_crystal",
@@ -25290,11 +25290,10 @@
         "loreDescription": "Внутри него тлеет точка света, похожая на глаз угля.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:44.535Z",
-        "updatedAt": "2026-06-05T06:17:31.358Z",
+        "updatedAt": "2026-06-09T08:58:11.913Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 50
+          "type": "image",
+          "src": "/assets/upload/images/materials/fire_heart_crystal/fire_heart_crystal-fire_heart_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25406,7 +25405,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/fire_heart_crystal/fire_heart_crystal-fire_heart_crystal-icon.png"
       },
       {
         "id": "frost_crystal",
@@ -25426,11 +25426,10 @@
         "loreDescription": "Холодит даже через перчатки. Иногда на нём сам собой появляется иней.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:45.215Z",
-        "updatedAt": "2026-06-05T06:17:31.678Z",
+        "updatedAt": "2026-06-09T08:58:18.550Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 51
+          "type": "image",
+          "src": "/assets/upload/images/materials/frost_crystal/frost_crystal-frost_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25534,7 +25533,8 @@
             "illegalValue": 0,
             "exportValue": 12
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/frost_crystal/frost_crystal-frost_crystal-icon.png"
       },
       {
         "id": "deep_frost_core",
@@ -25555,11 +25555,10 @@
         "loreDescription": "Сердцевина такого кристалла не тает даже в ладони орка-кузнеца.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:45.605Z",
-        "updatedAt": "2026-06-05T06:17:31.993Z",
+        "updatedAt": "2026-06-09T08:58:37.123Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 52
+          "type": "image",
+          "src": "/assets/upload/images/materials/deep_frost_core/deep_frost_core-deep_frost_core-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25664,7 +25663,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/deep_frost_core/deep_frost_core-deep_frost_core-icon.png"
       },
       {
         "id": "storm_resonance_crystal",
@@ -25685,11 +25685,10 @@
         "loreDescription": "Если поднести к уху, внутри слышен тонкий вой ветра.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:46.294Z",
-        "updatedAt": "2026-06-05T06:17:32.567Z",
+        "updatedAt": "2026-06-09T08:58:40.566Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 53
+          "type": "image",
+          "src": "/assets/upload/images/materials/storm_resonance_crystal/storm_resonance_crystal-storm_resonance_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25803,7 +25802,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/storm_resonance_crystal/storm_resonance_crystal-storm_resonance_crystal-icon.png"
       },
       {
         "id": "night_glass_shard",
@@ -25824,11 +25824,10 @@
         "loreDescription": "Чёрное вулканическое стекло, в котором отражается не лицо, а силуэт за спиной.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:46.678Z",
-        "updatedAt": "2026-06-05T06:17:32.876Z",
+        "updatedAt": "2026-06-09T08:59:04.942Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 54
+          "type": "image",
+          "src": "/assets/upload/images/materials/night_glass_shard/night_glass_shard-night_glass_shard-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -25944,7 +25943,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/night_glass_shard/night_glass_shard-night_glass_shard-icon.png"
       },
       {
         "id": "lunaan_glass_splinter",
@@ -25965,11 +25965,10 @@
         "loreDescription": "Осколок кристаллической ветви, искрящейся под жаром южных земель Края Огненных Теней.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:47.288Z",
-        "updatedAt": "2026-06-05T06:17:33.188Z",
+        "updatedAt": "2026-06-09T08:59:05.251Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 55
+          "type": "image",
+          "src": "/assets/upload/images/materials/lunaan_glass_splinter/lunaan_glass_splinter-lunaan_glass_splinter-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26078,7 +26077,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/lunaan_glass_splinter/lunaan_glass_splinter-lunaan_glass_splinter-icon.png"
       },
       {
         "id": "poison_vein_crystal",
@@ -26099,11 +26099,10 @@
         "loreDescription": "Зелёно-жёлтый кристалл, от которого немеет язык, если держать его слишком близко к лицу.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:47.654Z",
-        "updatedAt": "2026-06-05T06:17:33.548Z",
+        "updatedAt": "2026-06-09T08:59:23.323Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 56
+          "type": "image",
+          "src": "/assets/upload/images/materials/poison_vein_crystal/poison_vein_crystal-poison_vein_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26210,7 +26209,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/poison_vein_crystal/poison_vein_crystal-poison_vein_crystal-icon.png"
       },
       {
         "id": "light_shard",
@@ -26231,11 +26231,10 @@
         "loreDescription": "Частица света, застывшая в камне. Жрецы Луминора считают такие осколки благословением.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:48.332Z",
-        "updatedAt": "2026-06-05T06:17:34.117Z",
+        "updatedAt": "2026-06-09T08:59:35.219Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 57
+          "type": "image",
+          "src": "/assets/upload/images/materials/light_shard/light_shard-light_shard-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26351,7 +26350,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/light_shard/light_shard-light_shard-icon.png"
       },
       {
         "id": "life_spring_crystal",
@@ -26373,11 +26373,10 @@
         "loreDescription": "Внутри камня движется светлая капля, будто источник заключён в кристалле.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:48.718Z",
-        "updatedAt": "2026-06-05T06:17:34.431Z",
+        "updatedAt": "2026-06-09T08:59:53.238Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 58
+          "type": "image",
+          "src": "/assets/upload/images/materials/life_spring_crystal/life_spring_crystal-life_spring_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26490,7 +26489,8 @@
             "illegalValue": 0,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/life_spring_crystal/life_spring_crystal-life_spring_crystal-icon.png"
       },
       {
         "id": "death_obsidian",
@@ -26512,11 +26512,10 @@
         "loreDescription": "Чёрный обсидиан, который плохо отражает свет и слишком хорошо отражает страх.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:49.390Z",
-        "updatedAt": "2026-06-05T06:17:34.742Z",
+        "updatedAt": "2026-06-09T09:00:09.835Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 59
+          "type": "image",
+          "src": "/assets/upload/images/materials/death_obsidian/death_obsidian-death_obsidian-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26633,7 +26632,8 @@
             "illegalValue": 65,
             "exportValue": 35
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/death_obsidian/death_obsidian-death_obsidian-icon.png"
       },
       {
         "id": "gravity_tear_crystal",
@@ -26654,11 +26654,10 @@
         "loreDescription": "Кристалл, вокруг которого мелкая крошка породы ведёт себя так, будто не знает, куда падать.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:49.751Z",
-        "updatedAt": "2026-06-05T06:17:35.112Z",
+        "updatedAt": "2026-06-09T09:00:14.887Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 60
+          "type": "image",
+          "src": "/assets/upload/images/materials/gravity_tear_crystal/gravity_tear_crystal-gravity_tear_crystal-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26763,7 +26762,8 @@
             "illegalValue": 0,
             "exportValue": 45
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/gravity_tear_crystal/gravity_tear_crystal-gravity_tear_crystal-icon.png"
       },
       {
         "id": "rune_dust",
@@ -26780,11 +26780,10 @@
         "loreDescription": "Остаток древних знаков, стёртых временем и обвалами.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:50.385Z",
-        "updatedAt": "2026-06-05T06:17:35.686Z",
+        "updatedAt": "2026-06-09T09:00:20.553Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 64
+          "type": "image",
+          "src": "/assets/upload/images/materials/rune_dust/rune_dust-rune_dust-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -26889,7 +26888,8 @@
             "illegalValue": 0,
             "exportValue": 5
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/rune_dust/rune_dust-rune_dust-icon.png"
       },
       {
         "id": "weak_rune_fragment",
@@ -26906,11 +26906,10 @@
         "loreDescription": "Хрупкий рунный фрагмент, ещё хранящий эхо старой силы.",
         "isEnabled": true,
         "createdAt": "2026-05-31T11:45:50.753Z",
-        "updatedAt": "2026-06-05T06:17:35.995Z",
+        "updatedAt": "2026-06-09T09:00:37.848Z",
         "imageRef": {
-          "type": "tileset",
-          "sheetId": "sheet_img_1780262515255_bf3f437a",
-          "frame": 65
+          "type": "image",
+          "src": "/assets/upload/images/materials/weak_rune_fragment/weak_rune_fragment-weak_rune_fragment-icon.png"
         },
         "craftingProperties": {
           "roles": [
@@ -27013,7 +27012,8 @@
             "illegalValue": 0,
             "exportValue": 22
           }
-        }
+        },
+        "imagePath": "/assets/upload/images/materials/weak_rune_fragment/weak_rune_fragment-weak_rune_fragment-icon.png"
       },
       {
         "id": "orcish_rune_chisel_chip",
@@ -39104,6 +39104,646 @@
         "dataUrl": "/assets/upload/images/skills/carpentry_skill_enchanting_base/carpentry_skill_enchanting_base-icon-carpentry_skill_enchanting_base-icon.png",
         "createdAt": "2026-06-07T12:11:04.481Z",
         "updatedAt": "2026-06-07T12:11:04.481Z"
+      },
+      {
+        "id": "wooden_shaft",
+        "name": "wooden_shaft-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/wooden_shaft/wooden_shaft-wooden_shaft-icon.png",
+        "createdAt": "2026-06-09T08:32:17.047Z",
+        "updatedAt": "2026-06-09T08:32:17.047Z"
+      },
+      {
+        "id": "treated_wooden_shaft",
+        "name": "treated_wooden_shaft-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/treated_wooden_shaft/treated_wooden_shaft-treated_wooden_shaft-icon.png",
+        "createdAt": "2026-06-09T08:32:19.730Z",
+        "updatedAt": "2026-06-09T08:32:19.730Z"
+      },
+      {
+        "id": "iron_ore",
+        "name": "iron_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/iron_ore/iron_ore-iron_ore-icon.png",
+        "createdAt": "2026-06-09T08:32:22.103Z",
+        "updatedAt": "2026-06-09T08:32:22.103Z"
+      },
+      {
+        "id": "iron_ingot",
+        "name": "iron_ingot-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/iron_ingot/iron_ingot-iron_ingot-icon.png",
+        "createdAt": "2026-06-09T08:32:25.078Z",
+        "updatedAt": "2026-06-09T08:32:25.078Z"
+      },
+      {
+        "id": "black_iron_blank",
+        "name": "black_iron_blank-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/black_iron_blank/black_iron_blank-black_iron_blank-icon.png",
+        "createdAt": "2026-06-09T08:32:26.491Z",
+        "updatedAt": "2026-06-09T08:32:26.491Z"
+      },
+      {
+        "id": "raw_stone",
+        "name": "raw_stone-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/raw_stone/raw_stone-raw_stone-icon.png",
+        "createdAt": "2026-06-09T08:32:30.024Z",
+        "updatedAt": "2026-06-09T08:32:30.024Z"
+      },
+      {
+        "id": "hard_stone",
+        "name": "hard_stone-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/hard_stone/hard_stone-hard_stone-icon.png",
+        "createdAt": "2026-06-09T08:32:32.552Z",
+        "updatedAt": "2026-06-09T08:32:32.552Z"
+      },
+      {
+        "id": "granite_block",
+        "name": "granite_block-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/granite_block/granite_block-granite_block-icon.png",
+        "createdAt": "2026-06-09T08:32:37.515Z",
+        "updatedAt": "2026-06-09T08:32:37.515Z"
+      },
+      {
+        "id": "black_basalt",
+        "name": "black_basalt-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/black_basalt/black_basalt-black_basalt-icon.png",
+        "createdAt": "2026-06-09T08:32:43.315Z",
+        "updatedAt": "2026-06-09T08:32:43.315Z"
+      },
+      {
+        "id": "coal_chunk",
+        "name": "coal_chunk-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/coal_chunk/coal_chunk-coal_chunk-icon.png",
+        "createdAt": "2026-06-09T08:32:51.959Z",
+        "updatedAt": "2026-06-09T08:32:51.959Z"
+      },
+      {
+        "id": "deep_coal",
+        "name": "deep_coal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/deep_coal/deep_coal-deep_coal-icon.png",
+        "createdAt": "2026-06-09T08:33:01.967Z",
+        "updatedAt": "2026-06-09T08:33:01.967Z"
+      },
+      {
+        "id": "sulfur_crust",
+        "name": "sulfur_crust-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/sulfur_crust/sulfur_crust-sulfur_crust-icon.png",
+        "createdAt": "2026-06-09T08:33:21.765Z",
+        "updatedAt": "2026-06-09T08:33:21.765Z"
+      },
+      {
+        "id": "cave_salt",
+        "name": "cave_salt-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/cave_salt/cave_salt-cave_salt-icon.png",
+        "createdAt": "2026-06-09T08:33:27.656Z",
+        "updatedAt": "2026-06-09T08:33:27.656Z"
+      },
+      {
+        "id": "flint_shard",
+        "name": "flint_shard-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/flint_shard/flint_shard-flint_shard-icon.png",
+        "createdAt": "2026-06-09T08:33:39.285Z",
+        "updatedAt": "2026-06-09T08:33:39.285Z"
+      },
+      {
+        "id": "glowing_cave_moss_stone",
+        "name": "glowing_cave_moss_stone-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/glowing_cave_moss_stone/glowing_cave_moss_stone-glowing_cave_moss_stone-icon.png",
+        "createdAt": "2026-06-09T08:33:45.456Z",
+        "updatedAt": "2026-06-09T08:33:45.456Z"
+      },
+      {
+        "id": "rich_iron_ore",
+        "name": "rich_iron_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/rich_iron_ore/rich_iron_ore-rich_iron_ore-icon.png",
+        "createdAt": "2026-06-09T08:34:08.338Z",
+        "updatedAt": "2026-06-09T08:34:08.338Z"
+      },
+      {
+        "id": "copper_ore",
+        "name": "copper_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/copper_ore/copper_ore-copper_ore-icon.png",
+        "createdAt": "2026-06-09T08:34:10.699Z",
+        "updatedAt": "2026-06-09T08:34:10.699Z"
+      },
+      {
+        "id": "tin_ore",
+        "name": "tin_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/tin_ore/tin_ore-tin_ore-icon.png",
+        "createdAt": "2026-06-09T08:34:18.049Z",
+        "updatedAt": "2026-06-09T08:34:18.049Z"
+      },
+      {
+        "id": "silver_vein_ore",
+        "name": "silver_vein_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/silver_vein_ore/silver_vein_ore-silver_vein_ore-icon.png",
+        "createdAt": "2026-06-09T08:34:47.659Z",
+        "updatedAt": "2026-06-09T08:34:47.659Z"
+      },
+      {
+        "id": "gold_nugget",
+        "name": "gold_nugget-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/gold_nugget/gold_nugget-gold_nugget-icon.png",
+        "createdAt": "2026-06-09T08:34:48.052Z",
+        "updatedAt": "2026-06-09T08:34:48.052Z"
+      },
+      {
+        "id": "large_gold_nugget",
+        "name": "large_gold_nugget-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/large_gold_nugget/large_gold_nugget-large_gold_nugget-icon.png",
+        "createdAt": "2026-06-09T08:35:08.326Z",
+        "updatedAt": "2026-06-09T08:35:08.326Z"
+      },
+      {
+        "id": "aquarion_nodule",
+        "name": "aquarion_nodule-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/aquarion_nodule/aquarion_nodule-aquarion_nodule-icon.png",
+        "createdAt": "2026-06-09T08:37:26.960Z",
+        "updatedAt": "2026-06-09T08:37:26.960Z"
+      },
+      {
+        "id": "luminium_shard",
+        "name": "luminium_shard-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/luminium_shard/luminium_shard-luminium_shard-icon.png",
+        "createdAt": "2026-06-09T08:37:31.381Z",
+        "updatedAt": "2026-06-09T08:37:31.381Z"
+      },
+      {
+        "id": "pure_aquarion_pearl",
+        "name": "pure_aquarion_pearl-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/pure_aquarion_pearl/pure_aquarion_pearl-pure_aquarion_pearl-icon.png",
+        "createdAt": "2026-06-09T08:37:32.396Z",
+        "updatedAt": "2026-06-09T08:37:32.396Z"
+      },
+      {
+        "id": "zeptyrite_trace",
+        "name": "zeptyrite_trace-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/zeptyrite_trace/zeptyrite_trace-zeptyrite_trace-icon.png",
+        "createdAt": "2026-06-09T08:37:35.762Z",
+        "updatedAt": "2026-06-09T08:37:35.762Z"
+      },
+      {
+        "id": "luminium_white_vein",
+        "name": "luminium_white_vein-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/luminium_white_vein/luminium_white_vein-luminium_white_vein-icon.png",
+        "createdAt": "2026-06-09T08:37:40.844Z",
+        "updatedAt": "2026-06-09T08:37:40.844Z"
+      },
+      {
+        "id": "zeptyrite_ore",
+        "name": "zeptyrite_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/zeptyrite_ore/zeptyrite_ore-zeptyrite_ore-icon.png",
+        "createdAt": "2026-06-09T08:37:51.017Z",
+        "updatedAt": "2026-06-09T08:37:51.017Z"
+      },
+      {
+        "id": "solarite_ore",
+        "name": "solarite_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/solarite_ore/solarite_ore-solarite_ore-icon.png",
+        "createdAt": "2026-06-09T08:37:54.244Z",
+        "updatedAt": "2026-06-09T08:37:54.244Z"
+      },
+      {
+        "id": "pure_zeptyrite_core",
+        "name": "pure_zeptyrite_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/pure_zeptyrite_core/pure_zeptyrite_core-pure_zeptyrite_core-icon.png",
+        "createdAt": "2026-06-09T08:38:02.998Z",
+        "updatedAt": "2026-06-09T08:38:02.998Z"
+      },
+      {
+        "id": "felendar_ore",
+        "name": "felendar_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/felendar_ore/felendar_ore-felendar_ore-icon.png",
+        "createdAt": "2026-06-09T08:38:30.917Z",
+        "updatedAt": "2026-06-09T08:38:30.917Z"
+      },
+      {
+        "id": "felendar_hot_core",
+        "name": "felendar_hot_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/felendar_hot_core/felendar_hot_core-felendar_hot_core-icon.png",
+        "createdAt": "2026-06-09T08:38:34.008Z",
+        "updatedAt": "2026-06-09T08:38:34.008Z"
+      },
+      {
+        "id": "vintarion_ore",
+        "name": "vintarion_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/vintarion_ore/vintarion_ore-vintarion_ore-icon.png",
+        "createdAt": "2026-06-09T08:39:01.036Z",
+        "updatedAt": "2026-06-09T08:39:01.036Z"
+      },
+      {
+        "id": "vintarion_star_core",
+        "name": "vintarion_star_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/vintarion_star_core/vintarion_star_core-vintarion_star_core-icon.png",
+        "createdAt": "2026-06-09T08:39:02.410Z",
+        "updatedAt": "2026-06-09T08:39:02.410Z"
+      },
+      {
+        "id": "solarite_sun_core",
+        "name": "solarite_sun_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/solarite_sun_core/solarite_sun_core-solarite_sun_core-icon.png",
+        "createdAt": "2026-06-09T08:54:46.939Z",
+        "updatedAt": "2026-06-09T08:54:46.939Z"
+      },
+      {
+        "id": "verdantin_ore",
+        "name": "verdantin_ore-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/verdantin_ore/verdantin_ore-verdantin_ore-icon.png",
+        "createdAt": "2026-06-09T08:54:48.512Z",
+        "updatedAt": "2026-06-09T08:54:48.512Z"
+      },
+      {
+        "id": "verdantin_living_vein",
+        "name": "verdantin_living_vein-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/verdantin_living_vein/verdantin_living_vein-verdantin_living_vein-icon.png",
+        "createdAt": "2026-06-09T08:54:51.801Z",
+        "updatedAt": "2026-06-09T08:54:51.801Z"
+      },
+      {
+        "id": "miridian_splinter",
+        "name": "miridian_splinter-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/miridian_splinter/miridian_splinter-miridian_splinter-icon.png",
+        "createdAt": "2026-06-09T08:54:55.867Z",
+        "updatedAt": "2026-06-09T08:54:55.867Z"
+      },
+      {
+        "id": "miridian_pure_thread",
+        "name": "miridian_pure_thread-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/miridian_pure_thread/miridian_pure_thread-miridian_pure_thread-icon.png",
+        "createdAt": "2026-06-09T08:55:06.155Z",
+        "updatedAt": "2026-06-09T08:55:06.155Z"
+      },
+      {
+        "id": "kelerite_fragment",
+        "name": "kelerite_fragment-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/kelerite_fragment/kelerite_fragment-kelerite_fragment-icon.png",
+        "createdAt": "2026-06-09T08:55:14.420Z",
+        "updatedAt": "2026-06-09T08:55:14.420Z"
+      },
+      {
+        "id": "kelerite_memory_core",
+        "name": "kelerite_memory_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/kelerite_memory_core/kelerite_memory_core-kelerite_memory_core-icon.png",
+        "createdAt": "2026-06-09T08:55:39.030Z",
+        "updatedAt": "2026-06-09T08:55:39.030Z"
+      },
+      {
+        "id": "astarion_meteor_shard",
+        "name": "astarion_meteor_shard-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/astarion_meteor_shard/astarion_meteor_shard-astarion_meteor_shard-icon.png",
+        "createdAt": "2026-06-09T08:55:47.115Z",
+        "updatedAt": "2026-06-09T08:55:47.115Z"
+      },
+      {
+        "id": "astarion_gravity_heart",
+        "name": "astarion_gravity_heart-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/astarion_gravity_heart/astarion_gravity_heart-astarion_gravity_heart-icon.png",
+        "createdAt": "2026-06-09T08:55:51.961Z",
+        "updatedAt": "2026-06-09T08:55:51.961Z"
+      },
+      {
+        "id": "cracked_crystal",
+        "name": "cracked_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/cracked_crystal/cracked_crystal-cracked_crystal-icon.png",
+        "createdAt": "2026-06-09T08:56:18.974Z",
+        "updatedAt": "2026-06-09T08:56:18.974Z"
+      },
+      {
+        "id": "clear_quartz",
+        "name": "clear_quartz-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/clear_quartz/clear_quartz-clear_quartz-icon.png",
+        "createdAt": "2026-06-09T08:56:23.202Z",
+        "updatedAt": "2026-06-09T08:56:23.202Z"
+      },
+      {
+        "id": "mountain_sapphire",
+        "name": "mountain_sapphire-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/mountain_sapphire/mountain_sapphire-mountain_sapphire-icon.png",
+        "createdAt": "2026-06-09T08:56:45.708Z",
+        "updatedAt": "2026-06-09T08:56:45.708Z"
+      },
+      {
+        "id": "desert_topaz",
+        "name": "desert_topaz-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/desert_topaz/desert_topaz-desert_topaz-icon.png",
+        "createdAt": "2026-06-09T08:56:45.880Z",
+        "updatedAt": "2026-06-09T08:56:45.880Z"
+      },
+      {
+        "id": "forest_emerald",
+        "name": "forest_emerald-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/forest_emerald/forest_emerald-forest_emerald-icon.png",
+        "createdAt": "2026-06-09T08:57:08.894Z",
+        "updatedAt": "2026-06-09T08:57:08.894Z"
+      },
+      {
+        "id": "mirror_lake_opal",
+        "name": "mirror_lake_opal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/mirror_lake_opal/mirror_lake_opal-mirror_lake_opal-icon.png",
+        "createdAt": "2026-06-09T08:57:09.433Z",
+        "updatedAt": "2026-06-09T08:57:09.433Z"
+      },
+      {
+        "id": "black_onyx",
+        "name": "black_onyx-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/black_onyx/black_onyx-black_onyx-icon.png",
+        "createdAt": "2026-06-09T08:57:24.983Z",
+        "updatedAt": "2026-06-09T08:57:24.983Z"
+      },
+      {
+        "id": "blood_garnet",
+        "name": "blood_garnet-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/blood_garnet/blood_garnet-blood_garnet-icon.png",
+        "createdAt": "2026-06-09T08:57:43.326Z",
+        "updatedAt": "2026-06-09T08:57:43.326Z"
+      },
+      {
+        "id": "ember_crystal",
+        "name": "ember_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/ember_crystal/ember_crystal-ember_crystal-icon.png",
+        "createdAt": "2026-06-09T08:57:43.701Z",
+        "updatedAt": "2026-06-09T08:57:43.701Z"
+      },
+      {
+        "id": "fire_heart_crystal",
+        "name": "fire_heart_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/fire_heart_crystal/fire_heart_crystal-fire_heart_crystal-icon.png",
+        "createdAt": "2026-06-09T08:58:10.586Z",
+        "updatedAt": "2026-06-09T08:58:10.586Z"
+      },
+      {
+        "id": "frost_crystal",
+        "name": "frost_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/frost_crystal/frost_crystal-frost_crystal-icon.png",
+        "createdAt": "2026-06-09T08:58:17.438Z",
+        "updatedAt": "2026-06-09T08:58:17.438Z"
+      },
+      {
+        "id": "deep_frost_core",
+        "name": "deep_frost_core-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/deep_frost_core/deep_frost_core-deep_frost_core-icon.png",
+        "createdAt": "2026-06-09T08:58:35.438Z",
+        "updatedAt": "2026-06-09T08:58:35.438Z"
+      },
+      {
+        "id": "storm_resonance_crystal",
+        "name": "storm_resonance_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/storm_resonance_crystal/storm_resonance_crystal-storm_resonance_crystal-icon.png",
+        "createdAt": "2026-06-09T08:58:39.404Z",
+        "updatedAt": "2026-06-09T08:58:39.404Z"
+      },
+      {
+        "id": "night_glass_shard",
+        "name": "night_glass_shard-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/night_glass_shard/night_glass_shard-night_glass_shard-icon.png",
+        "createdAt": "2026-06-09T08:59:03.062Z",
+        "updatedAt": "2026-06-09T08:59:03.062Z"
+      },
+      {
+        "id": "lunaan_glass_splinter",
+        "name": "lunaan_glass_splinter-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/lunaan_glass_splinter/lunaan_glass_splinter-lunaan_glass_splinter-icon.png",
+        "createdAt": "2026-06-09T08:59:03.138Z",
+        "updatedAt": "2026-06-09T08:59:03.138Z"
+      },
+      {
+        "id": "poison_vein_crystal",
+        "name": "poison_vein_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/poison_vein_crystal/poison_vein_crystal-poison_vein_crystal-icon.png",
+        "createdAt": "2026-06-09T08:59:20.749Z",
+        "updatedAt": "2026-06-09T08:59:20.749Z"
+      },
+      {
+        "id": "light_shard",
+        "name": "light_shard-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/light_shard/light_shard-light_shard-icon.png",
+        "createdAt": "2026-06-09T08:59:34.043Z",
+        "updatedAt": "2026-06-09T08:59:34.043Z"
+      },
+      {
+        "id": "life_spring_crystal",
+        "name": "life_spring_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/life_spring_crystal/life_spring_crystal-life_spring_crystal-icon.png",
+        "createdAt": "2026-06-09T08:59:50.655Z",
+        "updatedAt": "2026-06-09T08:59:50.655Z"
+      },
+      {
+        "id": "death_obsidian",
+        "name": "death_obsidian-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/death_obsidian/death_obsidian-death_obsidian-icon.png",
+        "createdAt": "2026-06-09T09:00:07.824Z",
+        "updatedAt": "2026-06-09T09:00:07.824Z"
+      },
+      {
+        "id": "gravity_tear_crystal",
+        "name": "gravity_tear_crystal-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/gravity_tear_crystal/gravity_tear_crystal-gravity_tear_crystal-icon.png",
+        "createdAt": "2026-06-09T09:00:12.707Z",
+        "updatedAt": "2026-06-09T09:00:12.707Z"
+      },
+      {
+        "id": "rune_dust",
+        "name": "rune_dust-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/rune_dust/rune_dust-rune_dust-icon.png",
+        "createdAt": "2026-06-09T09:00:19.468Z",
+        "updatedAt": "2026-06-09T09:00:19.468Z"
+      },
+      {
+        "id": "weak_rune_fragment",
+        "name": "weak_rune_fragment-icon",
+        "mimeType": "image/png",
+        "width": 128,
+        "height": 128,
+        "dataUrl": "/assets/upload/images/materials/weak_rune_fragment/weak_rune_fragment-weak_rune_fragment-icon.png",
+        "createdAt": "2026-06-09T09:00:35.623Z",
+        "updatedAt": "2026-06-09T09:00:35.623Z"
       }
     ],
     "dialogues": [
@@ -45648,7 +46288,7 @@
         "dialogues": [],
         "questBindings": [],
         "createdAt": "2026-06-04T22:15:47.359Z",
-        "updatedAt": "2026-06-08T13:04:05.294Z",
+        "updatedAt": "2026-06-09T08:37:49.068Z",
         "locationId": "arena:combat",
         "inventory": {
           "itemIds": [],
@@ -45692,8 +46332,8 @@
         "kingdomId": "argos",
         "factionId": "argos_citizens",
         "locationId": "loc_argos_city_wood_workshop",
-        "homeCityId": "argos",
-        "currentCityId": "argos",
+        "homeCityId": "city_razugar",
+        "currentCityId": "city_razugar",
         "cityLocationId": "workshop_wood_basic",
         "description": "Мастер-плотник обучает рубке леса, распилу брёвен и обработке дерева.",
         "shortDescription": "Мастер-плотник.",
@@ -45730,7 +46370,7 @@
         "professionTrainer": "carpenter",
         "traderId": "merchant_carpenter_master",
         "createdAt": "2026-06-07T09:20:58.516Z",
-        "updatedAt": "2026-06-07T09:20:58.516Z",
+        "updatedAt": "2026-06-09T07:05:49.261Z",
         "portraitUrl": "/assets/placeholders/npc_merchant.png",
         "fullImageUrl": "/assets/placeholders/npc_merchant.png",
         "iconUrl": "/assets/placeholders/npc_merchant.png",
@@ -60920,6 +61560,38 @@
         },
         "createdAt": "2026-06-07T10:17:59.033Z",
         "updatedAt": "2026-06-07T10:17:59.033Z"
+      }
+    ],
+    "imageSheets": [
+      {
+        "id": "sheet_iron_bloom",
+        "name": "Изображение материала (iron_bloom-icon)",
+        "category": "materials",
+        "src": "img_1780560270423_03b427a3",
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "columns": 10,
+        "rows": 8
+      },
+      {
+        "id": "sheet_blacksmith_basic_forging",
+        "name": "Иконка навыка (blacksmith_basic_forging-icon)",
+        "category": "other",
+        "src": "img_1780565402806_b3a3270f",
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "columns": 10,
+        "rows": 8
+      },
+      {
+        "id": "sheet_mountain_guardian_beam",
+        "name": "Изображение материала (mountain_guardian_beam-icon)",
+        "category": "materials",
+        "src": "img_1780647915419_51234609",
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "columns": 10,
+        "rows": 10
       }
     ],
     "worldMap": {

@@ -2002,17 +2002,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         <section className="character-item-popup" role="dialog" aria-modal="true" aria-label="Детали предмета">
           <div className="character-item-popup-head">
             <div className="character-item-popup-title">
-              <span
-                className="character-item-popup-icon"
-                style={resolveItemImage?.(selectedItem)
-                  ? {
-                      backgroundImage: `url("${resolveItemImage(selectedItem)}")`,
-                      backgroundSize: 'contain',
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'center',
-                    }
-                  : undefined}
-              />
+              {renderItemVisualIcon(selectedItem, { className: 'character-item-popup-icon', size: 48 })}
               <div>
                 <h3>{selectedItem.name}</h3>
                 <p className="muted">{selectedItem.itemType} / {selectedItem.itemSubType} / {selectedItem.rarity}</p>
@@ -2604,6 +2594,49 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     );
   }
 
+  function renderItemVisualIcon(
+    item: ItemDefinition,
+    options?: { compact?: boolean; className?: string; size?: number },
+  ) {
+    const imageRef = resolveItemImageRef?.(item);
+    const legacyImagePath = resolveItemLegacyImagePath?.(item);
+    const imageUrl = resolveItemImage?.(item);
+    const fallbackText = item.name.trim().charAt(0).toUpperCase() || '?';
+    const size = options?.size ?? (options?.compact ? 18 : 22);
+    const wrapperClass = options?.className ?? 'character-item-icon';
+
+    if (imageRef || legacyImagePath) {
+      return (
+        <span className={wrapperClass}>
+          <GameImageView
+            imageRef={imageRef}
+            legacyImagePath={legacyImagePath}
+            runtimeImages={runtimeImages}
+            alt={item.name}
+            size={size}
+            fit="contain"
+            fallbackText={fallbackText}
+            className="item-slot-icon-image"
+          />
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={wrapperClass}
+        style={imageUrl
+          ? {
+              backgroundImage: `url("${imageUrl}")`,
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+            }
+          : undefined}
+      />
+    );
+  }
+
   function renderInventoryCards(
     entries: Array<{ item: ItemDefinition; quantity: number }>,
     compact = false,
@@ -2634,17 +2667,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               event.dataTransfer.effectAllowed = 'move';
             }}
           >
-            <span
-              className="character-item-icon"
-              style={resolveItemImage?.(entry.item)
-                ? {
-                    backgroundImage: `url("${resolveItemImage(entry.item)}")`,
-                    backgroundSize: 'contain',
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'center',
-                  }
-                : undefined}
-            />
+            {renderItemVisualIcon(entry.item, { compact })}
             <span className="character-item-name">{entry.item.name}</span>
             <span className="character-item-qty">x{entry.quantity}</span>
           </button>
@@ -2685,7 +2708,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             }}
           >
             <span className="character-item-icon">
-              {entry.imageRef ? (
+              {entry.imageRef || entry.legacyImagePath ? (
                 <GameImageView
                   imageRef={entry.imageRef}
                   legacyImagePath={entry.legacyImagePath}

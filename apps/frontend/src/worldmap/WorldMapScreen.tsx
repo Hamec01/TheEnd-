@@ -108,6 +108,8 @@ import {
 import { cityService } from "../services/cityRepository";
 import { imageService } from "../services/content/imageService";
 import { loadRuntimeImages, resolveStoredImageSource } from "../services/content/runtimeImageService";
+import { hydrateImageSheetsFromContent } from "../services/content/gameImageRefs";
+import { imageSheetsService } from "../services/content/imageSheetsService";
 import type { City, CityLocation } from "../types/city";
 import { subscribeToContentSync } from "../services/content/contentSync";
 import {
@@ -3294,9 +3296,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   useEffect(() => {
     let cancelled = false;
 
-    void loadRuntimeImages()
-      .then((images) => {
+    void Promise.all([loadRuntimeImages(), imageSheetsService.getAll()])
+      .then(([images, imageSheets]) => {
         if (!cancelled) {
+          hydrateImageSheetsFromContent(imageSheets);
           setRuntimeImages(images);
         }
       })

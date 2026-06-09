@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Equipment, InventoryState, ItemDefinition, StatBlock } from '@theend/rpg-domain';
+import { GameImageView } from '../admin/components/GameImageView';
 import { normalizeActorVisualSource } from '../phaser/assets/actorVisualResolver';
+import type { GameImageRef, StoredImage } from '../services/content/models';
 
 interface QuickActionButton {
   id: string;
@@ -24,17 +26,82 @@ interface PlayerQuickPanelProps {
   quickActions: QuickActionButton[];
   resolveItemById?: (itemId: string) => ItemDefinition | null;
   resolveItemImage?: (item: ItemDefinition | null | undefined) => string | undefined;
+  resolveItemImageRef?: (item: ItemDefinition | null | undefined) => GameImageRef | undefined;
+  resolveItemLegacyImagePath?: (item: ItemDefinition | null | undefined) => string | undefined;
+  runtimeImages?: StoredImage[];
   worldStatusLines?: string[];
 }
 
 export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
-  const { name, avatarLetter, avatarUrl, hpText, mpText, staminaText, activeStats, equipment, inventory, quickActions, resolveItemById, resolveItemImage, worldStatusLines = [] } = props;
+  const {
+    name,
+    avatarLetter,
+    avatarUrl,
+    hpText,
+    mpText,
+    staminaText,
+    activeStats,
+    equipment,
+    inventory,
+    quickActions,
+    resolveItemById,
+    resolveItemImage,
+    resolveItemImageRef,
+    resolveItemLegacyImagePath,
+    runtimeImages = [],
+    worldStatusLines = [],
+  } = props;
   const [hasAvatarError, setHasAvatarError] = useState(false);
   const resolvedAvatarUrl = useMemo(() => normalizeActorVisualSource(avatarUrl), [avatarUrl]);
 
   useEffect(() => {
     setHasAvatarError(false);
   }, [resolvedAvatarUrl]);
+
+  function renderInventoryItemIcon(item: ItemDefinition | null, itemId: string) {
+    const fallbackText = item?.name.slice(0, 2).toUpperCase() ?? itemId.slice(0, 2).toUpperCase();
+    const imageRef = resolveItemImageRef?.(item);
+    const legacyImagePath = resolveItemLegacyImagePath?.(item);
+    const imageUrl = resolveItemImage?.(item)
+      ?? (() => {
+        const iconPath = String(item?.icon ?? '').trim();
+        if (!iconPath || iconPath.toLowerCase() === 'unknown') {
+          return undefined;
+        }
+        return normalizeActorVisualSource(iconPath);
+      })();
+
+    if (imageRef || legacyImagePath) {
+      return (
+        <GameImageView
+          imageRef={imageRef}
+          legacyImagePath={legacyImagePath}
+          runtimeImages={runtimeImages}
+          alt={item?.name ?? itemId}
+          size={26}
+          fit="contain"
+          fallbackText={fallbackText}
+          className="wm-item-cell-icon"
+        />
+      );
+    }
+
+    if (imageUrl) {
+      return (
+        <span
+          className="wm-item-cell-icon has-image"
+          style={{
+            backgroundImage: `url("${imageUrl}")`,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+          }}
+        />
+      );
+    }
+
+    return <span className="wm-item-cell-icon">{fallbackText}</span>;
+  }
 
   return (
     <aside className="wm-left card">
@@ -92,27 +159,9 @@ export function PlayerQuickPanel(props: PlayerQuickPanelProps) {
       <div className="wm-inventory-grid">
         {inventory.items.slice(0, 16).map((entry) => {
           const item = resolveItemById?.(entry.itemId) ?? null;
-          const image = resolveItemImage?.(item)
-            ?? (() => {
-              const iconPath = String(item?.icon ?? '').trim();
-              if (!iconPath || iconPath.toLowerCase() === 'unknown') {
-                return undefined;
-              }
-              return normalizeActorVisualSource(iconPath);
-            })();
           return (
             <div key={entry.itemId} className="wm-item-cell" title={item?.name ?? entry.itemId}>
-              <span
-                className={`wm-item-cell-icon${image ? ' has-image' : ''}`}
-                style={image ? {
-                  backgroundImage: `url("${image}")`,
-                  backgroundSize: 'contain',
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'center',
-                } : undefined}
-              >
-                {!image ? (item?.name.slice(0, 2).toUpperCase() ?? entry.itemId.slice(0, 2).toUpperCase()) : null}
-              </span>
+              {renderInventoryItemIcon(item, entry.itemId)}
               <small className="wm-item-cell-qty">{entry.quantity}</small>
             </div>
           );
