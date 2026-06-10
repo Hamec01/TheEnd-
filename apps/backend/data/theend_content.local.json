@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-10T15:17:25.249Z",
+  "exportedAt": "2026-06-10T15:23:30.239Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -37,7 +37,7 @@
     "trees": 12,
     "biomes": 6,
     "imageSheets": 4,
-    "professionSkills": 95,
+    "professionSkills": 102,
     "maps": 4,
     "zones": 16,
     "markers": 3,
@@ -9520,7 +9520,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-10T15:10:43.806Z",
+        "updatedAt": "2026-06-10T15:18:19.558Z",
         "kind": "single",
         "stages": []
       },
@@ -9576,7 +9576,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-10T15:10:43.807Z",
+        "updatedAt": "2026-06-10T15:18:19.558Z",
         "kind": "single",
         "stages": []
       },
@@ -9635,7 +9635,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-10T15:10:43.807Z",
+        "updatedAt": "2026-06-10T15:18:19.559Z",
         "kind": "single",
         "stages": []
       }
@@ -63258,6 +63258,215 @@
     ],
     "professionSkills": [
       {
+        "id": "mining_passage_instinct",
+        "professionId": "mining",
+        "name": "Чутьё прохода",
+        "description": "Чутьё прохода",
+        "requiredLevel": 4,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_passage_chance_modifier-srvkwb",
+            "type": "mine_passage_chance_modifier",
+            "value": 10,
+            "valueType": "percent",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0
+          }
+        ],
+        "icon": "img_1779376798262_6ab5ae7e",
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T15:20:00.931Z"
+      },
+      {
+        "id": "mining_demolitionist",
+        "professionId": "mining",
+        "name": "Подрывник",
+        "description": "Подрывник",
+        "requiredLevel": 5,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_area_break_chance-sn5djs",
+            "type": "mine_area_break_chance",
+            "value": 0,
+            "valueType": "boolean",
+            "chance": 0.15,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0,
+            "params": {
+              "radius": 1,
+              "maxExtraBlocks": 2,
+              "includeDiagonals": false,
+              "consumeHitForEachExtra": false,
+              "consumeStaminaForEachExtra": false,
+              "triggerMode": "on_hit",
+              "hazardMultiplier": 0.5
+            }
+          }
+        ],
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T09:21:07.178Z"
+      },
+      {
+        "id": "mining_stone_resolve",
+        "professionId": "mining",
+        "name": "Каменная выдержка",
+        "description": "Каменная выдержка",
+        "requiredLevel": 6,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_once_per_run_survive_1hp-zoc8w7",
+            "type": "mine_once_per_run_survive_1hp",
+            "value": 1,
+            "valueType": "boolean",
+            "chance": 0,
+            "maxUsesPerRun": 1,
+            "maxUsesPerDepth": 0
+          }
+        ],
+        "icon": "img_1779376815171_cc03a85d",
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T15:20:19.021Z"
+      },
+      {
+        "id": "mining_loot_insurance",
+        "professionId": "mining",
+        "name": "Страховка добычи",
+        "description": "Страховка добычи",
+        "requiredLevel": 6,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_death_loot_save_modifier-1o9cqv",
+            "type": "mine_death_loot_save_modifier",
+            "value": 20,
+            "valueType": "percent",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0
+          }
+        ],
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T09:21:07.178Z"
+      },
+      {
+        "id": "mining_porters",
+        "professionId": "mining",
+        "name": "Носильщики",
+        "description": "Носильщики",
+        "requiredLevel": 7,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_porters_unlock-c0c6ar",
+            "type": "mine_porters_unlock",
+            "value": 1,
+            "valueType": "boolean",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0,
+            "params": {
+              "capacityItems": 3,
+              "capacityStacks": 3
+            }
+          },
+          {
+            "id": "mine_porters_save_items_on_death-wxt0p5",
+            "type": "mine_porters_save_items_on_death",
+            "value": 1,
+            "valueType": "boolean",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0
+          }
+        ],
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T09:21:07.178Z"
+      },
+      {
+        "id": "mining_senior_porter",
+        "professionId": "mining",
+        "name": "Старший носильщик",
+        "description": "Старший носильщик",
+        "requiredLevel": 8,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_porters_capacity_modifier-jhq1zv",
+            "type": "mine_porters_capacity_modifier",
+            "value": 2,
+            "valueType": "flat",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0,
+            "params": {
+              "capacityType": "items"
+            }
+          }
+        ],
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T09:21:07.178Z"
+      },
+      {
+        "id": "mining_spirit_guard",
+        "professionId": "mining",
+        "name": "Защита от духов",
+        "description": "Защита от духов",
+        "requiredLevel": 9,
+        "requiredSkillIds": [],
+        "requiredBranchIds": [],
+        "skillPointCost": 1,
+        "effects": [
+          {
+            "id": "mine_spirit_resistance-4kdhkr",
+            "type": "mine_spirit_resistance",
+            "value": 20,
+            "valueType": "percent",
+            "chance": 0,
+            "maxUsesPerRun": 0,
+            "maxUsesPerDepth": 0
+          }
+        ],
+        "positionX": 0,
+        "positionY": 0,
+        "isEnabled": true,
+        "createdAt": "2026-05-21T09:21:07.178Z",
+        "updatedAt": "2026-05-21T09:21:07.178Z"
+      },
+      {
         "id": "mining_firm_swing",
         "professionId": "mining",
         "name": "Крепкий замах",
@@ -63269,15 +63478,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_stamina_cost_modifier-djjldu",
+            "id": "mine_stamina_cost_modifier-3o8vbj",
             "type": "mine_stamina_cost_modifier",
             "value": -5,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Крепкий замах.png",
         "positionX": 0,
         "positionY": 0
@@ -63294,15 +63503,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_block_hint_chance-b0m0ec",
+            "id": "mine_block_hint_chance-sqafy5",
             "type": "mine_block_hint_chance",
             "value": 0.12,
             "valueType": "flat"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Каменный слух.png",
         "positionX": 0,
         "positionY": 0
@@ -63319,15 +63528,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_extra_stamina-keqj99",
+            "id": "mine_extra_stamina-xtlust",
             "type": "mine_extra_stamina",
             "value": 10,
             "valueType": "flat"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Рабочее дыхание.png",
         "positionX": 0,
         "positionY": 0
@@ -63344,15 +63553,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_collapse_chance_modifier-mtmfbb",
+            "id": "mine_collapse_chance_modifier-aro9uc",
             "type": "mine_collapse_chance_modifier",
             "value": -5,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Осторожный удар.png",
         "positionX": 0,
         "positionY": 0
@@ -63369,15 +63578,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_ore_chance_modifier-s7wwep",
+            "id": "mine_ore_chance_modifier-4txlvg",
             "type": "mine_ore_chance_modifier",
             "value": 5,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Рудная привычка.png",
         "positionX": 0,
         "positionY": 0
@@ -63400,7 +63609,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_ignore_first_hazard-1rqvww",
+            "id": "mine_ignore_first_hazard-fgmrz7",
             "type": "mine_ignore_first_hazard",
             "value": 1,
             "valueType": "boolean",
@@ -63419,8 +63628,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Подпорки.png",
         "positionX": 0,
         "positionY": 0
@@ -63443,15 +63652,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_retreat_loot_save-oqqbil",
+            "id": "mine_retreat_loot_save-40opcu",
             "type": "mine_retreat_loot_save",
             "value": 15,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Страховочная верёвка_1.png",
         "positionX": 0,
         "positionY": 0
@@ -63474,7 +63683,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_start_with_passage_hint-u4w8i9",
+            "id": "mine_start_with_passage_hint-y1zxmn",
             "type": "mine_start_with_passage_hint",
             "value": 1,
             "valueType": "boolean",
@@ -63482,8 +63691,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Тёмный глаз.png",
         "positionX": 0,
         "positionY": 0
@@ -63502,7 +63711,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_collapse_damage_modifier-1b8app",
+            "id": "mine_collapse_damage_modifier-9adbuj",
             "type": "mine_collapse_damage_modifier",
             "value": -10,
             "valueType": "percent",
@@ -63517,8 +63726,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Тяжёлая каска.png",
         "positionX": 0,
         "positionY": 0
@@ -63537,7 +63746,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_dust_resistance-0w13fv",
+            "id": "mine_dust_resistance-myvowq",
             "type": "mine_dust_resistance",
             "value": 30,
             "valueType": "percent",
@@ -63548,7 +63757,7 @@
             }
           },
           {
-            "id": "mine_gas_resistance-4lulet",
+            "id": "mine_gas_resistance-tm30yl",
             "type": "mine_gas_resistance",
             "value": 20,
             "valueType": "percent",
@@ -63561,8 +63770,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Пыльные лёгкие.png",
         "positionX": 0,
         "positionY": 0
@@ -63581,15 +63790,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_passage_chance_modifier-5tw67w",
+            "id": "mine_passage_chance_modifier-ot3ld7",
             "type": "mine_passage_chance_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Чутьё прохода.png",
         "positionX": 0,
         "positionY": 0
@@ -63608,15 +63817,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_extra_hits_on_descend-5o1sw2",
+            "id": "mine_extra_hits_on_descend-m34gi6",
             "type": "mine_extra_hits_on_descend",
             "value": 1,
             "valueType": "flat"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Не смотреть назад.png",
         "positionX": 0,
         "positionY": 0
@@ -63635,7 +63844,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_extra_stamina-ylyg8s",
+            "id": "mine_extra_stamina-d1cdl9",
             "type": "mine_extra_stamina",
             "value": 10,
             "valueType": "flat",
@@ -63645,8 +63854,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Глубокий вдох.png",
         "positionX": 0,
         "positionY": 0
@@ -63671,7 +63880,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_once_per_run_escape-lmp03k",
+            "id": "mine_once_per_run_escape-t52ph3",
             "type": "mine_once_per_run_escape",
             "value": 1,
             "valueType": "boolean",
@@ -63679,8 +63888,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Анкерная верёвка.png",
         "positionX": 0,
         "positionY": 0
@@ -63705,7 +63914,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_rare_ore_chance_modifier-q4lz1w",
+            "id": "mine_rare_ore_chance_modifier-7bp8t5",
             "type": "mine_rare_ore_chance_modifier",
             "value": 10,
             "valueType": "percent",
@@ -63715,8 +63924,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Жила под ногами.png",
         "positionX": 0,
         "positionY": 0
@@ -63741,7 +63950,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_once_per_run_survive_1hp-avfyn0",
+            "id": "mine_once_per_run_survive_1hp-eawmup",
             "type": "mine_once_per_run_survive_1hp",
             "value": 1,
             "valueType": "boolean",
@@ -63749,8 +63958,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Каменная выдержка.png",
         "positionX": 0,
         "positionY": 0
@@ -63769,7 +63978,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_start_with_passage_hint-shrcbq",
+            "id": "mine_start_with_passage_hint-pv0gzr",
             "type": "mine_start_with_passage_hint",
             "value": 1,
             "valueType": "boolean",
@@ -63777,8 +63986,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Гномий взгляд.png",
         "positionX": 0,
         "positionY": 0
@@ -63797,7 +64006,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_block_hint_chance-v2xz9l",
+            "id": "mine_block_hint_chance-doyv69",
             "type": "mine_block_hint_chance",
             "value": 0.15,
             "valueType": "flat",
@@ -63809,8 +64018,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Чтение трещин.png",
         "positionX": 0,
         "positionY": 0
@@ -63829,7 +64038,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_collapse_damage_modifier-owigok",
+            "id": "mine_collapse_damage_modifier-oxuan6",
             "type": "mine_collapse_damage_modifier",
             "value": -20,
             "valueType": "percent",
@@ -63844,8 +64053,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Распорка мастера.png",
         "positionX": 0,
         "positionY": 0
@@ -63868,21 +64077,21 @@
         "skillPointCost": 3,
         "effects": [
           {
-            "id": "mine_start_with_passage_hint-fzpcuh",
+            "id": "mine_start_with_passage_hint-7kbied",
             "type": "mine_start_with_passage_hint",
             "value": 1,
             "valueType": "boolean"
           },
           {
-            "id": "mine_block_hint_chance-6esnuj",
+            "id": "mine_block_hint_chance-zwp2ac",
             "type": "mine_block_hint_chance",
             "value": 0.1,
             "valueType": "flat"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Карта подземья.png",
         "positionX": 0,
         "positionY": 0
@@ -63906,7 +64115,7 @@
         "skillPointCost": 3,
         "effects": [
           {
-            "id": "mine_rare_ore_chance_modifier-h7kczj",
+            "id": "mine_rare_ore_chance_modifier-b18ok1",
             "type": "mine_rare_ore_chance_modifier",
             "value": 15,
             "valueType": "percent",
@@ -63916,8 +64125,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Сердце глубины.png",
         "positionX": 0,
         "positionY": 0
@@ -63936,7 +64145,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_lava_resistance-bnpiph",
+            "id": "mine_lava_resistance-5u1tcv",
             "type": "mine_lava_resistance",
             "value": 25,
             "valueType": "percent",
@@ -63947,7 +64156,7 @@
             }
           },
           {
-            "id": "mine_fire_resistance-u1qsm7",
+            "id": "mine_fire_resistance-9wougm",
             "type": "mine_fire_resistance",
             "value": 20,
             "valueType": "percent",
@@ -63959,8 +64168,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Лавовая осторожность.png",
         "positionX": 0,
         "positionY": 0
@@ -63979,7 +64188,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_rare_ore_chance_modifier-rzfug8",
+            "id": "mine_rare_ore_chance_modifier-82svgq",
             "type": "mine_rare_ore_chance_modifier",
             "value": 10,
             "valueType": "percent",
@@ -63989,8 +64198,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Последний удар.png",
         "positionX": 0,
         "positionY": 0
@@ -64012,14 +64221,14 @@
         "skillPointCost": 3,
         "effects": [
           {
-            "id": "mine_once_per_run_survive_1hp-kc4wgh",
+            "id": "mine_once_per_run_survive_1hp-93m4y0",
             "type": "mine_once_per_run_survive_1hp",
             "value": 1,
             "valueType": "boolean",
             "maxUsesPerRun": 1
           },
           {
-            "id": "mine_death_loot_save_modifier-hjd5in",
+            "id": "mine_death_loot_save_modifier-xp9rah",
             "type": "mine_death_loot_save_modifier",
             "value": 25,
             "valueType": "percent",
@@ -64027,8 +64236,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Один шаг от смерти.png",
         "positionX": 0,
         "positionY": 0
@@ -64047,15 +64256,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_gold_chance_modifier-olznqa",
+            "id": "mine_gold_chance_modifier-wn5fbw",
             "type": "mine_gold_chance_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Блеск в камне.png",
         "positionX": 0,
         "positionY": 0
@@ -64074,15 +64283,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_gem_chance_modifier-e31jjm",
+            "id": "mine_gem_chance_modifier-926qkt",
             "type": "mine_gem_chance_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Острый глаз.png",
         "positionX": 0,
         "positionY": 0
@@ -64101,15 +64310,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_loot_quality_modifier-ap0fij",
+            "id": "mine_loot_quality_modifier-seyvta",
             "type": "mine_loot_quality_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Чистая жила.png",
         "positionX": 0,
         "positionY": 0
@@ -64128,15 +64337,15 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_loot_quantity_modifier-bttwra",
+            "id": "mine_loot_quantity_modifier-7yl3ul",
             "type": "mine_loot_quantity_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Богатый мешок.png",
         "positionX": 0,
         "positionY": 0
@@ -64155,7 +64364,7 @@
         "skillPointCost": 1,
         "effects": [
           {
-            "id": "mine_fragile_loot_break_chance_modifier-devrss",
+            "id": "mine_fragile_loot_break_chance_modifier-w617ff",
             "type": "mine_fragile_loot_break_chance_modifier",
             "value": -20,
             "valueType": "percent",
@@ -64168,8 +64377,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Мягкий удар.png",
         "positionX": 0,
         "positionY": 0
@@ -64194,7 +64403,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_gold_chance_modifier-vpmzjr",
+            "id": "mine_gold_chance_modifier-te0xz4",
             "type": "mine_gold_chance_modifier",
             "value": 15,
             "valueType": "percent",
@@ -64204,8 +64413,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Золотой нюх.png",
         "positionX": 0,
         "positionY": 0
@@ -64230,13 +64439,13 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_gem_chance_modifier-32a9g4",
+            "id": "mine_gem_chance_modifier-zgadlk",
             "type": "mine_gem_chance_modifier",
             "value": 15,
             "valueType": "percent"
           },
           {
-            "id": "mine_fragile_loot_break_chance_modifier-pdhy72",
+            "id": "mine_fragile_loot_break_chance_modifier-j9fna7",
             "type": "mine_fragile_loot_break_chance_modifier",
             "value": -10,
             "valueType": "percent",
@@ -64249,8 +64458,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Камнерез.png",
         "positionX": 0,
         "positionY": 0
@@ -64275,15 +64484,15 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_loot_sell_value_modifier-n9ycgt",
+            "id": "mine_loot_sell_value_modifier-1eoflb",
             "type": "mine_loot_sell_value_modifier",
             "value": 10,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Торговый глаз.png",
         "positionX": 0,
         "positionY": 0
@@ -64302,15 +64511,15 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_crystal_chance_modifier-xty9ii",
+            "id": "mine_crystal_chance_modifier-u6mfaf",
             "type": "mine_crystal_chance_modifier",
             "value": 15,
             "valueType": "percent"
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Синяя прожилка.png",
         "positionX": 0,
         "positionY": 0
@@ -64329,7 +64538,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_fragile_loot_break_chance_modifier-gmrw34",
+            "id": "mine_fragile_loot_break_chance_modifier-bv8et1",
             "type": "mine_fragile_loot_break_chance_modifier",
             "value": -30,
             "valueType": "percent",
@@ -64342,8 +64551,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Неповреждённый кристалл.png",
         "positionX": 0,
         "positionY": 0
@@ -64365,13 +64574,13 @@
         "skillPointCost": 3,
         "effects": [
           {
-            "id": "mine_crystal_chance_modifier-joz4qg",
+            "id": "mine_crystal_chance_modifier-9fyyw6",
             "type": "mine_crystal_chance_modifier",
             "value": 20,
             "valueType": "percent"
           },
           {
-            "id": "mine_loot_special_property_chance-n0lhow",
+            "id": "mine_loot_special_property_chance-7ohyt5",
             "type": "mine_loot_special_property_chance",
             "value": 10,
             "valueType": "percent",
@@ -64384,8 +64593,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Чистое сердце кристалла.png",
         "positionX": 0,
         "positionY": 0
@@ -64404,7 +64613,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_loot_special_property_chance-0uc9cv",
+            "id": "mine_loot_special_property_chance-oxpncy",
             "type": "mine_loot_special_property_chance",
             "value": 5,
             "valueType": "percent",
@@ -64417,8 +64626,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Память камня.png",
         "positionX": 0,
         "positionY": 0
@@ -64437,7 +64646,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_rune_fragment_chance_modifier-21tys5",
+            "id": "mine_rune_fragment_chance_modifier-aq3bkl",
             "type": "mine_rune_fragment_chance_modifier",
             "value": 8,
             "valueType": "percent",
@@ -64447,8 +64656,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Следы древних.png",
         "positionX": 0,
         "positionY": 0
@@ -64467,7 +64676,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_curse_resistance-32m8aw",
+            "id": "mine_curse_resistance-vt6nwf",
             "type": "mine_curse_resistance",
             "value": 30,
             "valueType": "percent",
@@ -64478,7 +64687,7 @@
             }
           },
           {
-            "id": "mine_spirit_resistance-30i7n3",
+            "id": "mine_spirit_resistance-o04tv2",
             "type": "mine_spirit_resistance",
             "value": 15,
             "valueType": "percent",
@@ -64490,8 +64699,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Не трогай знак.png",
         "positionX": 0,
         "positionY": 0
@@ -64513,7 +64722,7 @@
         "skillPointCost": 2,
         "effects": [
           {
-            "id": "mine_block_hint_chance-6umfux",
+            "id": "mine_block_hint_chance-mv8vqe",
             "type": "mine_block_hint_chance",
             "value": 0.2,
             "valueType": "flat",
@@ -64526,8 +64735,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Шёпот камня.png",
         "positionX": 0,
         "positionY": 0
@@ -64549,19 +64758,19 @@
         "skillPointCost": 3,
         "effects": [
           {
-            "id": "mine_rune_fragment_chance_modifier-4inqzg",
+            "id": "mine_rune_fragment_chance_modifier-do3kl2",
             "type": "mine_rune_fragment_chance_modifier",
             "value": 12,
             "valueType": "percent"
           },
           {
-            "id": "mine_event_chance_modifier-g22a2i",
+            "id": "mine_event_chance_modifier-bzxesm",
             "type": "mine_event_chance_modifier",
             "value": 10,
             "valueType": "percent"
           },
           {
-            "id": "mine_curse_resistance-eqxql9",
+            "id": "mine_curse_resistance-9e8okp",
             "type": "mine_curse_resistance",
             "value": 20,
             "valueType": "percent",
@@ -64573,8 +64782,8 @@
           }
         ],
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/art/mining-skills/Язык трещин.png",
         "positionX": 0,
         "positionY": 0
@@ -64616,8 +64825,8 @@
         "positionX": 220,
         "positionY": 1240,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64662,8 +64871,8 @@
         "positionX": 430,
         "positionY": 1240,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64707,8 +64916,8 @@
         "positionX": 640,
         "positionY": 1240,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64749,8 +64958,8 @@
         "positionX": 850,
         "positionY": 1240,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64795,8 +65004,8 @@
         "positionX": 1060,
         "positionY": 1240,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64839,8 +65048,8 @@
         "positionX": 280,
         "positionY": 920,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64887,8 +65096,8 @@
         "positionX": 280,
         "positionY": 860,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64933,8 +65142,8 @@
         "positionX": 280,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -64980,8 +65189,8 @@
         "positionX": 280,
         "positionY": 740,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65024,8 +65233,8 @@
         "positionX": 280,
         "positionY": 680,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65073,8 +65282,8 @@
         "positionX": 280,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65122,8 +65331,8 @@
         "positionX": 280,
         "positionY": 540,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65170,8 +65379,8 @@
         "positionX": 280,
         "positionY": 480,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65217,8 +65426,8 @@
         "positionX": 280,
         "positionY": 420,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65261,8 +65470,8 @@
         "positionX": 280,
         "positionY": 360,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65305,8 +65514,8 @@
         "positionX": 640,
         "positionY": 920,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65349,8 +65558,8 @@
         "positionX": 640,
         "positionY": 860,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65392,8 +65601,8 @@
         "positionX": 640,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65439,8 +65648,8 @@
         "positionX": 640,
         "positionY": 740,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65484,8 +65693,8 @@
         "positionX": 640,
         "positionY": 680,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65531,8 +65740,8 @@
         "positionX": 640,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65576,8 +65785,8 @@
         "positionX": 640,
         "positionY": 540,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65624,8 +65833,8 @@
         "positionX": 640,
         "positionY": 480,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65673,8 +65882,8 @@
         "positionX": 640,
         "positionY": 420,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65718,8 +65927,8 @@
         "positionX": 640,
         "positionY": 360,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65769,8 +65978,8 @@
         "positionX": 1000,
         "positionY": 920,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65814,8 +66023,8 @@
         "positionX": 1000,
         "positionY": 860,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65867,8 +66076,8 @@
         "positionX": 1000,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65907,8 +66116,8 @@
         "positionX": 1000,
         "positionY": 740,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -65960,8 +66169,8 @@
         "positionX": 1000,
         "positionY": 680,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66006,8 +66215,8 @@
         "positionX": 1000,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66053,8 +66262,8 @@
         "positionX": 1000,
         "positionY": 540,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66090,8 +66299,8 @@
         "positionX": 1000,
         "positionY": 480,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66138,8 +66347,8 @@
         "positionX": 1000,
         "positionY": 420,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66183,8 +66392,8 @@
         "positionX": 1000,
         "positionY": 360,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66223,8 +66432,8 @@
         "positionX": 460,
         "positionY": 120,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66263,8 +66472,8 @@
         "positionX": 640,
         "positionY": 120,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66321,8 +66530,8 @@
         "positionX": 820,
         "positionY": 120,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "iconImageRef": {
           "type": "tileset",
           "sheetId": "sheet_blacksmith_basic_forging",
@@ -66356,8 +66565,8 @@
         "positionX": 200,
         "positionY": 900,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_firm_swing/carpentry_skill_firm_swing-icon-carpentry_skill_firm_swing-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66387,8 +66596,8 @@
         "positionX": 200,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_tree_reading/carpentry_skill_tree_reading-icon-carpentry_skill_tree_reading-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66418,8 +66627,8 @@
         "positionX": 200,
         "positionY": 700,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_lumberjack_wedge/carpentry_skill_lumberjack_wedge-icon-carpentry_skill_lumberjack_wedge-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66449,8 +66658,8 @@
         "positionX": 200,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_silent_felling/carpentry_skill_silent_felling-icon-carpentry_skill_silent_felling-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66480,8 +66689,8 @@
         "positionX": 200,
         "positionY": 500,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_clean_cut/carpentry_skill_clean_cut-icon-carpentry_skill_clean_cut-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66511,8 +66720,8 @@
         "positionX": 200,
         "positionY": 400,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_master_hand/carpentry_skill_master_hand-icon-carpentry_skill_master_hand-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66540,8 +66749,8 @@
         "positionX": 500,
         "positionY": 900,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_even_sawing/carpentry_skill_even_sawing-icon-carpentry_skill_even_sawing-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66571,8 +66780,8 @@
         "positionX": 500,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_gentle_saw/carpentry_skill_gentle_saw-icon-carpentry_skill_gentle_saw-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66602,8 +66811,8 @@
         "positionX": 500,
         "positionY": 700,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_plank_marking/carpentry_skill_plank_marking-icon-carpentry_skill_plank_marking-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66633,8 +66842,8 @@
         "positionX": 500,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_dry_core/carpentry_skill_dry_core-icon-carpentry_skill_dry_core-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66664,8 +66873,8 @@
         "positionX": 500,
         "positionY": 500,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_sawmill_eye/carpentry_skill_sawmill_eye-icon-carpentry_skill_sawmill_eye-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66695,8 +66904,8 @@
         "positionX": 800,
         "positionY": 900,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_basic_handle/carpentry_skill_basic_handle-icon-carpentry_skill_basic_handle-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66728,8 +66937,8 @@
         "positionX": 800,
         "positionY": 800,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_apprentice_shaft/carpentry_skill_apprentice_shaft-icon-carpentry_skill_apprentice_shaft-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66759,8 +66968,8 @@
         "positionX": 800,
         "positionY": 700,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_dry_plank/carpentry_skill_dry_plank-icon-carpentry_skill_dry_plank-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66792,8 +67001,8 @@
         "positionX": 800,
         "positionY": 600,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_master_frame/carpentry_skill_master_frame-icon-carpentry_skill_master_frame-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66825,8 +67034,8 @@
         "positionX": 800,
         "positionY": 500,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_ladder_maker/carpentry_skill_ladder_maker-icon-carpentry_skill_ladder_maker-icon.png",
         "iconImageRef": {
           "type": "image",
@@ -66858,8 +67067,8 @@
         "positionX": 800,
         "positionY": 400,
         "isEnabled": true,
-        "createdAt": "2026-06-10T15:16:43.959Z",
-        "updatedAt": "2026-06-10T15:16:43.959Z",
+        "createdAt": "2026-06-10T15:21:23.948Z",
+        "updatedAt": "2026-06-10T15:21:23.948Z",
         "icon": "/assets/upload/images/skills/carpentry_skill_enchanting_base/carpentry_skill_enchanting_base-icon-carpentry_skill_enchanting_base-icon.png",
         "iconImageRef": {
           "type": "image",
