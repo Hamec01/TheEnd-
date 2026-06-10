@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forge Mini-Game Prototype</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Интерактивные оверлеи для этапов игры */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .dialog-box {
+            background: #2c2c2c;
+            border: 3px solid #d4af37;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .dialog-box h2 {
+            margin-top: 0;
+            color: #e5c158;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 25px;
+            gap: 15px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #8a1a1a, #5a1010);
+            color: white;
+            border: 2px solid #d4af37;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: transform 0.1s, filter 0.2s;
+        }
+
+        button:hover {
+            filter: brightness(1.2);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        /* Стили для HUD (отображение параметров сверху) */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background: rgba(20, 20, 20, 0.85);
+            padding: 10px 25px;
+            border-radius: 30px;
+            border: 1px solid #444;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .hud-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+
+        .hud-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #aaa;
+            margin-bottom: 2px;
+        }
+
+        .hud-val {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e5c158;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- HUD параметров сверху -->
+    <div id="hud">
+        <div class="hud-item">
+            <span class="hud-label">Накал</span>
+            <span id="hud-heat" class="hud-val">0%</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Форма</span>
+            <span id="hud-shape" class="hud-val">0%</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Качество</span>
+            <span id="hud-quality" class="hud-val">50%</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Дефекты</span>
+            <span id="hud-defects" class="hud-val" style="color: #ff5555;">0%</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Прогресс</span>
+            <span id="hud-progress" class="hud-val" style="color: #55ff55;">0%</span>
+        </div>
+    </div>
+
+    <!-- Холст для отрисовки -->
+    <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+    <!-- Оверлей этапа 3: Случайные события -->
+    <div id="event-overlay" class="overlay">
+        <div class="dialog-box">
+            <h2 id="event-title">Случайное событие</h2>
+            <p id="event-desc">Что-то пошло не так в процессе ковки металла.</p>
+            <div class="btn-group">
+                <button id="btn-fix">Исправить</button>
+                <button id="btn-ignore">Игнорировать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Оверлей этапа 4: Выбор жидкости для закалки -->
+    <div id="quench-overlay" class="overlay">
+        <div class="dialog-box">
+            <h2>Выбор среды охлаждения</h2>
+            <p>Выберете жидкость для закалки клинка. Рискнете ли вы прочностью ради исключительных свойств?</p>
+            <div class="btn-group">
+                <button id="btn-quench-water">Вода (+Прочность, Высокий риск)</button>
+                <button id="btn-quench-oil">Масло (Безопасно, Средний бонус)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Оверлей этапа 5: Финишная обработка -->
+    <div id="finish-overlay" class="overlay">
+        <div class="dialog-box">
+            <h2>Финишная отделка</h2>
+            <p>У вас есть <span id="finish-points">3</span> очка улучшения. Распределите их с умом:</p>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                <button id="btn-finish-balance">Балансировка (Точность)</button>
+                <button id="btn-finish-polish">Полировка (Цена)</button>
+                <button id="btn-finish-sharpen">Заточка (Урон)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Оверлей результатов -->
+    <div id="result-overlay" class="overlay">
+        <div class="dialog-box">
+            <h2 id="result-title">Ковка завершена</h2>
+            <p id="result-desc"></p>
+            <h3 id="result-grade" style="font-size: 24px; color: #d4af37; margin: 15px 0;"></h3>
+            <div class="btn-group">
+                <button id="btn-restart" style="background: linear-gradient(135deg, #1a8a1a, #105a10);">Начать заново</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
