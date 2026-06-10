@@ -101,21 +101,53 @@ export const imageService = {
     }
   },
 
-  async uploadResized(file: File, width: number, height: number, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
+  async uploadResized(
+    file: File,
+    width: number,
+    height: number,
+    options?: { id?: string; name?: string; folder?: string; replaceIfExists?: boolean },
+  ): Promise<StoredImage> {
     const originalDataUrl = await fileToDataUrl(file);
     const resizedDataUrl = await resizeDataUrl(originalDataUrl, width, height);
-    return uploadContentImage({
-      ...(options?.id?.trim() ? { id: options.id.trim() } : {}),
+    const normalizedId = options?.id?.trim() || undefined;
+    const payload = {
+      ...(normalizedId ? { id: normalizedId } : {}),
       name: options?.name?.trim() || file.name,
       ...(options?.folder?.trim() ? { folder: options.folder.trim() } : {}),
       mimeType: 'image/png',
       width,
       height,
       dataUrl: resizedDataUrl,
-    });
+    };
+
+    try {
+      return await uploadContentImage(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const shouldReplace = Boolean(
+        (options?.replaceIfExists ?? Boolean(normalizedId))
+        && normalizedId
+        && message.toLowerCase().includes('duplicate images id'),
+      );
+      if (!shouldReplace || !normalizedId) {
+        throw error;
+      }
+
+      return replaceContentImage(normalizedId, {
+        name: payload.name,
+        mimeType: payload.mimeType,
+        width: payload.width,
+        height: payload.height,
+        dataUrl: payload.dataUrl,
+      });
+    }
   },
 
-  async uploadPreset(file: File, presetId: ImagePresetId, options?: { id?: string; name?: string; folder?: string }): Promise<StoredImage> {
+  async uploadPreset(
+    file: File,
+    presetId: ImagePresetId,
+    options?: { id?: string; name?: string; folder?: string; replaceIfExists?: boolean },
+  ): Promise<StoredImage> {
     const preset = IMAGE_PRESETS[presetId];
     return this.uploadResized(file, preset.width, preset.height, options);
   },

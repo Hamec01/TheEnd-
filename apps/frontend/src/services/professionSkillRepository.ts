@@ -6,37 +6,10 @@ import type {
   ProfessionSkillEffectValueType,
 } from '../types/profession';
 import type { GameImageRef } from './content/models';
+import { clearLegacyCarpentryAutoIconForEdit } from './content/ensureItemImagePersisted';
 import { loadProfessionSkillsFromBackend, syncProfessionSkillsToBackend } from './professionSkillsService';
 
 const STORAGE_KEY = 'theend.professionSkills.v2';
-
-const CARPENTRY_SKILL_IDS = [
-  'carpentry_skill_firm_swing',
-  'carpentry_skill_tree_reading',
-  'carpentry_skill_lumberjack_wedge',
-  'carpentry_skill_silent_felling',
-  'carpentry_skill_clean_cut',
-  'carpentry_skill_master_hand',
-  'carpentry_skill_even_sawing',
-  'carpentry_skill_gentle_saw',
-  'carpentry_skill_plank_marking',
-  'carpentry_skill_dry_core',
-  'carpentry_skill_sawmill_eye',
-  'carpentry_skill_basic_handle',
-  'carpentry_skill_apprentice_shaft',
-  'carpentry_skill_dry_plank',
-  'carpentry_skill_master_frame',
-  'carpentry_skill_ladder_maker',
-  'carpentry_skill_enchanting_base',
-] as const;
-
-function buildCarpentrySkillIconPath(skillId: string): string {
-  return `/assets/upload/images/skills/${skillId}/${skillId}-icon-${skillId}-icon.png`;
-}
-
-function buildCarpentrySkillIconRef(skillId: string): GameImageRef {
-  return { type: 'image', src: buildCarpentrySkillIconPath(skillId) };
-}
 
 function isStableUploadPath(value: string | undefined): boolean {
   const normalized = String(value ?? '').trim();
@@ -65,17 +38,11 @@ function skillIconFieldsFromPath(path: string): Pick<ProfessionSkill, 'icon' | '
 function pickSkillIconFields(local: ProfessionSkill, remote: ProfessionSkill): Pick<ProfessionSkill, 'icon' | 'iconImageRef'> {
   const localPath = pickStableUploadPath(local);
   const remotePath = pickStableUploadPath(remote);
-  if (remotePath && !localPath) {
-    return skillIconFieldsFromPath(remotePath);
-  }
   if (localPath) {
     return skillIconFieldsFromPath(localPath);
   }
-  if (remote.iconImageRef || remote.icon?.trim()) {
-    return {
-      icon: remote.icon?.trim() || undefined,
-      iconImageRef: remote.iconImageRef,
-    };
+  if (remotePath) {
+    return skillIconFieldsFromPath(remotePath);
   }
   if (local.iconImageRef || local.icon?.trim()) {
     return {
@@ -83,47 +50,25 @@ function pickSkillIconFields(local: ProfessionSkill, remote: ProfessionSkill): P
       iconImageRef: local.iconImageRef,
     };
   }
+  if (remote.iconImageRef || remote.icon?.trim()) {
+    return {
+      icon: remote.icon?.trim() || undefined,
+      iconImageRef: remote.iconImageRef,
+    };
+  }
   return {};
 }
 
-function normalizeCarpentrySkillIcon(skill: ProfessionSkill): ProfessionSkill {
-  const defaultPath = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
-  if (!defaultPath) {
-    return skill;
-  }
-
-  const stablePath = pickStableUploadPath(skill);
-  if (stablePath) {
-    return {
-      ...skill,
-      ...skillIconFieldsFromPath(stablePath),
-    };
-  }
-
-  return {
-    ...skill,
-    icon: defaultPath,
-    iconImageRef: buildCarpentrySkillIconRef(skill.id),
-  };
-}
-
 function repairProfessionSkillIcons(skill: ProfessionSkill): ProfessionSkill {
-  if (DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id]) {
-    return normalizeCarpentrySkillIcon(skill);
-  }
   const stablePath = pickStableUploadPath(skill);
-  if (stablePath) {
-    return {
+  const repaired = stablePath
+    ? {
       ...skill,
       ...skillIconFieldsFromPath(stablePath),
-    };
-  }
-  return skill;
+    }
+    : skill;
+  return clearLegacyCarpentryAutoIconForEdit(repaired);
 }
-
-const DEFAULT_CARPENTRY_SKILL_ICON_BY_ID: Record<string, string> = Object.fromEntries(
-  CARPENTRY_SKILL_IDS.map((skillId) => [skillId, buildCarpentrySkillIconPath(skillId)]),
-);
 
 const DEFAULT_MINING_SKILL_ICON_BY_NAME: Record<string, string> = {
   'Крепкий замах': '/art/mining-skills/Крепкий замах.png',
@@ -1332,29 +1277,14 @@ function createDefaultCarpentrySkills(): ProfessionSkill[] {
     })
   ];
 
-  return skills.map((entry) => {
-    const icon = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[entry.id];
-    if (!icon) {
-      return entry;
-    }
-    return {
-      ...entry,
-      icon,
-      iconImageRef: buildCarpentrySkillIconRef(entry.id),
-    };
-  });
+  return skills;
 }
 
 function resolveDefaultSkillIcon(skill: ProfessionSkill): string | undefined {
-  return DEFAULT_MINING_SKILL_ICON_BY_NAME[skill.name]
-    ?? DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
+  return DEFAULT_MINING_SKILL_ICON_BY_NAME[skill.name];
 }
 
-function resolveDefaultSkillIconRef(skill: ProfessionSkill): GameImageRef | undefined {
-  const carpentryPath = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
-  if (carpentryPath) {
-    return buildCarpentrySkillIconRef(skill.id);
-  }
+function resolveDefaultSkillIconRef(_skill: ProfessionSkill): GameImageRef | undefined {
   return undefined;
 }
 
@@ -1515,11 +1445,6 @@ export function hydrateProfessionSkillsFromBackend(remoteSkills: ProfessionSkill
     ? local
     : mergeWithMiningDefaults(mergeRemoteProfessionSkills(local, normalizedRemote));
   writeStorage(merged);
-  if (typeof window !== 'undefined') {
-    void syncProfessionSkillsToBackend(merged).catch((error) => {
-      console.warn('[professionSkills] Failed to sync repaired skills to backend content:', error);
-    });
-  }
   return clone(merged);
 }
 

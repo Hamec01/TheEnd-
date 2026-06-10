@@ -47,7 +47,7 @@ export async function materializeTilesetFrameToPreset(
     id?: string;
     name?: string;
   },
-): Promise<{ imageId: string; dataUrl?: string } | null> {
+): Promise<{ imageId: string; dataUrl?: string; updatedAt?: string } | null> {
   if (!ref || ref.type !== 'tileset') {
     return null;
   }
@@ -99,6 +99,7 @@ export async function materializeTilesetFrameToPreset(
     id: options.id,
     name: options.name,
     folder: options.folder,
+    replaceIfExists: Boolean(options.id?.trim()),
   });
-  return { imageId: uploaded.id, dataUrl: uploaded.dataUrl };
+  return { imageId: uploaded.id, dataUrl: uploaded.dataUrl, updatedAt: uploaded.updatedAt };
 }

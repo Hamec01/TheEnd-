@@ -8,6 +8,7 @@ import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { loadRuntimeImages } from '../../services/content/runtimeImageService';
 import type { StoredImage, GameImageRef } from '../../services/content/models';
+import { useAdminSaveShortcut } from '../adminSaveTools';
 
 interface ProfessionBranchEditorProps {
   professions?: Array<{ id: string; name: string }>;
@@ -78,6 +79,36 @@ export function ProfessionBranchEditor({ professions = [], filterByProfession, o
       persist(branches.filter(b => b.id !== id));
     }
   };
+
+  function handleAdminSave(): boolean {
+    if (editingId) {
+      if (!(editingId && editForm.id && editForm.name && editForm.professionId)) {
+        return false;
+      }
+      handleSaveEdit();
+      return true;
+    }
+    if (newFormOpen) {
+      const profId = filterByProfession || editForm.professionId;
+      if (!(editForm.id && editForm.name && profId)) {
+        return false;
+      }
+      handleNewBranch();
+      return true;
+    }
+    return false;
+  }
+
+  const canAdminSave = Boolean(
+    (editingId && editForm.id && editForm.name && editForm.professionId)
+    || (newFormOpen && editForm.id && editForm.name && (filterByProfession || editForm.professionId)),
+  );
+
+  useAdminSaveShortcut({
+    enabled: canAdminSave,
+    isSaving: false,
+    onSave: handleAdminSave,
+  });
 
   const handleNewBranch = () => {
     const profId = filterByProfession || editForm.professionId;

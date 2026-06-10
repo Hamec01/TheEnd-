@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ContentAutosaveStatus } from '../services/content/contentApi';
+import { AdminSaveToast } from './AdminSaveToast';
 
 interface AdminLayoutProps {
   title: string;
@@ -102,6 +103,7 @@ export function AdminLayout({
 
   return (
     <div className="admin-shell">
+      <AdminSaveToast />
       <aside className="admin-sidebar card">
         <h2>Админ-панель</h2>
         <nav>

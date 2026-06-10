@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { App } from './App';
 import { AdminApp } from './admin/AdminApp';
+import { installGlobalAdminSaveListener, isAdminPath } from './admin/adminSaveRegistry';
 import { installGlobalUiSoundBindings, primeSoundRegistry } from './services/soundRuntime';
 
 export type PlayerPath = '/' | '/inventory' | '/map' | '/combat' | '/merchant' | '/character' | '/stats' | '/skills' | '/equipment' | '/journal';
@@ -50,7 +51,14 @@ export function RootApp() {
     setPath(normalized);
   }, []);
 
-  const isAdmin = useMemo(() => path === '/admin' || path.startsWith('/admin/'), [path]);
+  const isAdmin = useMemo(() => isAdminPath(path), [path]);
+
+  useLayoutEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    return installGlobalAdminSaveListener();
+  }, [isAdmin]);
 
   if (isAdmin) {
     return <AdminApp currentPath={path} onNavigate={navigate} />;

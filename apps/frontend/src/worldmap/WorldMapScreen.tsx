@@ -6855,11 +6855,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return;
     }
     if (!sawingArcadeConfig) {
-      onStatus("Ошибка: цель распила недоступна. Выберите поваленное дерево или бревно и продолжайте.");
+      onStatus("Нет деревьев! Нечего пилить на делянке.");
       setSawingActiveLog(null);
-      setSawingArcadeRunKey((current) => current + 1);
+      setForestPanelOpen(true);
+      setArcadeMode(null);
     }
-  }, [arcadeMode, onStatus, sawingArcadeConfig, setSawingActiveLog]);
+  }, [arcadeMode, onStatus, sawingArcadeConfig, setArcadeMode, setForestPanelOpen, setSawingActiveLog]);
 
   const handleFellingComplete = useCallback((tree: TreeDefinition) => {
     const now = Date.now();
@@ -6924,7 +6925,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
   }, [applyResourceDeltas, bestAxe, contentSnapshot?.trees, handleFellingComplete, onStatus, removeBrokenToolIfNeeded, updateToolDurability]);
 
-  const applySawingResult = useCallback((result: SawingRunResult) => {
+  const applySawingResult = useCallback((result: SawingRunResult): { applied: boolean; treesRemaining: number; message?: string } => {
+    const now = Date.now();
+    const activeForestZoneId = activeForestZoneForCarpenter?.id ?? null;
+    const countActiveFelledTrees = (entries: FelledLogMemoryEntry[]) => entries.filter((entry) => (
+      activeForestZoneId
+        ? entry.zoneId === activeForestZoneId
+        : entry.expiresAt > now
+    )).length;
+    const treesBefore = countActiveFelledTrees(felledLogMemory);
+
     applyResourceDeltas({ staminaSpent: result.staminaSpent, hpDamage: result.hpDamage });
 
     if (bestSaw) {
@@ -6937,17 +6947,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     if (!result.success) {
-      onStatus(`Распил прерван: ${result.reason ?? "действие не завершено"}.`);
-      return;
+      const message = `Распил прерван: ${result.reason ?? "действие не завершено"}.`;
+      onStatus(message);
+      return { applied: false, treesRemaining: treesBefore, message };
     }
 
-    const now = Date.now();
-    const activeForestZoneId = activeForestZoneForCarpenter?.id ?? null;
-    const availableTreesBefore = felledLogMemory.filter((entry) => (
-      activeForestZoneId
-        ? entry.zoneId === activeForestZoneId
-        : entry.expiresAt > now
-    )).length;
+    const logsConsumed = Math.max(1, Math.floor(result.recipe.logsConsumed || 1));
+    if (result.logItemId === "__felled_logs_memory__" && treesBefore < logsConsumed) {
+      const message = treesBefore <= 0
+        ? "Нет деревьев! Нечего пилить на делянке."
+        : `Недостаточно поваленных деревьев: нужно ${logsConsumed}, доступно ${treesBefore}.`;
+      onStatus(message);
+      return { applied: false, treesRemaining: treesBefore, message };
+    }
 
     const currentLogsCount = inventory.items
       .filter((entry) => entry.quantity > 0)
@@ -6959,20 +6971,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }, 0);
     const freeSlots = Math.max(0, cartState.capacityLogs - currentLogsCount);
     if (freeSlots <= 0) {
-      onStatus(`Нет места для брёвен. Лимит: ${cartState.capacityLogs}. Освободите место или возьмите транспорт.`);
-      return;
+      const message = `Нет места для брёвен. Лимит: ${cartState.capacityLogs}. Освободите место или возьмите транспорт.`;
+      onStatus(message);
+      return { applied: false, treesRemaining: treesBefore, message };
     }
 
     const recipeOutputItemId = result.outputItemId ?? result.recipe.outputIds[0] ?? "item_wood_log_common";
     const resolvedOutputName = resolveItemById?.(recipeOutputItemId)?.name ?? itemCatalogById.get(recipeOutputItemId)?.name ?? null;
     if (!resolvedOutputName) {
-      onStatus(`Ошибка распила: не найден выходной предмет ${recipeOutputItemId}. Дерево не списано.`);
-      return;
-    }
-    const logsConsumed = Math.max(1, Math.floor(result.recipe.logsConsumed || 1));
-    if (result.logItemId === "__felled_logs_memory__" && availableTreesBefore < logsConsumed) {
-      onStatus(`Недостаточно поваленных деревьев: нужно ${logsConsumed}, доступно ${availableTreesBefore}.`);
-      return;
+      const message = `Ошибка распила: не найден выходной предмет ${recipeOutputItemId}. Дерево не списано.`;
+      onStatus(message);
+      return { applied: false, treesRemaining: treesBefore, message };
     }
     if (result.logItemId === "__felled_logs_memory__") {
       setFelledLogMemory((current) => {
@@ -7013,11 +7022,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       onPlayerProfessionsChange(nextProfessions);
     }
 
-    const availableTreesAfter = Math.max(0, availableTreesBefore - logsConsumed);
+    const treesAfter = Math.max(0, treesBefore - logsConsumed);
     onStatus(
-      `Распил завершён: деревьев до/после ${availableTreesBefore}/${availableTreesAfter}, списано ${logsConsumed}, получено ${resolvedOutputName} x${Math.min(freeSlots, result.recipe.outputQtyPerItem)} (+${result.recipe.xp} XP).`,
+      `Распил завершён: деревьев до/после ${treesBefore}/${treesAfter}, списано ${logsConsumed}, получено ${resolvedOutputName} x${Math.min(freeSlots, result.recipe.outputQtyPerItem)} (+${result.recipe.xp} XP).`,
     );
     onRuntimeInventoryChanged?.();
+    return { applied: true, treesRemaining: treesAfter };
   }, [
     activeForestZoneForCarpenter?.id,
     addItemsToPlayerInventory,
@@ -7067,7 +7077,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         onStatus("Распил завершен, но рецепт не найден. Выберите рецепт и продолжайте.");
         return;
       }
-      applySawingResult({
+      const outcome = applySawingResult({
         success: true,
         logItemId: sawingResult.logItemId,
         recipe,
@@ -7077,10 +7087,23 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         sawDurabilitySpent: sawingResult.durabilitySpent,
       });
       setSawingActiveLog(null);
-      setSawingArcadeRunKey((current) => current + 1);
       setSawingHeat(0);
       setSawingProgress(0);
-      onStatus("Распил готов. Можно пилить следующее дерево в брёвна.");
+      if (!outcome.applied) {
+        if (outcome.treesRemaining <= 0) {
+          setForestPanelOpen(true);
+          setArcadeMode(null);
+        }
+        return;
+      }
+      if (outcome.treesRemaining > 0) {
+        setSawingArcadeRunKey((current) => current + 1);
+        onStatus(`Распил готов. Осталось поваленных деревьев: ${outcome.treesRemaining}.`);
+        return;
+      }
+      setForestPanelOpen(true);
+      setArcadeMode(null);
+      onStatus("Все поваленные деревья распилены.");
       return;
     }
   }, [
@@ -7091,6 +7114,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onStatus,
     sawingRecipes,
     selectedSawingRecipe,
+    setArcadeMode,
+    setForestPanelOpen,
     setSawingActiveLog,
     setSawingHeat,
     setSawingProgress,
@@ -7273,7 +7298,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   return;
                 }
                 if (activeFelledTreesCount <= 0) {
-                  onStatus("Нет поваленных деревьев для распила.");
+                  onStatus("Нет деревьев! Нечего пилить на делянке.");
                   return;
                 }
                 const currentLogsCount = inventory.items

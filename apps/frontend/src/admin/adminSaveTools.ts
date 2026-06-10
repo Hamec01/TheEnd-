@@ -1,4 +1,5 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
+import { setAdminSaveHandler } from './adminSaveRegistry';
 
 export type AdminSaveState = 'idle' | 'saving' | 'saved' | 'error' | 'warning';
 
@@ -34,29 +35,15 @@ export function toAdminErrorMessage(error: unknown): string {
 export function useAdminSaveShortcut(params: {
   enabled: boolean;
   isSaving: boolean;
-  onSave: () => void | Promise<void>;
+  onSave: () => boolean | void | Promise<boolean | void>;
+  successMessage?: string;
 }): void {
-  const { enabled, isSaving, onSave } = params;
+  const { enabled, isSaving, onSave, successMessage } = params;
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const isSave = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's';
-      if (!isSave) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (!enabled || isSaving) {
-        return;
-      }
-
-      void onSave();
-    };
-
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [enabled, isSaving, onSave]);
+    setAdminSaveHandler({ enabled, isSaving, onSave, successMessage });
+    return () => setAdminSaveHandler(null);
+  }, [enabled, isSaving, onSave, successMessage]);
 }
 
 export async function runSaveWithFeedback<T>(params: {

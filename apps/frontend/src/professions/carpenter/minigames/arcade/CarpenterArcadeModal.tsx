@@ -1125,6 +1125,8 @@ class SawingScene extends Phaser.Scene {
   private readonly sawNeutralX = GAME_WIDTH / 2 - 90;
   private sawTween?: Phaser.Tweens.Tween;
   private failNotified = false;
+  private treesRemaining = 0;
+  private sawBlocked = false;
 
   constructor() {
     super({ key: "SawingScene" });
@@ -1160,6 +1162,10 @@ class SawingScene extends Phaser.Scene {
     this.lastDir = null;
     this.defect = 0;
     this.failNotified = false;
+    this.treesRemaining = config.source.type === "felled_trees"
+      ? Math.max(0, Math.floor(config.source.treesAvailable ?? 0))
+      : Number.MAX_SAFE_INTEGER;
+    this.sawBlocked = config.source.type === "felled_trees" && this.treesRemaining <= 0;
     this.coreX = GAME_WIDTH / 2 + Phaser.Math.Between(-18, 18);
     this.knotX = GAME_WIDTH / 2 + Phaser.Math.Between(-70, 70);
 
@@ -1179,9 +1185,9 @@ class SawingScene extends Phaser.Scene {
       this.add.text(
         GAME_WIDTH / 2,
         80,
-        `Поваленных деревьев на делянке: ${Math.max(0, Math.floor(config.source.treesAvailable ?? 0))}`,
+        `Поваленных деревьев на делянке: ${this.treesRemaining}`,
         {
-          color: "#7b5a44",
+          color: this.sawBlocked ? "#8b1f1f" : "#7b5a44",
           fontSize: "14px",
           fontFamily: "Georgia, serif",
         },
@@ -1193,13 +1199,18 @@ class SawingScene extends Phaser.Scene {
     this.staminaText = this.addTextLine(156, "");
     this.hpText = this.addTextLine(184, "");
     this.durabilityText = this.addTextLine(212, "");
-    this.statusText = this.add.text(GAME_WIDTH / 2, 334, "Чередуй ← и →", {
-      color: "#8b3a3a",
-      fontSize: "18px",
-      fontFamily: "Georgia, serif",
-      fontStyle: "bold italic",
-      align: "center",
-    }).setOrigin(0.5, 0);
+    this.statusText = this.add.text(
+      GAME_WIDTH / 2,
+      334,
+      this.sawBlocked ? "Нет деревьев!" : "Чередуй ← и →",
+      {
+        color: this.sawBlocked ? "#8b1f1f" : "#8b3a3a",
+        fontSize: "18px",
+        fontFamily: "Georgia, serif",
+        fontStyle: "bold italic",
+        align: "center",
+      },
+    ).setOrigin(0.5, 0);
     this.statusText.setDepth(20);
     this.rigGfx = this.add.graphics();
     this.rigGfx.setDepth(10);
@@ -1282,6 +1293,10 @@ class SawingScene extends Phaser.Scene {
   private press(dir: "left" | "right") {
     const config = this.initData?.config;
     if (!config || !this.initData) {
+      return;
+    }
+    if (this.sawBlocked || (config.source.type === "felled_trees" && this.treesRemaining <= 0)) {
+      this.statusText?.setText("Нет деревьев!");
       return;
     }
     if (!config.saw) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AdminFieldLabel } from '../adminUi';
 import {
   getProfessionSkillsByProfessionId,
@@ -14,8 +14,9 @@ import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { loadProfessionBranchesFromStorage } from '../../services/professionBranchRepository';
 import { validateMiningSkillConnectivity } from '../../services/miningSkillValidation';
-import { materializeTilesetFrameToPreset } from '../../services/content/materializeTilesetFrame';
+import { clearLegacyCarpentryAutoIconForEdit, ensureProfessionSkillIconPersisted } from '../../services/content/ensureItemImagePersisted';
 import { subscribeToContentSync } from '../../services/content/contentSync';
+import { useAdminSaveShortcut } from '../adminSaveTools';
 import type {
   MiningSkillEffectType,
   ProfessionSkill,
@@ -192,6 +193,12 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
   const [filterProfession, setFilterProfession] = useState<string>(filterByProfession || '');
   const [status, setStatus] = useState<string>('Готово');
   const effectiveProfessionId = filterByProfession || filterProfession;
+  const editingIdRef = useRef<string | null>(editingId);
+  const draftDirtyRef = useRef(false);
+
+  useEffect(() => {
+    editingIdRef.current = editingId;
+  }, [editingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +221,10 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
       if (payload.scope !== 'content' && payload.scope !== 'all') {
         return;
       }
-      reloadSkills();
+      void loadRuntimeImages().then(setImages).catch(() => setImages([]));
+      if (!editingIdRef.current && !draftDirtyRef.current) {
+        reloadSkills();
+      }
     });
     return () => {
       cancelled = true;
@@ -249,17 +259,25 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
   }
 
   function startCreate() {
+    draftDirtyRef.current = false;
     setEditingId(null);
     setDraft(emptySkill(effectiveProfessionId));
   }
 
   function startEdit(skill: ProfessionSkill) {
-    setEditingId(skill.id);
+    draftDirtyRef.current = false;
+    const editable = clearLegacyCarpentryAutoIconForEdit(skill);
+    setEditingId(editable.id);
     setDraft({
-      ...skill,
-      requiredSkillIds: [...(skill.requiredSkillIds ?? [])],
-      effects: [...(skill.effects ?? [])],
+      ...editable,
+      requiredSkillIds: [...(editable.requiredSkillIds ?? [])],
+      effects: [...(editable.effects ?? [])],
     });
+  }
+
+  function patchDraft(patch: Partial<ProfessionSkill>) {
+    draftDirtyRef.current = true;
+    setDraft((current) => ({ ...current, ...patch }));
   }
 
   function deleteSkill(skillId: string) {
@@ -272,13 +290,36 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
     }
   }
 
-  function saveDraft() {
+  async function saveDraft(): Promise<boolean> {
     if (!draft.id.trim() || !draft.name.trim() || !draft.professionId.trim()) {
-      return;
+      return false;
     }
+
+    const skillId = draft.id.trim();
+    let iconFields: Pick<ProfessionSkill, 'icon' | 'iconImageRef'> = {
+      icon: draft.icon,
+      iconImageRef: draft.iconImageRef,
+    };
+
+    try {
+      const persistedIcon = await ensureProfessionSkillIconPersisted(
+        (draft.iconImageRef as GameImageRef | undefined) ?? null,
+        draft.icon,
+        { skillId, runtimeImages: images },
+      );
+      iconFields = {
+        icon: persistedIcon.icon ?? draft.icon,
+        iconImageRef: persistedIcon.iconImageRef ?? draft.iconImageRef,
+      };
+    } catch (error) {
+      setStatus(`Ошибка сохранения иконки: ${String((error as Error).message ?? error)}`);
+      return false;
+    }
+
     const normalized: ProfessionSkill = {
       ...draft,
-      id: draft.id.trim(),
+      ...iconFields,
+      id: skillId,
       professionId: draft.professionId.trim(),
       name: draft.name.trim(),
       description: draft.description.trim(),
@@ -293,9 +334,12 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
       : [...skills, normalized];
 
     persist(nextSkills);
+    draftDirtyRef.current = false;
     setEditingId(normalized.id);
     setDraft(normalized);
+    void loadRuntimeImages().then(setImages).catch(() => setImages([]));
     setStatus(`Навык сохранён: ${normalized.name}`);
+    return true;
   }
 
   function resetDefaults() {
@@ -334,11 +378,28 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
     setDraft((current) => ({ ...current, effects }));
   }
 
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+
+  useAdminSaveShortcut({
+    enabled: Boolean(draft.id.trim() && draft.name.trim() && draft.professionId.trim()),
+    isSaving: isSavingDraft,
+    onSave: async () => {
+      setIsSavingDraft(true);
+      try {
+        return await saveDraft();
+      } finally {
+        setIsSavingDraft(false);
+      }
+    },
+  });
+
   return (
     <div className="profession-skill-editor">
       <div className="profession-skill-toolbar">
         <button type="button" className="btn-primary" onClick={startCreate}>+ Новый навык</button>
-        <button type="button" className="btn-secondary" onClick={saveDraft}>Сохранить</button>
+        <button type="button" className="btn-secondary" disabled={isSavingDraft} onClick={() => { void saveDraft(); }}>
+          {isSavingDraft ? 'Сохранение...' : 'Сохранить'}
+        </button>
         <button type="button" className="btn-secondary" onClick={resetDefaults}>Сбросить дефолты</button>
         {!filterByProfession ? (
           <select value={filterProfession} onChange={(event) => setFilterProfession(event.target.value)}>
@@ -471,44 +532,18 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
             defaultTilesetFrameHeight={128}
             uploadPresetId="item-icon"
             uploadSuggestedId={draft.id || undefined}
-            uploadSuggestedName={`${draft.id || draft.name || 'profession-skill'}-icon`}
+            uploadSuggestedName={draft.id ? `${draft.id}-custom-icon` : `${draft.name || 'profession-skill'}-custom-icon`}
             uploadFolder={buildUploadFolder('images', 'skills', draft.id || undefined)}
             onStatus={setStatus}
             onChange={(next) => {
-              setDraft((current) => ({
-                ...current,
+              draftDirtyRef.current = true;
+              patchDraft({
                 iconImageRef: next,
                 icon: toLegacyImagePath(next) ?? '',
-              }));
-              if (next?.type !== 'tileset') {
-                return;
-              }
-              void materializeTilesetFrameToPreset(next, {
-                presetId: 'item-icon',
-                runtimeImages: images,
-                folder: buildUploadFolder('images', 'skills', draft.id || draft.name || undefined),
-                id: `${draft.id || draft.name || 'profession-skill'}-icon`,
-                name: `${draft.id || draft.name || 'profession-skill'}-icon`,
-              }).then((result) => {
-                if (!result) {
-                  return;
-                }
-                setDraft((current) => ({
-                  ...current,
-                  iconImageRef: {
-                    type: 'image',
-                    src: result.dataUrl?.trim().startsWith('/assets/upload/')
-                      ? result.dataUrl.trim()
-                      : result.imageId,
-                  },
-                  icon: result.dataUrl?.trim().startsWith('/assets/upload/')
-                    ? result.dataUrl.trim()
-                    : result.imageId,
-                }));
-                setStatus(`Иконка навыка сохранена как отдельный PNG: ${result.imageId}`);
-              }).catch((error) => {
-                setStatus(String((error as Error).message ?? error));
               });
+              if (next?.type === 'tileset') {
+                setStatus('Кадр выбран. Нажмите «Сохранить» или Ctrl+S, чтобы записать иконку.');
+              }
             }}
           />
           <p className="muted">{status}</p>
