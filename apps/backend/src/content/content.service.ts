@@ -80,6 +80,14 @@ import type {
 } from '../worldsim/types/world-simulation.types';
 import { aggregateArenaCombatEquipmentModifiers } from './arena-combat-modifiers';
 import { applyPassiveStatBonusesToStatBlock, resolveCharacterEquipmentModifiers } from './item-effects.resolver';
+import {
+  getDurability as getProfessionDurability,
+  getMaxDurability as getProfessionMaxDurability,
+  getProfessionId as getProfessionItemId,
+  getProfessionItemKind as getProfessionKind,
+  getToolKind as getProfessionToolKind,
+  normalizeProfessionItem,
+} from './profession-item-module';
 
 const CONTENT_DB_VERSION = 1 as const;
 const CONTENT_COLLECTIONS: ContentCollectionName[] = [
@@ -2081,7 +2089,7 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
     : undefined;
   const imageRef = normalizeGameImageRefInput(input.imageRef, input.imagePath);
 
-  return {
+  const normalizedBase: AdminItem = {
     ...input,
     id: input.id.trim(),
     name: input.name.trim(),
@@ -2132,6 +2140,7 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
   };
+  return normalizeProfessionItem(normalizedBase);
 }
 
 function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition {
@@ -3517,6 +3526,24 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       if (!item || typeof item !== 'object') {
         errors.push(`Item entry is null or invalid`);
         continue;
+      }
+      const professionItem = normalizeProfessionItem(item);
+      const professionId = getProfessionItemId(professionItem);
+      const professionKind = getProfessionKind(professionItem);
+      const toolKind = getProfessionToolKind(professionItem);
+      const durability = getProfessionDurability(professionItem);
+      const maxDurability = getProfessionMaxDurability(professionItem);
+      if (professionItem.professionItem && !professionId) {
+        errors.push(`Item '${item.id}' has professionItem=true but missing professionId.`);
+      }
+      if (professionItem.professionItem && professionKind === 'tool' && !toolKind) {
+        errors.push(`Item '${item.id}' has professionItemKind=tool but missing toolKind.`);
+      }
+      if (typeof durability === 'number' && typeof maxDurability !== 'number') {
+        errors.push(`Item '${item.id}' has durability but missing maxDurability.`);
+      }
+      if (typeof durability === 'number' && typeof maxDurability === 'number' && durability > maxDurability) {
+        errors.push(`Item '${item.id}' has durability greater than maxDurability.`);
       }
       if (hasMojibakeQuestionMarks(item.name) || hasMojibakeQuestionMarks(item.subtype) || hasMojibakeQuestionMarks(item.gameplayDescription) || hasMojibakeQuestionMarks(item.loreDescription)) {
         errors.push(`Item '${item.id}' contains suspicious mojibake text ('???').`);

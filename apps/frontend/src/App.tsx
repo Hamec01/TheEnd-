@@ -116,6 +116,11 @@ import {
   readPlayerItemInstances,
   resolveEffectiveAdminItem,
 } from './services/playerItemInstances';
+import {
+  normalizeProfessionToolInventory,
+  removeCarpenterToolInstance,
+  resolveProfessionToolTemplateId,
+} from './services/carpenterToolInstances';
 import { DEFAULT_BATTLE_MAP_ID, loadBattleMaps, loadBattleMapsFromStore } from './services/battleMaps/battleMapStorage';
 import { resolveBattleMapForCombat, toRuntimeBattleMapPayload } from './services/battleMaps/battleMapRuntime';
 import { cityService } from './services/cityRepository';
@@ -1518,10 +1523,6 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return { ...raceConfig.stats };
   }, [raceConfig.stats]);
   const runtimeMerchants = useMemo(() => getRuntimeMerchants(runtimeAdminMerchants), [runtimeAdminMerchants]);
-  const worldInventory = useMemo(
-    () => mergeInventoryWithRuntimeOverlay(inventory),
-    [inventory, runtimeInventoryRevision],
-  );
   const playerItemInstances = useMemo<ItemInstance[]>(() => {
     const localInstances = readPlayerItemInstances();
     const byItemId = new Map(localInstances.map((entry) => [entry.itemId, entry] as const));
@@ -1579,13 +1580,28 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   }, [playerItemInstances, runtimeAdminItems, runtimeAdminMaterials]);
 
   const resolveRuntimeItemById = useCallback(
-    (itemId: string) => getDomainItemWithFallback(itemId, runtimeVisualItems),
-    [runtimeVisualItems],
+    (itemId: string) => {
+      const templateId = resolveProfessionToolTemplateId(itemId, character?.id ?? '');
+      return getDomainItemWithFallback(templateId, runtimeVisualItems);
+    },
+    [character?.id, runtimeVisualItems],
   );
 
   const resolveAdminVisualItemById = useCallback(
-    (itemId: string) => resolveEffectiveAdminItem(itemId, runtimeVisualItems, playerItemInstances),
-    [playerItemInstances, runtimeVisualItems],
+    (itemId: string) => {
+      const templateId = resolveProfessionToolTemplateId(itemId, character?.id ?? '');
+      return resolveEffectiveAdminItem(templateId, runtimeVisualItems, playerItemInstances);
+    },
+    [character?.id, playerItemInstances, runtimeVisualItems],
+  );
+
+  const worldInventory = useMemo(
+    () => normalizeProfessionToolInventory(
+      mergeInventoryWithRuntimeOverlay(inventory),
+      character?.id ?? '',
+      resolveAdminVisualItemById,
+    ),
+    [character?.id, inventory, resolveAdminVisualItemById, runtimeInventoryRevision],
   );
 
   function resolveItem(itemId: string): ItemDefinition {
@@ -3835,6 +3851,7 @@ function applyHubState(hub: HubStatePayload): void {
       }
       if (runtimeRemoved > 0) {
         writeStringArrayStorage(PLAYER_ITEMS_STORAGE_KEY, remainingRuntimeItems);
+        removeCarpenterToolInstance(normalizedItemId, character.id);
       }
 
       const requestedBackendRemoval = Math.max(0, safeQuantity - runtimeRemoved);

@@ -486,6 +486,37 @@ export interface CraftingRecipe {
   updatedAt: string;
 }
 
+export type ProfessionItemKind =
+  | 'tool'
+  | 'transport'
+  | 'station'
+  | 'consumable'
+  | 'material'
+  | 'blueprint'
+  | 'upgrade'
+  | 'service_item';
+
+export interface ProfessionItemStats {
+  toolKind?: string;
+  transportKind?: string;
+  stationKind?: string;
+  tier?: number;
+  requiredProfessionLevel?: number;
+  durability?: number;
+  maxDurability?: number;
+  efficiency?: number;
+  breakChanceModifier?: number;
+  staminaCostModifier?: number;
+  capacityLogs?: number;
+  capacityWeight?: number;
+  speedModifier?: number;
+  rentPrice?: number;
+  rentalDurationHours?: number;
+  requiresHorse?: boolean;
+  allowedActions?: string[];
+  supportedResourceKinds?: string[];
+}
+
 export interface AdminItem {
   id: string;
   name: string;
@@ -546,6 +577,10 @@ export interface AdminItem {
   imagePath?: string;
   imageRef?: GameImageRef;
   battleVisuals?: ActorBattleVisualConfig;
+  professionItem?: boolean;
+  professionId?: string;
+  professionItemKind?: ProfessionItemKind;
+  professionStats?: ProfessionItemStats;
   profession?: string;
   toolKind?: string;
   durability?: number;

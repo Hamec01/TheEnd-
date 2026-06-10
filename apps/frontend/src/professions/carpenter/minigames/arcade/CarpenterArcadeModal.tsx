@@ -59,11 +59,17 @@ export interface WoodcuttingArcadeConfig {
     maxDurability: number;
     efficiency: number;
     tier: number;
+    damageMin?: number;
+    damageMax?: number;
     staminaCostModifier?: number;
   } | null;
 }
 
 export interface SawingArcadeConfig {
+  source: {
+    type: "felled_trees" | "inventory_log";
+    treesAvailable?: number;
+  };
   log: {
     id: string;
     name: string;
@@ -116,6 +122,48 @@ const PLAYER_Y = GROUND_Y - 20;
 const TREE_BASE_Y = GROUND_Y;
 let pendingWoodcuttingSceneInit: WoodcuttingSceneInit | null = null;
 let pendingSawingSceneInit: SawingSceneInit | null = null;
+let activeArcadePrimaryPressAction: (() => void) | null = null;
+let activeArcadePrimaryReleaseAction: (() => void) | null = null;
+let activeArcadeMoveLeftAction: (() => void) | null = null;
+let activeArcadeMoveRightAction: (() => void) | null = null;
+
+function registerArcadePrimaryAction(
+  pressAction: () => void,
+  releaseAction: (() => void) | undefined,
+  scene: Phaser.Scene,
+): void {
+  activeArcadePrimaryPressAction = pressAction;
+  activeArcadePrimaryReleaseAction = releaseAction ?? null;
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    if (activeArcadePrimaryPressAction === pressAction) {
+      activeArcadePrimaryPressAction = null;
+      activeArcadePrimaryReleaseAction = null;
+    }
+  });
+}
+
+function registerArcadeMovementActions(
+  moveLeftAction: (() => void) | undefined,
+  moveRightAction: (() => void) | undefined,
+  scene: Phaser.Scene,
+): void {
+  activeArcadeMoveLeftAction = moveLeftAction ?? null;
+  activeArcadeMoveRightAction = moveRightAction ?? null;
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    activeArcadeMoveLeftAction = null;
+    activeArcadeMoveRightAction = null;
+  });
+}
+
+function isArcadeKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return target.tagName === "INPUT"
+    || target.tagName === "TEXTAREA"
+    || target.tagName === "SELECT"
+    || target.isContentEditable;
+}
 
 class WoodcuttingScene extends Phaser.Scene {
   private initData: WoodcuttingSceneInit | null = null;
@@ -396,12 +444,19 @@ class WoodcuttingDemoScene extends Phaser.Scene {
   private falling = false;
   private fallAngle = 0;
   private dead = false;
+  private failNotified = false;
   private chopTimer: Phaser.Time.TimerEvent | null = null;
   private warnTimer: Phaser.Time.TimerEvent | null = null;
+  private power = 0;
+  private charging = false;
+  private overchargeMs = 0;
+  private chargeDrainCarryMs = 0;
+  private chargeBarText?: Phaser.GameObjects.Text;
   private bg?: Phaser.GameObjects.Graphics;
   private treeGfx?: Phaser.GameObjects.Graphics;
   private charGfx?: Phaser.GameObjects.Graphics;
   private uiGfx?: Phaser.GameObjects.Graphics;
+  private warnOverlay?: Phaser.GameObjects.Rectangle;
   private treeHpText?: Phaser.GameObjects.Text;
   private staminaText?: Phaser.GameObjects.Text;
   private hpText?: Phaser.GameObjects.Text;
@@ -412,9 +467,12 @@ class WoodcuttingDemoScene extends Phaser.Scene {
   private statusText?: Phaser.GameObjects.Text;
   private strikeButton?: Phaser.GameObjects.Rectangle;
   private finishButton?: Phaser.GameObjects.Rectangle;
+  private finishLabel?: Phaser.GameObjects.Text;
   private readonly movementStaminaCost = 2;
-  private spaceKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
+  private readonly normalFallSpeedDegPerSec = 130;
+  private readonly instantFallSpeedDegPerSec = 520;
+  private currentFallSpeedDegPerSec = 130;
+  private forcedInstantHit = false;
 
   constructor() {
     super({ key: "WoodcuttingDemoScene" });
@@ -452,6 +510,9 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.falling = false;
     this.fallAngle = 0;
     this.dead = false;
+    this.failNotified = false;
+    this.currentFallSpeedDegPerSec = this.normalFallSpeedDegPerSec;
+    this.forcedInstantHit = false;
     this.segs = Array.from({ length: 10 }, () => ({ branch: this.randomBranch() }));
     this.chopTimer?.remove();
     this.warnTimer?.remove();
@@ -460,6 +521,9 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.treeGfx = this.add.graphics();
     this.charGfx = this.add.graphics();
     this.uiGfx = this.add.graphics();
+    this.warnOverlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x8b3a3a, 0.035);
+    this.warnOverlay.setVisible(false);
+    this.warnOverlay.setDepth(5);
 
     this.add.text(GAME_WIDTH / 2, 18, "АРКАДНАЯ РУБКА", { fontSize: "23px", color: "#3d2b1f", fontFamily: "Georgia, serif", fontStyle: "bold" }).setOrigin(0.5, 0);
     this.axeLabel = this.add.text(GAME_WIDTH / 2, 52, "", { fontSize: "13px", color: "#6b4c3b", fontFamily: "Georgia, serif" }).setOrigin(0.5, 0);
@@ -469,41 +533,74 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.hpText = this.add.text(36, 138, "", { color: "#5a4131", fontSize: "16px", fontFamily: "Georgia, serif" });
     this.durabilityText = this.add.text(36, 164, "", { color: "#5a4131", fontSize: "16px", fontFamily: "Georgia, serif" });
     this.treesText = this.add.text(36, 190, "", { color: "#5a4131", fontSize: "16px", fontFamily: "Georgia, serif", fontStyle: "bold" });
-    this.statusText = this.add.text(GAME_WIDTH / 2, 220, "Стрелки/A,D: перемещение. ENTER/SPACE: удар.", {
+    this.statusText = this.add.text(GAME_WIDTH / 2, 220, "Стрелки/A,D: перемещение. SPACE/ENTER: удерживай для силы, отпусти для удара.", {
       color: "#6b4c3b",
       fontSize: "14px",
       fontFamily: "Georgia, serif",
       align: "center",
     }).setOrigin(0.5);
+    this.chargeBarText = this.add.text(GAME_WIDTH / 2, 242, "", {
+      color: "#6b4c3b",
+      fontSize: "13px",
+      fontFamily: "Georgia, serif",
+      align: "center",
+    }).setOrigin(0.5);
 
-    this.strikeButton = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 90, 260, 54, INK, 0.9).setStrokeStyle(2, PARCHMENT_DARK);
-    this.strikeButton.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.chop());
-    this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 90, "УДАР", {
+    const strikeButtonX = GAME_WIDTH - 92;
+    const strikeButtonY = GROUND_Y + 44;
+    this.strikeButton = this.add.rectangle(strikeButtonX, strikeButtonY, 132, 48, INK, 0.9).setStrokeStyle(2, PARCHMENT_DARK);
+    this.strikeButton.setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => this.startCharge())
+      .on("pointerup", () => this.releaseCharge())
+      .on("pointerout", () => this.releaseCharge());
+    this.add.text(strikeButtonX, strikeButtonY, "УДАР", {
       color: "#f0ddb9",
-      fontSize: "20px",
+      fontSize: "18px",
       fontFamily: "Georgia, serif",
       fontStyle: "bold",
-    }).setOrigin(0.5);
-    this.finishButton = this.add.rectangle(GAME_WIDTH - 92, 38, 120, 28, 0x2d1d15, 0.9).setStrokeStyle(1, PARCHMENT_DARK);
+    }).setOrigin(0.5).setDepth(2);
+    this.strikeButton.setDepth(1);
+    this.finishButton = this.add.rectangle(GAME_WIDTH - 92, 38, 132, 34, 0x2d1d15, 0.9).setStrokeStyle(1, PARCHMENT_DARK);
     this.finishButton.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.completeRun());
-    this.add.text(GAME_WIDTH - 92, 38, "Забрать", {
+    this.finishLabel = this.add.text(GAME_WIDTH - 92, 38, "ЗАКОНЧИТЬ", {
       color: "#f0ddb9",
       fontSize: "14px",
       fontFamily: "Georgia, serif",
       fontStyle: "bold",
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(3);
 
     this.input.keyboard?.on("keydown-LEFT", () => this.setSide("left"));
     this.input.keyboard?.on("keydown-A", () => this.setSide("left"));
     this.input.keyboard?.on("keydown-RIGHT", () => this.setSide("right"));
     this.input.keyboard?.on("keydown-D", () => this.setSide("right"));
-    this.spaceKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.enterKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
     this.input.keyboard?.addCapture([
       Phaser.Input.Keyboard.KeyCodes.SPACE,
       Phaser.Input.Keyboard.KeyCodes.ENTER,
+      Phaser.Input.Keyboard.KeyCodes.LEFT,
+      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      Phaser.Input.Keyboard.KeyCodes.A,
+      Phaser.Input.Keyboard.KeyCodes.D,
     ]);
+    this.input.keyboard?.on("keydown-SPACE", (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.startCharge();
+    });
+    this.input.keyboard?.on("keyup-SPACE", (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.releaseCharge();
+    });
+    this.input.keyboard?.on("keydown-ENTER", (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.startCharge();
+    });
+    this.input.keyboard?.on("keyup-ENTER", (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.releaseCharge();
+    });
     this.input.keyboard?.on("keydown-ESC", () => this.completeRun());
+
+    registerArcadePrimaryAction(() => this.startCharge(), () => this.releaseCharge(), this);
+    registerArcadeMovementActions(() => this.setSide("left"), () => this.setSide("right"), this);
 
     this.drawBackdrop();
     this.refreshHud();
@@ -511,21 +608,16 @@ class WoodcuttingDemoScene extends Phaser.Scene {
   }
 
   update(_t: number, dt: number) {
-    if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      this.chop();
-    }
-    if (this.enterKey && Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-      this.chop();
-    }
+    this.updateCharge(dt);
     if (this.dead || !this.falling) return;
-    this.fallAngle += (dt / 1000) * 130;
+    this.fallAngle += (dt / 1000) * this.currentFallSpeedDegPerSec;
     if (this.fallAngle < 90) {
       this.redraw();
       return;
     }
     this.fallAngle = 90;
     this.treesFelled += 1;
-    const hits = this.warnSide === this.side;
+    const hits = this.forcedInstantHit || this.warnSide === this.side;
     if (hits) {
       const heavyHit = 24;
       this.hpLeft = Math.max(0, this.hpLeft - heavyHit);
@@ -566,6 +658,71 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.redraw();
   }
 
+  private startCharge() {
+    if (this.dead || !this.canChop || this.falling) {
+      return;
+    }
+    const config = this.initData?.config;
+    const strikeCost = Math.max(1, Math.round(8 * (1 + ((config?.axe?.staminaCostModifier) ?? 0))));
+    if (this.staminaLeft < strikeCost) {
+      this.charging = false;
+      this.power = 0;
+      this.overchargeMs = 0;
+      this.chargeDrainCarryMs = 0;
+      this.statusText?.setText("Не хватает выносливости для удара. Завершите и отдохните.");
+      this.refreshHud();
+      this.redraw();
+      return;
+    }
+    this.charging = true;
+  }
+
+  private releaseCharge() {
+    if (!this.charging) {
+      return;
+    }
+    this.charging = false;
+    this.chop();
+  }
+
+  private updateCharge(dt: number) {
+    if (!this.charging || this.dead || this.falling || !this.canChop) {
+      return;
+    }
+    const config = this.initData?.config;
+    if (!config || !config.axe) {
+      this.failRun("axe_broken");
+      return;
+    }
+    const drainIntervalMs = 250;
+    this.chargeDrainCarryMs += dt;
+    while (this.chargeDrainCarryMs >= drainIntervalMs) {
+      this.chargeDrainCarryMs -= drainIntervalMs;
+      const chargeStaminaDrain = Math.max(1, Math.round(2 * (1 + (config.axe.staminaCostModifier ?? 0))));
+      if (this.staminaLeft < chargeStaminaDrain) {
+        this.statusText?.setText("Не хватает выносливости для удержания удара.");
+        this.charging = false;
+        this.power = 0;
+        this.overchargeMs = 0;
+        this.chargeDrainCarryMs = 0;
+        this.refreshHud();
+        this.redraw();
+        return;
+      }
+      this.staminaLeft -= chargeStaminaDrain;
+      this.staminaSpent += chargeStaminaDrain;
+    }
+    const fillPerSecond = 0.85;
+    this.power = Math.min(1, this.power + (dt / 1000) * fillPerSecond);
+    if (this.power >= 1) {
+      this.overchargeMs += dt;
+    } else {
+      this.overchargeMs = 0;
+    }
+    this.refreshHud();
+    this.redraw();
+  }
+
   private chop() {
     if (this.dead || !this.canChop || this.falling) return;
     const config = this.initData?.config;
@@ -575,25 +732,60 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     }
     const staminaCost = Math.max(1, Math.round(8 * (1 + (config.axe.staminaCostModifier ?? 0))));
     if (this.staminaLeft < staminaCost) {
-      this.failRun("no_stamina");
+      this.charging = false;
+      this.power = 0;
+      this.overchargeMs = 0;
+      this.chargeDrainCarryMs = 0;
+      this.statusText?.setText("Не хватает выносливости для удара. Завершите и отдохните.");
+      this.refreshHud();
+      this.redraw();
       return;
     }
     if (this.durabilityLeft <= 0) {
       this.failRun("axe_broken");
       return;
     }
-    const damage = Math.max(
+    const minConfigured = config.axe.damageMin ?? config.axe.damageMax ?? 4;
+    const maxConfigured = config.axe.damageMax ?? config.axe.damageMin ?? minConfigured;
+    const damageFloor = Math.min(minConfigured, maxConfigured);
+    const damageCeil = Math.max(minConfigured, maxConfigured);
+    const rolledAxeDamage = damageFloor + Math.random() * Math.max(0, damageCeil - damageFloor);
+    const damageBase = Math.max(
       1,
       Math.round(
-        4 * (config.axe.efficiency || 1)
+        (rolledAxeDamage + Math.max(0, config.player.carpenterLevel))
+          * (config.axe.efficiency || 1)
           + Math.max(0, config.player.carpenterLevel * 0.4)
           - (config.tree.hardness ?? 0) * 0.3,
       ),
     );
+    const powerRatio = Math.max(0, Math.min(1, this.power));
+    const overchargeBonus = this.overchargeMs >= 1000 ? 1 : 0;
+    const multiplier = 1 + powerRatio + overchargeBonus;
+    if (overchargeBonus > 0 && this.overchargeMs < 1200) {
+      this.warnOverlay?.setVisible(true);
+      this.statusText?.setText("КРАСНАЯ ЗОНА! x2 урон, повышенный риск.");
+      this.time.delayedCall(140, () => {
+        if (!this.warning) {
+          this.warnOverlay?.setVisible(false);
+        }
+      });
+    }
+    const damage = Math.max(1, Math.round(damageBase * multiplier));
     this.staminaLeft -= staminaCost;
     this.staminaSpent += staminaCost;
-    this.durabilityLeft -= 1;
-    this.durabilitySpent += 1;
+    let durabilityLoss = 1;
+    if (powerRatio >= 1) {
+      durabilityLoss += 1;
+      if (Math.random() < 0.35) {
+        durabilityLoss += 1;
+      }
+    }
+    this.durabilityLeft -= durabilityLoss;
+    this.durabilitySpent += durabilityLoss;
+    if (powerRatio >= 1 && Math.random() < 0.18) {
+      this.statusText?.setText("Силовой удар! Топор получил повышенный износ.");
+    }
     if (this.segs[0]?.branch === this.side) {
       const branchHitDamage = 12;
       this.hpLeft = Math.max(0, this.hpLeft - branchHitDamage);
@@ -613,7 +805,7 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.chopTimer = this.time.delayedCall(300, () => { this.canChop = true; });
     if (this.treeHp <= 0) {
       this.treesFelled += 1;
-      this.statusText?.setText("Дерево срублено. Можно рубить следующее или забрать.");
+      this.statusText?.setText("Дерево срублено. Можно рубить следующее или закончить.");
       this.resetTreeState();
       this.refreshHud();
       this.redraw();
@@ -624,6 +816,12 @@ class WoodcuttingDemoScene extends Phaser.Scene {
       return;
     }
     if (!this.warning && this.treeImbalance() > 3) this.startWarning(this.heavySide());
+    if (powerRatio >= 1 && Math.random() < 0.2 && !this.warning) {
+      this.startInstantFall();
+    }
+    this.power = 0;
+    this.overchargeMs = 0;
+    this.chargeDrainCarryMs = 0;
     this.refreshHud();
     this.redraw();
   }
@@ -636,10 +834,18 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.warnSide = null;
     this.warning = false;
     this.canChop = true;
+    this.power = 0;
+    this.charging = false;
+    this.overchargeMs = 0;
+    this.chargeDrainCarryMs = 0;
     this.treeHp = Math.max(1, Math.floor(config.tree.hp));
     this.segs = Array.from({ length: 10 }, () => ({ branch: this.randomBranch() }));
     this.warnTimer?.remove();
+    this.chopTimer?.remove();
     this.warnText?.setText("");
+    this.warnOverlay?.setVisible(false);
+    this.currentFallSpeedDegPerSec = this.normalFallSpeedDegPerSec;
+    this.forcedInstantHit = false;
   }
 
   private completeRun() {
@@ -678,6 +884,7 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.warning = true;
     this.warnSide = side;
     this.warnText?.setText(`⚠ Дерево падает ${side === "left" ? "←" : "→"} ⚠`);
+    this.warnOverlay?.setVisible(true);
     this.warnTimer?.remove();
     this.warnTimer = this.time.delayedCall(1400, () => { if (!this.dead) this.startFall(); });
   }
@@ -687,6 +894,23 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.warning = false;
     this.canChop = false;
     this.warnText?.setText("");
+    this.warnOverlay?.setVisible(false);
+    this.currentFallSpeedDegPerSec = this.normalFallSpeedDegPerSec;
+  }
+
+  private startInstantFall() {
+    this.warnTimer?.remove();
+    this.warnSide = this.side;
+    this.warning = false;
+    this.falling = true;
+    this.canChop = false;
+    this.charging = false;
+    this.forcedInstantHit = true;
+    this.currentFallSpeedDegPerSec = this.instantFallSpeedDegPerSec;
+    this.fallAngle = 78;
+    this.warnText?.setText("");
+    this.warnOverlay?.setVisible(true);
+    this.statusText?.setText("ПЕРЕГРУЗКА! Дерево рушится мгновенно.");
   }
 
   private refreshHud() {
@@ -699,6 +923,13 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     this.durabilityText?.setText(`Топор: ${Math.max(0, this.durabilityLeft)} / ${maxDur}`);
     this.treesText?.setText(`Срублено деревьев: ${this.treesFelled}`);
     this.axeLabel?.setText(`Axe  ${Math.max(0, this.durabilityLeft)}/${maxDur}`);
+    const powerPct = Math.round(Math.min(1, this.power) * 100);
+    const isRed = this.power >= 1;
+    this.chargeBarText?.setText(
+      `Сила удара: ${powerPct}%${isRed ? " (КРАСНАЯ ЗОНА: x2)" : ""}${this.charging ? " [удержание]" : ""}`,
+    );
+    this.finishButton?.setDepth(2);
+    this.finishLabel?.setDepth(3);
   }
 
   private redraw() {
@@ -818,16 +1049,44 @@ class WoodcuttingDemoScene extends Phaser.Scene {
     g.fillRoundedRect(bx, by, bw * ratio, bh, 2);
     g.lineStyle(1.5, INK, 0.5);
     g.strokeRoundedRect(bx, by, bw, bh, 2);
-    if (this.warning) {
-      g.fillStyle(0x8b3a3a, 0.035);
-      g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.warnOverlay?.setVisible(this.warning);
+
+    const pw = 180;
+    const ph = 10;
+    const px = GAME_WIDTH / 2 - pw / 2;
+    const py = 88;
+    const powerRatio = Math.max(0, Math.min(1, this.power));
+    const powerColor = powerRatio < 0.7 ? 0x4b7a4f : powerRatio < 1 ? 0xb8860b : 0x9b2d2d;
+    g.fillStyle(PARCHMENT_DARK, 0.45);
+    g.fillRoundedRect(px - 2, py - 2, pw + 4, ph + 4, 3);
+    g.fillStyle(0xd4c9a8);
+    g.fillRoundedRect(px, py, pw, ph, 2);
+    g.fillStyle(powerColor);
+    g.fillRoundedRect(px, py, pw * powerRatio, ph, 2);
+    if (powerRatio >= 1) {
+      const pulse = 0.35 + 0.25 * Math.sin(this.time.now / 120);
+      g.fillStyle(0xb23434, pulse);
+      g.fillRoundedRect(px, py, pw, ph, 2);
     }
+    g.lineStyle(1.5, INK, 0.5);
+    g.strokeRoundedRect(px, py, pw, ph, 2);
   }
 
   private failRun(reason: WoodcuttingArcadeResultReason) {
+    if (this.failNotified) {
+      return;
+    }
+    this.failNotified = true;
     this.dead = true;
     this.canChop = false;
+    this.charging = false;
+    this.falling = false;
     this.warnTimer?.remove();
+    this.chopTimer?.remove();
+    this.warnOverlay?.setVisible(false);
+    if (reason !== "cancelled") {
+      this.statusText?.setText("Забег прерван. Нажмите «ЗАКОНЧИТЬ» для выхода.");
+    }
     const treeId = this.initData?.config.tree.id ?? "unknown_tree";
     this.initData?.fail({
       success: false,
@@ -865,6 +1124,7 @@ class SawingScene extends Phaser.Scene {
   private sawCenterX = GAME_WIDTH / 2 - 90;
   private readonly sawNeutralX = GAME_WIDTH / 2 - 90;
   private sawTween?: Phaser.Tweens.Tween;
+  private failNotified = false;
 
   constructor() {
     super({ key: "SawingScene" });
@@ -899,6 +1159,7 @@ class SawingScene extends Phaser.Scene {
     this.durabilitySpent = 0;
     this.lastDir = null;
     this.defect = 0;
+    this.failNotified = false;
     this.coreX = GAME_WIDTH / 2 + Phaser.Math.Between(-18, 18);
     this.knotX = GAME_WIDTH / 2 + Phaser.Math.Between(-70, 70);
 
@@ -914,6 +1175,18 @@ class SawingScene extends Phaser.Scene {
       fontSize: "16px",
       fontFamily: "Georgia, serif",
     }).setOrigin(0.5, 0);
+    if (config.source.type === "felled_trees") {
+      this.add.text(
+        GAME_WIDTH / 2,
+        80,
+        `Поваленных деревьев на делянке: ${Math.max(0, Math.floor(config.source.treesAvailable ?? 0))}`,
+        {
+          color: "#7b5a44",
+          fontSize: "14px",
+          fontFamily: "Georgia, serif",
+        },
+      ).setOrigin(0.5, 0);
+    }
 
     this.progressText = this.addTextLine(100, "");
     this.heatText = this.addTextLine(128, "");
@@ -942,6 +1215,7 @@ class SawingScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-RIGHT", () => this.press("right"));
     this.input.keyboard?.on("keydown-D", () => this.press("right"));
     this.input.keyboard?.on("keydown-ESC", () => this.failRun("cancelled"));
+    registerArcadeMovementActions(() => this.press("left"), () => this.press("right"), this);
 
     this.refreshHud();
   }
@@ -1196,6 +1470,15 @@ class SawingScene extends Phaser.Scene {
   }
 
   private failRun(reason: SawingArcadeResultReason) {
+    if (this.failNotified && reason !== "cancelled") {
+      return;
+    }
+    if (reason !== "cancelled") {
+      this.failNotified = true;
+    }
+    if (reason !== "cancelled") {
+      this.statusText?.setText(reason === "saw_broken" ? "Пила сломалась. Выйдите вручную." : "Распил прерван. Выйдите вручную.");
+    }
     const config = this.initData?.config;
     this.initData?.fail({
       success: false,
@@ -1231,9 +1514,25 @@ export function CarpenterArcadeModal({
 }: CarpenterArcadeModalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  const onFailRef = useRef(onFail);
+  const woodcuttingConfigRef = useRef(woodcuttingConfig);
+  const sawingConfigRef = useRef(sawingConfig);
+  const runTokenRef = useRef(0);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
+  woodcuttingConfigRef.current = woodcuttingConfig;
+  sawingConfigRef.current = sawingConfig;
+
   const sceneKey = useMemo(() => (mode === "woodcutting" ? "WoodcuttingDemoScene" : "SawingScene"), [mode]);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  useEffect(() => {
+    onFailRef.current = onFail;
+  }, [onFail]);
 
   useEffect(() => {
     const mountNode = containerRef.current;
@@ -1241,20 +1540,44 @@ export function CarpenterArcadeModal({
       return;
     }
     setLaunchError(null);
+    runTokenRef.current += 1;
+    const currentRunToken = runTokenRef.current;
 
     const selectedScene = mode === "woodcutting" ? WoodcuttingDemoScene : SawingScene;
+    const activeWoodcuttingConfig = woodcuttingConfigRef.current;
+    const activeSawingConfig = sawingConfigRef.current;
     const scenePayload =
-      mode === "woodcutting" && woodcuttingConfig
+      mode === "woodcutting" && activeWoodcuttingConfig
         ? ({
-            config: woodcuttingConfig,
-            complete: (result: WoodcuttingArcadeResult) => onComplete(result),
-            fail: (result: WoodcuttingArcadeResult) => onFail(result),
+            config: activeWoodcuttingConfig,
+            complete: (result: WoodcuttingArcadeResult) => {
+              if (runTokenRef.current !== currentRunToken) {
+                return;
+              }
+              onCompleteRef.current(result);
+            },
+            fail: (result: WoodcuttingArcadeResult) => {
+              if (runTokenRef.current !== currentRunToken) {
+                return;
+              }
+              onFailRef.current(result);
+            },
           } satisfies WoodcuttingSceneInit)
-        : mode === "sawing" && sawingConfig
+        : mode === "sawing" && activeSawingConfig
           ? ({
-              config: sawingConfig,
-              complete: (result: SawingArcadeResult) => onComplete(result),
-              fail: (result: SawingArcadeResult) => onFail(result),
+              config: activeSawingConfig,
+              complete: (result: SawingArcadeResult) => {
+                if (runTokenRef.current !== currentRunToken) {
+                  return;
+                }
+                onCompleteRef.current(result);
+              },
+              fail: (result: SawingArcadeResult) => {
+                if (runTokenRef.current !== currentRunToken) {
+                  return;
+                }
+                onFailRef.current(result);
+              },
             } satisfies SawingSceneInit)
           : null;
 
@@ -1303,14 +1626,72 @@ export function CarpenterArcadeModal({
     gameRef.current = game;
     game.scene.start(sceneKey, scenePayload);
 
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (isArcadeKeyboardTarget(event.target)) {
+        return;
+      }
+      if (event.code === "ArrowLeft" || event.code === "KeyA") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!event.repeat) {
+          activeArcadeMoveLeftAction?.();
+        }
+        return;
+      }
+      if (event.code === "ArrowRight" || event.code === "KeyD") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!event.repeat) {
+          activeArcadeMoveRightAction?.();
+        }
+        return;
+      }
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!event.repeat) {
+          activeArcadePrimaryPressAction?.();
+        }
+      }
+    };
+    const handleWindowKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space" && event.code !== "Enter") {
+        return;
+      }
+      if (isArcadeKeyboardTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      activeArcadePrimaryReleaseAction?.();
+    };
+    window.addEventListener("keydown", handleWindowKeyDown, true);
+    window.addEventListener("keyup", handleWindowKeyUp, true);
+
+    requestAnimationFrame(() => {
+      const canvas = mountNode.querySelector("canvas");
+      if (canvas instanceof HTMLCanvasElement) {
+        canvas.tabIndex = 0;
+        canvas.style.outline = "none";
+        canvas.focus();
+      }
+    });
+
     return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown, true);
+      window.removeEventListener("keyup", handleWindowKeyUp, true);
+      runTokenRef.current += 1;
+      activeArcadePrimaryPressAction = null;
+      activeArcadePrimaryReleaseAction = null;
+      activeArcadeMoveLeftAction = null;
+      activeArcadeMoveRightAction = null;
       pendingWoodcuttingSceneInit = null;
       pendingSawingSceneInit = null;
       gameRef.current?.destroy(true);
       gameRef.current = null;
       mountNode.innerHTML = "";
     };
-  }, [mode, onComplete, onFail, sawingConfig, sceneKey, woodcuttingConfig]);
+  }, [mode, sceneKey]);
 
   const title = mode === "woodcutting" ? "Аркадная рубка" : "Аркадный распил";
 
@@ -1361,6 +1742,13 @@ export function CarpenterArcadeModal({
         </div>
         <div
           ref={containerRef}
+          tabIndex={-1}
+          onMouseDown={() => {
+            const canvas = containerRef.current?.querySelector("canvas");
+            if (canvas instanceof HTMLCanvasElement) {
+              canvas.focus();
+            }
+          }}
           style={{
             width: "100%",
             minHeight: "900px",
@@ -1371,6 +1759,7 @@ export function CarpenterArcadeModal({
             borderRadius: "8px",
             overflow: "hidden",
             background: "#0f0a07",
+            outline: "none",
           }}
         >
           {launchError ? (

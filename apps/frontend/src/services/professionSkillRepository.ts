@@ -38,6 +38,89 @@ function buildCarpentrySkillIconRef(skillId: string): GameImageRef {
   return { type: 'image', src: buildCarpentrySkillIconPath(skillId) };
 }
 
+function isStableUploadPath(value: string | undefined): boolean {
+  const normalized = String(value ?? '').trim();
+  return normalized.startsWith('/assets/upload/');
+}
+
+function pickStableUploadPath(skill: ProfessionSkill): string | undefined {
+  const refSrc = skill.iconImageRef?.type === 'image' ? String(skill.iconImageRef.src ?? '').trim() : '';
+  if (isStableUploadPath(refSrc)) {
+    return refSrc;
+  }
+  const icon = String(skill.icon ?? '').trim();
+  if (isStableUploadPath(icon)) {
+    return icon;
+  }
+  return undefined;
+}
+
+function skillIconFieldsFromPath(path: string): Pick<ProfessionSkill, 'icon' | 'iconImageRef'> {
+  return {
+    icon: path,
+    iconImageRef: { type: 'image', src: path },
+  };
+}
+
+function pickSkillIconFields(local: ProfessionSkill, remote: ProfessionSkill): Pick<ProfessionSkill, 'icon' | 'iconImageRef'> {
+  const localPath = pickStableUploadPath(local);
+  const remotePath = pickStableUploadPath(remote);
+  if (remotePath && !localPath) {
+    return skillIconFieldsFromPath(remotePath);
+  }
+  if (localPath) {
+    return skillIconFieldsFromPath(localPath);
+  }
+  if (remote.iconImageRef || remote.icon?.trim()) {
+    return {
+      icon: remote.icon?.trim() || undefined,
+      iconImageRef: remote.iconImageRef,
+    };
+  }
+  if (local.iconImageRef || local.icon?.trim()) {
+    return {
+      icon: local.icon?.trim() || undefined,
+      iconImageRef: local.iconImageRef,
+    };
+  }
+  return {};
+}
+
+function normalizeCarpentrySkillIcon(skill: ProfessionSkill): ProfessionSkill {
+  const defaultPath = DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id];
+  if (!defaultPath) {
+    return skill;
+  }
+
+  const stablePath = pickStableUploadPath(skill);
+  if (stablePath) {
+    return {
+      ...skill,
+      ...skillIconFieldsFromPath(stablePath),
+    };
+  }
+
+  return {
+    ...skill,
+    icon: defaultPath,
+    iconImageRef: buildCarpentrySkillIconRef(skill.id),
+  };
+}
+
+function repairProfessionSkillIcons(skill: ProfessionSkill): ProfessionSkill {
+  if (DEFAULT_CARPENTRY_SKILL_ICON_BY_ID[skill.id]) {
+    return normalizeCarpentrySkillIcon(skill);
+  }
+  const stablePath = pickStableUploadPath(skill);
+  if (stablePath) {
+    return {
+      ...skill,
+      ...skillIconFieldsFromPath(stablePath),
+    };
+  }
+  return skill;
+}
+
 const DEFAULT_CARPENTRY_SKILL_ICON_BY_ID: Record<string, string> = Object.fromEntries(
   CARPENTRY_SKILL_IDS.map((skillId) => [skillId, buildCarpentrySkillIconPath(skillId)]),
 );
@@ -1277,15 +1360,18 @@ function resolveDefaultSkillIconRef(skill: ProfessionSkill): GameImageRef | unde
 
 function applyDefaultSkillIcons(skills: ProfessionSkill[]): ProfessionSkill[] {
   return skills.map((skill) => {
-    const defaultIcon = resolveDefaultSkillIcon(skill);
-    const defaultIconRef = resolveDefaultSkillIconRef(skill);
+    const repaired = repairProfessionSkillIcons(skill);
+    const defaultIcon = resolveDefaultSkillIcon(repaired);
+    const defaultIconRef = resolveDefaultSkillIconRef(repaired);
     if (!defaultIcon && !defaultIconRef) {
-      return skill;
+      return repaired;
     }
     return {
-      ...skill,
-      icon: skill.icon?.trim() ? skill.icon : defaultIcon,
-      iconImageRef: skill.iconImageRef ?? defaultIconRef,
+      ...repaired,
+      icon: pickStableUploadPath(repaired) ?? (repaired.icon?.trim() ? repaired.icon : defaultIcon),
+      iconImageRef: pickStableUploadPath(repaired)
+        ? repaired.iconImageRef
+        : (repaired.iconImageRef ?? defaultIconRef),
     };
   });
 }
@@ -1383,24 +1469,27 @@ function mergeRemoteProfessionSkills(local: ProfessionSkill[], remote: Professio
   return local.map((entry) => {
     const fromRemote = remoteById.get(entry.id);
     if (!fromRemote) {
-      return entry;
+      return repairProfessionSkillIcons(entry);
     }
     const remoteUpdatedAt = Date.parse(fromRemote.updatedAt ?? '');
     const localUpdatedAt = Date.parse(entry.updatedAt ?? '');
     const remoteIsNewer = Number.isFinite(remoteUpdatedAt)
       && (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt >= localUpdatedAt);
+    const iconFields = pickSkillIconFields(entry, fromRemote);
     if (!remoteIsNewer) {
-      return entry;
+      return repairProfessionSkillIcons({
+        ...entry,
+        ...iconFields,
+      });
     }
-    return {
+    return repairProfessionSkillIcons({
       ...entry,
       ...fromRemote,
-      icon: fromRemote.icon?.trim() ? fromRemote.icon : entry.icon,
-      iconImageRef: fromRemote.iconImageRef ?? entry.iconImageRef,
+      ...iconFields,
       positionX: fromRemote.positionX ?? entry.positionX,
       positionY: fromRemote.positionY ?? entry.positionY,
       effects: fromRemote.effects ?? entry.effects,
-    };
+    });
   });
 }
 
@@ -1428,7 +1517,7 @@ export function hydrateProfessionSkillsFromBackend(remoteSkills: ProfessionSkill
   writeStorage(merged);
   if (typeof window !== 'undefined') {
     void syncProfessionSkillsToBackend(merged).catch((error) => {
-      console.warn('[professionSkills] Failed to hydrate skills into backend content:', error);
+      console.warn('[professionSkills] Failed to sync repaired skills to backend content:', error);
     });
   }
   return clone(merged);

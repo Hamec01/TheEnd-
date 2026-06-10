@@ -495,8 +495,15 @@ export function ProfessionSkillEditor({ professions = [], filterByProfession, on
                 }
                 setDraft((current) => ({
                   ...current,
-                  iconImageRef: { type: 'image', src: result.imageId },
-                  icon: result.imageId,
+                  iconImageRef: {
+                    type: 'image',
+                    src: result.dataUrl?.trim().startsWith('/assets/upload/')
+                      ? result.dataUrl.trim()
+                      : result.imageId,
+                  },
+                  icon: result.dataUrl?.trim().startsWith('/assets/upload/')
+                    ? result.dataUrl.trim()
+                    : result.imageId,
                 }));
                 setStatus(`Иконка навыка сохранена как отдельный PNG: ${result.imageId}`);
               }).catch((error) => {

@@ -197,7 +197,9 @@ export function toDomainItemDefinition(adminItem: AdminItem): ItemDefinition {
 }
 
 export function getDomainItemWithFallback(itemId: string, adminItems: AdminItem[]): ItemDefinition | null {
-  const fromAdmin = adminItems.find((item) => item.id === itemId && item.isEnabled);
+  const normalized = String(itemId ?? '').trim();
+  const normalizedLower = normalized.toLowerCase();
+  const fromAdmin = adminItems.find((item) => String(item.id ?? '').trim().toLowerCase() === normalizedLower && item.isEnabled);
   if (fromAdmin) {
     return toDomainItemDefinition(fromAdmin);
   }
@@ -207,7 +209,7 @@ export function getDomainItemWithFallback(itemId: string, adminItems: AdminItem[
   }
 
   try {
-    return getItemById(itemId);
+    return getItemById(normalized);
   } catch {
     return null;
   }

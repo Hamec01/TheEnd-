@@ -161,13 +161,14 @@ export function resolveEffectiveAdminItem(
   instances: ItemInstance[] = readPlayerItemInstances(),
 ): AdminItem | null {
   const normalizedItemId = String(itemId ?? '').trim();
+  const normalizedItemIdLower = normalizedItemId.toLowerCase();
   if (!normalizedItemId) {
     return null;
   }
-  const instance = instances.find((entry) => entry.itemId === normalizedItemId) ?? null;
-  const direct = adminItems.find((entry) => entry.id === normalizedItemId && entry.isEnabled !== false) ?? null;
+  const instance = instances.find((entry) => String(entry.itemId ?? '').trim().toLowerCase() === normalizedItemIdLower) ?? null;
+  const direct = adminItems.find((entry) => String(entry.id ?? '').trim().toLowerCase() === normalizedItemIdLower && entry.isEnabled !== false) ?? null;
   const sourced = instance?.sourceItemId
-    ? adminItems.find((entry) => entry.id === instance.sourceItemId && entry.isEnabled !== false) ?? null
+    ? adminItems.find((entry) => String(entry.id ?? '').trim().toLowerCase() === String(instance.sourceItemId ?? '').trim().toLowerCase() && entry.isEnabled !== false) ?? null
     : null;
   const seed = instance?.itemSnapshot && instance.itemSnapshot.isEnabled !== false
     ? instance.itemSnapshot

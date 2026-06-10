@@ -8,6 +8,7 @@ import type {
   ItemAugmentType,
   ItemEffect,
   ItemRarity,
+  ProfessionItemKind,
   ItemSlot,
   ItemType,
   MagicSchool,
@@ -57,6 +58,7 @@ import {
   translateStatKey,
 } from '../adminUi';
 import { getIdQualityWarning, runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
+import { getProfessionId, getProfessionItemKind, getProfessionStats } from '../../services/professionItemModule';
 
 const STAT_KEYS: StatKey[] = ['hp', 'mp', 'stamina', 'strength', 'constitution', 'dexterity', 'intelligence', 'luck', 'perception', 'willpower'];
 const ITEM_TYPES: ItemType[] = ['weapon', 'armor', 'potion', 'material', 'quest', 'misc', 'profession_tool', 'profession_transport'];
@@ -69,6 +71,29 @@ const MAGIC_SCHOOLS: MagicSchool[] = ['blood', 'death', 'life', 'mind', 'illusio
 const AUGMENT_TYPES: ItemAugmentType[] = ['rune', 'magic_stone', 'enchantment', 'other'];
 const SOCKET_SOURCES: Array<'base' | 'blacksmith_added' | 'scripted'> = ['base', 'blacksmith_added', 'scripted'];
 const SLOT_FAILURE_MODES: Array<'none' | 'material_lost' | 'item_damaged' | 'slot_locked'> = ['none', 'material_lost', 'item_damaged', 'slot_locked'];
+const PROFESSION_IDS = [
+  { id: 'carpenter', label: 'Плотник' },
+  { id: 'blacksmithing', label: 'Кузнец' },
+  { id: 'mining', label: 'Горняк' },
+  { id: 'leatherworking', label: 'Кожевник' },
+  { id: 'jewelcrafting', label: 'Ювелир' },
+  { id: 'runecrafting', label: 'Рунорез' },
+  { id: 'fishing', label: 'Рыбак' },
+  { id: 'cooking', label: 'Повар' },
+  { id: 'hunting', label: 'Охотник' },
+  { id: 'alchemy', label: 'Алхимик' },
+  { id: 'herbalism', label: 'Травник' },
+] as const;
+const PROFESSION_ITEM_KINDS: Array<{ id: ProfessionItemKind; label: string }> = [
+  { id: 'tool', label: 'Инструмент' },
+  { id: 'transport', label: 'Транспорт' },
+  { id: 'station', label: 'Рабочая станция' },
+  { id: 'consumable', label: 'Расходник профессии' },
+  { id: 'material', label: 'Профессиональный материал' },
+  { id: 'blueprint', label: 'Чертёж' },
+  { id: 'upgrade', label: 'Улучшение' },
+  { id: 'service_item', label: 'Сервисный предмет' },
+];
 
 type ExtendedAdminItemCollections = {
   itemSets: Array<{ id: string; name: string; isEnabled: boolean }>;
@@ -132,6 +157,20 @@ function parseNonNegativeInt(value: string): number | undefined {
   }
   const intValue = Math.floor(parsed);
   return intValue >= 0 ? intValue : undefined;
+}
+
+function updateDraftProfessionStats(
+  patch: (next: Partial<AdminItem>) => void,
+  draft: AdminItem,
+  nextStats: Partial<NonNullable<AdminItem['professionStats']>>,
+) {
+  const current = draft.professionStats ?? {};
+  patch({
+    professionStats: {
+      ...current,
+      ...nextStats,
+    },
+  });
 }
 
 function toPrettyJson(value: unknown, emptyFallback: string): string {
@@ -255,7 +294,7 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       if (!showLegacyMaterials && item.type === 'material') {
         return false;
       }
-      if (showOnlyCarpenter && item.profession !== 'carpenter') {
+      if (showOnlyCarpenter && getProfessionId(item) !== 'carpenter') {
         return false;
       }
       if (q && !item.id.toLowerCase().includes(q) && !item.name.toLowerCase().includes(q)) {
@@ -539,6 +578,22 @@ export function ItemsPage(props: ItemsPageProps = {}) {
       id,
       imageRef: persistedImage.imageRef ?? normalizedImageRef,
       imagePath: persistedImage.imagePath ?? toLegacyImagePath(normalizedImageRef),
+      profession: draft.professionId ?? draft.profession,
+      toolKind: getProfessionStats(draft).toolKind ?? draft.toolKind,
+      durability: getProfessionStats(draft).durability ?? draft.durability,
+      maxDurability: getProfessionStats(draft).maxDurability ?? draft.maxDurability,
+      efficiency: getProfessionStats(draft).efficiency ?? draft.efficiency,
+      breakChanceModifier: getProfessionStats(draft).breakChanceModifier ?? draft.breakChanceModifier,
+      staminaCostModifier: getProfessionStats(draft).staminaCostModifier ?? draft.staminaCostModifier,
+      transportKind: getProfessionStats(draft).transportKind ?? draft.transportKind,
+      capacityLogs: getProfessionStats(draft).capacityLogs ?? draft.capacityLogs,
+      capacityWeight: getProfessionStats(draft).capacityWeight ?? draft.capacityWeight,
+      speed: getProfessionStats(draft).speedModifier ?? draft.speed,
+      rentPrice: getProfessionStats(draft).rentPrice ?? draft.rentPrice,
+      rentDuration: getProfessionStats(draft).rentalDurationHours ?? draft.rentDuration,
+      requiresHorse: getProfessionStats(draft).requiresHorse ?? draft.requiresHorse,
+      tier: getProfessionStats(draft).tier ?? draft.tier,
+      requiredLevel: getProfessionStats(draft).requiredProfessionLevel ?? draft.requiredLevel,
       handsRequired: draft.type === 'weapon' && draft.handsRequired === 2 ? 2 : 1,
       maxStack: draft.stackable ? Math.max(2, draft.maxStack ?? 2) : 1,
       updatedAt: new Date().toISOString(),
@@ -758,6 +813,185 @@ export function ItemsPage(props: ItemsPageProps = {}) {
             <input type="checkbox" checked={draft.stackable} onChange={(event) => patch({ stackable: event.target.checked })} />
             <AdminFieldLabel label="Складывается в стопку" hint="Если включено, несколько копий предмета могут лежать в одном слоте инвентаря." />
           </label>
+          <label className="zone-editor-checkbox">
+            <input
+              type="checkbox"
+              checked={Boolean(draft.professionItem)}
+              onChange={(event) => patch({ professionItem: event.target.checked })}
+            />
+            <AdminFieldLabel label="Проф. предмет" hint="Включает модуль профессиональных свойств и валидацию для систем профессий." />
+          </label>
+          {draft.professionItem ? (
+            <>
+              <div className="admin-full-span">
+                <strong>Профессиональные свойства</strong>
+              </div>
+              <label>
+                <AdminFieldLabel label="Профессия" hint="К какой профессии относится предмет." />
+                <select
+                  value={draft.professionId ?? getProfessionId(draft) ?? ''}
+                  onChange={(event) => patch({ professionId: event.target.value || undefined })}
+                >
+                  <option value="">Не выбрана</option>
+                  {PROFESSION_IDS.map((entry) => <option key={entry.id} value={entry.id}>{entry.id} — {entry.label}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Тип проф. предмета" hint="Модуль поведения профессионального предмета." />
+                <select
+                  value={draft.professionItemKind ?? getProfessionItemKind(draft) ?? ''}
+                  onChange={(event) => patch({ professionItemKind: (event.target.value || undefined) as ProfessionItemKind | undefined })}
+                >
+                  <option value="">Не выбран</option>
+                  {PROFESSION_ITEM_KINDS.map((entry) => <option key={entry.id} value={entry.id}>{entry.id} — {entry.label}</option>)}
+                </select>
+              </label>
+              <label>
+                <AdminFieldLabel label="Tier" hint="Тир предмета для проверок профессии и рецептов." />
+                <input
+                  type="number"
+                  value={getProfessionStats(draft).tier ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { tier: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Требуемый уровень профессии" hint="Минимальный уровень профессии для использования." />
+                <input
+                  type="number"
+                  value={getProfessionStats(draft).requiredProfessionLevel ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { requiredProfessionLevel: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Прочность" hint="Текущая базовая прочность (для новых экземпляров)." />
+                <input
+                  type="number"
+                  value={getProfessionStats(draft).durability ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { durability: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Макс. прочность" hint="Максимальная прочность предмета." />
+                <input
+                  type="number"
+                  value={getProfessionStats(draft).maxDurability ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { maxDurability: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Эффективность" hint="Базовая эффективность инструмента/станции." />
+                <input
+                  type="number"
+                  step={0.01}
+                  value={getProfessionStats(draft).efficiency ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { efficiency: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Модификатор поломки" hint="Множитель шанса потери прочности (меньше — лучше)." />
+                <input
+                  type="number"
+                  step={0.01}
+                  value={getProfessionStats(draft).breakChanceModifier ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { breakChanceModifier: parseNumber(event.target.value) })}
+                />
+              </label>
+              <label>
+                <AdminFieldLabel label="Модификатор расхода stamina" hint="Множитель расхода выносливости при использовании." />
+                <input
+                  type="number"
+                  step={0.01}
+                  value={getProfessionStats(draft).staminaCostModifier ?? ''}
+                  onChange={(event) => updateDraftProfessionStats(patch, draft, { staminaCostModifier: parseNumber(event.target.value) })}
+                />
+              </label>
+              {getProfessionItemKind(draft) === 'tool' ? (
+                <>
+                  <label>
+                    <AdminFieldLabel label="toolKind" hint="Тип инструмента в рамках профессии." />
+                    <input
+                      value={getProfessionStats(draft).toolKind ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { toolKind: event.target.value || undefined })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="allowedActions" hint="CSV список разрешённых действий инструмента." />
+                    <input
+                      value={(getProfessionStats(draft).allowedActions ?? []).join(', ')}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { allowedActions: parseCommaList(event.target.value) })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="supportedResourceKinds" hint="CSV список поддерживаемых типов ресурсов." />
+                    <input
+                      value={(getProfessionStats(draft).supportedResourceKinds ?? []).join(', ')}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { supportedResourceKinds: parseCommaList(event.target.value) })}
+                    />
+                  </label>
+                </>
+              ) : null}
+              {getProfessionItemKind(draft) === 'transport' ? (
+                <>
+                  <label>
+                    <AdminFieldLabel label="transportKind" hint="Тип профессионального транспорта." />
+                    <input
+                      value={getProfessionStats(draft).transportKind ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { transportKind: event.target.value || undefined })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="capacityLogs" hint="Вместимость брёвен." />
+                    <input
+                      type="number"
+                      value={getProfessionStats(draft).capacityLogs ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { capacityLogs: parseNumber(event.target.value) })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="capacityWeight" hint="Грузоподъёмность по весу." />
+                    <input
+                      type="number"
+                      value={getProfessionStats(draft).capacityWeight ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { capacityWeight: parseNumber(event.target.value) })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="speedModifier" hint="Множитель скорости перемещения." />
+                    <input
+                      type="number"
+                      step={0.01}
+                      value={getProfessionStats(draft).speedModifier ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { speedModifier: parseNumber(event.target.value) })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="rentPrice" hint="Цена аренды транспорта." />
+                    <input
+                      type="number"
+                      value={getProfessionStats(draft).rentPrice ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { rentPrice: parseNumber(event.target.value) })}
+                    />
+                  </label>
+                  <label>
+                    <AdminFieldLabel label="rentalDurationHours" hint="Срок аренды в часах." />
+                    <input
+                      type="number"
+                      value={getProfessionStats(draft).rentalDurationHours ?? ''}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { rentalDurationHours: parseNumber(event.target.value) })}
+                    />
+                  </label>
+                  <label className="zone-editor-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(getProfessionStats(draft).requiresHorse)}
+                      onChange={(event) => updateDraftProfessionStats(patch, draft, { requiresHorse: event.target.checked })}
+                    />
+                    <AdminFieldLabel label="requiresHorse" hint="Нужна ли лошадь для использования транспорта." />
+                  </label>
+                </>
+              ) : null}
+            </>
+          ) : null}
           <label>
             <AdminFieldLabel label="Макс. в стопке" hint="Сколько копий этого предмета можно хранить в одной стопке." />
             <input type="number" min={1} value={draft.maxStack ?? 1} onChange={(event) => patch({ maxStack: Number(event.target.value) || 1 })} />

@@ -145,7 +145,13 @@ export function ImageSheetPicker({
           folder: uploadFolder,
         });
 
-      onChange({ type: 'image', src: uploaded.id });
+      const uploadedSrc = uploaded.dataUrl?.trim().startsWith('/assets/upload/')
+        ? uploaded.dataUrl.trim()
+        : uploaded.id;
+      onChange({
+        type: 'image',
+        src: uploadedSrc,
+      });
       const message = `Image uploaded: ${uploaded.name} (${uploaded.width}x${uploaded.height}).`;
       setInlineStatus(message);
       onStatus?.(message);

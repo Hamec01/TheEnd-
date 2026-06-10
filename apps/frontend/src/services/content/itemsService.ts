@@ -1,6 +1,7 @@
 import type { AdminItem } from './models';
 import { createContentEntry, deleteContentEntry, getContentCollection, getContentEntry, updateContentEntry } from './contentApi';
 import { nowIso, uid } from './storage';
+import { getDurability, getMaxDurability, getProfessionId, getProfessionItemKind, getToolKind, normalizeProfessionItem } from '../professionItemModule';
 
 /** Базовые поля для частичного JSON-импорта (остальное подставляется из файла). */
 export function createAdminItemDefaults(): AdminItem {
@@ -22,6 +23,7 @@ export function createAdminItemDefaults(): AdminItem {
     loreDescription: '',
     imagePath: '',
     imageRef: undefined,
+    professionItem: false,
     isEnabled: true,
     createdAt: now,
     updatedAt: now,
@@ -155,7 +157,7 @@ function normalize(item: AdminItem): AdminItem {
     ? (typeof item.splashOuterMultiplier === 'number' ? Math.max(0, Math.min(normalizedSplashCenter ?? 1, item.splashOuterMultiplier)) : 0.5)
     : undefined;
 
-  const normalized: AdminItem = {
+  const normalizedBase: AdminItem = {
     ...item,
     requiredStats: item.requiredStats ?? {},
     bonuses: item.bonuses ?? {},
@@ -171,6 +173,7 @@ function normalize(item: AdminItem): AdminItem {
     updatedAt: item.updatedAt || nowIso(),
     createdAt: item.createdAt || nowIso(),
   };
+  const normalized = normalizeProfessionItem(normalizedBase);
 
   if (normalized.type === 'material' && (!normalized.slot || normalized.slot !== 'none')) {
     normalized.slot = 'none';
@@ -272,6 +275,25 @@ export function validateItem(item: AdminItem): string[] {
     } else if (typeof item.splashCenterMultiplier === 'number' && item.splashOuterMultiplier > item.splashCenterMultiplier) {
       errors.push('splashOuterMultiplier must be <= splashCenterMultiplier');
     }
+  }
+
+  const professionId = getProfessionId(item);
+  const professionKind = getProfessionItemKind(item);
+  const toolKind = getToolKind(item);
+  const durability = getDurability(item);
+  const maxDurability = getMaxDurability(item);
+
+  if (item.professionItem && !professionId) {
+    errors.push('professionItem=true requires professionId');
+  }
+  if (item.professionItem && professionKind === 'tool' && !toolKind) {
+    errors.push('professionItemKind=tool requires toolKind');
+  }
+  if (typeof durability === 'number' && typeof maxDurability !== 'number') {
+    errors.push('durability requires maxDurability');
+  }
+  if (typeof durability === 'number' && typeof maxDurability === 'number' && durability > maxDurability) {
+    errors.push('durability must be <= maxDurability');
   }
 
   return errors;

@@ -4,6 +4,11 @@ import { calculateDerivedStats, getItemById, getItemHandsRequired, getLevelProgr
 import type { ArenaCharacter } from '../arena/types';
 import type { CharacterActionBarSlot, CharacterActionSlot, CharacterSkillLoadout, CharacterSkillRow, CombatSkillSlot } from '../api';
 import type { AdminItem, GameImageRef, ItemSet, Material, StoredImage } from '../services/content/models';
+import {
+  getCarpenterToolDurability,
+  isNonStackableProfessionTool,
+} from '../services/carpenterToolInstances';
+import { getMaxDurability, getProfessionItemKind } from '../services/professionItemModule';
 import { itemSetsService } from '../services/content/itemSetsService';
 import { materialsService } from '../services/content/materialsService';
 import { getQuestById, getQuestItemById } from '../services/questRepository';
@@ -626,16 +631,16 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
         if (!item) {
           return null;
         }
-        return { item, quantity: entry.quantity };
+        return { item, quantity: entry.quantity, inventoryItemId: entry.itemId };
       })
-      .filter((entry): entry is { item: ItemDefinition; quantity: number } => Boolean(entry))
+      .filter((entry): entry is { item: ItemDefinition; quantity: number; inventoryItemId: string } => Boolean(entry))
       .filter((entry) => entry.quantity > 0),
     [inventory.items, resolveItemById],
   );
 
   const backpackEntries = useMemo(
     () => inventoryEntries.filter((entry) => {
-      const adminItem = resolveAdminItemById ? resolveAdminItemById(entry.item.id) : null;
+      const adminItem = resolveAdminItemById ? resolveAdminItemById(entry.inventoryItemId) : null;
       return adminItem?.type !== 'quest' && adminItem?.type !== 'material';
     }),
     [inventoryEntries, resolveAdminItemById],
@@ -677,8 +682,8 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     );
 
     const fallbackMaterialEntries = inventoryEntries
-      .filter((entry) => (resolveAdminItemById ? resolveAdminItemById(entry.item.id)?.type === 'material' : false))
-      .map((entry) => [entry.item.id, entry.quantity] as const);
+      .filter((entry) => (resolveAdminItemById ? resolveAdminItemById(entry.inventoryItemId)?.type === 'material' : false))
+      .map((entry) => [entry.inventoryItemId, entry.quantity] as const);
 
     for (const [id, quantity] of fallbackMaterialEntries) {
       if (!mergedResourceCounts.has(id)) {
@@ -732,7 +737,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   ]);
 
   const inventoryByItemId = useMemo(
-    () => new Map(backpackEntries.map((entry) => [entry.item.id, entry])),
+    () => new Map(backpackEntries.map((entry) => [entry.inventoryItemId, entry])),
     [backpackEntries],
   );
 
@@ -769,6 +774,17 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const selectedItem = useMemo(
     () => (selectedItemId ? selectedInventoryEntry?.item ?? (resolveItemById ? resolveItemById(selectedItemId) : getItemById(selectedItemId)) : null),
     [resolveItemById, selectedInventoryEntry, selectedItemId],
+  );
+  const selectedDisplayItem = useMemo(
+    () => (
+      selectedItem
+      ?? selectedResourceEntry?.item
+      ?? (selectedResourceEntry?.adminItem
+        ? (resolveItemById ? resolveItemById(selectedResourceEntry.adminItem.id) : getItemById(selectedResourceEntry.adminItem.id))
+        : null)
+      ?? null
+    ),
+    [resolveItemById, selectedItem, selectedResourceEntry],
   );
   const equippedWeapon = useMemo(
     () => (equipment.weapon ? (resolveItemById ? resolveItemById(equipment.weapon) : getItemById(equipment.weapon)) : null),
@@ -934,7 +950,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return 'Сначала снимите предмет.';
     }
 
-    const entry = inventoryByItemId.get(item.id);
+    const entry = selectedInventoryEntry ?? inventoryByItemId.get(item.id);
     if (!entry || entry.quantity <= 0) {
       return 'Предмет отсутствует в рюкзаке.';
     }
@@ -959,7 +975,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return;
     }
 
-    const entry = inventoryByItemId.get(selectedItem.id);
+    const entry = selectedInventoryEntry ?? inventoryByItemId.get(selectedItem.id);
     const currentQuantity = entry?.quantity ?? 1;
     const stackText = currentQuantity > 1 ? ` (1 шт. из ${currentQuantity})` : '';
     const confirmed = window.confirm(`Вы точно хотите выбросить: ${selectedItem.name}${stackText}?`);
@@ -968,7 +984,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     }
 
     try {
-      await onDropItem(selectedItem.id, selectedDropQuantity);
+      await onDropItem(entry?.inventoryItemId ?? selectedItem.id, selectedDropQuantity);
       if (currentQuantity <= selectedDropQuantity) {
         setItemDetailOpen(false);
       }
@@ -1159,22 +1175,34 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   const itemDamageComparison = selectedComparison.damageComparison;
   const itemArmorComparison = selectedComparison.armorComparison;
 
-  const hoverItem = useMemo(
-    () => (hoverPreview?.itemId ? inventoryByItemId.get(hoverPreview.itemId)?.item ?? null : null),
-    [hoverPreview, inventoryByItemId],
-  );
+  const hoverItem = useMemo(() => {
+    if (!hoverPreview?.itemId) {
+      return null;
+    }
+    const backpackItem = inventoryByItemId.get(hoverPreview.itemId)?.item ?? null;
+    if (backpackItem) {
+      return backpackItem;
+    }
+    const resourceItem = resourceEntryById.get(hoverPreview.itemId)?.item ?? null;
+    if (resourceItem) {
+      return resourceItem;
+    }
+    return resolveItemById ? resolveItemById(hoverPreview.itemId) : getItemById(hoverPreview.itemId);
+  }, [hoverPreview, inventoryByItemId, resourceEntryById, resolveItemById]);
   const hoverComparison = useMemo(
     () => getComparisonForItem(hoverItem),
     [hoverItem, equipment, character.activeStats, equippedByLayoutSlot, equippedItemIds, derivedBase, resolveAdminItemById],
   );
   const selectedAdminItem = useMemo(
-    () => (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null),
-    [resolveAdminItemById, selectedItem],
+    () => (selectedInventoryEntry && resolveAdminItemById
+      ? resolveAdminItemById(selectedInventoryEntry.inventoryItemId)
+      : (selectedItem && resolveAdminItemById ? resolveAdminItemById(selectedItem.id) : null)),
+    [resolveAdminItemById, selectedInventoryEntry, selectedItem],
   );
-  const selectedDescription = selectedAdminItem?.gameplayDescription?.trim() || selectedItem?.description || 'Description unavailable.';
+  const selectedDescription = selectedAdminItem?.gameplayDescription?.trim() || selectedDisplayItem?.description || selectedResourceEntry?.description || 'Description unavailable.';
   const selectedLoreDescription = selectedAdminItem?.loreDescription?.trim() || '';
-  const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedItem?.requiredStats as Record<string, number> | undefined));
-  const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedItem?.bonuses as Record<string, number> | undefined));
+  const selectedRequirementRows = formatItemStatRows((selectedAdminItem?.requiredStats as Record<string, number> | undefined) ?? (selectedDisplayItem?.requiredStats as Record<string, number> | undefined));
+  const selectedBonusRows = formatItemStatRows((selectedAdminItem?.bonuses as Record<string, number> | undefined) ?? (selectedDisplayItem?.bonuses as Record<string, number> | undefined));
   const selectedEffectRows = formatEquipmentEffectRows(selectedAdminItem?.equipmentEffects);
   const selectedCraftMaterials = useMemo(() => {
     const tags = selectedAdminItem?.tags ?? [];
@@ -1622,7 +1650,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return resourceEntries.map((entry) => entry.id);
     }
     return Array.from(new Set([
-      ...sortedFilteredInventory.map((entry) => entry.item.id),
+      ...sortedFilteredInventory.map((entry) => entry.inventoryItemId),
       ...Array.from(equippedItemIds),
     ]));
   }, [equippedItemIds, inventoryTab, questItemEntries, resourceEntries, sortedFilteredInventory]);
@@ -2474,6 +2502,18 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <p className="muted">Хват: {selectedItemHandsRequired === 2 ? 'Двуручное' : 'Одноручное'}</p>
             ) : null}
             <p className="muted">Редкость: {selectedItem.rarity}</p>
+            {getProfessionItemKind(selectedAdminItem) === 'tool' && selectedInventoryEntry ? (
+              <>
+                <p className="muted">
+                  {(() => {
+                    const selectedMaxDurability = getMaxDurability(selectedAdminItem);
+                    const selectedDurabilityCap = selectedMaxDurability && selectedMaxDurability > 0 ? selectedMaxDurability : 100;
+                    return `Прочность: ${getCarpenterToolDurability(selectedInventoryEntry.inventoryItemId, character.id, selectedDurabilityCap)} / ${selectedDurabilityCap}`;
+                  })()}
+                </p>
+                {renderToolDurabilityBar(selectedInventoryEntry.inventoryItemId, selectedAdminItem)}
+              </>
+            ) : null}
             <p>{selectedDescription}</p>
             {selectedLoreDescription ? <p className="muted">{selectedLoreDescription}</p> : null}
             {typeof selectedAdminItem?.damageMin === 'number' || typeof selectedAdminItem?.damageMax === 'number' ? (
@@ -2637,41 +2677,63 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
     );
   }
 
+  function renderToolDurabilityBar(inventoryItemId: string, adminItem: AdminItem | null | undefined) {
+    const maxDurability = (getMaxDurability(adminItem) && getMaxDurability(adminItem)! > 0)
+      ? getMaxDurability(adminItem)!
+      : 100;
+    if (!adminItem || getProfessionItemKind(adminItem) !== 'tool') {
+      return null;
+    }
+    const durability = getCarpenterToolDurability(inventoryItemId, character.id, maxDurability);
+    const ratio = Math.max(0, Math.min(1, durability / maxDurability));
+    const tone = ratio > 0.5 ? '#6b8f50' : ratio > 0.25 ? '#b8860b' : '#8b3a3a';
+    return (
+      <div className="character-item-durability" aria-label={`Прочность ${durability} из ${maxDurability}`}>
+        <div className="character-item-durability-fill" style={{ width: `${ratio * 100}%`, backgroundColor: tone }} />
+        <span className="character-item-durability-label">{durability}/{maxDurability}</span>
+      </div>
+    );
+  }
+
   function renderInventoryCards(
-    entries: Array<{ item: ItemDefinition; quantity: number }>,
+    entries: Array<{ item: ItemDefinition; quantity: number; inventoryItemId: string }>,
     compact = false,
   ) {
     return (
       <div className={`character-inventory-grid ${compact ? 'is-compact' : ''}`}>
-        {entries.map((entry) => (
+        {entries.map((entry) => {
+          const adminItem = resolveAdminItemById ? resolveAdminItemById(entry.inventoryItemId) : null;
+          const showQuantity = !isNonStackableProfessionTool(adminItem) && entry.quantity > 1;
+          return (
           <button
-            key={entry.item.id}
+            key={entry.inventoryItemId}
             type="button"
-            className={`character-item-card ${selectedItemId === entry.item.id ? 'is-active' : ''}`}
+            className={`character-item-card ${selectedItemId === entry.inventoryItemId ? 'is-active' : ''}`}
             onMouseEnter={(event) => {
               const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
               const cardWidth = Math.min(360, window.innerWidth - 24);
               const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
               const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
-              setHoverPreview({ itemId: entry.item.id, x: nextX, y: nextY });
-              setSelectedItemId(entry.item.id);
+              setHoverPreview({ itemId: entry.inventoryItemId, x: nextX, y: nextY });
+              setSelectedItemId(entry.inventoryItemId);
             }}
-            onFocus={() => { setSelectedItemId(entry.item.id); }}
-            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
-            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.item.id ? null : current)); }}
-            onClick={() => { setHoverPreview(null); setSelectedItemId(entry.item.id); setItemDetailOpen(true); }}
+            onFocus={() => { setSelectedItemId(entry.inventoryItemId); }}
+            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.inventoryItemId ? null : current)); }}
+            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.inventoryItemId ? null : current)); }}
+            onClick={() => { setHoverPreview(null); setSelectedItemId(entry.inventoryItemId); setItemDetailOpen(true); }}
             onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
             draggable
             onDragStart={(event) => {
-              event.dataTransfer.setData('text/theend-item-id', entry.item.id);
+              event.dataTransfer.setData('text/theend-item-id', entry.inventoryItemId);
               event.dataTransfer.effectAllowed = 'move';
             }}
           >
             {renderItemVisualIcon(entry.item, { compact })}
             <span className="character-item-name">{entry.item.name}</span>
-            <span className="character-item-qty">x{entry.quantity}</span>
+            {renderToolDurabilityBar(entry.inventoryItemId, adminItem)}
+            {showQuantity ? <span className="character-item-qty">x{entry.quantity}</span> : null}
           </button>
-        ))}
+        );})}
       </div>
     );
   }
@@ -2697,47 +2759,66 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   ) {
     return (
       <div className="character-inventory-grid">
-        {entries.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            className={`character-item-card ${selectedItemId === entry.id ? 'is-active' : ''}`}
-            onClick={() => {
-              setHoverPreview(null);
-              setSelectedItemId(entry.id);
-            }}
-          >
-            <span className="character-item-icon">
-              {entry.imageRef || entry.legacyImagePath ? (
-                <GameImageView
-                  imageRef={entry.imageRef}
-                  legacyImagePath={entry.legacyImagePath}
-                  runtimeImages={runtimeImages}
-                  alt={entry.name}
-                  size={22}
-                  fit="contain"
-                  fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
-                  className="item-slot-icon-image"
-                />
-              ) : (
-                <span
-                  className="item-slot-icon-image item-slot-icon-image--legacy"
-                  style={entry.imageUrl
-                    ? {
-                        backgroundImage: `url("${entry.imageUrl}")`,
-                        backgroundSize: 'contain',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'center',
-                      }
-                    : undefined}
-                  aria-hidden="true"
-                />
-              )}
-            </span>
-            <span className="character-item-name">{entry.name}</span>
-            <span className="character-item-qty">x{entry.quantity}</span>
-          </button>
-        ))}
+        {entries.map((entry) => {
+          const fallbackItem = resolveItemById ? resolveItemById(entry.id) : getItemById(entry.id);
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              className={`character-item-card ${selectedItemId === entry.id ? 'is-active' : ''}`}
+              onMouseEnter={(event) => {
+                const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                const cardWidth = Math.min(360, window.innerWidth - 24);
+                const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
+                const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
+                setHoverPreview({ itemId: entry.id, x: nextX, y: nextY });
+                setSelectedItemId(entry.id);
+              }}
+              onFocus={() => { setSelectedItemId(entry.id); }}
+              onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.id ? null : current)); }}
+              onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.id ? null : current)); }}
+              onClick={() => {
+                setHoverPreview(null);
+                setSelectedItemId(entry.id);
+                setItemDetailOpen(true);
+              }}
+            >
+              {fallbackItem
+                ? renderItemVisualIcon(fallbackItem)
+                : (
+                  <span className="character-item-icon">
+                    {entry.imageRef || entry.legacyImagePath ? (
+                      <GameImageView
+                        imageRef={entry.imageRef}
+                        legacyImagePath={entry.legacyImagePath}
+                        runtimeImages={runtimeImages}
+                        alt={entry.name}
+                        size={22}
+                        fit="contain"
+                        fallbackText={entry.name.trim().charAt(0).toUpperCase() || '?'}
+                        className="item-slot-icon-image"
+                      />
+                    ) : (
+                      <span
+                        className="item-slot-icon-image item-slot-icon-image--legacy"
+                        style={entry.imageUrl
+                          ? {
+                              backgroundImage: `url("${entry.imageUrl}")`,
+                              backgroundSize: 'contain',
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'center',
+                            }
+                          : undefined}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
+                )}
+              <span className="character-item-name">{entry.name}</span>
+              <span className="character-item-qty">x{entry.quantity}</span>
+            </button>
+          );
+        })}
       </div>
     );
   }
@@ -2764,6 +2845,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderResourceDetails() {
+    if (selectedDisplayItem) {
+      return renderSelectedItemDetails('Детали ресурса', 'Выберите ресурс, чтобы посмотреть детали.', false, false);
+    }
     return (
       <section className="character-item-detail-card">
         <h3>Ресурс</h3>
@@ -2790,7 +2874,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       return renderQuestItemDetails();
     }
     if (inventoryTab === 'resources') {
-      return renderResourceDetails();
+      return null;
     }
     return renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true);
   }
