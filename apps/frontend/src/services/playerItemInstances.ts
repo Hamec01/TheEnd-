@@ -60,7 +60,18 @@ function normalizeInstance(raw: unknown): ItemInstance | null {
     craftedMaterialIds: Array.isArray(record.craftedMaterialIds)
       ? record.craftedMaterialIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
       : undefined,
-    craftedByProfession: record.craftedByProfession === 'blacksmithing' ? 'blacksmithing' : undefined,
+    craftedByProfession:
+      record.craftedByProfession === 'blacksmithing' || record.craftedByProfession === 'carpenter'
+        ? record.craftedByProfession
+        : undefined,
+    carpenterComponent: record.carpenterComponent && typeof record.carpenterComponent === 'object' && !Array.isArray(record.carpenterComponent)
+      ? (record.carpenterComponent as ItemInstance['carpenterComponent'])
+      : undefined,
+    carpenterComponentsUsed: Array.isArray(record.carpenterComponentsUsed)
+      ? record.carpenterComponentsUsed.filter((entry): entry is NonNullable<ItemInstance['carpenterComponentsUsed']>[number] => (
+        Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      ))
+      : undefined,
     tags: Array.isArray(record.tags)
       ? record.tags.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
       : undefined,
@@ -129,6 +140,8 @@ export function upsertPlayerItemInstance(
     craftedFromTemplateId: patch.craftedFromTemplateId?.trim() || undefined,
     craftedMaterialIds: patch.craftedMaterialIds?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
     craftedByProfession: patch.craftedByProfession,
+    carpenterComponent: patch.carpenterComponent,
+    carpenterComponentsUsed: patch.carpenterComponentsUsed,
     tags: patch.tags?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
     notes: patch.notes,
     createdAt: timestamp,

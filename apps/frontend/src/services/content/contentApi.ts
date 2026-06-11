@@ -21,6 +21,7 @@ import type {
   BlacksmithTool,
   BlacksmithVisualPreset,
   BlacksmithItemTemplate,
+  CarpenterItemTemplate,
   BlacksmithItemWorkAction,
   CraftingRecipe,
   RecipeVisualProfile,
@@ -69,6 +70,7 @@ export type ContentCollectionName =
   | 'blacksmithVisualPresets'
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
+  | 'carpenterItemTemplates'
   | 'blacksmithItemWorkActions'
   | 'sounds'
   | 'trees'
@@ -156,6 +158,7 @@ export interface ContentSnapshot {
   blacksmithVisualPresets: BlacksmithVisualPreset[];
   blacksmithBalance: BlacksmithBalance[];
   blacksmithItemTemplates: BlacksmithItemTemplate[];
+  carpenterItemTemplates: CarpenterItemTemplate[];
   blacksmithItemWorkActions: BlacksmithItemWorkAction[];
   sounds: SoundDefinition[];
   trees?: TreeDefinition[];

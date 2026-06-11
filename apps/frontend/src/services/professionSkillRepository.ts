@@ -1262,6 +1262,94 @@ function createDefaultCarpentrySkills(): ProfessionSkill[] {
       positionY: 500
     }),
     skill({
+      id: 'carpentry_skill_shield_core_basics',
+      name: 'Щитовая основа',
+      description: 'Открывает создание круглых щитовых основ, щитовых досок, каркасов и деревянного щита.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_basic_handle', 'carpentry_skill_plank_marking'],
+      positionX: 1100,
+      positionY: 820
+    }),
+    skill({
+      id: 'carpentry_skill_tower_shield_frame',
+      name: 'Башенный каркас',
+      description: 'Открывает тяжёлые щитовые основы: каплевидную и башенную.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_shield_core_basics', 'carpentry_skill_master_frame'],
+      positionX: 1100,
+      positionY: 720
+    }),
+    skill({
+      id: 'carpentry_skill_crossbow_stock',
+      name: 'Ложе арбалета',
+      description: 'Открывает создание ложа арбалета.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_master_frame'],
+      positionX: 1100,
+      positionY: 600
+    }),
+    skill({
+      id: 'carpentry_skill_crossbow_body',
+      name: 'Корпус арбалета',
+      description: 'Открывает корпус, направляющую, рукоять и простой арбалет.',
+      requiredLevel: 5,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_crossbow_stock'],
+      positionX: 1100,
+      positionY: 500
+    }),
+    skill({
+      id: 'carpentry_skill_staff_core_basics',
+      name: 'Основа посоха',
+      description: 'Открывает создание деревянных основ посохов.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_dry_core'],
+      positionX: 1400,
+      positionY: 760
+    }),
+    skill({
+      id: 'carpentry_skill_wand_carving',
+      name: 'Резьба жезла',
+      description: 'Открывает создание основы жезла.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_staff_core_basics', 'carpentry_skill_plank_marking'],
+      positionX: 1400,
+      positionY: 660
+    }),
+    skill({
+      id: 'carpentry_skill_rune_staff_preparation',
+      name: 'Подготовка под руны',
+      description: 'Открывает основы под руны: рунный посох, деревянные пластины и рамы магического фокуса.',
+      requiredLevel: 5,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_wand_carving'],
+      positionX: 1400,
+      positionY: 560
+    }),
+    skill({
+      id: 'carpentry_skill_ritual_wood_carving',
+      name: 'Ритуальная резьба',
+      description: 'Открывает ритуальные деревянные основы, тотемы и шаманские каркасы.',
+      requiredLevel: 5,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_joinery',
+      requiredSkillIds: ['carpentry_skill_staff_core_basics'],
+      positionX: 1400,
+      positionY: 460
+    }),
+    skill({
       id: 'carpentry_skill_enchanting_base',
       name: 'Основа для чар',
       description: 'Открывает создание элитных деревянных основ посохов и жезлов для зачарования магами.',
@@ -1274,6 +1362,50 @@ function createDefaultCarpentrySkills(): ProfessionSkill[] {
       ],
       positionX: 800,
       positionY: 400
+    }),
+    skill({
+      id: 'carpentry_skill_bow_stave_basics',
+      name: 'Заготовка лучника',
+      description: 'Открывает заготовку лука и простой лук.',
+      requiredLevel: 3,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_plank_marking', 'carpentry_skill_dry_plank'],
+      positionX: 500,
+      positionY: 400
+    }),
+    skill({
+      id: 'carpentry_skill_bowyer_hand',
+      name: 'Рука лучника',
+      description: 'Открывает охотничьи луки и улучшенную работу со стрелами.',
+      requiredLevel: 4,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_bow_stave_basics'],
+      positionX: 500,
+      positionY: 300
+    }),
+    skill({
+      id: 'carpentry_skill_war_bow_shape',
+      name: 'Боевой изгиб',
+      description: 'Открывает боевой лук и боевые стрелы.',
+      requiredLevel: 5,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_bowyer_hand'],
+      positionX: 500,
+      positionY: 200
+    }),
+    skill({
+      id: 'carpentry_skill_longbow_mastery',
+      name: 'Длинная тетива',
+      description: 'Открывает длинный лук и основу составного лука.',
+      requiredLevel: 6,
+      skillPointCost: 1,
+      branchId: 'carpentry_branch_sawing',
+      requiredSkillIds: ['carpentry_skill_war_bow_shape'],
+      positionX: 500,
+      positionY: 100
     })
   ];
 

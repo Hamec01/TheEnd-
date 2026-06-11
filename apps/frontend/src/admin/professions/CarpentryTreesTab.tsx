@@ -8,6 +8,7 @@ import { lootTablesService } from '../../services/content/lootTablesService';
 import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import { loadRuntimeImages } from '../../services/content/runtimeImageService';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
+import { TreeWoodProfileEditor, createEmptyTreeWoodProfile } from '../components/TreeWoodProfileEditor';
 import '../pages/LivingWorldPage.css';
 
 function emptyTree(): TreeDefinition {
@@ -29,6 +30,8 @@ function emptyTree(): TreeDefinition {
     weight: 10,
     drops: [],
     enabled: true,
+    woodProfile: createEmptyTreeWoodProfile(),
+    sourceMaterialIds: [],
   };
 }
 
@@ -54,6 +57,7 @@ export function CarpentryTreesTab() {
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [woodValidation, setWoodValidation] = useState<{ errors: string[]; warnings: string[] }>({ errors: [], warnings: [] });
 
   // For adding a new drop
   const [newDropItemId, setNewDropItemId] = useState('');
@@ -61,7 +65,7 @@ export function CarpentryTreesTab() {
   const [newDropMax, setNewDropMax] = useState(1);
   const [newDropChance, setNewDropChance] = useState(100);
 
-  type TreeSubTab = 'general' | 'gameplay' | 'drops' | 'biomes' | 'json';
+  type TreeSubTab = 'general' | 'gameplay' | 'wood' | 'drops' | 'biomes' | 'json';
 
   async function refresh() {
     try {
@@ -124,6 +128,8 @@ export function CarpentryTreesTab() {
       ...tree,
       biomeIds: tree.biomeIds || [],
       drops: tree.drops || [],
+      woodProfile: tree.woodProfile ?? createEmptyTreeWoodProfile(),
+      sourceMaterialIds: tree.sourceMaterialIds ?? [],
     });
 
     const matchingBiomes = biomes
@@ -185,6 +191,10 @@ export function CarpentryTreesTab() {
       setStatus('Ошибка: ID дерева не может быть пустым');
       return;
     }
+    if (woodValidation.errors.length > 0) {
+      setStatus('Ошибка: исправьте ошибки в Свойствах древесины перед сохранением.');
+      return;
+    }
 
     setIsSaving(true);
     const saved = await runSaveWithFeedback({
@@ -196,6 +206,8 @@ export function CarpentryTreesTab() {
           id: cleanId,
           name: draft.name.trim() || cleanId,
           biomeIds: draftTreeBiomeIds,
+          woodProfile: draft.woodProfile ?? createEmptyTreeWoodProfile(),
+          sourceMaterialIds: draft.sourceMaterialIds ?? [],
         };
 
         let result: TreeDefinition;
@@ -399,7 +411,7 @@ export function CarpentryTreesTab() {
 
         {/* Sub tabs */}
         <div className="sub-tabs-container">
-          {(['general', 'gameplay', 'drops', 'biomes', 'json'] as const).map(tab => {
+          {(['general', 'gameplay', 'wood', 'drops', 'biomes', 'json'] as const).map(tab => {
             const isActive = activeSubTab === tab;
             return (
               <button
@@ -410,6 +422,7 @@ export function CarpentryTreesTab() {
               >
                 {tab === 'general' ? 'Общее' :
                  tab === 'gameplay' ? 'Геймплей' :
+                 tab === 'wood' ? 'Свойства древесины' :
                  tab === 'drops' ? 'Добыча / Drops' :
                  tab === 'biomes' ? 'Биомы обитания' : 'JSON'}
               </button>
@@ -519,6 +532,14 @@ export function CarpentryTreesTab() {
                 <input type="number" value={draft.weight} onChange={(e) => patch({ weight: parseInt(e.target.value, 10) || 1 })} />
               </div>
             </div>
+          )}
+
+          {activeSubTab === 'wood' && (
+            <TreeWoodProfileEditor
+              tree={draft}
+              onTreePatch={patch}
+              onValidationChange={setWoodValidation}
+            />
           )}
 
           {/* Sub-tab 3: DROPS */}

@@ -4,6 +4,7 @@ import type {
   AdminItem,
   BlacksmithCustomForgePlan,
   BlacksmithItemTemplate,
+  BlacksmithUsedCarpenterComponentSnapshot,
   BlacksmithItemWorkAction,
   BlacksmithQualityTier,
   CraftingRecipe,
@@ -21,6 +22,11 @@ import {
   removePlayerItemInstanceByItemId,
   upsertPlayerItemInstance,
 } from '../../services/playerItemInstances';
+import {
+  applyCarpenterContributionToForgedItem,
+  deriveCarpenterComponentForgeContribution,
+  type BlacksmithCarpenterComponentOption,
+} from './blacksmithCarpenterComponents';
 import {
   PLAYER_ITEMS_STORAGE_KEY,
   PLAYER_MATERIAL_IDS_STORAGE_KEY,
@@ -112,9 +118,21 @@ async function syncItemInstanceRecord(params: {
   statOverrides?: Record<string, unknown>;
   craftedFromTemplateId?: string;
   craftedMaterialIds?: string[];
+  carpenterComponentsUsed?: BlacksmithUsedCarpenterComponentSnapshot[];
   notes?: string;
 }): Promise<void> {
-  const { item, characterId, sourceItemId, qualityTierId, forgeScore, statOverrides, craftedFromTemplateId, craftedMaterialIds, notes } = params;
+  const {
+    item,
+    characterId,
+    sourceItemId,
+    qualityTierId,
+    forgeScore,
+    statOverrides,
+    craftedFromTemplateId,
+    craftedMaterialIds,
+    carpenterComponentsUsed,
+    notes,
+  } = params;
   const instance = upsertPlayerItemInstance({
     itemId: item.id,
     ownerId: characterId,
@@ -127,6 +145,7 @@ async function syncItemInstanceRecord(params: {
     craftedFromTemplateId: craftedFromTemplateId?.trim() || undefined,
     craftedMaterialIds: craftedMaterialIds?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
     craftedByProfession: 'blacksmithing',
+    carpenterComponentsUsed,
     tags: item.tags,
     notes,
   });
@@ -143,6 +162,7 @@ async function syncItemInstanceRecord(params: {
     craftedFromTemplateId: craftedFromTemplateId?.trim() || undefined,
     craftedMaterialIds: craftedMaterialIds?.filter((entry) => typeof entry === 'string' && entry.trim().length > 0),
     craftedByProfession: 'blacksmithing',
+    carpenterComponentsUsed,
     tags: item.tags,
     notes,
   }, instance.id).catch(() => undefined);
@@ -1789,12 +1809,23 @@ export async function grantCustomForgeItemToCharacterV2(params: {
   template: BlacksmithItemTemplate;
   plan: BlacksmithCustomForgePlan;
   materialsCatalog: Material[];
+  selectedCarpenterComponent?: BlacksmithCarpenterComponentOption | null;
   qualityTier?: BlacksmithQualityTier | null;
   score: number;
   blacksmithLevel?: number;
   overrides?: CraftedItemOverrides;
 }): Promise<{ inventory?: InventoryState; createdItem?: AdminItem | null; success: boolean }> {
-  const { characterId, template, plan, materialsCatalog, qualityTier, score, blacksmithLevel = 0, overrides } = params;
+  const {
+    characterId,
+    template,
+    plan,
+    materialsCatalog,
+    selectedCarpenterComponent,
+    qualityTier,
+    score,
+    blacksmithLevel = 0,
+    overrides,
+  } = params;
   if ((qualityTier?.isFailureTier ?? false) || score < 20) {
     const salvageMap = { ...readStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY) };
     for (const entry of plan.selectedMaterials.slice(0, 3)) {
@@ -1803,7 +1834,7 @@ export async function grantCustomForgeItemToCharacterV2(params: {
     writeStringNumberRecordStorage(PLAYER_MATERIALS_STORAGE_KEY, salvageMap);
     return { success: false };
   }
-  const createdDraft = ensureRuntimeItemPayload(createForgedItemFromTemplateV2({
+  const baseDraft = createForgedItemFromTemplateV2({
     template,
     plan,
     materials: materialsCatalog,
@@ -1812,7 +1843,15 @@ export async function grantCustomForgeItemToCharacterV2(params: {
     characterId,
     blacksmithLevel,
     overrides,
-  }), characterId);
+  });
+  const carpenterContribution = deriveCarpenterComponentForgeContribution({
+    template,
+    component: selectedCarpenterComponent ?? null,
+  });
+  const createdDraft = ensureRuntimeItemPayload(
+    applyCarpenterContributionToForgedItem(baseDraft, carpenterContribution),
+    characterId,
+  );
   const created = await itemsService.create(createdDraft);
   await syncItemInstanceRecord({
     item: created,
@@ -1821,10 +1860,27 @@ export async function grantCustomForgeItemToCharacterV2(params: {
     forgeScore: score,
     craftedFromTemplateId: template.id,
     craftedMaterialIds: plan.selectedMaterials.map((entry) => entry.materialId),
+    carpenterComponentsUsed: carpenterContribution?.carpenterComponentsUsed,
     notes: 'custom_forge_v2',
   });
   const hub = await adjustDevInventoryItem(characterId, { itemId: created.id, quantityDelta: 1 });
-  return { inventory: hub.inventory, createdItem: created, success: true };
+  let latestInventory = hub.inventory;
+  if (selectedCarpenterComponent) {
+    try {
+      const consumeHub = await adjustDevInventoryItem(characterId, {
+        itemId: selectedCarpenterComponent.itemId,
+        quantityDelta: -1,
+      });
+      latestInventory = consumeHub.inventory;
+      if (selectedCarpenterComponent.instanceId && consumeHub.inventory.items.every((row) => row.itemId !== selectedCarpenterComponent.itemId || row.quantity <= 0)) {
+        removePlayerItemInstanceByItemId(selectedCarpenterComponent.itemId);
+        await deleteArenaItemInstance(characterId, selectedCarpenterComponent.itemId).catch(() => undefined);
+      }
+    } catch {
+      // keep forged result; component consumption can be retried manually if needed
+    }
+  }
+  return { inventory: latestInventory, createdItem: created, success: true };
 }
 
 export async function grantRecipeOutputsToCharacterV2(params: {

@@ -12,6 +12,7 @@ import { MiningBlocksTab, MiningDepthsTab, MiningHazardsTab, MiningLootTab, Mini
 import { ProfessionBranchEditor } from './ProfessionBranchEditor';
 import { ProfessionSkillEditor } from './ProfessionSkillEditor';
 import { CarpentryTreesTab } from './CarpentryTreesTab';
+import { CarpentryTemplatesTab } from './CarpentryTemplatesTab';
 import { CarpentryToolsTab } from './CarpentryToolsTab';
 import { CarpentryTransportTab } from './CarpentryTransportTab';
 import {
@@ -40,6 +41,7 @@ type TabType =
   | 'visual'
   | 'balance'
   | 'trees'
+  | 'templates'
   | 'transport';
 
 interface ProfessionEditorTabsProps {
@@ -68,6 +70,7 @@ const PROFESSION_SPECIFIC_TABS: Record<string, Array<{ id: TabType; label: strin
   ],
   carpenter: [
     { id: 'trees', label: 'Деревья' },
+    { id: 'templates', label: 'Шаблоны' },
     { id: 'tools', label: 'Инструменты' },
     { id: 'transport', label: 'Транспорт' },
   ],
@@ -277,6 +280,7 @@ export function ProfessionEditorTabs({ professionId, professionName, onBack }: P
           {professionId === 'blacksmithing' && activeTab === 'balance' ? <div className="tab-pane"><BlacksmithBalanceEditor key={`balance:${contentRevision}`} /></div> : null}
 
           {professionId === 'carpenter' && activeTab === 'trees' ? <div className="tab-pane"><CarpentryTreesTab key={`trees:${contentRevision}`} /></div> : null}
+          {professionId === 'carpenter' && activeTab === 'templates' ? <div className="tab-pane"><CarpentryTemplatesTab key={`templates:${contentRevision}`} /></div> : null}
           {professionId === 'carpenter' && activeTab === 'tools' ? <div className="tab-pane"><CarpentryToolsTab key={`tools:${contentRevision}`} /></div> : null}
           {professionId === 'carpenter' && activeTab === 'transport' ? <div className="tab-pane"><CarpentryTransportTab key={`transport:${contentRevision}`} /></div> : null}
         </div>

@@ -246,6 +246,12 @@ import {
   getToolKind,
 } from "../services/professionItemModule";
 import {
+  buildWoodMaterialInheritanceSnapshot,
+  isLikelyGenericWoodStackItemId,
+  resolveTreeForWoodItem,
+  resolveWoodOutputKindByItemId,
+} from "../professions/carpenter/woodInheritance";
+import {
   CarpenterArcadeModal,
   type CarpenterArcadeMode,
   type SawingArcadeConfig,
@@ -459,6 +465,7 @@ interface FelledLogMemoryEntry {
   treeId: string;
   treeName: string;
   logItemId: string;
+  woodInheritanceSnapshot?: import("../services/content/models").WoodMaterialInheritanceSnapshot;
   createdAt: number;
   expiresAt: number;
   zoneId: string | null;
@@ -1508,6 +1515,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     () => new Map((contentSnapshot?.items ?? []).map((entry) => [String(entry.id ?? '').trim(), entry])),
     [contentSnapshot?.items],
   );
+  const treesCatalog = useMemo(() => contentSnapshot?.trees ?? [], [contentSnapshot?.trees]);
 
   const [questJournalOpen, setQuestJournalOpen] = useState(false);
   const [pvpBrowserOpen, setPvpBrowserOpen] = useState(false);
@@ -6619,6 +6627,43 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onRuntimeInventoryChanged?.();
   }, [onRuntimeInventoryChanged]);
 
+  const emitWoodInheritanceStatus = useCallback((params: {
+    itemId: string;
+    sourceItemId?: string;
+    fallbackTree?: TreeDefinition | null;
+    action: "woodcutting" | "sawing" | "processing";
+  }) => {
+    const outputKind = resolveWoodOutputKindByItemId(params.itemId);
+    const resolvedTree = params.fallbackTree
+      ?? resolveTreeForWoodItem({ itemId: params.itemId, trees: treesCatalog });
+    const snapshot = buildWoodMaterialInheritanceSnapshot({
+      tree: resolvedTree,
+      outputKind,
+      sourceItemId: params.sourceItemId,
+      createdItemId: params.itemId,
+      createdByAction: params.action,
+    });
+    const traitList = (snapshot?.inheritedTraitTags ?? []).slice(0, 6);
+    const treeLabel = snapshot?.sourceTreeId ?? "unknown";
+    const retention = snapshot?.traitRetentionPercent ?? null;
+    const traitsText = traitList.length > 0 ? traitList.join(",") : "none";
+    const blocker = isLikelyGenericWoodStackItemId(params.itemId)
+      ? "sourceTreeId cannot persist for generic stacked itemId without item instance metadata or species-specific item ids."
+      : undefined;
+    console.info(
+      `[WOOD INHERITANCE] item=${params.itemId} tree=${treeLabel} output=${outputKind} retention=${retention ?? "n/a"} traits=${traitsText}${blocker ? ` blocker=${blocker}` : ""}`,
+    );
+    if (snapshot?.sourceTreeId) {
+      onStatus(`Свойства древесины: ${traitsText === "none" ? "не заданы" : traitsText}. Сохранение свойств: ${snapshot.traitRetentionPercent}%.`);
+    } else {
+      onStatus("Свойства древесины не заданы.");
+    }
+    if (blocker) {
+      console.warn(`[WOOD INHERITANCE] ${blocker}`);
+    }
+    return snapshot;
+  }, [onStatus, treesCatalog]);
+
   const currentZoneTrees = useMemo(() => {
     if (!activeForestZoneForCarpenter || !contentSnapshot) return [];
     
@@ -6865,18 +6910,31 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const handleFellingComplete = useCallback((tree: TreeDefinition) => {
     const now = Date.now();
     const activeForestZoneId = activeForestZoneForCarpenter?.id ?? null;
+    const logItemId = tree.drops?.[0]?.itemId ?? "item_wood_log_common";
+    const inheritanceSnapshot = buildWoodMaterialInheritanceSnapshot({
+      tree,
+      outputKind: resolveWoodOutputKindByItemId(logItemId),
+      createdItemId: logItemId,
+      createdByAction: "woodcutting",
+    });
     setFelledLogMemory((current) => [
       ...current.filter((entry) => entry.zoneId === activeForestZoneId || entry.expiresAt > now),
       {
         id: `${tree.id}:${now}:${Math.random().toString(36).slice(2, 8)}`,
         treeId: tree.id,
         treeName: tree.name,
-        logItemId: tree.drops?.[0]?.itemId ?? "item_wood_log_common",
+        logItemId,
+        woodInheritanceSnapshot: inheritanceSnapshot ?? undefined,
         createdAt: now,
         expiresAt: now + FELLED_LOG_MEMORY_TTL_MS,
         zoneId: activeForestZoneId,
       },
     ]);
+    emitWoodInheritanceStatus({
+      itemId: logItemId,
+      fallbackTree: tree,
+      action: "woodcutting",
+    });
     onStatus(`Вы срубили ${tree.name}. Дерево повалено на делянке (доступно ~4 минуты, в текущей зоне хранится постоянно).`);
 
     const xpAward = tree.baseXp ?? 10;
@@ -6896,7 +6954,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     setActiveWoodcuttingTree(null);
-  }, [activeForestZoneForCarpenter?.id, character.professions, onPlayerProfessionsChange, onStatus]);
+  }, [activeForestZoneForCarpenter?.id, character.professions, emitWoodInheritanceStatus, onPlayerProfessionsChange, onStatus]);
 
   const applyWoodcuttingResult = useCallback((tree: TreeDefinition, result: WoodcuttingRunResult) => {
     applyResourceDeltas({ staminaSpent: result.staminaSpent, hpDamage: result.hpDamage });
@@ -6977,6 +7035,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const recipeOutputItemId = result.outputItemId ?? result.recipe.outputIds[0] ?? "item_wood_log_common";
+    const sourceTreeFromMemory = result.logItemId === "__felled_logs_memory__"
+      ? (activeForestZoneForCarpenter?.id
+          ? felledLogMemory.find((entry) => entry.zoneId === activeForestZoneForCarpenter.id)
+          : felledLogMemory.find((entry) => entry.expiresAt > now))
+      : null;
+    const sourceTree = sourceTreeFromMemory
+      ? treesCatalog.find((tree) => tree.id === sourceTreeFromMemory.treeId) ?? null
+      : resolveTreeForWoodItem({ itemId: result.logItemId, trees: treesCatalog });
     const resolvedOutputName = resolveItemById?.(recipeOutputItemId)?.name ?? itemCatalogById.get(recipeOutputItemId)?.name ?? null;
     if (!resolvedOutputName) {
       const message = `Ошибка распила: не найден выходной предмет ${recipeOutputItemId}. Дерево не списано.`;
@@ -7011,6 +7077,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const gainedLogs = Math.min(freeSlots, result.recipe.outputQtyPerItem);
     if (gainedLogs > 0) {
       addItemsToPlayerInventory([{ itemId: recipeOutputItemId, quantity: gainedLogs }]);
+      emitWoodInheritanceStatus({
+        itemId: recipeOutputItemId,
+        sourceItemId: result.logItemId,
+        fallbackTree: sourceTree,
+        action: "sawing",
+      });
     }
     if (gainedLogs < result.recipe.outputQtyPerItem) {
       onStatus(`Места хватило только на ${gainedLogs} из ${result.recipe.outputQtyPerItem} брёвен (лимит ${cartState.capacityLogs}).`);
@@ -7037,6 +7109,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     character.professions,
     inventory.items,
     itemCatalogById,
+    emitWoodInheritanceStatus,
     onPlayerProfessionsChange,
     onRuntimeInventoryChanged,
     onStatus,
@@ -7044,6 +7117,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     removeBrokenToolIfNeeded,
     removeItemsFromPlayerInventory,
     setFelledLogMemory,
+    treesCatalog,
     updateToolDurability,
   ]);
 
@@ -7515,6 +7589,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       addItemsToPlayerInventory(recipe.outputs);
       addGoldToPlayerInventory(recipe.gold);
 
+      const sourceWoodInput = recipe.inputs.find((input) => resolveWoodOutputKindByItemId(input.itemId) !== "unknown");
+      const sourceTree = sourceWoodInput
+        ? resolveTreeForWoodItem({ itemId: sourceWoodInput.itemId, trees: treesCatalog })
+        : null;
+      recipe.outputs.forEach((output) => {
+        emitWoodInheritanceStatus({
+          itemId: output.itemId,
+          sourceItemId: sourceWoodInput?.itemId,
+          fallbackTree: sourceTree,
+          action: "processing",
+        });
+      });
+
       const currentProfessions = normalizePlayerProfessionsState(character.professions);
       const nextProfessions = addProfessionXp(currentProfessions, 'carpenter', recipe.xp);
       if (onPlayerProfessionsChange && JSON.stringify(nextProfessions) !== JSON.stringify(currentProfessions)) {
@@ -7609,7 +7696,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
       </div>
     );
-  }, [workshopOpen, inventory.items, getToolFromInventory, resolveItemById, consumeStamina, addItemsToPlayerInventory, removeItemsFromPlayerInventory, addGoldToPlayerInventory, character.professions, onPlayerProfessionsChange, onStatus]);
+  }, [workshopOpen, inventory.items, getToolFromInventory, resolveItemById, consumeStamina, addItemsToPlayerInventory, removeItemsFromPlayerInventory, addGoldToPlayerInventory, character.professions, emitWoodInheritanceStatus, onPlayerProfessionsChange, onStatus, treesCatalog]);
 
   // Moved catalogs to the top to avoid block-scoping errors
 

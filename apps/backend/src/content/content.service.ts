@@ -33,6 +33,7 @@ import type {
   BlacksmithTool,
   BlacksmithVisualPreset,
   BlacksmithItemTemplate,
+  CarpenterItemTemplate,
   BlacksmithItemWorkAction,
   City,
   CityLocation,
@@ -118,6 +119,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'blacksmithVisualPresets',
   'blacksmithBalance',
   'blacksmithItemTemplates',
+  'carpenterItemTemplates',
   'blacksmithItemWorkActions',
   'sounds',
   'trees',
@@ -211,6 +213,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
     blacksmithVisualPresets: (db.blacksmithVisualPresets ?? []).length,
     blacksmithBalance: (db.blacksmithBalance ?? []).length,
     blacksmithItemTemplates: (db.blacksmithItemTemplates ?? []).length,
+    carpenterItemTemplates: (db.carpenterItemTemplates ?? []).length,
     blacksmithItemWorkActions: (db.blacksmithItemWorkActions ?? []).length,
     sounds: (db.sounds ?? []).length,
     trees: (db.trees ?? []).length,
@@ -577,6 +580,7 @@ function createEmptyDatabase(): ContentDatabase {
     blacksmithVisualPresets: [],
     blacksmithBalance: [],
     blacksmithItemTemplates: [],
+    carpenterItemTemplates: [],
     blacksmithItemWorkActions: [],
     sounds: [],
     trees: [],
@@ -1089,6 +1093,7 @@ function createSeedDatabase(): ContentDatabase {
     blacksmithVisualPresets: seedBlacksmithVisualPresets(),
     blacksmithBalance: seedBlacksmithBalance(),
     blacksmithItemTemplates: seedBlacksmithItemTemplates(),
+    carpenterItemTemplates: [],
     blacksmithItemWorkActions: seedBlacksmithItemWorkActions(),
     worldMap: {
       zones: [],
@@ -1751,6 +1756,81 @@ function normalizeBlacksmithItemTemplateInput(input: BlacksmithItemTemplate): Bl
     tags: normalizeOptionalStringList(input.tags),
     imageRef,
     isEnabled: input.isEnabled !== false,
+  };
+}
+
+function normalizeCarpenterTemplateInputSlotInput(
+  value: unknown,
+  fallbackId: string,
+): CarpenterItemTemplate['inputSlots'][number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const quantity = Math.max(1, toInteger(raw.quantity) ?? 1);
+  const acceptedComponentKinds = normalizeStringList(raw.acceptedComponentKinds) as CarpenterItemTemplate['inputSlots'][number]['acceptedComponentKinds'];
+  return {
+    id: String(raw.id ?? '').trim() || fallbackId,
+    label: String(raw.label ?? raw.id ?? fallbackId).trim() || fallbackId,
+    quantity,
+    required: raw.required !== false,
+    acceptedComponentKinds,
+    acceptedItemIds: normalizeOptionalStringList(raw.acceptedItemIds),
+    acceptedMaterialIds: normalizeOptionalStringList(raw.acceptedMaterialIds),
+    notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : undefined,
+  };
+}
+
+function normalizeCarpenterTraitTransferRuleInput(
+  value: unknown,
+): NonNullable<CarpenterItemTemplate['traitTransferRules']>[number] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const sourceTraitTag = String(raw.sourceTraitTag ?? '').trim();
+  if (!sourceTraitTag) {
+    return null;
+  }
+  return {
+    sourceTraitTag,
+    targetTraitTag: typeof raw.targetTraitTag === 'string' && raw.targetTraitTag.trim() ? raw.targetTraitTag.trim() : undefined,
+    transferPercent: Math.max(0, Math.min(100, toFiniteNumber(raw.transferPercent) ?? 100)),
+    notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : undefined,
+  };
+}
+
+function normalizeCarpenterItemTemplateInput(input: CarpenterItemTemplate): CarpenterItemTemplate {
+  const imageRef = normalizeGameImageRefInput(input.imageRef);
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    recipeGroup: String(input.recipeGroup ?? 'misc').trim() as CarpenterItemTemplate['recipeGroup'],
+    stationType: String(input.stationType ?? 'workbench').trim() as CarpenterItemTemplate['stationType'],
+    difficulty: String(input.difficulty ?? 'basic').trim() as CarpenterItemTemplate['difficulty'],
+    outputItemId: typeof input.outputItemId === 'string' && input.outputItemId.trim() ? input.outputItemId.trim() : undefined,
+    outputComponentKind: String(input.outputComponentKind ?? 'unknown').trim() as CarpenterItemTemplate['outputComponentKind'],
+    outputQuantity: Math.max(1, toInteger(input.outputQuantity) ?? 1),
+    requiredCarpenterLevel: typeof input.requiredCarpenterLevel === 'number'
+      ? Math.max(1, Math.round(input.requiredCarpenterLevel))
+      : undefined,
+    requiredSkillIds: normalizeOptionalStringList(input.requiredSkillIds),
+    inputSlots: Array.isArray(input.inputSlots)
+      ? input.inputSlots
+        .map((entry, index) => normalizeCarpenterTemplateInputSlotInput(entry, `slot_${index + 1}`))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      : [],
+    traitTransferRules: Array.isArray(input.traitTransferRules)
+      ? input.traitTransferRules
+        .map((entry) => normalizeCarpenterTraitTransferRuleInput(entry))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      : undefined,
+    tags: normalizeOptionalStringList(input.tags),
+    imageRef,
+    isEnabled: input.isEnabled !== false,
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
   };
 }
 
@@ -3913,6 +3993,9 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithItemTemplates: sanitizeIdObjectArray<BlacksmithItemTemplate>(raw.blacksmithItemTemplates)
         .map((entry) => normalizeBlacksmithItemTemplateInput(entry))
         .filter((entry) => Boolean(entry.id)),
+      carpenterItemTemplates: sanitizeIdObjectArray<CarpenterItemTemplate>(raw.carpenterItemTemplates)
+        .map((entry) => normalizeCarpenterItemTemplateInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       blacksmithItemWorkActions: sanitizeIdObjectArray<BlacksmithItemWorkAction>(raw.blacksmithItemWorkActions)
         .map((entry) => normalizeBlacksmithItemWorkActionInput(entry))
         .filter((entry) => Boolean(entry.id)),
@@ -4032,6 +4115,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithVisualPresets: mergeById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
       blacksmithBalance: mergeById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: mergeById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
+      carpenterItemTemplates: mergeById(existing.carpenterItemTemplates ?? [], incoming.carpenterItemTemplates ?? []),
       blacksmithItemWorkActions: mergeById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: mergeById(existing.sounds ?? [], incoming.sounds ?? []),
       trees: mergeById(existing.trees ?? [], incoming.trees ?? []),
@@ -4081,6 +4165,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithVisualPresets: addMissingById(existing.blacksmithVisualPresets ?? [], incoming.blacksmithVisualPresets ?? []),
       blacksmithBalance: addMissingById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: addMissingById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
+      carpenterItemTemplates: addMissingById(existing.carpenterItemTemplates ?? [], incoming.carpenterItemTemplates ?? []),
       blacksmithItemWorkActions: addMissingById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: addMissingById(existing.sounds ?? [], incoming.sounds ?? []),
       trees: addMissingById(existing.trees ?? [], incoming.trees ?? []),
@@ -4173,6 +4258,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         blacksmithVisualPresets: filterCollection('blacksmithVisualPresets', incoming.blacksmithVisualPresets, existing.blacksmithVisualPresets ?? []) as BlacksmithVisualPreset[] | undefined,
         blacksmithBalance: filterCollection('blacksmithBalance', incoming.blacksmithBalance, existing.blacksmithBalance ?? []) as BlacksmithBalance[] | undefined,
         blacksmithItemTemplates: filterCollection('blacksmithItemTemplates', incoming.blacksmithItemTemplates, existing.blacksmithItemTemplates ?? []) as BlacksmithItemTemplate[] | undefined,
+        carpenterItemTemplates: filterCollection('carpenterItemTemplates', incoming.carpenterItemTemplates, existing.carpenterItemTemplates ?? []) as CarpenterItemTemplate[] | undefined,
         blacksmithItemWorkActions: filterCollection('blacksmithItemWorkActions', incoming.blacksmithItemWorkActions, existing.blacksmithItemWorkActions ?? []) as BlacksmithItemWorkAction[] | undefined,
         sounds: filterCollection('sounds', incoming.sounds, existing.sounds ?? []) as SoundDefinition[] | undefined,
         trees: filterCollection('trees', incoming.trees, existing.trees ?? []) as TreeDefinition[] | undefined,
@@ -4649,6 +4735,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeBlacksmithBalanceInput(payload as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemTemplates') {
       nextEntry = normalizeBlacksmithItemTemplateInput(payload as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'carpenterItemTemplates') {
+      nextEntry = normalizeCarpenterItemTemplateInput(payload as unknown as CarpenterItemTemplate) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemWorkActions') {
       nextEntry = normalizeBlacksmithItemWorkActionInput(payload as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'trees') {
@@ -4725,6 +4813,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeBlacksmithBalanceInput(mergedBase as unknown as BlacksmithBalance) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemTemplates') {
       merged = normalizeBlacksmithItemTemplateInput(mergedBase as unknown as BlacksmithItemTemplate) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'carpenterItemTemplates') {
+      merged = normalizeCarpenterItemTemplateInput(mergedBase as unknown as CarpenterItemTemplate) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'blacksmithItemWorkActions') {
       merged = normalizeBlacksmithItemWorkActionInput(mergedBase as unknown as BlacksmithItemWorkAction) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'trees') {
@@ -4825,6 +4915,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.blacksmithItemTemplates) && payload.blacksmithItemTemplates.length > 0) {
       const normalized = payload.blacksmithItemTemplates.map((entry) => normalizeBlacksmithItemTemplateInput(entry as BlacksmithItemTemplate));
       db.blacksmithItemTemplates = mergeById(db.blacksmithItemTemplates ?? [], normalized);
+    }
+    if (Array.isArray(payload.carpenterItemTemplates) && payload.carpenterItemTemplates.length > 0) {
+      const normalized = payload.carpenterItemTemplates.map((entry) => normalizeCarpenterItemTemplateInput(entry as CarpenterItemTemplate));
+      db.carpenterItemTemplates = mergeById(db.carpenterItemTemplates ?? [], normalized);
     }
     if (Array.isArray(payload.blacksmithItemWorkActions) && payload.blacksmithItemWorkActions.length > 0) {
       const normalized = payload.blacksmithItemWorkActions.map((entry) => normalizeBlacksmithItemWorkActionInput(entry as BlacksmithItemWorkAction));

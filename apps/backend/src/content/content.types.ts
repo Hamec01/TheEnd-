@@ -284,6 +284,153 @@ export interface BlacksmithItemTemplate {
   isEnabled: boolean;
 }
 
+export type CarpenterComponentKind =
+  | 'log'
+  | 'plank'
+  | 'beam'
+  | 'board'
+  | 'thin_plank'
+  | 'planed_plank'
+  | 'polished_plank'
+  | 'shaft'
+  | 'spear_shaft'
+  | 'javelin_shaft'
+  | 'polearm_shaft'
+  | 'arrow_shaft'
+  | 'bolt_shaft'
+  | 'handle'
+  | 'sword_handle'
+  | 'dagger_handle'
+  | 'axe_haft'
+  | 'hammer_handle'
+  | 'mace_handle'
+  | 'frame'
+  | 'crossbow_stock'
+  | 'crossbow_body'
+  | 'panel'
+  | 'shield_core_round'
+  | 'shield_core_kite'
+  | 'shield_core_tower'
+  | 'staff_core'
+  | 'wand_core'
+  | 'ritual_staff_core'
+  | 'rune_staff_core'
+  | 'binding'
+  | 'resin_part'
+  | 'bark_part'
+  | 'charcoal_part'
+  | 'ritual_board'
+  | 'rune_wood_plate'
+  | 'totem_core'
+  | 'shamanic_frame'
+  | 'composite'
+  | 'unknown';
+
+export type CarpenterRecipeGroup =
+  | 'construction'
+  | 'furniture'
+  | 'weapon_parts'
+  | 'armor_parts'
+  | 'transport_parts'
+  | 'tools'
+  | 'household'
+  | 'ritual'
+  | 'misc';
+
+export type CarpenterStationType =
+  | 'none'
+  | 'workbench'
+  | 'sawmill'
+  | 'drying_rack'
+  | 'carving_table'
+  | 'assembly_table';
+
+export type CarpenterTemplateDifficultyType = 'basic' | 'standard' | 'advanced' | 'master';
+
+export interface CarpenterTemplateInputSlot {
+  id: string;
+  label: string;
+  quantity: number;
+  required: boolean;
+  acceptedComponentKinds: CarpenterComponentKind[];
+  acceptedItemIds?: string[];
+  acceptedMaterialIds?: string[];
+  notes?: string;
+}
+
+export interface CarpenterTraitTransferRule {
+  sourceTraitTag: string;
+  targetTraitTag?: string;
+  transferPercent: number;
+  notes?: string;
+}
+
+export interface CarpenterItemTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  recipeGroup: CarpenterRecipeGroup;
+  stationType: CarpenterStationType;
+  difficulty: CarpenterTemplateDifficultyType;
+  outputItemId?: string;
+  outputComponentKind: CarpenterComponentKind;
+  outputQuantity: number;
+  requiredCarpenterLevel?: number;
+  requiredSkillIds?: string[];
+  inputSlots: CarpenterTemplateInputSlot[];
+  traitTransferRules?: CarpenterTraitTransferRule[];
+  tags?: string[];
+  imageRef?: GameImageRef;
+  isEnabled: boolean;
+  notes?: string;
+}
+
+export interface CarpenterCraftedComponentSnapshot {
+  sourceTreeId?: string;
+  sourceTreeName?: string;
+  sourceTreeRarity?: string;
+  sourceTreeTier?: number;
+  sourceWoodItemIds: string[];
+  sourceWoodMaterialIds?: string[];
+  templateId: string;
+  templateName?: string;
+  componentKind: CarpenterComponentKind;
+  craftedByProfession: 'carpenter';
+  craftedByCharacterId?: string;
+  carpenterLevel?: number;
+  qualityScore: number;
+  traitRetentionPercent: number;
+  inheritedTraitTags: WoodTraitTag[];
+  inheritedWoodProfile?: TreeWoodProfile;
+  inheritedEffects?: ItemEffect[];
+  sourceLost?: boolean;
+  sourceLostReason?: string;
+  createdAtIso: string;
+}
+
+export interface BlacksmithUsedCarpenterComponentSnapshot {
+  componentItemId: string;
+  componentInstanceId?: string;
+  componentKind: CarpenterComponentKind;
+  templateId: string;
+  templateName?: string;
+  qualityScore: number;
+  traitRetentionPercent: number;
+  inheritedTraitTags: WoodTraitTag[];
+  inheritedWoodProfile?: TreeWoodProfile;
+  inheritedEffects?: ItemEffect[];
+  sourceTreeId?: string;
+  sourceTreeName?: string;
+  sourceTreeRarity?: string;
+  sourceTreeTier?: number;
+  sourceWoodItemIds: string[];
+  sourceWoodMaterialIds?: string[];
+  sourceLost?: boolean;
+  sourceLostReason?: string;
+  componentCreatedAtIso?: string;
+  consumedAtIso: string;
+}
+
 export interface BlacksmithItemWorkAction {
   id: string;
   name: string;
@@ -1695,6 +1842,127 @@ export interface TreeDrop {
   chance: number;
 }
 
+export type WoodTraitTag =
+  | 'cold_resistant'
+  | 'heat_resistant'
+  | 'fire_affinity'
+  | 'water_affinity'
+  | 'earth_affinity'
+  | 'air_affinity'
+  | 'light_affinity'
+  | 'dark_affinity'
+  | 'life_affinity'
+  | 'nature_affinity'
+  | 'mana_conductive'
+  | 'rune_friendly'
+  | 'ritual_wood'
+  | 'forbidden_wood'
+  | 'volatile'
+  | 'dense'
+  | 'lightweight'
+  | 'flexible'
+  | 'brittle'
+  | 'hard'
+  | 'elastic'
+  | 'resinous'
+  | 'dry'
+  | 'wet'
+  | 'luxury'
+  | 'building_grade'
+  | 'weapon_grade'
+  | 'bow_grade'
+  | 'staff_grade'
+  | 'shield_grade'
+  | 'furniture_grade';
+
+export interface TreeWoodPhysicalProfile extends MaterialPhysicalProperties {
+  grainStability?: number;
+  knotDensity?: number;
+  crackRisk?: number;
+  resinContent?: number;
+  moistureRetention?: number;
+  dryingDifficulty?: number;
+  processingDifficulty?: number;
+  splinterRisk?: number;
+  polishPotential?: number;
+  carvingPrecision?: number;
+  bowTension?: number;
+  shaftStraightness?: number;
+  shieldIntegrity?: number;
+  staffBalance?: number;
+}
+
+export type TreeWoodElementalProfile = MaterialElementalProperties;
+
+export interface TreeWoodMagicalProfile extends MaterialMagicalProperties {
+  natureAffinity?: number;
+  illusionAffinity?: number;
+  mindAffinity?: number;
+}
+
+export interface TreeWoodAlchemyProfile extends MaterialAlchemyProperties {
+  resinAlchemyPower?: number;
+  barkMedicinePower?: number;
+}
+
+export interface TreeWoodRunicProfile extends MaterialRunicProperties {
+  runeCarvingPrecision?: number;
+  socketStability?: number;
+  magicStoneGrip?: number;
+}
+
+export interface TreeWoodEconomicProfile extends MaterialEconomicProperties {
+  craftGuildValue?: number;
+  kingdomDemand?: number;
+  rarityPower?: number;
+}
+
+export interface TreeWoodProfile {
+  materialTier?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
+  defaultMaterialCategory?: 'wood';
+  traitTags?: WoodTraitTag[];
+  physical?: TreeWoodPhysicalProfile;
+  elemental?: TreeWoodElementalProfile;
+  magical?: TreeWoodMagicalProfile;
+  alchemy?: TreeWoodAlchemyProfile;
+  runic?: TreeWoodRunicProfile;
+  economic?: TreeWoodEconomicProfile;
+  preferredComponentKinds?: string[];
+  forbiddenComponentKinds?: string[];
+  defaultInheritedEffects?: ItemEffect[];
+  processingDifficultyBonus?: number;
+  processingRiskBonus?: number;
+  notes?: string;
+}
+
+export type WoodOutputKind =
+  | 'log'
+  | 'plank'
+  | 'beam'
+  | 'firewood'
+  | 'bark'
+  | 'resin'
+  | 'charcoal'
+  | 'wood_glue'
+  | 'unknown';
+
+export interface WoodMaterialInheritanceSnapshot {
+  sourceTreeId: string;
+  sourceTreeName?: string;
+  sourceTreeRarity?: string;
+  sourceTreeTier?: number;
+  outputKind: WoodOutputKind;
+  sourceItemId?: string;
+  createdItemId?: string;
+  traitRetentionPercent: number;
+  inheritedTraitTags?: string[];
+  inheritedWoodProfile?: TreeWoodProfile;
+  inheritedEffects?: ItemEffect[];
+  inheritedAtIso?: string;
+  createdByProfession?: 'carpenter';
+  createdByAction?: 'woodcutting' | 'sawing' | 'processing';
+}
+
 export interface TreeDefinition {
   id: string;
   name: string;
@@ -1715,6 +1983,13 @@ export interface TreeDefinition {
   enabled: boolean;
   imageRef?: GameImageRef;
   imagePath?: string;
+  woodProfile?: TreeWoodProfile;
+  sourceMaterialIds?: string[];
+  defaultLogMaterialId?: string;
+  defaultPlankMaterialId?: string;
+  defaultBeamMaterialId?: string;
+  defaultResinMaterialId?: string;
+  defaultBarkMaterialId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1776,6 +2051,7 @@ export interface ContentDatabase {
   blacksmithVisualPresets?: BlacksmithVisualPreset[];
   blacksmithBalance?: BlacksmithBalance[];
   blacksmithItemTemplates?: BlacksmithItemTemplate[];
+  carpenterItemTemplates?: CarpenterItemTemplate[];
   blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
   sounds?: SoundDefinition[];
   trees?: TreeDefinition[];
@@ -1871,6 +2147,7 @@ export type ContentCollectionName =
   | 'blacksmithVisualPresets'
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
+  | 'carpenterItemTemplates'
   | 'blacksmithItemWorkActions'
   | 'sounds'
   | 'trees'
@@ -1906,6 +2183,7 @@ export interface ContentCollectionMap {
   blacksmithVisualPresets: BlacksmithVisualPreset;
   blacksmithBalance: BlacksmithBalance;
   blacksmithItemTemplates: BlacksmithItemTemplate;
+  carpenterItemTemplates: CarpenterItemTemplate;
   blacksmithItemWorkActions: BlacksmithItemWorkAction;
   sounds: SoundDefinition;
   trees: TreeDefinition;

@@ -8,10 +8,13 @@ import {
   getCarpenterToolDurability,
   isNonStackableProfessionTool,
 } from '../services/carpenterToolInstances';
+import { getPlayerItemInstanceByItemId } from '../services/playerItemInstances';
 import { getMaxDurability, getProfessionItemKind } from '../services/professionItemModule';
 import { itemSetsService } from '../services/content/itemSetsService';
 import { materialsService } from '../services/content/materialsService';
 import { getQuestById, getQuestItemById } from '../services/questRepository';
+import { CarpenterItemMetadataPanel } from '../features/inventory/CarpenterItemMetadataPanel';
+import { getInventoryCardCarpenterBadge } from '../features/inventory/carpenterItemMetadataDisplay';
 import { CharacterSkillsPage } from './CharacterSkillsPage';
 import { GameImageView } from '../admin/components/GameImageView';
 import { resolveTrainerSkillCandidates, type TrainerSkillCandidate } from './training/trainerSkillResolver';
@@ -2017,6 +2020,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   /** The full-detail item popup used by Inventory and Equipment pages */
   function renderItemPopup() {
     if (!itemDetailOpen || !selectedItem) return null;
+    const selectedItemInstance = getPlayerItemInstanceByItemId(selectedItem.id);
     return (
       <div
         className="character-item-popup-backdrop"
@@ -2079,6 +2083,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
               <p className="muted">
                 Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}
               </p>
+              <CarpenterItemMetadataPanel
+                carpenterComponent={selectedItemInstance?.carpenterComponent}
+                carpenterComponentsUsed={selectedItemInstance?.carpenterComponentsUsed}
+                showDebugJson
+              />
               {renderSelectedItemSetDetails()}
               <div className="character-item-actions">
                 {selectedItem && isUsableHotbarItem(selectedItem) && onUseItem ? (
@@ -2491,6 +2500,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderSelectedItemDetails(title: string, emptyText: string, showEquipAction: boolean, showUnequipAction: boolean) {
+    const selectedItemInstance = selectedItem ? getPlayerItemInstanceByItemId(selectedItem.id) : null;
     return (
       <section className="character-item-detail-card">
         <h3>{title}</h3>
@@ -2525,6 +2535,11 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
             <p className="muted">Бонусы: {selectedBonusRows.map((row) => `${row.label} ${row.value > 0 ? `+${row.value}` : row.value}`).join(', ') || 'нет'}</p>
             <p className="muted">Свойства: {selectedEffectRows.join(', ') || 'нет'}</p>
             <p className="muted">Требования: {selectedRequirementRows.map((row) => `${row.label} ${row.value}`).join(', ') || 'нет'}</p>
+            <CarpenterItemMetadataPanel
+              carpenterComponent={selectedItemInstance?.carpenterComponent}
+              carpenterComponentsUsed={selectedItemInstance?.carpenterComponentsUsed}
+              showDebugJson={false}
+            />
             {renderSelectedItemSetDetails()}
             <div className="character-item-inline-compare-head">
               <span>Сравнение со слотом</span>
@@ -2703,23 +2718,15 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
       <div className={`character-inventory-grid ${compact ? 'is-compact' : ''}`}>
         {entries.map((entry) => {
           const adminItem = resolveAdminItemById ? resolveAdminItemById(entry.inventoryItemId) : null;
+          const itemInstance = getPlayerItemInstanceByItemId(entry.inventoryItemId);
+          const carpenterBadge = getInventoryCardCarpenterBadge(itemInstance);
           const showQuantity = !isNonStackableProfessionTool(adminItem) && entry.quantity > 1;
           return (
           <button
             key={entry.inventoryItemId}
             type="button"
             className={`character-item-card ${selectedItemId === entry.inventoryItemId ? 'is-active' : ''}`}
-            onMouseEnter={(event) => {
-              const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
-              const cardWidth = Math.min(360, window.innerWidth - 24);
-              const nextX = rect.right + cardWidth + 18 <= window.innerWidth ? rect.right + 12 : Math.max(12, rect.left - cardWidth - 12);
-              const nextY = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 280));
-              setHoverPreview({ itemId: entry.inventoryItemId, x: nextX, y: nextY });
-              setSelectedItemId(entry.inventoryItemId);
-            }}
             onFocus={() => { setSelectedItemId(entry.inventoryItemId); }}
-            onMouseLeave={() => { setHoverPreview((current) => (current?.itemId === entry.inventoryItemId ? null : current)); }}
-            onBlur={() => { setHoverPreview((current) => (current?.itemId === entry.inventoryItemId ? null : current)); }}
             onClick={() => { setHoverPreview(null); setSelectedItemId(entry.inventoryItemId); setItemDetailOpen(true); }}
             onDoubleClick={() => { void handleDoubleClickInventoryItem(entry.item.id); }}
             draggable
@@ -2730,6 +2737,9 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
           >
             {renderItemVisualIcon(entry.item, { compact })}
             <span className="character-item-name">{entry.item.name}</span>
+            {carpenterBadge ? (
+              <span className="character-item-carpenter-badge">{carpenterBadge}</span>
+            ) : null}
             {renderToolDurabilityBar(entry.inventoryItemId, adminItem)}
             {showQuantity ? <span className="character-item-qty">x{entry.quantity}</span> : null}
           </button>

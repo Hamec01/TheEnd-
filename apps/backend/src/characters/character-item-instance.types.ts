@@ -1,5 +1,11 @@
 import type { Equipment } from '@theend/rpg-domain';
-import type { AdminItem, ItemEffect, ItemSocket } from '../content/content.types';
+import type {
+  AdminItem,
+  BlacksmithUsedCarpenterComponentSnapshot,
+  CarpenterCraftedComponentSnapshot,
+  ItemEffect,
+  ItemSocket,
+} from '../content/content.types';
 
 export interface CharacterItemInstanceStatOverrides {
   damageMin?: number;
@@ -58,7 +64,9 @@ export interface CharacterItemInstanceState {
   ownerTag?: string;
   craftedFromTemplateId?: string;
   craftedMaterialIds?: string[];
-  craftedByProfession?: 'blacksmithing';
+  craftedByProfession?: 'blacksmithing' | 'carpenter';
+  carpenterComponent?: CarpenterCraftedComponentSnapshot;
+  carpenterComponentsUsed?: BlacksmithUsedCarpenterComponentSnapshot[];
   tags?: string[];
   notes?: string;
   metadata?: Record<string, unknown>;
@@ -181,7 +189,18 @@ export function normalizeCharacterItemInstanceState(value: unknown): CharacterIt
     craftedMaterialIds: Array.isArray(raw.craftedMaterialIds)
       ? raw.craftedMaterialIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
       : undefined,
-    craftedByProfession: raw.craftedByProfession === 'blacksmithing' ? 'blacksmithing' : undefined,
+    craftedByProfession:
+      raw.craftedByProfession === 'blacksmithing' || raw.craftedByProfession === 'carpenter'
+        ? raw.craftedByProfession
+        : undefined,
+    carpenterComponent: raw.carpenterComponent && typeof raw.carpenterComponent === 'object' && !Array.isArray(raw.carpenterComponent)
+      ? (raw.carpenterComponent as CarpenterCraftedComponentSnapshot)
+      : undefined,
+    carpenterComponentsUsed: Array.isArray(raw.carpenterComponentsUsed)
+      ? raw.carpenterComponentsUsed.filter((entry): entry is BlacksmithUsedCarpenterComponentSnapshot => (
+        Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+      ))
+      : undefined,
     tags: Array.isArray(raw.tags)
       ? raw.tags.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
       : undefined,

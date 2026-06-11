@@ -1540,7 +1540,16 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
         forgeScore: typeof entry.state?.forgeScore === 'number' ? entry.state.forgeScore : undefined,
         craftedFromTemplateId: typeof entry.state?.craftedFromTemplateId === 'string' ? entry.state.craftedFromTemplateId : undefined,
         craftedMaterialIds: Array.isArray(entry.state?.craftedMaterialIds) ? entry.state?.craftedMaterialIds : undefined,
-        craftedByProfession: entry.state?.craftedByProfession === 'blacksmithing' ? 'blacksmithing' : undefined,
+        craftedByProfession:
+          entry.state?.craftedByProfession === 'blacksmithing' || entry.state?.craftedByProfession === 'carpenter'
+            ? entry.state.craftedByProfession
+            : undefined,
+        carpenterComponent: entry.state?.carpenterComponent && typeof entry.state.carpenterComponent === 'object'
+          ? (entry.state.carpenterComponent as ItemInstance['carpenterComponent'])
+          : undefined,
+        carpenterComponentsUsed: Array.isArray(entry.state?.carpenterComponentsUsed)
+          ? (entry.state.carpenterComponentsUsed as NonNullable<ItemInstance['carpenterComponentsUsed']>)
+          : undefined,
         tags: Array.isArray(entry.state?.tags) ? entry.state.tags.filter((tag): tag is string => typeof tag === 'string') : undefined,
         notes: typeof entry.state?.notes === 'string' ? entry.state.notes : undefined,
         createdAt: entry.createdAt,

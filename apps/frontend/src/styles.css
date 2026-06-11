@@ -11142,6 +11142,81 @@ body:has(.page.page--scroll) {
   line-height: 1.35;
 }
 
+.character-item-carpenter-metadata {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(169, 139, 87, 0.28);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top left, rgba(210, 148, 73, 0.08), transparent 34%),
+    rgba(15, 11, 8, 0.52);
+}
+
+.character-item-carpenter-metadata h4,
+.character-item-carpenter-metadata h5 {
+  margin: 0 0 8px;
+}
+
+.character-item-carpenter-metadata p {
+  margin: 4px 0;
+}
+
+.carpenter-metadata-collection {
+  display: grid;
+  gap: 10px;
+}
+
+.carpenter-metadata-component-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(169, 139, 87, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.carpenter-metadata-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.carpenter-metadata-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.carpenter-metadata-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(160, 120, 70, 0.25);
+  border: 1px solid rgba(200, 160, 100, 0.25);
+  font-size: 12px;
+}
+
+.carpenter-metadata-warning {
+  margin-top: 8px;
+  color: #f0b35a;
+  font-size: 13px;
+}
+
+.character-item-carpenter-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(190, 150, 90, 0.35);
+  color: #d9b777;
+  background: rgba(60, 42, 24, 0.35);
+  font-size: 11px;
+}
+
 .character-item-compare-items {
   gap: 8px;
 }

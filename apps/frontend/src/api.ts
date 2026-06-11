@@ -143,7 +143,9 @@ export interface ArenaItemInstanceState {
   ownerTag?: string;
   craftedFromTemplateId?: string;
   craftedMaterialIds?: string[];
-  craftedByProfession?: 'blacksmithing';
+  craftedByProfession?: 'blacksmithing' | 'carpenter';
+  carpenterComponent?: import('./services/content/models').CarpenterCraftedComponentSnapshot;
+  carpenterComponentsUsed?: import('./services/content/models').BlacksmithUsedCarpenterComponentSnapshot[];
   tags?: string[];
   notes?: string;
   metadata?: Record<string, unknown>;

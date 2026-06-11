@@ -9,11 +9,12 @@ import { lootTablesService } from '../../services/content/lootTablesService';
 import { ImageSheetPicker } from '../components/ImageSheetPicker';
 import { loadRuntimeImages } from '../../services/content/runtimeImageService';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
+import { TreeWoodProfileEditor, createEmptyTreeWoodProfile } from '../components/TreeWoodProfileEditor';
 import './LivingWorldPage.css';
 
 type MainTab = 'biomes' | 'trees' | 'plants' | 'animals' | 'fish' | 'monsters' | 'events' | 'import_export';
 type BiomeSubTab = 'general' | 'resources' | 'trees' | 'plants' | 'animals' | 'fish' | 'monsters' | 'events' | 'json';
-type TreeSubTab = 'general' | 'gameplay' | 'drops' | 'biomes' | 'json';
+type TreeSubTab = 'general' | 'gameplay' | 'wood' | 'drops' | 'biomes' | 'json';
 
 const WATER_TYPES = ['river', 'lake', 'sea', 'swamp', 'pond', 'underground_water'] as const;
 const RESOURCE_KINDS = ['forest', 'herb', 'hunting', 'fishing', 'monster', 'event'] as const;
@@ -21,6 +22,19 @@ const RESOURCE_KINDS = ['forest', 'herb', 'hunting', 'fishing', 'monster', 'even
 interface LivingWorldPageProps {
   initialTab?: MainTab;
   onNavigate?: (path: string) => void;
+}
+
+interface PendingImportPreview<T extends { id: string }> {
+  fileName: string;
+  mode: JsonImportMode;
+  totalFound: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  replaceWarningCount: number;
+  firstIds: string[];
+  errors: string[];
+  entries: T[];
 }
 
 function emptyBiome(): BiomeDefinition {
@@ -66,6 +80,8 @@ function emptyTree(): TreeDefinition {
     weight: 10,
     drops: [],
     enabled: true,
+    woodProfile: createEmptyTreeWoodProfile(),
+    sourceMaterialIds: [],
   };
 }
 
@@ -106,6 +122,7 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
   const [status, setStatus] = useState('Готово');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово' });
   const [isSaving, setIsSaving] = useState(false);
+  const [woodValidation, setWoodValidation] = useState<{ errors: string[]; warnings: string[] }>({ errors: [], warnings: [] });
 
   // Input state for adding string IDs in Biome detail list editor tabs
   const [newPoolItemText, setNewPoolItemText] = useState('');
@@ -121,6 +138,8 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
   const [treeImportMode, setTreeImportMode] = useState<JsonImportMode>('addOnly');
   const biomeImportFileRef = useRef<HTMLInputElement>(null);
   const treeImportFileRef = useRef<HTMLInputElement>(null);
+  const [pendingBiomeImport, setPendingBiomeImport] = useState<PendingImportPreview<BiomeDefinition> | null>(null);
+  const [pendingTreeImport, setPendingTreeImport] = useState<PendingImportPreview<TreeDefinition> | null>(null);
 
   // Quick Create Tree Modal state
   const [showCreateTreeModal, setShowCreateTreeModal] = useState(false);
@@ -355,6 +374,8 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
       ...tree,
       biomeIds: tree.biomeIds || [],
       drops: tree.drops || [],
+      woodProfile: tree.woodProfile ?? createEmptyTreeWoodProfile(),
+      sourceMaterialIds: tree.sourceMaterialIds ?? [],
     });
 
     // Bidirectional list: find all biomes currently containing this tree
@@ -417,6 +438,10 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
       setStatus('Ошибка: ID дерева не может быть пустым');
       return;
     }
+    if (woodValidation.errors.length > 0) {
+      setStatus('Ошибка: исправьте ошибки в Свойствах древесины перед сохранением.');
+      return;
+    }
 
     setIsSaving(true);
     const saved = await runSaveWithFeedback({
@@ -428,6 +453,8 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
           id: cleanId,
           name: draftTree.name.trim() || cleanId,
           biomeIds: draftTreeBiomeIds, // save standard list of associated biomes
+          woodProfile: draftTree.woodProfile ?? createEmptyTreeWoodProfile(),
+          sourceMaterialIds: draftTree.sourceMaterialIds ?? [],
         };
 
         // 1. Save/Update tree registry
@@ -590,24 +617,176 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
     setStatus(`Экспортировано дерево: ${selectedTreeId}`);
   }
 
+  function buildImportPreview<T extends { id: string }>(params: {
+    fileName: string;
+    mode: JsonImportMode;
+    entries: T[];
+    existingIds: string[];
+    replaceWarningCount: number;
+    normalize: (value: T) => T;
+    validate: (value: T) => string[];
+  }): PendingImportPreview<T> {
+    const existing = new Set(params.existingIds);
+    const seen = new Set<string>();
+    const errors: string[] = [];
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const normalizedEntries: T[] = [];
+
+    for (const raw of params.entries) {
+      const id = String(raw.id ?? '').trim();
+      if (!id) {
+        errors.push('У записи нет строкового id.');
+        continue;
+      }
+      if (seen.has(id)) {
+        errors.push(`Повторяющийся id внутри файла: ${id}.`);
+        continue;
+      }
+      seen.add(id);
+      const candidate = params.normalize({ ...raw, id } as T);
+      const validationErrors = params.validate(candidate);
+      if (validationErrors.length > 0) {
+        errors.push(`${id}: ${validationErrors.join(', ')}`);
+        continue;
+      }
+      normalizedEntries.push(candidate);
+      if (existing.has(id)) {
+        if (params.mode === 'addOnly') skippedCount += 1;
+        else updatedCount += 1;
+      } else {
+        createdCount += 1;
+      }
+    }
+
+    return {
+      fileName: params.fileName,
+      mode: params.mode,
+      totalFound: params.entries.length,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      replaceWarningCount: params.replaceWarningCount,
+      firstIds: normalizedEntries.slice(0, 10).map((entry) => entry.id),
+      errors,
+      entries: normalizedEntries,
+    };
+  }
+
+  function clearBiomeImportPreview() {
+    setPendingBiomeImport(null);
+  }
+
+  function clearTreeImportPreview() {
+    setPendingTreeImport(null);
+  }
+
   async function handleImportBiomes(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-
-    if (biomeImportMode === 'replaceAll') {
-      if (!window.confirm('ВНИМАНИЕ: это полностью заменит все записи в этом разделе. Старые данные будут удалены. Продолжить?')) {
-        return;
-      }
-    }
-
-    setIsSaving(true);
-    setStatus('Импорт биомов...');
+    clearBiomeImportPreview();
+    setStatus('Подготовка preview импорта биомов...');
     try {
       const parsed = JSON.parse(await file.text());
       const entries = extractRawCollectionFromImportJson(parsed, 'biomes');
+      if (!Array.isArray(entries)) {
+        throw new Error('В файле не найдена коллекция biomes');
+      }
+      const existing = await getContentCollection<BiomeDefinition>('biomes');
+      const normalizeBiome = (v: BiomeDefinition) => {
+        const norm = { ...emptyBiome(), ...v, id: v.id.trim() };
+        norm.allowedResourceKinds = (norm.allowedResourceKinds || []).filter(k => k !== 'ore');
+        return norm;
+      };
+      const preview = buildImportPreview<BiomeDefinition>({
+        fileName: file.name,
+        mode: biomeImportMode,
+        entries: entries as BiomeDefinition[],
+        existingIds: existing.map((item) => item.id),
+        replaceWarningCount: biomeImportMode === 'replaceAll' ? existing.length : 0,
+        normalize: normalizeBiome,
+        validate: (b) => (!b.id ? ['ID биома обязателен.'] : []),
+      });
+      setPendingBiomeImport(preview);
+      setStatus('Preview импорта биомов готов. Подтвердите импорт.');
+    } catch (err) {
+      console.error(err);
+      const message = (err as Error).message.includes('Ожидался массив записей')
+        ? 'В файле не найдена коллекция biomes'
+        : `Ошибка импорта биомов: ${(err as Error).message}`;
+      setPendingBiomeImport({
+        fileName: file.name,
+        mode: biomeImportMode,
+        totalFound: 0,
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        replaceWarningCount: 0,
+        firstIds: [],
+        errors: [message],
+        entries: [],
+      });
+      setStatus(message);
+    }
+  }
+
+  async function handleImportTrees(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    clearTreeImportPreview();
+    setStatus('Подготовка preview импорта деревьев...');
+    try {
+      const parsed = JSON.parse(await file.text());
+      const entries = extractRawCollectionFromImportJson(parsed, 'trees');
+      if (!Array.isArray(entries)) {
+        throw new Error('В файле не найдена коллекция trees');
+      }
+      const existing = await getContentCollection<TreeDefinition>('trees');
+      const preview = buildImportPreview<TreeDefinition>({
+        fileName: file.name,
+        mode: treeImportMode,
+        entries: entries as TreeDefinition[],
+        existingIds: existing.map((item) => item.id),
+        replaceWarningCount: treeImportMode === 'replaceAll' ? existing.length : 0,
+        normalize: (v) => ({ ...emptyTree(), ...v, id: v.id.trim() }),
+        validate: (t) => (!t.id ? ['ID дерева обязателен.'] : []),
+      });
+      setPendingTreeImport(preview);
+      setStatus('Preview импорта деревьев готов. Подтвердите импорт.');
+    } catch (err) {
+      console.error(err);
+      const message = (err as Error).message.includes('Ожидался массив записей')
+        ? 'В файле не найдена коллекция trees'
+        : `Ошибка импорта деревьев: ${(err as Error).message}`;
+      setPendingTreeImport({
+        fileName: file.name,
+        mode: treeImportMode,
+        totalFound: 0,
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        replaceWarningCount: 0,
+        firstIds: [],
+        errors: [message],
+        entries: [],
+      });
+      setStatus(message);
+    }
+  }
+
+  async function confirmBiomeImport() {
+    if (!pendingBiomeImport) return;
+    if (pendingBiomeImport.mode === 'replaceAll') {
+      if (!window.confirm('Вы уверены? Это заменит все текущие записи.')) return;
+    }
+    setIsSaving(true);
+    setStatus('Импорт биомов...');
+    try {
       const result = await importCollectionFromJsonEntries<BiomeDefinition>({
-        entries,
+        entries: pendingBiomeImport.entries,
         defaults: emptyBiome,
         normalize: (v) => {
           const norm = { ...emptyBiome(), ...v, id: v.id.trim() };
@@ -619,11 +798,11 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
         create: (v) => createContentEntry('biomes', v),
         update: (id, v) => updateContentEntry('biomes', id, v),
         delete: (id) => deleteContentEntry('biomes', id),
-        mode: biomeImportMode,
+        mode: pendingBiomeImport.mode,
       });
-
       await refresh();
-      setStatus(`Импорт биомов: создано ${result.created.length}, обновлено ${result.updated.length}, пропущено ${result.skippedExisting.length}, ошибок ${result.errors.length}.`);
+      setStatus(`Импорт завершён: добавлено ${result.created.length}, обновлено ${result.updated.length}, пропущено ${result.skippedExisting.length}.`);
+      clearBiomeImportPreview();
     } catch (err) {
       console.error(err);
       setStatus(`Ошибка импорта биомов: ${(err as Error).message}`);
@@ -632,24 +811,16 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
     }
   }
 
-  async function handleImportTrees(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    if (treeImportMode === 'replaceAll') {
-      if (!window.confirm('ВНИМАНИЕ: это полностью заменит все записи в этом разделе. Старые данные будут удалены. Продолжить?')) {
-        return;
-      }
+  async function confirmTreeImport() {
+    if (!pendingTreeImport) return;
+    if (pendingTreeImport.mode === 'replaceAll') {
+      if (!window.confirm('Вы уверены? Это заменит все текущие записи.')) return;
     }
-
     setIsSaving(true);
     setStatus('Импорт деревьев...');
     try {
-      const parsed = JSON.parse(await file.text());
-      const entries = extractRawCollectionFromImportJson(parsed, 'trees');
       const result = await importCollectionFromJsonEntries<TreeDefinition>({
-        entries,
+        entries: pendingTreeImport.entries,
         defaults: emptyTree,
         normalize: (v) => ({ ...emptyTree(), ...v, id: v.id.trim() }),
         validate: (t) => (!t.id ? ['ID дерева обязателен.'] : []),
@@ -657,11 +828,11 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
         create: (v) => createContentEntry('trees', v),
         update: (id, v) => updateContentEntry('trees', id, v),
         delete: (id) => deleteContentEntry('trees', id),
-        mode: treeImportMode,
+        mode: pendingTreeImport.mode,
       });
-
       await refresh();
-      setStatus(`Импорт деревьев: создано ${result.created.length}, обновлено ${result.updated.length}, пропущено ${result.skippedExisting.length}, ошибок ${result.errors.length}.`);
+      setStatus(`Импорт завершён: добавлено ${result.created.length}, обновлено ${result.updated.length}, пропущено ${result.skippedExisting.length}.`);
+      clearTreeImportPreview();
     } catch (err) {
       console.error(err);
       setStatus(`Ошибка импорта деревьев: ${(err as Error).message}`);
@@ -1292,7 +1463,7 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
 
               {/* Sub tabs navigation */}
               <div className="sub-tabs-container">
-                {(['general', 'gameplay', 'drops', 'biomes', 'json'] as const).map(tab => {
+                {(['general', 'gameplay', 'wood', 'drops', 'biomes', 'json'] as const).map(tab => {
                   const isActive = activeTreeSubTab === tab;
                   return (
                     <button
@@ -1303,6 +1474,7 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                     >
                       {tab === 'general' ? 'Общее' :
                        tab === 'gameplay' ? 'Геймплей' :
+                       tab === 'wood' ? 'Свойства древесины' :
                        tab === 'drops' ? 'Добыча / Drops' :
                        tab === 'biomes' ? 'Биомы обитания' : 'JSON'}
                     </button>
@@ -1412,6 +1584,14 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                       <input type="number" value={draftTree.weight} onChange={(e) => patchTree({ weight: parseInt(e.target.value, 10) || 1 })} />
                     </div>
                   </div>
+                )}
+
+                {activeTreeSubTab === 'wood' && (
+                  <TreeWoodProfileEditor
+                    tree={draftTree}
+                    onTreePatch={patchTree}
+                    onValidationChange={setWoodValidation}
+                  />
                 )}
 
                 {/* Sub-tab 3: DROPS & LOOT TABLES */}
@@ -1613,7 +1793,7 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', maxWidth: '380px' }}>
                   <label style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }} className="muted">
                     Режим интеграции:
-                    <select value={biomeImportMode} onChange={(e) => setBiomeImportMode(e.target.value as JsonImportMode)}>
+                    <select value={biomeImportMode} onChange={(e) => { setBiomeImportMode(e.target.value as JsonImportMode); clearBiomeImportPreview(); }}>
                       <option value="addOnly">Добавить только новые (Add only new)</option>
                       <option value="merge">Обновить совпадающие (Merge/update)</option>
                       <option value="replaceAll">Полная замена всей базы (Replace all) ⚠️</option>
@@ -1624,6 +1804,45 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                   </button>
                   <input ref={biomeImportFileRef} type="file" accept="application/json,.json" onChange={handleImportBiomes} style={{ display: 'none' }} />
                 </div>
+                {pendingBiomeImport && (
+                  <div className="card" style={{ marginTop: '0.8rem', padding: '0.8rem' }}>
+                    <strong>Preview импорта биомов</strong>
+                    <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                      Файл: {pendingBiomeImport.fileName}
+                    </div>
+                    <div className="muted" style={{ fontSize: '0.85rem' }}>
+                      Найдено: {pendingBiomeImport.totalFound}, добавить: {pendingBiomeImport.createdCount}, обновить: {pendingBiomeImport.updatedCount}, пропустить: {pendingBiomeImport.skippedCount}
+                    </div>
+                    {pendingBiomeImport.mode === 'replaceAll' && (
+                      <div style={{ color: '#ffb366', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                        Внимание: будет заменено текущих записей: {pendingBiomeImport.replaceWarningCount}
+                      </div>
+                    )}
+                    <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.3rem' }}>
+                      Первые ID: {pendingBiomeImport.firstIds.length > 0 ? pendingBiomeImport.firstIds.join(', ') : '—'}
+                    </div>
+                    {pendingBiomeImport.errors.length > 0 && (
+                      <div style={{ marginTop: '0.35rem' }}>
+                        {pendingBiomeImport.errors.map((error, index) => (
+                          <div key={`${error}-${index}`} style={{ color: '#ff8080', fontSize: '0.82rem' }}>{error}</div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.7rem' }}>
+                      <button
+                        type="button"
+                        className="action-btn-lw primary"
+                        onClick={confirmBiomeImport}
+                        disabled={pendingBiomeImport.errors.length > 0 || isSaving}
+                      >
+                        Подтвердить импорт
+                      </button>
+                      <button type="button" className="action-btn-lw secondary" onClick={clearBiomeImportPreview}>
+                        Отменить
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -1651,7 +1870,7 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', maxWidth: '380px' }}>
                   <label style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }} className="muted">
                     Режим интеграции:
-                    <select value={treeImportMode} onChange={(e) => setTreeImportMode(e.target.value as JsonImportMode)}>
+                    <select value={treeImportMode} onChange={(e) => { setTreeImportMode(e.target.value as JsonImportMode); clearTreeImportPreview(); }}>
                       <option value="addOnly">Добавить только новые (Add only new)</option>
                       <option value="merge">Обновить совпадающие (Merge/update)</option>
                       <option value="replaceAll">Полная замена всей базы (Replace all) ⚠️</option>
@@ -1662,6 +1881,45 @@ export function LivingWorldPage({ initialTab = 'biomes', onNavigate }: LivingWor
                   </button>
                   <input ref={treeImportFileRef} type="file" accept="application/json,.json" onChange={handleImportTrees} style={{ display: 'none' }} />
                 </div>
+                {pendingTreeImport && (
+                  <div className="card" style={{ marginTop: '0.8rem', padding: '0.8rem' }}>
+                    <strong>Preview импорта деревьев</strong>
+                    <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                      Файл: {pendingTreeImport.fileName}
+                    </div>
+                    <div className="muted" style={{ fontSize: '0.85rem' }}>
+                      Найдено: {pendingTreeImport.totalFound}, добавить: {pendingTreeImport.createdCount}, обновить: {pendingTreeImport.updatedCount}, пропустить: {pendingTreeImport.skippedCount}
+                    </div>
+                    {pendingTreeImport.mode === 'replaceAll' && (
+                      <div style={{ color: '#ffb366', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                        Внимание: будет заменено текущих записей: {pendingTreeImport.replaceWarningCount}
+                      </div>
+                    )}
+                    <div className="muted" style={{ fontSize: '0.85rem', marginTop: '0.3rem' }}>
+                      Первые ID: {pendingTreeImport.firstIds.length > 0 ? pendingTreeImport.firstIds.join(', ') : '—'}
+                    </div>
+                    {pendingTreeImport.errors.length > 0 && (
+                      <div style={{ marginTop: '0.35rem' }}>
+                        {pendingTreeImport.errors.map((error, index) => (
+                          <div key={`${error}-${index}`} style={{ color: '#ff8080', fontSize: '0.82rem' }}>{error}</div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.7rem' }}>
+                      <button
+                        type="button"
+                        className="action-btn-lw primary"
+                        onClick={confirmTreeImport}
+                        disabled={pendingTreeImport.errors.length > 0 || isSaving}
+                      >
+                        Подтвердить импорт
+                      </button>
+                      <button type="button" className="action-btn-lw secondary" onClick={clearTreeImportPreview}>
+                        Отменить
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
 

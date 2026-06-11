@@ -10,6 +10,7 @@ import {
   type PlayerProfessionsState,
   type ProfessionId,
 } from '@theend/rpg-domain';
+import { adjustDevInventoryItem } from '../api';
 import { BlacksmithForgeTab } from '../features/blacksmith/BlacksmithForgeTab';
 import { BlacksmithCustomForgeTab } from '../features/blacksmith/BlacksmithCustomForgeTab';
 import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
@@ -56,9 +57,13 @@ import type {
   BlacksmithQualityTier,
   BlacksmithTool,
   CraftingRecipe,
+  CarpenterComponentKind,
+  CarpenterCraftedComponentSnapshot,
+  CarpenterItemTemplate,
   Material,
   RecipeVisualProfile,
   StoredImage,
+  TreeDefinition,
 } from '../services/content/models';
 import { loadMiningToolsFromStorage } from '../services/miningRepository';
 import { loadMiningCareerStats, type MiningCareerStats } from '../services/miningCareerStats';
@@ -71,6 +76,22 @@ import {
   setCarpenterForestZonesOverlayEnabled,
   subscribeProfessionOverlayChanges,
 } from '../services/professionOverlayStorage';
+import {
+  buildCarpenterComponentPreview,
+  commitCarpenterComponentCraft,
+  getEligibleInventoryItemsForCarpenterSlot,
+  resolveCarpenterTemplateOutputKind,
+  type CarpenterCraftInputSelection,
+} from '../professions/carpenter/carpenterComponentCrafting';
+import {
+  canUseCarpenterTemplate,
+} from '../professions/carpenter/carpenterTemplateAccess';
+import { getPlayerItemInstanceByItemId } from '../services/playerItemInstances';
+import {
+  deriveCarpenterComponentForgeContribution,
+  type BlacksmithCarpenterComponentOption,
+  validateCarpenterComponentForTemplate,
+} from '../features/blacksmith/blacksmithCarpenterComponents';
 
 interface PlayerProfessionsPanelProps {
   characterId: string;
@@ -81,7 +102,7 @@ interface PlayerProfessionsPanelProps {
   onStatus: (text: string) => void;
   onChange: (next: PlayerProfessionsState) => void;
   onInventoryChange: (next: InventoryState) => void;
-  onLaunchCarpenterGame?: (gameType: 'woodcutting' | 'sawing') => void;
+  onLaunchCarpenterGame?: (gameType: 'woodcutting' | 'sawing' | 'workshop') => void;
 }
 
 function shouldAutoActivateProfessionBranch(professionId: string, branch: ProfessionBranch): boolean {
@@ -104,6 +125,7 @@ interface PendingBlacksmithReward {
   success: boolean;
   draftName: string;
   draftDescription: string;
+  forgePreviewMetadata?: string[];
   finalize: (draft: { name: string; description: string }) => Promise<void>;
 }
 
@@ -161,7 +183,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'customForge' | 'forge' | 'inventory' | 'stats' | 'tree'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'recipes' | 'customForge' | 'forge' | 'inventory' | 'stats' | 'tree' | 'workshop'>('overview');
   const [professionSkills, setProfessionSkills] = useState<ProfessionSkill[]>([]);
   const [professionBranches, setProfessionBranches] = useState<ProfessionBranch[]>([]);
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
@@ -176,10 +198,20 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [blacksmithBalance, setBlacksmithBalance] = useState<BlacksmithBalance | null>(null);
   const [recipeVisualProfiles, setRecipeVisualProfiles] = useState<RecipeVisualProfile[]>([]);
   const [materialsCatalog, setMaterialsCatalog] = useState<Material[]>([]);
+  const [treesCatalog, setTreesCatalog] = useState<TreeDefinition[]>([]);
   const [itemsCatalog, setItemsCatalog] = useState<AdminItem[]>([]);
+  const [carpenterTemplates, setCarpenterTemplates] = useState<CarpenterItemTemplate[]>([]);
+  const [carpenterQuery, setCarpenterQuery] = useState('');
+  const [carpenterGroupFilter, setCarpenterGroupFilter] = useState<'all' | string>('all');
+  const [carpenterKindFilter, setCarpenterKindFilter] = useState<'all' | CarpenterComponentKind>('all');
+  const [carpenterAccessFilter, setCarpenterAccessFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
+  const [selectedCarpenterTemplateId, setSelectedCarpenterTemplateId] = useState<string | null>(null);
+  const [carpenterInputSelections, setCarpenterInputSelections] = useState<Record<string, string>>({});
+  const [carpenterCraftStatus, setCarpenterCraftStatus] = useState('');
   const [selectedBlacksmithRecipeId, setSelectedBlacksmithRecipeId] = useState<string | null>(null);
   const [preparedCustomForgePlan, setPreparedCustomForgePlan] = useState<BlacksmithCustomForgePlan | null>(null);
   const [preparedCustomForgeTemplateId, setPreparedCustomForgeTemplateId] = useState<string | null>(null);
+  const [preparedCustomForgeCarpenterComponent, setPreparedCustomForgeCarpenterComponent] = useState<BlacksmithCarpenterComponentOption | null>(null);
   const [preparedItemWork, setPreparedItemWork] = useState<BlacksmithItemWorkSelection | null>(null);
   const [blacksmithMode, setBlacksmithMode] = useState<'recipe' | 'custom_forge' | 'item_work'>('recipe');
   const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
@@ -213,7 +245,9 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       setBlacksmithBalance(runtimeBlacksmith.balance);
       setRecipeVisualProfiles(runtimeBlacksmith.recipeVisualProfiles ?? []);
       setMaterialsCatalog(snapshot.materials ?? []);
+      setTreesCatalog(snapshot.trees ?? []);
       setItemsCatalog(snapshot.items ?? []);
+      setCarpenterTemplates((snapshot.carpenterItemTemplates ?? []).filter((entry) => entry.isEnabled !== false));
 
       const recipes = (snapshot.craftingRecipes ?? []).filter((entry) => entry.professionId === 'blacksmithing' && entry.isEnabled && entry.status === 'active');
       setBlacksmithRecipes(recipes);
@@ -295,6 +329,17 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
 
   useEffect(() => {
     setActiveTab('overview');
+  }, [selectedProfessionId]);
+
+  useEffect(() => {
+    if (selectedProfessionId === null) {
+      setSelectedCarpenterTemplateId(null);
+      setCarpenterInputSelections({});
+      setCarpenterCraftStatus('');
+      setCarpenterQuery('');
+      setCarpenterGroupFilter('all');
+      setCarpenterKindFilter('all');
+    }
   }, [selectedProfessionId]);
 
   const miningBranches = useMemo(
@@ -422,6 +467,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const resetPreparedBlacksmithFlows = (): void => {
     setPreparedCustomForgePlan(null);
     setPreparedCustomForgeTemplateId(null);
+    setPreparedCustomForgeCarpenterComponent(null);
     setPreparedItemWork(null);
     setBlacksmithSession(null);
   };
@@ -608,7 +654,171 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     ? ['overview', 'inventory', 'stats', 'tree'] as const
     : selectedProfession?.state.professionId === 'blacksmithing'
       ? ['overview', 'inventory', 'recipes', 'customForge', 'forge', 'tree'] as const
-      : ['overview', 'tree'] as const;
+      : selectedProfession?.state.professionId === 'carpenter'
+        ? ['overview', 'workshop', 'tree'] as const
+        : ['overview', 'tree'] as const;
+
+  const learnedCarpenterSkillIds = useMemo(
+    () => selectedProfession?.state.professionId === 'carpenter' ? (selectedProfession.state.learnedSkillIds ?? []) : [],
+    [selectedProfession],
+  );
+
+  const carpenterSkillNameById = useMemo(() => {
+    const entries = professionSkills.filter((entry) => entry.professionId === 'carpenter' && entry.isEnabled !== false);
+    return entries.reduce<Record<string, string>>((acc, entry) => {
+      acc[entry.id] = entry.name;
+      return acc;
+    }, {});
+  }, [professionSkills]);
+
+  const carpenterTemplateAccessById = useMemo(
+    () => new Map(
+      carpenterTemplates.map((template) => [
+        template.id,
+        canUseCarpenterTemplate({
+          template,
+          learnedSkillIds: learnedCarpenterSkillIds,
+          skillNameById: carpenterSkillNameById,
+        }),
+      ]),
+    ),
+    [carpenterSkillNameById, carpenterTemplates, learnedCarpenterSkillIds],
+  );
+
+  const visibleCarpenterTemplates = useMemo(() => {
+    const q = carpenterQuery.trim().toLowerCase();
+    return carpenterTemplates.filter((template) => {
+      const matchesQuery = !q
+        || template.id.toLowerCase().includes(q)
+        || template.name.toLowerCase().includes(q)
+        || (template.description ?? '').toLowerCase().includes(q);
+      const matchesGroup = carpenterGroupFilter === 'all' || template.recipeGroup === carpenterGroupFilter;
+      const matchesKind = carpenterKindFilter === 'all' || resolveCarpenterTemplateOutputKind(template) === carpenterKindFilter;
+      const access = carpenterTemplateAccessById.get(template.id);
+      const matchesAccess = carpenterAccessFilter === 'all'
+        || (carpenterAccessFilter === 'unlocked' && access?.isUnlocked)
+        || (carpenterAccessFilter === 'locked' && access && !access.isUnlocked);
+      return matchesQuery && matchesGroup && matchesKind && matchesAccess;
+    });
+  }, [carpenterAccessFilter, carpenterKindFilter, carpenterGroupFilter, carpenterQuery, carpenterTemplateAccessById, carpenterTemplates]);
+
+  const selectedCarpenterTemplate = useMemo(
+    () => carpenterTemplates.find((entry) => entry.id === selectedCarpenterTemplateId) ?? null,
+    [carpenterTemplates, selectedCarpenterTemplateId],
+  );
+
+  const selectedCarpenterTemplateAccess = useMemo(
+    () => selectedCarpenterTemplate ? (carpenterTemplateAccessById.get(selectedCarpenterTemplate.id) ?? null) : null,
+    [carpenterTemplateAccessById, selectedCarpenterTemplate],
+  );
+
+  useEffect(() => {
+    if (selectedProfession?.state.professionId !== 'carpenter') {
+      return;
+    }
+    const selectedIsVisible = selectedCarpenterTemplateId
+      ? visibleCarpenterTemplates.some((entry) => entry.id === selectedCarpenterTemplateId)
+      : false;
+    if (!selectedIsVisible) {
+      setSelectedCarpenterTemplateId(visibleCarpenterTemplates[0]?.id ?? null);
+    }
+  }, [selectedCarpenterTemplateId, selectedProfession?.state.professionId, visibleCarpenterTemplates]);
+
+  const carpenterInheritedByItemId = useMemo(() => {
+    const map = new Map<string, CarpenterCraftedComponentSnapshot>();
+    for (const entry of inventory.items) {
+      const instance = getPlayerItemInstanceByItemId(entry.itemId);
+      if (instance?.carpenterComponent) {
+        map.set(entry.itemId, instance.carpenterComponent);
+      }
+    }
+    return map;
+  }, [inventory.items, runtimeInventoryRevision]);
+
+  const carpenterCraftInputSelections = useMemo(() => {
+    if (!selectedCarpenterTemplate) return [] as CarpenterCraftInputSelection[];
+    return selectedCarpenterTemplate.inputSlots
+      .map((slot) => ({
+        slotId: slot.id,
+        itemId: carpenterInputSelections[slot.id] ?? '',
+        quantity: Math.max(1, slot.quantity ?? 1),
+      }))
+      .filter((entry) => Boolean(entry.itemId));
+  }, [carpenterInputSelections, selectedCarpenterTemplate]);
+
+  const eligibleCarpenterItemsBySlotId = useMemo(() => {
+    if (!selectedCarpenterTemplate) {
+      return new Map<string, ReturnType<typeof getEligibleInventoryItemsForCarpenterSlot>>();
+    }
+    return new Map(
+      selectedCarpenterTemplate.inputSlots.map((slot) => [
+        slot.id,
+        getEligibleInventoryItemsForCarpenterSlot({
+          slot,
+          inventoryItems: inventory.items,
+          contentItems: itemsCatalog,
+          inheritedFromComponent: carpenterInheritedByItemId,
+        }),
+      ]),
+    );
+  }, [selectedCarpenterTemplate, inventory.items, itemsCatalog, carpenterInheritedByItemId]);
+
+  useEffect(() => {
+    if (!selectedCarpenterTemplate) {
+      return;
+    }
+
+    setCarpenterInputSelections((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const slot of selectedCarpenterTemplate.inputSlots) {
+        const eligibleItems = eligibleCarpenterItemsBySlotId.get(slot.id) ?? [];
+        const currentSelection = String(current[slot.id] ?? '').trim();
+        const currentStillEligible = currentSelection
+          ? eligibleItems.some((entry) => entry.itemId === currentSelection)
+          : false;
+
+        if (currentStillEligible) {
+          continue;
+        }
+
+        if (slot.required && eligibleItems.length > 0) {
+          const nextItemId = eligibleItems[0]!.itemId;
+          if (currentSelection !== nextItemId) {
+            next[slot.id] = nextItemId;
+            changed = true;
+          }
+          continue;
+        }
+
+        if (currentSelection) {
+          delete next[slot.id];
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [selectedCarpenterTemplate, eligibleCarpenterItemsBySlotId]);
+
+  const carpenterCraftPreview = useMemo(() => {
+    if (!selectedCarpenterTemplate) return null;
+    return buildCarpenterComponentPreview({
+      template: selectedCarpenterTemplate,
+      inputSelections: carpenterCraftInputSelections,
+      inventoryItems: inventory,
+      content: {
+        items: itemsCatalog,
+        materials: materialsCatalog,
+        trees: treesCatalog,
+      },
+      carpenterLevel: selectedProfession?.state.professionId === 'carpenter' ? selectedProfession.state.level : 1,
+      inheritedFromComponent: carpenterInheritedByItemId,
+      learnedSkillIds: learnedCarpenterSkillIds,
+      skillNameById: carpenterSkillNameById,
+    });
+  }, [selectedCarpenterTemplate, carpenterCraftInputSelections, inventory, itemsCatalog, materialsCatalog, treesCatalog, selectedProfession, carpenterInheritedByItemId, learnedCarpenterSkillIds, carpenterSkillNameById]);
 
   const xpToNext = selectedProfession
     ? Math.max(0, Math.floor((selectedProfession.state.xpToNextLevel ?? 0) - (selectedProfession.state.xp ?? 0)))
@@ -726,6 +936,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     {tab === 'forge' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Кузня' : 'Горн') : null}
                     {tab === 'inventory' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Инвентарь' : 'Инвентарь Горняка') : null}
                     {tab === 'stats' ? (selectedProfession.state.professionId === 'blacksmithing' ? 'Статистика ковки' : 'Статистика спусков') : null}
+                    {tab === 'workshop' ? 'Мастерская' : null}
                     {tab === 'tree' ? 'Древо навыков' : null}
                   </button>
                 ))}
@@ -790,6 +1001,15 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       >
                         🪚 Запустить аркадный распил
                       </button>
+                      <button
+                        type="button"
+                        className="wm-button"
+                        onClick={() => {
+                          onLaunchCarpenterGame?.('workshop');
+                        }}
+                      >
+                        🔨 Открыть мастерскую на карте
+                      </button>
                     </div>
                     <p className="wm-stat-hint" style={{ marginTop: '8px' }}>
                       Запуск доступен только в лесной зоне на карте (forest).
@@ -842,15 +1062,17 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
               <div className="profession-tab-panel">
                 <BlacksmithCustomForgeTab
                   templates={blacksmithItemTemplates}
+                  items={itemsCatalog}
                   materials={materialsCatalog}
                   runtimeImages={runtimeImages}
                   inventory={inventory}
                   inventoryRevision={runtimeInventoryRevision}
                   blacksmithLevel={selectedProfession.state.level}
                   initialTemplateId={preparedCustomForgeTemplateId}
-                  onPreparePlan={({ template, plan }) => {
+                  onPreparePlan={({ template, plan, selectedCarpenterComponent }) => {
                     setPreparedCustomForgeTemplateId(template.id);
                     setPreparedCustomForgePlan(plan);
+                    setPreparedCustomForgeCarpenterComponent(selectedCarpenterComponent);
                     setPreparedItemWork(null);
                     setBlacksmithMode('custom_forge');
                     setBlacksmithSession(null);
@@ -891,6 +1113,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   const openRewardModal = (
                     previewItem: AdminItem,
                     priceBreakdown: BlacksmithPriceBreakdown,
+                    forgePreviewMetadata: string[] | undefined,
                     finalizeGrant: (draft: { name: string; description: string }) => Promise<{ rewardMessage: string; createdItem?: AdminItem | null }>,
                   ) => {
                     setPendingBlacksmithReward({
@@ -903,6 +1126,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       success,
                       draftName: previewItem.name,
                       draftDescription: '',
+                      forgePreviewMetadata,
                       finalize: async (draft) => {
                         const result = await finalizeGrant(draft);
                         if (result.createdItem) {
@@ -949,7 +1173,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                           recipePreviewMaterials,
                           selectedProfession.state.level,
                         );
-                        openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
+                        openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, undefined, async (draft) => {
                           const rewardResult = await grantRecipeOutputsToCharacterV2({
                             characterId,
                             recipe: selectedBlacksmithRecipe,
@@ -978,6 +1202,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   }
 
                   if (mode === 'custom_forge' && preparedCustomForgePlan && selectedBlacksmithTemplate && success && !(qualityTier?.isFailureTier ?? false) && score >= 20) {
+                    const carpenterContribution = deriveCarpenterComponentForgeContribution({
+                      template: selectedBlacksmithTemplate,
+                      component: preparedCustomForgeCarpenterComponent,
+                    });
                     const priceBreakdown = calculateCustomForgePriceBreakdown({
                       plan: preparedCustomForgePlan,
                       template: selectedBlacksmithTemplate,
@@ -995,32 +1223,46 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       blacksmithLevel: selectedProfession.state.level,
                       overrides: { priceOverride: priceBreakdown.totalPrice },
                     });
-                    openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
-                      const forgeResult = await grantCustomForgeItemToCharacterV2({
-                        characterId,
-                        template: selectedBlacksmithTemplate,
-                        plan: preparedCustomForgePlan,
-                        materialsCatalog,
-                        qualityTier,
-                        score,
-                        blacksmithLevel: selectedProfession.state.level,
-                        overrides: {
-                          customName: draft.name.trim() || undefined,
-                          customDescription: draft.description.trim() || undefined,
-                          priceOverride: priceBreakdown.totalPrice,
-                        },
-                      });
-                      if (forgeResult.inventory) {
-                        onInventoryChange(forgeResult.inventory);
-                      }
-                      setPreparedCustomForgePlan(null);
-                      setPreparedCustomForgeTemplateId(null);
-                      setBlacksmithMode('recipe');
-                      return {
-                        rewardMessage: ` Создан предмет: ${draft.name.trim() || forgeResult.createdItem?.name || selectedBlacksmithTemplate.name}.`,
-                        createdItem: forgeResult.createdItem,
-                      };
-                    });
+                    openRewardModal(
+                      { ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+                      priceBreakdown,
+                      carpenterContribution?.previewMetadata,
+                      async (draft) => {
+                        const validation = validateCarpenterComponentForTemplate(
+                          selectedBlacksmithTemplate,
+                          preparedCustomForgeCarpenterComponent,
+                        );
+                        if (!validation.ok) {
+                          throw new Error(validation.reason ?? 'Выбранный компонент плотника не подходит для этого шаблона.');
+                        }
+                        const forgeResult = await grantCustomForgeItemToCharacterV2({
+                          characterId,
+                          template: selectedBlacksmithTemplate,
+                          plan: preparedCustomForgePlan,
+                          materialsCatalog,
+                          selectedCarpenterComponent: preparedCustomForgeCarpenterComponent,
+                          qualityTier,
+                          score,
+                          blacksmithLevel: selectedProfession.state.level,
+                          overrides: {
+                            customName: draft.name.trim() || undefined,
+                            customDescription: draft.description.trim() || undefined,
+                            priceOverride: priceBreakdown.totalPrice,
+                          },
+                        });
+                        if (forgeResult.inventory) {
+                          onInventoryChange(forgeResult.inventory);
+                        }
+                        setPreparedCustomForgePlan(null);
+                        setPreparedCustomForgeTemplateId(null);
+                        setPreparedCustomForgeCarpenterComponent(null);
+                        setBlacksmithMode('recipe');
+                        return {
+                          rewardMessage: ` Создан предмет: ${draft.name.trim() || forgeResult.createdItem?.name || selectedBlacksmithTemplate.name}.`,
+                          createdItem: forgeResult.createdItem,
+                        };
+                      },
+                    );
                     return;
                   }
 
@@ -1039,7 +1281,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       selectedProfession.state.level,
                       { priceOverride: priceBreakdown.totalPrice },
                     );
-                    openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, async (draft) => {
+                    openRewardModal({ ...previewItem, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, priceBreakdown, undefined, async (draft) => {
                       const workResult = await applyItemWorkToCharacterV2({
                         characterId,
                         action: selectedItemWorkAction,
@@ -1083,11 +1325,19 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     rewardMessage = ' Результат рецепта добавлен в инвентарь.';
                   }
                   if (mode === 'custom_forge' && preparedCustomForgePlan && selectedBlacksmithTemplate) {
+                    const validation = validateCarpenterComponentForTemplate(
+                      selectedBlacksmithTemplate,
+                      preparedCustomForgeCarpenterComponent,
+                    );
+                    if (!validation.ok) {
+                      throw new Error(validation.reason ?? 'Выбранный компонент плотника не подходит для этого шаблона.');
+                    }
                     const forgeResult = await grantCustomForgeItemToCharacterV2({
                       characterId,
                       template: selectedBlacksmithTemplate,
                       plan: preparedCustomForgePlan,
                       materialsCatalog,
+                      selectedCarpenterComponent: preparedCustomForgeCarpenterComponent,
                       qualityTier,
                       score,
                       blacksmithLevel: selectedProfession.state.level,
@@ -1100,6 +1350,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       : ' Свободная ковка завершилась браком, часть материалов возвращена.';
                     setPreparedCustomForgePlan(null);
                     setPreparedCustomForgeTemplateId(null);
+                    setPreparedCustomForgeCarpenterComponent(null);
                     setBlacksmithMode('recipe');
                   }
                   if (mode === 'item_work' && selectedItemWorkAction && selectedItemWorkItem) {
@@ -1150,6 +1401,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   });
                   setPreparedCustomForgePlan(null);
                   setPreparedCustomForgeTemplateId(null);
+                  setPreparedCustomForgeCarpenterComponent(null);
                   setBlacksmithMode('item_work');
                   setBlacksmithSession(null);
                   setActiveTab('forge');
@@ -1171,6 +1423,211 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 <div className="profession-overview-item"><span>Опыт Горняка из шахт</span><strong>{miningCareerStats?.totalXpEarned ?? 0}</strong></div>
                 <div className="profession-overview-item"><span>Последний статус</span><strong>{miningCareerStats?.lastStatus ?? '-'}</strong></div>
                 <div className="profession-overview-item"><span>Последний спуск</span><strong>{miningCareerStats?.lastRunAt ? new Date(miningCareerStats.lastRunAt).toLocaleString('ru-RU') : '-'}</strong></div>
+              </div>
+            ) : null}
+
+            {activeTab === 'workshop' && selectedProfession.state.professionId === 'carpenter' ? (
+              <div className="profession-tab-panel">
+                <div className="profession-overview-grid" style={{ marginBottom: '0.8rem' }}>
+                  <div className="profession-overview-item"><span>Уровень плотника</span><strong>{selectedProfession.state.level}</strong></div>
+                  <div className="profession-overview-item"><span>Шаблонов</span><strong>{carpenterTemplates.length}</strong></div>
+                  <div className="profession-overview-item"><span>Позиций в инвентаре</span><strong>{inventory.items.length}</strong></div>
+                </div>
+                <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                  <input
+                    value={carpenterQuery}
+                    onChange={(event) => setCarpenterQuery(event.target.value)}
+                    placeholder="Поиск шаблона..."
+                  />
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <select value={carpenterGroupFilter} onChange={(event) => setCarpenterGroupFilter(event.target.value)}>
+                      <option value="all">Все группы</option>
+                      {Array.from(new Set(carpenterTemplates.map((entry) => entry.recipeGroup))).map((group) => (
+                        <option key={group} value={group}>{group}</option>
+                      ))}
+                    </select>
+                    <select value={carpenterKindFilter} onChange={(event) => setCarpenterKindFilter(event.target.value as 'all' | CarpenterComponentKind)}>
+                      <option value="all">Все component kinds</option>
+                      {Array.from(new Set(carpenterTemplates.map((entry) => resolveCarpenterTemplateOutputKind(entry)))).map((kind) => (
+                        <option key={kind} value={kind}>{kind}</option>
+                      ))}
+                    </select>
+                    <select value={carpenterAccessFilter} onChange={(event) => setCarpenterAccessFilter(event.target.value as 'all' | 'unlocked' | 'locked')}>
+                      <option value="all">Все шаблоны</option>
+                      <option value="unlocked">Доступные</option>
+                      <option value="locked">Заблокированные</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="profession-mining-tools-list" style={{ marginBottom: '0.8rem' }}>
+                  {visibleCarpenterTemplates.map((template) => {
+                    const access = carpenterTemplateAccessById.get(template.id);
+                    const isLocked = Boolean(access && !access.isUnlocked);
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className="profession-mining-tool-item"
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          borderColor: selectedCarpenterTemplateId === template.id ? 'rgba(241, 197, 130, 0.86)' : 'rgba(164, 141, 110, 0.22)',
+                          opacity: isLocked ? 0.72 : 1,
+                          background: isLocked ? 'rgba(54, 46, 39, 0.78)' : undefined,
+                        }}
+                        onClick={() => {
+                          setSelectedCarpenterTemplateId(template.id);
+                          setCarpenterInputSelections({});
+                          setCarpenterCraftStatus('');
+                        }}
+                      >
+                        <div style={{ width: '100%' }}>
+                          <strong>{isLocked ? `Заблокировано: ${template.name}` : template.name}</strong>
+                          <p className="wm-stat-hint" style={{ margin: 0 }}>{template.id} • {resolveCarpenterTemplateOutputKind(template)}</p>
+                          {isLocked ? (
+                            <p className="wm-stat-hint" style={{ margin: '0.2rem 0 0 0', color: '#ffb27a' }}>
+                              {access?.reason ?? 'Шаблон заблокирован.'}
+                            </p>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedCarpenterTemplate ? (
+                  <section className="profession-overlay-settings">
+                    <h4 className="profession-overlay-settings-title">{selectedCarpenterTemplate.name}</h4>
+                    <p className="wm-stat-hint" style={{ margin: 0 }}>{selectedCarpenterTemplate.description || 'Без описания.'}</p>
+                    {selectedCarpenterTemplateAccess && !selectedCarpenterTemplateAccess.isUnlocked ? (
+                      <div style={{ display: 'grid', gap: '0.2rem', marginTop: '0.45rem' }}>
+                        <strong style={{ color: '#ffb27a' }}>Шаблон заблокирован.</strong>
+                        <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                          {selectedCarpenterTemplateAccess.reason ?? 'Не хватает навыка для этого шаблона.'}
+                        </p>
+                        <p className="wm-stat-hint" style={{ margin: 0 }}>
+                          Требуемые навыки: {(selectedCarpenterTemplateAccess.requiredSkillIds.length > 0
+                            ? selectedCarpenterTemplateAccess.requiredSkillIds
+                            .map((skillId) => carpenterSkillNameById[skillId] ?? skillId)
+                            .join(', ')
+                            : 'не указаны')}
+                        </p>
+                      </div>
+                    ) : null}
+                    {selectedCarpenterTemplate.inputSlots.map((slot) => {
+                      const selectedItemId = carpenterInputSelections[slot.id] ?? '';
+                      const eligibleItems = eligibleCarpenterItemsBySlotId.get(slot.id) ?? [];
+                      const selectedQuantity = eligibleItems.find((entry) => entry.itemId === selectedItemId)?.quantity
+                        ?? inventory.items.find((entry) => entry.itemId === selectedItemId)?.quantity
+                        ?? 0;
+                      const requirementsText = [
+                        (slot.acceptedComponentKinds?.length ?? 0) > 0 ? `Нужно: ${(slot.acceptedComponentKinds ?? []).join(', ')}` : '',
+                        (slot.acceptedItemIds?.length ?? 0) > 0 ? `или ${(slot.acceptedItemIds ?? []).join(', ')}` : '',
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <div key={slot.id} style={{ display: 'grid', gap: '0.25rem' }}>
+                          <strong>{slot.label} {slot.required ? '*' : ''}</strong>
+                          <p className="wm-stat-hint" style={{ margin: 0 }}>
+                            Нужное количество: {slot.quantity}. accepted kinds: {(slot.acceptedComponentKinds ?? []).join(', ') || '—'}
+                          </p>
+
+                          {eligibleItems.length === 0 && slot.required ? (
+                            <>
+                              <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>Нет подходящих материалов у игрока.</p>
+                              <p className="wm-stat-hint" style={{ margin: 0 }}>{requirementsText || 'Требования слота не указаны.'}</p>
+                            </>
+                          ) : (
+                            <select
+                              value={selectedItemId}
+                              onChange={(event) => setCarpenterInputSelections((current) => ({ ...current, [slot.id]: event.target.value }))}
+                            >
+                              <option value="">{slot.required ? 'Выбрать предмет' : 'Можно не выбирать'}</option>
+                              {eligibleItems.map((entry) => (
+                                <option key={entry.itemId} value={entry.itemId}>
+                                  {entry.itemName} ({entry.itemId}) x{entry.quantity}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {selectedItemId ? (
+                            <p className="wm-stat-hint" style={{ margin: 0 }}>Доступно: {selectedQuantity}</p>
+                          ) : null}
+                          {!slot.required && eligibleItems.length === 0 ? (
+                            <p className="wm-stat-hint" style={{ margin: 0 }}>Можно не выбирать.</p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    {carpenterCraftPreview ? (
+                      <div style={{ borderTop: '1px solid rgba(164, 141, 110, 0.22)', paddingTop: '0.6rem' }}>
+                        <strong>Preview результата</strong>
+                        <p className="wm-stat-hint" style={{ margin: '0.3rem 0 0 0' }}>{carpenterCraftPreview.outputName}</p>
+                        <p className="wm-stat-hint" style={{ margin: 0 }}>
+                          componentKind={carpenterCraftPreview.componentKind} • quality={carpenterCraftPreview.qualityScore}/100 • retention={carpenterCraftPreview.traitRetentionPercent}%
+                        </p>
+                        <p className="wm-stat-hint" style={{ margin: 0 }}>
+                          sourceTree={carpenterCraftPreview.sourceTreeId ?? 'unknown'} • traits={carpenterCraftPreview.inheritedTraitTags.join(', ') || 'none'}
+                        </p>
+                        {carpenterCraftPreview.warnings.length > 0 ? (
+                          <ul style={{ margin: '0.35rem 0 0 1rem' }}>
+                            {carpenterCraftPreview.warnings.map((warning) => (
+                              <li key={warning} className="wm-stat-hint">{warning}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {carpenterCraftPreview.errors.length > 0 ? (
+                          <ul style={{ margin: '0.35rem 0 0 1rem' }}>
+                            {carpenterCraftPreview.errors.map((error) => (
+                              <li key={error} style={{ color: '#ff8f8f' }}>{error}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="wm-button"
+                          style={{ marginTop: '0.6rem' }}
+                          disabled={!carpenterCraftPreview.ok || !selectedCarpenterTemplateAccess?.isUnlocked}
+                          onClick={async () => {
+                            const result = await commitCarpenterComponentCraft({
+                              characterId,
+                              template: selectedCarpenterTemplate,
+                              inputSelections: carpenterCraftInputSelections,
+                              inventory,
+                              content: {
+                                items: itemsCatalog,
+                                materials: materialsCatalog,
+                                trees: treesCatalog,
+                              },
+                              carpenterLevel: selectedProfession.state.level,
+                              inheritedFromComponent: carpenterInheritedByItemId,
+                              learnedSkillIds: learnedCarpenterSkillIds,
+                              skillNameById: carpenterSkillNameById,
+                            });
+                            if (!result.ok) {
+                              const text = result.errors.join(' ') || 'Ошибка создания компонента.';
+                              setCarpenterCraftStatus(text);
+                              onStatus(text);
+                              return;
+                            }
+                            if (result.inventory) {
+                              onInventoryChange(result.inventory);
+                            } else {
+                              const refreshed = await adjustDevInventoryItem(characterId, { itemId: result.createdItemId!, quantityDelta: 0 });
+                              onInventoryChange(refreshed.inventory);
+                            }
+                            const text = `Создано: ${result.createdItemName}`;
+                            setCarpenterCraftStatus(text);
+                            onStatus(text);
+                          }}
+                        >
+                          Создать компонент
+                        </button>
+                        {carpenterCraftStatus ? <p className="wm-stat-hint" style={{ marginTop: '0.5rem' }}>{carpenterCraftStatus}</p> : null}
+                      </div>
+                    ) : null}
+                  </section>
+                ) : (
+                  <p className="wm-stat-hint">Выберите шаблон, чтобы увидеть input slots и preview.</p>
+                )}
               </div>
             ) : null}
 
@@ -1274,6 +1731,14 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                       onChange={(event) => setPendingBlacksmithReward((current) => current ? { ...current, draftDescription: event.target.value } : current)}
                     />
                   </label>
+                  {pendingBlacksmithReward.forgePreviewMetadata?.length ? (
+                    <div className="profession-reward-properties">
+                      <strong>Метаданные компонента плотника</strong>
+                      <div className="profession-reward-chip-grid">
+                        {pendingBlacksmithReward.forgePreviewMetadata.map((entry) => <span key={entry}>{entry}</span>)}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1297,10 +1762,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
         <style>{`
           .profession-modal {
             position: relative;
-            width: min(1500px, 96vw);
-            height: min(920px, 94vh);
-            max-width: 96vw;
-            max-height: 94vh;
+            width: min(1950px, 98vw);
+            height: min(1320px, 98vh);
+            max-width: 98vw;
+            max-height: 98vh;
             overflow: hidden;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);

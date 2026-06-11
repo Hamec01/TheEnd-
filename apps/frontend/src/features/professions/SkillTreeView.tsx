@@ -1104,18 +1104,20 @@ export function SkillTreeView(props: SkillTreeViewProps) {
             onMouseMove={onPointerMoveTree}
             onMouseUp={clearDrag}
             onMouseLeave={clearDrag}
-            style={{
-              position: 'relative',
-              height: professionId === 'blacksmithing' ? 'clamp(520px, 72vh, 840px)' : 'clamp(340px, 46vh, 500px)',
-              overflow: 'auto',
-              borderRadius: 10,
-              border: '1px solid rgba(184, 143, 78, 0.36)',
-              background: darkBackgroundForProfession(professionId),
-              boxShadow: 'inset 0 0 0 1px rgba(57, 42, 26, 0.65)',
-              cursor: dragState.current ? 'grabbing' : 'grab',
-              display: 'flex',
-              justifyContent: 'center',
-            }}
+              style={{
+                position: 'relative',
+                height: professionId === 'blacksmithing' ? 'clamp(520px, 72vh, 840px)' : 'clamp(340px, 46vh, 500px)',
+                overflow: 'auto',
+                borderRadius: 10,
+                border: '1px solid rgba(184, 143, 78, 0.36)',
+                background: professionId === 'carpenter'
+                  ? 'linear-gradient(180deg, rgba(18, 12, 8, 0.92), rgba(12, 8, 6, 0.94))'
+                  : darkBackgroundForProfession(professionId),
+                boxShadow: 'inset 0 0 0 1px rgba(57, 42, 26, 0.65)',
+                cursor: dragState.current ? 'grabbing' : 'grab',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
           >
              <div
               style={{
@@ -1124,7 +1126,9 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                 height: stageHeight,
                 background: professionId === 'blacksmithing'
                   ? 'radial-gradient(circle at 50% 8%, rgba(255, 157, 77, 0.16), transparent 20%), radial-gradient(circle at 18% 82%, rgba(194, 107, 32, 0.14), transparent 28%), radial-gradient(circle at 82% 24%, rgba(163, 92, 27, 0.12), transparent 26%), linear-gradient(180deg, rgba(16, 12, 10, 0.99), rgba(10, 8, 7, 0.99))'
-                  : 'radial-gradient(circle at 20% 78%, rgba(194, 107, 32, 0.15), transparent 42%), radial-gradient(circle at 76% 24%, rgba(40, 116, 148, 0.15), transparent 40%)',
+                  : professionId === 'carpenter'
+                    ? 'linear-gradient(180deg, rgba(22, 16, 11, 0.92), rgba(12, 8, 6, 0.92))'
+                    : 'radial-gradient(circle at 20% 78%, rgba(194, 107, 32, 0.15), transparent 42%), radial-gradient(circle at 76% 24%, rgba(40, 116, 148, 0.15), transparent 40%)',
               }}
             >
               <style>{`
@@ -1183,10 +1187,12 @@ export function SkillTreeView(props: SkillTreeViewProps) {
                       inset: 0,
                       backgroundImage: 'url(/art/professions/wood_skills.jpg)',
                       backgroundPosition: 'center',
-                      backgroundSize: '100% 100%',
-                      backgroundRepeat: 'no-repeat',
-                      opacity: 0.62,
-                      filter: 'saturate(0.75) contrast(1.1) brightness(0.65)',
+                      backgroundSize: 'cover',
+                      backgroundRepeat: 'repeat',
+                      transform: 'scale(1.325)',
+                      transformOrigin: 'center',
+                      opacity: 0.74,
+                      filter: 'saturate(0.78) contrast(1.08) brightness(0.68)',
                       pointerEvents: 'none',
                       zIndex: 1,
                     }}

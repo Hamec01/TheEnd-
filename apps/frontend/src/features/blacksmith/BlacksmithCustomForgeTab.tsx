@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InventoryState } from '@theend/rpg-domain';
 import type {
+  AdminItem,
   BlacksmithCustomForgePlan,
   BlacksmithItemTemplate,
   Material,
@@ -16,16 +17,29 @@ import {
   normalizeMaterialLikeId,
   readPlayerMaterialQuantities,
 } from './blacksmithRecipeMaterials';
+import { getPlayerItemInstanceByItemId } from '../../services/playerItemInstances';
+import {
+  extractCarpenterComponentOptionFromItemInstance,
+  getRequiredCarpenterComponentKinds,
+  type BlacksmithCarpenterComponentOption,
+  type BlacksmithCarpenterValidationResult,
+  validateCarpenterComponentForTemplate,
+} from './blacksmithCarpenterComponents';
 
 interface BlacksmithCustomForgeTabProps {
   templates: BlacksmithItemTemplate[];
+  items: AdminItem[];
   materials: Material[];
   runtimeImages: StoredImage[];
   inventory: InventoryState;
   inventoryRevision: number;
   blacksmithLevel: number;
   initialTemplateId?: string | null;
-  onPreparePlan: (payload: { template: BlacksmithItemTemplate; plan: BlacksmithCustomForgePlan }) => void;
+  onPreparePlan: (payload: {
+    template: BlacksmithItemTemplate;
+    plan: BlacksmithCustomForgePlan;
+    selectedCarpenterComponent: BlacksmithCarpenterComponentOption | null;
+  }) => void;
 }
 
 interface MaterialOption {
@@ -129,6 +143,7 @@ function formatRoleLabel(role: MaterialCraftingRole): string {
 
 export function BlacksmithCustomForgeTab({
   templates,
+  items,
   materials,
   runtimeImages,
   inventory,
@@ -144,6 +159,7 @@ export function BlacksmithCustomForgeTab({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(initialTemplateId ?? effectiveTemplates[0]?.id ?? null);
   const [selectedRowsBySlotId, setSelectedRowsBySlotId] = useState<Record<string, SlotSelectionRow[]>>({});
   const [customName, setCustomName] = useState('');
+  const [selectedCarpenterComponentItemId, setSelectedCarpenterComponentItemId] = useState<string>('');
   const [openHelpSlotId, setOpenHelpSlotId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -253,11 +269,69 @@ export function BlacksmithCustomForgeTab({
       templateId: selectedTemplate.id,
       customName: customName.trim() || undefined,
       selectedMaterials,
+      selectedCarpenterComponentItemId: selectedCarpenterComponentItemId.trim() || undefined,
       predictedDifficulty: difficulty.baseDifficulty,
       predictedRisk: difficulty.risk,
       predictedPower: difficulty.power,
     };
-  }, [customName, flattenedSelections, materials, selectedTemplate]);
+  }, [customName, flattenedSelections, materials, selectedCarpenterComponentItemId, selectedTemplate]);
+
+  const carpenterComponentOptions = useMemo<BlacksmithCarpenterComponentOption[]>(() => {
+    const rows = inventory.items ?? [];
+    const byItemId = new Map(items.map((entry) => [entry.id, entry]));
+    const next: BlacksmithCarpenterComponentOption[] = [];
+    for (const row of rows) {
+      if ((row.quantity ?? 0) <= 0) {
+        continue;
+      }
+      const item = byItemId.get(row.itemId);
+      if (!item) {
+        continue;
+      }
+      const option = extractCarpenterComponentOptionFromItemInstance(
+        item,
+        Math.max(1, Math.floor(row.quantity || 1)),
+        getPlayerItemInstanceByItemId(item.id),
+      );
+      if (!option) {
+        continue;
+      }
+      next.push(option);
+    }
+    return next.sort((left, right) => left.itemName.localeCompare(right.itemName, 'ru'));
+  }, [inventory, inventoryRevision, items]);
+
+  const carpenterOptionByItemId = useMemo(
+    () => new Map(carpenterComponentOptions.map((entry) => [entry.itemId, entry])),
+    [carpenterComponentOptions],
+  );
+  const selectedCarpenterComponent = selectedCarpenterComponentItemId
+    ? carpenterOptionByItemId.get(selectedCarpenterComponentItemId) ?? null
+    : null;
+  const carpenterValidation = useMemo<BlacksmithCarpenterValidationResult>(
+    () => validateCarpenterComponentForTemplate(selectedTemplate, selectedCarpenterComponent),
+    [selectedCarpenterComponent, selectedTemplate],
+  );
+  const requiredCarpenterKinds = useMemo(
+    () => getRequiredCarpenterComponentKinds(selectedTemplate),
+    [selectedTemplate],
+  );
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      if (selectedCarpenterComponentItemId) {
+        setSelectedCarpenterComponentItemId('');
+      }
+      return;
+    }
+    if (!selectedCarpenterComponentItemId) {
+      return;
+    }
+    const existsInOptions = carpenterOptionByItemId.has(selectedCarpenterComponentItemId);
+    if (!existsInOptions || !carpenterValidation.ok) {
+      setSelectedCarpenterComponentItemId('');
+    }
+  }, [carpenterOptionByItemId, carpenterValidation.ok, selectedCarpenterComponentItemId, selectedTemplate]);
 
   const difficulty = useMemo(
     () => (selectedTemplate && currentPlan ? calculateCustomForgeDifficultyV2(currentPlan, materials, selectedTemplate) : null),
@@ -345,6 +419,45 @@ export function BlacksmithCustomForgeTab({
             onChange={(event) => setCustomName(event.target.value)}
           />
         </label>
+
+        {selectedTemplate ? (
+          <label className="blacksmith-custom-field">
+            <span>Компонент плотника (опционально)</span>
+            <select
+              value={selectedCarpenterComponentItemId}
+              onChange={(event) => setSelectedCarpenterComponentItemId(event.target.value)}
+            >
+              <option value="">Не использовать</option>
+              {carpenterComponentOptions.map((option) => {
+                const validation = validateCarpenterComponentForTemplate(selectedTemplate, option);
+                return (
+                  <option
+                    key={option.itemId}
+                    value={option.itemId}
+                    disabled={!validation.ok}
+                  >
+                    {option.itemName} x{option.quantity}
+                    {validation.ok ? '' : ` — ${validation.reason ?? 'не подходит'}`}
+                  </option>
+                );
+              })}
+            </select>
+            {requiredCarpenterKinds.length > 0 ? (
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Подходящие виды: {requiredCarpenterKinds.map((kind) => kind.replace(/_/g, ' ')).join(', ')}.
+              </p>
+            ) : (
+              <p className="wm-stat-hint" style={{ margin: 0 }}>
+                Для этого шаблона компонент плотника не применяется.
+              </p>
+            )}
+            {selectedCarpenterComponent && !carpenterValidation.ok ? (
+              <p className="blacksmith-custom-inline-warning">
+                Выбранный компонент не подходит: {carpenterValidation.reason}
+              </p>
+            ) : null}
+          </label>
+        ) : null}
       </section>
 
       <section className="blacksmith-custom-column blacksmith-custom-column-slots">
@@ -545,16 +658,22 @@ export function BlacksmithCustomForgeTab({
             type="button"
             disabled={!selectedTemplate || !currentPlan || Boolean(missingRequiredSlot) || overAllocatedMaterials.length > 0}
             onClick={() => {
-              if (!selectedTemplate || !currentPlan) {
+              if (!selectedTemplate || !currentPlan || !carpenterValidation.ok) {
                 return;
               }
-              onPreparePlan({ template: selectedTemplate, plan: currentPlan });
+              onPreparePlan({
+                template: selectedTemplate,
+                plan: currentPlan,
+                selectedCarpenterComponent,
+              });
             }}
           >
             {missingRequiredSlot
               ? `Не заполнен слот: ${missingRequiredSlot.label}`
               : overAllocatedMaterials.length > 0
                 ? 'Не хватает материалов'
+                : !carpenterValidation.ok
+                  ? 'Компонент не подходит'
                 : 'Подготовить свободную ковку'}
           </button>
         </article>
