@@ -56,6 +56,7 @@ const CARPENTER_STATIONS: CarpenterStationType[] = [
   'carving_table',
   'assembly_table',
   'carving_bench',
+  'bowyer_bench',
   'finishing_table',
   'rune_carving_table',
 ];
@@ -107,12 +108,17 @@ function createEmptyTemplate(): CarpenterItemTemplate {
     name: '',
     description: '',
     recipeGroup: 'misc',
+    group: '',
     stationType: 'workbench',
     difficulty: 'basic',
+    difficultyType: 'simple_cut',
+    baseDifficulty: 10,
+    baseRisk: 2,
     outputItemId: '',
     outputComponentKind: 'unknown',
     outputQuantity: 1,
     requiredCarpenterLevel: 1,
+    requiredWorkshopTier: 1,
     requiredSkillIds: [],
     inputSlots: [defaultInputSlot(0)],
     traitTransferRules: [],
@@ -140,8 +146,13 @@ function normalizeTemplateInput(raw: CarpenterItemTemplate): CarpenterItemTempla
   next.description = String(next.description ?? '').trim();
   next.outputItemId = String(next.outputItemId ?? '').trim();
   next.notes = String(next.notes ?? '').trim();
+  next.group = String(next.group ?? '').trim();
+  next.difficultyType = String(next.difficultyType ?? '').trim();
+  next.baseDifficulty = Math.max(1, Number.isFinite(Number(next.baseDifficulty)) ? Math.round(Number(next.baseDifficulty)) : 10);
+  next.baseRisk = Math.max(0, Number.isFinite(Number(next.baseRisk)) ? Math.round(Number(next.baseRisk)) : 2);
   next.outputQuantity = Math.max(1, Number.isFinite(Number(next.outputQuantity)) ? Math.round(Number(next.outputQuantity)) : 1);
   next.requiredCarpenterLevel = Math.max(1, Number.isFinite(Number(next.requiredCarpenterLevel)) ? Math.round(Number(next.requiredCarpenterLevel)) : 1);
+  next.requiredWorkshopTier = Math.max(1, Number.isFinite(Number(next.requiredWorkshopTier)) ? Math.round(Number(next.requiredWorkshopTier)) : 1);
   next.requiredSkillIds = (next.requiredSkillIds ?? []).map((id) => String(id).trim()).filter(Boolean);
   next.tags = (next.tags ?? []).map((id) => String(id).trim()).filter(Boolean);
   next.inputSlots = Array.isArray(next.inputSlots) && next.inputSlots.length > 0
@@ -290,11 +301,15 @@ function createStarterCarpenterTemplates(): CarpenterItemTemplate[] {
       name: 'Щитовой сердечник из досок',
       description: 'Базовый деревянный сердечник для будущих щитов.',
       recipeGroup: 'armor_parts',
+      group: 'shields',
       stationType: 'workbench',
       difficulty: 'basic',
+      baseDifficulty: 18,
+      baseRisk: 8,
       outputComponentKind: 'panel',
       outputQuantity: 1,
       requiredCarpenterLevel: 1,
+      requiredWorkshopTier: 2,
       requiredSkillIds: ['carpenter_basic_joinery'],
       inputSlots: [
         {
@@ -331,11 +346,15 @@ function createStarterCarpenterTemplates(): CarpenterItemTemplate[] {
       name: 'Стандартная рукоять инструмента',
       description: 'Универсальная рукоять для будущих инструментов.',
       recipeGroup: 'tools',
+      group: 'weapon_components',
       stationType: 'carving_table',
       difficulty: 'standard',
+      baseDifficulty: 28,
+      baseRisk: 12,
       outputComponentKind: 'handle',
       outputQuantity: 1,
       requiredCarpenterLevel: 3,
+      requiredWorkshopTier: 1,
       requiredSkillIds: ['carpenter_toolmaking'],
       inputSlots: [
         {
@@ -361,11 +380,15 @@ function createStarterCarpenterTemplates(): CarpenterItemTemplate[] {
       name: 'Усиленная рама повозки',
       description: 'Каркас транспортной платформы из балок и досок.',
       recipeGroup: 'transport_parts',
+      group: 'building_parts',
       stationType: 'assembly_table',
       difficulty: 'advanced',
+      baseDifficulty: 42,
+      baseRisk: 18,
       outputComponentKind: 'frame',
       outputQuantity: 1,
       requiredCarpenterLevel: 6,
+      requiredWorkshopTier: 2,
       requiredSkillIds: ['carpenter_transport_framework'],
       inputSlots: [
         {
@@ -902,6 +925,10 @@ export function CarpentryTemplatesTab() {
                 </select>
               </div>
               <div className="field-group">
+                <AdminFieldLabel label="Workshop group" hint="Runtime-группа для workshop access, например wood_processing" />
+                <input value={draft.group ?? ''} onChange={(event) => patch({ group: event.target.value })} />
+              </div>
+              <div className="field-group">
                 <AdminFieldLabel label="Станция" hint="Справочная станция, не запускает runtime craft" />
                 <select value={draft.stationType} onChange={(event) => patch({ stationType: event.target.value as CarpenterStationType })}>
                   {CARPENTER_STATIONS.map((station) => <option key={station} value={station}>{station}</option>)}
@@ -912,6 +939,18 @@ export function CarpentryTemplatesTab() {
                 <select value={draft.difficulty} onChange={(event) => patch({ difficulty: event.target.value as CarpenterTemplateDifficultyType })}>
                   {CARPENTER_DIFFICULTY.map((difficulty) => <option key={difficulty} value={difficulty}>{difficulty}</option>)}
                 </select>
+              </div>
+              <div className="field-group">
+                <AdminFieldLabel label="difficultyType" hint="Тип работы для Phaser mini-game, например fine_carving" />
+                <input value={draft.difficultyType ?? ''} onChange={(event) => patch({ difficultyType: event.target.value })} />
+              </div>
+              <div className="field-group">
+                <AdminFieldLabel label="Base difficulty" hint="Базовая сложность mini-game" />
+                <input type="number" min={1} value={draft.baseDifficulty} onChange={(event) => patch({ baseDifficulty: Number(event.target.value) || 1 })} />
+              </div>
+              <div className="field-group">
+                <AdminFieldLabel label="Base risk" hint="Базовый риск ошибки/поломки" />
+                <input type="number" min={0} value={draft.baseRisk} onChange={(event) => patch({ baseRisk: Number(event.target.value) || 0 })} />
               </div>
               <div className="field-group">
                 <AdminFieldLabel label="Output component kind" hint="Категория результата template-а" />
@@ -934,6 +973,15 @@ export function CarpentryTemplatesTab() {
                   min={1}
                   value={draft.requiredCarpenterLevel ?? 1}
                   onChange={(event) => patch({ requiredCarpenterLevel: Number(event.target.value) || 1 })}
+                />
+              </div>
+              <div className="field-group">
+                <AdminFieldLabel label="Required workshop tier" hint="Явный минимальный tier мастерской" />
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.requiredWorkshopTier ?? 1}
+                  onChange={(event) => patch({ requiredWorkshopTier: Number(event.target.value) || 1 })}
                 />
               </div>
               <div className="field-group">

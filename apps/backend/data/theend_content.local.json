@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-12T13:02:08.789Z",
+  "exportedAt": "2026-06-12T14:53:29.414Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -10504,7 +10504,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-12T12:56:49.565Z",
+        "updatedAt": "2026-06-12T14:48:54.430Z",
         "kind": "single",
         "stages": []
       },
@@ -10560,7 +10560,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-12T12:56:49.565Z",
+        "updatedAt": "2026-06-12T14:48:54.430Z",
         "kind": "single",
         "stages": []
       },
@@ -10619,7 +10619,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-12T12:56:49.565Z",
+        "updatedAt": "2026-06-12T14:48:54.430Z",
         "kind": "single",
         "stages": []
       }
@@ -14032,7 +14032,7 @@
         "regionId": "teramor",
         "kingdomId": "argos",
         "createdAt": "2026-05-29T09:07:29Z",
-        "updatedAt": "2026-06-12T11:47:11.239Z",
+        "updatedAt": "2026-06-12T14:53:29.153Z",
         "rulerName": "Наместник Разу'гара",
         "rulerTitle": "governor",
         "governmentType": "occupied fortress-city under Argos military rule",
@@ -14200,7 +14200,10 @@
             "markerIcon": "blacksmith",
             "description": "Ремесленный район Разу'гара: дымные дворы, кузни под чёрными навесами и тесовые сараи, где с рассвета до ночи чинят броню, сушат доски, правят упряжь и собирают всё, что нужно гарнизону, шахтам и обозам пограничного города.",
             "workshopIds": [
-              "workshop_carpenter_basic_public"
+              "workshop_carpenter_basic_public",
+              "workshop_carpenter_advanced",
+              "workshop_carpenter_sawmill_basic",
+              "workshop_carpenter_ritual"
             ],
             "services": [
               "npc_dialogue",

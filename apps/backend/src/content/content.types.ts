@@ -345,6 +345,7 @@ export type CarpenterStationType =
   | 'carving_table'
   | 'assembly_table'
   | 'carving_bench'
+  | 'bowyer_bench'
   | 'finishing_table'
   | 'rune_carving_table';
 
@@ -451,12 +452,17 @@ export interface CarpenterItemTemplate {
   name: string;
   description?: string;
   recipeGroup: CarpenterRecipeGroup;
+  group?: string;
   stationType: CarpenterStationType;
   difficulty: CarpenterTemplateDifficultyType;
+  difficultyType?: string;
+  baseDifficulty: number;
+  baseRisk: number;
   outputItemId?: string;
   outputComponentKind: CarpenterComponentKind;
   outputQuantity: number;
   requiredCarpenterLevel?: number;
+  requiredWorkshopTier?: number;
   requiredSkillIds?: string[];
   inputSlots: CarpenterTemplateInputSlot[];
   traitTransferRules?: CarpenterTraitTransferRule[];

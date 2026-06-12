@@ -108,7 +108,15 @@ interface PlayerProfessionsPanelProps {
   onLaunchCarpenterGame?: (gameType: 'woodcutting' | 'sawing' | 'workshop') => void;
   activeWorkshop?: ProfessionWorkshopDefinition | null;
   activeStationType?: string | null;
-  launchWorkshopMiniGame?: (params: { workshopId: string; professionId: string; templateId: string; stationType: string }) => void;
+  launchWorkshopMiniGame?: (params: {
+    workshopId: string;
+    professionId: string;
+    templateId: string;
+    stationType: string;
+    carpenterLevel: number;
+    learnedSkillIds: string[];
+    skillNameById?: Record<string, string>;
+  }) => void;
 }
 
 function shouldAutoActivateProfessionBranch(professionId: string, branch: ProfessionBranch): boolean {
@@ -1769,13 +1777,16 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                                 professionId: 'carpenter',
                                 templateId: selectedCarpenterTemplate.id,
                                 stationType: selectedCarpenterTemplate.stationType,
+                                carpenterLevel: selectedProfession.state.level,
+                                learnedSkillIds: learnedCarpenterSkillIds,
+                                skillNameById: carpenterSkillNameById,
                               });
                               return;
                             }
                             onStatus(`TODO: mini-game hook для ${selectedCarpenterTemplate.name} в мастерской ${activeWorkshop.name} ещё не подключён.`);
                           }}
                         >
-                          Mini-game (TODO)
+                          Открыть Phaser mini-game
                         </button>
                         {carpenterCraftStatus ? <p className="wm-stat-hint" style={{ marginTop: '0.5rem' }}>{carpenterCraftStatus}</p> : null}
                       </div>

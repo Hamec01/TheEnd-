@@ -15,6 +15,7 @@ export interface WorkshopRentalAccessResult {
   isRented: boolean;
   expiresAtIso?: string;
   reason?: string;
+  status?: "free" | "active" | "missing" | "expired";
 }
 
 const WORKSHOP_RENTAL_LOCK_REASON = "Нужно арендовать мастерскую, чтобы пользоваться этим станком.";
@@ -164,26 +165,30 @@ export function getWorkshopRentalAccess(params: {
 }): WorkshopRentalAccessResult {
   const rental = params.workshop.rental;
   if (rental?.enabled !== true) {
-    return { canUse: true, isRented: false };
+    return { canUse: true, isRented: false, status: "free" };
   }
 
   const now = params.now ?? new Date();
-  const state = getWorkshopRentalState(params.characterId, params.workshop.id);
+  const normalizedCharacterId = String(params.characterId ?? "").trim();
+  const normalizedWorkshopId = String(params.workshop.id ?? "").trim();
+  const state = readWorkshopRentals(normalizedCharacterId).find((entry) => entry.workshopId === normalizedWorkshopId) ?? null;
   if (!state) {
     return {
       canUse: false,
       isRented: false,
       reason: WORKSHOP_RENTAL_LOCK_REASON,
+      status: "missing",
     };
   }
 
   const expiresAt = new Date(state.expiresAtIso);
   if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now.getTime()) {
-    clearExpiredWorkshopRentals(params.characterId);
+    clearExpiredWorkshopRentals(normalizedCharacterId);
     return {
       canUse: false,
       isRented: false,
-      reason: WORKSHOP_RENTAL_LOCK_REASON,
+      reason: "Срок аренды мастерской истёк.",
+      status: "expired",
     };
   }
 
@@ -191,6 +196,6 @@ export function getWorkshopRentalAccess(params: {
     canUse: true,
     isRented: true,
     expiresAtIso: state.expiresAtIso,
+    status: "active",
   };
 }
-

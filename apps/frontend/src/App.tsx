@@ -82,6 +82,8 @@ import { InventoryPanel, type CharacterPageFocus } from './components/InventoryP
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, ItemInstance, Material, ProfessionWorkshopDefinition, StoredImage } from './services/content/models';
+import { CarpenterWorkshopGame } from './professions/carpenter/game/CarpenterWorkshopGame';
+import type { CarpenterWorkshopGameLaunchParams } from './professions/carpenter/game/carpenterWorkshopGame.types';
 import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
   CHARACTER_CREATION_AVATAR_PRESETS,
@@ -1387,6 +1389,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
   const [activeProfessionWorkshop, setActiveProfessionWorkshop] = useState<ProfessionWorkshopDefinition | null>(null);
   const [activeProfessionWorkshopStationType, setActiveProfessionWorkshopStationType] = useState<string | null>(null);
+  const [activeCarpenterWorkshopGame, setActiveCarpenterWorkshopGame] = useState<CarpenterWorkshopGameLaunchParams | null>(null);
   const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
   const [activeTrainerNpcId, setActiveTrainerNpcId] = useState<string | null>(null);
   const [activeTrainerNpcName, setActiveTrainerNpcName] = useState<string | null>(null);
@@ -6363,9 +6366,38 @@ function applyHubState(hub: HubStatePayload): void {
               });
               setStatus(`Запрос на запуск мини-игры плотника: ${gameType}.`);
             }}
-            launchWorkshopMiniGame={({ workshopId, professionId, templateId, stationType }) => {
-              setStatus(`TODO mini-game hook: workshop=${workshopId}, profession=${professionId}, template=${templateId}, station=${stationType}.`);
+            launchWorkshopMiniGame={({ workshopId, professionId, templateId, stationType, carpenterLevel, learnedSkillIds, skillNameById }) => {
+              if (!character || !activeProfessionWorkshop || professionId !== 'carpenter' || activeProfessionWorkshop.id !== workshopId) {
+                setStatus(`Не удалось открыть mini-game: мастерская ${workshopId} сейчас не активна.`);
+                return;
+              }
+              setOverlayPanel(null);
+              setActiveCarpenterWorkshopGame({
+                characterId: character.id,
+                inventory: worldInventory,
+                workshop: activeProfessionWorkshop,
+                activeStationType: stationType || activeProfessionWorkshopStationType,
+                initialTemplateId: templateId,
+                carpenterLevel,
+                learnedSkillIds,
+                skillNameById,
+              });
+              setStatus(`Открыта Phaser mini-game плотника: ${activeProfessionWorkshop.name}.`);
             }}
+          />
+        ) : null}
+
+        {activeCarpenterWorkshopGame ? (
+          <CarpenterWorkshopGame
+            launch={activeCarpenterWorkshopGame}
+            onClose={() => {
+              setActiveCarpenterWorkshopGame(null);
+              if (character) {
+                setOverlayPanel('professions');
+              }
+            }}
+            onInventoryChange={setInventory}
+            onStatus={setStatus}
           />
         ) : null}
 

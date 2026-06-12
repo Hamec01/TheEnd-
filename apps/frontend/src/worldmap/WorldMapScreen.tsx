@@ -258,6 +258,10 @@ import {
   saveWorkshopRentalState,
 } from "../professions/workshops/workshopRentalState";
 import {
+  grantWorkshopAccessUnlock,
+  hasWorkshopAccessUnlock,
+} from "../professions/workshops/workshopAccessState";
+import {
   CarpenterArcadeModal,
   type CarpenterArcadeMode,
   type SawingArcadeConfig,
@@ -5585,8 +5589,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           return current;
         }
         return { ...current, x: point[0], y: point[1] };
-      });
-      onStatus(
+        });
+        onStatus(
         `Quest marker: coords set to x:${point[0].toFixed(4)} y:${point[1].toFixed(4)}.`,
       );
     },
@@ -8080,7 +8084,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     if (devTravelRequest.mode === 'carpenter_game') {
       const gameType = devTravelRequest.carpenterGameType;
-      if (currentZone?.resourceKind !== 'forest') {
+      const requiresForestZone = gameType === 'woodcutting' || gameType === 'sawing';
+      if (requiresForestZone && currentZone?.resourceKind !== 'forest') {
         onStatus('GODMODE: запуск мини-игры плотника доступен только в forest-зоне.');
         return;
       }
@@ -9496,6 +9501,22 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setExpandedMineZoneId(null);
       dialogueRunner.closeDialogue();
     };
+    const openProfessionWorkshopModalFromLocation = (workshopId: string, locationId: string) => {
+      const normalizedWorkshopId = String(workshopId).trim();
+      const normalizedLocationId = String(locationId).trim();
+      const workshop = professionWorkshopsById.get(normalizedWorkshopId) ?? null;
+      if (!workshop) {
+        onStatus(`Мастерская не найдена: ${normalizedWorkshopId}`);
+        return;
+      }
+      dialogueRunner.closeDialogue();
+      setActiveWorldModal({
+        type: "profession_workshop",
+        locationId: normalizedLocationId,
+        workshopId: workshop.id,
+      });
+      setContextMode("location");
+    };
 
 
     let portrait: string | undefined;
@@ -9999,13 +10020,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                       textAlign: "left",
                     }}
                     onClick={() => {
-                      dialogueRunner.closeDialogue();
-                      setActiveWorldModal({
-                        type: "profession_workshop",
-                        locationId: modalLocation?.id ?? activeWorldModal.locationId,
-                        workshopId: workshop.id,
-                      });
-                      setContextMode("location");
+                      openProfessionWorkshopModalFromLocation(
+                        workshop.id,
+                        modalLocation?.id ?? activeWorldModal.locationId,
+                      );
                     }}
                   >
                     <strong>{workshop.name}</strong>
@@ -10319,15 +10337,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                     }}
                     onClick={() => {
                       if (!workshop) {
+                        openProfessionWorkshopModalFromLocation(
+                          workshopId,
+                          modalLocation?.id ?? activeWorldModal.locationId,
+                        );
                         return;
                       }
-                      dialogueRunner.closeDialogue();
-                      setActiveWorldModal({
-                        type: "profession_workshop",
-                        locationId: modalLocation?.id ?? activeWorldModal.locationId,
-                        workshopId: workshop.id,
-                      });
-                      setContextMode("location");
+                      openProfessionWorkshopModalFromLocation(
+                        workshop.id,
+                        modalLocation?.id ?? activeWorldModal.locationId,
+                      );
                     }}
                   >
                     <strong style={{ overflowWrap: "anywhere" }}>
@@ -10508,6 +10527,9 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const rentalAccess = modalProfessionWorkshop
         ? getWorkshopRentalAccess({ characterId: character.id, workshop: modalProfessionWorkshop })
         : { canUse: false, isRented: false } as const;
+      const workshopNpcUnlockGranted = modalProfessionWorkshop
+        ? hasWorkshopAccessUnlock(character.id, modalProfessionWorkshop.id)
+        : false;
       const rentalStatusText = rental?.enabled !== true
         ? "Бесплатный доступ"
         : rentalAccess.isRented
@@ -10544,6 +10566,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         setWorkshopRentalPanelOpen(true);
       };
 
+      const grantWorkshopNpcPermission = () => {
+        if (!modalProfessionWorkshop) {
+          return;
+        }
+        grantWorkshopAccessUnlock({
+          characterId: character.id,
+          workshopId: modalProfessionWorkshop.id,
+          sourceNpcId: rental?.ownerNpcId?.trim() || undefined,
+          sourceDialogueId: rental?.rentalDialogueId?.trim() || undefined,
+        });
+        refreshWorkshopRentalState();
+        onStatus(`Разрешение получено: ${modalProfessionWorkshop.name}.`);
+      };
+
       const openWorkshopOwnerInteraction = () => {
         if (!modalProfessionWorkshop) {
           return;
@@ -10577,11 +10613,19 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         }
 
         if (!ownerNpcId) {
-          onStatus("Владелец мастерской ещё не назначен.");
+          if (rental?.requiresNpcDialogue) {
+            onStatus("Владелец мастерской ещё не назначен. Используйте fallback-кнопку, чтобы временно выдать разрешение.");
+          } else {
+            onStatus("Владелец мастерской ещё не назначен.");
+          }
           return;
         }
 
-        onStatus("Диалог владельца будет добавлен позже.");
+        if (rental?.requiresNpcDialogue) {
+          onStatus("Диалог владельца будет добавлен позже. До этого можно выдать разрешение fallback-кнопкой.");
+        } else {
+          onStatus("Диалог владельца будет добавлен позже.");
+        }
       };
 
       const activateWorkshopRental = () => {
@@ -10885,6 +10929,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 <div><strong>Срок:</strong> {rentalDurationHours} ч.</div>
                 <div><strong>Текущий статус:</strong> {rentalStatusText}</div>
                 <div><strong>Ваше золото:</strong> {playerGold.totalGold}</div>
+                {rental?.requiresNpcDialogue ? (
+                  <div>
+                    <strong>Разрешение владельца:</strong>{" "}
+                    {workshopNpcUnlockGranted ? "получено" : "ещё не получено"}
+                  </div>
+                ) : null}
                 {!rentalAccess.isRented && rentalPrice > 0 && !canAffordRental ? (
                   <div style={{ color: "#ffb27a" }}>Недостаточно золота</div>
                 ) : null}
@@ -10904,6 +10954,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                       onClick={openWorkshopOwnerInteraction}
                     >
                       Поговорить с владельцем
+                    </button>
+                  ) : null}
+                  {rental?.requiresNpcDialogue ? (
+                    <button
+                      type="button"
+                      onClick={grantWorkshopNpcPermission}
+                      disabled={workshopNpcUnlockGranted}
+                    >
+                      {workshopNpcUnlockGranted
+                        ? "Разрешение получено"
+                        : "Получить разрешение на ритуальную мастерскую"}
                     </button>
                   ) : null}
                   <button

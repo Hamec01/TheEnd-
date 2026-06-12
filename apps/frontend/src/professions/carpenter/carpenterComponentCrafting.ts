@@ -23,7 +23,7 @@ import {
   readStringNumberRecordStorage,
   writeStringNumberRecordStorage,
 } from '../../utils/playerInventory';
-import { canUseCarpenterTemplate, canUseCarpenterTemplateInWorkshop } from './carpenterTemplateAccess';
+import { canUseCarpenterTemplate, canUseCarpenterTemplateInWorkshop, resolveCarpenterTemplateBaseDifficulty } from './carpenterTemplateAccess';
 import { isLikelyGenericWoodStackItemId, resolveTreeForWoodItem } from './woodInheritance';
 
 export interface CarpenterCraftInputSelection {
@@ -275,11 +275,11 @@ export function getEligibleInventoryItemsForCarpenterSlot(params: {
     .map(({ accepted: _accepted, ...entry }) => entry);
 }
 
-function getInventoryQuantity(inventory: InventoryState, itemId: string): number {
+export function getInventoryQuantity(inventory: InventoryState, itemId: string): number {
   return Math.max(0, Math.floor(Number(inventory.items.find((entry) => entry.itemId === itemId)?.quantity ?? 0)));
 }
 
-function removeFromInventoryState(inventory: InventoryState, itemId: string, quantity: number): InventoryState {
+export function removeFromInventoryState(inventory: InventoryState, itemId: string, quantity: number): InventoryState {
   let remainingToRemove = Math.max(0, Math.floor(quantity));
   return {
     ...inventory,
@@ -299,7 +299,7 @@ function removeFromInventoryState(inventory: InventoryState, itemId: string, qua
   };
 }
 
-function buildCarpenterInputRemovals(
+export function buildCarpenterInputRemovals(
   template: CarpenterItemTemplate,
   inputSelections: CarpenterCraftInputSelection[],
 ): CarpenterInputRemoval[] {
@@ -322,7 +322,7 @@ function buildCarpenterInputRemovals(
     .filter((entry): entry is CarpenterInputRemoval => Boolean(entry));
 }
 
-function createRuntimeCraftItemId(kind: CarpenterComponentKind, sourceTreeId?: string): string {
+export function createRuntimeCraftItemId(kind: CarpenterComponentKind, sourceTreeId?: string): string {
   const kindPart = sanitizeIdFragment(kind) || 'component';
   const sourcePart = sanitizeIdFragment(sourceTreeId ?? 'common_wood') || 'common_wood';
   const unique = (crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`)
@@ -396,7 +396,7 @@ function deriveTreeFromSelections(
   };
 }
 
-function computeQualityScore(params: {
+export function computeQualityScore(params: {
   carpenterLevel: number;
   sourceLost: boolean;
   inheritedTraitTags: string[];
@@ -404,17 +404,11 @@ function computeQualityScore(params: {
 }): number {
   const preferredBonus = Math.min(20, (params.inheritedTraitTags.length > 0 ? 1 : 0) * 10);
   const sourceLostPenalty = params.sourceLost ? 15 : 0;
-  const baseDifficulty = params.template.difficulty === 'master'
-    ? 40
-    : params.template.difficulty === 'advanced'
-      ? 28
-      : params.template.difficulty === 'standard'
-        ? 18
-        : 10;
+  const baseDifficulty = resolveCarpenterTemplateBaseDifficulty(params.template);
   return clamp(Math.round(50 + params.carpenterLevel * 3 + preferredBonus - baseDifficulty * 0.25 - sourceLostPenalty), 1, 100);
 }
 
-function computeTraitRetentionPercent(kind: CarpenterComponentKind, qualityScore: number): number {
+export function computeTraitRetentionPercent(kind: CarpenterComponentKind, qualityScore: number): number {
   const baseRetention = CARPENTER_COMPONENT_TRAIT_RETENTION[kind] ?? 60;
   const scaled = Math.round(baseRetention * (0.75 + qualityScore / 400));
   return clamp(scaled, 1, 100);

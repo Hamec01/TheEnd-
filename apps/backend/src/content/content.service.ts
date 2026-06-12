@@ -1810,19 +1810,41 @@ function normalizeCarpenterTraitTransferRuleInput(
 
 function normalizeCarpenterItemTemplateInput(input: CarpenterItemTemplate): CarpenterItemTemplate {
   const imageRef = normalizeGameImageRefInput(input.imageRef);
+  const normalizedDifficulty = String(input.difficulty ?? 'basic').trim() as CarpenterItemTemplate['difficulty'];
+  const fallbackBaseDifficulty = normalizedDifficulty === 'master'
+    ? 40
+    : normalizedDifficulty === 'advanced'
+      ? 28
+      : normalizedDifficulty === 'standard'
+        ? 18
+        : 10;
+  const fallbackBaseRisk = normalizedDifficulty === 'master'
+    ? 12
+    : normalizedDifficulty === 'advanced'
+      ? 8
+      : normalizedDifficulty === 'standard'
+        ? 4
+        : 2;
   return {
     ...clone(input),
     id: String(input.id ?? '').trim(),
     name: String(input.name ?? '').trim(),
     description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
     recipeGroup: String(input.recipeGroup ?? 'misc').trim() as CarpenterItemTemplate['recipeGroup'],
+    group: typeof input.group === 'string' && input.group.trim() ? input.group.trim() : undefined,
     stationType: String(input.stationType ?? 'workbench').trim() as CarpenterItemTemplate['stationType'],
-    difficulty: String(input.difficulty ?? 'basic').trim() as CarpenterItemTemplate['difficulty'],
+    difficulty: normalizedDifficulty,
+    difficultyType: typeof input.difficultyType === 'string' && input.difficultyType.trim() ? input.difficultyType.trim() : undefined,
+    baseDifficulty: Math.max(1, toInteger(input.baseDifficulty) ?? fallbackBaseDifficulty),
+    baseRisk: Math.max(0, toInteger(input.baseRisk) ?? fallbackBaseRisk),
     outputItemId: typeof input.outputItemId === 'string' && input.outputItemId.trim() ? input.outputItemId.trim() : undefined,
     outputComponentKind: String(input.outputComponentKind ?? 'unknown').trim() as CarpenterItemTemplate['outputComponentKind'],
     outputQuantity: Math.max(1, toInteger(input.outputQuantity) ?? 1),
     requiredCarpenterLevel: typeof input.requiredCarpenterLevel === 'number'
       ? Math.max(1, Math.round(input.requiredCarpenterLevel))
+      : undefined,
+    requiredWorkshopTier: typeof input.requiredWorkshopTier === 'number'
+      ? Math.max(1, Math.round(input.requiredWorkshopTier))
       : undefined,
     requiredSkillIds: normalizeOptionalStringList(input.requiredSkillIds),
     inputSlots: Array.isArray(input.inputSlots)
