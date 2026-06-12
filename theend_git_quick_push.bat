@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title TheEnd Git Quick Push
 
-set "PROJECT_DIR=C:\Users\ham\Documents\TheEnd"
+set PROJECT_DIR="C:\theend"
 
 echo ==========================================
 echo TheEnd Git Quick Push
