@@ -1,21 +1,21 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-11T18:28:42.435Z",
+  "exportedAt": "2026-06-12T13:02:08.789Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
-    "items": 250,
+    "items": 252,
     "skills": 17,
     "visualFx": 3,
-    "merchants": 7,
+    "merchants": 8,
     "cities": 7,
     "locations": 4,
     "materials": 155,
     "lootTables": 0,
-    "images": 552,
-    "dialogues": 25,
-    "npcs": 32,
+    "images": 556,
+    "dialogues": 28,
+    "npcs": 34,
     "quests": 11,
     "questInteractions": 1,
     "questItems": 4,
@@ -7726,6 +7726,70 @@
         "updatedAt": "2026-06-11T12:32:56.483Z",
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_planed_plank_common_wood_80206094",
+        "name": "Выстрогать доску — обычная древесина",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "common",
+        "price": 120,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Выстрогать доску. Источник древесины: обычная древесина. Сохранение свойств: 67%. Качество: 45/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_planed_plank",
+          "component_kind:planed_plank",
+          "quality:low",
+          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
+          "source_lost",
+          "generic_wood_source"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-12T13:02:06.611Z",
+        "updatedAt": "2026-06-12T13:02:06.611Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_planed_plank_common_wood_c2ee4cae",
+        "name": "Выстрогать доску — обычная древесина",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "common",
+        "price": 120,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Выстрогать доску. Источник древесины: обычная древесина. Сохранение свойств: 67%. Качество: 45/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_planed_plank",
+          "component_kind:planed_plank",
+          "quality:low",
+          "crafted_owner:cd5dfbed-030c-472e-8dfa-2d5f252cdc6d",
+          "source_lost",
+          "generic_wood_source"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-12T13:02:08.444Z",
+        "updatedAt": "2026-06-12T13:02:08.444Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
       }
     ],
     "skills": [
@@ -10440,7 +10504,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-11T16:53:40.425Z",
+        "updatedAt": "2026-06-12T12:56:49.565Z",
         "kind": "single",
         "stages": []
       },
@@ -10496,7 +10560,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-11T16:53:40.426Z",
+        "updatedAt": "2026-06-12T12:56:49.565Z",
         "kind": "single",
         "stages": []
       },
@@ -10555,7 +10619,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-11T16:53:40.426Z",
+        "updatedAt": "2026-06-12T12:56:49.565Z",
         "kind": "single",
         "stages": []
       }
@@ -12958,6 +13022,72 @@
         "worldSimTrader": false,
         "materialTradingEnabled": false,
         "materialTrades": []
+      },
+      {
+        "id": "merchant_tool_merchant_razugar",
+        "name": "Лавка инструментов Разу'гара",
+        "city": "Разу'гар",
+        "cityId": "city_razugar",
+        "type": "material_trader",
+        "description": "Инструменты, крепёж и ремесленные мелочи для плотников, кузнецов и обозных мастеров Разу'гара.",
+        "priceMultiplier": 1,
+        "isEnabled": true,
+        "items": [
+          {
+            "itemId": "tool_hammer_basic",
+            "stock": 8,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_saw_basic",
+            "stock": 8,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_chisel_basic",
+            "stock": 6,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_planer_basic",
+            "stock": 4,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_carving_knife_basic",
+            "stock": 4,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_woodcutting_axe_worn",
+            "stock": 6,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          },
+          {
+            "itemId": "tool_workbench_basic",
+            "stock": 1,
+            "infiniteStock": false,
+            "priceMultiplier": 1,
+            "isEnabled": true
+          }
+        ],
+        "worldSimTrader": false,
+        "materialTradingEnabled": false,
+        "materialTrades": [],
+        "createdAt": "2026-06-07T10:17:59.012Z",
+        "updatedAt": "2026-06-12T12:28:24Z"
       }
     ],
     "cities": [
@@ -12989,7 +13119,9 @@
             "questIds": [],
             "isVisible": true,
             "shapeType": "rectangle",
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "battlemap_arklein_market",
@@ -13008,7 +13140,9 @@
             "shapeType": "circle",
             "isUnlocked": true,
             "description": "Арена для боёв",
-            "linkedBattleMapId": "battlemap_arklein_market"
+            "linkedBattleMapId": "battlemap_arklein_market",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_1777496396769",
@@ -13030,7 +13164,9 @@
             "isVisible": true,
             "shapeType": "circle",
             "isUnlocked": true,
-            "description": "Забытая улица"
+            "description": "Забытая улица",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_arklein_church",
@@ -13050,7 +13186,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           }
         ],
         "rulerName": "Барон Арклейна",
@@ -13180,7 +13318,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "castle",
-            "description": "Центральная часть Гранкора и сердце подземной крепости. Это не просто замок, а целая каменная цитадель внутри гигантской пещеры. Здесь стоят колонны, мосты над пропастями, ворота из стали и Соларита, трон из чёрного Кваррилита, королевские архивы, залы карт и военных советов. В верхних уровнях находятся покои королевской семьи, совет кланов и элитная стража."
+            "description": "Центральная часть Гранкора и сердце подземной крепости. Это не просто замок, а целая каменная цитадель внутри гигантской пещеры. Здесь стоят колонны, мосты над пропастями, ворота из стали и Соларита, трон из чёрного Кваррилита, королевские архивы, залы карт и военных советов. В верхних уровнях находятся покои королевской семьи, совет кланов и элитная стража.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_great_forge",
@@ -13200,7 +13340,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "blacksmith",
-            "description": "Крупнейшая кузница Гранкора, занимающая несколько уровней города. Здесь день и ночь гремят молоты, течёт расплавленный металл, поднимаются дымовые трубы и работают древние гномьи механизмы. В кузне создают оружие Аргоса, доспехи гномьих легионов, шахтные механизмы, детали големов, сейфы сокровищницы и рунные двери."
+            "description": "Крупнейшая кузница Гранкора, занимающая несколько уровней города. Здесь день и ночь гремят молоты, течёт расплавленный металл, поднимаются дымовые трубы и работают древние гномьи механизмы. В кузне создают оружие Аргоса, доспехи гномьих легионов, шахтные механизмы, детали големов, сейфы сокровищницы и рунные двери.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_terragons_temple",
@@ -13220,7 +13362,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "temple",
-            "description": "Священная подземная святыня бога земли, вырезанная вокруг древнего кристаллического ядра горы. Внутри царит тишина, резко отличающаяся от шума кузниц. Здесь находятся каменные залы, светящиеся кристаллы Аури’шеля, подземное озеро, рунические алтари и ритуальные круги. Жрецы Террагона благословляют металл, освящают шахты и проводят погребальные ритуалы."
+            "description": "Священная подземная святыня бога земли, вырезанная вокруг древнего кристаллического ядра горы. Внутри царит тишина, резко отличающаяся от шума кузниц. Здесь находятся каменные залы, светящиеся кристаллы Аури’шеля, подземное озеро, рунические алтари и ритуальные круги. Жрецы Террагона благословляют металл, освящают шахты и проводят погребальные ритуалы.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_seven_seals_treasury",
@@ -13240,7 +13384,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "bank",
-            "description": "Главная сокровищница Гранкора, одновременно банк и крепость внутри крепости. За круглыми воротами, механическими ловушками, подъёмниками и рунными замками хранятся золото, Соларит, древние артефакты, военные резервы, клановые печати, рунные контракты и оружие древних времён."
+            "description": "Главная сокровищница Гранкора, одновременно банк и крепость внутри крепости. За круглыми воротами, механическими ловушками, подъёмниками и рунными замками хранятся золото, Соларит, древние артефакты, военные резервы, клановые печати, рунные контракты и оружие древних времён.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_masters_quarter",
@@ -13260,7 +13406,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "crafting",
-            "description": "Огромный ремесленный район, где живут и работают кузнецы, ювелиры, камнерезы, инженеры, литейщики, мастера рун и создатели механизмов. Узкие улицы переполнены мастерскими, лавками, плавильнями, складами металла и шахтёрскими инструментами. Ночью квартал светится красно-золотым светом печей."
+            "description": "Огромный ремесленный район, где живут и работают кузнецы, ювелиры, камнерезы, инженеры, литейщики, мастера рун и создатели механизмов. Узкие улицы переполнены мастерскими, лавками, плавильнями, складами металла и шахтёрскими инструментами. Ночью квартал светится красно-золотым светом печей.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_lower_living_levels",
@@ -13280,7 +13428,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "house",
-            "description": "Самые густонаселённые уровни города, где живут шахтёры, рабочие, солдаты, грузчики и семьи ремесленников. Это многослойные каменные улицы с мостами, лестницами и домами, высеченными прямо в породе. Здесь есть общие таверны, общежития, рынки еды и руды. Нижние уровни никогда полностью не спят."
+            "description": "Самые густонаселённые уровни города, где живут шахтёры, рабочие, солдаты, грузчики и семьи ремесленников. Это многослойные каменные улицы с мостами, лестницами и домами, высеченными прямо в породе. Здесь есть общие таверны, общежития, рынки еды и руды. Нижние уровни никогда полностью не спят.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_roar_of_the_furnace_tavern",
@@ -13300,7 +13450,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "tavern",
-            "description": "Крупнейшая таверна Гранкора — подземный зал размером почти с крепость. Внутри стоят длинные каменные столы, бочки с элем, сцены для музыкантов, бойцовские площадки и комнаты наёмников. Здесь собираются шахтёры после смен, торговцы Аргоса, наёмники, кузнецы и охотники за рудой. Драки считаются почти традицией."
+            "description": "Крупнейшая таверна Гранкора — подземный зал размером почти с крепость. Внутри стоят длинные каменные столы, бочки с элем, сцены для музыкантов, бойцовские площадки и комнаты наёмников. Здесь собираются шахтёры после смен, торговцы Аргоса, наёмники, кузнецы и охотники за рудой. Драки считаются почти традицией.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_golembuilders_halls",
@@ -13320,7 +13472,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "golem",
-            "description": "Таинственный район, где гномьи инженеры собирают каменных големов, рудных стражей, шахтные механизмы и осадные машины. Цеха заполнены цепями, рунами, механическими руками, кристаллами энергии и недостроенными конструкциями. Големы служат для охраны шахт, защиты Казны, обороны ворот и работы в опасных туннелях."
+            "description": "Таинственный район, где гномьи инженеры собирают каменных големов, рудных стражей, шахтные механизмы и осадные машины. Цеха заполнены цепями, рунами, механическими руками, кристаллами энергии и недостроенными конструкциями. Големы служат для охраны шахт, защиты Казны, обороны ворот и работы в опасных туннелях.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_deep_mines",
@@ -13340,7 +13494,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "mine",
-            "description": "Самые опасные территории Гранкора. Здесь добывают Соларит, Пирраксит, Кваррилит, Аури’шель и Стеклошпат. Старые тоннели уходят так глубоко, что их никто полностью не исследовал. Опасности: обвалы, древние существа, ядовитые пары, подземные разломы и потерянные туннели. Среди шахтёров ходят легенды о спящих существах под городом и дорогах к забытым городам времён Первой войны."
+            "description": "Самые опасные территории Гранкора. Здесь добывают Соларит, Пирраксит, Кваррилит, Аури’шель и Стеклошпат. Старые тоннели уходят так глубоко, что их никто полностью не исследовал. Опасности: обвалы, древние существа, ядовитые пары, подземные разломы и потерянные туннели. Среди шахтёров ходят легенды о спящих существах под городом и дорогах к забытым городам времён Первой войны.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_grankor_upper_bridges",
@@ -13360,7 +13516,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "bridge",
-            "description": "Сеть мостов, лестниц, каменных переходов и рунических сводов, соединяющих верхние уровни города. С этих переходов видны кузницы, храм, замок, жилые террасы и пропасти, в глубине которых мерцают огни шахт и лампы подземных дорог."
+            "description": "Сеть мостов, лестниц, каменных переходов и рунических сводов, соединяющих верхние уровни города. С этих переходов видны кузницы, храм, замок, жилые террасы и пропасти, в глубине которых мерцают огни шахт и лампы подземных дорог.",
+            "workshopIds": [],
+            "services": []
           }
         ],
         "backgroundImageId": "img_1778765788649_0ckokghm"
@@ -13445,7 +13603,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "castle",
-            "description": "Главная резиденция короля Дреймонда Чёрного Льва и сердце власти Теримии. Здесь принимаются решения о войнах, казнях, налогах и судьбе вассальных земель."
+            "description": "Главная резиденция короля Дреймонда Чёрного Льва и сердце власти Теримии. Здесь принимаются решения о войнах, казнях, налогах и судьбе вассальных земель.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_ashen_crown_tower",
@@ -13465,7 +13625,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "tower",
-            "description": "Башня королевских некромантов. Верхние этажи закрыты даже для знати, а ночью из узких окон виден холодный зелёный свет."
+            "description": "Башня королевских некромантов. Верхние этажи закрыты даже для знати, а ночью из узких окон виден холодный зелёный свет.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_war_council_hall",
@@ -13485,7 +13647,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "council",
-            "description": "Место, где маршалы, генералы и советники короны обсуждают войны, оборону королевства, движение войск и внутренние угрозы."
+            "description": "Место, где маршалы, генералы и советники короны обсуждают войны, оборону королевства, движение войск и внутренние угрозы.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_morgul_altar",
@@ -13505,7 +13669,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "temple",
-            "description": "Главный храм магии смерти. У алтаря некроманты проводят ритуалы крови, изучают проклятия и обучают учеников Чёрного Обряда."
+            "description": "Главный храм магии смерти. У алтаря некроманты проводят ритуалы крови, изучают проклятия и обучают учеников Чёрного Обряда.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_black_rite_academy",
@@ -13525,7 +13691,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "academy",
-            "description": "Мрачная академия, где обучают некромантии, проклятиям, ритуалам крови и защите разума от страха смерти."
+            "description": "Мрачная академия, где обучают некромантии, проклятиям, ритуалам крови и защите разума от страха смерти.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_shadow_arena",
@@ -13545,7 +13713,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "arena",
-            "description": "Большая гладиаторская арена. Здесь тренируются легионы Теримии, проходят казни, военные испытания и кровавые представления для толпы."
+            "description": "Большая гладиаторская арена. Здесь тренируются легионы Теримии, проходят казни, военные испытания и кровавые представления для толпы.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_steel_fang_barracks",
@@ -13565,7 +13735,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "barracks",
-            "description": "Главные казармы армии Брейнхольда. Здесь размещаются солдаты, стража ворот, военные инструкторы и отряды, верные королю."
+            "description": "Главные казармы армии Брейнхольда. Здесь размещаются солдаты, стража ворот, военные инструкторы и отряды, верные королю.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_great_forge",
@@ -13585,7 +13757,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "blacksmith",
-            "description": "Промышленное сердце столицы. В этих кузнях производят оружие, доспехи, цепи, осадные детали и тяжёлое снаряжение для армии Теримии."
+            "description": "Промышленное сердце столицы. В этих кузнях производят оружие, доспехи, цепи, осадные детали и тяжёлое снаряжение для армии Теримии.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_oath_square",
@@ -13605,7 +13779,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "square",
-            "description": "Центральная площадь, где новобранцы клянутся служить королю и Теримии. Здесь же объявляют приговоры, указы и военные сборы."
+            "description": "Центральная площадь, где новобранцы клянутся служить королю и Теримии. Здесь же объявляют приговоры, указы и военные сборы.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_lunnai_market",
@@ -13625,7 +13801,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "market",
-            "description": "Главный рынок столицы. Здесь продают хлеб, мясо, железо, оружие, дешёвые амулеты, старые книги, редкие реагенты и сомнительные артефакты."
+            "description": "Главный рынок столицы. Здесь продают хлеб, мясо, железо, оружие, дешёвые амулеты, старые книги, редкие реагенты и сомнительные артефакты.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_rotten_wolf_tavern",
@@ -13645,7 +13823,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "tavern",
-            "description": "Грязная и шумная таверна наёмников, убийц, контрабандистов и солдат после службы. Здесь можно найти слухи, работу и неприятности."
+            "description": "Грязная и шумная таверна наёмников, убийц, контрабандистов и солдат после службы. Здесь можно найти слухи, работу и неприятности.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_ashen_roofs_slums",
@@ -13665,7 +13845,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "district",
-            "description": "Беднейший район города. Здесь живут рабочие, беглецы, должники, преступники и те, кто не может подняться ближе к стенам власти."
+            "description": "Беднейший район города. Здесь живут рабочие, беглецы, должники, преступники и те, кто не может подняться ближе к стенам власти.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_main_gates",
@@ -13685,7 +13867,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "gate",
-            "description": "Единственный главный путь в город. Ворота постоянно охраняются стражей, дозорными и проверяющими, ищущими шпионов, беглецов и должников."
+            "description": "Единственный главный путь в город. Ворота постоянно охраняются стражей, дозорными и проверяющими, ищущими шпионов, беглецов и должников.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_brainhold_morgul_undercity",
@@ -13705,7 +13889,9 @@
             "shapeType": "rectangle",
             "isUnlocked": true,
             "markerIcon": "dungeon",
-            "description": "Огромные катакомбы, старые склепы и подземные хранилища под Брейнхольдом. Здесь скрыты ритуальные залы, забытые проходы и древние тайны Теримии."
+            "description": "Огромные катакомбы, старые склепы и подземные хранилища под Брейнхольдом. Здесь скрыты ритуальные залы, забытые проходы и древние тайны Теримии.",
+            "workshopIds": [],
+            "services": []
           }
         ],
         "backgroundImageId": "city_brainhold_background"
@@ -13766,7 +13952,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_omtara_main_gates",
@@ -13786,7 +13974,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_1780054162937",
@@ -13804,7 +13994,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           }
         ],
         "connectedCityIds": [
@@ -13840,7 +14032,7 @@
         "regionId": "teramor",
         "kingdomId": "argos",
         "createdAt": "2026-05-29T09:07:29Z",
-        "updatedAt": "2026-06-08T09:01:44.044Z",
+        "updatedAt": "2026-06-12T11:47:11.239Z",
         "rulerName": "Наместник Разу'гара",
         "rulerTitle": "governor",
         "governmentType": "occupied fortress-city under Argos military rule",
@@ -13912,7 +14104,9 @@
             "isVisible": true,
             "isUnlocked": false,
             "markerIcon": "mine",
-            "description": "Старый шахтный вход у скал на северо-западе города. Проход закрыт решётками, тяжёлыми балками и караулом, потому что нижние выработки считаются опасными. По слухам, под Разу'гаром остались орочьи тайники, заброшенные жилы и туннели, которыми пользовались ещё до прихода людей Аргоса."
+            "description": "Старый шахтный вход у скал на северо-западе города. Проход закрыт решётками, тяжёлыми балками и караулом, потому что нижние выработки считаются опасными. По слухам, под Разу'гаром остались орочьи тайники, заброшенные жилы и туннели, которыми пользовались ещё до прихода людей Аргоса.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_camp_of_gloom",
@@ -13932,7 +14126,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "barracks",
-            "description": "Тренировочный центр Разу'гара: огороженный лагерь с манекенами, бойцовскими кругами, оружейными стойками и площадками для строевой подготовки. Здесь обучают гарнизон, новобранцев, наёмников и тех, кто хочет выжить на землях Аргоса."
+            "description": "Тренировочный центр Разу'гара: огороженный лагерь с манекенами, бойцовскими кругами, оружейными стойками и площадками для строевой подготовки. Здесь обучают гарнизон, новобранцев, наёмников и тех, кто хочет выжить на землях Аргоса.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_rulers_castle",
@@ -13952,7 +14148,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "castle",
-            "description": "Главная цитадель Разу'гара, перестроенная людьми поверх старого орочьего укрепления. Здесь находится резиденция наместника, зал приказов, караульные башни, архивы налогов, комнаты военных советников и казармы личной стражи."
+            "description": "Главная цитадель Разу'гара, перестроенная людьми поверх старого орочьего укрепления. Здесь находится резиденция наместника, зал приказов, караульные башни, архивы налогов, комнаты военных советников и казармы личной стражи.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_aristocrat_quarter",
@@ -13972,29 +14170,44 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "noble",
-            "description": "Охраняемый верхний район, где живут чиновники, богатые семьи, офицеры, сборщики налогов и приближённые наместника. Дома здесь каменные, улицы чище, а стражи больше, чем в остальных частях города."
+            "description": "Охраняемый верхний район, где живут чиновники, богатые семьи, офицеры, сборщики налогов и приближённые наместника. Дома здесь каменные, улицы чище, а стражи больше, чем в остальных частях города.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_forge_craft_district",
             "name": "Ремесленный район",
-            "type": "blacksmith",
+            "type": "custom",
             "shapeType": "rectangle",
             "shape": {
               "x": 75,
-              "y": 254,
+              "y": 253,
               "width": 148,
               "height": 97
             },
             "cityId": "city_razugar",
             "npcIds": [
-              "npc_carpenter_master_argos"
+              "npc_carpenter_master_argos",
+              "npc_blacksmith_master_razugar",
+              "npc_tool_merchant_razugar"
             ],
-            "shopIds": [],
+            "shopIds": [
+              "merchant_tool_merchant_razugar"
+            ],
             "questIds": [],
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "blacksmith",
-            "description": "Кузнечный и ремесленный район города. Здесь дымят трубы, стучат молоты, чинят броню, куют дешёвое оружие, подковывают вьючных зверей и собирают детали для ворот, телег, шахтных подпорок и военного снаряжения."
+            "description": "Ремесленный район Разу'гара: дымные дворы, кузни под чёрными навесами и тесовые сараи, где с рассвета до ночи чинят броню, сушат доски, правят упряжь и собирают всё, что нужно гарнизону, шахтам и обозам пограничного города.",
+            "workshopIds": [
+              "workshop_carpenter_basic_public"
+            ],
+            "services": [
+              "npc_dialogue",
+              "workshops",
+              "crafting",
+              "shops"
+            ]
           },
           {
             "id": "location_razugar_central_square",
@@ -14013,7 +14226,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "statue",
-            "description": "Главная площадь Разу'гара со статуей Орка Разулгара. Здесь сходятся дороги всех кварталов, объявляют приказы наместника, собираются торговцы, спорят наёмники и вспыхивают слухи о прошлом города."
+            "description": "Главная площадь Разу'гара со статуей Орка Разулгара. Здесь сходятся дороги всех кварталов, объявляют приказы наместника, собираются торговцы, спорят наёмники и вспыхивают слухи о прошлом города.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_bank_trade_quarter",
@@ -14033,7 +14248,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "bank",
-            "description": "Каменный торгово-денежный квартал, где менялы, ростовщики, купцы и представители караванов ведут дела под присмотром городской стражи. Здесь хранят монету, выдают долговые расписки и заключают сделки на металл, оружие, кожу, зерно и шахтные поставки."
+            "description": "Каменный торгово-денежный квартал, где менялы, ростовщики, купцы и представители караванов ведут дела под присмотром городской стражи. Здесь хранят монету, выдают долговые расписки и заключают сделки на металл, оружие, кожу, зерно и шахтные поставки.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_merchants_guild",
@@ -14053,7 +14270,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "guild",
-            "description": "Здание торговой гильдии, где оформляют караванные разрешения, спорят о пошлинах, нанимают охрану и договариваются о поставках между Аргосом, Гранкором и другими городами Терамора."
+            "description": "Здание торговой гильдии, где оформляют караванные разрешения, спорят о пошлинах, нанимают охрану и договариваются о поставках между Аргосом, Гранкором и другими городами Терамора.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_shadow_of_the_cliff_tavern",
@@ -14073,7 +14292,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "tavern",
-            "description": "Шумная таверна у южных улиц, где сидят наёмники, шахтёры, караванщики, беглые солдаты и люди, которым лучше не задавать лишних вопросов. Здесь можно найти работу, слухи, драку или нож под рёбра."
+            "description": "Шумная таверна у южных улиц, где сидят наёмники, шахтёры, караванщики, беглые солдаты и люди, которым лучше не задавать лишних вопросов. Здесь можно найти работу, слухи, драку или нож под рёбра.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_poor_quarter",
@@ -14093,7 +14314,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "house",
-            "description": "Нижний бедный квартал с тесными домами, лачугами, грязными переулками, временными пристройками и людьми, которым не досталось места возле власти, ремесла или торговли. Здесь проще всего найти дешёвую работу, голод, слухи и отчаяние."
+            "description": "Нижний бедный квартал с тесными домами, лачугами, грязными переулками, временными пристройками и людьми, которым не досталось места возле власти, ремесла или торговли. Здесь проще всего найти дешёвую работу, голод, слухи и отчаяние.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_razugar_gang_quarter",
@@ -14113,7 +14336,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "skull",
-            "description": "Опасный район у юго-восточной стены, где хозяйничают люди, называющие себя бандой Разулгара. Они прикрываются старым именем города, собирают долги, ведут подпольную торговлю, держат притоны и спорят с городской властью за влияние на улицах."
+            "description": "Опасный район у юго-восточной стены, где хозяйничают люди, называющие себя бандой Разулгара. Они прикрываются старым именем города, собирают долги, ведут подпольную торговлю, держат притоны и спорят с городской властью за влияние на улицах.",
+            "workshopIds": [],
+            "services": []
           }
         ],
         "backgroundImageId": "city_razugar_background"
@@ -14199,7 +14424,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_flameshard_keep",
@@ -14219,7 +14446,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_maw_arena",
@@ -14238,7 +14467,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_noble_district",
@@ -14258,7 +14489,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_terramor_temple",
@@ -14278,7 +14511,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_central_square",
@@ -14297,7 +14532,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_warriors_guild",
@@ -14317,7 +14554,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_trade_quarter",
@@ -14337,7 +14576,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_blacksmith",
@@ -14357,7 +14598,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_poor_district",
@@ -14377,7 +14620,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_mograk_bloody_bull_tavern",
@@ -14397,7 +14642,9 @@
             "shopIds": [],
             "questIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           }
         ],
         "backgroundImageId": "city_mograk_background"
@@ -14479,7 +14726,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "castle",
-            "description": "Главный гарнизон Фэллмора и военное сердце города. Форт Южного Огня стоит на возвышении у внутренней стены и наблюдает за дорогами к пустыне Ликерин. Здесь размещены казармы, оружейные склады, комнаты офицеров, сигнальные жаровни и двор для строевых проверок. В случае тревоги именно отсюда поднимают городские ворота, собирают стражу и отправляют конные разъезды к южным рубежам."
+            "description": "Главный гарнизон Фэллмора и военное сердце города. Форт Южного Огня стоит на возвышении у внутренней стены и наблюдает за дорогами к пустыне Ликерин. Здесь размещены казармы, оружейные склады, комнаты офицеров, сигнальные жаровни и двор для строевых проверок. В случае тревоги именно отсюда поднимают городские ворота, собирают стражу и отправляют конные разъезды к южным рубежам.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_southern_market",
@@ -14499,7 +14748,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "market",
-            "description": "Главный торговый квартал Фэллмора, где встречаются караванщики, военные снабженцы, купцы южных земель и перекупщики из Аргоса. На рынке продают воду, соль, сухое мясо, дорожные ткани, оружие, седельные ремни, фляги, инструменты, травы пустыни и товары, пришедшие из-за южной границы. Здесь легко найти работу проводника, слухи о пропавших караванах или подозрительную сделку."
+            "description": "Главный торговый квартал Фэллмора, где встречаются караванщики, военные снабженцы, купцы южных земель и перекупщики из Аргоса. На рынке продают воду, соль, сухое мясо, дорожные ткани, оружие, седельные ремни, фляги, инструменты, травы пустыни и товары, пришедшие из-за южной границы. Здесь легко найти работу проводника, слухи о пропавших караванах или подозрительную сделку.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_main_gate",
@@ -14519,7 +14770,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "gate",
-            "description": "Массивные ворота, через которые проходят караваны, патрули и путники, идущие к южным землям. У ворот проверяют документы, пошлины, грузовые печати и принадлежность к королевству. При низкой репутации с Аргосом стража может отказать во входе, потребовать взятку или задержать игрока до решения офицера гарнизона."
+            "description": "Массивные ворота, через которые проходят караваны, патрули и путники, идущие к южным землям. У ворот проверяют документы, пошлины, грузовые печати и принадлежность к королевству. При низкой репутации с Аргосом стража может отказать во входе, потребовать взятку или задержать игрока до решения офицера гарнизона.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_warriors_guild",
@@ -14539,7 +14792,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "barracks",
-            "description": "Гильдия воинов, здесь не просто солдаты или воины Аргоса. Здесь находятся те кто по настоящему ищут славы и силы"
+            "description": "Гильдия воинов, здесь не просто солдаты или воины Аргоса. Здесь находятся те кто по настоящему ищут славы и силы",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_administrative_residence",
@@ -14559,7 +14814,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "crown",
-            "description": "Административная резиденция Элизы Пустынный Шип. Отсюда баронесса управляет обороной южных рубежей, распределяет военные поставки, следит за торговыми договорами и решает споры между гарнизоном, купцами и местными землевладельцами. Внутри находятся зал приёмов, карта границы, архив пошлин и малый совет Фэллмора."
+            "description": "Административная резиденция Элизы Пустынный Шип. Отсюда баронесса управляет обороной южных рубежей, распределяет военные поставки, следит за торговыми договорами и решает споры между гарнизоном, купцами и местными землевладельцами. Внутри находятся зал приёмов, карта границы, архив пошлин и малый совет Фэллмора.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_trade_guild",
@@ -14579,7 +14836,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "trade",
-            "description": "Дом караванных мастеров, возчиков, проводников и держателей складов. Здесь заключают договоры на сопровождение грузов, нанимают охрану, покупают карты южных троп и получают сведения о безопасных стоянках. Для игрока это место может стать источником торговых контрактов и дорожных квестов."
+            "description": "Дом караванных мастеров, возчиков, проводников и держателей складов. Здесь заключают договоры на сопровождение грузов, нанимают охрану, покупают карты южных троп и получают сведения о безопасных стоянках. Для игрока это место может стать источником торговых контрактов и дорожных квестов.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_blacksmith",
@@ -14599,7 +14858,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "blacksmith",
-            "description": "Рабочая кузница у внутренней стены, где чинят мечи, копья, наконечники стрел, детали повозок, подковы и караванные скобы. Кузнецы Фэллмора не так знамениты, как мастера Мог’рака или Гранкора, зато умеют быстро ремонтировать снаряжение после перехода через каменистые дороги и пустынные ветра."
+            "description": "Рабочая кузница у внутренней стены, где чинят мечи, копья, наконечники стрел, детали повозок, подковы и караванные скобы. Кузнецы Фэллмора не так знамениты, как мастера Мог’рака или Гранкора, зато умеют быстро ремонтировать снаряжение после перехода через каменистые дороги и пустынные ветра.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_tavern",
@@ -14619,7 +14880,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "tavern",
-            "description": "Шумная пограничная таверна, где отдыхают солдаты, караванщики, наёмники, беглые работники и люди, которым лучше не задавать лишних вопросов. Здесь можно услышать новости из Мог’рака, Разу’гара, Эдунтара и южных дорог, найти проводника или ввязаться в драку из-за неудачной сделки."
+            "description": "Шумная пограничная таверна, где отдыхают солдаты, караванщики, наёмники, беглые работники и люди, которым лучше не задавать лишних вопросов. Здесь можно услышать новости из Мог’рака, Разу’гара, Эдунтара и южных дорог, найти проводника или ввязаться в драку из-за неудачной сделки.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_ assassins_guild",
@@ -14639,7 +14902,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "house",
-            "description": "Тайная гильдия Ассасинов Аргоса."
+            "description": "Тайная гильдия Ассасинов Аргоса.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_arena",
@@ -14658,7 +14923,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "water",
-            "description": "Арена, здесь можно заработать а ещё и умереть"
+            "description": "Арена, здесь можно заработать а ещё и умереть",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_watchtowers",
@@ -14678,7 +14945,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "watchtower",
-            "description": "Цепь башен на южной и восточной стенах, с которых дозорные следят за дорогами, ущельями и пылевыми шлейфами вдалеке. Ночью здесь зажигают сигнальные огни, а днём используют зеркальные знаки для связи с патрулями."
+            "description": "Цепь башен на южной и восточной стенах, с которых дозорные следят за дорогами, ущельями и пылевыми шлейфами вдалеке. Ночью здесь зажигают сигнальные огни, а днём используют зеркальные знаки для связи с патрулями.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_caravan_yard",
@@ -14698,7 +14967,9 @@
             "isVisible": true,
             "isUnlocked": true,
             "markerIcon": "stable",
-            "description": "Открытый двор у внешней дороги, где останавливаются повозки, вьючные звери, караваны и военные обозы. Здесь чинят колёса, меняют упряжь, кормят животных и спорят о цене прохода через опасные участки южной границы."
+            "description": "Открытый двор у внешней дороги, где останавливаются повозки, вьючные звери, караваны и военные обозы. Здесь чинят колёса, меняют упряжь, кормят животных и спорят о цене прохода через опасные участки южной границы.",
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_military_academy",
@@ -14716,7 +14987,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           },
           {
             "id": "location_fellmor_terragons_temple",
@@ -14734,7 +15007,9 @@
             "questIds": [],
             "shopIds": [],
             "isVisible": true,
-            "isUnlocked": true
+            "isUnlocked": true,
+            "workshopIds": [],
+            "services": []
           }
         ],
         "backgroundImageId": "city_fellmor_background"
@@ -40026,7 +40301,7 @@
         "height": 384,
         "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_portrait-npc_carpenter_master_argos-portrait.png",
         "createdAt": "2026-06-06T22:52:03.778Z",
-        "updatedAt": "2026-06-06T23:01:58.980Z"
+        "updatedAt": "2026-06-12T11:50:46.804Z"
       },
       {
         "id": "npc_carpenter_master_argos_full",
@@ -40036,7 +40311,7 @@
         "height": 384,
         "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_full-npc_carpenter_master_argos-full.png",
         "createdAt": "2026-06-06T22:52:05.197Z",
-        "updatedAt": "2026-06-06T23:02:00.378Z"
+        "updatedAt": "2026-06-12T11:50:48.224Z"
       },
       {
         "id": "npc_carpenter_master_argos_combat",
@@ -40046,7 +40321,7 @@
         "height": 384,
         "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_combat-npc_carpenter_master_argos-combat.png",
         "createdAt": "2026-06-06T22:52:06.536Z",
-        "updatedAt": "2026-06-06T23:02:01.791Z"
+        "updatedAt": "2026-06-12T11:50:49.259Z"
       },
       {
         "id": "npc_carpenter_master_argos_icon",
@@ -40056,7 +40331,7 @@
         "height": 128,
         "dataUrl": "/assets/upload/images/npcs/npc_carpenter_master_argos/npc_carpenter_master_argos_icon-npc_carpenter_master_argos-icon.png",
         "createdAt": "2026-06-06T22:52:07.917Z",
-        "updatedAt": "2026-06-06T23:02:03.175Z"
+        "updatedAt": "2026-06-12T11:50:50.914Z"
       },
       {
         "id": "profession-skill-icon",
@@ -42557,6 +42832,46 @@
         "dataUrl": "/assets/upload/images/items/crafted_blacksmith_template_one_hand_sword_tz5_smoke_iron_ingot_quality_normal_e/crafted_blacksmith_template_one_hand_sword_tz5_smoke_iron_ingot_quality_normal_e-crafted_blacksmith_template_one_hand_sword_tz5_smoke_iron_ingot_quality_normal_e.png",
         "createdAt": "2026-06-11T10:41:52.570Z",
         "updatedAt": "2026-06-11T10:41:52.570Z"
+      },
+      {
+        "id": "workshop_carpenter_basic_public",
+        "name": "workshop_carpenter_basic_public-interior",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/workshops/workshop_carpenter_basic_public/workshop_carpenter_basic_public-workshop_carpenter_basic_public-interior.png",
+        "createdAt": "2026-06-12T11:40:37.278Z",
+        "updatedAt": "2026-06-12T11:40:37.278Z"
+      },
+      {
+        "id": "workshop_carpenter_sawmill_basic",
+        "name": "workshop_carpenter_sawmill_basic-interior",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/workshops/workshop_carpenter_sawmill_basic/workshop_carpenter_sawmill_basic-workshop_carpenter_sawmill_basic-interior.png",
+        "createdAt": "2026-06-12T11:52:22.058Z",
+        "updatedAt": "2026-06-12T11:52:22.058Z"
+      },
+      {
+        "id": "workshop_carpenter_ritual",
+        "name": "workshop_carpenter_ritual-interior",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/workshops/workshop_carpenter_ritual/workshop_carpenter_ritual-workshop_carpenter_ritual-interior.png",
+        "createdAt": "2026-06-12T12:05:16.104Z",
+        "updatedAt": "2026-06-12T12:05:26.843Z"
+      },
+      {
+        "id": "workshop_carpenter_advanced",
+        "name": "workshop_carpenter_advanced-interior",
+        "mimeType": "image/png",
+        "width": 512,
+        "height": 512,
+        "dataUrl": "/assets/upload/images/workshops/workshop_carpenter_advanced/workshop_carpenter_advanced-workshop_carpenter_advanced-interior.png",
+        "createdAt": "2026-06-12T12:05:40.470Z",
+        "updatedAt": "2026-06-12T12:05:40.470Z"
       }
     ],
     "dialogues": [
@@ -46492,6 +46807,169 @@
         ],
         "createdAt": "2026-06-07T09:20:58.516Z",
         "updatedAt": "2026-06-07T09:20:58.516Z"
+      },
+      {
+        "id": "dlg_carpenter_master_argos_razugar",
+        "title": "Боромир Тесло",
+        "npcId": "npc_carpenter_master_argos",
+        "status": "active",
+        "startNodeId": "n_intro",
+        "description": "Разговор с плотником ремесленного района Разу'гара.",
+        "nodes": [
+          {
+            "id": "n_intro",
+            "speaker": "npc",
+            "text": "Доска в Разу'гаре живёт меньше человека, если её не сушить как следует. Если пришёл учиться ремеслу, слушай внимательно и не торопи пилу.",
+            "choices": [
+              {
+                "id": "c_about",
+                "text": "Чем ты здесь занимаешься?",
+                "nextNodeId": "n_about"
+              },
+              {
+                "id": "c_learn",
+                "text": "Хочу учиться плотницкому делу.",
+                "nextNodeId": "n_learn"
+              },
+              {
+                "id": "c_leave",
+                "text": "Я ещё вернусь.",
+                "endsDialogue": true
+              }
+            ]
+          },
+          {
+            "id": "n_about",
+            "speaker": "npc",
+            "text": "Собираю балки для шахтных подпорок, чиню телеги для обозов и держу эту мастерскую открытой для тех, кто работает руками, а не языком.",
+            "choices": [
+              {
+                "id": "c_back",
+                "text": "Понятно.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          },
+          {
+            "id": "n_learn",
+            "speaker": "npc",
+            "text": "Начнёшь с простого: сушить древесину, держать угол и не губить хороший материал ленивым резом.",
+            "choices": [
+              {
+                "id": "c_confirm_learn",
+                "text": "Обучи меня основам.",
+                "actions": [
+                  {
+                    "id": "a_learn_prof",
+                    "type": "learnProfession",
+                    "professionId": "carpenter"
+                  }
+                ],
+                "endsDialogue": true
+              },
+              {
+                "id": "c_back_learn",
+                "text": "Сначала осмотрюсь.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          }
+        ],
+        "createdAt": "2026-06-12T12:28:24Z",
+        "updatedAt": "2026-06-12T12:28:24Z"
+      },
+      {
+        "id": "dlg_blacksmith_master_razugar",
+        "title": "Харальд Крица",
+        "npcId": "npc_blacksmith_master_razugar",
+        "status": "active",
+        "startNodeId": "n_intro",
+        "description": "Короткий разговор с кузнецом Разу'гара.",
+        "nodes": [
+          {
+            "id": "n_intro",
+            "speaker": "npc",
+            "text": "Слышишь звон? Это ещё не хорошая сталь, а только обещание. В Разу'гаре железо любит терпеливых.",
+            "choices": [
+              {
+                "id": "c_about",
+                "text": "Что куёшь для района?",
+                "nextNodeId": "n_about"
+              },
+              {
+                "id": "c_leave",
+                "text": "Не буду мешать.",
+                "endsDialogue": true
+              }
+            ]
+          },
+          {
+            "id": "n_about",
+            "speaker": "npc",
+            "text": "Подковы, скобы, накладки для щитов, петли для ворот. Всё, что держит в строю гарнизон, шахтёров и чужие телеги, которые дожили до ворот Разу'гара.",
+            "choices": [
+              {
+                "id": "c_back",
+                "text": "Ясно.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          }
+        ],
+        "createdAt": "2026-06-12T12:28:24Z",
+        "updatedAt": "2026-06-12T12:28:24Z"
+      },
+      {
+        "id": "dlg_tool_merchant_razugar",
+        "title": "Сиверт Ремённик",
+        "npcId": "npc_tool_merchant_razugar",
+        "status": "active",
+        "startNodeId": "n_intro",
+        "description": "Разговор с торговцем инструментами Разу'гара.",
+        "nodes": [
+          {
+            "id": "n_intro",
+            "speaker": "npc",
+            "text": "Если у тебя разваливается рукоять, тупится зуб пилы или телега держится на молитве, у меня найдётся замена.",
+            "choices": [
+              {
+                "id": "c_shop",
+                "text": "Покажи товар.",
+                "actions": [
+                  {
+                    "id": "a_open_shop",
+                    "type": "openShop"
+                  }
+                ],
+                "endsDialogue": true
+              },
+              {
+                "id": "c_about",
+                "text": "Кто у тебя покупает?",
+                "nextNodeId": "n_about"
+              },
+              {
+                "id": "c_leave",
+                "text": "Пока ничего не нужно.",
+                "endsDialogue": true
+              }
+            ]
+          },
+          {
+            "id": "n_about",
+            "speaker": "npc",
+            "text": "Плотники, возницы, шахтёры и те, кто вчера клялся, что обойдётся без запасного молотка. Разу'гар таких быстро переубеждает.",
+            "choices": [
+              {
+                "id": "c_back",
+                "text": "Показать прилавок.",
+                "nextNodeId": "n_intro"
+              }
+            ]
+          }
+        ],
+        "createdAt": "2026-06-12T12:28:24Z",
+        "updatedAt": "2026-06-12T12:28:24Z"
       }
     ],
     "npcs": [
@@ -49083,8 +49561,8 @@
       },
       {
         "id": "npc_carpenter_master_argos",
-        "name": "Мастер-плотник",
-        "title": "Мастер древесного дела",
+        "name": "Боромир Тесло",
+        "title": "мастер древесного дела",
         "status": "active",
         "kind": "trainer",
         "race": "human",
@@ -49092,33 +49570,28 @@
         "age": "48",
         "kingdomId": "argos",
         "factionId": "argos_citizens",
-        "locationId": "loc_argos_city_wood_workshop",
+        "locationId": "city_razugar",
         "homeCityId": "city_razugar",
         "currentCityId": "city_razugar",
-        "cityLocationId": "workshop_wood_basic",
-        "description": "Мастер-плотник обучает рубке леса, распилу брёвен и обработке дерева.",
-        "shortDescription": "Мастер-плотник.",
+        "cityLocationId": "location_razugar_forge_craft_district",
+        "description": "Суровый плотник с обожжёнными ладонями и спокойным голосом. Держит открытую мастерскую при ремесленном районе и учит работать с деревом так, чтобы оно пережило сырость, гарь и долгую службу.",
+        "shortDescription": "Плотник, который держит мастерскую у кузниц Разу'гара.",
         "defaultDisposition": "friendly",
         "isUnique": true,
         "canRespawn": false,
         "canFight": false,
         "canTalk": true,
-        "canTrade": true,
+        "canTrade": false,
         "worldSimTrader": false,
         "canTrain": true,
-        "canGiveQuests": true,
+        "canGiveQuests": false,
         "dialogues": [
           {
-            "dialogueId": "dlg_carpenter_master_argos_intro",
+            "dialogueId": "dlg_carpenter_master_argos_razugar",
             "priority": 1
           }
         ],
-        "questBindings": [
-          {
-            "role": "giver",
-            "questId": "quest_carpenter_first_cut"
-          }
-        ],
+        "questBindings": [],
         "trainer": {
           "skillIds": [],
           "professionIds": [
@@ -49129,32 +49602,29 @@
           "priceGold": 0
         },
         "professionTrainer": "carpenter",
-        "traderId": "merchant_carpenter_master",
         "createdAt": "2026-06-07T09:20:58.516Z",
-        "updatedAt": "2026-06-09T07:05:49.261Z",
-        "portraitUrl": "/assets/placeholders/npc_merchant.png",
-        "fullImageUrl": "/assets/placeholders/npc_merchant.png",
-        "iconUrl": "/assets/placeholders/npc_merchant.png",
+        "updatedAt": "2026-06-12T12:28:24Z",
+        "portraitUrl": "npc_carpenter_master_argos_portrait",
+        "fullImageUrl": "npc_carpenter_master_argos_full",
+        "iconUrl": "npc_carpenter_master_argos_icon",
         "portraitImageRef": {
           "type": "image",
-          "src": "/assets/placeholders/npc_merchant.png"
+          "src": "npc_carpenter_master_argos_portrait"
         },
         "fullImageRef": {
           "type": "image",
-          "src": "/assets/placeholders/npc_merchant.png"
+          "src": "npc_carpenter_master_argos_full"
         },
         "iconImageRef": {
           "type": "image",
-          "src": "/assets/placeholders/npc_merchant.png"
+          "src": "npc_carpenter_master_argos_icon"
         },
-        "merchantId": "merchant_carpenter_tools_argos",
-        "workshopId": "workshop_carpenter_argos_basic",
+        "merchantId": null,
+        "workshopId": "workshop_carpenter_basic_public",
         "services": [
-          "learn_profession",
-          "buy_tools",
-          "rent_cart",
-          "buy_cart",
-          "open_workshop"
+          "training",
+          "workshop_owner",
+          "crafting_advice"
         ],
         "mapBindings": [],
         "canBeKilled": false,
@@ -49166,14 +49636,138 @@
           "goldMin": 0,
           "goldMax": 0
         },
-        "allowedCityIds": [],
+        "allowedCityIds": [
+          "city_razugar"
+        ],
         "conditions": [],
-        "cityId": "razugar",
+        "cityId": "city_razugar",
         "combatImageUrl": "npc_carpenter_master_argos_combat",
         "combatImageRef": {
           "type": "image",
           "src": "npc_carpenter_master_argos_combat"
-        }
+        },
+        "dialogueId": "dlg_carpenter_master_argos_razugar"
+      },
+      {
+        "id": "npc_blacksmith_master_razugar",
+        "name": "Харальд Крица",
+        "title": "кузнец гарнизонного двора",
+        "status": "active",
+        "kind": "civilian",
+        "race": "human",
+        "gender": "male",
+        "age": "41",
+        "kingdomId": "argos",
+        "factionId": "argos_citizens",
+        "locationId": "city_razugar",
+        "cityId": "city_razugar",
+        "homeCityId": "city_razugar",
+        "currentCityId": "city_razugar",
+        "cityLocationId": "location_razugar_forge_craft_district",
+        "description": "Кузнец, работающий для гарнизона и обозов Разу'гара. Пахнет железной окалиной и угольной пылью, говорит мало, зато сразу замечает слабую заклёпку и дешёвую сталь.",
+        "shortDescription": "Кузнец ремесленного района Разу'гара.",
+        "defaultDisposition": "neutral",
+        "isUnique": true,
+        "canRespawn": false,
+        "canFight": false,
+        "canTalk": true,
+        "canTrade": false,
+        "worldSimTrader": false,
+        "canTrain": false,
+        "canGiveQuests": false,
+        "dialogueId": "dlg_blacksmith_master_razugar",
+        "dialogues": [
+          {
+            "dialogueId": "dlg_blacksmith_master_razugar",
+            "priority": 1
+          }
+        ],
+        "questBindings": [],
+        "professionTrainer": null,
+        "createdAt": "2026-06-12T12:28:24Z",
+        "updatedAt": "2026-06-12T12:28:24Z",
+        "merchantId": null,
+        "workshopId": null,
+        "services": [
+          "repair",
+          "smithing",
+          "crafting_advice"
+        ],
+        "mapBindings": [],
+        "canBeKilled": false,
+        "combat": null,
+        "inventory": {
+          "itemIds": [],
+          "questItemIds": [],
+          "lootTableId": null,
+          "goldMin": 0,
+          "goldMax": 0
+        },
+        "allowedCityIds": [
+          "city_razugar"
+        ],
+        "conditions": []
+      },
+      {
+        "id": "npc_tool_merchant_razugar",
+        "name": "Сиверт Ремённик",
+        "title": "торговец инструментами",
+        "status": "active",
+        "kind": "trader",
+        "race": "human",
+        "gender": "male",
+        "age": "36",
+        "kingdomId": "argos",
+        "factionId": "argos_citizens",
+        "locationId": "city_razugar",
+        "cityId": "city_razugar",
+        "homeCityId": "city_razugar",
+        "currentCityId": "city_razugar",
+        "cityLocationId": "location_razugar_forge_craft_district",
+        "description": "Держит лавку под копчёным навесом у ремесленного двора. Продаёт молотки, пилы, клинья и крепёж тем, кому нужно быстро вернуть в строй телегу, мастерскую или походный обоз.",
+        "shortDescription": "Торговец инструментами и ремесленной мелочью.",
+        "defaultDisposition": "friendly",
+        "isUnique": true,
+        "canRespawn": false,
+        "canFight": false,
+        "canTalk": true,
+        "canTrade": true,
+        "worldSimTrader": false,
+        "canTrain": false,
+        "canGiveQuests": false,
+        "dialogueId": "dlg_tool_merchant_razugar",
+        "dialogues": [
+          {
+            "dialogueId": "dlg_tool_merchant_razugar",
+            "priority": 1
+          }
+        ],
+        "questBindings": [],
+        "professionTrainer": null,
+        "traderId": "merchant_tool_merchant_razugar",
+        "createdAt": "2026-06-12T12:28:24Z",
+        "updatedAt": "2026-06-12T12:28:24Z",
+        "merchantId": "merchant_tool_merchant_razugar",
+        "workshopId": null,
+        "services": [
+          "trade",
+          "tools",
+          "crafting_supplies"
+        ],
+        "mapBindings": [],
+        "canBeKilled": false,
+        "combat": null,
+        "inventory": {
+          "itemIds": [],
+          "questItemIds": [],
+          "lootTableId": null,
+          "goldMin": 0,
+          "goldMax": 0
+        },
+        "allowedCityIds": [
+          "city_razugar"
+        ],
+        "conditions": []
       }
     ],
     "quests": [
@@ -69735,7 +70329,7 @@
           "priceGold": 0,
           "durationHours": 24,
           "requiresNpcDialogue": false,
-          "ownerNpcId": "",
+          "ownerNpcId": "npc_carpenter_master_argos",
           "rentalDialogueId": ""
         },
         "accessRules": {
@@ -69744,14 +70338,19 @@
           "factionId": "",
           "onlyCitizens": false
         },
-        "imagePath": "",
+        "imagePath": "/assets/upload/images/workshops/workshop_carpenter_basic_public/workshop_carpenter_basic_public-workshop_carpenter_basic_public-interior.png",
         "tags": [
           "starter",
           "public",
           "carpenter"
         ],
         "createdAt": "2026-06-11T18:28:25.213Z",
-        "updatedAt": "2026-06-11T18:28:25.213Z"
+        "updatedAt": "2026-06-12T11:40:37.378Z",
+        "interactionPoints": [],
+        "imageRef": {
+          "type": "image",
+          "src": "/assets/upload/images/workshops/workshop_carpenter_basic_public/workshop_carpenter_basic_public-workshop_carpenter_basic_public-interior.png"
+        }
       },
       {
         "id": "workshop_carpenter_sawmill_basic",
@@ -69788,14 +70387,19 @@
           "factionId": "",
           "onlyCitizens": false
         },
-        "imagePath": "",
+        "imagePath": "/assets/upload/images/workshops/workshop_carpenter_sawmill_basic/workshop_carpenter_sawmill_basic-workshop_carpenter_sawmill_basic-interior.png",
         "tags": [
           "starter",
           "sawmill",
           "carpenter"
         ],
         "createdAt": "2026-06-11T18:28:25.213Z",
-        "updatedAt": "2026-06-11T18:28:25.213Z"
+        "updatedAt": "2026-06-12T11:52:22.164Z",
+        "interactionPoints": [],
+        "imageRef": {
+          "type": "image",
+          "src": "/assets/upload/images/workshops/workshop_carpenter_sawmill_basic/workshop_carpenter_sawmill_basic-workshop_carpenter_sawmill_basic-interior.png"
+        }
       },
       {
         "id": "workshop_carpenter_advanced",
@@ -69834,7 +70438,7 @@
           "priceGold": 25,
           "durationHours": 24,
           "requiresNpcDialogue": false,
-          "ownerNpcId": "",
+          "ownerNpcId": "npc_carpenter_master_argos",
           "rentalDialogueId": ""
         },
         "accessRules": {
@@ -69843,14 +70447,19 @@
           "factionId": "",
           "onlyCitizens": false
         },
-        "imagePath": "",
+        "imagePath": "/assets/upload/images/workshops/workshop_carpenter_advanced/workshop_carpenter_advanced-workshop_carpenter_advanced-interior.png",
         "tags": [
           "advanced",
           "rental",
           "carpenter"
         ],
         "createdAt": "2026-06-11T18:28:25.213Z",
-        "updatedAt": "2026-06-11T18:28:25.213Z"
+        "updatedAt": "2026-06-12T12:05:55.945Z",
+        "interactionPoints": [],
+        "imageRef": {
+          "type": "image",
+          "src": "/assets/upload/images/workshops/workshop_carpenter_advanced/workshop_carpenter_advanced-workshop_carpenter_advanced-interior.png"
+        }
       },
       {
         "id": "workshop_carpenter_ritual",
@@ -69889,14 +70498,19 @@
           "factionId": "",
           "onlyCitizens": false
         },
-        "imagePath": "",
+        "imagePath": "/assets/upload/images/workshops/workshop_carpenter_ritual/workshop_carpenter_ritual-workshop_carpenter_ritual-interior.png",
         "tags": [
           "ritual",
           "rare",
           "carpenter"
         ],
         "createdAt": "2026-06-11T18:28:25.213Z",
-        "updatedAt": "2026-06-11T18:28:25.213Z"
+        "updatedAt": "2026-06-12T12:05:26.957Z",
+        "interactionPoints": [],
+        "imageRef": {
+          "type": "image",
+          "src": "/assets/upload/images/workshops/workshop_carpenter_ritual/workshop_carpenter_ritual-workshop_carpenter_ritual-interior.png"
+        }
       }
     ],
     "blacksmithItemWorkActions": [],

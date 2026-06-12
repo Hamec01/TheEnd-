@@ -1,18 +1,36 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { AdminAudioField } from '../AdminAudioField';
 import type { City, CityLocation, CityLocationShape, CityLocationShapeType, CityLocationType, CityStatus } from '../../types/city';
 import { cityService } from '../../services/cityRepository';
-import type { StoredImage } from '../../services/content/models';
+import type { AdminNpc, ProfessionWorkshopDefinition, StoredImage } from '../../services/content/models';
 import { imageService } from '../../services/content/imageService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../../services/content/adminJsonImportExport';
 import { AdminHelpTooltip } from '../help/AdminHelpTooltip';
+import { getContentCollection } from '../../services/content/contentApi';
+import { locationService } from '../../services/locationRepository';
+import { refreshZonesFromBackend } from '../../services/worldRepository';
+import { NpcReferenceSelector } from '../components/NpcReferenceSelector';
+import { WorkshopReferenceSelector } from '../components/WorkshopReferenceSelector';
+import type { WorldLocation } from '../../types/location';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 
 const STATUS_OPTIONS: CityStatus[] = ['active', 'ruined', 'occupied', 'hidden', 'locked'];
 const LOCATION_TYPES: CityLocationType[] = [
   'gate', 'tavern', 'market', 'blacksmith', 'castle', 'temple', 'arena', 'guild',
   'district', 'harbor', 'barracks', 'house', 'dungeon', 'custom',
 ];
+const CITY_LOCATION_SERVICE_OPTIONS = [
+  'npc_dialogue',
+  'workshops',
+  'crafting',
+  'shops',
+  'quests',
+  'training',
+  'tavern',
+  'healing',
+  'bank',
+] as const;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -24,6 +42,30 @@ function splitCsv(value: string): string[] {
 
 function joinCsv(value: string[] | undefined): string {
   return (value ?? []).join(', ');
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function joinLines(value: string[] | undefined): string {
+  return (value ?? []).join('\n');
+}
+
+function shouldStopCityEditorKeyPropagation(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target instanceof HTMLButtonElement;
+}
+
+function stopCityEditorKeyPropagation(event: ReactKeyboardEvent<HTMLElement>): void {
+  if (shouldStopCityEditorKeyPropagation(event.target)) {
+    event.stopPropagation();
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -82,6 +124,8 @@ function createNewLocation(cityId: string): CityLocation {
     npcIds: [],
     questIds: [],
     shopIds: [],
+    workshopIds: [],
+    services: [],
     isVisible: true,
     isUnlocked: true,
     markerIcon: '',
@@ -108,6 +152,10 @@ export function CitiesPage() {
   const [autoTriggersError, setAutoTriggersError] = useState<string | null>(null);
   const [images, setImages] = useState<StoredImage[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [npcs, setNpcs] = useState<AdminNpc[]>([]);
+  const [professionWorkshops, setProfessionWorkshops] = useState<ProfessionWorkshopDefinition[]>([]);
+  const [worldLocations, setWorldLocations] = useState<WorldLocation[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>([]);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
@@ -123,6 +171,10 @@ export function CitiesPage() {
   useEffect(() => {
     void reload();
     void imageService.getAll().then(setImages).catch(() => setImages([]));
+    void getContentCollection<AdminNpc>('npcs').then(setNpcs).catch(() => setNpcs([]));
+    void getContentCollection<ProfessionWorkshopDefinition>('professionWorkshops').then(setProfessionWorkshops).catch(() => setProfessionWorkshops([]));
+    void locationService.getLocations().then(setWorldLocations).catch(() => setWorldLocations([]));
+    void refreshZonesFromBackend().then(setZones).catch(() => setZones([]));
   }, []);
 
   const filteredCities = useMemo(() => {
@@ -204,6 +256,16 @@ export function CitiesPage() {
         ),
       };
     });
+  }
+
+  function toggleSelectedLocationService(serviceId: string) {
+    if (!selectedLocation) {
+      return;
+    }
+    const nextServices = selectedLocation.services.includes(serviceId)
+      ? selectedLocation.services.filter((entry) => entry !== serviceId)
+      : [...selectedLocation.services, serviceId];
+    patchSelectedLocation({ services: nextServices });
   }
 
   function validateCity(city: City): string[] {
@@ -681,7 +743,11 @@ export function CitiesPage() {
                     </div>
 
                     {selectedLocation && (
-                      <>
+                      <div
+                        style={{ display: 'contents' }}
+                        onKeyDownCapture={stopCityEditorKeyPropagation}
+                        onKeyUpCapture={stopCityEditorKeyPropagation}
+                      >
                         <button type="button" onClick={deleteLocation}>DELETE LOCATION</button>
                         <label>Location ID <AdminHelpTooltip section="cities" field="locationId" /><input value={selectedLocation.id} onChange={(e) => patchSelectedLocation({ id: e.target.value })} /></label>
                         <label>Name <AdminHelpTooltip section="cities" field="locationName" /><input value={selectedLocation.name} onChange={(e) => patchSelectedLocation({ name: e.target.value })} /></label>
@@ -698,9 +764,58 @@ export function CitiesPage() {
                             <option value="polygon">polygon</option>
                           </select>
                         </label>
-                        <label>NPC IDs<input value={joinCsv(selectedLocation.npcIds)} onChange={(e) => patchSelectedLocation({ npcIds: splitCsv(e.target.value) })} /></label>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <NpcReferenceSelector
+                            label="NPC для городской локации"
+                            selectedIds={selectedLocation.npcIds}
+                            onChange={(nextIds) => patchSelectedLocation({ npcIds: nextIds })}
+                            npcs={npcs}
+                            cities={cities}
+                            locations={worldLocations}
+                            zones={zones}
+                            context={{ cityId: draft.id, cityLocationId: selectedLocation.id }}
+                            manualPlaceholder={'npc_carpenter_master_argos\nnpc_blacksmith_master_razulgar'}
+                          />
+                        </div>
                         <label>Quest IDs<input value={joinCsv(selectedLocation.questIds)} onChange={(e) => patchSelectedLocation({ questIds: splitCsv(e.target.value) })} /></label>
                         <label>Shop IDs<input value={joinCsv(selectedLocation.shopIds)} onChange={(e) => patchSelectedLocation({ shopIds: splitCsv(e.target.value) })} /></label>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <WorkshopReferenceSelector
+                            label="Мастерские для городской локации"
+                            selectedIds={selectedLocation.workshopIds}
+                            onChange={(nextIds) => patchSelectedLocation({ workshopIds: nextIds })}
+                            workshops={professionWorkshops}
+                            manualPlaceholder={'workshop_carpenter_basic_public\nworkshop_blacksmith_razugar'}
+                          />
+                        </div>
+                        <label>
+                          Services
+                          <textarea
+                            value={joinLines(selectedLocation.services)}
+                            onChange={(e) => patchSelectedLocation({ services: splitLines(e.target.value) })}
+                            placeholder={'npc_dialogue\nworkshops\ncrafting'}
+                            style={{ minHeight: 96 }}
+                          />
+                        </label>
+                        <div style={{ display: 'grid', gap: '0.45rem', gridColumn: '1 / -1' }}>
+                          <span>Быстрые services</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+                            {CITY_LOCATION_SERVICE_OPTIONS.map((serviceId) => {
+                              const isActive = selectedLocation.services.includes(serviceId);
+                              return (
+                                <button
+                                  key={serviceId}
+                                  type="button"
+                                  className={`action-btn-lw ${isActive ? '' : 'secondary'}`}
+                                  onClick={() => toggleSelectedLocationService(serviceId)}
+                                >
+                                  {isActive ? '− ' : '+ '}
+                                  {serviceId}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <label>Location Music Asset ID<input value={selectedLocation.music?.assetId ?? ''} onChange={(e) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="music_tavern_low" /></label>
                         <label>Location Music URL<input value={selectedLocation.music?.url ?? ''} onChange={(e) => patchSelectedLocation({ music: { ...(selectedLocation.music ?? {}), url: e.target.value || undefined, loop: true } })} placeholder="/audio/cities/tavern.ogg" /></label>
                         <label>Location Ambient Asset ID<input value={selectedLocation.ambientSound?.assetId ?? ''} onChange={(e) => patchSelectedLocation({ ambientSound: { ...(selectedLocation.ambientSound ?? {}), assetId: e.target.value || undefined, loop: true } })} placeholder="amb_market_crowd" /></label>
@@ -760,7 +875,7 @@ export function CitiesPage() {
                         <label><input type="checkbox" checked={selectedLocation.isUnlocked} onChange={(e) => patchSelectedLocation({ isUnlocked: e.target.checked })} /> Unlocked</label>
                         <label>Unlock Condition<input value={selectedLocation.unlockCondition ?? ''} onChange={(e) => patchSelectedLocation({ unlockCondition: e.target.value })} /></label>
                         <label>Marker Icon<input value={selectedLocation.markerIcon ?? ''} onChange={(e) => patchSelectedLocation({ markerIcon: e.target.value })} /></label>
-                      </>
+                      </div>
                     )}
                   </div>
                 )}

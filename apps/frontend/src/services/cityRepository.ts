@@ -19,6 +19,8 @@ function createStarterLocation(cityId: string, id: string, name: string, type: C
     npcIds: [],
     questIds: [],
     shopIds: [],
+    workshopIds: [],
+    services: [],
     isVisible: true,
     isUnlocked: true,
     markerIcon: type,
@@ -203,6 +205,12 @@ function normalizeCity(city: City): City {
     locations: city.locations.map((location) => ({
       ...location,
       cityId: id,
+      workshopIds: Array.isArray(location.workshopIds)
+        ? location.workshopIds.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
+      services: Array.isArray(location.services)
+        ? location.services.map((entry) => String(entry).trim()).filter(Boolean)
+        : [],
       linkedBattleMapId: location.linkedBattleMapId?.trim() || undefined,
     })),
   };

@@ -1751,6 +1751,8 @@ export interface CityLocation {
   autoTriggers?: CityLocationAutoTrigger[];
   questIds: string[];
   shopIds: string[];
+  workshopIds: string[];
+  services: string[];
   isVisible: boolean;
   isUnlocked: boolean;
   unlockCondition?: string;

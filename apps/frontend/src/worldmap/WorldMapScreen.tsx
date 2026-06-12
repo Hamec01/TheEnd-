@@ -252,6 +252,12 @@ import {
   resolveWoodOutputKindByItemId,
 } from "../professions/carpenter/woodInheritance";
 import {
+  clearExpiredWorkshopRentals,
+  getWorkshopRentalAccess,
+  getWorkshopRentalState,
+  saveWorkshopRentalState,
+} from "../professions/workshops/workshopRentalState";
+import {
   CarpenterArcadeModal,
   type CarpenterArcadeMode,
   type SawingArcadeConfig,
@@ -331,6 +337,46 @@ const FOOTSTEP_SOUND_BY_SURFACE = {
   ],
 } as const;
 type FootstepSurface = keyof typeof FOOTSTEP_SOUND_BY_SURFACE;
+
+const PROFESSION_LABELS: Record<string, string> = {
+  carpenter: "Плотник",
+  blacksmith: "Кузнец",
+  alchemy: "Алхимия",
+  runecrafting: "Руны",
+  enchanting: "Зачарование",
+};
+
+const SERVICE_LABELS: Record<string, string> = {
+  npc_dialogue: "NPC",
+  workshops: "Мастерские",
+  crafting: "Крафт",
+  shops: "Магазины",
+  quests: "Квесты",
+  training: "Обучение",
+  healing: "Лечение",
+  bank: "Банк",
+};
+
+function getProfessionLabel(professionId: string | null | undefined): string {
+  const normalized = String(professionId ?? "").trim();
+  if (!normalized) {
+    return "Профессия не указана";
+  }
+  return PROFESSION_LABELS[normalized] ?? normalized;
+}
+
+function getWorkshopTierLabel(tier: number | null | undefined): string {
+  const normalizedTier = Number.isFinite(Number(tier)) ? Math.max(0, Math.floor(Number(tier))) : 0;
+  return `Уровень ${normalizedTier}`;
+}
+
+function getServiceLabel(serviceId: string | null | undefined): string {
+  const normalized = String(serviceId ?? "").trim();
+  if (!normalized) {
+    return "Сервис";
+  }
+  return SERVICE_LABELS[normalized] ?? normalized;
+}
 
 function rollHostileBanditEnemyCount(): number {
   return HOSTILE_BANDIT_MIN_ENEMIES + Math.floor(Math.random() * (HOSTILE_BANDIT_MAX_ENEMIES - HOSTILE_BANDIT_MIN_ENEMIES + 1));
@@ -1479,6 +1525,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [terrainStaminaDrainMultiplier, setTerrainStaminaDrainMultiplier] = useState(1);
   const [activeWorldModal, setActiveWorldModal] =
     useState<ActiveWorldModal>(null);
+  const [workshopRentalPanelOpen, setWorkshopRentalPanelOpen] = useState(false);
+  const [workshopRentalRevision, setWorkshopRentalRevision] = useState(0);
   const [expandedMineZoneId, setExpandedMineZoneId] = useState<string | null>(null);
   const [activeMineRun, setActiveMineRun] = useState<InternalMineRunState | null>(null);
   const [activeMineEffects, setActiveMineEffects] = useState<ActiveMiningEffect[] | null>(null);
@@ -1563,6 +1611,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   const [questInteractions, setQuestInteractions] = useState<QuestInteractionDefinition[]>([]);
   const runtimeSettings = useMemo(() => loadWorldMapRuntimeSettings(), []);
   const { snapshot: worldSnapshot, loading: worldSnapshotLoading, error: worldSnapshotError } = useWorldSnapshot();
+
+  useEffect(() => {
+    if (activeWorldModal?.type === "profession_workshop") {
+      clearExpiredWorkshopRentals(character.id);
+      setWorkshopRentalRevision((current) => current + 1);
+      return;
+    }
+    setWorkshopRentalPanelOpen(false);
+  }, [activeWorldModal, character.id]);
   const playMovementLocked = worldMapMode === "play"
     && locationView === "map"
     && (travelExhausted || Boolean(engagedWorldEntityId));
@@ -9448,7 +9505,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     let content: React.ReactNode = null;
     let buttons: React.ReactNode = null;
     const cardWidth =
-      activeWorldModal.type === "location" ? "min(760px, 100%)" : "min(520px, 100%)";
+      activeWorldModal.type === "location"
+        ? "min(760px, 100%)"
+        : activeWorldModal.type === "profession_workshop"
+          ? "min(720px, 100%)"
+          : "min(520px, 100%)";
+    const cardMaxHeight =
+      activeWorldModal.type === "location"
+        ? "80vh"
+        : activeWorldModal.type === "profession_workshop"
+          ? "85vh"
+          : "85vh";
 
     if (activeWorldModal.type === "merchant") {
       const merchant = merchantById.get(activeWorldModal.merchantId) ?? null;
@@ -9844,25 +9911,66 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       title = modalLocation?.name ?? activeWorldModal.locationId;
       description = modalLocation?.description;
 
-      const locationNpcIds = modalLocation?.npcIds ?? [];
-      const locationNpcs = locationNpcIds
-        .map((npcId) => npcById.get(npcId))
-        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-
-      const locationShopIds =
-        modalCityLocation?.shopIds
-        ?? modalWorldLocation?.merchantIds
-        ?? [];
-      const locationMerchants = locationShopIds
-        .map((merchantId) => merchantById.get(merchantId) ?? null)
-        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-      const locationWorkshopIds = (modalWorldLocation?.workshopIds ?? [])
+      const locationNpcIds = (modalLocation?.npcIds ?? [])
         .map((entry: string) => String(entry).trim())
         .filter(Boolean);
-      const locationWorkshops = locationWorkshopIds
-        .map((workshopId: string) => professionWorkshopsById.get(workshopId) ?? null)
-        .filter((entry: ProfessionWorkshopDefinition | null): entry is ProfessionWorkshopDefinition => Boolean(entry));
+      const locationNpcEntries = locationNpcIds.map((npcId) => ({
+        npcId,
+        npc: npcById.get(npcId) ?? null,
+      }));
 
+      const locationShopIds = (
+        modalCityLocation?.shopIds
+        ?? modalWorldLocation?.merchantIds
+        ?? []
+      )
+        .map((entry: string) => String(entry).trim())
+        .filter(Boolean);
+      const locationMerchantEntries = locationShopIds.map((merchantId) => ({
+        merchantId,
+        merchant: merchantById.get(merchantId) ?? null,
+      }));
+      const locationWorkshopIds = (
+        modalCityLocation?.workshopIds
+        ?? modalWorldLocation?.workshopIds
+        ?? []
+      )
+        .map((entry: string) => String(entry).trim())
+        .filter(Boolean);
+      const locationWorkshopEntries = locationWorkshopIds.map((workshopId: string) => ({
+        workshopId,
+        workshop: professionWorkshopsById.get(workshopId) ?? null,
+      }));
+      const locationQuestIds = (modalLocation?.questIds ?? [])
+        .map((entry: string) => String(entry).trim())
+        .filter(Boolean);
+      const locationQuestEntries = locationQuestIds.map((questId) => ({
+        questId,
+        quest: questDefinitions.find((entry) => entry.id === questId) ?? null,
+      }));
+      const locationServices = (
+        modalCityLocation?.services
+        ?? modalWorldLocation?.services
+        ?? []
+      )
+        .map((entry: string) => String(entry).trim())
+        .filter(Boolean);
+
+      const hasActionHubContent =
+        locationNpcEntries.length > 0
+        || locationMerchantEntries.length > 0
+        || locationWorkshopEntries.length > 0
+        || locationQuestEntries.length > 0
+        || locationServices.length > 0;
+      const locationNpcs = locationNpcEntries
+        .map((entry) => entry.npc)
+        .filter((entry): entry is NpcDefinition => Boolean(entry));
+      const locationMerchants = locationMerchantEntries
+        .map((entry) => entry.merchant)
+        .filter((entry): entry is AdminMerchant => Boolean(entry));
+      const locationWorkshops = locationWorkshopEntries
+        .map((entry) => entry.workshop)
+        .filter((entry): entry is ProfessionWorkshopDefinition => Boolean(entry));
       const hasPeople = locationNpcs.length > 0 || locationMerchants.length > 0 || locationWorkshops.length > 0;
       content = (
         <div style={{ display: "grid", gap: 16, margin: "18px auto 0", maxWidth: 640 }}>
@@ -10079,6 +10187,279 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         </div>
       );
 
+      content = hasActionHubContent ? (
+        <div style={{ display: "grid", gap: 18, margin: "18px auto 0", maxWidth: 700, width: "100%" }}>
+          {locationNpcEntries.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Персонажи
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {locationNpcEntries.map(({ npcId, npc }) => (
+                  <button
+                    key={npcId}
+                    type="button"
+                    className="btn"
+                    disabled={!npc}
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      display: "grid",
+                      gridTemplateColumns: "64px minmax(0, 1fr)",
+                      gap: 10,
+                      alignItems: "center",
+                      textAlign: "left",
+                      opacity: npc ? 1 : 0.6,
+                      cursor: npc ? "pointer" : "not-allowed",
+                      minHeight: 88,
+                    }}
+                    onClick={() => {
+                      if (!npc) {
+                        return;
+                      }
+                      if (npc.canTalk || npc.canGiveQuests || npc.dialogues.length > 0) {
+                        closeModal();
+                        openNpcDialogue(npc.id, {
+                          cityId: activeCity?.id,
+                          locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                        });
+                        return;
+                      }
+                      dialogueRunner.closeDialogue();
+                      setActiveWorldModal({
+                        type: "npc",
+                        locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                        npcId: npc.id,
+                      });
+                      setContextMode("npc");
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        border: "1px solid rgba(169,139,87,0.4)",
+                        background: "rgba(0, 0, 0, 0.28)",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      {npc && resolveNpcPortrait(npc) ? (
+                        <img
+                          src={resolveNpcPortrait(npc)}
+                          alt={npc.name ?? npc.id}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>
+                          {(npc?.name ?? npcId).charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                      <strong style={{ overflowWrap: "anywhere" }}>
+                        {npc ? fixMojibake(npc.name ?? npc.id) : `NPC не найден: ${npcId}`}
+                      </strong>
+                      <span
+                        className="muted"
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.35,
+                          overflowWrap: "anywhere",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {npc ? fixMojibake(npc.title?.trim() || npc.id) : npcId}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {locationWorkshopEntries.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Мастерские
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {locationWorkshopEntries.map(({ workshopId, workshop }) => (
+                  <button
+                    key={workshopId}
+                    type="button"
+                    className="btn"
+                    disabled={!workshop}
+                    style={{
+                      padding: 14,
+                      borderRadius: 10,
+                      display: "grid",
+                      gap: 8,
+                      textAlign: "left",
+                      opacity: workshop ? 1 : 0.6,
+                      cursor: workshop ? "pointer" : "not-allowed",
+                      minHeight: 110,
+                    }}
+                    onClick={() => {
+                      if (!workshop) {
+                        return;
+                      }
+                      dialogueRunner.closeDialogue();
+                      setActiveWorldModal({
+                        type: "profession_workshop",
+                        locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                        workshopId: workshop.id,
+                      });
+                      setContextMode("location");
+                    }}
+                  >
+                    <strong style={{ overflowWrap: "anywhere" }}>
+                      {workshop ? fixMojibake(workshop.name) : `Мастерская не найдена: ${workshopId}`}
+                    </strong>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {workshop
+                        ? `${getProfessionLabel(workshop.professionId)} · ${getWorkshopTierLabel(workshop.tier)}`
+                        : workshopId}
+                    </span>
+                    <span style={{ color: "#f0d4a3", fontSize: 12, fontWeight: 700 }}>Войти</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {locationMerchantEntries.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Магазины
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {locationMerchantEntries.map(({ merchantId, merchant }) => (
+                  <button
+                    key={merchantId}
+                    type="button"
+                    className="btn"
+                    disabled={!merchant}
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      display: "grid",
+                      gap: 6,
+                      textAlign: "left",
+                      opacity: merchant ? 1 : 0.6,
+                      cursor: merchant ? "pointer" : "not-allowed",
+                    }}
+                    onClick={() => {
+                      if (!merchant) {
+                        return;
+                      }
+                      closeModal();
+                      onOpenMerchant(merchant.id);
+                    }}
+                  >
+                    <strong>{merchant ? `Торговать: ${fixMojibake(merchant.name ?? merchant.id)}` : `Магазин не найден: ${merchantId}`}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {merchant ? fixMojibake(merchant.description?.trim() || merchant.id) : merchantId}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {locationQuestEntries.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Задания
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {locationQuestEntries.map(({ questId, quest }) => (
+                  <button
+                    key={questId}
+                    type="button"
+                    className="btn"
+                    disabled
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      display: "grid",
+                      gap: 6,
+                      textAlign: "left",
+                      opacity: 0.72,
+                      cursor: "not-allowed",
+                    }}
+                  >
+                    <strong>{quest ? `Задание: ${quest.title ?? quest.id}` : `Задание не найдено: ${questId}`}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {quest ? quest.id : questId}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="muted" style={{ marginTop: 8, textAlign: "left", fontSize: 12 }}>
+                Открытие задания будет добавлено позже.
+              </div>
+            </div>
+          ) : null}
+
+          {locationServices.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Сервисы
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {locationServices.map((serviceId) => (
+                  <span
+                    key={serviceId}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(228, 186, 113, 0.4)",
+                      background: "rgba(228, 186, 113, 0.12)",
+                      color: "#f0d4a3",
+                      fontSize: 12,
+                    }}
+                  >
+                    {getServiceLabel(serviceId)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null;
+
       const battleMapId =
         modalCityLocation?.linkedBattleMapId?.trim()
         || modalWorldLocation?.battleMapIds?.[0]?.trim()
@@ -10108,19 +10489,44 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       );
     } else if (activeWorldModal.type === "profession_workshop") {
       title = modalProfessionWorkshop?.name ?? activeWorldModal.workshopId;
-      subtitle = modalProfessionWorkshop ? `${modalProfessionWorkshop.workshopKind} · tier ${modalProfessionWorkshop.tier}` : undefined;
+      subtitle = modalProfessionWorkshop
+        ? `${getProfessionLabel(modalProfessionWorkshop.professionId)} · ${getWorkshopTierLabel(modalProfessionWorkshop.tier)}`
+        : undefined;
       description = modalProfessionWorkshop?.description ?? modalLocation?.description;
 
       const rental = modalProfessionWorkshop?.rental;
+      const workshopRentalPanelVisible = workshopRentalPanelOpen || rental?.enabled === true;
       const interactionPoints = (modalProfessionWorkshop?.interactionPoints ?? []) as ProfessionWorkshopInteractionPoint[];
       const workshopImage = modalProfessionWorkshop?.imageRef?.type === "image"
         ? (resolveStoredImageSource(modalProfessionWorkshop.imageRef.src, runtimeImages) ?? modalProfessionWorkshop.imageRef.src)
         : (resolveStoredImageSource(modalProfessionWorkshop?.imagePath ?? "", runtimeImages) ?? modalProfessionWorkshop?.imagePath ?? "");
+      const rentalStorageRefreshKey = `${character.id}:${modalProfessionWorkshop?.id ?? ""}:${workshopRentalRevision}`;
+      void rentalStorageRefreshKey;
+      const rentalState = modalProfessionWorkshop
+        ? getWorkshopRentalState(character.id, modalProfessionWorkshop.id)
+        : null;
+      const rentalAccess = modalProfessionWorkshop
+        ? getWorkshopRentalAccess({ characterId: character.id, workshop: modalProfessionWorkshop })
+        : { canUse: false, isRented: false } as const;
+      const rentalStatusText = rental?.enabled !== true
+        ? "Бесплатный доступ"
+        : rentalAccess.isRented
+          ? `Арендовано до ${rentalAccess.expiresAtIso ? new Date(rentalAccess.expiresAtIso).toLocaleString("ru-RU") : "—"}`
+          : "Требуется аренда";
       const ownerHint = rental?.ownerNpcId?.trim()
-        ? `Владелец/NPC: ${rental.ownerNpcId}`
+        ? `Владелец: ${rental.ownerNpcId}`
         : rental?.requiresNpcDialogue
-          ? "Аренда открывается через NPC dialogue."
-          : "Аренда без NPC dialogue.";
+          ? "Для аренды желательно поговорить с владельцем."
+          : "Аренда доступна напрямую.";
+      const rentalWarning = rental?.requiresNpcDialogue
+        ? "По дизайну аренда идёт через владельца. Если NPC или диалог ещё не настроены, ниже остаётся безопасная fallback-кнопка аренды."
+        : "";
+      const canTalkToOwner = Boolean(rental?.requiresNpcDialogue || rental?.ownerNpcId?.trim() || rental?.rentalDialogueId?.trim());
+      const playerGold = getAvailablePlayerGold();
+      const rentalPrice = Math.max(0, Math.floor(Number(rental?.priceGold ?? 0) || 0));
+      const rentalDurationHours = Math.max(0, Math.floor(Number(rental?.durationHours ?? 0) || 0));
+      const canAffordRental = rentalPrice <= playerGold.totalGold;
+      const rentalLockReason = "Нужно арендовать мастерскую, чтобы пользоваться этим станком.";
 
       const openWorkshopLocationModal = () => {
         setActiveWorldModal({
@@ -10130,22 +10536,123 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         setContextMode("location");
       };
 
-      const handleWorkshopPoint = (point: ProfessionWorkshopInteractionPoint) => {
+      const refreshWorkshopRentalState = () => {
+        setWorkshopRentalRevision((current) => current + 1);
+      };
+
+      const openWorkshopRentalPanel = () => {
+        setWorkshopRentalPanelOpen(true);
+      };
+
+      const openWorkshopOwnerInteraction = () => {
+        if (!modalProfessionWorkshop) {
+          return;
+        }
+
+        const ownerNpcId = rental?.ownerNpcId?.trim() || interactionPoints.find((point) => point.type === "npc")?.npcId?.trim() || "";
+        if (ownerNpcId && npcById.get(ownerNpcId)) {
+          dialogueRunner.closeDialogue();
+          setActiveWorldModal({
+            type: "npc",
+            locationId: activeWorldModal.locationId,
+            npcId: ownerNpcId,
+          });
+          setContextMode("npc");
+          return;
+        }
+
+        const rentalDialogueId = rental?.rentalDialogueId?.trim() || "";
+        if (rentalDialogueId) {
+          const dialogue = getDialogueById(rentalDialogueId);
+          if (dialogue) {
+            setActiveWorldModal(null);
+            setContextMode("location");
+            dialogueRunner.openDialogue(rentalDialogueId, {
+              locationId: activeWorldModal.locationId,
+              npcId: dialogue.npcId ?? ownerNpcId ?? undefined,
+              sourceType: "location_place",
+            });
+            return;
+          }
+        }
+
+        if (!ownerNpcId) {
+          onStatus("Владелец мастерской ещё не назначен.");
+          return;
+        }
+
+        onStatus("Диалог владельца будет добавлен позже.");
+      };
+
+      const activateWorkshopRental = () => {
+        if (!modalProfessionWorkshop || rental?.enabled !== true) {
+          return;
+        }
+        if (rentalAccess.isRented) {
+          onStatus(`Аренда уже активна до ${rentalAccess.expiresAtIso ? new Date(rentalAccess.expiresAtIso).toLocaleString("ru-RU") : "—"}.`);
+          return;
+        }
+        if (rentalPrice > 0 && !canAffordRental) {
+          onStatus("Недостаточно золота");
+          return;
+        }
+        if (rentalPrice > 0) {
+          const spent = spendAvailablePlayerGold(rentalPrice);
+          if (!spent) {
+            onStatus("Недостаточно золота");
+            return;
+          }
+        }
+
+        const rentedAt = new Date();
+        const expiresAt = new Date(rentedAt.getTime() + rentalDurationHours * 60 * 60 * 1000);
+        saveWorkshopRentalState({
+          characterId: character.id,
+          workshopId: modalProfessionWorkshop.id,
+          rentedAtIso: rentedAt.toISOString(),
+          expiresAtIso: expiresAt.toISOString(),
+          paidGold: rentalPrice,
+          ownerNpcId: rental?.ownerNpcId?.trim() || undefined,
+          rentalDialogueId: rental?.rentalDialogueId?.trim() || undefined,
+        });
+        refreshWorkshopRentalState();
+        setWorkshopRentalPanelOpen(true);
+        onStatus(rentalPrice > 0
+          ? `Аренда оформлена: -${rentalPrice} золота. Доступ открыт до ${expiresAt.toLocaleString("ru-RU")}.`
+          : `Аренда оформлена бесплатно. Доступ открыт до ${expiresAt.toLocaleString("ru-RU")}.`);
+      };
+
+      const getPointState = (point: ProfessionWorkshopInteractionPoint) => {
         const tierBlocked = typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0);
+        const questBlocked = Boolean(point.requiredQuestId?.trim());
+        const skillBlocked = Boolean(point.requiredSkillId?.trim());
+        const rentalBlocked = point.type === "station" && rental?.enabled === true && !rentalAccess.canUse;
+
+        let disabledReason = "";
         if (point.isEnabled === false) {
-          onStatus(`Точка "${point.label || point.id}" сейчас отключена.`);
-          return;
+          disabledReason = `Точка "${point.label || point.id}" сейчас отключена.`;
+        } else if (rentalBlocked) {
+          disabledReason = rentalLockReason;
+        } else if (tierBlocked) {
+          disabledReason = `Точка "${point.label || point.id}" требует уровень мастерской ${point.requiredWorkshopTier}.`;
+        } else if (questBlocked) {
+          disabledReason = `Точка "${point.label || point.id}" пока ждёт квестовую привязку: ${point.requiredQuestId}.`;
+        } else if (skillBlocked) {
+          disabledReason = `Точка "${point.label || point.id}" пока ждёт привязку к навыку: ${point.requiredSkillId}.`;
         }
-        if (tierBlocked) {
-          onStatus(`Точка "${point.label || point.id}" требует tier ${point.requiredWorkshopTier}.`);
-          return;
-        }
-        if (point.requiredQuestId?.trim()) {
-          onStatus(`Точка "${point.label || point.id}" ждёт future quest-gating hook: ${point.requiredQuestId}.`);
-          return;
-        }
-        if (point.requiredSkillId?.trim()) {
-          onStatus(`Точка "${point.label || point.id}" ждёт future skill-gating hook: ${point.requiredSkillId}.`);
+
+        return {
+          isHardDisabled: point.isEnabled === false || tierBlocked || questBlocked || skillBlocked,
+          isRentalLocked: rentalBlocked,
+          disabledReason,
+          title: disabledReason || point.description || point.label || point.id,
+        };
+      };
+
+      const handleWorkshopPoint = (point: ProfessionWorkshopInteractionPoint) => {
+        const pointState = getPointState(point);
+        if (pointState.disabledReason) {
+          onStatus(pointState.disabledReason);
           return;
         }
         if (!modalProfessionWorkshop) {
@@ -10161,8 +10668,12 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           return;
         }
         if (point.type === "npc") {
-          const npcId = point.npcId?.trim();
-          if (npcId && npcById.get(npcId)) {
+          const npcId = point.npcId?.trim() || "";
+          if (!npcId) {
+            onStatus("Владелец мастерской ещё не назначен.");
+            return;
+          }
+          if (npcById.get(npcId)) {
             dialogueRunner.closeDialogue();
             setActiveWorldModal({
               type: "npc",
@@ -10172,7 +10683,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             setContextMode("npc");
             return;
           }
-          onStatus(`NPC point "${point.label || point.id}" пока без подключённого npcId.`);
+          if (rental?.rentalDialogueId?.trim() && getDialogueById(rental.rentalDialogueId.trim())) {
+            setActiveWorldModal(null);
+            setContextMode("location");
+            dialogueRunner.openDialogue(rental.rentalDialogueId.trim(), {
+              locationId: activeWorldModal.locationId,
+              npcId,
+              sourceType: "location_place",
+            });
+            return;
+          }
+          onStatus("Диалог владельца будет добавлен позже.");
           return;
         }
         if (point.type === "dialog") {
@@ -10190,7 +10711,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           return;
         }
         if (point.type === "rental") {
-          onStatus(`Аренда в мастерской ${modalProfessionWorkshop.name} пока read-only. Золото не списывается.`);
+          openWorkshopRentalPanel();
           return;
         }
         if (point.type === "storage") {
@@ -10207,18 +10728,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       };
 
       content = (
-        <div style={{ display: "grid", gap: 14, margin: "18px auto 0", maxWidth: 640, textAlign: "left" }}>
-          <div className="wm-stat-block">
-            <div><strong>Профессия:</strong> {modalProfessionWorkshop?.professionId ?? "—"}</div>
-            <div><strong>Статус:</strong> {modalProfessionWorkshop?.status ?? "—"}</div>
-            <div><strong>Station types:</strong> {modalProfessionWorkshop?.stationTypes.join(", ") || "—"}</div>
+        <div style={{ display: "grid", gap: 14, margin: "18px auto 0", maxWidth: 680, width: "100%", textAlign: "left" }}>
+          <div className="wm-stat-block" style={{ display: "grid", gap: 6 }}>
+            <div><strong>Профессия:</strong> {getProfessionLabel(modalProfessionWorkshop?.professionId)}</div>
+            <div><strong>Уровень:</strong> {getWorkshopTierLabel(modalProfessionWorkshop?.tier)}</div>
+            <div><strong>Статус:</strong> {fixMojibake(modalProfessionWorkshop?.status ?? "—")}</div>
           </div>
 
           {workshopImage ? (
             <div
               style={{
                 position: "relative",
-                minHeight: 260,
+                minHeight: 220,
                 borderRadius: 14,
                 overflow: "hidden",
                 border: "1px solid rgba(169,139,87,0.3)",
@@ -10228,21 +10749,20 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               <img
                 src={workshopImage}
                 alt={modalProfessionWorkshop?.name ?? activeWorldModal.workshopId}
-                style={{ width: "100%", minHeight: 260, maxHeight: 420, objectFit: "cover", display: "block" }}
+                style={{ width: "100%", minHeight: 220, maxHeight: 320, objectFit: "cover", display: "block" }}
               />
               <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
                 {interactionPoints.map((point) => {
-                  const isDisabled = point.isEnabled === false
-                    || (typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0))
-                    || Boolean(point.requiredQuestId?.trim())
-                    || Boolean(point.requiredSkillId?.trim());
+                  const pointState = getPointState(point);
+                  const isDisabled = pointState.isHardDisabled || pointState.isRentalLocked;
                   return (
                     <button
                       key={point.id}
                       type="button"
                       onClick={() => handleWorkshopPoint(point)}
-                      disabled={isDisabled}
-                      title={point.description || point.label || point.id}
+                      disabled={pointState.isHardDisabled}
+                      aria-disabled={isDisabled}
+                      title={pointState.title}
                       style={{
                         position: "absolute",
                         left: `${Math.max(0, Math.min(100, Number(point.x) || 0))}%`,
@@ -10269,48 +10789,132 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               </div>
             </div>
           ) : (
-            <div className="wm-stat-block" style={{ display: "grid", gap: 10 }}>
-              <div><strong>Интерьер:</strong> изображение не задано, используется fallback layout.</div>
-              {interactionPoints.length > 0 ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {interactionPoints.map((point) => {
-                    const isDisabled = point.isEnabled === false
-                      || (typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0))
-                      || Boolean(point.requiredQuestId?.trim())
-                      || Boolean(point.requiredSkillId?.trim());
-                    return (
-                      <button
-                        key={point.id}
-                        type="button"
-                        className="btn"
-                        disabled={isDisabled}
-                        style={{ textAlign: "left" }}
-                        onClick={() => handleWorkshopPoint(point)}
-                      >
-                        <strong>{point.label || point.id}</strong>
-                        <span className="muted" style={{ display: "block", fontSize: 12 }}>
-                          {point.type} · x={point.x}% · y={point.y}%{point.stationType ? ` · station=${point.stationType}` : ""}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="muted">У мастерской пока нет interaction points.</div>
-              )}
+            <div
+              className="wm-stat-block"
+              style={{
+                display: "grid",
+                gap: 8,
+                minHeight: 120,
+                alignContent: "center",
+                justifyItems: "start",
+              }}
+            >
+              <strong>Изображение мастерской не задано</strong>
+              <span className="muted">Пока используется fallback без интерьерного арта.</span>
             </div>
           )}
 
-          <div className="wm-stat-block">
-            <div><strong>Аренда:</strong> {rental?.enabled ? "доступна" : "не требуется"}</div>
-            <div><strong>Цена:</strong> {rental?.priceGold ?? 0} золота</div>
-            <div><strong>Длительность:</strong> {rental?.durationHours ?? 0} ч.</div>
-            <div><strong>Подсказка:</strong> {ownerHint}</div>
-            {rental?.rentalDialogueId ? <div><strong>rentalDialogueId:</strong> {rental.rentalDialogueId}</div> : null}
+          <div className="wm-stat-block" style={{ display: "grid", gap: 8 }}>
+            <strong>Точки мастерской</strong>
+            {interactionPoints.length > 0 ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {interactionPoints.map((point) => {
+                  const pointState = getPointState(point);
+                  const isDisabled = pointState.isHardDisabled || pointState.isRentalLocked;
+                  return (
+                    <button
+                      key={point.id}
+                      type="button"
+                      className="btn"
+                      disabled={pointState.isHardDisabled}
+                      aria-disabled={isDisabled}
+                      title={pointState.title}
+                      style={{ textAlign: "left" }}
+                      onClick={() => handleWorkshopPoint(point)}
+                    >
+                      <strong>{point.label || point.id}</strong>
+                      <span className="muted" style={{ display: "block", fontSize: 12 }}>
+                        {point.type === "station"
+                          ? `Станок${point.stationType ? ` · ${point.stationType}` : ""}`
+                          : point.type === "npc"
+                            ? "Владелец"
+                            : point.type === "rental"
+                              ? "Аренда"
+                              : point.type === "exit"
+                                ? "Выход"
+                                : point.type}
+                      </span>
+                      {pointState.disabledReason ? (
+                        <span className="muted" style={{ display: "block", fontSize: 12, marginTop: 4 }}>
+                          {pointState.disabledReason}
+                        </span>
+                      ) : point.description ? (
+                        <span className="muted" style={{ display: "block", fontSize: 12, marginTop: 4 }}>
+                          {fixMojibake(point.description)}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="muted">У мастерской пока нет точек взаимодействия.</div>
+            )}
           </div>
 
-          <div className="wm-stat-block">
-            <div><strong>TODO mini-game hook:</strong> будет вызываться рядом с craft entrypoint, без запуска на этом слое.</div>
+          <div className="wm-stat-block" style={{ display: "grid", gap: 6 }}>
+            <div><strong>Аренда мастерской:</strong> {rentalStatusText}</div>
+            <div><strong>Подсказка:</strong> {ownerHint}</div>
+            {rental?.enabled ? (
+              <>
+                <div><strong>Цена:</strong> {rentalPrice} золота</div>
+                <div><strong>Срок:</strong> {rentalDurationHours} ч.</div>
+              </>
+            ) : null}
+            {rentalState?.expiresAtIso ? (
+              <div><strong>Истекает:</strong> {new Date(rentalState.expiresAtIso).toLocaleString("ru-RU")}</div>
+            ) : null}
+            {rentalWarning ? (
+              <div className="muted" style={{ marginTop: 6 }}>{rentalWarning}</div>
+            ) : null}
+            {workshopRentalPanelVisible ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "1px solid rgba(169,139,87,0.3)",
+                  background: "rgba(23, 16, 11, 0.6)",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <strong>Условия аренды</strong>
+                <div><strong>Мастерская:</strong> {modalProfessionWorkshop?.name ?? "—"}</div>
+                <div><strong>Цена:</strong> {rentalPrice} золота</div>
+                <div><strong>Срок:</strong> {rentalDurationHours} ч.</div>
+                <div><strong>Текущий статус:</strong> {rentalStatusText}</div>
+                <div><strong>Ваше золото:</strong> {playerGold.totalGold}</div>
+                {!rentalAccess.isRented && rentalPrice > 0 && !canAffordRental ? (
+                  <div style={{ color: "#ffb27a" }}>Недостаточно золота</div>
+                ) : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {rental?.enabled ? (
+                    <button
+                      type="button"
+                      onClick={activateWorkshopRental}
+                      disabled={rentalAccess.isRented}
+                    >
+                      Арендовать
+                    </button>
+                  ) : null}
+                  {canTalkToOwner ? (
+                    <button
+                      type="button"
+                      onClick={openWorkshopOwnerInteraction}
+                    >
+                      Поговорить с владельцем
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setWorkshopRentalPanelOpen((current) => !current)}
+                  >
+                    {workshopRentalPanelOpen ? "Скрыть панель" : "Показать панель"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       );
@@ -10320,6 +10924,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           {modalProfessionWorkshop?.professionId === "carpenter" ? (
             <button
               onClick={() => {
+                if (rental?.enabled === true && !rentalAccess.canUse) {
+                  onStatus(rentalLockReason);
+                  return;
+                }
                 closeModal();
                 if (modalProfessionWorkshop && onOpenProfessionWorkshop) {
                   onOpenProfessionWorkshop(modalProfessionWorkshop, null);
@@ -10334,10 +10942,17 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           {rental?.enabled ? (
             <button
               onClick={() => {
-                onStatus(`Аренда пока только как foundation: ${modalProfessionWorkshop?.name ?? activeWorldModal.workshopId}. Списание золота ещё не включено.`);
+                openWorkshopRentalPanel();
               }}
             >
-              Аренда (read-only)
+              Аренда
+            </button>
+          ) : null}
+          {canTalkToOwner ? (
+            <button
+              onClick={openWorkshopOwnerInteraction}
+            >
+              Поговорить с владельцем
             </button>
           ) : null}
           <button onClick={openWorkshopLocationModal}>{"\u0423\u0439\u0442\u0438"}</button>
@@ -10470,45 +11085,52 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             width: cardWidth,
             padding: 24,
             textAlign: "center",
+            maxHeight: cardMaxHeight,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {portrait ? (
-            <div
-              style={{
-                width: 220,
-                height: 260,
-                margin: "0 auto 18px",
-                border: "1px solid #8b6a3f",
-                borderRadius: 8,
-                overflow: "hidden",
-                background: "rgba(0, 0, 0, 0.35)",
-              }}
-            >
-              <img
-                src={portrait}
-                alt={title}
+          <div style={{ overflowY: "auto", minHeight: 0, paddingRight: 4 }}>
+            {portrait ? (
+              <div
                 style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
+                  width: 220,
+                  height: 260,
+                  margin: "0 auto 18px",
+                  border: "1px solid #8b6a3f",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  background: "rgba(0, 0, 0, 0.35)",
+                  flexShrink: 0,
                 }}
-              />
-            </div>
-          ) : null}
+              >
+                <img
+                  src={portrait}
+                  alt={title}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              </div>
+            ) : null}
 
-          <h2 style={{ margin: "0 0 12px" }}>{title}</h2>
-          {subtitle ? (
-            <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 380 }}>
-              {subtitle}
-            </p>
-          ) : null}
-          {description?.trim() ? (
-            <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 640 }}>
-              {description.trim()}
-            </p>
-          ) : null}
+            <h2 style={{ margin: "0 0 12px", overflowWrap: "anywhere" }}>{fixMojibake(title)}</h2>
+            {subtitle ? (
+              <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 460, lineHeight: 1.4, overflowWrap: "anywhere" }}>
+                {fixMojibake(subtitle)}
+              </p>
+            ) : null}
+            {description?.trim() ? (
+              <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 640, lineHeight: 1.55, overflowWrap: "anywhere" }}>
+                {fixMojibake(description.trim())}
+              </p>
+            ) : null}
 
-          {content}
+            {content}
+          </div>
 
           <div
             style={{
@@ -10516,7 +11138,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
               flexDirection: "column",
               gap: 12,
               width: "min(260px, 100%)",
-              margin: "0 auto",
+              margin: "16px auto 0",
+              flexShrink: 0,
             }}
           >
             {buttons}

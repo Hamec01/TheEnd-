@@ -5,8 +5,11 @@ import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../.
 import { imageService } from '../../services/content/imageService';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { locationService } from '../../services/locationRepository';
+import { cityService } from '../../services/cityRepository';
+import { refreshZonesFromBackend } from '../../services/worldRepository';
 import type { AdminDialogue, AdminMerchant, AdminNpc, AdminQuest, StoredImage } from '../../services/content/models';
 import { translateAdminErrorMessage } from '../adminUi';
+import { NpcReferenceSelector } from '../components/NpcReferenceSelector';
 import type {
   LocationArea,
   LocationAreaShapeType,
@@ -17,6 +20,8 @@ import type {
   LocationSubtype,
   WorldLocation,
 } from '../../types/location';
+import type { City } from '../../types/city';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
 
 const LOCATION_STATUSES: LocationStatus[] = ['draft', 'active', 'disabled', 'archived'];
 const LOCATION_SUBTYPES: Array<{ value: LocationSubtype; label: string }> = [
@@ -309,11 +314,13 @@ export function LocationsPage() {
   const [tab, setTab] = useState<EditorTab>('main');
   const [status, setStatus] = useState('Готово');
   const [images, setImages] = useState<StoredImage[]>([]);
-  const [npcs, setNpcs] = useState<ReferenceOption[]>([]);
+  const [npcs, setNpcs] = useState<AdminNpc[]>([]);
   const [merchants, setMerchants] = useState<ReferenceOption[]>([]);
   const [quests, setQuests] = useState<ReferenceOption[]>([]);
   const [dialogues, setDialogues] = useState<ReferenceOption[]>([]);
   const [battleMaps, setBattleMaps] = useState<ReferenceOption[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>([]);
   const [queryId, setQueryId] = useState('');
   const [queryName, setQueryName] = useState('');
   const [querySubtype, setQuerySubtype] = useState('');
@@ -334,14 +341,16 @@ export function LocationsPage() {
   const areaCanvasRef = useRef<HTMLDivElement | null>(null);
 
   async function reload(selectId?: string) {
-    const [nextLocations, nextImages, nextNpcs, nextMerchants, nextQuests, nextDialogues, nextBattleMaps] = await Promise.all([
+    const [nextLocations, nextImages, nextNpcs, nextMerchants, nextQuests, nextDialogues, nextBattleMaps, nextCities, nextZones] = await Promise.all([
       locationService.getLocations(),
       imageService.getAll().catch(() => []),
-      getContentCollection<AdminNpc>('npcs').then((entries) => entries.map((entry) => ({ id: entry.id, name: entry.name || entry.id }))).catch(() => []),
+      getContentCollection<AdminNpc>('npcs').catch(() => []),
       getContentCollection<AdminMerchant>('merchants').then((entries) => entries.map((entry) => ({ id: entry.id, name: entry.name || entry.id }))).catch(() => []),
       getContentCollection<AdminQuest>('quests').then((entries) => entries.map((entry) => ({ id: entry.id, name: entry.title || entry.id }))).catch(() => []),
       getContentCollection<AdminDialogue>('dialogues').then((entries) => entries.map((entry) => ({ id: entry.id, name: entry.title || entry.id }))).catch(() => []),
       getContentCollection<BattleMapDefinition>('battleMaps').then((entries) => entries.map((entry) => ({ id: entry.id, name: entry.name || entry.id }))).catch(() => []),
+      cityService.getCities().catch(() => []),
+      refreshZonesFromBackend().catch(() => []),
     ]);
 
     setLocations(nextLocations);
@@ -351,6 +360,8 @@ export function LocationsPage() {
     setQuests(nextQuests);
     setDialogues(nextDialogues);
     setBattleMaps(nextBattleMaps);
+    setCities(nextCities);
+    setZones(nextZones);
 
     const nextId = selectId ?? selectedId ?? nextLocations[0]?.id ?? '';
     const selected = nextLocations.find((entry) => entry.id === nextId) ?? nextLocations[0] ?? null;
@@ -1044,7 +1055,19 @@ export function LocationsPage() {
                 </div>
               </div>
             )}
-            {tab === 'npcs' && <div className="admin-stack"><label><span>NPC IDs</span><input value={joinCsv(draft.npcIds)} onChange={(event) => patchReferenceList('npcIds', event.target.value)} /></label>{renderReferenceButtons(npcs, draft.npcIds ?? [], 'npcIds')}</div>}
+            {tab === 'npcs' && (
+              <NpcReferenceSelector
+                label="NPC для локации"
+                selectedIds={draft.npcIds ?? []}
+                onChange={(nextIds) => patchDraft({ npcIds: nextIds })}
+                npcs={npcs}
+                cities={cities}
+                locations={locations}
+                zones={zones}
+                context={{ worldLocationId: draft.id }}
+                manualPlaceholder="npc_carpenter_master_argos&#10;npc_blacksmith_master_razulgar"
+              />
+            )}
             {tab === 'merchants' && <div className="admin-stack"><label><span>Merchant IDs</span><input value={joinCsv(draft.merchantIds)} onChange={(event) => patchReferenceList('merchantIds', event.target.value)} /></label>{renderReferenceButtons(merchants, draft.merchantIds ?? [], 'merchantIds')}</div>}
             {tab === 'quests' && <div className="admin-stack"><label><span>Quest IDs</span><input value={joinCsv(draft.questIds)} onChange={(event) => patchReferenceList('questIds', event.target.value)} /></label>{renderReferenceButtons(quests, draft.questIds ?? [], 'questIds')}</div>}
             {tab === 'dialogues' && <div className="admin-stack"><label><span>Dialogue IDs</span><input value={joinCsv(draft.dialogueIds)} onChange={(event) => patchReferenceList('dialogueIds', event.target.value)} /></label>{renderReferenceButtons(dialogues, draft.dialogueIds ?? [], 'dialogueIds')}</div>}

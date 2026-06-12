@@ -15,10 +15,15 @@ import {
   type JsonImportMode,
 } from '../../services/content/adminJsonImportExport';
 import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { NpcReferenceSelector } from '../components/NpcReferenceSelector';
+import { cityService } from '../../services/cityRepository';
 import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { locationService } from '../../services/locationRepository';
+import { refreshZonesFromBackend } from '../../services/worldRepository';
 import type {
+  AdminNpc,
   ProfessionWorkshopAccessRules,
   ProfessionWorkshopDefinition,
   ProfessionWorkshopInteractionPoint,
@@ -27,6 +32,10 @@ import type {
   ProfessionWorkshopRental,
   StoredImage,
 } from '../../services/content/models';
+import type { City } from '../../types/city';
+import type { WorldLocation } from '../../types/location';
+import type { WorldMapZone } from '../../worldmap/zoneEditorTypes';
+import { buildWorkshopReferenceContexts } from '../utils/npcReferenceSearch';
 
 interface PendingImportPreview<T extends { id: string }> {
   fileName: string;
@@ -375,6 +384,10 @@ export function ProfessionWorkshopsPage({ onBack }: { onBack: () => void }) {
   const [validation, setValidation] = useState<ValidationResult>({ errors: [], warnings: [] });
   const [imageRefDraft, setImageRefDraft] = useState('');
   const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
+  const [npcs, setNpcs] = useState<AdminNpc[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [locations, setLocations] = useState<WorldLocation[]>([]);
+  const [zones, setZones] = useState<WorldMapZone[]>([]);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
   const starterWorkshops = useMemo(() => createStarterWorkshops(), []);
@@ -397,6 +410,10 @@ export function ProfessionWorkshopsPage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void refresh();
     void loadRuntimeImages().then(setRuntimeImages).catch(() => setRuntimeImages([]));
+    void getContentCollection<AdminNpc>('npcs').then(setNpcs).catch(() => setNpcs([]));
+    void cityService.getCities().then(setCities).catch(() => setCities([]));
+    void locationService.getLocations().then(setLocations).catch(() => setLocations([]));
+    void refreshZonesFromBackend().then(setZones).catch(() => setZones([]));
   }, []);
 
   useEffect(() => {
@@ -416,6 +433,13 @@ export function ProfessionWorkshopsPage({ onBack }: { onBack: () => void }) {
       return byQuery && byKind && byStatus;
     });
   }, [workshops, query, kindFilter, statusFilter]);
+
+  const draftWorkshopContexts = useMemo(() => buildWorkshopReferenceContexts({
+    workshopId: draft.id,
+    professionId: draft.professionId,
+    locations,
+    cities,
+  }), [cities, draft.id, draft.professionId, locations]);
 
   function selectWorkshop(workshop: ProfessionWorkshopDefinition) {
     setSelectedId(workshop.id);
@@ -889,6 +913,19 @@ export function ProfessionWorkshopsPage({ onBack }: { onBack: () => void }) {
             <label><span>ownerNpcId</span><input value={draft.rental?.ownerNpcId ?? ''} onChange={(event) => patchRental({ ownerNpcId: event.target.value })} /></label>
             <label><span>rentalDialogueId</span><input value={draft.rental?.rentalDialogueId ?? ''} onChange={(event) => patchRental({ rentalDialogueId: event.target.value })} /></label>
           </div>
+          <NpcReferenceSelector
+            label="NPC-владелец мастерской"
+            selectedIds={draft.rental?.ownerNpcId?.trim() ? [draft.rental.ownerNpcId.trim()] : []}
+            onChange={(nextIds) => patchRental({ ownerNpcId: nextIds[0] ?? '' })}
+            npcs={npcs}
+            cities={cities}
+            locations={locations}
+            zones={zones}
+            context={{ professionId: draft.professionId, workshopId: draft.id }}
+            extraContexts={draftWorkshopContexts}
+            single
+            manualPlaceholder={'npc_carpenter_master_argos'}
+          />
         </div>
 
         <div className="card" style={{ padding: '1rem', display: 'grid', gap: '1rem' }}>
@@ -937,6 +974,21 @@ export function ProfessionWorkshopsPage({ onBack }: { onBack: () => void }) {
                     <label className="admin-checkbox"><input type="checkbox" checked={point.isEnabled !== false} onChange={(event) => patchInteractionPoint(index, { isEnabled: event.target.checked })} /><span>isEnabled</span></label>
                     <label className="full-width"><span>description</span><textarea rows={2} value={point.description ?? ''} onChange={(event) => patchInteractionPoint(index, { description: event.target.value })} /></label>
                   </div>
+                  {point.type === 'npc' ? (
+                    <NpcReferenceSelector
+                      label={`NPC для точки ${point.label || point.id || index + 1}`}
+                      selectedIds={point.npcId?.trim() ? [point.npcId.trim()] : []}
+                      onChange={(nextIds) => patchInteractionPoint(index, { npcId: nextIds[0] ?? '' })}
+                      npcs={npcs}
+                      cities={cities}
+                      locations={locations}
+                      zones={zones}
+                      context={{ professionId: draft.professionId, workshopId: draft.id }}
+                      extraContexts={draftWorkshopContexts}
+                      single
+                      manualPlaceholder={'npc_carpenter_master_argos'}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>
