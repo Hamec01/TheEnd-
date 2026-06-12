@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ProfessionsListPage } from '../professions/ProfessionsListPage';
 import { ProfessionEditorTabs } from '../professions/ProfessionEditorTabs';
+import { ProfessionWorkshopsPage } from '../professions/ProfessionWorkshopsPage';
 import { ProfessionDefinition } from '../../types/profession';
 
 const PROFESSIONS: Record<string, ProfessionDefinition> = {
@@ -19,6 +20,11 @@ const PROFESSIONS: Record<string, ProfessionDefinition> = {
 
 export function ProfessionsPage() {
   const [selectedProfession, setSelectedProfession] = useState<string | null>(null);
+  const [mode, setMode] = useState<'list' | 'workshops'>('list');
+
+  if (mode === 'workshops') {
+    return <ProfessionWorkshopsPage onBack={() => setMode('list')} />;
+  }
 
   if (selectedProfession && PROFESSIONS[selectedProfession]) {
     const profession = PROFESSIONS[selectedProfession];
@@ -31,5 +37,10 @@ export function ProfessionsPage() {
     );
   }
 
-  return <ProfessionsListPage onSelectProfession={setSelectedProfession} />;
+  return (
+    <ProfessionsListPage
+      onSelectProfession={setSelectedProfession}
+      onOpenWorkshops={() => setMode('workshops')}
+    />
+  );
 }

@@ -149,6 +149,8 @@ function createNewLocation(): WorldLocation {
     questIds: [],
     dialogueIds: [],
     battleMapIds: [],
+    workshopIds: [],
+    services: [],
     areas: [],
     locationEffects: [],
     tags: [],
@@ -169,6 +171,8 @@ function normalizeDraft(location: WorldLocation): WorldLocation {
     questIds: Array.isArray(location.questIds) ? location.questIds : [],
     dialogueIds: Array.isArray(location.dialogueIds) ? location.dialogueIds : [],
     battleMapIds: Array.isArray(location.battleMapIds) ? location.battleMapIds : [],
+    workshopIds: Array.isArray(location.workshopIds) ? location.workshopIds : [],
+    services: Array.isArray(location.services) ? location.services : [],
     areas: Array.isArray(location.areas) ? location.areas : [],
     locationEffects: Array.isArray(location.locationEffects) ? location.locationEffects : [],
     tags: Array.isArray(location.tags) ? location.tags : [],
@@ -817,6 +821,8 @@ export function LocationsPage() {
                 <label><span>Квест открытия</span><input value={draft.discoveryQuestId ?? ''} onChange={(event) => patchDraft({ discoveryQuestId: event.target.value })} /></label>
                 <label><span>Текущее состояние</span><input value={draft.currentState ?? ''} onChange={(event) => patchDraft({ currentState: event.target.value })} /></label>
                 <label><span>Tags</span><input value={joinCsv(draft.tags)} onChange={(event) => patchDraft({ tags: splitCsv(event.target.value) })} /></label>
+                <label className="admin-form-grid full-width"><span>workshopIds</span><input value={joinCsv(draft.workshopIds)} onChange={(event) => patchDraft({ workshopIds: splitCsv(event.target.value) })} placeholder="workshop_carpenter_basic_public, workshop_carpenter_advanced" /></label>
+                <label className="admin-form-grid full-width"><span>services</span><input value={joinCsv(draft.services)} onChange={(event) => patchDraft({ services: splitCsv(event.target.value) })} placeholder="carpenter_workshop, inn, storage" /></label>
                 <label className="admin-checkbox"><input type="checkbox" checked={draft.isHidden === true} onChange={(event) => patchDraft({ isHidden: event.target.checked })} /><span>Скрытая локация</span></label>
                 <label className="admin-checkbox"><input type="checkbox" checked={draft.requiresDiscovery === true} onChange={(event) => patchDraft({ requiresDiscovery: event.target.checked })} /><span>Требует открытия</span></label>
                 <label className="admin-checkbox"><input type="checkbox" checked={draft.isDiscovered === true} onChange={(event) => patchDraft({ isDiscovered: event.target.checked })} /><span>Открыта</span></label>

@@ -100,7 +100,7 @@ import {
   getZoneLinkedLocation,
   isLinkedLocationVisibleToPlayer,
 } from "./zoneLocationLinking";
-import type { AdminMerchant, GameImageRef, StoredImage, TreeDefinition, AdminItem } from "../services/content/models";
+import type { AdminMerchant, GameImageRef, StoredImage, TreeDefinition, AdminItem, ProfessionWorkshopDefinition, ProfessionWorkshopInteractionPoint } from "../services/content/models";
 import {
   getContentSnapshot,
   type ContentSnapshot,
@@ -412,6 +412,11 @@ type ActiveWorldModal =
     locationId: string;
   }
   | {
+    type: "profession_workshop";
+    locationId: string;
+    workshopId: string;
+  }
+  | {
     type: "zone";
     zoneId: string;
   }
@@ -523,11 +528,9 @@ const MIN_CITY_ZOOM = 1;
 const MAX_CITY_ZOOM = 1.4;
 const WORLD_MAP_BASE_TRAVEL_SPEED = 0.0001;
 const WORLD_MAP_DEXTERITY_SPEED_STEP = 0.00001;
-const WORLD_MAP_STAMINA_REGEN_FRACTION = 0.1;
-const WORLD_MAP_STAMINA_REGEN_MIN_PER_SECOND = 10;
-const WORLD_MAP_WALK_STAMINA_COST_FRACTION = 0.1;
-const WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER = 1;
-const WORLD_MAP_SPRINT_STAMINA_COST_MULTIPLIER = 1.2;
+const WORLD_MAP_STAMINA_REGEN_PER_SECOND = 10;
+const WORLD_MAP_WALK_STAMINA_COST_PER_SECOND = 12;
+const WORLD_MAP_SPRINT_STAMINA_COST_PER_SECOND = 15;
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -1199,6 +1202,7 @@ interface WorldMapScreenProps {
   onOpenStats: () => void;
   onOpenInventory: () => void;
   onOpenProfessions: () => void;
+  onOpenProfessionWorkshop?: (workshop: ProfessionWorkshopDefinition, stationType?: string | null) => void;
   onOpenCharacter: () => void;
   onOpenEquipment: () => void;
   onOpenClan: () => void;
@@ -1269,6 +1273,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     onOpenStats,
     onOpenInventory,
     onOpenProfessions,
+    onOpenProfessionWorkshop,
     onOpenCharacter,
     onOpenEquipment,
     onOpenClan,
@@ -1516,6 +1521,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [contentSnapshot?.items],
   );
   const treesCatalog = useMemo(() => contentSnapshot?.trees ?? [], [contentSnapshot?.trees]);
+  const professionWorkshopsById = useMemo(
+    () => new Map((contentSnapshot?.professionWorkshops ?? []).map((entry) => [String(entry.id ?? "").trim(), entry])),
+    [contentSnapshot?.professionWorkshops],
+  );
 
   const [questJournalOpen, setQuestJournalOpen] = useState(false);
   const [pvpBrowserOpen, setPvpBrowserOpen] = useState(false);
@@ -1838,18 +1847,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [character.activeStats?.dexterity, cartState.speedMultiplier]);
 
   const staminaRegenPerSecond = useMemo(
-    () => Math.max(WORLD_MAP_STAMINA_REGEN_MIN_PER_SECOND, Math.floor(character.maxStamina * WORLD_MAP_STAMINA_REGEN_FRACTION)),
-    [character.maxStamina],
+    () => WORLD_MAP_STAMINA_REGEN_PER_SECOND,
+    [],
   );
 
   const walkStaminaCostPerSecond = useMemo(
-    () => Math.max(1, Math.floor(character.maxStamina * WORLD_MAP_WALK_STAMINA_COST_FRACTION * WORLD_MAP_WALK_STAMINA_COST_MULTIPLIER)),
-    [character.maxStamina],
+    () => WORLD_MAP_WALK_STAMINA_COST_PER_SECOND,
+    [],
   );
 
   const sprintStaminaCostPerSecond = useMemo(
-    () => Math.max(walkStaminaCostPerSecond + 1, Math.ceil(walkStaminaCostPerSecond * WORLD_MAP_SPRINT_STAMINA_COST_MULTIPLIER)),
-    [walkStaminaCostPerSecond],
+    () => WORLD_MAP_SPRINT_STAMINA_COST_PER_SECOND,
+    [],
   );
 
   const canTravelOnWorldMap = worldMapMode === "play"
@@ -9421,6 +9430,10 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         ) ?? null)
         : null;
     const modalLocation = modalCityLocation ?? modalWorldLocation;
+    const modalProfessionWorkshop =
+      activeWorldModal.type === "profession_workshop"
+        ? (professionWorkshopsById.get(activeWorldModal.workshopId) ?? null)
+        : null;
     const closeModal = () => {
       setActiveWorldModal(null);
       setExpandedMineZoneId(null);
@@ -9843,10 +9856,60 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       const locationMerchants = locationShopIds
         .map((merchantId) => merchantById.get(merchantId) ?? null)
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      const locationWorkshopIds = (modalWorldLocation?.workshopIds ?? [])
+        .map((entry: string) => String(entry).trim())
+        .filter(Boolean);
+      const locationWorkshops = locationWorkshopIds
+        .map((workshopId: string) => professionWorkshopsById.get(workshopId) ?? null)
+        .filter((entry: ProfessionWorkshopDefinition | null): entry is ProfessionWorkshopDefinition => Boolean(entry));
 
-      const hasPeople = locationNpcs.length > 0 || locationMerchants.length > 0;
+      const hasPeople = locationNpcs.length > 0 || locationMerchants.length > 0 || locationWorkshops.length > 0;
       content = (
         <div style={{ display: "grid", gap: 16, margin: "18px auto 0", maxWidth: 640 }}>
+          {locationWorkshops.length > 0 ? (
+            <div>
+              <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
+                Мастерские
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {locationWorkshops.map((workshop: ProfessionWorkshopDefinition) => (
+                  <button
+                    key={workshop.id}
+                    type="button"
+                    className="btn"
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      display: "grid",
+                      gap: 6,
+                      textAlign: "left",
+                    }}
+                    onClick={() => {
+                      dialogueRunner.closeDialogue();
+                      setActiveWorldModal({
+                        type: "profession_workshop",
+                        locationId: modalLocation?.id ?? activeWorldModal.locationId,
+                        workshopId: workshop.id,
+                      });
+                      setContextMode("location");
+                    }}
+                  >
+                    <strong>{workshop.name}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>{workshop.workshopKind} · tier {workshop.tier}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{workshop.stationTypes.join(", ") || "—"}</span>
+                    <span style={{ color: "#f0d4a3", fontSize: 12 }}>Войти</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {locationNpcs.length > 0 ? (
             <div>
               <div className="muted" style={{ marginBottom: 8, textAlign: "left" }}>
@@ -10041,6 +10104,243 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
             </button>
           ) : null}
           <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
+        </>
+      );
+    } else if (activeWorldModal.type === "profession_workshop") {
+      title = modalProfessionWorkshop?.name ?? activeWorldModal.workshopId;
+      subtitle = modalProfessionWorkshop ? `${modalProfessionWorkshop.workshopKind} · tier ${modalProfessionWorkshop.tier}` : undefined;
+      description = modalProfessionWorkshop?.description ?? modalLocation?.description;
+
+      const rental = modalProfessionWorkshop?.rental;
+      const interactionPoints = (modalProfessionWorkshop?.interactionPoints ?? []) as ProfessionWorkshopInteractionPoint[];
+      const workshopImage = modalProfessionWorkshop?.imageRef?.type === "image"
+        ? (resolveStoredImageSource(modalProfessionWorkshop.imageRef.src, runtimeImages) ?? modalProfessionWorkshop.imageRef.src)
+        : (resolveStoredImageSource(modalProfessionWorkshop?.imagePath ?? "", runtimeImages) ?? modalProfessionWorkshop?.imagePath ?? "");
+      const ownerHint = rental?.ownerNpcId?.trim()
+        ? `Владелец/NPC: ${rental.ownerNpcId}`
+        : rental?.requiresNpcDialogue
+          ? "Аренда открывается через NPC dialogue."
+          : "Аренда без NPC dialogue.";
+
+      const openWorkshopLocationModal = () => {
+        setActiveWorldModal({
+          type: "location",
+          locationId: activeWorldModal.locationId,
+        });
+        setContextMode("location");
+      };
+
+      const handleWorkshopPoint = (point: ProfessionWorkshopInteractionPoint) => {
+        const tierBlocked = typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0);
+        if (point.isEnabled === false) {
+          onStatus(`Точка "${point.label || point.id}" сейчас отключена.`);
+          return;
+        }
+        if (tierBlocked) {
+          onStatus(`Точка "${point.label || point.id}" требует tier ${point.requiredWorkshopTier}.`);
+          return;
+        }
+        if (point.requiredQuestId?.trim()) {
+          onStatus(`Точка "${point.label || point.id}" ждёт future quest-gating hook: ${point.requiredQuestId}.`);
+          return;
+        }
+        if (point.requiredSkillId?.trim()) {
+          onStatus(`Точка "${point.label || point.id}" ждёт future skill-gating hook: ${point.requiredSkillId}.`);
+          return;
+        }
+        if (!modalProfessionWorkshop) {
+          return;
+        }
+        if (point.type === "station") {
+          if (modalProfessionWorkshop.professionId === "carpenter" && onOpenProfessionWorkshop) {
+            closeModal();
+            onOpenProfessionWorkshop(modalProfessionWorkshop, point.stationType?.trim() || null);
+            return;
+          }
+          onStatus(`Станок "${point.label || point.id}" пока подключён только для плотника.`);
+          return;
+        }
+        if (point.type === "npc") {
+          const npcId = point.npcId?.trim();
+          if (npcId && npcById.get(npcId)) {
+            dialogueRunner.closeDialogue();
+            setActiveWorldModal({
+              type: "npc",
+              locationId: activeWorldModal.locationId,
+              npcId,
+            });
+            setContextMode("npc");
+            return;
+          }
+          onStatus(`NPC point "${point.label || point.id}" пока без подключённого npcId.`);
+          return;
+        }
+        if (point.type === "dialog") {
+          const dialogueId = point.dialogId?.trim();
+          if (dialogueId && getDialogueById(dialogueId)) {
+            setActiveWorldModal(null);
+            setContextMode("location");
+            dialogueRunner.openDialogue(dialogueId, {
+              locationId: activeWorldModal.locationId,
+              sourceType: "location_place",
+            });
+            return;
+          }
+          onStatus(`Dialogue point "${point.label || point.id}" пока без подключённого dialogId.`);
+          return;
+        }
+        if (point.type === "rental") {
+          onStatus(`Аренда в мастерской ${modalProfessionWorkshop.name} пока read-only. Золото не списывается.`);
+          return;
+        }
+        if (point.type === "storage") {
+          onStatus(`Storage point "${point.label || point.id}" пока только как placeholder.`);
+          return;
+        }
+        if (point.type === "custom") {
+          onStatus(`Custom point "${point.label || point.id}" пока только как placeholder.`);
+          return;
+        }
+        if (point.type === "exit") {
+          openWorkshopLocationModal();
+        }
+      };
+
+      content = (
+        <div style={{ display: "grid", gap: 14, margin: "18px auto 0", maxWidth: 640, textAlign: "left" }}>
+          <div className="wm-stat-block">
+            <div><strong>Профессия:</strong> {modalProfessionWorkshop?.professionId ?? "—"}</div>
+            <div><strong>Статус:</strong> {modalProfessionWorkshop?.status ?? "—"}</div>
+            <div><strong>Station types:</strong> {modalProfessionWorkshop?.stationTypes.join(", ") || "—"}</div>
+          </div>
+
+          {workshopImage ? (
+            <div
+              style={{
+                position: "relative",
+                minHeight: 260,
+                borderRadius: 14,
+                overflow: "hidden",
+                border: "1px solid rgba(169,139,87,0.3)",
+                background: "rgba(0, 0, 0, 0.35)",
+              }}
+            >
+              <img
+                src={workshopImage}
+                alt={modalProfessionWorkshop?.name ?? activeWorldModal.workshopId}
+                style={{ width: "100%", minHeight: 260, maxHeight: 420, objectFit: "cover", display: "block" }}
+              />
+              <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                {interactionPoints.map((point) => {
+                  const isDisabled = point.isEnabled === false
+                    || (typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0))
+                    || Boolean(point.requiredQuestId?.trim())
+                    || Boolean(point.requiredSkillId?.trim());
+                  return (
+                    <button
+                      key={point.id}
+                      type="button"
+                      onClick={() => handleWorkshopPoint(point)}
+                      disabled={isDisabled}
+                      title={point.description || point.label || point.id}
+                      style={{
+                        position: "absolute",
+                        left: `${Math.max(0, Math.min(100, Number(point.x) || 0))}%`,
+                        top: `${Math.max(0, Math.min(100, Number(point.y) || 0))}%`,
+                        transform: "translate(-50%, -50%)",
+                        pointerEvents: "auto",
+                        minWidth: 34,
+                        minHeight: 34,
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.75)",
+                        background: isDisabled ? "rgba(74, 74, 74, 0.8)" : "rgba(184, 128, 54, 0.88)",
+                        color: "#fff7e8",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        boxShadow: "0 6px 14px rgba(0,0,0,0.35)",
+                        cursor: isDisabled ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {point.label || point.id}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="wm-stat-block" style={{ display: "grid", gap: 10 }}>
+              <div><strong>Интерьер:</strong> изображение не задано, используется fallback layout.</div>
+              {interactionPoints.length > 0 ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {interactionPoints.map((point) => {
+                    const isDisabled = point.isEnabled === false
+                      || (typeof point.requiredWorkshopTier === "number" && point.requiredWorkshopTier > (modalProfessionWorkshop?.tier ?? 0))
+                      || Boolean(point.requiredQuestId?.trim())
+                      || Boolean(point.requiredSkillId?.trim());
+                    return (
+                      <button
+                        key={point.id}
+                        type="button"
+                        className="btn"
+                        disabled={isDisabled}
+                        style={{ textAlign: "left" }}
+                        onClick={() => handleWorkshopPoint(point)}
+                      >
+                        <strong>{point.label || point.id}</strong>
+                        <span className="muted" style={{ display: "block", fontSize: 12 }}>
+                          {point.type} · x={point.x}% · y={point.y}%{point.stationType ? ` · station=${point.stationType}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="muted">У мастерской пока нет interaction points.</div>
+              )}
+            </div>
+          )}
+
+          <div className="wm-stat-block">
+            <div><strong>Аренда:</strong> {rental?.enabled ? "доступна" : "не требуется"}</div>
+            <div><strong>Цена:</strong> {rental?.priceGold ?? 0} золота</div>
+            <div><strong>Длительность:</strong> {rental?.durationHours ?? 0} ч.</div>
+            <div><strong>Подсказка:</strong> {ownerHint}</div>
+            {rental?.rentalDialogueId ? <div><strong>rentalDialogueId:</strong> {rental.rentalDialogueId}</div> : null}
+          </div>
+
+          <div className="wm-stat-block">
+            <div><strong>TODO mini-game hook:</strong> будет вызываться рядом с craft entrypoint, без запуска на этом слое.</div>
+          </div>
+        </div>
+      );
+
+      buttons = (
+        <>
+          {modalProfessionWorkshop?.professionId === "carpenter" ? (
+            <button
+              onClick={() => {
+                closeModal();
+                if (modalProfessionWorkshop && onOpenProfessionWorkshop) {
+                  onOpenProfessionWorkshop(modalProfessionWorkshop, null);
+                  return;
+                }
+                onOpenProfessions();
+              }}
+            >
+              Открыть мастерскую плотника
+            </button>
+          ) : null}
+          {rental?.enabled ? (
+            <button
+              onClick={() => {
+                onStatus(`Аренда пока только как foundation: ${modalProfessionWorkshop?.name ?? activeWorldModal.workshopId}. Списание золота ещё не включено.`);
+              }}
+            >
+              Аренда (read-only)
+            </button>
+          ) : null}
+          <button onClick={openWorkshopLocationModal}>{"\u0423\u0439\u0442\u0438"}</button>
         </>
       );
     } else if (activeWorldModal.type === "zone") {

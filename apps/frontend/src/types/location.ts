@@ -132,6 +132,8 @@ export interface WorldLocation {
   questIds?: string[];
   dialogueIds?: string[];
   battleMapIds?: string[];
+  workshopIds?: string[];
+  services?: string[];
   areas?: LocationArea[];
   entryRequirements?: LocationEntryRequirements;
   locationEffects?: LocationEffect[];

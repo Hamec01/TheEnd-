@@ -81,7 +81,7 @@ import { GodmodeConsole, type GodmodeConsoleResult } from './components/dev/Godm
 import { InventoryPanel, type CharacterPageFocus } from './components/InventoryPanel';
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
-import type { AdminItem, AdminMerchant, AdminSkill, ItemInstance, Material, StoredImage } from './services/content/models';
+import type { AdminItem, AdminMerchant, AdminSkill, ItemInstance, Material, ProfessionWorkshopDefinition, StoredImage } from './services/content/models';
 import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
   CHARACTER_CREATION_AVATAR_PRESETS,
@@ -1385,6 +1385,8 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [setupStep, setSetupStep] = useState<SetupStep>('account');
   const [overlayPanel, setOverlayPanel] = useState<OverlayPanel>(null);
+  const [activeProfessionWorkshop, setActiveProfessionWorkshop] = useState<ProfessionWorkshopDefinition | null>(null);
+  const [activeProfessionWorkshopStationType, setActiveProfessionWorkshopStationType] = useState<string | null>(null);
   const [characterPageFocus, setCharacterPageFocus] = useState<CharacterPageFocus>('character');
   const [activeTrainerNpcId, setActiveTrainerNpcId] = useState<string | null>(null);
   const [activeTrainerNpcName, setActiveTrainerNpcName] = useState<string | null>(null);
@@ -1436,6 +1438,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [actionSlots, setActionSlots] = useState<CharacterActionSlot[]>(() => createEmptyActionSlots());
   const [runtimeInventoryRevision, setRuntimeInventoryRevision] = useState(0);
   const [godmodeTravelRequest, setGodmodeTravelRequest] = useState<GodmodeTravelRequest | null>(null);
+  const [pendingCarpenterLaunch, setPendingCarpenterLaunch] = useState<null | 'woodcutting' | 'sawing' | 'workshop'>(null);
   const [godmodeInfiniteResources, setGodmodeInfiniteResources] = useState<GodmodeInfiniteResourceFlags>(() => {
     return normalizeGodmodeInfiniteResourceFlags(readJsonRecord(GODMODE_INFINITE_RESOURCES_STORAGE_KEY));
   });
@@ -1468,6 +1471,24 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [dragSource, setDragSource] = useState<'inventory' | 'merchant' | null>(null);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeAction, setTradeAction] = useState<'buy' | 'sell'>('buy');
+
+  useEffect(() => {
+    if (!pendingCarpenterLaunch) {
+      return undefined;
+    }
+
+    const launchPrefix = `Запрос на запуск мини-игры плотника: ${pendingCarpenterLaunch}.`;
+    if (status === launchPrefix) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setOverlayPanel(null);
+      setPendingCarpenterLaunch(null);
+    }, 1100);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingCarpenterLaunch, status]);
   const [tradeItem, setTradeItem] = useState<ItemDefinition | null>(null);
 
   const raceConfig = useMemo(() => getCharacterCreationRaceConfig(race), [race]);
@@ -6196,8 +6217,16 @@ function applyHubState(hub: HubStatePayload): void {
             setStatus('Открыт инвентарь.');
           }}
           onOpenProfessions={() => {
+            setActiveProfessionWorkshop(null);
+            setActiveProfessionWorkshopStationType(null);
             setOverlayPanel('professions');
             setStatus('Открыт список профессий.');
+          }}
+          onOpenProfessionWorkshop={(workshop, stationType) => {
+            setActiveProfessionWorkshop(workshop);
+            setActiveProfessionWorkshopStationType(stationType ?? null);
+            setOverlayPanel('professions');
+            setStatus(`Открыта мастерская профессии: ${workshop.name}.`);
           }}
           onOpenCharacter={openCharacterOverlay}
           onOpenEquipment={openEquipmentOverlay}
@@ -6317,19 +6346,25 @@ function applyHubState(hub: HubStatePayload): void {
             inventory={worldInventory}
             runtimeInventoryRevision={runtimeInventoryRevision}
             professionsState={normalizePlayerProfessionsState(character.professions)}
+            statusMessage={status}
             onClose={() => setOverlayPanel(null)}
             onStatus={setStatus}
             onChange={handlePlayerProfessionsChange}
             onInventoryChange={setInventory}
+            activeWorkshop={activeProfessionWorkshop}
+            activeStationType={activeProfessionWorkshopStationType}
             onLaunchCarpenterGame={(gameType) => {
               onNavigate?.('/map');
-              setOverlayPanel(null);
+              setPendingCarpenterLaunch(gameType);
               setGodmodeTravelRequest({
                 mode: 'carpenter_game',
                 carpenterGameType: gameType,
                 token: Date.now(),
               });
               setStatus(`Запрос на запуск мини-игры плотника: ${gameType}.`);
+            }}
+            launchWorkshopMiniGame={({ workshopId, professionId, templateId, stationType }) => {
+              setStatus(`TODO mini-game hook: workshop=${workshopId}, profession=${professionId}, template=${templateId}, station=${stationType}.`);
             }}
           />
         ) : null}

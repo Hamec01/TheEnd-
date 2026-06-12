@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-11T12:32:56.765Z",
+  "exportedAt": "2026-06-11T18:28:42.435Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -33,6 +33,7 @@
     "blacksmithBalance": 1,
     "blacksmithItemTemplates": 0,
     "carpenterItemTemplates": 74,
+    "professionWorkshops": 4,
     "blacksmithItemWorkActions": 0,
     "sounds": 32,
     "trees": 12,
@@ -10439,7 +10440,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-11T10:04:13.244Z",
+        "updatedAt": "2026-06-11T16:53:40.425Z",
         "kind": "single",
         "stages": []
       },
@@ -10495,7 +10496,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-11T10:04:13.244Z",
+        "updatedAt": "2026-06-11T16:53:40.426Z",
         "kind": "single",
         "stages": []
       },
@@ -10554,7 +10555,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-11T10:04:13.244Z",
+        "updatedAt": "2026-06-11T16:53:40.426Z",
         "kind": "single",
         "stages": []
       }
@@ -69703,6 +69704,199 @@
         "outputItemType": "misc",
         "outputSubtype": "magic_component",
         "basePrice": 50
+      }
+    ],
+    "professionWorkshops": [
+      {
+        "id": "workshop_carpenter_basic_public",
+        "name": "Простая плотницкая мастерская",
+        "description": "Общественная мастерская с верстаком, сушилкой и простыми инструментами.",
+        "professionId": "carpenter",
+        "workshopKind": "carpenter",
+        "status": "active",
+        "tier": 1,
+        "stationTypes": [
+          "workbench",
+          "drying_rack",
+          "carving_bench"
+        ],
+        "allowedTemplateGroups": [
+          "wood_processing",
+          "weapon_components"
+        ],
+        "forbiddenTemplateGroups": [],
+        "allowedTemplateIds": [],
+        "forbiddenTemplateIds": [],
+        "requiredReputation": 0,
+        "requiredQuestId": "",
+        "requiredFactionId": "",
+        "rental": {
+          "enabled": false,
+          "priceGold": 0,
+          "durationHours": 24,
+          "requiresNpcDialogue": false,
+          "ownerNpcId": "",
+          "rentalDialogueId": ""
+        },
+        "accessRules": {
+          "publicAccess": true,
+          "kingdomId": "",
+          "factionId": "",
+          "onlyCitizens": false
+        },
+        "imagePath": "",
+        "tags": [
+          "starter",
+          "public",
+          "carpenter"
+        ],
+        "createdAt": "2026-06-11T18:28:25.213Z",
+        "updatedAt": "2026-06-11T18:28:25.213Z"
+      },
+      {
+        "id": "workshop_carpenter_sawmill_basic",
+        "name": "Лесопильня",
+        "description": "Мастерская для распила брёвен на доски и балки.",
+        "professionId": "carpenter",
+        "workshopKind": "carpenter",
+        "status": "active",
+        "tier": 1,
+        "stationTypes": [
+          "sawmill",
+          "workbench"
+        ],
+        "allowedTemplateGroups": [
+          "wood_processing"
+        ],
+        "forbiddenTemplateGroups": [],
+        "allowedTemplateIds": [],
+        "forbiddenTemplateIds": [],
+        "requiredReputation": 0,
+        "requiredQuestId": "",
+        "requiredFactionId": "",
+        "rental": {
+          "enabled": false,
+          "priceGold": 0,
+          "durationHours": 24,
+          "requiresNpcDialogue": false,
+          "ownerNpcId": "",
+          "rentalDialogueId": ""
+        },
+        "accessRules": {
+          "publicAccess": true,
+          "kingdomId": "",
+          "factionId": "",
+          "onlyCitizens": false
+        },
+        "imagePath": "",
+        "tags": [
+          "starter",
+          "sawmill",
+          "carpenter"
+        ],
+        "createdAt": "2026-06-11T18:28:25.213Z",
+        "updatedAt": "2026-06-11T18:28:25.213Z"
+      },
+      {
+        "id": "workshop_carpenter_advanced",
+        "name": "Полная мастерская плотника",
+        "description": "Мастерская с верстаком, лесопилкой, столом сборки и резным столом.",
+        "professionId": "carpenter",
+        "workshopKind": "carpenter",
+        "status": "active",
+        "tier": 2,
+        "stationTypes": [
+          "workbench",
+          "sawmill",
+          "drying_rack",
+          "carving_bench",
+          "assembly_table",
+          "finishing_table"
+        ],
+        "allowedTemplateGroups": [
+          "wood_processing",
+          "weapon_components",
+          "shields",
+          "bows",
+          "crossbows",
+          "arrows_and_bolts",
+          "furniture",
+          "building_parts"
+        ],
+        "forbiddenTemplateGroups": [],
+        "allowedTemplateIds": [],
+        "forbiddenTemplateIds": [],
+        "requiredReputation": 0,
+        "requiredQuestId": "",
+        "requiredFactionId": "",
+        "rental": {
+          "enabled": true,
+          "priceGold": 25,
+          "durationHours": 24,
+          "requiresNpcDialogue": false,
+          "ownerNpcId": "",
+          "rentalDialogueId": ""
+        },
+        "accessRules": {
+          "publicAccess": true,
+          "kingdomId": "",
+          "factionId": "",
+          "onlyCitizens": false
+        },
+        "imagePath": "",
+        "tags": [
+          "advanced",
+          "rental",
+          "carpenter"
+        ],
+        "createdAt": "2026-06-11T18:28:25.213Z",
+        "updatedAt": "2026-06-11T18:28:25.213Z"
+      },
+      {
+        "id": "workshop_carpenter_ritual",
+        "name": "Ритуальная мастерская дерева",
+        "description": "Редкая мастерская для рунной резьбы, посохов и ритуальных деревянных основ.",
+        "professionId": "carpenter",
+        "workshopKind": "carpenter",
+        "status": "active",
+        "tier": 3,
+        "stationTypes": [
+          "rune_carving_table",
+          "finishing_table",
+          "carving_bench"
+        ],
+        "allowedTemplateGroups": [
+          "staffs_and_wands",
+          "ritual_woodwork"
+        ],
+        "forbiddenTemplateGroups": [],
+        "allowedTemplateIds": [],
+        "forbiddenTemplateIds": [],
+        "requiredReputation": 0,
+        "requiredQuestId": "",
+        "requiredFactionId": "",
+        "rental": {
+          "enabled": true,
+          "priceGold": 100,
+          "durationHours": 24,
+          "requiresNpcDialogue": true,
+          "ownerNpcId": "",
+          "rentalDialogueId": ""
+        },
+        "accessRules": {
+          "publicAccess": true,
+          "kingdomId": "",
+          "factionId": "",
+          "onlyCitizens": false
+        },
+        "imagePath": "",
+        "tags": [
+          "ritual",
+          "rare",
+          "carpenter"
+        ],
+        "createdAt": "2026-06-11T18:28:25.213Z",
+        "updatedAt": "2026-06-11T18:28:25.213Z"
       }
     ],
     "blacksmithItemWorkActions": [],

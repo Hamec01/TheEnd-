@@ -343,7 +343,88 @@ export type CarpenterStationType =
   | 'sawmill'
   | 'drying_rack'
   | 'carving_table'
-  | 'assembly_table';
+  | 'assembly_table'
+  | 'carving_bench'
+  | 'finishing_table'
+  | 'rune_carving_table';
+
+export type ProfessionWorkshopKind =
+  | 'carpenter'
+  | 'blacksmith'
+  | 'alchemy'
+  | 'runecrafting'
+  | 'enchanting'
+  | 'leatherworking'
+  | 'cooking'
+  | 'mining';
+
+export interface ProfessionWorkshopRental {
+  enabled: boolean;
+  priceGold: number;
+  durationHours?: number;
+  requiresNpcDialogue?: boolean;
+  ownerNpcId?: string;
+  rentalDialogueId?: string;
+}
+
+export interface ProfessionWorkshopAccessRules {
+  publicAccess?: boolean;
+  kingdomId?: string;
+  factionId?: string;
+  onlyCitizens?: boolean;
+}
+
+export type ProfessionWorkshopInteractionType =
+  | 'station'
+  | 'npc'
+  | 'dialog'
+  | 'rental'
+  | 'storage'
+  | 'exit'
+  | 'custom';
+
+export interface ProfessionWorkshopInteractionPoint {
+  id: string;
+  label: string;
+  type: ProfessionWorkshopInteractionType;
+  x: number;
+  y: number;
+  stationType?: string;
+  npcId?: string;
+  dialogId?: string;
+  serviceId?: string;
+  requiredWorkshopTier?: number;
+  requiredQuestId?: string;
+  requiredSkillId?: string;
+  isEnabled: boolean;
+  description?: string;
+}
+
+export interface ProfessionWorkshopDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  professionId: string;
+  workshopKind: ProfessionWorkshopKind;
+  status: 'active' | 'disabled' | 'draft';
+  tier: number;
+  stationTypes: string[];
+  allowedTemplateGroups?: string[];
+  forbiddenTemplateGroups?: string[];
+  allowedTemplateIds?: string[];
+  forbiddenTemplateIds?: string[];
+  requiredReputation?: number;
+  requiredQuestId?: string;
+  requiredFactionId?: string;
+  rental?: ProfessionWorkshopRental;
+  accessRules?: ProfessionWorkshopAccessRules;
+  imageRef?: GameImageRef;
+  imagePath?: string;
+  interactionPoints?: ProfessionWorkshopInteractionPoint[];
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export type CarpenterTemplateDifficultyType = 'basic' | 'standard' | 'advanced' | 'master';
 
@@ -2052,6 +2133,7 @@ export interface ContentDatabase {
   blacksmithBalance?: BlacksmithBalance[];
   blacksmithItemTemplates?: BlacksmithItemTemplate[];
   carpenterItemTemplates?: CarpenterItemTemplate[];
+  professionWorkshops?: ProfessionWorkshopDefinition[];
   blacksmithItemWorkActions?: BlacksmithItemWorkAction[];
   sounds?: SoundDefinition[];
   trees?: TreeDefinition[];
@@ -2148,6 +2230,7 @@ export type ContentCollectionName =
   | 'blacksmithBalance'
   | 'blacksmithItemTemplates'
   | 'carpenterItemTemplates'
+  | 'professionWorkshops'
   | 'blacksmithItemWorkActions'
   | 'sounds'
   | 'trees'
@@ -2184,6 +2267,7 @@ export interface ContentCollectionMap {
   blacksmithBalance: BlacksmithBalance;
   blacksmithItemTemplates: BlacksmithItemTemplate;
   carpenterItemTemplates: CarpenterItemTemplate;
+  professionWorkshops: ProfessionWorkshopDefinition;
   blacksmithItemWorkActions: BlacksmithItemWorkAction;
   sounds: SoundDefinition;
   trees: TreeDefinition;
@@ -2331,6 +2415,8 @@ export interface WorldLocation {
   questIds?: string[];
   dialogueIds?: string[];
   battleMapIds?: string[];
+  workshopIds?: string[];
+  services?: string[];
   areas?: LocationArea[];
   entryRequirements?: LocationEntryRequirements;
   locationEffects?: LocationEffect[];

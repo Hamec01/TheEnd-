@@ -55,6 +55,9 @@ const CARPENTER_STATIONS: CarpenterStationType[] = [
   'drying_rack',
   'carving_table',
   'assembly_table',
+  'carving_bench',
+  'finishing_table',
+  'rune_carving_table',
 ];
 
 const CARPENTER_DIFFICULTY: CarpenterTemplateDifficultyType[] = ['basic', 'standard', 'advanced', 'master'];

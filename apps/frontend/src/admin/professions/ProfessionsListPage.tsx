@@ -3,6 +3,7 @@ import { ProfessionDefinition, translateProfessionCategory } from '../../types/p
 
 interface ProfessionsListPageProps {
   onSelectProfession: (professionId: string) => void;
+  onOpenWorkshops: () => void;
 }
 
 const DEFAULT_PROFESSIONS: ProfessionDefinition[] = [
@@ -19,12 +20,33 @@ const DEFAULT_PROFESSIONS: ProfessionDefinition[] = [
   { id: 'herbalism', name: 'Травник', description: 'Сбор трав и растений', category: 'gathering', maxLevel: 100, isEnabled: true, icon: '🌿' },
 ];
 
-export function ProfessionsListPage({ onSelectProfession }: ProfessionsListPageProps) {
+export function ProfessionsListPage({ onSelectProfession, onOpenWorkshops }: ProfessionsListPageProps) {
   const [professions] = useState<ProfessionDefinition[]>(DEFAULT_PROFESSIONS);
 
   return (
     <div className="professions-list-page">
       <div className="professions-grid">
+        <div
+          className="profession-card card"
+          onClick={onOpenWorkshops}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              onOpenWorkshops();
+            }
+          }}
+        >
+          <div className="profession-icon">🏭</div>
+          <h3>Мастерские</h3>
+          <p className="profession-id">professionWorkshops</p>
+          <p className="profession-description">Content-driven список мастерских профессий: CRUD, import/export и стартовые сиды.</p>
+          <div className="profession-meta">
+            <span>Профессии</span>
+            <span>Location-ready</span>
+            <span>JSON</span>
+          </div>
+        </div>
         {professions.map((profession) => (
           <div
             key={profession.id}

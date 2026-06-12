@@ -7,6 +7,7 @@ import type {
   CarpenterItemTemplate,
   ItemEffect,
   Material,
+  ProfessionWorkshopDefinition,
   TreeDefinition,
   WoodTraitTag,
 } from '../../services/content/models';
@@ -22,7 +23,7 @@ import {
   readStringNumberRecordStorage,
   writeStringNumberRecordStorage,
 } from '../../utils/playerInventory';
-import { canUseCarpenterTemplate } from './carpenterTemplateAccess';
+import { canUseCarpenterTemplate, canUseCarpenterTemplateInWorkshop } from './carpenterTemplateAccess';
 import { isLikelyGenericWoodStackItemId, resolveTreeForWoodItem } from './woodInheritance';
 
 export interface CarpenterCraftInputSelection {
@@ -567,11 +568,17 @@ export function buildCarpenterComponentPreview(params: {
   inheritedFromComponent?: Map<string, CarpenterCraftedComponentSnapshot>;
   learnedSkillIds?: string[];
   skillNameById?: Record<string, string>;
+  activeWorkshop?: ProfessionWorkshopDefinition | null;
+  activeStationType?: string | null;
 }): CarpenterComponentCraftPreview {
   const access = canUseCarpenterTemplate({
     template: params.template,
     learnedSkillIds: params.learnedSkillIds ?? [],
     skillNameById: params.skillNameById,
+  });
+  const workshopAccess = canUseCarpenterTemplateInWorkshop({
+    template: params.template,
+    activeWorkshop: params.activeWorkshop,
   });
   const validation = validateSelections({
     template: params.template,
@@ -580,6 +587,11 @@ export function buildCarpenterComponentPreview(params: {
     content: params.content,
     inheritedFromComponent: params.inheritedFromComponent ?? new Map<string, CarpenterCraftedComponentSnapshot>(),
   });
+  const normalizedActiveStationType = String(params.activeStationType ?? '').trim();
+  const stationAllowed = !params.activeWorkshop || !normalizedActiveStationType || params.template.stationType === normalizedActiveStationType;
+  const stationError = stationAllowed
+    ? null
+    : `Нужен станок ${normalizedActiveStationType}, а шаблон рассчитан на ${params.template.stationType}.`;
 
   const derived = deriveTreeFromSelections(
     params.inputSelections,
@@ -604,8 +616,13 @@ export function buildCarpenterComponentPreview(params: {
   }
 
   return {
-    ok: access.isUnlocked && validation.errors.length === 0,
-    errors: access.isUnlocked ? validation.errors : [access.reason ?? 'Шаблон заблокирован.', ...validation.errors],
+    ok: access.isUnlocked && workshopAccess.isAllowed && stationAllowed && validation.errors.length === 0,
+    errors: [
+      ...(access.isUnlocked ? [] : [access.reason ?? 'Шаблон заблокирован по навыкам.']),
+      ...(workshopAccess.isAllowed ? [] : [workshopAccess.reason ?? 'Шаблон заблокирован мастерской.']),
+      ...(stationError ? [stationError] : []),
+      ...validation.errors,
+    ],
     warnings,
     templateId: params.template.id,
     templateName: params.template.name,
@@ -631,6 +648,8 @@ export async function commitCarpenterComponentCraft(params: {
   inheritedFromComponent?: Map<string, CarpenterCraftedComponentSnapshot>;
   learnedSkillIds?: string[];
   skillNameById?: Record<string, string>;
+  activeWorkshop?: ProfessionWorkshopDefinition | null;
+  activeStationType?: string | null;
 }): Promise<CarpenterComponentCraftResult> {
   const access = canUseCarpenterTemplate({
     template: params.template,
@@ -644,6 +663,26 @@ export async function commitCarpenterComponentCraft(params: {
       warnings: [],
     };
   }
+  const workshopAccess = canUseCarpenterTemplateInWorkshop({
+    template: params.template,
+    activeWorkshop: params.activeWorkshop,
+  });
+  if (!workshopAccess.isAllowed) {
+    return {
+      ok: false,
+      errors: [workshopAccess.reason ?? 'Шаблон заблокирован мастерской.'],
+      warnings: [],
+    };
+  }
+
+  const normalizedActiveStationType = String(params.activeStationType ?? '').trim();
+  if (params.activeWorkshop && normalizedActiveStationType && params.template.stationType !== normalizedActiveStationType) {
+    return {
+      ok: false,
+      errors: [`Нужен станок ${normalizedActiveStationType}, а шаблон рассчитан на ${params.template.stationType}.`],
+      warnings: [],
+    };
+  }
 
   const preview = buildCarpenterComponentPreview({
     template: params.template,
@@ -654,6 +693,8 @@ export async function commitCarpenterComponentCraft(params: {
     inheritedFromComponent: params.inheritedFromComponent,
     learnedSkillIds: params.learnedSkillIds,
     skillNameById: params.skillNameById,
+    activeWorkshop: params.activeWorkshop,
+    activeStationType: params.activeStationType,
   });
   if (!preview.ok) {
     return { ok: false, errors: preview.errors, warnings: preview.warnings };

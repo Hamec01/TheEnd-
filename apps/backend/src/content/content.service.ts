@@ -34,6 +34,7 @@ import type {
   BlacksmithVisualPreset,
   BlacksmithItemTemplate,
   CarpenterItemTemplate,
+  ProfessionWorkshopDefinition,
   BlacksmithItemWorkAction,
   City,
   CityLocation,
@@ -120,6 +121,7 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'blacksmithBalance',
   'blacksmithItemTemplates',
   'carpenterItemTemplates',
+  'professionWorkshops',
   'blacksmithItemWorkActions',
   'sounds',
   'trees',
@@ -214,6 +216,7 @@ function countContent(db: ContentDatabase): Record<string, number> {
     blacksmithBalance: (db.blacksmithBalance ?? []).length,
     blacksmithItemTemplates: (db.blacksmithItemTemplates ?? []).length,
     carpenterItemTemplates: (db.carpenterItemTemplates ?? []).length,
+    professionWorkshops: (db.professionWorkshops ?? []).length,
     blacksmithItemWorkActions: (db.blacksmithItemWorkActions ?? []).length,
     sounds: (db.sounds ?? []).length,
     trees: (db.trees ?? []).length,
@@ -581,6 +584,7 @@ function createEmptyDatabase(): ContentDatabase {
     blacksmithBalance: [],
     blacksmithItemTemplates: [],
     carpenterItemTemplates: [],
+    professionWorkshops: [],
     blacksmithItemWorkActions: [],
     sounds: [],
     trees: [],
@@ -3996,6 +4000,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       carpenterItemTemplates: sanitizeIdObjectArray<CarpenterItemTemplate>(raw.carpenterItemTemplates)
         .map((entry) => normalizeCarpenterItemTemplateInput(entry))
         .filter((entry) => Boolean(entry.id)),
+      professionWorkshops: clone(sanitizeIdObjectArray<ProfessionWorkshopDefinition>(raw.professionWorkshops)),
       blacksmithItemWorkActions: sanitizeIdObjectArray<BlacksmithItemWorkAction>(raw.blacksmithItemWorkActions)
         .map((entry) => normalizeBlacksmithItemWorkActionInput(entry))
         .filter((entry) => Boolean(entry.id)),
@@ -4116,6 +4121,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithBalance: mergeById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: mergeById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       carpenterItemTemplates: mergeById(existing.carpenterItemTemplates ?? [], incoming.carpenterItemTemplates ?? []),
+      professionWorkshops: mergeById(existing.professionWorkshops ?? [], incoming.professionWorkshops ?? []),
       blacksmithItemWorkActions: mergeById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: mergeById(existing.sounds ?? [], incoming.sounds ?? []),
       trees: mergeById(existing.trees ?? [], incoming.trees ?? []),
@@ -4166,6 +4172,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       blacksmithBalance: addMissingById(existing.blacksmithBalance ?? [], incoming.blacksmithBalance ?? []),
       blacksmithItemTemplates: addMissingById(existing.blacksmithItemTemplates ?? [], incoming.blacksmithItemTemplates ?? []),
       carpenterItemTemplates: addMissingById(existing.carpenterItemTemplates ?? [], incoming.carpenterItemTemplates ?? []),
+      professionWorkshops: addMissingById(existing.professionWorkshops ?? [], incoming.professionWorkshops ?? []),
       blacksmithItemWorkActions: addMissingById(existing.blacksmithItemWorkActions ?? [], incoming.blacksmithItemWorkActions ?? []),
       sounds: addMissingById(existing.sounds ?? [], incoming.sounds ?? []),
       trees: addMissingById(existing.trees ?? [], incoming.trees ?? []),
@@ -4259,6 +4266,7 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         blacksmithBalance: filterCollection('blacksmithBalance', incoming.blacksmithBalance, existing.blacksmithBalance ?? []) as BlacksmithBalance[] | undefined,
         blacksmithItemTemplates: filterCollection('blacksmithItemTemplates', incoming.blacksmithItemTemplates, existing.blacksmithItemTemplates ?? []) as BlacksmithItemTemplate[] | undefined,
         carpenterItemTemplates: filterCollection('carpenterItemTemplates', incoming.carpenterItemTemplates, existing.carpenterItemTemplates ?? []) as CarpenterItemTemplate[] | undefined,
+        professionWorkshops: filterCollection('professionWorkshops', incoming.professionWorkshops, existing.professionWorkshops ?? []) as ProfessionWorkshopDefinition[] | undefined,
         blacksmithItemWorkActions: filterCollection('blacksmithItemWorkActions', incoming.blacksmithItemWorkActions, existing.blacksmithItemWorkActions ?? []) as BlacksmithItemWorkAction[] | undefined,
         sounds: filterCollection('sounds', incoming.sounds, existing.sounds ?? []) as SoundDefinition[] | undefined,
         trees: filterCollection('trees', incoming.trees, existing.trees ?? []) as TreeDefinition[] | undefined,

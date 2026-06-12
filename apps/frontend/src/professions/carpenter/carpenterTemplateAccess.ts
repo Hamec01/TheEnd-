@@ -1,10 +1,15 @@
-import type { CarpenterItemTemplate } from '../../services/content/models';
+import type { CarpenterItemTemplate, ProfessionWorkshopDefinition } from '../../services/content/models';
 
 export interface CarpenterTemplateAccessResult {
   isUnlocked: boolean;
   missingSkillIds: string[];
   missingSkillNames: string[];
   requiredSkillIds: string[];
+  reason?: string;
+}
+
+export interface CarpenterWorkshopAccessResult {
+  isAllowed: boolean;
   reason?: string;
 }
 
@@ -303,4 +308,62 @@ export function canUseCarpenterTemplate(params: {
     requiredSkillIds,
     reason: missingSkillIds.length > 0 ? reason : undefined,
   };
+}
+
+export function canUseCarpenterTemplateInWorkshop(params: {
+  template: CarpenterItemTemplate;
+  activeWorkshop?: ProfessionWorkshopDefinition | null;
+}): CarpenterWorkshopAccessResult {
+  const workshop = params.activeWorkshop ?? null;
+  if (!workshop) {
+    return { isAllowed: true };
+  }
+
+  const stationType = String(params.template.stationType ?? '').trim();
+  const stationTypes = (workshop.stationTypes ?? []).map((entry) => String(entry).trim()).filter(Boolean);
+  if (stationTypes.length > 0 && stationType && !stationTypes.includes(stationType)) {
+    return {
+      isAllowed: false,
+      reason: `Эта мастерская не поддерживает станок ${stationType}.`,
+    };
+  }
+
+  const templateId = String(params.template.id ?? '').trim();
+  const allowedTemplateIds = (workshop.allowedTemplateIds ?? []).map((entry) => String(entry).trim()).filter(Boolean);
+  if (allowedTemplateIds.length > 0 && !allowedTemplateIds.includes(templateId)) {
+    return {
+      isAllowed: false,
+      reason: `Шаблон ${templateId} не разрешён в мастерской ${workshop.name}.`,
+    };
+  }
+
+  const forbiddenTemplateIds = new Set((workshop.forbiddenTemplateIds ?? []).map((entry) => String(entry).trim()).filter(Boolean));
+  if (forbiddenTemplateIds.has(templateId)) {
+    return {
+      isAllowed: false,
+      reason: `Шаблон ${templateId} запрещён в мастерской ${workshop.name}.`,
+    };
+  }
+
+  const templateGroup = (params.template as CarpenterItemTemplate & { group?: string }).group ?? params.template.recipeGroup;
+  const normalizedGroup = String(templateGroup ?? '').trim();
+  const allowedTemplateGroups = (workshop.allowedTemplateGroups ?? []).map((entry) => String(entry).trim()).filter(Boolean);
+  if (allowedTemplateGroups.length > 0 && (!normalizedGroup || !allowedTemplateGroups.includes(normalizedGroup))) {
+    return {
+      isAllowed: false,
+      reason: normalizedGroup
+        ? `Группа ${normalizedGroup} не открыта в мастерской ${workshop.name}.`
+        : `У шаблона нет группы, разрешённой в мастерской ${workshop.name}.`,
+    };
+  }
+
+  const forbiddenTemplateGroups = new Set((workshop.forbiddenTemplateGroups ?? []).map((entry) => String(entry).trim()).filter(Boolean));
+  if (normalizedGroup && forbiddenTemplateGroups.has(normalizedGroup)) {
+    return {
+      isAllowed: false,
+      reason: `Группа ${normalizedGroup} запрещена в мастерской ${workshop.name}.`,
+    };
+  }
+
+  return { isAllowed: true };
 }

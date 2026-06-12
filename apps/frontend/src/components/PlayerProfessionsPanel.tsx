@@ -61,6 +61,7 @@ import type {
   CarpenterCraftedComponentSnapshot,
   CarpenterItemTemplate,
   Material,
+  ProfessionWorkshopDefinition,
   RecipeVisualProfile,
   StoredImage,
   TreeDefinition,
@@ -85,6 +86,7 @@ import {
 } from '../professions/carpenter/carpenterComponentCrafting';
 import {
   canUseCarpenterTemplate,
+  canUseCarpenterTemplateInWorkshop,
 } from '../professions/carpenter/carpenterTemplateAccess';
 import { getPlayerItemInstanceByItemId } from '../services/playerItemInstances';
 import {
@@ -98,11 +100,15 @@ interface PlayerProfessionsPanelProps {
   inventory: InventoryState;
   runtimeInventoryRevision: number;
   professionsState: PlayerProfessionsState;
+  statusMessage?: string;
   onClose: () => void;
   onStatus: (text: string) => void;
   onChange: (next: PlayerProfessionsState) => void;
   onInventoryChange: (next: InventoryState) => void;
   onLaunchCarpenterGame?: (gameType: 'woodcutting' | 'sawing' | 'workshop') => void;
+  activeWorkshop?: ProfessionWorkshopDefinition | null;
+  activeStationType?: string | null;
+  launchWorkshopMiniGame?: (params: { workshopId: string; professionId: string; templateId: string; stationType: string }) => void;
 }
 
 function shouldAutoActivateProfessionBranch(professionId: string, branch: ProfessionBranch): boolean {
@@ -175,11 +181,15 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     inventory,
     runtimeInventoryRevision,
     professionsState,
+    statusMessage,
     onClose,
     onStatus,
     onChange,
     onInventoryChange,
     onLaunchCarpenterGame,
+    activeWorkshop = null,
+    activeStationType = null,
+    launchWorkshopMiniGame,
   } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
@@ -685,6 +695,26 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     [carpenterSkillNameById, carpenterTemplates, learnedCarpenterSkillIds],
   );
 
+  const carpenterWorkshopAccessById = useMemo(
+    () => new Map(
+      carpenterTemplates.map((template) => [
+        template.id,
+        canUseCarpenterTemplateInWorkshop({
+          template,
+          activeWorkshop,
+        }),
+      ]),
+    ),
+    [activeWorkshop, carpenterTemplates],
+  );
+
+  const normalizedActiveStationType = useMemo(
+    () => String(activeStationType ?? '').trim() || null,
+    [activeStationType],
+  );
+
+  const isWorkshopMode = Boolean(activeWorkshop);
+
   const visibleCarpenterTemplates = useMemo(() => {
     const q = carpenterQuery.trim().toLowerCase();
     return carpenterTemplates.filter((template) => {
@@ -694,13 +724,16 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
         || (template.description ?? '').toLowerCase().includes(q);
       const matchesGroup = carpenterGroupFilter === 'all' || template.recipeGroup === carpenterGroupFilter;
       const matchesKind = carpenterKindFilter === 'all' || resolveCarpenterTemplateOutputKind(template) === carpenterKindFilter;
+      const matchesStation = !isWorkshopMode || !normalizedActiveStationType || template.stationType === normalizedActiveStationType;
       const access = carpenterTemplateAccessById.get(template.id);
+      const workshopAccess = carpenterWorkshopAccessById.get(template.id);
+      const isUnlocked = Boolean(access?.isUnlocked !== false && workshopAccess?.isAllowed !== false);
       const matchesAccess = carpenterAccessFilter === 'all'
-        || (carpenterAccessFilter === 'unlocked' && access?.isUnlocked)
-        || (carpenterAccessFilter === 'locked' && access && !access.isUnlocked);
-      return matchesQuery && matchesGroup && matchesKind && matchesAccess;
+        || (carpenterAccessFilter === 'unlocked' && isUnlocked)
+        || (carpenterAccessFilter === 'locked' && !isUnlocked);
+      return matchesQuery && matchesGroup && matchesKind && matchesStation && matchesAccess;
     });
-  }, [carpenterAccessFilter, carpenterKindFilter, carpenterGroupFilter, carpenterQuery, carpenterTemplateAccessById, carpenterTemplates]);
+  }, [carpenterAccessFilter, carpenterKindFilter, carpenterGroupFilter, carpenterQuery, carpenterTemplateAccessById, carpenterTemplates, carpenterWorkshopAccessById, isWorkshopMode, normalizedActiveStationType]);
 
   const selectedCarpenterTemplate = useMemo(
     () => carpenterTemplates.find((entry) => entry.id === selectedCarpenterTemplateId) ?? null,
@@ -711,6 +744,28 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     () => selectedCarpenterTemplate ? (carpenterTemplateAccessById.get(selectedCarpenterTemplate.id) ?? null) : null,
     [carpenterTemplateAccessById, selectedCarpenterTemplate],
   );
+
+  const selectedCarpenterWorkshopAccess = useMemo(
+    () => selectedCarpenterTemplate ? (carpenterWorkshopAccessById.get(selectedCarpenterTemplate.id) ?? null) : null,
+    [carpenterWorkshopAccessById, selectedCarpenterTemplate],
+  );
+
+  function getStationLockReason(template: CarpenterItemTemplate): string | null {
+    if (!isWorkshopMode || !normalizedActiveStationType) {
+      return null;
+    }
+    return template.stationType === normalizedActiveStationType
+      ? null
+      : `Нужен станок ${normalizedActiveStationType}, а шаблон рассчитан на ${template.stationType}.`;
+  }
+
+  useEffect(() => {
+    if (!activeWorkshop || activeWorkshop.professionId !== 'carpenter') {
+      return;
+    }
+    setSelectedProfessionId('carpenter');
+    setActiveTab('workshop');
+  }, [activeWorkshop]);
 
   useEffect(() => {
     if (selectedProfession?.state.professionId !== 'carpenter') {
@@ -817,8 +872,10 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
       inheritedFromComponent: carpenterInheritedByItemId,
       learnedSkillIds: learnedCarpenterSkillIds,
       skillNameById: carpenterSkillNameById,
+      activeWorkshop,
+      activeStationType: normalizedActiveStationType,
     });
-  }, [selectedCarpenterTemplate, carpenterCraftInputSelections, inventory, itemsCatalog, materialsCatalog, treesCatalog, selectedProfession, carpenterInheritedByItemId, learnedCarpenterSkillIds, carpenterSkillNameById]);
+  }, [selectedCarpenterTemplate, carpenterCraftInputSelections, inventory, itemsCatalog, materialsCatalog, treesCatalog, selectedProfession, carpenterInheritedByItemId, learnedCarpenterSkillIds, carpenterSkillNameById, activeWorkshop, normalizedActiveStationType]);
 
   const xpToNext = selectedProfession
     ? Math.max(0, Math.floor((selectedProfession.state.xpToNextLevel ?? 0) - (selectedProfession.state.xp ?? 0)))
@@ -942,6 +999,26 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 ))}
               </div>
             </header>
+
+            {statusMessage ? (
+              <div
+                className="profession-status-banner"
+                role="status"
+                aria-live="polite"
+                style={{
+                  margin: '0 0 16px',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #7d5b37',
+                  background: '#2b2018',
+                  color: '#f1d29a',
+                  boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08) inset',
+                }}
+              >
+                <strong style={{ display: 'block', marginBottom: '4px' }}>Сообщение</strong>
+                <span>{statusMessage}</span>
+              </div>
+            ) : null}
 
             {activeTab === 'overview' ? (
               <>
@@ -1433,6 +1510,27 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   <div className="profession-overview-item"><span>Шаблонов</span><strong>{carpenterTemplates.length}</strong></div>
                   <div className="profession-overview-item"><span>Позиций в инвентаре</span><strong>{inventory.items.length}</strong></div>
                 </div>
+                {activeWorkshop ? (
+                  <div
+                    className="profession-status-banner"
+                    role="status"
+                    aria-live="polite"
+                    style={{
+                      margin: '0 0 16px',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #7d5b37',
+                      background: '#2b2018',
+                      color: '#f1d29a',
+                    }}
+                  >
+                    <strong style={{ display: 'block', marginBottom: '4px' }}>Активная мастерская</strong>
+                    <span>{activeWorkshop.name} · tier {activeWorkshop.tier} · stationTypes: {activeWorkshop.stationTypes.join(', ') || '—'}</span>
+                    {normalizedActiveStationType ? (
+                      <span style={{ display: 'block', marginTop: '4px' }}>Активный станок: {normalizedActiveStationType}</span>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.8rem' }}>
                   <input
                     value={carpenterQuery}
@@ -1462,7 +1560,9 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                 <div className="profession-mining-tools-list" style={{ marginBottom: '0.8rem' }}>
                   {visibleCarpenterTemplates.map((template) => {
                     const access = carpenterTemplateAccessById.get(template.id);
-                    const isLocked = Boolean(access && !access.isUnlocked);
+                    const workshopAccess = carpenterWorkshopAccessById.get(template.id);
+                    const stationLockReason = getStationLockReason(template);
+                    const isLocked = Boolean((access && !access.isUnlocked) || (workshopAccess && !workshopAccess.isAllowed) || stationLockReason);
                     return (
                       <button
                         key={template.id}
@@ -1485,9 +1585,23 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                           <strong>{isLocked ? `Заблокировано: ${template.name}` : template.name}</strong>
                           <p className="wm-stat-hint" style={{ margin: 0 }}>{template.id} • {resolveCarpenterTemplateOutputKind(template)}</p>
                           {isLocked ? (
-                            <p className="wm-stat-hint" style={{ margin: '0.2rem 0 0 0', color: '#ffb27a' }}>
-                              {access?.reason ?? 'Шаблон заблокирован.'}
-                            </p>
+                            <div style={{ display: 'grid', gap: '0.15rem', marginTop: '0.2rem' }}>
+                              {!workshopAccess?.isAllowed ? (
+                                <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                                  Workshop lock: {workshopAccess?.reason ?? 'Шаблон заблокирован мастерской.'}
+                                </p>
+                              ) : null}
+                              {!access?.isUnlocked ? (
+                                <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                                  Skill lock: {access?.reason ?? 'Шаблон заблокирован навыком.'}
+                                </p>
+                              ) : null}
+                              {stationLockReason ? (
+                                <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                                  Station lock: {stationLockReason}
+                                </p>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
                       </button>
@@ -1498,9 +1612,17 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                   <section className="profession-overlay-settings">
                     <h4 className="profession-overlay-settings-title">{selectedCarpenterTemplate.name}</h4>
                     <p className="wm-stat-hint" style={{ margin: 0 }}>{selectedCarpenterTemplate.description || 'Без описания.'}</p>
+                    {selectedCarpenterWorkshopAccess && !selectedCarpenterWorkshopAccess.isAllowed ? (
+                      <div style={{ display: 'grid', gap: '0.2rem', marginTop: '0.45rem' }}>
+                        <strong style={{ color: '#ffb27a' }}>Workshop lock.</strong>
+                        <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                          {selectedCarpenterWorkshopAccess.reason ?? 'Этот шаблон недоступен в текущей мастерской.'}
+                        </p>
+                      </div>
+                    ) : null}
                     {selectedCarpenterTemplateAccess && !selectedCarpenterTemplateAccess.isUnlocked ? (
                       <div style={{ display: 'grid', gap: '0.2rem', marginTop: '0.45rem' }}>
-                        <strong style={{ color: '#ffb27a' }}>Шаблон заблокирован.</strong>
+                        <strong style={{ color: '#ffb27a' }}>Skill lock.</strong>
                         <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
                           {selectedCarpenterTemplateAccess.reason ?? 'Не хватает навыка для этого шаблона.'}
                         </p>
@@ -1510,6 +1632,14 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                             .map((skillId) => carpenterSkillNameById[skillId] ?? skillId)
                             .join(', ')
                             : 'не указаны')}
+                        </p>
+                      </div>
+                    ) : null}
+                    {getStationLockReason(selectedCarpenterTemplate) ? (
+                      <div style={{ display: 'grid', gap: '0.2rem', marginTop: '0.45rem' }}>
+                        <strong style={{ color: '#ffb27a' }}>Station lock.</strong>
+                        <p className="wm-stat-hint" style={{ margin: 0, color: '#ffb27a' }}>
+                          {getStationLockReason(selectedCarpenterTemplate)}
                         </p>
                       </div>
                     ) : null}
@@ -1585,7 +1715,7 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                           type="button"
                           className="wm-button"
                           style={{ marginTop: '0.6rem' }}
-                          disabled={!carpenterCraftPreview.ok || !selectedCarpenterTemplateAccess?.isUnlocked}
+                          disabled={!carpenterCraftPreview.ok || !selectedCarpenterTemplateAccess?.isUnlocked || selectedCarpenterWorkshopAccess?.isAllowed === false}
                           onClick={async () => {
                             const result = await commitCarpenterComponentCraft({
                               characterId,
@@ -1601,6 +1731,8 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                               inheritedFromComponent: carpenterInheritedByItemId,
                               learnedSkillIds: learnedCarpenterSkillIds,
                               skillNameById: carpenterSkillNameById,
+                              activeWorkshop,
+                              activeStationType: normalizedActiveStationType,
                             });
                             if (!result.ok) {
                               const text = result.errors.join(' ') || 'Ошибка создания компонента.';
@@ -1620,6 +1752,30 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                           }}
                         >
                           Создать компонент
+                        </button>
+                        <button
+                          type="button"
+                          className="wm-button"
+                          style={{ marginTop: '0.4rem' }}
+                          disabled={!selectedCarpenterTemplate || !activeWorkshop}
+                          onClick={() => {
+                            if (!selectedCarpenterTemplate || !activeWorkshop) {
+                              onStatus('Mini-game hook пока доступен только внутри активной мастерской.');
+                              return;
+                            }
+                            if (launchWorkshopMiniGame) {
+                              launchWorkshopMiniGame({
+                                workshopId: activeWorkshop.id,
+                                professionId: 'carpenter',
+                                templateId: selectedCarpenterTemplate.id,
+                                stationType: selectedCarpenterTemplate.stationType,
+                              });
+                              return;
+                            }
+                            onStatus(`TODO: mini-game hook для ${selectedCarpenterTemplate.name} в мастерской ${activeWorkshop.name} ещё не подключён.`);
+                          }}
+                        >
+                          Mini-game (TODO)
                         </button>
                         {carpenterCraftStatus ? <p className="wm-stat-hint" style={{ marginTop: '0.5rem' }}>{carpenterCraftStatus}</p> : null}
                       </div>

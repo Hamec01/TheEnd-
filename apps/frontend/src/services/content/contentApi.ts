@@ -22,6 +22,7 @@ import type {
   BlacksmithVisualPreset,
   BlacksmithItemTemplate,
   CarpenterItemTemplate,
+  ProfessionWorkshopDefinition,
   BlacksmithItemWorkAction,
   CraftingRecipe,
   RecipeVisualProfile,
@@ -76,7 +77,8 @@ export type ContentCollectionName =
   | 'trees'
   | 'biomes'
   | 'imageSheets'
-  | 'professionSkills';
+  | 'professionSkills'
+  | 'professionWorkshops';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -159,6 +161,7 @@ export interface ContentSnapshot {
   blacksmithBalance: BlacksmithBalance[];
   blacksmithItemTemplates: BlacksmithItemTemplate[];
   carpenterItemTemplates: CarpenterItemTemplate[];
+  professionWorkshops: ProfessionWorkshopDefinition[];
   blacksmithItemWorkActions: BlacksmithItemWorkAction[];
   sounds: SoundDefinition[];
   trees?: TreeDefinition[];

@@ -98,6 +98,8 @@ function normalizeLocation(location: WorldLocation): WorldLocation {
     questIds: normalizeStringList(location.questIds),
     dialogueIds: normalizeStringList(location.dialogueIds),
     battleMapIds: normalizeStringList(location.battleMapIds),
+    workshopIds: normalizeStringList(location.workshopIds),
+    services: normalizeStringList(location.services),
     areas: Array.isArray(location.areas)
       ? location.areas.map(normalizeArea).filter((area) => area.id && area.name)
       : [],
