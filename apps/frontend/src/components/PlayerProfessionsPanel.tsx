@@ -10,7 +10,6 @@ import {
   type PlayerProfessionsState,
   type ProfessionId,
 } from '@theend/rpg-domain';
-import { adjustDevInventoryItem } from '../api';
 import { BlacksmithForgeTab } from '../features/blacksmith/BlacksmithForgeTab';
 import { BlacksmithCustomForgeTab } from '../features/blacksmith/BlacksmithCustomForgeTab';
 import { BlacksmithInventoryTab } from '../features/blacksmith/BlacksmithInventoryTab';
@@ -73,13 +72,7 @@ import type { ProfessionBranch, ProfessionSkill } from '../types/profession';
 import { SkillTreeView } from '../features/professions/SkillTreeView';
 import { GameImageView } from '../admin/components/GameImageView';
 import {
-  isCarpenterForestZonesOverlayEnabled,
-  setCarpenterForestZonesOverlayEnabled,
-  subscribeProfessionOverlayChanges,
-} from '../services/professionOverlayStorage';
-import {
   buildCarpenterComponentPreview,
-  commitCarpenterComponentCraft,
   getEligibleInventoryItemsForCarpenterSlot,
   resolveCarpenterTemplateOutputKind,
   type CarpenterCraftInputSelection,
@@ -194,10 +187,8 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     onStatus,
     onChange,
     onInventoryChange,
-    onLaunchCarpenterGame,
     activeWorkshop = null,
     activeStationType = null,
-    launchWorkshopMiniGame,
   } = props;
 
   const [selectedProfessionId, setSelectedProfessionId] = useState<ProfessionId | null>(null);
@@ -225,7 +216,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [carpenterAccessFilter, setCarpenterAccessFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
   const [selectedCarpenterTemplateId, setSelectedCarpenterTemplateId] = useState<string | null>(null);
   const [carpenterInputSelections, setCarpenterInputSelections] = useState<Record<string, string>>({});
-  const [carpenterCraftStatus, setCarpenterCraftStatus] = useState('');
   const [selectedBlacksmithRecipeId, setSelectedBlacksmithRecipeId] = useState<string | null>(null);
   const [preparedCustomForgePlan, setPreparedCustomForgePlan] = useState<BlacksmithCustomForgePlan | null>(null);
   const [preparedCustomForgeTemplateId, setPreparedCustomForgeTemplateId] = useState<string | null>(null);
@@ -234,10 +224,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
   const [blacksmithMode, setBlacksmithMode] = useState<'recipe' | 'custom_forge' | 'item_work'>('recipe');
   const [blacksmithSession, setBlacksmithSession] = useState<BlacksmithSessionState | null>(null);
   const [pendingBlacksmithReward, setPendingBlacksmithReward] = useState<PendingBlacksmithReward | null>(null);
-  const [carpenterForestZonesOverlay, setCarpenterForestZonesOverlay] = useState(
-    () => isCarpenterForestZonesOverlayEnabled(characterId),
-  );
-
   const definitionById = useMemo(
     () => new Map(PROFESSION_DEFINITIONS.map((entry) => [entry.id, entry])),
     [],
@@ -314,18 +300,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     setMiningCareerStats(loadMiningCareerStats(characterId));
   }, [characterId, professionsState]);
 
-  useEffect(() => {
-    setCarpenterForestZonesOverlay(isCarpenterForestZonesOverlayEnabled(characterId));
-    return subscribeProfessionOverlayChanges(() => {
-      setCarpenterForestZonesOverlay(isCarpenterForestZonesOverlayEnabled(characterId));
-    });
-  }, [characterId]);
-
-  const hasCarpenterProfession = useMemo(
-    () => professionsState.professions.some((entry) => entry.professionId === 'carpenter'),
-    [professionsState.professions],
-  );
-
   const unlockedProfessions = useMemo(
     () => professionsState.professions.map((entry) => ({
       state: entry,
@@ -353,7 +327,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
     if (selectedProfessionId === null) {
       setSelectedCarpenterTemplateId(null);
       setCarpenterInputSelections({});
-      setCarpenterCraftStatus('');
       setCarpenterQuery('');
       setCarpenterGroupFilter('all');
       setCarpenterKindFilter('all');
@@ -1052,55 +1025,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                     </>
                   ) : null}
                 </div>
-                {hasCarpenterProfession && selectedProfession.state.professionId === 'carpenter' ? (
-                  <section className="profession-overlay-settings">
-                    <h4 className="profession-overlay-settings-title">Профессиональное отображение</h4>
-                    <label className="profession-overlay-toggle">
-                      <input
-                        type="checkbox"
-                        checked={carpenterForestZonesOverlay}
-                        onChange={(event) => {
-                          const enabled = event.target.checked;
-                          setCarpenterForestZonesOverlayEnabled(characterId, enabled);
-                          setCarpenterForestZonesOverlay(enabled);
-                        }}
-                      />
-                      <span>Показывать зоны рубки деревьев на карте и миникарте</span>
-                    </label>
-                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="wm-button"
-                        onClick={() => {
-                          onLaunchCarpenterGame?.('woodcutting');
-                        }}
-                      >
-                        🪓 Запустить аркадную рубку
-                      </button>
-                      <button
-                        type="button"
-                        className="wm-button"
-                        onClick={() => {
-                          onLaunchCarpenterGame?.('sawing');
-                        }}
-                      >
-                        🪚 Запустить аркадный распил
-                      </button>
-                      <button
-                        type="button"
-                        className="wm-button"
-                        onClick={() => {
-                          onLaunchCarpenterGame?.('workshop');
-                        }}
-                      >
-                        🔨 Открыть мастерскую на карте
-                      </button>
-                    </div>
-                    <p className="wm-stat-hint" style={{ marginTop: '8px' }}>
-                      Запуск доступен только в лесной зоне на карте (forest).
-                    </p>
-                  </section>
-                ) : null}
               </>
             ) : null}
 
@@ -1586,7 +1510,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                         onClick={() => {
                           setSelectedCarpenterTemplateId(template.id);
                           setCarpenterInputSelections({});
-                          setCarpenterCraftStatus('');
                         }}
                       >
                         <div style={{ width: '100%' }}>
@@ -1719,76 +1642,6 @@ export function PlayerProfessionsPanel(props: PlayerProfessionsPanelProps) {
                             ))}
                           </ul>
                         ) : null}
-                        <button
-                          type="button"
-                          className="wm-button"
-                          style={{ marginTop: '0.6rem' }}
-                          disabled={!carpenterCraftPreview.ok || !selectedCarpenterTemplateAccess?.isUnlocked || selectedCarpenterWorkshopAccess?.isAllowed === false}
-                          onClick={async () => {
-                            const result = await commitCarpenterComponentCraft({
-                              characterId,
-                              template: selectedCarpenterTemplate,
-                              inputSelections: carpenterCraftInputSelections,
-                              inventory,
-                              content: {
-                                items: itemsCatalog,
-                                materials: materialsCatalog,
-                                trees: treesCatalog,
-                              },
-                              carpenterLevel: selectedProfession.state.level,
-                              inheritedFromComponent: carpenterInheritedByItemId,
-                              learnedSkillIds: learnedCarpenterSkillIds,
-                              skillNameById: carpenterSkillNameById,
-                              activeWorkshop,
-                              activeStationType: normalizedActiveStationType,
-                            });
-                            if (!result.ok) {
-                              const text = result.errors.join(' ') || 'Ошибка создания компонента.';
-                              setCarpenterCraftStatus(text);
-                              onStatus(text);
-                              return;
-                            }
-                            if (result.inventory) {
-                              onInventoryChange(result.inventory);
-                            } else {
-                              const refreshed = await adjustDevInventoryItem(characterId, { itemId: result.createdItemId!, quantityDelta: 0 });
-                              onInventoryChange(refreshed.inventory);
-                            }
-                            const text = `Создано: ${result.createdItemName}`;
-                            setCarpenterCraftStatus(text);
-                            onStatus(text);
-                          }}
-                        >
-                          Создать компонент
-                        </button>
-                        <button
-                          type="button"
-                          className="wm-button"
-                          style={{ marginTop: '0.4rem' }}
-                          disabled={!selectedCarpenterTemplate || !activeWorkshop}
-                          onClick={() => {
-                            if (!selectedCarpenterTemplate || !activeWorkshop) {
-                              onStatus('Mini-game hook пока доступен только внутри активной мастерской.');
-                              return;
-                            }
-                            if (launchWorkshopMiniGame) {
-                              launchWorkshopMiniGame({
-                                workshopId: activeWorkshop.id,
-                                professionId: 'carpenter',
-                                templateId: selectedCarpenterTemplate.id,
-                                stationType: selectedCarpenterTemplate.stationType,
-                                carpenterLevel: selectedProfession.state.level,
-                                learnedSkillIds: learnedCarpenterSkillIds,
-                                skillNameById: carpenterSkillNameById,
-                              });
-                              return;
-                            }
-                            onStatus(`TODO: mini-game hook для ${selectedCarpenterTemplate.name} в мастерской ${activeWorkshop.name} ещё не подключён.`);
-                          }}
-                        >
-                          Открыть Phaser mini-game
-                        </button>
-                        {carpenterCraftStatus ? <p className="wm-stat-hint" style={{ marginTop: '0.5rem' }}>{carpenterCraftStatus}</p> : null}
                       </div>
                     ) : null}
                   </section>

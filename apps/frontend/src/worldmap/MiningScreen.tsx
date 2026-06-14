@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { MiningPhaserRenderer } from '../features/mining/MiningPhaserRenderer';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { MineDefinition, MineDepth, MineRunState } from '../types/mining';
 import { fixMojibake } from '../utils/fixMojibake';
 import { itemsService } from '../services/content/itemsService';
@@ -13,6 +12,12 @@ import {
   WORLD_AUDIO_SETTINGS_EVENT,
   type WorldAudioSettings,
 } from './worldAudioSettings';
+
+const MiningPhaserRenderer = lazy(() =>
+  import('../features/mining/MiningPhaserRenderer').then((module) => ({
+    default: module.MiningPhaserRenderer,
+  })),
+);
 
 const SLOT_ICON_FALLBACK = '/assets/mining/cell_opened.png';
 const MINING_MUSIC_TRACKS = [
@@ -681,14 +686,16 @@ export function MiningScreen({
           </aside>
 
           <main className="mining-center" onContextMenu={(event) => event.preventDefault()}>
-            <MiningPhaserRenderer
-              mine={mine}
-              depth={depth}
-              run={run}
-              disabled={run.status !== 'active'}
-              onHitBlock={onHitBlock}
-              onBlockContextMenu={handleBlockContextMenu}
-            />
+            <Suspense fallback={<p className="mining-muted">Loading mine...</p>}>
+              <MiningPhaserRenderer
+                mine={mine}
+                depth={depth}
+                run={run}
+                disabled={run.status !== 'active'}
+                onHitBlock={onHitBlock}
+                onBlockContextMenu={handleBlockContextMenu}
+              />
+            </Suspense>
             {activeSkillHint ? <p className="mining-active-skill-hint">{activeSkillHint}</p> : null}
             {skillWheelTarget ? (
               <div

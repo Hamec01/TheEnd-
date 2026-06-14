@@ -20,7 +20,7 @@ import {
   type InventoryState,
   type ItemDefinition,
 } from '@theend/rpg-domain';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   executeCombatAction,
   fetchCombatState,
@@ -35,9 +35,14 @@ import { InspectPanel } from './InspectPanel';
 import { buildCombatContextActions, buildSelectedSourceHint, normalizeSkillTargetConfig } from './combatContextActions';
 import { resolveBattleSkillEntry, resolveBattleSkillId } from './resolveBattleSkillEntry';
 import type { BattleRendererKind } from './battleRendererSettings';
-import { PhaserBattleRenderer } from './renderers/PhaserBattleRenderer';
 import { buildBattlePlaybackTimeline, type BattlePlaybackPhase } from './playback/buildBattlePlaybackTimeline';
 import { resolveActorPortraitWithFallback } from '../phaser/assets/actorVisualResolver';
+
+const PhaserBattleRenderer = lazy(() =>
+  import('./renderers/PhaserBattleRenderer').then((module) => ({
+    default: module.PhaserBattleRenderer,
+  })),
+);
 
 // ── Types ─────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from "react";
 import type {
   Equipment,
   InventoryState,
@@ -12,7 +12,6 @@ import { challengePvpPlayer, fetchNearbyPvpPlayers } from "../api";
 import { TopStatusBar } from "./TopStatusBar";
 import { PlayerQuickPanel } from "./PlayerQuickPanel";
 import { WorldMapCanvas, type WorldMapCanvasHandle } from "./WorldMapCanvas";
-import { PhaserWorldMapCanvas } from "./PhaserWorldMapCanvas";
 import { readWorldRendererSetting, writeWorldRendererSetting, type WorldRendererKind } from "./worldRendererSettings";
 import { WorldMapViewer } from "./WorldMapViewer";
 import { MiniMapWidget } from "./MiniMapWidget";
@@ -261,13 +260,12 @@ import {
   grantWorkshopAccessUnlock,
   hasWorkshopAccessUnlock,
 } from "../professions/workshops/workshopAccessState";
-import {
-  CarpenterArcadeModal,
-  type CarpenterArcadeMode,
-  type SawingArcadeConfig,
-  type SawingArcadeResult,
-  type WoodcuttingArcadeConfig,
-  type WoodcuttingArcadeResult,
+import type {
+  CarpenterArcadeMode,
+  SawingArcadeConfig,
+  SawingArcadeResult,
+  WoodcuttingArcadeConfig,
+  WoodcuttingArcadeResult,
 } from "../professions/carpenter/minigames/arcade";
 import {
   loadCharacterProfile,
@@ -296,6 +294,18 @@ import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 import { useWorldRuntimeController } from "./useWorldRuntimeController";
 import { resolveNpcReaction, resolveZoneReaction } from "../services/reputationRuntime";
 import { fixMojibake } from "../utils/fixMojibake";
+
+const PhaserWorldMapCanvas = lazy(() =>
+  import("./PhaserWorldMapCanvas").then((module) => ({
+    default: module.PhaserWorldMapCanvas,
+  })),
+);
+
+const CarpenterArcadeModal = lazy(() =>
+  import("../professions/carpenter/minigames/arcade").then((module) => ({
+    default: module.CarpenterArcadeModal,
+  })),
+);
 
 const WORLD_ENTITY_INTERACTION_DISTANCE = 0.0045;
 const HOSTILE_BANDIT_AGGRO_RADIUS = 0.028;
@@ -1862,10 +1872,16 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     }
 
     const hasCart = isRented || !!bestOwned;
-    const capacityLogs = bestOwned
+    const rawCapacityLogs = bestOwned
       ? (getProfessionStats(bestOwned).capacityLogs ?? BASE_LOG_CAPACITY_WITHOUT_TRANSPORT)
       : (isRented ? 8 : BASE_LOG_CAPACITY_WITHOUT_TRANSPORT);
-    const speedMultiplier = bestOwned ? (getProfessionStats(bestOwned).speedModifier ?? 1.0) : (isRented ? 0.9 : 1.0);
+    const rawSpeedMultiplier = bestOwned ? (getProfessionStats(bestOwned).speedModifier ?? 1.0) : (isRented ? 0.9 : 1.0);
+    const capacityLogs = Number.isFinite(rawCapacityLogs)
+      ? Math.max(0, rawCapacityLogs)
+      : BASE_LOG_CAPACITY_WITHOUT_TRANSPORT;
+    const speedMultiplier = Number.isFinite(rawSpeedMultiplier)
+      ? Math.max(0.15, Math.min(2, rawSpeedMultiplier))
+      : 1.0;
 
     return {
       isRented,
@@ -1902,9 +1918,11 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
   }, [battleStats.hp, battleStats.stamina, onMineRunResourcesChange, onTravelStaminaChange]);
 
   const travelMoveSpeed = useMemo(() => {
-    const dexterity = Number(character.activeStats?.dexterity ?? 0);
-    const baseSpeed = WORLD_MAP_BASE_TRAVEL_SPEED + Math.max(0, dexterity) * WORLD_MAP_DEXTERITY_SPEED_STEP;
-    return baseSpeed * cartState.speedMultiplier;
+    const rawDexterity = Number(character.activeStats?.dexterity ?? 0);
+    const dexterity = Number.isFinite(rawDexterity) ? Math.max(0, rawDexterity) : 0;
+    const baseSpeed = WORLD_MAP_BASE_TRAVEL_SPEED + dexterity * WORLD_MAP_DEXTERITY_SPEED_STEP;
+    const nextSpeed = baseSpeed * cartState.speedMultiplier;
+    return Number.isFinite(nextSpeed) ? nextSpeed : WORLD_MAP_BASE_TRAVEL_SPEED;
   }, [character.activeStats?.dexterity, cartState.speedMultiplier]);
 
   const staminaRegenPerSecond = useMemo(
@@ -3000,6 +3018,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       return isLinkedLocationVisibleToPlayer(linkedLocation);
     });
   }, [contentSnapshot, mapDiscoveryState.discoveredLocationIds, mapDiscoveryState.discoveredZoneIds, zones]);
+  const discoveredLocationIdsForMap = useMemo(
+    () => new Set(mapDiscoveryState.discoveredLocationIds),
+    [mapDiscoveryState.discoveredLocationIds],
+  );
+  const discoveredZoneIdsForMap = useMemo(
+    () => new Set(mapDiscoveryState.discoveredZoneIds),
+    [mapDiscoveryState.discoveredZoneIds],
+  );
   const paintedCellMap = useMemo(() => getPaintedRegionCellMap(regions), [regions]);
   const resolveCanMoveTo = useCallback((x: number, y: number) => {
     const cellX = Math.max(0, Math.min(REGION_GRID_SIZE - 1, Math.floor(x * REGION_GRID_SIZE)));
@@ -3828,6 +3854,34 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
 
     const resolution = resolveInitialSpawn(profile, zones);
     if (!resolution) {
+      initialSpawnResolvedCharacterRef.current = character.id;
+      setPlayerPosition(DEFAULT_PLAYER_POSITION);
+      setPlaySpawnPosition(DEFAULT_PLAYER_POSITION);
+      setCurrentZone(null);
+      setActiveCityId(null);
+      setActiveLocationId(null);
+      setActiveWorldModal(null);
+      setLocationView("map");
+      setContextMode("empty");
+      setPlayerState("idle");
+      updateCharacterProfile(character.id, (currentProfile) => {
+        if (!currentProfile) {
+          return currentProfile;
+        }
+        return markInitialSpawnCompleted(currentProfile, currentProfile.worldState ?? {
+          currentLocationId: null,
+          currentZoneId: null,
+          currentMapId: "worldmap-main",
+          currentCityId: null,
+          kingdomId: currentProfile.kingdomId ?? currentProfile.citizenshipKingdomId ?? null,
+          regionId: currentProfile.regionId ?? null,
+          areaId: null,
+          locationView: "map",
+          modalType: null,
+          modalZoneId: null,
+          modalLocationId: null,
+        });
+      });
       return;
     }
     initialSpawnResolvedCharacterRef.current = character.id;
@@ -6181,7 +6235,7 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     y: clamp(playSpawnPosition.y, 0, 1),
     targetX: null,
     targetY: null,
-    speed: runtimeSettings.playerSpeed,
+    speed: Number.isFinite(runtimeSettings.playerSpeed) ? runtimeSettings.playerSpeed : WORLD_MAP_BASE_TRAVEL_SPEED,
   }), [playSpawnPosition.x, playSpawnPosition.y, runtimeSettings.playerSpeed]);
 
   const worldRuntime = useWorldRuntimeController({
@@ -11607,10 +11661,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           : contextNpc?.name ?? context.npcId ?? "\u041d\u041f\u0421";
 
     const title = speakerName;
-    const subtitle = dialogueRunner.dialogue
-      ? `\u0414\u0438\u0430\u043b\u043e\u0433: ${dialogueRunner.dialogue.title}`
-      : "\u0414\u0438\u0430\u043b\u043e\u0433";
-
     const portrait =
       currentNode?.imageUrl ??
       currentNode?.portraitUrl ??
@@ -11685,10 +11735,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           ) : null}
 
           <h2 style={{ margin: "0 0 12px" }}>{title}</h2>
-          <p className="muted" style={{ margin: "0 auto 12px", maxWidth: 420 }}>
-            {subtitle}
-          </p>
-
           {description?.trim() ? (
             <p className="muted" style={{ margin: "0 auto 20px", maxWidth: 420 }}>
               {description.trim()}
@@ -11724,12 +11770,14 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 {choice.text || choice.id}
               </button>
             ))}
-            {backToNpcMenu ? (
-              <button onClick={closeDialogue}>{"\u041d\u0430\u0437\u0430\u0434"}</button>
-            ) : (
-              <button onClick={closeDialogue}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>
-            )}
-            {backToNpcMenu ? (
+            {dialogueRunner.choices.length === 0 ? (
+              backToNpcMenu ? (
+                <button onClick={closeDialogue}>{"\u041d\u0430\u0437\u0430\u0434"}</button>
+              ) : (
+                <button onClick={closeDialogue}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>
+              )
+            ) : null}
+            {dialogueRunner.choices.length === 0 && backToNpcMenu ? (
               <button onClick={leaveInteraction}>{"\u0423\u0439\u0442\u0438"}</button>
             ) : null}
           </div>
@@ -11960,26 +12008,28 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                 {worldParityDebugLine}
               </div>
               {worldRenderer === "phaser" ? (
-                <PhaserWorldMapCanvas
-                  ref={canvasRef}
-                  sceneSnapshot={playWorldSceneSnapshot}
-                  onSceneCommand={handleWorldSceneCommand}
-                  gameplayPaused={worldMapViewerOpen}
-                  playerStartPosition={playSpawnPosition}
-                  playerAvatarUrl={playerAvatarUrl}
-                  zones={playVisibleZones}
-                  playQuestMarkers={playQuestMarkers}
-                  playNpcMarkers={playNpcMarkers}
-                  onHoverZone={handleHoverZone}
-                  movementLocked={playMovementLockedWithUi}
-                  onWorldEntityClick={handleWorldEntityClick}
-                  lockedWorldEntityId={engagedWorldEntityId}
-                  lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
-                  discoveredLocationIds={new Set(mapDiscoveryState.discoveredLocationIds)}
-                  discoveredZoneIds={new Set(mapDiscoveryState.discoveredZoneIds)}
-                  showProfessionResourceZones={showCarpenterForestOverlay}
-                  selectedProfessionOverlay={showCarpenterForestOverlay ? 'carpenter' : 'none'}
-                />
+                <Suspense fallback={<div className="wm-map card">Loading world renderer...</div>}>
+                  <PhaserWorldMapCanvas
+                    ref={canvasRef}
+                    sceneSnapshot={playWorldSceneSnapshot}
+                    onSceneCommand={handleWorldSceneCommand}
+                    gameplayPaused={worldMapViewerOpen}
+                    playerStartPosition={playSpawnPosition}
+                    playerAvatarUrl={playerAvatarUrl}
+                    zones={playVisibleZones}
+                    playQuestMarkers={playQuestMarkers}
+                    playNpcMarkers={playNpcMarkers}
+                    onHoverZone={handleHoverZone}
+                    movementLocked={playMovementLockedWithUi}
+                    onWorldEntityClick={handleWorldEntityClick}
+                    lockedWorldEntityId={engagedWorldEntityId}
+                    lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
+                    discoveredLocationIds={discoveredLocationIdsForMap}
+                    discoveredZoneIds={discoveredZoneIdsForMap}
+                    showProfessionResourceZones={showCarpenterForestOverlay}
+                    selectedProfessionOverlay={showCarpenterForestOverlay ? 'carpenter' : 'none'}
+                  />
+                </Suspense>
               ) : (
                 <WorldMapCanvas
                   mode="play"
@@ -11997,8 +12047,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
                   onWorldEntityClick={handleWorldEntityClick}
                   lockedWorldEntityId={engagedWorldEntityId}
                   lockedWorldEntityCoordinates={engagedWorldEntityAnchor}
-                  discoveredLocationIds={new Set(mapDiscoveryState.discoveredLocationIds)}
-                  discoveredZoneIds={new Set(mapDiscoveryState.discoveredZoneIds)}
+                  discoveredLocationIds={discoveredLocationIdsForMap}
+                  discoveredZoneIds={discoveredZoneIdsForMap}
                   showProfessionResourceZones={showCarpenterForestOverlay}
                   selectedProfessionOverlay={showCarpenterForestOverlay ? 'carpenter' : 'none'}
                   contentBiomes={contentSnapshot?.biomes}
@@ -12513,54 +12563,58 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       {forestPanelElement}
       {branchCollectingElement}
       {arcadeMode === "woodcutting" && woodcuttingArcadeConfig ? (
-        <CarpenterArcadeModal
-          mode="woodcutting"
-          woodcuttingConfig={woodcuttingArcadeConfig}
-          onComplete={handleArcadeComplete}
-          onFail={handleArcadeFail}
-          onClose={() => {
-            if (activeWoodcuttingTree) {
-              applyWoodcuttingResult(activeWoodcuttingTree, {
-                success: false,
-                treeId: activeWoodcuttingTree.id,
-                staminaSpent: 0,
-                hpDamage: 0,
-                axeDurabilitySpent: 0,
-                reason: "cancelled",
-              });
-            }
-            setActiveWoodcuttingTree(null);
-            setForestPanelOpen(true);
-            setArcadeMode(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CarpenterArcadeModal
+            mode="woodcutting"
+            woodcuttingConfig={woodcuttingArcadeConfig}
+            onComplete={handleArcadeComplete}
+            onFail={handleArcadeFail}
+            onClose={() => {
+              if (activeWoodcuttingTree) {
+                applyWoodcuttingResult(activeWoodcuttingTree, {
+                  success: false,
+                  treeId: activeWoodcuttingTree.id,
+                  staminaSpent: 0,
+                  hpDamage: 0,
+                  axeDurabilitySpent: 0,
+                  reason: "cancelled",
+                });
+              }
+              setActiveWoodcuttingTree(null);
+              setForestPanelOpen(true);
+              setArcadeMode(null);
+            }}
+          />
+        </Suspense>
       ) : null}
       {arcadeMode === "sawing" && sawingArcadeConfig ? (
-        <CarpenterArcadeModal
-          key={`sawing-arcade-${sawingArcadeRunKey}`}
-          mode="sawing"
-          sawingConfig={sawingArcadeConfig}
-          onComplete={handleArcadeComplete}
-          onFail={handleArcadeFail}
-          onClose={() => {
-            const recipe = selectedSawingRecipe ?? sawingRecipes[0];
-            if (recipe && activeSawingLog) {
-              applySawingResult({
-                success: false,
-                logItemId: activeSawingLog.id,
-                recipe,
-                outputItemId: sawingArcadeConfig?.recipe.outputItemId,
-                staminaSpent: 0,
-                hpDamage: 0,
-                sawDurabilitySpent: 0,
-                reason: "cancelled",
-              });
-            }
-            setSawingActiveLog(null);
-            setForestPanelOpen(true);
-            setArcadeMode(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <CarpenterArcadeModal
+            key={`sawing-arcade-${sawingArcadeRunKey}`}
+            mode="sawing"
+            sawingConfig={sawingArcadeConfig}
+            onComplete={handleArcadeComplete}
+            onFail={handleArcadeFail}
+            onClose={() => {
+              const recipe = selectedSawingRecipe ?? sawingRecipes[0];
+              if (recipe && activeSawingLog) {
+                applySawingResult({
+                  success: false,
+                  logItemId: activeSawingLog.id,
+                  recipe,
+                  outputItemId: sawingArcadeConfig?.recipe.outputItemId,
+                  staminaSpent: 0,
+                  hpDamage: 0,
+                  sawDurabilitySpent: 0,
+                  reason: "cancelled",
+                });
+              }
+              setSawingActiveLog(null);
+              setForestPanelOpen(true);
+              setArcadeMode(null);
+            }}
+          />
+        </Suspense>
       ) : null}
 
       {workshopModalElement}

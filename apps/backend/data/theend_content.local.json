@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-12T14:53:29.414Z",
+  "exportedAt": "2026-06-13T21:59:02.094Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
-    "items": 252,
+    "items": 257,
     "skills": 17,
     "visualFx": 3,
     "merchants": 8,
@@ -7790,6 +7790,162 @@
         "updatedAt": "2026-06-12T13:02:08.444Z",
         "canAddAugmentSlots": false,
         "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_clean_log_tree_mountain_guard_7b1555a3",
+        "name": "Очистить бревно — Горный Страж",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "epic",
+        "price": 230,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Очистить бревно. Источник древесины: Горный Страж. Сохранение свойств: 60%. Качество: 100/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_clean_log",
+          "component_kind:clean_log",
+          "quality:high",
+          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
+          "source_tree:tree_mountain_guard"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-13T18:06:41.764Z",
+        "updatedAt": "2026-06-13T18:06:41.764Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_thin_plank_common_wood_4f93db7a",
+        "name": "Сделать тонкую доску — обычная древесина",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "epic",
+        "price": 230,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Сделать тонкую доску. Источник древесины: обычная древесина. Сохранение свойств: 72%. Качество: 100/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_thin_plank",
+          "component_kind:thin_plank",
+          "quality:high",
+          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
+          "source_lost",
+          "generic_wood_source"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-13T18:08:03.635Z",
+        "updatedAt": "2026-06-13T18:08:03.635Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_clean_log_tree_mountain_guard_680fb8b2",
+        "name": "Очистить бревно — Горный Страж",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "epic",
+        "price": 230,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Очистить бревно. Источник древесины: Горный Страж. Сохранение свойств: 60%. Качество: 100/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_clean_log",
+          "component_kind:clean_log",
+          "quality:high",
+          "crafted_owner:e87fc9c6-2756-40a5-9d09-0d408780d269",
+          "source_tree:tree_mountain_guard"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-13T18:36:46.131Z",
+        "updatedAt": "2026-06-13T18:36:46.131Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_clean_log_tree_mountain_guard_73076349",
+        "name": "Очистить бревно — Горный Страж",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "epic",
+        "price": 230,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Очистить бревно. Источник древесины: Горный Страж. Сохранение свойств: 60%. Качество: 100/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_clean_log",
+          "component_kind:clean_log",
+          "quality:high",
+          "crafted_owner:109502ce-d65d-437c-b843-7fb91e12f57a",
+          "source_tree:tree_mountain_guard"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-13T21:10:32.943Z",
+        "updatedAt": "2026-06-13T21:10:32.943Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
+      },
+      {
+        "id": "item_carpenter_component_split_log_tree_mountain_guard_c80dd86d",
+        "name": "Наколоть дрова — Горный Страж",
+        "type": "material",
+        "subtype": "carpenter_component",
+        "slot": "none",
+        "handsRequired": 1,
+        "rarity": "epic",
+        "price": 230,
+        "stackable": false,
+        "maxStack": 1,
+        "requiredStats": {},
+        "bonuses": {},
+        "gameplayDescription": "Промежуточный компонент для будущих ремесленных рецептов.",
+        "loreDescription": "Плотницкий компонент. Шаблон: Наколоть дрова. Источник древесины: Горный Страж. Сохранение свойств: 60%. Качество: 100/100. Может быть использован кузнецом: да.",
+        "tags": [
+          "runtime_instance",
+          "player_runtime_hidden",
+          "carpenter_component",
+          "carpenter_template:template_carpenter_split_log",
+          "component_kind:split_log",
+          "quality:high",
+          "crafted_owner:109502ce-d65d-437c-b843-7fb91e12f57a",
+          "source_tree:tree_mountain_guard"
+        ],
+        "isEnabled": true,
+        "createdAt": "2026-06-13T21:12:57.129Z",
+        "updatedAt": "2026-06-13T21:12:57.129Z",
+        "canAddAugmentSlots": false,
+        "canHaveRuneComplex": false
       }
     ],
     "skills": [
@@ -10504,7 +10660,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-12T14:48:54.430Z",
+        "updatedAt": "2026-06-13T21:44:36.263Z",
         "kind": "single",
         "stages": []
       },
@@ -10560,7 +10716,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-12T14:48:54.430Z",
+        "updatedAt": "2026-06-13T21:44:36.263Z",
         "kind": "single",
         "stages": []
       },
@@ -10619,7 +10775,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-12T14:48:54.430Z",
+        "updatedAt": "2026-06-13T21:44:36.263Z",
         "kind": "single",
         "stages": []
       }
@@ -45087,7 +45243,7 @@
       },
       {
         "id": "dlg_npc_klinogorie_bran_legless_soldier_yyzx",
-        "title": "Dialogue for Бран Камыш",
+        "title": "Бран Камыш",
         "npcId": "npc_klinogorie_bran_legless_soldier",
         "status": "active",
         "startNodeId": "start",
@@ -45095,7 +45251,7 @@
           {
             "id": "start",
             "speaker": "npc",
-            "text": "Скрип старого дерева, треск углей и горький запах сушёных трав медленно вытаскивают тебя из темноты.\n\nПеред глазами дрожит тусклый свет масляной лампы. За окном воет ветер.\n\nНа грубом кресле у стены сидит широкоплечий мужчина с поседевшей бородой. Ниже пояса его тело скрыто старым шерстяным покрывалом.\n\n— Ну наконец-то.\n— Я уж думал, ты не откроешь глаза.\n\nОн кивает на кружку с водой.\n\n— Пей медленно. Тебя нашли на южной дороге. Еле дышал.",
+            "text": "Скрип старого дерева, треск углей и горький запах сушёных трав медленно вытаскивают тебя из темноты.\n\nПеред глазами дрожит тусклый свет масляной лампы. За окном воет ветер.\n\nНа грубом кресле у стены сидит широкоплечий мужчина с поседевшей бородой. Ниже пояса его тело скрыто старым шерстяным покрывалом.\n\n— Ну наконец-то.\n— Я уж думал, ты не откроешь глаз.\n\nОн кивает на кружку с водой.\n\n— Пей медленно. Тебя принесли сюда едва живым.",
             "choices": [
               {
                 "id": "choice_where_am_i",
@@ -45106,38 +45262,12 @@
                 "effects": []
               },
               {
-                "id": "choice_which_soldiers",
-                "text": "Какие солдаты меня нашли?",
-                "nextNodeId": "which_soldiers",
-                "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [
-                  {
-                    "id": "cond_choice_which_soldiers_argos_only",
-                    "type": "player_kingdom",
-                    "value": "argos"
-                  }
-                ],
-                "actions": [
-                  {
-                    "id": "act_start_argos_identity_quest",
-                    "type": "startQuest",
-                    "questId": "argos_quest_klinogorie_first_steps"
-                  },
-                  {
-                    "id": "act_set_argos_intro_seen",
-                    "type": "setGlobalFlag",
-                    "key": "argos_intro_seen",
-                    "value": true
-                  },
-                  {
-                    "id": "act_unlock_omtara_hint",
-                    "type": "setGlobalFlag",
-                    "key": "intro_omtara_hint_unlocked",
-                    "value": true
-                  }
-                ],
-                "effects": [],
-                "hiddenIfConditionsFail": true
+                "id": "choice_who_are_you_intro",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_intro",
+                "conditions": [],
+                "actions": [],
+                "effects": []
               },
               {
                 "id": "choice_who_am_i",
@@ -45158,24 +45288,27 @@
               {
                 "id": "choice_leave_early",
                 "text": "Мне нужно идти.",
-                "nextNodeId": "leave",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_leave_early_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_leave_early_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
-            "conditions": [
-              {
-                "id": "cond_bran_intro_human",
-                "type": "player_race",
-                "value": "human"
-              },
-              {
-                "id": "cond_bran_intro_argos",
-                "type": "player_kingdom",
-                "value": "argos"
-              }
-            ],
+            "conditions": [],
             "actions": []
           },
           {
@@ -45186,7 +45319,7 @@
               {
                 "id": "choice_outsider_who_are_you_non_human",
                 "text": "Кто ты?",
-                "nextNodeId": "who_are_you_outsider",
+                "nextNodeId": "who_are_you_intro",
                 "conditions": [],
                 "actions": [],
                 "effects": []
@@ -45202,10 +45335,24 @@
               {
                 "id": "choice_outsider_leave_non_human",
                 "text": "Мне нужно идти.",
-                "nextNodeId": "leave",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_outsider_leave_non_human_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_outsider_leave_non_human_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [
@@ -45225,7 +45372,7 @@
               {
                 "id": "choice_outsider_who_are_you_non_argos_human",
                 "text": "Кто ты?",
-                "nextNodeId": "who_are_you_outsider",
+                "nextNodeId": "who_are_you_intro",
                 "conditions": [],
                 "actions": [],
                 "effects": []
@@ -45241,10 +45388,24 @@
               {
                 "id": "choice_outsider_leave_non_argos_human",
                 "text": "Мне нужно идти.",
-                "nextNodeId": "leave",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_outsider_leave_non_argos_human_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_outsider_leave_non_argos_human_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [
@@ -45262,12 +45423,28 @@
             "actions": []
           },
           {
-            "id": "who_are_you_outsider",
+            "id": "who_are_you_intro",
             "speaker": "npc",
             "text": "— Бран Камыш.\n— Живу здесь, в Клиногорье.\n\nОн откладывает заготовку и проводит пальцами по седой бороде.\n\n— Раньше ходил с аргосским строем по южным дорогам. Теперь чиню рукояти, стрелы и всё, что деревня ещё может использовать.\n\n— Люди приходят ко мне не за красивыми историями. Обычно им нужен честный ответ.",
             "choices": [
               {
-                "id": "choice_outsider_identity_to_legs",
+                "id": "choice_who_are_you_to_where",
+                "text": "Где я?",
+                "nextNodeId": "where_am_i",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_who_are_you_to_identity",
+                "text": "Кто я?",
+                "nextNodeId": "who_am_i",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_who_are_you_to_legs",
                 "text": "Что случилось с твоими ногами?",
                 "nextNodeId": "legs_story",
                 "conditions": [],
@@ -45275,12 +45452,26 @@
                 "effects": []
               },
               {
-                "id": "choice_outsider_identity_to_leave",
-                "text": "Понял. Мне пора.",
-                "nextNodeId": "leave",
+                "id": "choice_who_are_you_to_leave",
+                "text": "Мне нужно идти.",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_who_are_you_to_leave_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_who_are_you_to_leave_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45289,20 +45480,14 @@
           {
             "id": "where_am_i",
             "speaker": "npc",
-            "text": "— Клиногорье.\n— Деревня на юге Аргоса.\n\nБран медленно переводит взгляд к окну.\n\n— Скалы, степь, старая шахтная тропа и дороги, на которых лучше не падать без сознания.\n\n— Здесь редко появляются чужаки просто так.",
+            "text": "— Клиногорье.\n— Деревня на юге Аргоса.\n\nБран медленно переводит взгляд к окну.\n\n— Скалы, степь, старая шахтная тропа и дороги, на которых лучше не падать без сознания.\n\n— Тебя занесли сюда прошлой ночью. Повезло, что вообще довезли.",
             "choices": [
               {
                 "id": "choice_where_to_soldiers",
-                "text": "Какие солдаты меня нашли?",
+                "text": "Кто меня нашёл?",
                 "nextNodeId": "which_soldiers",
+                "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [
-                  {
-                    "id": "cond_where_to_soldiers_argos_only",
-                    "type": "player_kingdom",
-                    "value": "argos"
-                  }
-                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_where",
@@ -45322,8 +45507,33 @@
                     "value": true
                   }
                 ],
-                "effects": [],
-                "hiddenIfConditionsFail": true
+                "effects": [
+                  {
+                    "id": "eff_start_argos_identity_quest_from_where",
+                    "type": "start_quest",
+                    "questId": "argos_quest_klinogorie_first_steps"
+                  },
+                  {
+                    "id": "eff_set_argos_intro_seen_from_where",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  },
+                  {
+                    "id": "eff_unlock_omtara_hint_from_where",
+                    "type": "set_flag",
+                    "flagKey": "intro_omtara_hint_unlocked",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "id": "choice_where_to_who_are_you",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_intro",
+                "conditions": [],
+                "actions": [],
+                "effects": []
               },
               {
                 "id": "choice_where_to_identity",
@@ -45343,11 +45553,25 @@
               },
               {
                 "id": "choice_where_to_leave",
-                "text": "Спасибо. Мне пора.",
-                "nextNodeId": "leave",
+                "text": "Мне нужно идти.",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_where_to_leave_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_where_to_leave_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45356,12 +45580,20 @@
           {
             "id": "which_soldiers",
             "speaker": "npc",
-            "text": "Бран проводит ладонью по седой бороде.\n\n— Аргосцы.\n— По крайней мере, выглядели как патруль из Ом'тары.\n\n— Пыльные, злые, уставшие. Один всё повторял, что тебе повезло остаться живым.\n\nОн ненадолго замолкает.\n\n— Но лица у них были такие, будто удачей там и не пахло.",
+            "text": "Бран проводит ладонью по седой бороде.\n\n— Аргосцы.\n— По крайней мере, выглядели как патруль из Ом'тары.\n\n— Пыльные, злые, уставшие. Один всё повторял, что тебе повезло остаться живым.\n\nОн ненадолго замолкает.\n\n— Но лица у них были такие, будто удачей там и не пахло.\n\n— Если хочешь узнать, кто ты и почему оказался на той дороге, начинай с Ом'тары.",
             "choices": [
               {
                 "id": "choice_soldiers_to_identity",
                 "text": "Кто я?",
                 "nextNodeId": "who_am_i",
+                "conditions": [],
+                "actions": [],
+                "effects": []
+              },
+              {
+                "id": "choice_soldiers_to_who_are_you",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_intro",
                 "conditions": [],
                 "actions": [],
                 "effects": []
@@ -45376,11 +45608,25 @@
               },
               {
                 "id": "choice_soldiers_to_leave",
-                "text": "Спасибо. Я пойду.",
-                "nextNodeId": "leave",
+                "text": "Мне нужно идти.",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_soldiers_to_leave_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_soldiers_to_leave_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45389,20 +45635,14 @@
           {
             "id": "who_am_i",
             "speaker": "npc",
-            "text": "Бран смотрит на тебя внимательнее.\n\n— Этого я не знаю.\n\n— При тебе не было ни письма, ни знака рода, ни жетона, по которому можно понять, откуда ты.\n\nОн кивает на сложенную у стены одежду.\n\n— Солдаты сказали только одно: если очнёшься — пусть сам ищет ответы.\n\n— Не самый тёплый совет, но в Аргосе и советы редко бывают мягкими.",
+            "text": "Бран смотрит на тебя внимательнее.\n\n— Этого я не знаю.\n\n— При тебе не было ни письма, ни знака рода, ни жетона, по которому можно было понять, откуда ты.\n\nОн кивает на сложенную у стены одежду.\n\n— Те, кто тебя принёс, сказали только одно: если очнёшься — сам начнёшь искать ответы.\n\n— Не самый тёплый совет, но в Аргосе и советы редко бывают мягкими.",
             "choices": [
               {
                 "id": "choice_identity_to_soldiers",
-                "text": "Какие солдаты меня нашли?",
+                "text": "Кто меня принёс?",
                 "nextNodeId": "which_soldiers",
+                "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [
-                  {
-                    "id": "cond_identity_to_soldiers_argos_only",
-                    "type": "player_kingdom",
-                    "value": "argos"
-                  }
-                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_identity",
@@ -45422,8 +45662,33 @@
                     "value": true
                   }
                 ],
-                "effects": [],
-                "hiddenIfConditionsFail": true
+                "effects": [
+                  {
+                    "id": "eff_start_argos_identity_quest_from_identity",
+                    "type": "start_quest",
+                    "questId": "argos_quest_klinogorie_first_steps"
+                  },
+                  {
+                    "id": "eff_set_argos_intro_seen_from_identity",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  },
+                  {
+                    "id": "eff_unlock_omtara_hint_from_identity",
+                    "type": "set_flag",
+                    "flagKey": "intro_omtara_hint_unlocked",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "id": "choice_identity_to_who_are_you",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_intro",
+                "conditions": [],
+                "actions": [],
+                "effects": []
               },
               {
                 "id": "choice_identity_to_legs",
@@ -45436,10 +45701,24 @@
               {
                 "id": "choice_identity_to_leave",
                 "text": "Мне нужно идти.",
-                "nextNodeId": "leave",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_identity_to_leave_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_identity_to_leave_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45452,16 +45731,10 @@
             "choices": [
               {
                 "id": "choice_legs_to_soldiers",
-                "text": "Какие солдаты меня нашли?",
+                "text": "Кто меня нашёл?",
                 "nextNodeId": "which_soldiers",
+                "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
-                "conditions": [
-                  {
-                    "id": "cond_legs_to_soldiers_argos_only",
-                    "type": "player_kingdom",
-                    "value": "argos"
-                  }
-                ],
                 "actions": [
                   {
                     "id": "act_start_argos_identity_quest_from_legs",
@@ -45481,8 +45754,33 @@
                     "value": true
                   }
                 ],
-                "effects": [],
-                "hiddenIfConditionsFail": true
+                "effects": [
+                  {
+                    "id": "eff_start_argos_identity_quest_from_legs",
+                    "type": "start_quest",
+                    "questId": "argos_quest_klinogorie_first_steps"
+                  },
+                  {
+                    "id": "eff_set_argos_intro_seen_from_legs",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  },
+                  {
+                    "id": "eff_unlock_omtara_hint_from_legs",
+                    "type": "set_flag",
+                    "flagKey": "intro_omtara_hint_unlocked",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "id": "choice_legs_to_who_are_you",
+                "text": "Кто ты?",
+                "nextNodeId": "who_are_you_intro",
+                "conditions": [],
+                "actions": [],
+                "effects": []
               },
               {
                 "id": "choice_legs_to_identity",
@@ -45495,10 +45793,24 @@
               {
                 "id": "choice_legs_to_leave",
                 "text": "Мне нужно идти.",
-                "nextNodeId": "leave",
+                "endsDialogue": true,
                 "conditions": [],
-                "actions": [],
-                "effects": []
+                "actions": [
+                  {
+                    "id": "choice_legs_to_leave_set_intro_seen",
+                    "type": "setGlobalFlag",
+                    "key": "argos_intro_seen",
+                    "value": true
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "choice_legs_to_leave_set_intro_seen_effect",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45522,7 +45834,14 @@
                     "value": true
                   }
                 ],
-                "effects": []
+                "effects": [
+                  {
+                    "id": "eff_set_argos_intro_seen_on_leave",
+                    "type": "set_flag",
+                    "flagKey": "argos_intro_seen",
+                    "value": true
+                  }
+                ]
               }
             ],
             "conditions": [],
@@ -45530,7 +45849,7 @@
           }
         ],
         "createdAt": "2026-05-28T07:13:48.823Z",
-        "updatedAt": "2026-05-28T14:08:44.357Z"
+        "updatedAt": "2026-06-14T09:45:37.966Z"
       },
       {
         "id": "dlg_omtara_gate_guard_documents_check",
@@ -50384,7 +50703,7 @@
         "category": "kingdom",
         "status": "active",
         "isRepeatable": false,
-        "isHidden": true,
+        "isHidden": false,
         "portraitUrl": "img_1779959710255_a0e45c81",
         "imageUrl": "img_1779959715073_c121894a",
         "bannerUrl": "img_1779959718373_d1945088",
@@ -50507,7 +50826,7 @@
         "failureConsequences": [],
         "flags": {},
         "createdAt": "2026-05-28T09:06:02.015Z",
-        "updatedAt": "2026-05-29T14:01:53.400Z",
+        "updatedAt": "2026-06-13T21:47:15.524Z",
         "kingdomId": "argos",
         "startLocationId": "loc_argos_klinogorie_start_village",
         "npcId": "npc_klinogorie_bran_legless_soldier",
@@ -65737,11 +66056,11 @@
             "required": true,
             "acceptedComponentKinds": [
               "raw_log",
-              "clean_log",
-              "split_log"
+              "clean_log"
             ],
             "acceptedItemIds": [
-              "item_wood_log_common"
+              "item_wood_log_common",
+              "item_firewood_common"
             ],
             "acceptedMaterialIds": []
           }

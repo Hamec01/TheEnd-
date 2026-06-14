@@ -1309,6 +1309,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
 
     try {
       await onEquipItem(selectedItem.id, preferredCoreSlot);
+      setItemDetailOpen(false);
     } catch {
       // parent already reports error status
     }
@@ -2880,13 +2881,7 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
   }
 
   function renderActiveInventoryDetails() {
-    if (inventoryTab === 'questItems') {
-      return renderQuestItemDetails();
-    }
-    if (inventoryTab === 'resources') {
-      return null;
-    }
-    return renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true);
+    return null;
   }
 
   function renderCharacterOverview() {
@@ -2982,7 +2977,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                 ) : null}
               </section>
               {renderSetBonusesCard()}
-              {renderSelectedItemDetails('Текущий предмет', 'Выберите предмет в рюкзаке или на силуэте, чтобы сразу увидеть сравнение.', true, true)}
             </div>
           </div>
           {renderHoverPreviewCard()}
@@ -3749,7 +3743,6 @@ export const InventoryPanel: React.FC<InventoryPanelProps> = ({
                     : <p className="muted">Рюкзак пуст.</p>}
                 </div>
               </section>
-              {renderSelectedItemDetails('Детали предмета', 'Выберите предмет в рюкзаке или кликните слот на силуэте.', true, true)}
             </div>
 
           </div>

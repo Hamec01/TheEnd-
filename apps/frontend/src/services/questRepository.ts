@@ -14,6 +14,7 @@ import {
 } from './content/contentApi';
 import type { JsonImportMode, JsonImportResult } from './content/adminJsonImportExport';
 import { saveCharacterQuestState } from '../api';
+import { subscribeToContentSync } from './content/contentSync';
 
 const PLAYER_QUESTS_KEY = 'theend.playerQuests';
 const RANDOM_ZONE_COOLDOWNS_KEY = 'theend.questRandomZoneCooldowns';
@@ -23,6 +24,22 @@ let questInteractionsCache: QuestInteractionDefinition[] = [];
 let questItemsCache: QuestItemDefinition[] = [];
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
+let syncSubscriptionReady = false;
+
+function ensureSyncSubscription(): void {
+  if (syncSubscriptionReady || typeof window === 'undefined') {
+    return;
+  }
+
+  syncSubscriptionReady = true;
+  subscribeToContentSync((payload) => {
+    if (payload.scope !== 'content' && payload.scope !== 'all') {
+      return;
+    }
+    invalidate();
+    void ensureQuestsLoaded(true).catch(() => undefined);
+  });
+}
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) {
@@ -50,6 +67,7 @@ function writeArray<T>(key: string, values: T[]): void {
 }
 
 export async function ensureQuestsLoaded(force = false): Promise<void> {
+  ensureSyncSubscription();
   if (loaded && !force) {
     return;
   }

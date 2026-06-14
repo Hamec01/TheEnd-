@@ -1,5 +1,4 @@
-import Phaser from 'phaser';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { InventoryState } from '@theend/rpg-domain';
 import { getContentSnapshot } from '../../../services/content/contentApi';
 import type { AdminItem, CarpenterCraftedComponentSnapshot } from '../../../services/content/models';
@@ -12,15 +11,15 @@ import {
   type CarpenterCraftInputSelection,
 } from '../carpenterComponentCrafting';
 import {
-  canUseCarpenterTemplateInWorkshop,
   resolveCarpenterStationRequiredToolKinds,
   resolveCarpenterTemplateGroup,
   validateCarpenterMiniGameAccess,
 } from '../carpenterTemplateAccess';
 import { commitCarpenterWorkshopSuccess, consumeCarpenterWorkshopInputs } from './carpenterWorkshopGameCommit';
-import { CARPENTER_WORKSHOP_GAME_HEIGHT, CARPENTER_WORKSHOP_GAME_WIDTH } from './carpenterWorkshopGameAssets';
+import { buildCarpenterCraftGameInput, mapCarpenterCraftGameResult } from './carpenterCraftMiniGameAdapter';
 import { buildCarpenterWorkshopRunConfig } from './carpenterWorkshopGameBalance';
-import { CarpenterWorkshopScene } from './CarpenterWorkshopScene';
+import { CarpenterCraftGame } from './craftMiniGame/CarpenterCraftGame';
+import type { CarpenterGameInput, CarpenterGameResult } from './craftMiniGame/carpenterGameTypes';
 import type {
   CarpenterWorkshopGameContent,
   CarpenterWorkshopGameLaunchParams,
@@ -29,7 +28,8 @@ import type {
   CarpenterWorkshopResolvedSelections,
   CarpenterWorkshopResult,
   CarpenterWorkshopRiskLevel,
-  CarpenterWorkshopSceneSnapshot,
+  CarpenterWorkshopRunConfig,
+  CarpenterWorkshopStageResult,
   CarpenterWorkshopToolOption,
 } from './carpenterWorkshopGame.types';
 
@@ -44,29 +44,62 @@ interface ActiveAttemptState {
   templateId: string;
   inputSelections: CarpenterCraftInputSelection[];
   toolInventoryItemId?: string | null;
+  inventoryAfterConsume: InventoryState;
+  runConfig: CarpenterWorkshopRunConfig;
+  craftGameInput: CarpenterGameInput;
 }
 
 function getFailReasonText(reason?: string): string {
-  if (reason === 'integrity') {
-    return 'Заготовка не выдержала нагрузки.';
-  }
-  if (reason === 'mistakes') {
-    return 'Слишком много ошибок во время работы.';
-  }
-  if (reason === 'timeout') {
-    return 'Темп был сорван, и работа развалилась.';
-  }
-  if (reason === 'cancelled') {
-    return 'Работа прервана.';
-  }
+  if (reason === 'integrity') return 'Заготовка не выдержала нагрузки.';
+  if (reason === 'mistakes') return 'Слишком много ошибок во время работы.';
+  if (reason === 'timeout') return 'Темп был сорван, и работа развалилась.';
+  if (reason === 'cancelled') return 'Работа прервана.';
+  if (reason === 'material_broken') return 'Материал сломан во время работы.';
+  if (reason === 'too_many_mistakes') return 'Слишком много ошибок: материал потерян.';
   return 'Работа сорвалась.';
 }
 
+function getReadableItemName(item: AdminItem | undefined, fallbackId: string): string {
+  return item?.name?.trim() || fallbackId;
+}
+
+function getRiskLabel(risk: CarpenterWorkshopRiskLevel): string {
+  if (risk === 'steady') return 'Осторожно';
+  if (risk === 'reckless') return 'Рискованно';
+  return 'Сбалансировано';
+}
+
+function getResultGradeLabel(grade?: CarpenterWorkshopStageResult['resultGrade']): string {
+  if (!grade) return 'Без ранга';
+  if (grade === 'broken') return 'Сломано';
+  if (grade === 'poor') return 'Плохо';
+  if (grade === 'common') return 'Обычно';
+  if (grade === 'good') return 'Хорошо';
+  if (grade === 'excellent') return 'Отлично';
+  if (grade === 'masterwork') return 'Мастерски';
+  if (grade === 'masterpiece') return 'Шедевр';
+  return grade;
+}
+
+const baseCardStyle: CSSProperties = {
+  padding: 12,
+  display: 'grid',
+  gap: 10,
+  background: 'rgba(27, 18, 11, 0.82)',
+  border: '1px solid rgba(181, 132, 72, 0.38)',
+  borderRadius: 10,
+};
+
+const selectStyle: CSSProperties = {
+  padding: '10px 12px',
+  borderRadius: 8,
+  background: '#140d07',
+  color: '#f0e0c0',
+  border: '1px solid #5a4630',
+};
+
 export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
   const { launch, onClose, onInventoryChange, onStatus } = props;
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const gameRef = useRef<Phaser.Game | null>(null);
-  const sceneRef = useRef<CarpenterWorkshopScene | null>(null);
 
   const [content, setContent] = useState<CarpenterWorkshopGameContent | null>(null);
   const [phase, setPhase] = useState<CarpenterWorkshopGamePhase>('prep');
@@ -77,6 +110,7 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
   const [selectedMaterialsBySlotId, setSelectedMaterialsBySlotId] = useState<Record<string, string>>({});
   const [uiStatusText, setUiStatusText] = useState<string>('Загружается мастерская плотника...');
   const [result, setResult] = useState<CarpenterWorkshopResult | null>(null);
+  const [lastStageResult, setLastStageResult] = useState<CarpenterWorkshopStageResult | null>(null);
   const [activeAttempt, setActiveAttempt] = useState<ActiveAttemptState | null>(null);
 
   useEffect(() => {
@@ -100,29 +134,6 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       });
     return () => {
       cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hostRef.current) {
-      return;
-    }
-
-    const scene = new CarpenterWorkshopScene();
-    sceneRef.current = scene;
-    gameRef.current = new Phaser.Game({
-      type: Phaser.AUTO,
-      width: CARPENTER_WORKSHOP_GAME_WIDTH,
-      height: CARPENTER_WORKSHOP_GAME_HEIGHT,
-      parent: hostRef.current,
-      scene: [scene],
-      backgroundColor: '#17110d',
-    });
-
-    return () => {
-      gameRef.current?.destroy(true);
-      gameRef.current = null;
-      sceneRef.current = null;
     };
   }, []);
 
@@ -260,7 +271,11 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
         toolKind,
         tier: Math.max(1, Math.floor(Number(stats.tier ?? 1) || 1)),
         efficiency: Number.isFinite(Number(stats.efficiency)) ? Number(stats.efficiency) : 1,
-        durability: getCarpenterToolDurability(inventoryEntry.itemId, launch.characterId, Math.max(1, Math.floor(Number(stats.maxDurability ?? stats.durability ?? 1) || 1))),
+        durability: getCarpenterToolDurability(
+          inventoryEntry.itemId,
+          launch.characterId,
+          Math.max(1, Math.floor(Number(stats.maxDurability ?? stats.durability ?? 1) || 1)),
+        ),
         maxDurability: Math.max(1, Math.floor(Number(stats.maxDurability ?? stats.durability ?? 1) || 1)),
       });
     }
@@ -348,143 +363,6 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
     };
   }, [inputSelections, selectedTemplate, selectedTool]);
 
-  const sceneSnapshot = useMemo<CarpenterWorkshopSceneSnapshot>(() => {
-    if (phase === 'result' && result) {
-      return {
-        phase: 'result',
-        statusText: uiStatusText,
-        result,
-      };
-    }
-    if (phase === 'work' && activeAttempt && resolvedSelections) {
-      const runConfig = buildCarpenterWorkshopRunConfig({
-        template: resolvedSelections.template,
-        riskLevel: selectedRiskLevel,
-        carpenterLevel: launch.carpenterLevel,
-        tool: resolvedSelections.tool,
-      });
-      runConfig.workshopId = launch.workshop.id;
-      return {
-        phase: 'work',
-        statusText: uiStatusText,
-        config: runConfig,
-      };
-    }
-
-    return {
-      phase: 'prep',
-      statusText: uiStatusText,
-      workshopName: launch.workshop.name,
-      stationLabel: launch.activeStationType ?? 'общий вход',
-      templateOptions,
-      selectedTemplateId,
-      selectedTemplateDescription: selectedTemplate?.description ?? '',
-      selectedTemplateGroup: selectedTemplate ? resolveCarpenterTemplateGroup(selectedTemplate) : '',
-      selectedTemplateStation: selectedTemplate?.stationType ?? '',
-      materialSlots: (selectedTemplate?.inputSlots ?? []).map((slot) => ({
-        slotId: slot.id,
-        label: slot.label,
-        quantity: slot.quantity,
-        options: materialOptionsBySlotId.get(slot.id) ?? [],
-        selectedItemId: selectedMaterialsBySlotId[slot.id],
-      })),
-      toolOptions,
-      selectedToolItemId,
-      selectedRiskLevel,
-      previewText: preview ? `${preview.outputName} · качество ${preview.qualityScore}/100 · сохранение свойств ${preview.traitRetentionPercent}%` : undefined,
-      accessReason: strictAccess && !strictAccess.allowed ? strictAccess.reason : selectedTemplate ? undefined : 'Нет шаблонов для текущего станка.',
-    };
-  }, [
-    activeAttempt,
-    launch.activeStationType,
-    launch.carpenterLevel,
-    launch.workshop.id,
-    launch.workshop.name,
-    materialOptionsBySlotId,
-    phase,
-    preview,
-    resolvedSelections,
-    result,
-    selectedMaterialsBySlotId,
-    selectedRiskLevel,
-    selectedTemplate,
-    selectedTemplateId,
-    selectedToolItemId,
-    strictAccess,
-    templateOptions,
-    toolOptions,
-    uiStatusText,
-  ]);
-
-  useEffect(() => {
-    if (!sceneRef.current) {
-      return;
-    }
-    sceneRef.current.setSnapshot(sceneSnapshot, {
-      onPrevTemplate: () => {
-        if (templateOptions.length <= 1) {
-          return;
-        }
-        const currentIndex = Math.max(0, templateOptions.findIndex((entry) => entry.template.id === selectedTemplateId));
-        const nextIndex = currentIndex <= 0 ? templateOptions.length - 1 : currentIndex - 1;
-        setSelectedTemplateId(templateOptions[nextIndex]?.template.id ?? null);
-        setUiStatusText('');
-      },
-      onNextTemplate: () => {
-        if (templateOptions.length <= 1) {
-          return;
-        }
-        const currentIndex = Math.max(0, templateOptions.findIndex((entry) => entry.template.id === selectedTemplateId));
-        const nextIndex = currentIndex >= templateOptions.length - 1 ? 0 : currentIndex + 1;
-        setSelectedTemplateId(templateOptions[nextIndex]?.template.id ?? null);
-        setUiStatusText('');
-      },
-      onCycleMaterial: (slotId, direction) => {
-        const options = materialOptionsBySlotId.get(slotId) ?? [];
-        if (options.length === 0) {
-          return;
-        }
-        setSelectedMaterialsBySlotId((current) => {
-          const currentIndex = Math.max(0, options.findIndex((entry) => entry.itemId === current[slotId]));
-          const nextIndex = (currentIndex + direction + options.length) % options.length;
-          return {
-            ...current,
-            [slotId]: options[nextIndex]!.itemId,
-          };
-        });
-        setUiStatusText('');
-      },
-      onCycleTool: (direction) => {
-        if (toolOptions.length === 0) {
-          return;
-        }
-        const currentIndex = Math.max(0, toolOptions.findIndex((entry) => entry.inventoryItemId === selectedToolItemId));
-        const nextIndex = (currentIndex + direction + toolOptions.length) % toolOptions.length;
-        setSelectedToolItemId(toolOptions[nextIndex]!.inventoryItemId);
-        setUiStatusText('');
-      },
-      onSelectRisk: (risk) => {
-        setSelectedRiskLevel(risk);
-        setUiStatusText('');
-      },
-      onStartWork: () => {
-        void handleStartWork();
-      },
-      onClose: () => {
-        handleClose();
-      },
-      onRetry: () => {
-        setPhase('prep');
-        setResult(null);
-        setActiveAttempt(null);
-        setUiStatusText('');
-      },
-      onWorkFinished: (workResult) => {
-        void handleWorkFinished(workResult);
-      },
-    });
-  }, [handleClose, materialOptionsBySlotId, sceneSnapshot, selectedTemplateId, selectedToolItemId, templateOptions, toolOptions]);
-
   async function handleStartWork() {
     if (!content || !resolvedSelections) {
       setUiStatusText('Workshop content ещё загружается.');
@@ -497,6 +375,32 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       onStatus(reason);
       return;
     }
+
+    const runConfig = buildCarpenterWorkshopRunConfig({
+      template: resolvedSelections.template,
+      riskLevel: selectedRiskLevel,
+      carpenterLevel: launch.carpenterLevel,
+      tool: resolvedSelections.tool,
+    });
+    runConfig.workshopId = launch.workshop.id;
+
+    const selectedMaterialNames = resolvedSelections.inputSelections.map((selection) => {
+      const slot = resolvedSelections.template.inputSlots.find((entry) => entry.id === selection.slotId);
+      const option = materialOptionsBySlotId.get(selection.slotId)?.find((entry) => entry.itemId === selection.itemId);
+      const contentItem = content.items.find((entry) => entry.id === selection.itemId);
+      const label = option?.label?.trim() || getReadableItemName(contentItem, selection.itemId);
+      return `${slot?.label ? `${slot.label}: ` : ''}${label} x${selection.quantity}`;
+    });
+    const primaryMaterialId = resolvedSelections.inputSelections[0]?.itemId ?? resolvedSelections.template.id;
+    const primaryToolId = resolvedSelections.tool?.inventoryItemId ?? resolvedSelections.tool?.templateItemId ?? 'carpenter_hands';
+    const craftGameInput = buildCarpenterCraftGameInput({
+      config: runConfig,
+      materialId: primaryMaterialId,
+      materialName: selectedMaterialNames.join(', ') || primaryMaterialId,
+      toolId: primaryToolId,
+      toolName: resolvedSelections.tool?.name ?? 'Руки мастера',
+      workshop: launch.workshop,
+    });
 
     const consumed = await consumeCarpenterWorkshopInputs({
       characterId: launch.characterId,
@@ -517,16 +421,21 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       templateId: resolvedSelections.template.id,
       inputSelections: resolvedSelections.inputSelections,
       toolInventoryItemId: resolvedSelections.tool?.inventoryItemId ?? null,
+      inventoryAfterConsume: consumed.inventory,
+      runConfig,
+      craftGameInput,
     });
+    setLastStageResult(null);
     setPhase('work');
     setUiStatusText('Материал закреплён. Работа началась.');
     onStatus(`Материал списан для ${resolvedSelections.template.name}. Начинаем обработку.`);
   }
 
-  async function handleWorkFinished(workResult: { success: boolean; qualityScore: number; mistakes: number; completedSteps: number; totalSteps: number; maxCombo: number; integrityLeft: number; reason?: 'cancelled' | 'mistakes' | 'integrity' | 'timeout' }) {
+  async function handleWorkFinished(workResult: CarpenterWorkshopStageResult) {
     if (!content || !activeAttempt) {
       return;
     }
+    setLastStageResult(workResult);
     const template = content.templates.find((entry) => entry.id === activeAttempt.templateId) ?? selectedTemplate;
     if (!template) {
       return;
@@ -585,7 +494,7 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       characterId: launch.characterId,
       template,
       inputSelections: activeAttempt.inputSelections,
-      inventoryAfterConsume: localInventory,
+      inventoryAfterConsume: activeAttempt.inventoryAfterConsume,
       content: {
         items: content.items,
         materials: content.materials,
@@ -635,6 +544,18 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
     onStatus(`Мастерская плотника: создано ${committed.createdItemName} (${workResult.qualityScore}/100).`);
   }
 
+  function handleCraftGameComplete(craftResult: CarpenterGameResult) {
+    void handleWorkFinished(mapCarpenterCraftGameResult(craftResult));
+  }
+
+  function handleCraftGameCancel(craftResult: CarpenterGameResult) {
+    void handleWorkFinished(mapCarpenterCraftGameResult({
+      ...craftResult,
+      success: false,
+      reason: 'cancelled',
+    }));
+  }
+
   function handleClose() {
     if (phase === 'work' && activeAttempt) {
       const text = 'Работа прервана. Материал уже потерян.';
@@ -642,6 +563,14 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       onStatus(text);
     }
     onClose();
+  }
+
+  function handleRetry() {
+    setPhase('prep');
+    setResult(null);
+    setLastStageResult(null);
+    setActiveAttempt(null);
+    setUiStatusText('');
   }
 
   return (
@@ -654,26 +583,216 @@ export function CarpenterWorkshopGame(props: CarpenterWorkshopGameProps) {
       <section
         className="card battle-window wm-modal"
         style={{
-          maxWidth: 980,
-          width: 'min(980px, 96vw)',
+          maxWidth: phase === 'work' ? 1320 : 1100,
+          width: phase === 'work' ? 'min(1320px, 96vw)' : 'min(1100px, 96vw)',
           padding: 16,
           display: 'grid',
           gap: 12,
         }}
       >
         <div className="battle-window-head">
-          <h2>Carpenter Workshop Game</h2>
-          <button type="button" onClick={handleClose}>×</button>
+          <h2>Мастерская плотника</h2>
+          <button type="button" onClick={handleClose}>Г—</button>
         </div>
-        <div
-          ref={hostRef}
-          style={{
-            width: CARPENTER_WORKSHOP_GAME_WIDTH,
-            maxWidth: '100%',
-            minHeight: CARPENTER_WORKSHOP_GAME_HEIGHT,
-            margin: '0 auto',
-          }}
-        />
+
+        {phase === 'work' && activeAttempt ? (
+          <CarpenterCraftGame
+            key={`${activeAttempt.templateId}:${activeAttempt.craftGameInput.materialId}:${activeAttempt.craftGameInput.toolId}`}
+            config={activeAttempt.craftGameInput}
+            onComplete={handleCraftGameComplete}
+            onCancel={handleCraftGameCancel}
+          />
+        ) : null}
+
+        {phase === 'prep' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) minmax(0, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
+              <div style={baseCardStyle}>
+                <strong>{launch.workshop.name}</strong>
+                <div style={{ color: '#c9b38c' }}>{launch.workshop.description?.trim() || 'Рабочая мастерская без описания.'}</div>
+                <div>Станок: {launch.activeStationType?.trim() || 'Общий вход'}</div>
+                <div>Tier мастерской: {launch.workshop.tier ?? 1}</div>
+                <div>Доступных шаблонов: {templateOptions.length}</div>
+              </div>
+
+              <div style={baseCardStyle}>
+                <strong>Шаблоны</strong>
+                <div style={{ display: 'grid', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
+                  {templateOptions.map(({ template, lockedReason }) => {
+                    const isSelected = template.id === selectedTemplateId;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTemplateId(template.id);
+                          setUiStatusText('');
+                        }}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          border: isSelected ? '1px solid #c58b3a' : '1px solid #5a4630',
+                          background: isSelected ? 'rgba(197,139,58,0.14)' : 'rgba(30,20,12,0.65)',
+                          color: '#f0e0c0',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{template.name}</div>
+                        <div style={{ fontSize: 12, color: '#c9b38c' }}>
+                          {resolveCarpenterTemplateGroup(template) || 'Без группы'} · {template.stationType || 'station?'}
+                        </div>
+                        {lockedReason ? <div style={{ marginTop: 4, fontSize: 12, color: '#ff9b7a' }}>{lockedReason}</div> : null}
+                      </button>
+                    );
+                  })}
+                  {templateOptions.length === 0 ? (
+                    <div style={{ color: '#ffb08c' }}>Нет шаблонов для текущей мастерской или станка.</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
+              <div style={baseCardStyle}>
+                <strong>{selectedTemplate?.name || 'Шаблон не выбран'}</strong>
+                <div style={{ color: '#c9b38c' }}>{selectedTemplate?.description?.trim() || 'Выберите шаблон для начала работы.'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                  <div>Группа: {selectedTemplate ? resolveCarpenterTemplateGroup(selectedTemplate) || 'Без группы' : '—'}</div>
+                  <div>Станция: {selectedTemplate?.stationType || '—'}</div>
+                  <div>Сложность: {selectedTemplate?.difficulty ?? '—'}</div>
+                  <div>Треб. tier мастерской: {selectedTemplate?.requiredWorkshopTier ?? 1}</div>
+                </div>
+                {strictAccess && !strictAccess.allowed ? <div style={{ color: '#ff9b7a' }}>{strictAccess.reason}</div> : null}
+              </div>
+
+              <div style={baseCardStyle}>
+                <strong>Материалы</strong>
+                {(selectedTemplate?.inputSlots ?? []).map((slot) => {
+                  const options = materialOptionsBySlotId.get(slot.id) ?? [];
+                  return (
+                    <label key={slot.id} style={{ display: 'grid', gap: 6 }}>
+                      <span>{slot.label} x{Math.max(1, slot.quantity ?? 1)}</span>
+                      <select
+                        value={selectedMaterialsBySlotId[slot.id] ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSelectedMaterialsBySlotId((current) => ({ ...current, [slot.id]: value }));
+                          setUiStatusText('');
+                        }}
+                        style={selectStyle}
+                      >
+                        {options.map((option) => (
+                          <option key={option.itemId} value={option.itemId}>
+                            {option.label} x{option.quantity}
+                          </option>
+                        ))}
+                        {options.length === 0 ? <option value="">Нет подходящих материалов</option> : null}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div style={baseCardStyle}>
+                <strong>Инструмент и риск</strong>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Инструмент</span>
+                  <select
+                    value={selectedToolItemId ?? ''}
+                    onChange={(event) => {
+                      setSelectedToolItemId(event.target.value || null);
+                      setUiStatusText('');
+                    }}
+                    style={selectStyle}
+                  >
+                    {toolOptions.map((tool) => (
+                      <option key={tool.inventoryItemId} value={tool.inventoryItemId}>
+                        {tool.name} · {tool.toolKind || 'tool'} · tier {tool.tier} · прочность {tool.durability}/{tool.maxDurability}
+                      </option>
+                    ))}
+                    {toolOptions.length === 0 ? <option value="">Нет подходящего инструмента</option> : null}
+                  </select>
+                </label>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {(['steady', 'balanced', 'reckless'] as CarpenterWorkshopRiskLevel[]).map((risk) => (
+                    <button
+                      key={risk}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRiskLevel(risk);
+                        setUiStatusText('');
+                      }}
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        border: selectedRiskLevel === risk ? '1px solid #c58b3a' : '1px solid #5a4630',
+                        background: selectedRiskLevel === risk ? 'rgba(197,139,58,0.14)' : 'rgba(30,20,12,0.65)',
+                        color: '#f0e0c0',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {getRiskLabel(risk)}
+                    </button>
+                  ))}
+                </div>
+
+                {preview ? (
+                  <div style={{ color: '#c9b38c' }}>
+                    Превью: {preview.outputName} · качество {preview.qualityScore}/100 · сохранение свойств {preview.traitRetentionPercent}%
+                  </div>
+                ) : null}
+
+                {uiStatusText ? <div style={{ color: '#ffcf92' }}>{uiStatusText}</div> : null}
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => void handleStartWork()}>
+                    Начать работу
+                  </button>
+                  <button type="button" onClick={handleClose}>
+                    Выйти
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {phase === 'result' && result ? (
+          <div style={baseCardStyle}>
+            <strong>{result.success ? 'Работа завершена' : 'Работа сорвалась'}</strong>
+            <div>Шаблон: {result.templateName}</div>
+            <div>Станция: {result.stationType}</div>
+            <div>Качество: {result.qualityScore}/100</div>
+            <div>Материал: {result.lostMaterials ? 'потрачен' : 'сохранён'}</div>
+            {activeAttempt ? <div>Риск: {getRiskLabel(activeAttempt.runConfig.riskLevel)}</div> : null}
+            {lastStageResult ? (
+              <div>
+                Ранг: {getResultGradeLabel(lastStageResult.resultGrade)} · ошибок: {lastStageResult.mistakes} · прогресс: {lastStageResult.completedSteps}/{lastStageResult.totalSteps}
+              </div>
+            ) : null}
+            {result.success ? (
+              <div>Создано: {result.createdItemName || result.createdItemId || 'предмет'}</div>
+            ) : (
+              <div style={{ color: '#ff9b7a' }}>{result.reason || 'Работа завершилась неудачей.'}</div>
+            )}
+            {activeAttempt ? (
+              <div style={{ color: '#c9b38c' }}>
+                Базовая сложность: {activeAttempt.runConfig.baseDifficulty} · базовый риск: {activeAttempt.runConfig.baseRisk}
+              </div>
+            ) : null}
+            {uiStatusText ? <div style={{ color: '#ffcf92' }}>{uiStatusText}</div> : null}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={handleRetry}>
+                Повторить
+              </button>
+              <button type="button" onClick={handleClose}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

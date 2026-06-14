@@ -7,6 +7,31 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        var isLocalhost = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(window.location.hostname);
+        if (!isLocalhost) {
+          return;
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            registrations.forEach(function (registration) {
+              registration.unregister().catch(function () {});
+            });
+          }).catch(function () {});
+        }
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (key) {
+              if (/workbox|vite-plugin-pwa|theend/i.test(key)) {
+                return caches.delete(key);
+              }
+              return Promise.resolve(false);
+            }));
+          }).catch(function () {});
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

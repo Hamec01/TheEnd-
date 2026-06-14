@@ -474,6 +474,7 @@ export interface CarpenterItemTemplate {
   traitTransferRules?: CarpenterTraitTransferRule[];
   tags?: string[];
   imageRef?: GameImageRef;
+  imagePath?: string;
   isEnabled: boolean;
   notes?: string;
 }

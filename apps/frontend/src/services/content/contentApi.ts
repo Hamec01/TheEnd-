@@ -460,6 +460,10 @@ export async function deleteContentEntry(collection: ContentCollectionName, id: 
   await requestJson<{ ok: true }>(`/content/${collection}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
+  const verified = await requestJson<unknown | null>(`/content/${collection}/${encodeURIComponent(id)}`);
+  if (verified !== null) {
+    throw new Error(`Удаление не подтверждено: запись '${collection}/${id}' вернулась после reload.`);
+  }
   notifyContentSync('content');
 }
 

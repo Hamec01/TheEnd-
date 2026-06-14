@@ -6,14 +6,32 @@ import {
   updateContentEntry,
 } from './content/contentApi';
 import type { JsonImportMode } from './content/adminJsonImportExport';
+import { subscribeToContentSync } from './content/contentSync';
 import { normalizeNpcForAdmin } from './npcAdminNormalization';
 
 let cache: NpcDefinition[] = [];
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
 let adminNormalizationIssuesById = new Map<string, string[]>();
+let syncSubscriptionReady = false;
+
+function ensureSyncSubscription(): void {
+  if (syncSubscriptionReady || typeof window === 'undefined') {
+    return;
+  }
+
+  syncSubscriptionReady = true;
+  subscribeToContentSync((payload) => {
+    if (payload.scope !== 'content' && payload.scope !== 'all') {
+      return;
+    }
+    invalidateCache();
+    void ensureNpcsLoaded(true).catch(() => undefined);
+  });
+}
 
 export async function ensureNpcsLoaded(force = false): Promise<void> {
+  ensureSyncSubscription();
   if (loaded && !force) {
     return;
   }

@@ -296,35 +296,6 @@ function collectChoiceQuestStartIds(choice: DialogueChoice): string[] {
   return Array.from(questIds);
 }
 
-function isKingdomQuestLockedForPlayer(questId: string, player: QuestRuntimePlayer): boolean {
-  const quest = getQuestById(questId);
-  if (!quest) {
-    return false;
-  }
-
-  const isKingdomQuest = String(quest.category ?? '').trim().toLowerCase() === 'kingdom';
-  if (!isKingdomQuest) {
-    return false;
-  }
-
-  const questKingdomId = normalizeKingdomId(quest.kingdomId);
-  if (!questKingdomId) {
-    return false;
-  }
-
-  const playerKingdomId = normalizeKingdomId(
-    player.originId
-      ?? player.kingdomId
-      ?? player.citizenshipKingdomId
-      ?? resolvePlayerOriginKingdomId(player.id),
-  );
-  if (!playerKingdomId) {
-    return false;
-  }
-
-  return playerKingdomId !== questKingdomId;
-}
-
 function pickNpcDialogue(player: QuestRuntimePlayer, npc: NpcDefinition): DialogueDefinition | null {
   const bindingByDialogueId = new Map((npc.dialogues ?? []).map((binding) => [binding.dialogueId, binding]));
 
@@ -674,6 +645,23 @@ export function useDialogueRunner(params: {
       return;
     }
 
+    if (import.meta.env.DEV && (context.npcId === 'npc_klinogorie_bran_legless_soldier' || effectiveDefinition.id === 'dlg_npc_klinogorie_bran_legless_soldier_yyzx')) {
+      // eslint-disable-next-line no-console
+      console.log('[bran-dialogue] openDialogue', {
+        npcId: context.npcId ?? effectiveDefinition.npcId ?? null,
+        dialogueId: effectiveDefinition.id,
+        updatedAt: effectiveDefinition.updatedAt ?? null,
+        startNodeId: effectiveDefinition.startNodeId,
+        resolvedStartNodeId: start.id,
+        startChoices: (start.choices ?? []).map((choice) => ({
+          id: choice.id,
+          text: choice.text,
+          conditions: choice.conditions ?? [],
+          giveQuest: choice.giveQuest ?? null,
+        })),
+      });
+    }
+
     dispatch({
       type: 'OPEN',
       dialogueId,
@@ -720,6 +708,25 @@ export function useDialogueRunner(params: {
         dialogueOverride: systemDialogue,
       });
       return;
+    }
+
+    if (import.meta.env.DEV && npc.id === 'npc_klinogorie_bran_legless_soldier') {
+      const startNode = getStartNode(picked, params.player, npc);
+      // eslint-disable-next-line no-console
+      console.log('[bran-dialogue] openDialogueForNpc', {
+        npcId: npc.id,
+        npcDialogues: npc.dialogues ?? [],
+        selectedDialogueId: picked.id,
+        updatedAt: picked.updatedAt ?? null,
+        startNodeId: picked.startNodeId,
+        resolvedStartNodeId: startNode?.id ?? null,
+        startChoices: (startNode?.choices ?? []).map((choice) => ({
+          id: choice.id,
+          text: choice.text,
+          conditions: choice.conditions ?? [],
+          giveQuest: choice.giveQuest ?? null,
+        })),
+      });
     }
 
     const npcKingdomId = resolveNpcKingdomId(npc);
@@ -800,15 +807,6 @@ export function useDialogueRunner(params: {
       return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
     }
 
-    const blockedKingdomQuestIds = collectChoiceQuestStartIds(choice)
-      .filter((questId) => isKingdomQuestLockedForPlayer(questId, params.player));
-    if (blockedKingdomQuestIds.length > 0) {
-      dispatch({
-        type: 'NOTICE',
-        text: 'Этот квест относится к другому королевству и недоступен вашему происхождению.',
-      });
-      return { ended: false, movedToNodeId: null, logs: [], intents: [], events: [] };
-    }
 
     const effectActions = Array.isArray(choice.effects) ? choice.effects : [];
     const questIdsToStart = new Set<string>();

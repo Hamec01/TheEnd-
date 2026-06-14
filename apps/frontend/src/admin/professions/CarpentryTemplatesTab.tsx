@@ -9,11 +9,16 @@ import type {
   CarpenterTemplateDifficultyType,
   CarpenterTemplateInputSlot,
   CarpenterTraitTransferRule,
+  StoredImage,
 } from '../../services/content/models';
 import { AdminSaveStatus } from '../AdminSaveStatus';
 import { runSaveWithFeedback, type AdminSaveViewModel, useAdminSaveShortcut } from '../adminSaveTools';
 import { AdminFieldLabel } from '../adminUi';
 import { downloadCollectionJson, extractRawCollectionFromImportJson, importCollectionFromJsonEntries, type JsonImportMode } from '../../services/content/adminJsonImportExport';
+import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { buildUploadFolder } from '../../services/content/uploadFolders';
+import { loadRuntimeImages, resolveStoredImageSource } from '../../services/content/runtimeImageService';
+import { toLegacyImagePath } from '../../services/content/gameImageRefs';
 import '../pages/LivingWorldPage.css';
 
 type TemplateSubTab = 'general' | 'inputs' | 'traits' | 'json';
@@ -122,6 +127,8 @@ function createEmptyTemplate(): CarpenterItemTemplate {
     requiredSkillIds: [],
     inputSlots: [defaultInputSlot(0)],
     traitTransferRules: [],
+    imageRef: undefined,
+    imagePath: '',
     tags: [],
     isEnabled: true,
     notes: '',
@@ -154,6 +161,7 @@ function normalizeTemplateInput(raw: CarpenterItemTemplate): CarpenterItemTempla
   next.requiredCarpenterLevel = Math.max(1, Number.isFinite(Number(next.requiredCarpenterLevel)) ? Math.round(Number(next.requiredCarpenterLevel)) : 1);
   next.requiredWorkshopTier = Math.max(1, Number.isFinite(Number(next.requiredWorkshopTier)) ? Math.round(Number(next.requiredWorkshopTier)) : 1);
   next.requiredSkillIds = (next.requiredSkillIds ?? []).map((id) => String(id).trim()).filter(Boolean);
+  next.imagePath = String(next.imagePath ?? '').trim();
   next.tags = (next.tags ?? []).map((id) => String(id).trim()).filter(Boolean);
   next.inputSlots = Array.isArray(next.inputSlots) && next.inputSlots.length > 0
     ? next.inputSlots.map((slot, index) => ({
@@ -178,6 +186,9 @@ function normalizeTemplateInput(raw: CarpenterItemTemplate): CarpenterItemTempla
     }))
     : [];
   next.isEnabled = next.isEnabled !== false;
+  if (!next.imagePath) {
+    next.imagePath = '';
+  }
   return next;
 }
 
@@ -442,6 +453,7 @@ export function CarpentryTemplatesTab() {
   const [pendingImport, setPendingImport] = useState<PendingImportPreview<CarpenterItemTemplate> | null>(null);
   const [pendingStarterAdd, setPendingStarterAdd] = useState<PendingImportPreview<CarpenterItemTemplate> | null>(null);
   const [validation, setValidation] = useState<ValidationResult>({ errors: [], warnings: [] });
+  const [runtimeImages, setRuntimeImages] = useState<StoredImage[]>([]);
 
   const starterTemplates = useMemo(() => createStarterCarpenterTemplates(), []);
   const knownSkillIds = useMemo(() => new Set(skills.map((skill) => String(skill.id ?? '').trim()).filter(Boolean)), [skills]);
@@ -466,6 +478,7 @@ export function CarpentryTemplatesTab() {
 
   useEffect(() => {
     void refresh();
+    void loadRuntimeImages().then(setRuntimeImages).catch(() => setRuntimeImages([]));
   }, []);
 
   useEffect(() => {
@@ -726,6 +739,10 @@ export function CarpentryTemplatesTab() {
       setIsSaving(false);
     }
   }
+
+  const templateImageSrc = draft.imageRef?.type === 'image'
+    ? (resolveStoredImageSource(draft.imageRef.src, runtimeImages) ?? draft.imageRef.src)
+    : (resolveStoredImageSource(draft.imagePath ?? '', runtimeImages) ?? draft.imagePath ?? '');
 
   useAdminSaveShortcut({
     enabled: true,
@@ -1007,6 +1024,41 @@ export function CarpentryTemplatesTab() {
               <div className="field-group" style={{ gridColumn: 'span 2' }}>
                 <AdminFieldLabel label="Примечания" hint="Свободные notes, только хранение" />
                 <textarea rows={3} value={draft.notes ?? ''} onChange={(event) => patch({ notes: event.target.value })} />
+              </div>
+              <div className="field-group" style={{ gridColumn: 'span 2' }}>
+                <ImageSheetPicker
+                  label="Изображение шаблона"
+                  hint="Загрузка идёт через общий upload pipeline. Поддерживаются image и tilesheet."
+                  category="other"
+                  value={draft.imageRef ?? undefined}
+                  legacyImagePath={draft.imagePath ?? ''}
+                  runtimeImages={runtimeImages}
+                  showUploadForImage
+                  disableManualImageInput
+                  uploadPresetId="item-icon"
+                  uploadSuggestedId={draft.id || undefined}
+                  uploadSuggestedName={`${draft.id || draft.name || 'carpenter-template'}-image`}
+                  uploadFolder={buildUploadFolder('images', 'carpenter', 'templates', draft.id || draft.name || undefined)}
+                  onStatus={setStatus}
+                  onChange={(next) => patch({
+                    imageRef: next,
+                    imagePath: next ? toLegacyImagePath(next) ?? '' : '',
+                  })}
+                />
+                <div style={{ marginTop: '0.5rem' }}>
+                  <AdminFieldLabel label="imagePath" hint="Канонический web-path, сохраняется вместе с imageRef" />
+                  <input value={draft.imagePath ?? ''} onChange={(event) => patch({ imagePath: event.target.value })} />
+                </div>
+                {templateImageSrc ? (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div className="muted" style={{ marginBottom: '0.25rem' }}>Preview</div>
+                    <img
+                      src={templateImageSrc}
+                      alt={draft.name || draft.id}
+                      style={{ width: '100%', maxWidth: 420, maxHeight: 240, objectFit: 'cover', borderRadius: 10, border: '1px solid rgba(169,139,87,0.25)' }}
+                    />
+                  </div>
+                ) : null}
               </div>
               <div className="field-group">
                 <label className="zone-editor-checkbox" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', marginTop: '1.5rem' }}>

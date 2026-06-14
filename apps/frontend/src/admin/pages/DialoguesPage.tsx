@@ -78,15 +78,6 @@ function sanitizeAudioAssetRef(value: string | undefined): string | undefined {
   return normalized;
 }
 
-function parseJsonArray<T>(raw: string, fallback: T[]): T[] {
-  try {
-    const parsed = JSON.parse(raw) as T[];
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function normalizeDialogueNodes(rawNodes: DialogueNode[] | undefined): DialogueNode[] {
   if (!Array.isArray(rawNodes)) {
     return [];
@@ -114,6 +105,36 @@ function normalizeDialogueNodes(rawNodes: DialogueNode[] | undefined): DialogueN
       actions: Array.isArray(node?.actions) ? node.actions : [],
     };
   });
+}
+
+function parseDialogueNodesJson(raw: string): { ok: true; nodes: DialogueNode[] } | { ok: false; error: string } {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: 'Nodes / Choices editor ожидает JSON-массив нод.' };
+    }
+    return { ok: true, nodes: normalizeDialogueNodes(parsed as DialogueNode[]) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid JSON';
+    return { ok: false, error: `Nodes / Choices editor содержит невалидный JSON: ${message}` };
+  }
+}
+
+function buildNodesJson(nodes: DialogueNode[] | undefined): string {
+  return JSON.stringify(normalizeDialogueNodes(nodes), null, 2);
+}
+
+function getDialogueDebugSnapshot(dialogue: DialogueDefinition): Record<string, unknown> {
+  const nodes = normalizeDialogueNodes(dialogue.nodes);
+  return {
+    id: dialogue.id,
+    title: dialogue.title,
+    status: dialogue.status,
+    startNodeId: dialogue.startNodeId,
+    nodeCount: nodes.length,
+    choiceCount: nodes.reduce((sum, node) => sum + (node.choices?.length ?? 0), 0),
+    nodeIds: nodes.map((node) => node.id),
+  };
 }
 
 function dialogueValidation(
@@ -585,7 +606,8 @@ export function DialoguesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
-  const [nodesJson, setNodesJson] = useState('[]');
+  const [nodesJson, setNodesJson] = useState(() => buildNodesJson(emptyDialogue().nodes));
+  const [nodesJsonError, setNodesJsonError] = useState<string | null>(null);
   const [mineActionNodeId, setMineActionNodeId] = useState('');
   const [mineActionChoiceId, setMineActionChoiceId] = useState('');
   const [mineActionMineId, setMineActionMineId] = useState('');
@@ -642,7 +664,10 @@ export function DialoguesPage() {
     setDialogues(all);
     if (selectedId && !all.some((entry) => entry.id === selectedId)) {
       setSelectedId(null);
-      setDraft(emptyDialogue());
+      const nextEmpty = emptyDialogue();
+      setDraft(nextEmpty);
+      setNodesJson(buildNodesJson(nextEmpty.nodes));
+      setNodesJsonError(null);
     }
   }
 
@@ -662,13 +687,9 @@ export function DialoguesPage() {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    setNodesJson(JSON.stringify(draft.nodes, null, 2));
-  }, [draft]);
-
   const parsedNodes = useMemo(
-    () => normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)),
-    [draft.nodes, nodesJson],
+    () => normalizeDialogueNodes(draft.nodes),
+    [draft.nodes],
   );
 
   const mineActionChoices = useMemo(() => {
@@ -906,15 +927,55 @@ export function DialoguesPage() {
     setDraft((current) => ({ ...current, ...next, updatedAt: new Date().toISOString() }));
   }
 
+  function replaceDraft(next: DialogueDefinition) {
+    const normalizedNodes = normalizeDialogueNodes(next.nodes);
+    setDraft({ ...next, nodes: normalizedNodes });
+    setNodesJson(buildNodesJson(normalizedNodes));
+    setNodesJsonError(null);
+  }
+
+  function patchNodes(nextNodes: DialogueNode[], options?: { syncJson?: boolean }) {
+    const normalizedNodes = normalizeDialogueNodes(nextNodes);
+    setDraft((current) => ({
+      ...current,
+      nodes: normalizedNodes,
+      updatedAt: new Date().toISOString(),
+    }));
+    if (options?.syncJson !== false) {
+      setNodesJson(buildNodesJson(normalizedNodes));
+    }
+    setNodesJsonError(null);
+  }
+
+  function commitNodesJson(raw: string, options?: { keepTypedValue?: boolean }): boolean {
+    const parsed = parseDialogueNodesJson(raw);
+    if (!parsed.ok) {
+      setNodesJsonError(parsed.error);
+      return false;
+    }
+    patchNodes(parsed.nodes, { syncJson: options?.keepTypedValue ? false : true });
+    return true;
+  }
+
+  function handleNodesJsonChange(value: string) {
+    setNodesJson(value);
+    const parsed = parseDialogueNodesJson(value);
+    if (!parsed.ok) {
+      setNodesJsonError(parsed.error);
+      return;
+    }
+    patchNodes(parsed.nodes, { syncJson: false });
+  }
+
   function selectDialogue(dialogue: DialogueDefinition) {
     setSelectedId(dialogue.id);
-    setDraft({ ...dialogue });
+    replaceDraft({ ...dialogue });
     setStatusText(`Редактируется диалог: ${dialogue.id}`);
   }
 
   function createDialogue() {
     setSelectedId(null);
-    setDraft(emptyDialogue());
+    replaceDraft(emptyDialogue());
     setStatusText('Новый диалог.');
   }
 
@@ -923,23 +984,31 @@ export function DialoguesPage() {
       return;
     }
 
+    const parsedNodesResult = parseDialogueNodesJson(nodesJson);
+    if (!parsedNodesResult.ok) {
+      setNodesJsonError(parsedNodesResult.error);
+      setStatusText(parsedNodesResult.error);
+      setSaveState({ state: 'error', message: parsedNodesResult.error });
+      return;
+    }
+
     const prepared: DialogueDefinition = {
       ...draft,
       id: draft.id.trim() || `dlg_${Math.random().toString(36).slice(2, 8)}`,
       title: draft.title.trim(),
       startNodeId: draft.startNodeId.trim(),
-        introVoiceAssetId: sanitizeAudioAssetRef(draft.introVoiceAssetId),
-        introMusicAssetId: sanitizeAudioAssetRef(draft.introMusicAssetId),
-      nodes: normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)),
+      introVoiceAssetId: sanitizeAudioAssetRef(draft.introVoiceAssetId),
+      introMusicAssetId: sanitizeAudioAssetRef(draft.introMusicAssetId),
+      nodes: parsedNodesResult.nodes,
       updatedAt: new Date().toISOString(),
       createdAt: draft.createdAt || new Date().toISOString(),
     };
 
-      if (draft.introVoiceAssetId && !prepared.introVoiceAssetId) {
+    if (draft.introVoiceAssetId && !prepared.introVoiceAssetId) {
         setStatusText('Intro voice выглядит как локальный путь Windows. Загрузите файл через кнопку "Выбрать аудио" (asset ID).');
         return;
       }
-      if (draft.introMusicAssetId && !prepared.introMusicAssetId) {
+    if (draft.introMusicAssetId && !prepared.introMusicAssetId) {
         setStatusText('Intro music выглядит как локальный путь Windows. Загрузите файл через кнопку "Выбрать аудио" (asset ID).');
         return;
       }
@@ -949,6 +1018,11 @@ export function DialoguesPage() {
       setStatusText('Нельзя активировать диалог с ошибками.');
       return;
     }
+
+    console.info('[dialoguesAdmin] save request', {
+      selectedId,
+      snapshot: getDialogueDebugSnapshot(prepared),
+    });
 
     setIsSaving(true);
     const saved = await runSaveWithFeedback({
@@ -964,8 +1038,12 @@ export function DialoguesPage() {
     }
 
     setSelectedId(saved.id);
-    setDraft(saved);
+    replaceDraft(saved);
     refresh();
+    console.info('[dialoguesAdmin] save verified', {
+      selectedId: saved.id,
+      snapshot: getDialogueDebugSnapshot(saved),
+    });
     const warning = getIdQualityWarning(saved.id);
     if (warning) {
       setStatusText(`Предупреждение: ${warning}`);
@@ -988,7 +1066,7 @@ export function DialoguesPage() {
     }
     const copied = await duplicateDialogue(selectedId);
     setSelectedId(copied.id);
-    setDraft(copied);
+    replaceDraft(copied);
     refresh();
     setStatusText(`Создана копия: ${copied.id}`);
   }
@@ -997,10 +1075,12 @@ export function DialoguesPage() {
     if (!selectedId) {
       return;
     }
+    console.info('[dialoguesAdmin] delete request', { selectedId });
     await deleteDialogue(selectedId);
     setSelectedId(null);
-    setDraft(emptyDialogue());
+    replaceDraft(emptyDialogue());
     refresh();
+    console.info('[dialoguesAdmin] delete verified', { deletedId: selectedId });
     setStatusText(`Диалог удален: ${selectedId}`);
   }
 
@@ -1039,17 +1119,15 @@ export function DialoguesPage() {
 
   function addNode() {
     const nodeId = `node_${Math.random().toString(36).slice(2, 8)}`;
-    patch({
-      nodes: [
-        ...draft.nodes,
-        {
-          id: nodeId,
-          speaker: 'npc',
-          text: '',
-          choices: [],
-        },
-      ],
-    });
+    patchNodes([
+      ...draft.nodes,
+      {
+        id: nodeId,
+        speaker: 'npc',
+        text: '',
+        choices: [],
+      },
+    ]);
   }
 
   function addOpenMineActionToChoice() {
@@ -1084,8 +1162,7 @@ export function DialoguesPage() {
       };
     });
 
-    setNodesJson(JSON.stringify(nextNodes, null, 2));
-    patch({ nodes: nextNodes });
+    patchNodes(nextNodes);
     setStatusText(`Добавлен action open_mine в choice: ${mineActionChoiceId}`);
   }
 
@@ -1110,8 +1187,7 @@ export function DialoguesPage() {
       };
     });
 
-    setNodesJson(JSON.stringify(nextNodes, null, 2));
-    patch({ nodes: nextNodes });
+    patchNodes(nextNodes);
   }
 
   function patchSelectedActionCollection(mutator: (actions: DialogueAction[]) => DialogueAction[]) {
@@ -1136,8 +1212,7 @@ export function DialoguesPage() {
           actions: mutator(currentActions),
         };
       });
-      setNodesJson(JSON.stringify(nextNodes, null, 2));
-      patch({ nodes: nextNodes });
+      patchNodes(nextNodes);
       return;
     }
 
@@ -1324,13 +1399,12 @@ export function DialoguesPage() {
       },
     ];
 
-    setNodesJson(JSON.stringify(nextNodes, null, 2));
     patch({
       id: draft.id.trim() || 'dialogue_mineral_mine_entrance',
       title: draft.title.trim() || 'Вход в минеральную шахту',
       startNodeId: 'start',
-      nodes: nextNodes,
     });
+    patchNodes(nextNodes);
     setMineActionNodeId('start');
     setMineActionChoiceId('choice_enter_mine');
     setMineActionMineId(mineId);
@@ -1509,7 +1583,17 @@ export function DialoguesPage() {
             <button type="button" onClick={addNode}>Добавить ноду</button>
             <button type="button" onClick={applyMineDialogueTemplate}>Шаблон: Вход в шахту</button>
           </div>
-          <textarea rows={20} value={nodesJson} onChange={(event) => setNodesJson(event.target.value)} onBlur={() => patch({ nodes: normalizeDialogueNodes(parseJsonArray<DialogueNode>(nodesJson, draft.nodes)) })} />
+          <textarea
+            rows={20}
+            value={nodesJson}
+            onChange={(event) => handleNodesJsonChange(event.target.value)}
+            onBlur={() => {
+              if (!commitNodesJson(nodesJson, { keepTypedValue: true })) {
+                setStatusText(nodesJsonError ?? 'Nodes / Choices editor содержит невалидный JSON.');
+              }
+            }}
+          />
+          {nodesJsonError ? <p className="muted" style={{ marginTop: 8, color: '#ff9b8d' }}>{nodesJsonError}</p> : null}
           <p className="muted" style={{ marginTop: 8 }}>Actions внутри choice/node поддерживают `addReputation`, массив `reputationChanges` и `changeCitizenship` с `kingdomId`.</p>
           <div className="admin-form-grid" style={{ marginTop: 12 }}>
             <label>
@@ -1628,7 +1712,7 @@ export function DialoguesPage() {
 
         <section className="card admin-item-preview">
           <h4>Preview</h4>
-          {draft.nodes.map((node) => (
+          {parsedNodes.map((node) => (
             <div key={node.id} className="admin-subcard">
               <strong>{node.id} ({node.speaker})</strong>
               <p>{node.text || '...'}</p>

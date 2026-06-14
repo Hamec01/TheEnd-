@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AdminSkillDefinition,
   EMPTY_EQUIPMENT,
@@ -70,9 +70,7 @@ import {
   useSkillOutOfCombat as arenaUseSkillOutOfCombat,
 } from './api';
 import type { ArenaCharacter } from './arena/types';
-import { BattlePanel } from './battle/BattlePanel';
 import { readBattleRendererSetting, writeBattleRendererSetting, type BattleRendererKind } from './battle/battleRendererSettings';
-import { ArenaCanvas } from './arena/ArenaCanvas';
 import { WorldMapScreen } from './worldmap/WorldMapScreen';
 import { loadEditorDataFromBackend } from './worldmap/zoneEditorStorage';
 import type { WorldMapZone } from './worldmap/zoneEditorTypes';
@@ -82,7 +80,6 @@ import { InventoryPanel, type CharacterPageFocus } from './components/InventoryP
 import { PlayerProfessionsPanel } from './components/PlayerProfessionsPanel';
 import { MerchantPanel } from './components/MerchantPanel';
 import type { AdminItem, AdminMerchant, AdminSkill, ItemInstance, Material, ProfessionWorkshopDefinition, StoredImage } from './services/content/models';
-import { CarpenterWorkshopGame } from './professions/carpenter/game/CarpenterWorkshopGame';
 import type { CarpenterWorkshopGameLaunchParams } from './professions/carpenter/game/carpenterWorkshopGame.types';
 import { normalizeActorVisualSource, resolveRacePortraitSource } from './phaser/assets/actorVisualResolver';
 import {
@@ -138,6 +135,24 @@ import { deleteNpc, ensureNpcsLoaded, getAllNpcs, saveNpc } from './services/npc
 import { deletePlayerQuestState, ensureQuestsLoaded, getAllPlayerQuestStates, getAllQuests, getQuestById } from './services/questRepository';
 import { ensureQuestMarkersLoaded } from './services/questMapRepository';
 import { advanceQuest, applyQuestRewards, completeObjective, completeQuest, failQuest, getPlayerQuestState, setQuestFlag, startQuest } from './services/questRuntime';
+
+const CarpenterWorkshopGame = lazy(() =>
+  import('./professions/carpenter/game/CarpenterWorkshopGame').then((module) => ({
+    default: module.CarpenterWorkshopGame,
+  })),
+);
+
+const BattlePanel = lazy(() =>
+  import('./battle/BattlePanel').then((module) => ({
+    default: module.BattlePanel,
+  })),
+);
+
+const ArenaCanvas = lazy(() =>
+  import('./arena/ArenaCanvas').then((module) => ({
+    default: module.ArenaCanvas,
+  })),
+);
 import type { NpcDefinition, NpcRace } from './types/npc';
 import {
   PLAYER_FLAGS_STORAGE_KEY,
@@ -268,6 +283,7 @@ interface HubStatePayload {
 
 interface CharacterSelectEntry extends CharacterSummary {
   avatarUrl: string | null;
+  gender: CharacterGender | null;
   kingdomLabel: string | null;
   locationLabel: string | null;
   lastPlayedAt: string | null;
@@ -2195,6 +2211,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
     return {
       ...summary,
       avatarUrl: profile?.avatarUrl ?? null,
+      gender: profile?.gender ?? null,
       kingdomLabel: origin ? fixMojibake(origin.name) : null,
       locationLabel: formatCharacterLocationLabel(profile?.worldState?.currentLocationId),
       lastPlayedAt: profile?.lastPlayedAt ?? null,
@@ -5863,7 +5880,7 @@ function applyHubState(hub: HubStatePayload): void {
                         </div>
                         <div className="setup-avatar-upload">
                           <img
-                            src={entry.avatarUrl || getDefaultAvatarFor(entry.race, loadCharacterProfile(entry.id)?.gender ?? 'male')}
+                            src={entry.avatarUrl || getDefaultAvatarFor(entry.race, entry.gender ?? 'male')}
                             alt={entry.name}
                             className="setup-avatar-preview"
                           />
@@ -6388,17 +6405,29 @@ function applyHubState(hub: HubStatePayload): void {
         ) : null}
 
         {activeCarpenterWorkshopGame ? (
-          <CarpenterWorkshopGame
-            launch={activeCarpenterWorkshopGame}
-            onClose={() => {
-              setActiveCarpenterWorkshopGame(null);
-              if (character) {
-                setOverlayPanel('professions');
-              }
-            }}
-            onInventoryChange={setInventory}
-            onStatus={setStatus}
-          />
+          <Suspense fallback={(
+            <div className="battle-overlay" role="dialog" aria-modal="true">
+              <section className="card battle-window wm-modal">
+                <div className="battle-window-head">
+                  <h2>Загрузка mini-game...</h2>
+                </div>
+                <p className="muted">Подгружается мастерская плотника.</p>
+              </section>
+            </div>
+          )}
+          >
+            <CarpenterWorkshopGame
+              launch={activeCarpenterWorkshopGame}
+              onClose={() => {
+                setActiveCarpenterWorkshopGame(null);
+                if (character) {
+                  setOverlayPanel('professions');
+                }
+              }}
+              onInventoryChange={setInventory}
+              onStatus={setStatus}
+            />
+          </Suspense>
         ) : null}
 
         {overlayPanel === 'arena' ? (
@@ -6410,7 +6439,9 @@ function applyHubState(hub: HubStatePayload): void {
               </div>
               <p className="muted">Здесь только арена: настройте состав NPC и запускайте бой. Торговцы и учитель навыков находятся в городе.</p>
               <div className="arena-canvas-shell arena-modal-canvas">
-                <ArenaCanvas />
+                <Suspense fallback={<p className="muted">Loading arena...</p>}>
+                  <ArenaCanvas />
+                </Suspense>
               </div>
               <div className="profile-actions">
                 <button onClick={openArenaNpcOverlay}>Настроить NPC</button>
@@ -6758,39 +6789,41 @@ function applyHubState(hub: HubStatePayload): void {
                 <h2>Battle</h2>
                 <button onClick={() => setBattleWindowOpen(false)}>✕</button>
               </div>
-              <BattlePanel
-                combatId={combatId!}
-                playerId={playerCombatId!}
-                state={combatState}
-                inventory={inventory}
-                actionSlots={actionSlots}
-                mapImageUrl={activeCombatMapImageUrl}
-                mapMusicUrl={activeCombatMapMusicUrl}
-                mapCalibration={{
-                  cellSizePx: activeCombatBattleMap.cellSizePx,
-                  gridOffsetX: activeCombatBattleMap.gridOffsetX,
-                  gridOffsetY: activeCombatBattleMap.gridOffsetY,
-                  logicalColumns: activeCombatBattleMap.logicalColumns,
-                  logicalRows: activeCombatBattleMap.logicalRows,
-                  showEditorGrid: activeCombatBattleMap.showEditorGrid,
-                  gridOpacity: activeCombatBattleMap.gridOpacity,
-                }}
-                battleRenderer={battleRenderer}
-                onBattleRendererChange={setBattleRenderer}
-                selectedSkillId={selectedCombatSkillId}
-                availableSkills={battleSkillOptions}
-                onSkillChange={setSelectedCombatSkillId}
-                onStateChange={setCombatState}
-                onStatus={setStatus}
-                onBattleFinished={handleBattleFinished}
-                onClose={() => setBattleWindowOpen(false)}
-                playerAvatarUrl={effectivePlayerAvatarUrl}
-                resolveItemById={resolveRuntimeItemById}
-                resolveItemImage={resolveItemImage}
-                resolveSkillIcon={resolveSkillIcon}
-                resolveAdminItemById={resolveAdminVisualItemById}
-                playerEquipment={equipment}
-              />
+              <Suspense fallback={<p className="muted">Loading battle...</p>}>
+                <BattlePanel
+                  combatId={combatId!}
+                  playerId={playerCombatId!}
+                  state={combatState}
+                  inventory={inventory}
+                  actionSlots={actionSlots}
+                  mapImageUrl={activeCombatMapImageUrl}
+                  mapMusicUrl={activeCombatMapMusicUrl}
+                  mapCalibration={{
+                    cellSizePx: activeCombatBattleMap.cellSizePx,
+                    gridOffsetX: activeCombatBattleMap.gridOffsetX,
+                    gridOffsetY: activeCombatBattleMap.gridOffsetY,
+                    logicalColumns: activeCombatBattleMap.logicalColumns,
+                    logicalRows: activeCombatBattleMap.logicalRows,
+                    showEditorGrid: activeCombatBattleMap.showEditorGrid,
+                    gridOpacity: activeCombatBattleMap.gridOpacity,
+                  }}
+                  battleRenderer={battleRenderer}
+                  onBattleRendererChange={setBattleRenderer}
+                  selectedSkillId={selectedCombatSkillId}
+                  availableSkills={battleSkillOptions}
+                  onSkillChange={setSelectedCombatSkillId}
+                  onStateChange={setCombatState}
+                  onStatus={setStatus}
+                  onBattleFinished={handleBattleFinished}
+                  onClose={() => setBattleWindowOpen(false)}
+                  playerAvatarUrl={effectivePlayerAvatarUrl}
+                  resolveItemById={resolveRuntimeItemById}
+                  resolveItemImage={resolveItemImage}
+                  resolveSkillIcon={resolveSkillIcon}
+                  resolveAdminItemById={resolveAdminVisualItemById}
+                  playerEquipment={equipment}
+                />
+              </Suspense>
             </section>
           </div>
         ) : null}

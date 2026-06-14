@@ -526,14 +526,39 @@ export function getAvailableChoices(
         }
         return !canStartQuest(player, quest);
       });
-      const effectiveValid = valid && !blockedByQuest;
+      const effectiveValid = valid;
       return {
         ...choice,
         disabled: !effectiveValid && Boolean(choice.disabledIfConditionsFail),
-        hidden: !effectiveValid && (Boolean(choice.hiddenIfConditionsFail) || blockedByQuest),
+        hidden: !effectiveValid && Boolean(choice.hiddenIfConditionsFail),
       };
     })
     .filter((choice) => !choice.hidden);
+
+  if (import.meta.env.DEV && npc?.id === 'npc_klinogorie_bran_legless_soldier') {
+    // eslint-disable-next-line no-console
+    console.table((node.choices ?? []).map((choice) => {
+      const questStartIds = getChoiceQuestStartIds(choice);
+      const blockedQuestReasons = questStartIds.map((questId) => {
+        const quest = getQuestById(questId);
+        return {
+          questId,
+          questStatus: quest?.status ?? null,
+          canStart: quest ? canStartQuest(player, quest) : null,
+        };
+      });
+
+      return {
+        nodeId: node.id,
+        choiceId: choice.id,
+        text: choice.text,
+        conditionCount: Array.isArray(choice.conditions) ? choice.conditions.length : 0,
+        questStartIds: questStartIds.join(', '),
+        blockedQuestReasons: JSON.stringify(blockedQuestReasons),
+        visibleAfterFilter: visible.some((entry) => entry.id === choice.id),
+      };
+    }));
+  }
 
   if (visible.length > 0) {
     return visible;

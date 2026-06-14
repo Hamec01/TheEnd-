@@ -1,4 +1,4 @@
-import { Race, getStartingFreePoints, scaleResourceStat, type PrimaryStat, type StatBlock } from '@theend/rpg-domain';
+import { Race, getRaceDefinition, getStartingFreePoints, type PrimaryStat, type StatBlock } from '@theend/rpg-domain';
 
 export type CharacterGender = 'male' | 'female';
 
@@ -60,24 +60,17 @@ export interface CharacterCreationLore {
   paragraphs: string[];
 }
 
+function getCanonicalRaceStats(race: Race): StatBlock {
+  return { ...getRaceDefinition(race).baseStats };
+}
+
 export const CHARACTER_CREATION_RACES: CharacterCreationRaceConfig[] = [
   {
     race: Race.Human,
     id: 'race_human',
     name: 'Человек',
     description: 'Люди - гибкая раса: больше стартовых очков, доступ ко всем школам магии и сильная адаптивность.',
-    stats: {
-      hp: scaleResourceStat('hp', 10),
-      mp: scaleResourceStat('mp', 10),
-      stamina: scaleResourceStat('stamina', 10),
-      strength: 10,
-      constitution: 10,
-      dexterity: 10,
-      intelligence: 10,
-      luck: 10,
-      perception: 10,
-      willpower: 10,
-    },
+    stats: getCanonicalRaceStats(Race.Human),
     startingFreePoints: getStartingFreePoints(Race.Human),
     traits: {
       experienceGainMultiplier: 1.05,
@@ -97,18 +90,7 @@ export const CHARACTER_CREATION_RACES: CharacterCreationRaceConfig[] = [
     id: 'race_wood_elf',
     name: 'Лесной Эльф',
     description: 'Лесные эльфы сильны в ловкости и восприятии. Получают 1 случайную стихию на старте.',
-    stats: {
-      hp: scaleResourceStat('hp', 10.5),
-      mp: scaleResourceStat('mp', 12),
-      stamina: scaleResourceStat('stamina', 10),
-      strength: 10,
-      constitution: 10,
-      dexterity: 12,
-      intelligence: 11,
-      luck: 10,
-      perception: 12,
-      willpower: 11,
-    },
+    stats: getCanonicalRaceStats(Race.WoodElf),
     startingFreePoints: getStartingFreePoints(Race.WoodElf),
     traits: {
       experienceGainMultiplier: 1.0,
@@ -129,18 +111,7 @@ export const CHARACTER_CREATION_RACES: CharacterCreationRaceConfig[] = [
     id: 'race_high_elf',
     name: 'Высший Эльф',
     description: 'Высшие эльфы - мастера стихий. Получают 2 случайные стихии и высокий запас MP.',
-    stats: {
-      hp: scaleResourceStat('hp', 10),
-      mp: scaleResourceStat('mp', 14),
-      stamina: scaleResourceStat('stamina', 9),
-      strength: 10,
-      constitution: 9,
-      dexterity: 11,
-      intelligence: 13,
-      luck: 10,
-      perception: 11,
-      willpower: 13,
-    },
+    stats: getCanonicalRaceStats(Race.HighElf),
     startingFreePoints: getStartingFreePoints(Race.HighElf),
     traits: {
       experienceGainMultiplier: 1.0,
@@ -161,18 +132,7 @@ export const CHARACTER_CREATION_RACES: CharacterCreationRaceConfig[] = [
     id: 'race_dwarf',
     name: 'Гном',
     description: 'Гномы не используют магию, но получают на 50% меньше магического урона.',
-    stats: {
-      hp: scaleResourceStat('hp', 13),
-      mp: 0,
-      stamina: scaleResourceStat('stamina', 13),
-      strength: 12,
-      constitution: 14,
-      dexterity: 8,
-      intelligence: 10,
-      luck: 10,
-      perception: 9,
-      willpower: 12,
-    },
+    stats: getCanonicalRaceStats(Race.Dwarf),
     startingFreePoints: getStartingFreePoints(Race.Dwarf),
     traits: {
       experienceGainMultiplier: 1.0,

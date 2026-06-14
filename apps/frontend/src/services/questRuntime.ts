@@ -71,25 +71,6 @@ function resolvePlayerOriginKingdomIdFromRuntimePlayer(player: Pick<QuestRuntime
   return normalizeKingdomId(profile.citizenshipKingdomId);
 }
 
-function isKingdomQuestLockedForPlayer(quest: QuestDefinition, player: Pick<QuestRuntimePlayer, 'id' | 'originId' | 'kingdomId' | 'citizenshipKingdomId'>): boolean {
-  const isKingdomQuest = String(quest.category ?? '').trim().toLowerCase() === 'kingdom';
-  if (!isKingdomQuest) {
-    return false;
-  }
-
-  const questKingdomId = normalizeKingdomId(quest.kingdomId);
-  if (!questKingdomId) {
-    return false;
-  }
-
-  const playerKingdomId = resolvePlayerOriginKingdomIdFromRuntimePlayer(player);
-  if (!playerKingdomId) {
-    return false;
-  }
-
-  return playerKingdomId !== questKingdomId;
-}
-
 export interface QuestRuntimePlayer {
   id: string;
   level?: number;
@@ -438,11 +419,6 @@ export function canStartQuest(player: QuestRuntimePlayer, quest: QuestDefinition
 }
 
 function canStartQuestDetailed(player: QuestRuntimePlayer, quest: QuestDefinition): { canStart: boolean; reason?: string } {
-  if (isKingdomQuestLockedForPlayer(quest, player)) {
-    const questKingdomId = normalizeKingdomId(quest.kingdomId);
-    return { canStart: false, reason: `Quest is restricted to ${questKingdomId} origin profiles.` };
-  }
-
   if (quest.status !== 'active' && quest.status !== 'draft') {
     return { canStart: false, reason: `Quest status is '${quest.status}'.` };
   }

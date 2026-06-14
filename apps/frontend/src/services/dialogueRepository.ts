@@ -7,12 +7,30 @@ import {
   updateContentEntry,
 } from './content/contentApi';
 import type { JsonImportMode } from './content/adminJsonImportExport';
+import { subscribeToContentSync } from './content/contentSync';
 
 let cache: DialogueDefinition[] = [];
 let loaded = false;
 let loadPromise: Promise<void> | null = null;
+let syncSubscriptionReady = false;
+
+function ensureSyncSubscription(): void {
+  if (syncSubscriptionReady || typeof window === 'undefined') {
+    return;
+  }
+
+  syncSubscriptionReady = true;
+  subscribeToContentSync((payload) => {
+    if (payload.scope !== 'content' && payload.scope !== 'all') {
+      return;
+    }
+    invalidateCache();
+    void ensureDialoguesLoaded(true).catch(() => undefined);
+  });
+}
 
 export async function ensureDialoguesLoaded(force = false): Promise<void> {
+  ensureSyncSubscription();
   if (loaded && !force) {
     return;
   }
@@ -122,7 +140,11 @@ export async function deleteDialogue(id: string): Promise<void> {
     return;
   }
   await deleteContentEntry('dialogues', normalizedId);
-  cache = cache.filter((entry) => normalizeId(entry.id) !== normalizedId);
+  invalidateCache();
+  await ensureDialoguesLoaded(true);
+  if (getDialogueById(normalizedId)) {
+    throw new Error(`Удаление не подтверждено: диалог '${normalizedId}' вернулся после reload.`);
+  }
 }
 
 export async function duplicateDialogue(id: string): Promise<DialogueDefinition> {

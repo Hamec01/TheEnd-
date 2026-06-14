@@ -36,6 +36,9 @@ interface CarpenterWorkshopContent {
   trees: TreeDefinition[];
 }
 
+const FIREWOOD_OUTPUT_ITEM_ID = 'item_firewood_common';
+const FIREWOOD_TEMPLATE_ID = 'template_carpenter_split_log';
+
 export interface ConsumeCarpenterWorkshopInputsResult {
   ok: boolean;
   errors: string[];
@@ -78,11 +81,16 @@ export async function consumeCarpenterWorkshopInputs(params: {
       }
 
       try {
+        const qtyBeforeBackend = getInventoryQuantity(latestInventory, removal.itemId);
         const hub = await adjustDevInventoryItem(params.characterId, {
           itemId: removal.itemId,
           quantityDelta: -quantityToRemove,
         });
-        latestInventory = usedLocalBackendFallback ? mergeInventoryWithRuntimeOverlay(hub.inventory) : hub.inventory;
+        const hubInventory = usedLocalBackendFallback ? mergeInventoryWithRuntimeOverlay(hub.inventory) : hub.inventory;
+        const qtyAfterBackend = getInventoryQuantity(hubInventory, removal.itemId);
+        latestInventory = qtyAfterBackend < qtyBeforeBackend
+          ? hubInventory
+          : removeFromInventoryState(hubInventory, removal.itemId, quantityToRemove);
       } catch (error) {
         const persistedRemovals = readStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY);
         persistedRemovals[removal.itemId] = Math.max(0, Math.floor(Number(persistedRemovals[removal.itemId]) || 0)) + quantityToRemove;
@@ -129,6 +137,32 @@ export async function commitCarpenterWorkshopSuccess(params: {
   });
 
   const outputComponentKind = resolveCarpenterTemplateOutputKind(params.template);
+  const directOutput = resolveDirectWorkshopOutput(params.template, outputComponentKind);
+  if (directOutput) {
+    const createdItemName = getContentItemName(params.content, directOutput.itemId, directOutput.quantity);
+    const latestInventory = addToInventoryState(
+      params.inventoryAfterConsume,
+      directOutput.itemId,
+      directOutput.quantity,
+    );
+    try {
+      await adjustDevInventoryItem(params.characterId, {
+        itemId: directOutput.itemId,
+        quantityDelta: directOutput.quantity,
+      });
+    } catch (error) {
+      console.warn('Carpenter workshop direct output add fallback applied:', error);
+    }
+
+    return {
+      ok: true,
+      errors: [],
+      inventory: latestInventory,
+      createdItemId: directOutput.itemId,
+      createdItemName,
+    };
+  }
+
   const outputItemId = createRuntimeCraftItemId(outputComponentKind, snapshot.sourceTreeId);
   const outputDraft = createCarpenterComponentItemDefinition({
     template: params.template,
@@ -175,25 +209,14 @@ export async function commitCarpenterWorkshopSuccess(params: {
   }, instance.id).catch(() => undefined);
 
   let latestInventory = params.inventoryAfterConsume;
-  let usedLocalBackendFallback = false;
   try {
-    const addHub = await adjustDevInventoryItem(params.characterId, { itemId: created.id, quantityDelta: 1 });
-    latestInventory = usedLocalBackendFallback ? mergeInventoryWithRuntimeOverlay(addHub.inventory) : addHub.inventory;
+    await adjustDevInventoryItem(params.characterId, { itemId: created.id, quantityDelta: 1 });
+    latestInventory = addToInventoryState(params.inventoryAfterConsume, created.id, 1);
   } catch (error) {
     const persistedRemovals = readStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY);
     persistedRemovals[created.id] = Math.max(0, Math.floor(Number(persistedRemovals[created.id]) || 0)) - 1;
     writeStringNumberRecordStorage(PLAYER_INVENTORY_REMOVALS_STORAGE_KEY, persistedRemovals);
-    latestInventory = {
-      ...latestInventory,
-      items: [
-        ...latestInventory.items.filter((entry) => entry.itemId !== created.id),
-        {
-          itemId: created.id,
-          quantity: (latestInventory.items.find((entry) => entry.itemId === created.id)?.quantity ?? 0) + 1,
-        },
-      ],
-    };
-    usedLocalBackendFallback = true;
+    latestInventory = addToInventoryState(latestInventory, created.id, 1);
     console.warn('Carpenter workshop add fallback applied:', error);
   }
 
@@ -209,4 +232,42 @@ export async function commitCarpenterWorkshopSuccess(params: {
 
 function removeatReadableLabel(itemId: string, slotLabel: string): string {
   return slotLabel ? `${itemId} (${slotLabel})` : itemId;
+}
+
+function resolveDirectWorkshopOutput(
+  template: CarpenterItemTemplate,
+  outputComponentKind: string,
+): { itemId: string; quantity: number } | null {
+  const configuredItemId = String(template.outputItemId ?? '').trim();
+  const quantity = Math.max(1, Math.floor(Number(template.outputQuantity) || 1));
+  if (configuredItemId) {
+    return { itemId: configuredItemId, quantity };
+  }
+  if (template.id === FIREWOOD_TEMPLATE_ID || outputComponentKind === 'firewood') {
+    return { itemId: FIREWOOD_OUTPUT_ITEM_ID, quantity };
+  }
+  return null;
+}
+
+function addToInventoryState(inventory: InventoryState, itemId: string, quantity: number): InventoryState {
+  const amount = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!itemId || amount <= 0) {
+    return inventory;
+  }
+  const currentQuantity = inventory.items.find((entry) => entry.itemId === itemId)?.quantity ?? 0;
+  return {
+    ...inventory,
+    items: [
+      ...inventory.items.filter((entry) => entry.itemId !== itemId),
+      {
+        itemId,
+        quantity: currentQuantity + amount,
+      },
+    ],
+  };
+}
+
+function getContentItemName(content: CarpenterWorkshopContent, itemId: string, quantity: number): string {
+  const baseName = content.items.find((entry) => entry.id === itemId)?.name?.trim() || itemId;
+  return quantity > 1 ? `${baseName} x${quantity}` : baseName;
 }

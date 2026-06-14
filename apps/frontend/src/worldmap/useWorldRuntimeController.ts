@@ -68,6 +68,14 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function finiteOr(value: number | null | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function speedsEqual(left: number, right: number): boolean {
+  return Object.is(left, right) || Math.abs(left - right) < 0.0000001;
+}
+
 function isTextEditingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -75,6 +83,14 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
 
   const tag = target.tagName.toLowerCase();
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable || target.closest('[contenteditable="true"]') !== null;
+}
+
+function arePlayerSnapshotsEqual(left: MapPlayer, right: MapPlayer): boolean {
+  return left.x === right.x
+    && left.y === right.y
+    && left.targetX === right.targetX
+    && left.targetY === right.targetY
+    && speedsEqual(left.speed, right.speed);
 }
 
 export function useWorldRuntimeController(options: UseWorldRuntimeControllerOptions): WorldRuntimeControllerHandle {
@@ -113,10 +129,20 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
   const pendingCityEntryRef = useRef<string | null>(null);
   const [player, setPlayer] = useState<MapPlayer>(initialPlayer);
   const [currentZone, setCurrentZone] = useState<WorldMapZone | null>(null);
+  const playerRef = useRef<MapPlayer>(initialPlayer);
+  const currentZoneRef = useRef<WorldMapZone | null>(null);
 
   useEffect(() => {
     zonesRef.current = zones;
   }, [zones]);
+
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
+  useEffect(() => {
+    currentZoneRef.current = currentZone;
+  }, [currentZone]);
 
   useEffect(() => {
     gameplayPausedRef.current = gameplayPaused;
@@ -185,8 +211,8 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
       return;
     }
 
-    const nextSpeed = playerSpeed ?? defaultPlayerSpeed;
-    setPlayer((prev) => (prev.speed === nextSpeed ? prev : { ...prev, speed: nextSpeed }));
+    const nextSpeed = finiteOr(playerSpeed, finiteOr(defaultPlayerSpeed, 0.0012));
+    setPlayer((prev) => (speedsEqual(prev.speed, nextSpeed) ? prev : { ...prev, speed: nextSpeed }));
   }, [defaultPlayerSpeed, enabled, playerSpeed]);
 
   useEffect(() => {
@@ -205,35 +231,47 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
     let frameId = 0;
 
     const animate = () => {
-      setPlayer((prev) => {
-        if (gameplayPausedRef.current || movementLockedRef.current) {
-          playerStateRef.current = 'idle';
-          const next = prev.targetX === null && prev.targetY === null
-            ? prev
-            : { ...prev, targetX: null, targetY: null };
-          latestPlayerPositionRef.current = { x: next.x, y: next.y };
-          return next;
-        }
+      const prev = playerRef.current;
+      let next = prev;
 
+      if (gameplayPausedRef.current || movementLockedRef.current) {
+        playerStateRef.current = 'idle';
+        if (prev.targetX !== null || prev.targetY !== null) {
+          next = { ...prev, targetX: null, targetY: null };
+        }
+      } else {
         const inputX = (movementKeysRef.current.right ? 1 : 0) - (movementKeysRef.current.left ? 1 : 0);
         const inputY = (movementKeysRef.current.down ? 1 : 0) - (movementKeysRef.current.up ? 1 : 0);
-        const effectiveSpeed = (playerSpeedRef.current ?? prev.speed) * (sprintActiveRef.current ? 1.45 : 1);
-        const nextPlayer = prev.speed === effectiveSpeed ? prev : { ...prev, speed: effectiveSpeed };
-        const tick = (inputX !== 0 || inputY !== 0)
-          ? tickPlayerDirectionalMovement(nextPlayer, inputX, inputY, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current)
-          : tickPlayerMovement(nextPlayer, 0.0012, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current);
+        const effectiveSpeed = finiteOr(playerSpeedRef.current, finiteOr(prev.speed, 0.0012)) * (sprintActiveRef.current ? 1.45 : 1);
+        const speedAdjusted = speedsEqual(prev.speed, effectiveSpeed) ? prev : { ...prev, speed: effectiveSpeed };
 
-        playerStateRef.current = tick.state;
-        latestPlayerPositionRef.current = { x: tick.player.x, y: tick.player.y };
-        return tick.player;
-      });
+        if (inputX === 0 && inputY === 0 && speedAdjusted.targetX === null && speedAdjusted.targetY === null) {
+          playerStateRef.current = 'idle';
+          next = speedAdjusted;
+        } else {
+          const tick = (inputX !== 0 || inputY !== 0)
+            ? tickPlayerDirectionalMovement(speedAdjusted, inputX, inputY, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current)
+            : tickPlayerMovement(speedAdjusted, 0.0012, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current);
+          playerStateRef.current = tick.state;
+          next = tick.player;
+        }
+      }
+
+      latestPlayerPositionRef.current = { x: next.x, y: next.y };
+      if (!arePlayerSnapshotsEqual(prev, next)) {
+        playerRef.current = next;
+        setPlayer(next);
+      }
 
       const nextZone = detectCurrentZone(
         zonesRef.current as Zone[],
         latestPlayerPositionRef.current.x,
         latestPlayerPositionRef.current.y,
       ) as WorldMapZone | null;
-      setCurrentZone((prev) => (prev?.id === nextZone?.id ? prev : nextZone));
+      if (currentZoneRef.current?.id !== nextZone?.id) {
+        currentZoneRef.current = nextZone;
+        setCurrentZone(nextZone);
+      }
 
       frameId = window.requestAnimationFrame(animate);
     };
@@ -244,6 +282,10 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
 
   useEffect(() => {
     if (!enabled) {
+      return;
+    }
+
+    if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) {
       return;
     }
 

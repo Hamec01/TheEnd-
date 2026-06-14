@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { App } from './App';
-import { AdminApp } from './admin/AdminApp';
 import { installGlobalAdminSaveListener, isAdminPath } from './admin/adminSaveRegistry';
 import { installGlobalUiSoundBindings, primeSoundRegistry } from './services/soundRuntime';
 
 export type PlayerPath = '/' | '/inventory' | '/map' | '/combat' | '/merchant' | '/character' | '/stats' | '/skills' | '/equipment' | '/journal';
+
+const AdminApp = lazy(() =>
+  import('./admin/AdminApp').then((module) => ({
+    default: module.AdminApp,
+  })),
+);
 
 function normalizePath(pathname: string): string {
   if (!pathname || pathname === '') {
@@ -61,7 +66,11 @@ export function RootApp() {
   }, [isAdmin]);
 
   if (isAdmin) {
-    return <AdminApp currentPath={path} onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<p>Loading admin...</p>}>
+        <AdminApp currentPath={path} onNavigate={navigate} />
+      </Suspense>
+    );
   }
 
   return <App currentPlayerRoute={toPlayerPath(path)} onNavigate={navigate} />;

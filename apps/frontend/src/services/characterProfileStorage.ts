@@ -81,6 +81,8 @@ function getProfileDebugSnapshot(
 }
 
 const lastLoadFingerprintByCharacterId = new Map<string, string>();
+const lastLoadMissByCharacterId = new Set<string>();
+const cachedProfileByCharacterId = new Map<string, { raw: string; profile: CharacterCreationProfile }>();
 
 function getProfileLoadFingerprint(profile: CharacterCreationProfile): string {
   const worldState = profile.worldState;
@@ -125,17 +127,37 @@ function getCharacterProfileStorageKey(characterId: string): string {
 
 export function saveCharacterProfile(profile: CharacterCreationProfile): void {
   console.info('[characterProfile] save', getProfileDebugSnapshot(profile));
-  window.localStorage.setItem(getCharacterProfileStorageKey(profile.id), JSON.stringify(profile));
+  const raw = JSON.stringify(profile);
+  cachedProfileByCharacterId.set(profile.id, { raw, profile });
+  window.localStorage.setItem(getCharacterProfileStorageKey(profile.id), raw);
 }
 
 export function loadCharacterProfile(characterId: string): CharacterCreationProfile | null {
   const raw = window.localStorage.getItem(getCharacterProfileStorageKey(characterId));
   if (!raw) {
-    console.info('[characterProfile] load miss', { characterId });
+    if (!lastLoadMissByCharacterId.has(characterId)) {
+      console.info('[characterProfile] load miss', { characterId });
+      lastLoadMissByCharacterId.add(characterId);
+    }
     return null;
   }
+
+  const cached = cachedProfileByCharacterId.get(characterId);
+  if (cached && cached.raw === raw) {
+    lastLoadMissByCharacterId.delete(characterId);
+    const fingerprint = getProfileLoadFingerprint(cached.profile);
+    const previousFingerprint = lastLoadFingerprintByCharacterId.get(cached.profile.id);
+    if (previousFingerprint !== fingerprint) {
+      console.info('[characterProfile] load hit', getProfileDebugSnapshot(cached.profile));
+      lastLoadFingerprintByCharacterId.set(cached.profile.id, fingerprint);
+    }
+    return cached.profile;
+  }
+
   try {
     const profile = JSON.parse(raw) as CharacterCreationProfile;
+    lastLoadMissByCharacterId.delete(profile.id);
+    cachedProfileByCharacterId.set(profile.id, { raw, profile });
     const fingerprint = getProfileLoadFingerprint(profile);
     const previousFingerprint = lastLoadFingerprintByCharacterId.get(profile.id);
     if (previousFingerprint !== fingerprint) {
@@ -144,7 +166,10 @@ export function loadCharacterProfile(characterId: string): CharacterCreationProf
     }
     return profile;
   } catch {
-    console.warn('[characterProfile] load parse failed', { characterId });
+    if (!lastLoadMissByCharacterId.has(characterId)) {
+      console.warn('[characterProfile] load parse failed', { characterId });
+      lastLoadMissByCharacterId.add(characterId);
+    }
     return null;
   }
 }
@@ -188,4 +213,7 @@ export function updateCharacterProfile(
 
 export function deleteCharacterProfile(characterId: string): void {
   window.localStorage.removeItem(getCharacterProfileStorageKey(characterId));
+  cachedProfileByCharacterId.delete(characterId);
+  lastLoadFingerprintByCharacterId.delete(characterId);
+  lastLoadMissByCharacterId.delete(characterId);
 }

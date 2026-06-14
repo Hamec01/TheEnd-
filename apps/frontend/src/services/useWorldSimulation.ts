@@ -34,7 +34,7 @@ async function parseJsonSafe(response: Response): Promise<any> {
 
 // ─── World Snapshot polling store (shared across hooks) ────────────────────
 
-const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 250;
+const WORLD_SNAPSHOT_POLL_INTERVAL_MS = 1000;
 
 const worldSnapshotStore: {
   state: WorldSnapshotStoreState;

@@ -84,7 +84,9 @@ export interface CarpenterWorkshopStageResult {
   totalSteps: number;
   maxCombo: number;
   integrityLeft: number;
-  reason?: 'cancelled' | 'mistakes' | 'integrity' | 'timeout';
+  reason?: 'cancelled' | 'mistakes' | 'integrity' | 'timeout' | 'material_broken' | 'too_many_mistakes';
+  resultGrade?: 'broken' | 'poor' | 'common' | 'good' | 'excellent' | 'masterwork' | 'masterpiece';
+  traitRetentionPercent?: number;
 }
 
 export interface CarpenterWorkshopResult {
@@ -99,59 +101,6 @@ export interface CarpenterWorkshopResult {
   createdItemName?: string;
   snapshot?: CarpenterCraftedComponentSnapshot;
   reason?: string;
-}
-
-export interface CarpenterWorkshopPrepSnapshot {
-  phase: 'prep';
-  statusText?: string;
-  workshopName: string;
-  stationLabel: string;
-  templateOptions: CarpenterWorkshopTemplateOption[];
-  selectedTemplateId?: string | null;
-  selectedTemplateDescription?: string;
-  selectedTemplateGroup?: string;
-  selectedTemplateStation?: string;
-  materialSlots: Array<{
-    slotId: string;
-    label: string;
-    quantity: number;
-    options: CarpenterWorkshopMaterialOption[];
-    selectedItemId?: string;
-  }>;
-  toolOptions: CarpenterWorkshopToolOption[];
-  selectedToolItemId?: string | null;
-  selectedRiskLevel: CarpenterWorkshopRiskLevel;
-  previewText?: string;
-  accessReason?: string;
-}
-
-export interface CarpenterWorkshopWorkSnapshot {
-  phase: 'work';
-  statusText?: string;
-  config: CarpenterWorkshopRunConfig;
-}
-
-export interface CarpenterWorkshopResultSnapshot {
-  phase: 'result';
-  statusText?: string;
-  result: CarpenterWorkshopResult;
-}
-
-export type CarpenterWorkshopSceneSnapshot =
-  | CarpenterWorkshopPrepSnapshot
-  | CarpenterWorkshopWorkSnapshot
-  | CarpenterWorkshopResultSnapshot;
-
-export interface CarpenterWorkshopSceneCallbacks {
-  onPrevTemplate: () => void;
-  onNextTemplate: () => void;
-  onCycleMaterial: (slotId: string, direction: -1 | 1) => void;
-  onCycleTool: (direction: -1 | 1) => void;
-  onSelectRisk: (risk: CarpenterWorkshopRiskLevel) => void;
-  onStartWork: () => void;
-  onClose: () => void;
-  onRetry: () => void;
-  onWorkFinished: (result: CarpenterWorkshopStageResult) => void;
 }
 
 export interface CarpenterWorkshopResolvedSelections {

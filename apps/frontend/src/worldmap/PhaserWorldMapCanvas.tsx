@@ -1015,10 +1015,15 @@ export const PhaserWorldMapCanvas = forwardRef<WorldMapCanvasHandle, PhaserWorld
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
-    const resize = () => setSize({
-      width: Math.max(320, Math.floor(host.clientWidth)),
-      height: Math.max(380, Math.floor(host.clientHeight)),
-    });
+    const resize = () => {
+      const nextWidth = Math.max(320, Math.floor(host.clientWidth));
+      const nextHeight = Math.max(380, Math.floor(host.clientHeight));
+      setSize((current) => (
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      ));
+    };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host);
