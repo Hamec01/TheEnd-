@@ -173,7 +173,8 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
     }
 
     const distance = getCellDistance({ x: virtualX, y: virtualY }, { x: liveTarget.battlefieldX ?? 0, y: liveTarget.battlefieldY ?? 0 });
-    const attackRange = Math.max(1, Math.floor(context.actor.attackRange ?? 1));
+    const attackRange = getActorWeaponRange(context.actor);
+    const engagementRange = getActorEngagementRange(context.actor);
     const lowTargetHpRatio = liveTarget.currentHp / Math.max(1, liveTarget.maxHp);
 
     if (isTargetEscaping(liveTarget, context.battleState)) {
@@ -182,20 +183,20 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
     }
 
     // Finish weak target first when possible.
-    if (distance <= attackRange && lowTargetHpRatio <= 0.3) {
+    if (distance <= engagementRange && lowTargetHpRatio <= 0.3) {
       const skillFinisher = tryUseSingleTargetSkill(context, liveTarget);
       if (skillFinisher) {
         context.debug.intent = 'finish_weak_target';
         continue;
       }
 
-      if (tryAppend(context, createAiBasicAttackCommand(liveTarget))) {
+      if (distance <= attackRange && tryAppend(context, createAiBasicAttackCommand(liveTarget))) {
         context.debug.intent = 'finish_weak_target';
         continue;
       }
     }
 
-    if (distance <= attackRange) {
+    if (distance <= engagementRange) {
       const areaSkillApplied = tryUseAreaSkill(context, liveTarget);
       if (areaSkillApplied) {
         context.debug.intent = 'use_skill';
@@ -208,7 +209,7 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
         continue;
       }
 
-      if (tryAppend(context, createAiBasicAttackCommand(liveTarget))) {
+      if (distance <= attackRange && tryAppend(context, createAiBasicAttackCommand(liveTarget))) {
         context.debug.intent = 'attack';
         continue;
       }
@@ -221,8 +222,12 @@ export function buildAiCombatTurnPlan(params: BuildAiCombatPlanParams): BuildAiC
         virtualY = moveCommand.target.y;
 
         const projectedDistance = getCellDistance({ x: virtualX, y: virtualY }, { x: liveTarget.battlefieldX ?? 0, y: liveTarget.battlefieldY ?? 0 });
-        if (projectedDistance <= attackRange && !isAtPlanCapacity(context)) {
-          tryAppend(context, createAiBasicAttackCommand(liveTarget));
+        if (projectedDistance <= engagementRange && !isAtPlanCapacity(context)) {
+          if (!tryUseAreaSkill(context, liveTarget)) {
+            if (!tryUseSingleTargetSkill(context, liveTarget, projectedDistance) && projectedDistance <= attackRange) {
+              tryAppend(context, createAiBasicAttackCommand(liveTarget));
+            }
+          }
         }
       }
       context.debug.intent = 'move_to_range';
@@ -246,16 +251,28 @@ export function selectAiTarget(params: {
     return undefined;
   }
 
-  const preferred = params.preferredTargetId
-    ? enemies.find((entity) => entity.id === params.preferredTargetId)
-    : undefined;
+  const actorStyle = resolveActorStyle(params.actor);
+  const preferredTargetId = params.preferredTargetId;
 
-  const escaping = enemies.filter((entity) => isTargetEscaping(entity, params.battleState));
-  const weak = enemies
+  return enemies
     .slice()
-    .sort((left, right) => (left.currentHp / Math.max(1, left.maxHp)) - (right.currentHp / Math.max(1, right.maxHp)));
-
-  return escaping[0] ?? preferred ?? weak[0] ?? enemies[0];
+    .sort((left, right) => {
+      const leftScore = scoreAiTarget({
+        battleState: params.battleState,
+        actor: params.actor,
+        actorStyle,
+        target: left,
+        preferredTargetId,
+      });
+      const rightScore = scoreAiTarget({
+        battleState: params.battleState,
+        actor: params.actor,
+        actorStyle,
+        target: right,
+        preferredTargetId,
+      });
+      return rightScore - leftScore;
+    })[0];
 }
 
 export function createAiMoveCommand(
@@ -272,6 +289,15 @@ export function createAiMoveCommand(
   const fromX = actor.battlefieldX ?? 0;
   const fromY = actor.battlefieldY ?? 0;
   const currentDistance = Math.abs(fromX - (target.battlefieldX ?? 0)) + Math.abs(fromY - (target.battlefieldY ?? 0));
+  const style = resolveActorStyle(actor);
+  const weaponRange = getActorWeaponRange(actor);
+  const engagementRange = getActorEngagementRange(actor);
+  const idealDistance = style === 'MELEE'
+    ? 1
+    : style === 'MAGIC'
+      ? Math.max(3, Math.min(engagementRange - 1, 5))
+      : Math.max(3, Math.min(weaponRange - 1, 4));
+  const threatenedTiles = collectThreatenedTilesByEnemyMelee(battleState, actor.team);
 
   const best = reachable
     .filter((cell) => !(cell.x === fromX && cell.y === fromY))
@@ -279,8 +305,29 @@ export function createAiMoveCommand(
     .sort((left, right) => {
       const leftDistance = Math.abs(left.x - (target.battlefieldX ?? 0)) + Math.abs(left.y - (target.battlefieldY ?? 0));
       const rightDistance = Math.abs(right.x - (target.battlefieldX ?? 0)) + Math.abs(right.y - (target.battlefieldY ?? 0));
-      if (leftDistance !== rightDistance) {
-        return leftDistance - rightDistance;
+      const leftThreatPenalty = threatenedTiles.has(`${left.x}:${left.y}`) ? 1 : 0;
+      const rightThreatPenalty = threatenedTiles.has(`${right.x}:${right.y}`) ? 1 : 0;
+
+      if (style !== 'MELEE' && leftThreatPenalty !== rightThreatPenalty) {
+        return leftThreatPenalty - rightThreatPenalty;
+      }
+
+      if (style === 'MELEE') {
+        if (leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
+      } else {
+        const leftIdealDelta = Math.abs(leftDistance - idealDistance);
+        const rightIdealDelta = Math.abs(rightDistance - idealDistance);
+        if (leftIdealDelta !== rightIdealDelta) {
+          return leftIdealDelta - rightIdealDelta;
+        }
+        if (currentDistance < idealDistance && leftDistance !== rightDistance) {
+          return rightDistance - leftDistance;
+        }
+        if (currentDistance > engagementRange && leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
       }
       return left.distance - right.distance;
     })[0];
@@ -290,7 +337,10 @@ export function createAiMoveCommand(
   }
 
   const bestDistance = Math.abs(best.x - (target.battlefieldX ?? 0)) + Math.abs(best.y - (target.battlefieldY ?? 0));
-  if (bestDistance >= currentDistance && currentDistance <= Math.max(1, Math.floor(actor.attackRange ?? 1))) {
+  if (style === 'MELEE' && bestDistance >= currentDistance && currentDistance <= weaponRange) {
+    return undefined;
+  }
+  if (style !== 'MELEE' && bestDistance === currentDistance) {
     return undefined;
   }
 
@@ -468,6 +518,69 @@ function getSingleTargetSkill(context: PlannerContext, target: ArenaCombatEntity
 
 function getCellDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function resolveActorStyle(actor: ArenaCombatEntity): 'MELEE' | 'RANGED' | 'MAGIC' {
+  if (actor.combatStyleHint === 'MAGIC' || actor.combatStyleHint === 'RANGED' || actor.combatStyleHint === 'MELEE') {
+    return actor.combatStyleHint;
+  }
+  if ((actor.attackRange ?? 1) > 1) {
+    return 'RANGED';
+  }
+  return 'MELEE';
+}
+
+function getActorWeaponRange(actor: ArenaCombatEntity): number {
+  return Math.max(1, Math.floor(actor.attackRange ?? 1));
+}
+
+function getActorEngagementRange(actor: ArenaCombatEntity): number {
+  const skillRange = listActorSkills(actor).reduce((max, skill) => Math.max(max, Math.floor(skill.range ?? 0)), 0);
+  return Math.max(getActorWeaponRange(actor), skillRange, 1);
+}
+
+function collectThreatenedTilesByEnemyMelee(state: ArenaBattleState, actorTeam: TeamSide): Set<string> {
+  const threatened = new Set<string>();
+  for (const entity of state.entities) {
+    if (!entity.isAlive || entity.team === actorTeam || resolveActorStyle(entity) !== 'MELEE') {
+      continue;
+    }
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      threatened.add(`${(entity.battlefieldX ?? 0) + dx}:${(entity.battlefieldY ?? 0) + dy}`);
+    }
+  }
+  return threatened;
+}
+
+function scoreAiTarget(params: {
+  battleState: ArenaBattleState;
+  actor: ArenaCombatEntity;
+  actorStyle: 'MELEE' | 'RANGED' | 'MAGIC';
+  target: ArenaCombatEntity;
+  preferredTargetId?: string;
+}): number {
+  const distance = getBattlefieldDistance(params.actor, params.target);
+  const hpRatio = params.target.currentHp / Math.max(1, params.target.maxHp);
+  const threatScore = params.target.maxHp
+    + params.target.strength * 2
+    + params.target.dexterity * 1.2
+    + params.target.intelligence * 1.6
+    + Math.max(1, params.target.attackRange ?? 1) * 3;
+  const alliedPressure = params.battleState.entities.filter((entity) =>
+    entity.id !== params.actor.id
+    && entity.team === params.actor.team
+    && entity.isAlive
+    && getBattlefieldDistance(entity, params.target) <= 3,
+  ).length;
+  const woundedBonus = (1 - hpRatio) * 14;
+  const preferredBonus = params.preferredTargetId && params.target.id === params.preferredTargetId ? 6 : 0;
+  const escapingBonus = isTargetEscaping(params.target, params.battleState) ? 10 : 0;
+
+  if (params.actorStyle === 'MELEE') {
+    return threatScore * 1.35 + alliedPressure * 7 + woundedBonus + preferredBonus + escapingBonus - distance * 1.5;
+  }
+
+  return woundedBonus * 1.15 + threatScore * 0.75 + preferredBonus + escapingBonus - distance * 0.8;
 }
 
 function hasResourcesForSkill(skill: DynamicAiSkill, actor: ArenaCombatEntity): boolean {

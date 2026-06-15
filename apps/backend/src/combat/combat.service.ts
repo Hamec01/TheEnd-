@@ -76,6 +76,7 @@ import {
   type BattleRuntimeContext,
   type BattleObjectiveMarkerState,
   type BattleQuestObjectiveEffect,
+  type BattleMapScriptEvent,
   type BattlefieldTile,
   type BattleMapExtractionZone,
   type BattleMapObjective,
@@ -92,6 +93,7 @@ import { ContentService } from '../content/content.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SkillRuntimeService, type SkillCooldownEntry } from '../skills/skill-runtime.service';
 import { MAX_COMBAT_ENEMIES, type CustomCombatNpcDto, type RuntimeBattleMapDto } from './dto.start-combat.dto';
+import { buildAiCombatTurnPlan, type AiCombatPersonality } from './ai-combat-planner';
 import type { AdminItem, ItemEffect } from '../content/content.types';
 import { resolveCharacterEquipmentModifiers } from '../content/item-effects.resolver';
 import type { CharacterEquipmentState, CharacterItemInstanceRecord } from '../characters/character-item-instance.types';
@@ -125,6 +127,30 @@ type WeaponCombatProfile = Pick<AdminItem, 'attackRange' | 'pierceTargets' | 'sp
 
 type GuardMode = 'guard' | 'strong_guard';
 
+const DEFAULT_BATTLE_NPC_WEAPONS = {
+  melee: ['starter_sword_01', 'training_sword_wood_01'],
+  ranged: ['wpn_bow_wood_01'],
+  mage: ['item_mage_first_storm_staff_01', 'item_mage_spark_call_wand_01'],
+} as const;
+
+const DEFAULT_BATTLE_NPC_ARMOR = {
+  melee: ['chainmail_argos_private_01', 'helmet_argos_private_01', 'arm_hands_leather_01', 'arm_feet_leather_01'],
+  ranged: ['arm_chest_leather_01', 'arm_hands_leather_01', 'arm_feet_leather_01'],
+  mage: ['item_mage_apprentice_circle_robe_01', 'item_mage_quiet_frost_hat_01', 'item_mage_silent_step_boots_01'],
+} as const;
+
+const DEFAULT_BATTLE_NPC_OFFHAND = {
+  melee: ['shield_argos_private_01'],
+  ranged: [] as string[],
+  mage: [] as string[],
+} as const;
+
+const DEFAULT_BATTLE_NPC_SKILLS = {
+  melee: [] as string[],
+  ranged: [] as string[],
+  mage: ['skill_lightning_bolt_01', 'fireball'],
+} as const;
+
 interface CombatSession {
   state: ArenaBattleState;
   playerId: string;
@@ -146,6 +172,8 @@ interface NormalizedItemEffect {
   statusId?: string;
   target?: string;
 }
+
+type BattleNpcRoleKey = 'melee' | 'ranged' | 'mage';
 
 type RuntimeBattleNpcPayload = {
   id: string;
@@ -1925,6 +1953,92 @@ export class CombatService {
     });
   }
 
+  private hasTriggeredBattleScriptEvent(state: ArenaBattleState, eventId: string): boolean {
+    return (state.triggeredBattleScriptEventIds ?? []).includes(eventId);
+  }
+
+  private markBattleScriptEventTriggered(state: ArenaBattleState, eventId: string): void {
+    state.triggeredBattleScriptEventIds ??= [];
+    if (!state.triggeredBattleScriptEventIds.includes(eventId)) {
+      state.triggeredBattleScriptEventIds.push(eventId);
+    }
+  }
+
+  private resolveQuestEffectsFromBattleScriptEvent(event: BattleMapScriptEvent): BattleQuestObjectiveEffect[] {
+    const effect = event.questEffect;
+    if (!effect || effect.type !== 'complete_objective' || !effect.questId || !effect.objectiveId) {
+      return [];
+    }
+    return [{
+      type: 'complete_quest_objective',
+      questId: effect.questId,
+      objectiveId: effect.objectiveId,
+      battleObjectiveId: event.objectiveId ?? event.id,
+    }];
+  }
+
+  private emitBattleScriptEvents(params: {
+    state: ArenaBattleState;
+    triggerType: BattleMapScriptEvent['type'];
+    stepIndex: number;
+    orderIndex: number;
+    actorId?: string;
+    objectiveId?: string;
+    currentCount?: number;
+  }): void {
+    const { state, triggerType, stepIndex, orderIndex, actorId, objectiveId, currentCount } = params;
+    const events = state.battleScriptEvents ?? [];
+    for (const event of events) {
+      if (event.type !== triggerType) {
+        continue;
+      }
+      if (event.objectiveId && objectiveId && event.objectiveId !== objectiveId) {
+        continue;
+      }
+      if ((triggerType === 'objective_progress' || triggerType === 'objective_completed') && event.objectiveId && !objectiveId) {
+        continue;
+      }
+      if (triggerType === 'objective_progress' && typeof event.triggerAtCount === 'number') {
+        if (typeof currentCount !== 'number' || currentCount !== event.triggerAtCount) {
+          continue;
+        }
+      }
+      if (event.actorId && actorId && event.actorId !== actorId) {
+        continue;
+      }
+      if (event.actorId && !actorId) {
+        continue;
+      }
+      if (event.once && this.hasTriggeredBattleScriptEvent(state, event.id)) {
+        continue;
+      }
+
+      this.addCombatEvent(state, {
+        id: randomUUID(),
+        roundNumber: state.roundNumber,
+        stepIndex,
+        orderIndex,
+        type: 'effect_triggered',
+        actorId,
+        message: event.message,
+        data: {
+          battleScriptEventId: event.id,
+          battleScriptEventType: event.type,
+          objectiveId: event.objectiveId,
+          triggerAtCount: event.triggerAtCount,
+          speakerNpcId: event.speakerNpcId,
+          speakerName: event.speakerName,
+          portraitImageRef: event.portraitImageRef,
+          pauseCombat: event.pauseCombat === true,
+        },
+      });
+      this.appendQuestEffects(state, this.resolveQuestEffectsFromBattleScriptEvent(event));
+      if (event.once) {
+        this.markBattleScriptEventTriggered(state, event.id);
+      }
+    }
+  }
+
   private resolveErrorToCode(error: string): CombatResolveErrorCode {
     switch (error.toLowerCase()) {
       case 'actor_dead':
@@ -2768,6 +2882,26 @@ export class CombatService {
       marker.status = 'evacuated';
     }
     this.appendQuestEffects(state, result.questEffects);
+    this.emitBattleScriptEvents({
+      state,
+      triggerType: 'objective_progress',
+      stepIndex,
+      orderIndex,
+      actorId: actor.id,
+      objectiveId: result.progress?.objectiveId,
+      currentCount: result.progress?.currentCount,
+    });
+    if (result.progress?.completed) {
+      this.emitBattleScriptEvents({
+        state,
+        triggerType: 'objective_completed',
+        stepIndex,
+        orderIndex,
+        actorId: actor.id,
+        objectiveId: result.progress.objectiveId,
+        currentCount: result.progress.currentCount,
+      });
+    }
     this.addCombatEvent(state, {
       id: randomUUID(),
       roundNumber: state.roundNumber,
@@ -3017,6 +3151,26 @@ export class CombatService {
           marker.status = 'evacuated';
         }
         this.appendQuestEffects(state, result.questEffects);
+        this.emitBattleScriptEvents({
+          state,
+          triggerType: 'objective_progress',
+          stepIndex,
+          orderIndex,
+          actorId: actor.id,
+          objectiveId: result.progress?.objectiveId,
+          currentCount: result.progress?.currentCount,
+        });
+        if (result.progress?.completed) {
+          this.emitBattleScriptEvents({
+            state,
+            triggerType: 'objective_completed',
+            stepIndex,
+            orderIndex,
+            actorId: actor.id,
+            objectiveId: result.progress.objectiveId,
+            currentCount: result.progress.currentCount,
+          });
+        }
         this.addCombatEvent(state, {
           id: randomUUID(),
           roundNumber: state.roundNumber,
@@ -4495,155 +4649,27 @@ export class CombatService {
   private buildNpcAiPlan(session: CombatSession, actor: ArenaBattleState['entities'][number]): CombatTurnPlan {
     const state = session.state;
     const limits = this.getCombatRoundLimitsForActor(actor);
-    const commands: CombatCommand[] = [];
-    const debugNotes: string[] = [];
-    let rejectReason = 'none';
+    const dynamicActor = actor as ArenaCombatEntity & { aiPersonality?: AiCombatPersonality };
+    const result = buildAiCombatTurnPlan({
+      battleState: state,
+      actorId: actor.id,
+      personality: typeof dynamicActor.aiPersonality === 'string' ? dynamicActor.aiPersonality : undefined,
+      preferredTargetId: session.playerId,
+      roundLimits: limits,
+      skillCooldowns: session.skillCooldowns,
+    });
 
-    const enemies = state.entities
-      .filter((entity) => entity.team !== actor.team && this.canActorPlan(state, entity))
-      .sort((left, right) => {
-        const leftPreferred = left.id === session.playerId ? 0 : 1;
-        const rightPreferred = right.id === session.playerId ? 0 : 1;
-        if (leftPreferred !== rightPreferred) {
-          return leftPreferred - rightPreferred;
-        }
-
-        const leftDistance = getBattlefieldDistance(actor, left);
-        const rightDistance = getBattlefieldDistance(actor, right);
-        if (leftDistance !== rightDistance) {
-          return leftDistance - rightDistance;
-        }
-
-        const leftHpRatio = left.currentHp / Math.max(1, left.maxHp);
-        const rightHpRatio = right.currentHp / Math.max(1, right.maxHp);
-        return leftHpRatio - rightHpRatio;
-      });
-
-    const target = enemies[0];
-    const attackRange = Math.max(1, Math.floor(actor.attackRange ?? 1));
-    if (!target) {
-      debugNotes.push('no_target');
-    }
-
-    if (target) {
-      const distanceToTarget = getBattlefieldDistance(actor, target);
-      debugNotes.push(`dist=${distanceToTarget}`);
-
-      if (distanceToTarget <= attackRange) {
-        while (commands.length < limits.maxCommands) {
-          const attackCommand = createCombatCommandFromType({
-            type: 'basic_attack',
-            target: { kind: 'entity', entityId: target.id },
-            payload: { targetZone: TargetZone.Chest },
-          });
-
-          const validation = canAppendCombatCommand({
-            actor,
-            currentCommands: commands,
-            nextCommand: attackCommand,
-            battleState: state,
-            limits,
-          });
-
-          if (!validation.ok) {
-            rejectReason = validation.errors[0] ?? 'attack_validation_failed';
-            break;
-          }
-
-          commands.push(attackCommand);
-        }
-      } else {
-        const maxMoveDistance = actor.currentStamina >= (COMBAT_ACTION_COSTS.dash_3_cells.stamina ?? 0)
-          ? 3
-          : actor.currentStamina >= (COMBAT_ACTION_COSTS.move_2_cells.stamina ?? 0)
-            ? 2
-            : actor.currentStamina >= (COMBAT_ACTION_COSTS.move_1_cell.stamina ?? 0)
-              ? 1
-              : 0;
-        debugNotes.push(`moveBudget=${maxMoveDistance}`);
-
-        const reachable = maxMoveDistance > 0
-          ? getReachableBattlefieldTiles(state, actor.id, maxMoveDistance)
-          : [];
-        const bestCell = reachable
-          .map((cell) => ({
-            ...cell,
-            distanceToTarget: Math.abs((target.battlefieldX ?? 0) - cell.x) + Math.abs((target.battlefieldY ?? 0) - cell.y),
-          }))
-          .sort((left, right) => {
-            if (left.distanceToTarget !== right.distanceToTarget) {
-              return left.distanceToTarget - right.distanceToTarget;
-            }
-            return left.distance - right.distance;
-          })[0];
-
-        if (bestCell) {
-          const moveType = bestCell.distance >= 3 && maxMoveDistance >= 3 ? 'dash' : 'move';
-          debugNotes.push(`move=${moveType}@${bestCell.x}:${bestCell.y}`);
-          const moveCommand = createCombatCommandFromType({
-            type: moveType,
-            target: { kind: 'cell', x: bestCell.x, y: bestCell.y },
-            payload: { movementType: moveType === 'dash' ? 'dash' : 'walk' },
-          });
-
-          const moveValidation = canAppendCombatCommand({
-            actor,
-            currentCommands: commands,
-            nextCommand: moveCommand,
-            battleState: state,
-            limits,
-          });
-
-          if (moveValidation.ok) {
-            commands.push(moveCommand);
-          } else {
-            rejectReason = moveValidation.errors[0] ?? 'move_validation_failed';
-          }
-        } else if (maxMoveDistance <= 0) {
-          rejectReason = 'NOT_ENOUGH_STAMINA';
-          debugNotes.push('no_stamina_for_move');
-        } else {
-          debugNotes.push('no_reachable_cell');
-        }
-      }
-    }
-
-    if (commands.length === 0) {
-      const guardCommand = createCombatCommandFromType({
-        type: 'guard',
-        target: { kind: 'self' },
-      });
-      const guardValidation = canAppendCombatCommand({
-        actor,
-        currentCommands: commands,
-        nextCommand: guardCommand,
-        battleState: state,
-        limits,
-      });
-      if (guardValidation.ok) {
-        commands.push(guardCommand);
-        debugNotes.push('fallback=guard');
-      } else {
-        commands.push(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
-        rejectReason = guardValidation.errors[0] ?? 'guard_validation_failed';
-        debugNotes.push('fallback=wait');
-      }
-    }
-
-    const totalAp = commands.reduce((sum, command) => sum + Math.max(0, command.apCost), 0);
-    const planned = commands.map((command) => command.type).join(' -> ');
-    const debugText = `[AI DEBUG] ${actor.name}: target=${target?.name ?? 'none'} plan=${planned || 'none'} ap=${totalAp}/${limits.maxAP} reject=${rejectReason} notes=${debugNotes.join(',') || 'none'}`;
-    if (process.env.NODE_ENV !== 'production') {
-      // Keep debug visibility for developers without leaking to player-facing combat log.
-      console.debug(debugText);
+    if (process.env.NODE_ENV !== 'production' && result.debug) {
+      const planned = result.plan.commands.map((command) => command.type).join(' -> ');
+      console.debug(
+        `[AI DEBUG] ${actor.name}: target=${result.debug.selectedTargetId ?? 'none'} `
+        + `intent=${result.debug.intent ?? 'none'} plan=${planned || 'none'} `
+        + `notes=${result.debug.log?.join(',') || 'none'}`,
+      );
     }
 
     return {
-      battleId: state.combatId,
-      roundNumber: state.roundNumber,
-      actorId: actor.id,
-      commands,
-      ready: true,
+      ...result.plan,
       submittedAt: new Date().toISOString(),
     };
   }
@@ -5082,21 +5108,218 @@ export class CombatService {
     return npc.startsCombat === true || npc.role === 'enemy' || npc.role === 'ally';
   }
 
-  private toBattleNpcEquipment(npc: RuntimeBattleNpcPayload | undefined): Equipment {
-    if (!npc?.equipment) {
-      return this.normalizeEquipment({});
+  private hashStableSeed(input: string): number {
+    let hash = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      hash = ((hash << 5) - hash + input.charCodeAt(index)) | 0;
     }
-    const armorItems = Array.isArray(npc.equipment.armorItemIds)
+    return Math.abs(hash);
+  }
+
+  private pickDeterministicEntry<T>(items: readonly T[], seed: string): T | undefined {
+    if (items.length === 0) {
+      return undefined;
+    }
+    const index = this.hashStableSeed(seed) % items.length;
+    return items[index];
+  }
+
+  private getDeterministicFactor(seed: string, min: number, max: number): number {
+    const span = Math.max(0, max - min);
+    if (span <= 0) {
+      return min;
+    }
+    const normalized = (this.hashStableSeed(seed) % 10001) / 10000;
+    return min + span * normalized;
+  }
+
+  private getBattleNpcRoleStatCenters(role: BattleNpcRoleKey): Record<keyof StatBlock, number> {
+    switch (role) {
+      case 'ranged':
+        return {
+          hp: 0.88,
+          mp: 0.6,
+          stamina: 0.96,
+          strength: 0.8,
+          constitution: 0.88,
+          dexterity: 1.18,
+          intelligence: 0.9,
+          luck: 0.98,
+          perception: 1.2,
+          willpower: 0.95,
+        };
+      case 'mage':
+        return {
+          hp: 0.78,
+          mp: 1.28,
+          stamina: 0.82,
+          strength: 0.7,
+          constitution: 0.8,
+          dexterity: 0.86,
+          intelligence: 1.24,
+          luck: 0.94,
+          perception: 1.02,
+          willpower: 1.18,
+        };
+      case 'melee':
+      default:
+        return {
+          hp: 1.04,
+          mp: 0.38,
+          stamina: 1.08,
+          strength: 1.18,
+          constitution: 1.12,
+          dexterity: 0.92,
+          intelligence: 0.76,
+          luck: 0.96,
+          perception: 0.95,
+          willpower: 0.98,
+        };
+    }
+  }
+
+  private buildBattleNpcBaseStats(npc: RuntimeBattleNpcPayload, playerStats: StatBlock): StatBlock {
+    const role = this.resolveBattleNpcRole(npc);
+    const roleCenters = this.getBattleNpcRoleStatCenters(role);
+    const powerFactor = this.getDeterministicFactor(`${npc.id}:power`, 0.85, 1.15);
+    const rollStat = (stat: keyof StatBlock): number => {
+      const base = playerStats[stat];
+      const perStatVariance = this.getDeterministicFactor(`${npc.id}:${stat}`, 0.9, 1.1);
+      const roleCenter = roleCenters[stat];
+      return Math.max(0.7, Math.min(1.3, roleCenter * powerFactor * perStatVariance)) * base;
+    };
+
+    return {
+      hp: Math.max(20, Math.round(npc.statOverrides?.hp ?? rollStat('hp'))),
+      mp: Math.max(0, Math.round(npc.statOverrides?.mana ?? npc.statOverrides?.mp ?? rollStat('mp'))),
+      stamina: Math.max(10, Math.round(npc.statOverrides?.stamina ?? rollStat('stamina'))),
+      strength: Math.max(1, Math.round(npc.statOverrides?.strength ?? rollStat('strength'))),
+      constitution: Math.max(1, Math.round(npc.statOverrides?.endurance ?? npc.statOverrides?.constitution ?? rollStat('constitution'))),
+      dexterity: Math.max(1, Math.round(npc.statOverrides?.agility ?? npc.statOverrides?.dexterity ?? rollStat('dexterity'))),
+      intelligence: Math.max(1, Math.round(npc.statOverrides?.intellect ?? npc.statOverrides?.intelligence ?? rollStat('intelligence'))),
+      luck: Math.max(1, Math.round(npc.statOverrides?.luck ?? rollStat('luck'))),
+      perception: Math.max(1, Math.round(npc.statOverrides?.perception ?? rollStat('perception'))),
+      willpower: Math.max(1, Math.round(npc.statOverrides?.willpower ?? rollStat('willpower'))),
+    };
+  }
+
+  private resolveBattleNpcRole(npc: RuntimeBattleNpcPayload | undefined): 'melee' | 'ranged' | 'mage' {
+    const role = String(npc?.combatRole ?? '').trim().toLowerCase();
+    if (role === 'ranged') {
+      return 'ranged';
+    }
+    if (role === 'mage' || role === 'healer' || role === 'support') {
+      return 'mage';
+    }
+    return 'melee';
+  }
+
+  private buildDefaultBattleNpcEquipment(npc: RuntimeBattleNpcPayload | undefined): Equipment {
+    const role = this.resolveBattleNpcRole(npc);
+    const seed = npc?.id ?? npc?.name ?? role;
+    const weapon = this.pickDeterministicEntry(DEFAULT_BATTLE_NPC_WEAPONS[role], `${seed}:weapon`);
+    const shield = this.pickDeterministicEntry(DEFAULT_BATTLE_NPC_OFFHAND[role], `${seed}:shield`);
+    const armorItems = DEFAULT_BATTLE_NPC_ARMOR[role];
+
+    return this.normalizeEquipment({
+      weapon,
+      shield,
+      armor: armorItems[0],
+      helmet: armorItems[1],
+      gloves: armorItems[2],
+      boots: armorItems[3],
+    });
+  }
+
+  private toBattleNpcEquipment(npc: RuntimeBattleNpcPayload | undefined): Equipment {
+    const defaults = this.buildDefaultBattleNpcEquipment(npc);
+    const armorItems = Array.isArray(npc?.equipment?.armorItemIds)
       ? npc.equipment.armorItemIds.filter((entry: string) => typeof entry === 'string' && entry.trim().length > 0)
       : [];
     return this.normalizeEquipment({
-      weapon: npc.equipment.weaponItemId ?? undefined,
-      shield: npc.equipment.offhandItemId ?? undefined,
-      armor: armorItems[0] ?? undefined,
-      helmet: armorItems[1] ?? undefined,
-      gloves: armorItems[2] ?? undefined,
-      boots: armorItems[3] ?? undefined,
+      weapon: npc?.equipment?.weaponItemId ?? defaults.weapon ?? undefined,
+      shield: npc?.equipment?.offhandItemId ?? defaults.shield ?? undefined,
+      armor: armorItems[0] ?? defaults.armor ?? undefined,
+      helmet: armorItems[1] ?? defaults.helmet ?? undefined,
+      gloves: armorItems[2] ?? defaults.gloves ?? undefined,
+      boots: armorItems[3] ?? defaults.boots ?? undefined,
     });
+  }
+
+  private resolveBattleNpcSkillIds(npc: RuntimeBattleNpcPayload | undefined): string[] {
+    const explicit = Array.isArray(npc?.skillIds)
+      ? npc.skillIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : [];
+    if (explicit.length > 0) {
+      return [...new Set(explicit)];
+    }
+
+    const role = this.resolveBattleNpcRole(npc);
+    return [...(DEFAULT_BATTLE_NPC_SKILLS[role] ?? [])];
+  }
+
+  private buildBattleNpcAiSkills(skillIds: string[]): Array<Record<string, unknown>> {
+    const result: Array<Record<string, unknown>> = [];
+
+    for (const skillId of skillIds) {
+      const raw = this.contentService.getCollectionEntry('skills', skillId) as Record<string, unknown> | null;
+      if (!raw) {
+        continue;
+      }
+
+      const target = raw.target && typeof raw.target === 'object' ? raw.target as Record<string, unknown> : null;
+      const targetType = typeof target?.targetType === 'string' ? target.targetType : '';
+      const normalizedTarget = targetType === 'self'
+        ? 'self'
+        : targetType === 'cell' || targetType === 'ground' || targetType === 'area'
+          ? 'cell'
+          : 'entity';
+      const range = Number.isFinite(Number(target?.range)) ? Number(target?.range) : undefined;
+      const areaRadius = Number.isFinite(Number(target?.areaRadius)) ? Number(target?.areaRadius) : undefined;
+      const healing = Array.isArray(raw.healing) ? raw.healing : [];
+
+      result.push({
+        id: skillId,
+        target: normalizedTarget,
+        range,
+        areaRadius,
+        isHealing: healing.length > 0,
+      });
+    }
+
+    return result;
+  }
+
+  private resolveBattleNpcPersonality(npc: RuntimeBattleNpcPayload | undefined): AiCombatPersonality {
+    const explicit = String(npc?.aiPersonality ?? '').trim().toLowerCase();
+    if (
+      explicit === 'normal'
+      || explicit === 'cautious'
+      || explicit === 'aggressive'
+      || explicit === 'reckless'
+      || explicit === 'stupid'
+      || explicit === 'traitor'
+      || explicit === 'boss'
+    ) {
+      return explicit;
+    }
+
+    const profile = String(npc?.aiProfileId ?? '').trim().toLowerCase();
+    if (profile.includes('mage')) {
+      return 'cautious';
+    }
+    if (profile.includes('ranged')) {
+      return 'cautious';
+    }
+    if (profile.includes('melee')) {
+      return 'aggressive';
+    }
+
+    const role = this.resolveBattleNpcRole(npc);
+    if (role === 'mage' || role === 'ranged') {
+      return 'cautious';
+    }
+    return 'aggressive';
   }
 
   private materializeBattleMapNpc(params: {
@@ -5107,18 +5330,7 @@ export class CombatService {
   }): ArenaCombatEntity {
     const { npc, playerStats, fallbackRace, position } = params;
     const team = npc.role === 'enemy' ? TeamSide.Right : TeamSide.Left;
-    const baseStats: StatBlock = {
-      hp: Math.max(20, Math.round(npc.statOverrides?.hp ?? playerStats.hp * (team === TeamSide.Right ? 0.9 : 0.82))),
-      mp: Math.max(0, Math.round(npc.statOverrides?.mana ?? npc.statOverrides?.mp ?? playerStats.mp * 0.45)),
-      stamina: Math.max(10, Math.round(npc.statOverrides?.stamina ?? playerStats.stamina * 0.9)),
-      strength: Math.max(1, Math.round(npc.statOverrides?.strength ?? playerStats.strength)),
-      constitution: Math.max(1, Math.round(npc.statOverrides?.endurance ?? npc.statOverrides?.constitution ?? playerStats.constitution)),
-      dexterity: Math.max(1, Math.round(npc.statOverrides?.agility ?? npc.statOverrides?.dexterity ?? playerStats.dexterity)),
-      intelligence: Math.max(1, Math.round(npc.statOverrides?.intellect ?? npc.statOverrides?.intelligence ?? playerStats.intelligence)),
-      luck: Math.max(1, Math.round(npc.statOverrides?.luck ?? playerStats.luck)),
-      perception: Math.max(1, Math.round(npc.statOverrides?.perception ?? playerStats.perception)),
-      willpower: Math.max(1, Math.round(npc.statOverrides?.willpower ?? playerStats.willpower)),
-    };
+    const baseStats = this.buildBattleNpcBaseStats(npc, playerStats);
     const equipment = this.toBattleNpcEquipment(npc);
     const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
     const weaponProfile = this.resolveWeaponCombatProfile(equipment);
@@ -5151,6 +5363,16 @@ export class CombatService {
     entity.activeWeaponItemId = equipment.weapon ?? null;
     entity.offHandItemId = equipment.shield ?? null;
     entity.hasShield = Boolean(equipment.shield);
+    const dynamicEntity = entity as ArenaCombatEntity & {
+      combatRole?: string;
+      aiProfileId?: string;
+      aiPersonality?: string;
+      aiSkills?: Array<Record<string, unknown>>;
+    };
+    dynamicEntity.combatRole = npc.combatRole ?? undefined;
+    dynamicEntity.aiProfileId = npc.aiProfileId ?? undefined;
+    dynamicEntity.aiPersonality = this.resolveBattleNpcPersonality(npc);
+    dynamicEntity.aiSkills = this.buildBattleNpcAiSkills(this.resolveBattleNpcSkillIds(npc));
     return entity;
   }
 
@@ -5580,6 +5802,8 @@ export class CombatService {
       battleExtractionZones: (battleMap?.extractionZones ?? []) as BattleMapExtractionZone[],
       battleObjectiveMarkers: objectiveMarkers,
     });
+    state.battleScriptEvents = (battleMap?.scriptEvents ?? []) as BattleMapScriptEvent[];
+    state.triggeredBattleScriptEventIds = [];
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
     state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;
     state.lootContainers = [];
@@ -5627,6 +5851,12 @@ export class CombatService {
     };
 
     this.primeSequentialTurnState(session);
+    this.emitBattleScriptEvents({
+      state,
+      triggerType: 'battle_start',
+      stepIndex: 0,
+      orderIndex: 0,
+    });
     await this.executeAutomatedTurns(session);
     this.sessions.set(combatId, session);
 

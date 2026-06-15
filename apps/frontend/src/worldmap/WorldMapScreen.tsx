@@ -1010,6 +1010,15 @@ function getQuestCurrentStep(quest: QuestDefinition, state: PlayerQuestState): Q
 }
 
 function getObjectiveAutoMarkerTargetId(objective: QuestDefinition['steps'][number]['objectives'][number]): string {
+  if (objective.type === 'battle_objective') {
+    return String(
+      objective.zoneId
+      ?? objective.targetLocationId
+      ?? objective.targetCityId
+      ?? '',
+    ).trim();
+  }
+
   return String(
     objective.markerTargetId
     ?? objective.targetCityId
@@ -5254,6 +5263,37 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     const interactionZone = currentZone ?? inspectForestZone;
     if (!interactionZone) {
       return;
+    }
+
+    if (interactionZone.questLaunch?.action === "start_quest_battle") {
+      const configuredTrigger = interactionZone.questLaunch.triggerOn ?? "enter";
+      const triggersToTry = configuredTrigger === "inspect"
+        ? ["inspect"]
+        : [configuredTrigger, "enter"];
+
+      for (const trigger of triggersToTry) {
+        const launch = resolveQuestBattleLaunchFromZone({
+          zone: interactionZone,
+          questDefinitions,
+          playerQuestStates,
+          characterId: character.id,
+          trigger: trigger as "enter" | "interact" | "inspect",
+          battleMaps: contentSnapshot?.battleMaps,
+        });
+
+        if (launch.ok) {
+          onStartCombat(launch.battleMapId, { battleContext: launch.battleContext })
+            .catch((err) => {
+              handleQuestLaunchFailure(interactionZone, String(err));
+            });
+          return;
+        }
+
+        if (launch.reason !== "trigger_mismatch") {
+          handleQuestLaunchFailure(interactionZone, launch.reason);
+          return;
+        }
+      }
     }
 
     if (inspectForestZone) {
@@ -12097,13 +12137,6 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
         <div className="wm-main-column">
           {locationView === "map" ? (
             <div className="wm-play-map-wrap" data-tutorial="world-surface">
-              <button
-                type="button"
-                className="wm-renderer-toggle"
-                onClick={() => setWorldRenderer((current) => current === "phaser" ? "canvas" : "phaser")}
-              >
-                World renderer: {worldRenderer}
-              </button>
               <div className="wm-map-dev-status" style={{ marginTop: 8, fontSize: 12, color: worldSnapshotError ? '#ff9a9a' : '#d8c29a' }}>
                 {worldSnapshotError
                   ? `World snapshot unavailable: ${worldSnapshotError}`

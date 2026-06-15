@@ -1,17 +1,25 @@
 export type BattleRendererKind = 'react' | 'phaser';
 
-export const BATTLE_RENDERER_STORAGE_KEY = 'theend.battleRenderer';
+const BATTLE_RENDERER_ROLLBACK_STORAGE_KEY = 'theend.dev.battleRendererFallback';
+const DEFAULT_BATTLE_RENDERER: BattleRendererKind = 'phaser';
 
 export function readBattleRendererSetting(): BattleRendererKind {
   if (typeof window === 'undefined') {
-    return 'phaser';
+    return DEFAULT_BATTLE_RENDERER;
   }
-  return window.localStorage.getItem(BATTLE_RENDERER_STORAGE_KEY) === 'react' ? 'react' : 'phaser';
+
+  const stored = window.localStorage.getItem(BATTLE_RENDERER_ROLLBACK_STORAGE_KEY);
+  if (stored === 'react' || stored === 'phaser') {
+    return stored;
+  }
+
+  return DEFAULT_BATTLE_RENDERER;
 }
 
 export function writeBattleRendererSetting(kind: BattleRendererKind): void {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(BATTLE_RENDERER_STORAGE_KEY, kind);
+
+  window.localStorage.setItem(BATTLE_RENDERER_ROLLBACK_STORAGE_KEY, kind);
 }

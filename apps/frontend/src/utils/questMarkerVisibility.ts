@@ -42,9 +42,14 @@ export function checkMarkerRequirements(
   if (questId) {
     const state = getPlayerQuestState(player.id, questId);
 
-    if (marker.hideAfterQuestCompleted && state?.status === 'completed') {
+    if (!state || state.status !== 'active') {
       return false;
     }
+
+    if (stepId && state.currentStepId && state.currentStepId !== stepId) {
+      return false;
+    }
+
     if (marker.hideAfterObjectiveCompleted && objectiveId && state?.completedObjectiveIds.includes(objectiveId)) {
       return false;
     }

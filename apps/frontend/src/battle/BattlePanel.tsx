@@ -1,4 +1,4 @@
-﻿// BattlePanel.tsx — P0 Sequential Turn-Based Combat UI
+// BattlePanel.tsx — P0 Sequential Turn-Based Combat UI
 // Replaces simultaneous planning model with active-actor turn flow.
 import {
   COMBAT_ACTION_COSTS,
@@ -694,7 +694,8 @@ export function BattlePanel({
             await Promise.race([
               waitForPlaybackCompletion(playbackRunId),
               new Promise<void>((resolve) => {
-                window.setTimeout(resolve, Math.max(1800, totalDurationMs + 1400));
+                // Fallback timeout: keeps UI from locking up if Phaser never calls onComplete.
+                window.setTimeout(resolve, Math.max(1200, totalDurationMs + 600));
               }),
             ]);
             if (playbackCompletionRef.current?.runId === playbackRunId) {
@@ -864,6 +865,37 @@ export function BattlePanel({
               }));
             }
             await sleepWithCadence(460);
+            continue;
+          }
+
+          if (event.type === 'effect_triggered') {
+            const data = toRecord(event.data);
+            const speakerName = typeof data?.speakerName === 'string' && data.speakerName.trim().length > 0
+              ? data.speakerName.trim()
+              : null;
+            const pauseCombat = data?.pauseCombat === true;
+            const message = typeof event.message === 'string' && event.message.trim().length > 0
+              ? event.message.trim()
+              : null;
+
+            if (message) {
+              const text = speakerName ? `${speakerName}: ${message}` : message;
+              const log: CombatLogEntry = {
+                round: event.roundNumber,
+                actorId: event.actorId ?? playerId,
+                type: 'INFO',
+                text,
+              };
+              onStatus(text);
+              setPlayback((prev) => ({
+                ...prev,
+                statusText: speakerName ? `${speakerName} говорит...` : 'Событие боя',
+                lastLog: log,
+                recentLogs: [...prev.recentLogs.slice(-7), log],
+              }));
+            }
+
+            await sleepWithCadence(pauseCombat ? 1100 : 520);
             continue;
           }
 
@@ -1363,14 +1395,6 @@ export function BattlePanel({
             )}
           </div>
           <div className="battle-header-right">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => onBattleRendererChange?.(battleRenderer === 'phaser' ? 'react' : 'phaser')}
-              title="Switch battle renderer"
-            >
-              Renderer: {battleRenderer}
-            </button>
             <button type="button" onClick={() => onClose?.()} aria-label="Закрыть бой">✕</button>
           </div>
         </div>
@@ -1575,7 +1599,7 @@ export function BattlePanel({
               <CombatLogPanel logs={state.logs} />
             </div>
 
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'grid', minHeight: 0 }}>
               {playback.isPlaying ? (
                 <div
                   aria-hidden="true"

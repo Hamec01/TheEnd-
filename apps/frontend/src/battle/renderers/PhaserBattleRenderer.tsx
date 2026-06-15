@@ -37,6 +37,10 @@ interface RendererSnapshot extends PhaserBattleRendererProps {
   heightPx: number;
   viewport: BattleGridViewport;
   sceneCellSize: number;
+  viewportPixelWidth: number;
+  viewportPixelHeight: number;
+  viewportOriginX: number;
+  viewportOriginY: number;
   visualFxDefinitions: VisualFxDefinition[];
 }
 
@@ -79,9 +83,33 @@ function getRacePortrait(entity: ArenaCombatEntity, playerId: string, playerAvat
   });
 }
 
-function buildViewport(props: BattleFieldProps): BattleGridViewport {
-  const width = Math.max(4, Math.min(props.battleMapWidth, props.viewportWidth));
-  const height = Math.max(4, Math.min(props.battleMapHeight, props.viewportHeight));
+function buildViewport(
+  props: BattleFieldProps,
+  hostSize?: { width: number; height: number },
+): BattleGridViewport {
+  const baseWidth = Math.max(4, Math.min(props.battleMapWidth, props.viewportWidth));
+  const baseHeight = Math.max(4, Math.min(props.battleMapHeight, props.viewportHeight));
+  let width = baseWidth;
+  let height = baseHeight;
+  const hostWidth = Math.max(1, Math.floor(hostSize?.width ?? 0));
+  const hostHeight = Math.max(1, Math.floor(hostSize?.height ?? 0));
+
+  if (hostWidth > 0 && hostHeight > 0) {
+    const hostAspect = hostWidth / hostHeight;
+    const baseAspect = baseWidth / baseHeight;
+    if (hostAspect > baseAspect) {
+      width = Math.max(baseWidth, Math.min(
+        props.battleMapWidth,
+        Math.floor(baseHeight * hostAspect),
+      ));
+    } else if (hostAspect < baseAspect) {
+      height = Math.max(baseHeight, Math.min(
+        props.battleMapHeight,
+        Math.floor(baseWidth / hostAspect),
+      ));
+    }
+  }
+
   const entitiesForRender = getEntitiesForBattleRender(props);
   const playerPlacement = getBattlefieldTilePlacements(entitiesForRender, props.distance, props.battleMapWidth, props.battleMapHeight)
     .find((placement) => placement.entityId === props.playerId);
@@ -440,6 +468,12 @@ class PhaserBattleScene extends Phaser.Scene {
     if (!snapshot || !adapter || !this.gridGraphics || !this.fxGraphics) return;
 
     this.scale.resize(snapshot.widthPx, snapshot.heightPx);
+    this.cameras.main.setViewport(
+      snapshot.viewportOriginX,
+      snapshot.viewportOriginY,
+      snapshot.viewportPixelWidth,
+      snapshot.viewportPixelHeight,
+    );
     this.cameras.main.setBackgroundColor('#120e09');
     this.ensureBackground(snapshot);
 
@@ -470,6 +504,19 @@ class PhaserBattleScene extends Phaser.Scene {
       for (const cell of zone.cells ?? []) {
         exitZoneByCell.set(`${cell.x}:${cell.y}`, { id: zone.id, team: zone.team });
       }
+    }
+    const extractionZoneByCell = new Map<string, { id: string; name: string }>();
+    for (const zone of snapshot.extractionZones ?? []) {
+      for (const cell of zone.cells ?? []) {
+        extractionZoneByCell.set(`${cell.x}:${cell.y}`, { id: zone.id, name: zone.name });
+      }
+    }
+    const objectiveMarkerByCell = new Map<string, { id: string; name: string }>();
+    for (const marker of snapshot.objectiveMarkers ?? []) {
+      if (marker.status !== 'available') {
+        continue;
+      }
+      objectiveMarkerByCell.set(`${marker.x}:${marker.y}`, { id: marker.id, name: marker.name });
     }
     const lootByCell = new Set<string>();
     for (const container of snapshot.lootContainers ?? []) {
@@ -532,6 +579,13 @@ class PhaserBattleScene extends Phaser.Scene {
           this.gridGraphics.strokeRect(topLeft.x + 2, topLeft.y + 2, Math.max(4, adapter.cellSize - 4), Math.max(4, adapter.cellSize - 4));
         }
 
+        if (extractionZoneByCell.has(key)) {
+          this.gridGraphics.fillStyle(0x4fcf8d, 0.22);
+          this.gridGraphics.fillRect(topLeft.x + 2, topLeft.y + 2, Math.max(4, adapter.cellSize - 4), Math.max(4, adapter.cellSize - 4));
+          this.gridGraphics.lineStyle(2, 0x76f0a2, 0.95);
+          this.gridGraphics.strokeRect(topLeft.x + 3, topLeft.y + 3, Math.max(4, adapter.cellSize - 6), Math.max(4, adapter.cellSize - 6));
+        }
+
         if (lootByCell.has(key)) {
           this.gridGraphics.fillStyle(0xf6d47b, 0.9);
           this.gridGraphics.beginPath();
@@ -541,6 +595,17 @@ class PhaserBattleScene extends Phaser.Scene {
           this.gridGraphics.lineTo(topLeft.x + adapter.cellSize * 0.26, topLeft.y + adapter.cellSize * 0.42);
           this.gridGraphics.closePath();
           this.gridGraphics.fillPath();
+        }
+
+        if (objectiveMarkerByCell.has(key)) {
+          const centerX = topLeft.x + adapter.cellSize * 0.5;
+          const centerY = topLeft.y + adapter.cellSize * 0.5;
+          const ringRadius = Math.max(6, adapter.cellSize * 0.22);
+          const crossHalf = Math.max(4, adapter.cellSize * 0.18);
+          this.gridGraphics.lineStyle(2, 0xffd36a, 0.95);
+          this.gridGraphics.strokeCircle(centerX, centerY, ringRadius);
+          this.gridGraphics.lineBetween(centerX - crossHalf, centerY, centerX + crossHalf, centerY);
+          this.gridGraphics.lineBetween(centerX, centerY - crossHalf, centerX, centerY + crossHalf);
         }
       }
     }
@@ -1760,7 +1825,9 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     };
   }, []);
 
-  const viewport = useMemo(() => buildViewport(props), [
+  const viewport = useMemo(() => buildViewport(props, hostSize), [
+    hostSize.height,
+    hostSize.width,
     props.battleMapHeight,
     props.battleMapWidth,
     props.distance,
@@ -1773,17 +1840,38 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
   const sceneCellSize = useMemo(() => {
     const cellByWidth = Math.floor(Math.max(1, hostSize.width) / viewport.width);
     const cellByHeight = Math.floor(Math.max(1, hostSize.height) / viewport.height);
-    return Math.max(22, Math.min(cellByWidth, cellByHeight));
+    return Math.max(14, Math.min(cellByWidth, cellByHeight));
   }, [hostSize.height, hostSize.width, viewport.height, viewport.width]);
+
+  const heightPx = Math.max(1, hostSize.height);
+  const viewportPixelWidth = viewport.width * sceneCellSize;
+  const viewportPixelHeight = viewport.height * sceneCellSize;
+  const viewportOriginX = Math.max(0, Math.floor((hostSize.width - viewportPixelWidth) / 2));
+  const viewportOriginY = Math.max(0, Math.floor((heightPx - viewportPixelHeight) / 2));
 
   const snapshot = useMemo<RendererSnapshot>(() => ({
     ...props,
     widthPx: hostSize.width,
-    heightPx: Math.max(320, hostSize.height),
+    heightPx,
     viewport,
     sceneCellSize,
+    viewportPixelWidth,
+    viewportPixelHeight,
+    viewportOriginX,
+    viewportOriginY,
     visualFxDefinitions,
-  }), [hostSize.height, hostSize.width, props, sceneCellSize, viewport, visualFxDefinitions]);
+  }), [
+    heightPx,
+    hostSize.width,
+    props,
+    sceneCellSize,
+    viewport,
+    viewportOriginX,
+    viewportOriginY,
+    viewportPixelHeight,
+    viewportPixelWidth,
+    visualFxDefinitions,
+  ]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1791,8 +1879,8 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     const resize = () => {
       const rect = host.getBoundingClientRect();
       setHostSize({
-        width: Math.max(360, Math.floor(rect.width || 720)),
-        height: Math.max(360, Math.floor(rect.height || 520)),
+        width: Math.max(320, Math.floor(rect.width || host.clientWidth || 720)),
+        height: Math.max(1, Math.floor(rect.height || host.clientHeight || 520)),
       });
     };
     resize();
@@ -2025,14 +2113,14 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     }
 
     const host = hostRef.current;
-    const rect = host?.getBoundingClientRect();
-    if (!rect) {
+    const rootRect = rootRef.current?.getBoundingClientRect() ?? host?.getBoundingClientRect();
+    if (!rootRect) {
       return false;
     }
     const menuWidth = 320;
     const menuHeight = Math.max(120, Math.min(320, 44 + actions.length * 36));
-    const x = Math.max(8, Math.min(clientX - rect.left, rect.width - menuWidth - 8));
-    const y = Math.max(8, Math.min(clientY - rect.top, rect.height - menuHeight - 8));
+    const x = Math.max(8, Math.min(clientX - rootRect.left, rootRect.width - menuWidth - 8));
+    const y = Math.max(8, Math.min(clientY - rootRect.top, rootRect.height - menuHeight - 8));
     setContextMenu({ x, y, actions, mode: 'actions' });
     if (IS_DEV) {
       // eslint-disable-next-line no-console
@@ -2056,11 +2144,12 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
     const canvas = gameRef.current?.canvas as HTMLCanvasElement | null;
 
     const openDefaultContextMenu = (event: MouseEvent, payload: { mode: 'entity' | 'cell' | 'self'; entityId?: string; cell?: { x: number; y: number } }) => {
-      const rect = host.getBoundingClientRect();
+      // Context menu is position:absolute inside rootRef, so use rootRef (not hostRef) for coords.
+      const rootRect = rootRef.current?.getBoundingClientRect() ?? host.getBoundingClientRect();
       const menuWidth = payload.mode === 'entity' ? 260 : payload.mode === 'self' ? 240 : 220;
       const menuHeight = payload.mode === 'entity' ? 240 : payload.mode === 'self' ? 190 : 150;
-      const x = Math.max(8, Math.min(event.clientX - rect.left, rect.width - menuWidth - 8));
-      const y = Math.max(8, Math.min(event.clientY - rect.top, rect.height - menuHeight - 8));
+      const x = Math.max(8, Math.min(event.clientX - rootRect.left, rootRect.width - menuWidth - 8));
+      const y = Math.max(8, Math.min(event.clientY - rootRect.top, rootRect.height - menuHeight - 8));
       setContextMenu({
         x,
         y,
@@ -2076,7 +2165,19 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
       const adapter = scene?.['getAdapter']?.();
       if (!scene || !adapter) return null;
       const rect = host.getBoundingClientRect();
-      const cell = adapter.pointerToCell(clientX - rect.left, clientY - rect.top);
+      const cssX = clientX - rect.left;
+      const cssY = clientY - rect.top;
+      // The Phaser canvas is CSS-stretched to fill the host div (width/height: 100% !important).
+      // Scale CSS pointer coords → Phaser game coords so clicks map to the right grid cell.
+      const cssToGameX = rect.width > 0 ? snapshot.widthPx / rect.width : 1;
+      const cssToGameY = rect.height > 0 ? snapshot.heightPx / rect.height : 1;
+      const relativeX = cssX * cssToGameX - snapshot.viewportOriginX;
+      const relativeY = cssY * cssToGameY - snapshot.viewportOriginY;
+      if (relativeX < 0 || relativeY < 0
+        || relativeX >= snapshot.viewportPixelWidth || relativeY >= snapshot.viewportPixelHeight) {
+        return null;
+      }
+      const cell = adapter.pointerToCell(relativeX, relativeY);
       if (!cell) return null;
       const interaction = createBattleInteractionAdapter(props);
       return interaction.resolveClickedTarget(cell.x, cell.y);
@@ -2117,6 +2218,27 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
 
       const handled = executeTargetActions({ kind: 'cell', x: resolved.cell.x, y: resolved.cell.y }, event.clientX, event.clientY);
       if (handled) {
+        return;
+      }
+
+      const objectiveMarker = (props.objectiveMarkers ?? []).find((marker) =>
+        marker.status === 'available'
+        && marker.x === resolved.cell.x
+        && marker.y === resolved.cell.y,
+      );
+      if (objectiveMarker && props.selectedSource?.kind === 'none' && props.onPickupObjectiveMarker) {
+        props.onPickupObjectiveMarker(objectiveMarker.id);
+        if (IS_DEV) {
+          // eslint-disable-next-line no-console
+          console.debug('[PhaserBattle input]', {
+            button: event.button,
+            isRightClick: false,
+            isLeftClick: true,
+            clickedTarget: { kind: 'cell', x: resolved.cell.x, y: resolved.cell.y },
+            actionTaken: 'pickup_objective_marker',
+            markerId: objectiveMarker.id,
+          });
+        }
         return;
       }
 
@@ -2238,7 +2360,7 @@ export function PhaserBattleRenderer(props: PhaserBattleRendererProps) {
       host.removeEventListener('contextmenu', handleRightClick, true);
       canvas?.removeEventListener('contextmenu', handleRightClick, true);
     };
-  }, [props]);
+  }, [props, snapshot]);
 
   const interaction = useMemo(() => createBattleInteractionAdapter(props), [props]);
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "game": "TheEnd",
-  "exportedAt": "2026-06-15T00:18:41.916Z",
+  "exportedAt": "2026-06-15T12:12:34.490Z",
   "exportedBy": "admin",
   "appEnv": "development",
   "contentCounts": {
@@ -19,7 +19,7 @@
     "quests": 12,
     "questInteractions": 1,
     "questItems": 4,
-    "questMarkers": 1,
+    "questMarkers": 5,
     "battleMaps": 5,
     "diplomaticActors": 5,
     "globalRelations": 8,
@@ -44,7 +44,7 @@
     "professionSkills": 107,
     "maps": 5,
     "zones": 17,
-    "markers": 3,
+    "markers": 7,
     "regions": 3
   },
   "content": {
@@ -53,12 +53,15 @@
     "exportedAt": "2026-05-19T09:59:14.403624Z",
     "exportedBy": "ChatGPT",
     "contentCounts": {
-      "quests": 2,
-      "dialogues": 3,
-      "npcs": 1,
+      "quests": 12,
+      "dialogues": 28,
+      "npcs": 34,
       "items": 147,
       "materials": 123,
-      "craftingRecipes": 41
+      "craftingRecipes": 41,
+      "questMarkers": 5,
+      "questInteractions": 1,
+      "zones": 17
     },
     "worldSim": {
       "version": 1,
@@ -10662,7 +10665,7 @@
           "projectile"
         ],
         "createdAt": "2026-05-23T22:43:53.027Z",
-        "updatedAt": "2026-06-15T00:10:56.936Z",
+        "updatedAt": "2026-06-15T12:11:25.667Z",
         "kind": "single",
         "stages": []
       },
@@ -10718,7 +10721,7 @@
           "fireball"
         ],
         "createdAt": "2026-05-24T07:41:54.235Z",
-        "updatedAt": "2026-06-15T00:10:56.936Z",
+        "updatedAt": "2026-06-15T12:11:25.667Z",
         "kind": "single",
         "stages": []
       },
@@ -10777,7 +10780,7 @@
           "linger"
         ],
         "createdAt": "2026-05-24T19:27:12.718Z",
-        "updatedAt": "2026-06-15T00:10:56.936Z",
+        "updatedAt": "2026-06-15T12:11:25.667Z",
         "kind": "single",
         "stages": []
       }
@@ -45351,9 +45354,47 @@
         "startNodeId": "start",
         "nodes": [
           {
+            "id": "start_completed_quest",
+            "text": "Бран проводит по кружке большим пальцем и наконец кивает тебе уже без прежней настороженности.\n\n— Вижу, бумаги у тебя теперь есть. Значит, не зря я вытянул тебя из той хижины.\n\n— Береги имя, которое тебе вернули. Во второй раз такие вещи собирают куда тяжелее.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_bran_completed_argos_identity",
+                "type": "quest_completed",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_bran_completed_leave",
+                "text": "Спасибо, Бран.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "start_active_quest",
+            "text": "Бран щурится, будто заново меряет тебя взглядом, но быстро теряет к этому интерес.\n\n— Я уже сказал, куда тебе идти. Ом’тара, потом лагерь Каменного Дозора.\n\n— Если хочешь вернуть себе имя, не просиживай время у моего очага.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_bran_active_argos_identity",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_bran_active_remind",
+                "text": "Я помню дорогу.",
+                "end": true
+              }
+            ]
+          },
+          {
             "id": "start",
             "speaker": "npc",
-            "text": "??????? ???????? ?????: ???, ????? ?????, ?????? ??????.\n\n????? ????. ??????? ????? ???????? ??? ????????, ? ?? ????????? ????????? ???????????? ????? ???????.\n\n?? ????????, ??? ?? ???????, ? ????????? ?????? ????.\n\n? ?? ?????. ??? ??????? ????????.\n? ???? ???????? ???? ???? ?????.",
+            "text": "Скрип двери заставляет Брана поднять взгляд: серый, тяжёлый, усталый взгляд человека, который давно привык встречать беду раньше гостей.\n\nОн сидит у стены в старом кресле, укрытый шерстяным покрывалом ниже пояса. Масляная лампа отбрасывает тёплый свет на седую бороду и тяжёлые плечи.\n\nОн рассматривает тебя молча, будто сверяет с памятью лицо, которое обязан был когда-то знать.\n\n— Ты очнулся. Уже неплохое начало.\n— А теперь скажи мне, что именно хочешь узнать.",
             "choices": [
               {
                 "id": "choice_where_am_i",
@@ -45389,7 +45430,7 @@
               },
               {
                 "id": "choice_leave_early",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45410,7 +45451,18 @@
                 ]
               }
             ],
-            "conditions": [],
+            "conditions": [
+              {
+                "id": "cond_bran_argos_player",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_bran_quest_not_started",
+                "type": "quest_not_started",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
             "actions": []
           },
           {
@@ -45527,7 +45579,7 @@
           {
             "id": "who_are_you_intro",
             "speaker": "npc",
-            "text": "? ???? ?????.\n\n?? ???????? ??????? ?? ????? ?????? ? ?????? ???????????? ? ??????.\n\n? ?????-?? ?????? ?? ????? ??????? ??????. ?????? ???? ??????, ?????? ? ???, ??? ? ???? ??????? ??? ????? ??????.\n\n? ? ??????? ??????? ? ???? ?????. ?? ???? ???????? ?????, ?????? ?????.",
+            "text": "— Я Бран Камыш.\n\nОн произносит это без всякой гордости, как факт, который давно уже ничего ему не даёт.\n\n— Когда-то деревня знала моё имя. Теперь знают только дом, где я сижу, да тех, кого приносят сюда полуживыми.\n\n— А ты не из местных, раз у тебя ещё остались вопросы. Так что спрашивай, пока я отвечаю без злости.",
             "choices": [
               {
                 "id": "choice_who_are_you_to_where",
@@ -45555,7 +45607,7 @@
               },
               {
                 "id": "choice_who_are_you_to_leave",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45582,11 +45634,11 @@
           {
             "id": "where_am_i",
             "speaker": "npc",
-            "text": "? ??????????.\n? ????? ??????? ??????: ?????, ????? ? ??????, ?? ??????? ???? ??????? ????? ????????.\n\n???? ?????? ? ??????? ????.\n\n? ???? ???????? ???? ?????. ???? ?? ???????? ??? ?? ???, ???????? ???? ?? ??? ?? ? ???.",
+            "text": "— В Клиногорье.\n— Это крайняя деревня Аргоса: старая, сырая и слишком близкая к тем местам, где люди чаще исчезают, чем возвращаются.\n\nТебя нашли в лесной хижине.\n\n— И не спрашивай, кто оставил. Если бы солдаты знали, кто изрубил тебя так, чтобы ты ещё дышал, а потом бросил умирать, я бы уже не сидел здесь спокойно.",
             "choices": [
               {
                 "id": "choice_where_to_soldiers",
-                "text": "??? ???? ???? ???????",
+                "text": "Кто меня сюда принёс?",
                 "nextNodeId": "which_soldiers",
                 "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
@@ -45655,7 +45707,7 @@
               },
               {
                 "id": "choice_where_to_leave",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45682,7 +45734,7 @@
           {
             "id": "which_soldiers",
             "speaker": "npc",
-            "text": "???? ???????? ??????.\n\n? ???????. ?????? ?? ???????? ??????? ?? ??'????.\n\n? ???????, ????, ??????????. ???? ?????? ??????, ??? ???? ??????? ???????? ?? ???????.\n\n?? ??????? ???? ????????? ?? ???????.\n\n? ???? ????? ??????, ??????? ? ??'????. ??? ???-?????? ?? ????????, ???? ?????? ??? ?????.",
+            "text": "— Солдаты Аргоса.\n\n— Наши люди. Вернее, то, что от них осталось.\n\n— Измотанные, злые, промокшие. Будто их саму дорогу заставили тащить на себе мертвецов.\n\nНо тебя они не бросили.\n\n— А я потом уже понял, почему: на тебе и в тебе осталось слишком много Аргоса. Такое не всякий разглядит, но свои иногда чуют своё.",
             "choices": [
               {
                 "id": "choice_soldiers_to_identity",
@@ -45710,7 +45762,7 @@
               },
               {
                 "id": "choice_soldiers_to_leave",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45737,11 +45789,11 @@
           {
             "id": "who_am_i",
             "speaker": "npc",
-            "text": "???? ??????? ?? ???? ??????, ??? ??????.\n\n? ????? ? ?? ????.\n\n? ??? ???? ?? ???? ?? ??????, ?? ??????, ?? ???????? ?????. ?????? ??????, ???? ?????? ? ????????? ????????, ??????? ?? ????? ???????.\n\n?? ?????? ?? ??????? ? ?????.\n\n? ??? ?? ?????, ???????? ???????? ??????. ?? ?????? ????? ? ???, ??? ???? ???? ?????.",
+            "text": "Бран смотрит на тебя дольше, чем прежде.\n\n— Думаю, ты из наших.\n\n— Не только по крови или говору, а по упрямству. Такие живут дольше, когда должны были умереть ещё на рассвете.\n\nНо память из тебя выбили начисто.\n\n— А это не подарок, а тяжёлая рана внутри головы. Не каждый выходит из неё, сохранив хоть что-то человеческое.",
             "choices": [
               {
                 "id": "choice_identity_to_soldiers",
-                "text": "??? ???? ???? ??????",
+                "text": "Кто меня сюда принёс?",
                 "nextNodeId": "which_soldiers",
                 "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
@@ -45802,7 +45854,7 @@
               },
               {
                 "id": "choice_identity_to_leave",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45829,11 +45881,11 @@
           {
             "id": "legs_story",
             "speaker": "npc",
-            "text": "???? ????? ??????????.\n\n? ???????. ????? ??? ?????.\n\n? ??????? ???????? ?????? ?? ????????. ??? ???????? ??????, ? ????? ????? ???? ? ???.\n\n?? ?????? ???????? ?? ????????????.\n\n? ????? ?????? ??? ???????. ? ? ??? ??? ??????? ??? ?????.\n\n? ????? ????? ??????? ?????. ????? ??? ?????? ???????? ??????, ?????? ? ?????? ????.",
+            "text": "Бран отвечает не сразу.\n\n— Арталон. Пограничная резня.\n\n— Я не успел отступить вместе со своими. Нас накрыли ночью, а потом добивали уже утром.\n\nНоги оставил там же.\n\n— А меня потом вытащили, как тебя вытаскивали из-под хлама. С тех пор сам хожу только памятью.\n\n— И всё же она лучше пустоты в голове живого. Пустота не отпускает человека даже дольше боли.",
             "choices": [
               {
                 "id": "choice_legs_to_soldiers",
-                "text": "??? ???? ???? ???????",
+                "text": "Кто меня сюда принёс?",
                 "nextNodeId": "which_soldiers",
                 "conditions": [],
                 "giveQuest": "argos_quest_klinogorie_first_steps",
@@ -45894,7 +45946,7 @@
               },
               {
                 "id": "choice_legs_to_leave",
-                "text": "??? ????? ????",
+                "text": "Мне нужно выйти.",
                 "endsDialogue": true,
                 "conditions": [],
                 "actions": [
@@ -45951,7 +46003,7 @@
           }
         ],
         "createdAt": "2026-05-28T07:13:48.823Z",
-        "updatedAt": "2026-06-14T09:45:37.966Z"
+        "updatedAt": "2026-06-15T10:19:02.243Z"
       },
       {
         "id": "dlg_omtara_gate_guard_documents_check",
@@ -45961,6 +46013,84 @@
         "startNodeId": "start",
         "description": "Диалог стражника Ом’тары для продолжения стартового квеста Аргоса «Кто я?». Запускается при попытке войти в Ом’тару без документов.",
         "nodes": [
+          {
+            "id": "start_post_quest",
+            "text": "Дарвен узнаёт тебя и, не тратя лишних слов, отступает на полшага.\n\n— С бумагами всё в порядке. Проходи.\n— И не стой на ветру. В городе хватает дел, а не праздных взглядов.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_guard_postquest_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_guard_postquest_identity_done",
+                "type": "quest_completed",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_guard_postquest_leave",
+                "text": "Понял.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "start_camp_reminder",
+            "text": "Дарвен бросает на тебя короткий взгляд и сразу хмурится, будто уже устал.\n\n— Я же сказал, куда тебе двигаться дальше. Ищи лагерь Каменного Дозора, там разбираются с такими делами.\n— Возвращаться к воротам с тем же вопросом не советую.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_guard_active_after_docs",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_guard_active_identity",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_guard_docs_objective_done",
+                "type": "objective_completed",
+                "questId": "argos_quest_klinogorie_first_steps",
+                "objectiveId": "obj_learn_about_documents"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_guard_camp_reminder_leave",
+                "text": "Ясно.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "start_before_quest",
+            "text": "Капрал Дарвен Каменный Шрам стоит у ворот так, будто сам врос в крепостной камень.\n\n— Я впускаю сюда людей с бумагами на руках.\n— Если стоишь у этих ворот с пустыми руками, разговор короткий. Ищи того, кто объяснит тебе порядок.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_guard_before_quest_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_guard_before_quest_not_started",
+                "type": "quest_not_started",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_guard_before_docs",
+                "text": "Ясно.",
+                "end": true
+              }
+            ]
+          },
           {
             "id": "start",
             "speaker": "npc",
@@ -46108,6 +46238,17 @@
                 "id": "cond_guard_argos_player",
                 "type": "player_kingdom",
                 "value": "argos"
+              },
+              {
+                "id": "cond_guard_active_quest",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_guard_docs_not_done",
+                "type": "objective_not_completed",
+                "questId": "argos_quest_klinogorie_first_steps",
+                "objectiveId": "obj_learn_about_documents"
               }
             ]
           },
@@ -46359,7 +46500,7 @@
           }
         ],
         "createdAt": "2026-05-29T12:30:00.000Z",
-        "updatedAt": "2026-05-29T12:30:00.000Z"
+        "updatedAt": "2026-06-15T10:19:02.243Z"
       },
       {
         "id": "dlg_argos_camp_alinol_forge_intro",
@@ -46544,6 +46685,84 @@
         "description": "Диалог писаря Магистрата Гражданства. Игрок получает объяснение по Аргосу и аудиенцию с королём.",
         "nodes": [
           {
+            "id": "start_post_quest",
+            "text": "Орвен поднимает взгляд поверх пергамента и узнаёт тебя сразу.\n\n— С гражданством вопрос уже решён. Хорошо. Значит, король не зря потратил на тебя время, а я не впустую гонял тебя по бумагам.\n\n— Если понадоблюсь снова, я обычно здесь и разбираю тех, кто путается в печатях.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_orven_postquest_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_orven_postquest_done",
+                "type": "quest_completed",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_orven_postquest_leave",
+                "text": "Я понял.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "start_audience_reminder",
+            "text": "Орвен не поднимается из-за стола, но жестом даёт понять, что времени на повтор у него мало.\n\n— Я уже выдал бумаги. Дальше аудиенция. Король ждёт не канцелярской пыли, а внятного ответа.\n— Ступай прямой дорогой, пока её не закрыли для тебя.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_orven_active_after_lesson_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_orven_active_after_lesson",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_orven_objective_done",
+                "type": "objective_completed",
+                "questId": "argos_quest_klinogorie_first_steps",
+                "objectiveId": "obj_talk_to_citizenship_magistrate"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_orven_audience_reminder",
+                "text": "Иду к королю.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "start_before_quest",
+            "text": "Орвен ведёт перо ровно по строке и не торопится.\n\n— Магистрат гражданства работает не для тех, кто забрёл случайно.\n— Когда тебе действительно будут нужны документы, тогда и поговорим.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_orven_before_quest_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_orven_before_quest_not_started",
+                "type": "quest_not_started",
+                "questId": "argos_quest_klinogorie_first_steps"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_orven_before_quest_leave",
+                "text": "Я загляну позже.",
+                "end": true
+              }
+            ]
+          },
+          {
             "id": "start",
             "speaker": "npc",
             "text": "Писарь Орвен Печать сидит за походным столом. Перед ним лежат книги, сургуч, обломки печатей и списки имён.\n\n— Без документов, значит. Стража Ом’тары уже отправила тебя сюда?\n\nОн не ждёт ответа и берёт чистый лист.\n\n— Бумагу Аргоса не дают за красивые глаза. Сначала я объясню тебе то, что должен знать каждый настоящий подданный.",
@@ -46569,6 +46788,17 @@
                 "id": "cond_orven_argos_player",
                 "type": "player_kingdom",
                 "value": "argos"
+              },
+              {
+                "id": "cond_orven_active_identity",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_orven_objective_not_done",
+                "type": "objective_not_completed",
+                "questId": "argos_quest_klinogorie_first_steps",
+                "objectiveId": "obj_talk_to_citizenship_magistrate"
               }
             ]
           },
@@ -46845,7 +47075,7 @@
           }
         ],
         "createdAt": "2026-05-29T13:20:00.000Z",
-        "updatedAt": "2026-05-29T13:20:00.000Z"
+        "updatedAt": "2026-06-15T09:59:20.138Z"
       },
       {
         "id": "dlg_argos_king_gramar_citizenship_audience",
@@ -46855,6 +47085,175 @@
         "startNodeId": "start",
         "description": "Диалог короля Аргоса. Без аудиенции игрока не принимают. С аудиенцией он должен правильно ответить на вопросы и получить документы.",
         "nodes": [
+          {
+            "id": "field_completed_postquest",
+            "text": "Грамар слушает молча, затем переводит взгляд на карту и отмеченную границу.\n\n— Поле павших снова шевелится, а раненых оттуда выводят уже не все.\n— Заберёшь моих людей. Потом вернёшься с докладом.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_king_field_completed_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_king_field_completed",
+                "type": "quest_completed",
+                "questId": "argos_quest_field_of_the_fallen"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_king_field_completed_leave",
+                "text": "Принял приказ.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "field_report_ready",
+            "text": "Грамар опирается на стол, будто ждёт не слов, а результата, который можно положить перед ним.\n\n— Не возвращайся с пустыми руками. Вытащи раненых и закончи то, что начал.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_king_field_report_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_king_field_active",
+                "type": "quest_active",
+                "questId": "argos_quest_field_of_the_fallen"
+              },
+              {
+                "id": "cond_king_extract_done",
+                "type": "objective_completed",
+                "questId": "argos_quest_field_of_the_fallen",
+                "objectiveId": "obj_extract_argos_wounded"
+              },
+              {
+                "id": "cond_king_report_not_done",
+                "type": "objective_not_completed",
+                "questId": "argos_quest_field_of_the_fallen",
+                "objectiveId": "obj_report_field_result"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_king_report_field_result",
+                "text": "Раненые важнее. Когда закончу эвакуацию, тогда вернусь.",
+                "nextNodeId": "field_report_done",
+                "actions": [
+                  {
+                    "id": "act_complete_field_report_objective",
+                    "type": "completeObjective",
+                    "questId": "argos_quest_field_of_the_fallen",
+                    "objectiveId": "obj_report_field_result"
+                  },
+                  {
+                    "id": "act_complete_field_of_the_fallen",
+                    "type": "completeQuest",
+                    "questId": "argos_quest_field_of_the_fallen"
+                  }
+                ],
+                "effects": [
+                  {
+                    "type": "complete_objective",
+                    "questId": "argos_quest_field_of_the_fallen",
+                    "objectiveId": "obj_report_field_result"
+                  },
+                  {
+                    "type": "complete_quest",
+                    "questId": "argos_quest_field_of_the_fallen"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "field_in_progress",
+            "text": "Грамар ждёт не оправданий, а вестей.\n\n— Я отдал свой приказ. Теперь докажи, что ты способен его выполнить.\n— Возвращайся ко мне, когда вытащишь людей с поля. До тех пор разговор окончен.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_king_field_progress_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_king_field_progress_active",
+                "type": "quest_active",
+                "questId": "argos_quest_field_of_the_fallen"
+              },
+              {
+                "id": "cond_king_receive_order_done",
+                "type": "objective_completed",
+                "questId": "argos_quest_field_of_the_fallen",
+                "objectiveId": "obj_receive_order"
+              },
+              {
+                "id": "cond_king_extract_not_done",
+                "type": "objective_not_completed",
+                "questId": "argos_quest_field_of_the_fallen",
+                "objectiveId": "obj_extract_argos_wounded"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_king_field_progress_leave",
+                "text": "Я ещё не закончил.",
+                "end": true
+              }
+            ]
+          },
+          {
+            "id": "field_offer_postquest",
+            "text": "Грамар поднимается на ноги раньше, чем ты успеваешь заговорить.\n\n— Сначала ты вернул себе имя, а теперь? \n— А теперь докажешь, что у Аргоса ещё есть люди, способные вытаскивать своих с поля. На юге лежит Поле павших, туда и отправишься от меня.",
+            "speaker": "npc",
+            "conditions": [
+              {
+                "id": "cond_king_field_offer_argos",
+                "type": "player_kingdom",
+                "value": "argos"
+              },
+              {
+                "id": "cond_king_identity_completed",
+                "type": "quest_completed",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_king_field_not_started",
+                "type": "quest_not_started",
+                "questId": "argos_quest_field_of_the_fallen"
+              }
+            ],
+            "choices": [
+              {
+                "id": "choice_king_take_field_quest_postquest",
+                "text": "Я отправлюсь туда.",
+                "nextNodeId": "king_next_task_teaser",
+                "giveQuest": "argos_quest_field_of_the_fallen",
+                "actions": [
+                  {
+                    "id": "act_start_field_postquest",
+                    "type": "startQuest",
+                    "questId": "argos_quest_field_of_the_fallen"
+                  }
+                ],
+                "effects": [
+                  {
+                    "id": "eff_start_field_postquest",
+                    "type": "start_quest",
+                    "questId": "argos_quest_field_of_the_fallen"
+                  }
+                ]
+              },
+              {
+                "id": "choice_king_field_offer_leave",
+                "text": "Мне нужно подготовиться.",
+                "end": true
+              }
+            ]
+          },
           {
             "id": "start",
             "speaker": "npc",
@@ -46893,6 +47292,17 @@
                 "id": "cond_gramar_argos_player",
                 "type": "player_kingdom",
                 "value": "argos"
+              },
+              {
+                "id": "cond_gramar_identity_active",
+                "type": "quest_active",
+                "questId": "argos_quest_klinogorie_first_steps"
+              },
+              {
+                "id": "cond_gramar_identity_not_done",
+                "type": "objective_not_completed",
+                "questId": "argos_quest_klinogorie_first_steps",
+                "objectiveId": "obj_pass_king_citizenship_test"
               }
             ]
           },
@@ -47149,10 +47559,22 @@
                 ]
               }
             ]
+          },
+          {
+            "id": "field_report_done",
+            "text": "Грамар коротко принимает твой доклад, не меняясь в лице.\n\n— Хорошо, что ты довёл дело до конца. Поле запомнит.\n— Аргосу и без того есть кого терять. Свободен, пока я не позвал снова.",
+            "speaker": "npc",
+            "choices": [
+              {
+                "id": "choice_king_report_done_leave",
+                "text": "Понял.",
+                "end": true
+              }
+            ]
           }
         ],
         "createdAt": "2026-05-29T13:20:00.000Z",
-        "updatedAt": "2026-05-29T13:20:00.000Z"
+        "updatedAt": "2026-06-15T09:59:20.138Z"
       },
       {
         "id": "dlg_carpenter_master_argos_intro",
@@ -49210,7 +49632,7 @@
           "priceGold": null
         },
         "createdAt": "2026-05-27T09:58:39.231929Z",
-        "updatedAt": "2026-05-28T07:13:57.487Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "portraitUrl": "npc_klinogorie_bran_legless_soldier",
         "fullImageUrl": "npc_klinogorie_bran_legless_soldier_full",
         "iconUrl": "npc_klinogorie_bran_legless_soldier_icon",
@@ -49364,10 +49786,20 @@
         "canTrain": false,
         "canGiveQuests": true,
         "canBeKilled": false,
-        "dialogues": [],
-        "questBindings": [],
+        "dialogues": [
+          {
+            "dialogueId": "dlg_omtara_gate_guard_documents_check",
+            "priority": 10
+          }
+        ],
+        "questBindings": [
+          {
+            "questId": "argos_quest_klinogorie_first_steps",
+            "role": "gate_guard"
+          }
+        ],
         "createdAt": "2026-05-29T11:57:18.336Z",
-        "updatedAt": "2026-05-29T12:12:02.387Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "title": "Стражник ворот Ом’тары",
         "age": "33",
         "kingdomId": "argos",
@@ -49408,7 +49840,8 @@
         "iconImageRef": {
           "type": "image",
           "src": "npc_omtara_gate_guard_argos_icon"
-        }
+        },
+        "dialogueId": "dlg_omtara_gate_guard_documents_check"
       },
       {
         "id": "npc_argos_king_gramar_fireblade",
@@ -49447,6 +49880,10 @@
           {
             "questId": "argos_quest_klinogorie_first_steps",
             "role": "citizenship_judge"
+          },
+          {
+            "questId": "argos_quest_field_of_the_fallen",
+            "role": "giver"
           }
         ],
         "conditions": [],
@@ -49493,7 +49930,7 @@
           "professionIds": []
         },
         "createdAt": "2026-05-29T13:20:00.000Z",
-        "updatedAt": "2026-05-29T13:20:00.000Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "portraitUrl": "npc_argos_king_gramar_fireblade_portrait",
         "fullImageUrl": "npc_argos_king_gramar_fireblade_full",
         "iconUrl": "npc_argos_king_gramar_fireblade_icon",
@@ -49919,7 +50356,7 @@
           "priceGold": null
         },
         "createdAt": "2026-05-29T13:20:00.000Z",
-        "updatedAt": "2026-05-29T15:11:01.313Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "portraitUrl": "npc_argos_camp_citizenship_scribe_orven_portrait",
         "fullImageUrl": "npc_argos_camp_citizenship_scribe_orven_full",
         "iconUrl": "npc_argos_camp_citizenship_scribe_orven_icon",
@@ -50659,7 +51096,7 @@
         "bannerUrl": "img_1777474029601_so2tb320",
         "createdAt": "2026-04-29T14:45:21.088Z",
         "kingdomId": "argos",
-        "updatedAt": "2026-05-28T11:54:01.244Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "conditions": [],
         "startCityId": "city_arklein",
         "isRepeatable": false,
@@ -50939,7 +51376,14 @@
             "questId": "argos_quest_klinogorie_first_steps"
           }
         ],
-        "conditions": [],
+        "conditions": [
+          {
+            "id": "cond_identity_player_argos",
+            "type": "player_kingdom",
+            "value": "argos",
+            "description": "Только игрок Аргоса может начать этот квест."
+          }
+        ],
         "rewards": [
           {
             "id": "reward_omatra_trace_xp",
@@ -50962,7 +51406,7 @@
         "failureConsequences": [],
         "flags": {},
         "createdAt": "2026-05-28T09:06:02.015Z",
-        "updatedAt": "2026-06-13T21:47:15.524Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "kingdomId": "argos",
         "startLocationId": "loc_argos_klinogorie_start_village",
         "npcId": "npc_klinogorie_bran_legless_soldier",
@@ -51062,7 +51506,20 @@
             "questId": "argos_quest_field_of_the_fallen"
           }
         ],
-        "conditions": [],
+        "conditions": [
+          {
+            "id": "cond_field_player_argos",
+            "type": "player_kingdom",
+            "value": "argos",
+            "description": "Только игрок Аргоса может начать этот квест."
+          },
+          {
+            "id": "cond_field_identity_completed",
+            "type": "quest_completed",
+            "value": "argos_quest_klinogorie_first_steps",
+            "description": "Выдаётся только после завершения квеста Кто я?."
+          }
+        ],
         "rewards": [
           {
             "id": "reward_field_of_fallen_exp",
@@ -51085,7 +51542,7 @@
         "failureConsequences": [],
         "flags": {},
         "createdAt": "2026-06-14T00:00:00.000Z",
-        "updatedAt": "2026-06-14T17:59:41.510Z",
+        "updatedAt": "2026-06-15T09:59:20.138Z",
         "kingdomId": "argos",
         "startLocationId": "loc_argos_military_camp_between_razugar_mograk",
         "npcId": "npc_argos_king_gramar_fireblade",
@@ -51221,7 +51678,9 @@
         "requiredQuestStatus": "active",
         "hideAfterStepCompleted": true,
         "hideAfterQuestCompleted": true,
-        "hideAfterObjectiveCompleted": true
+        "hideAfterObjectiveCompleted": true,
+        "requiredObjectiveId": "obj_open_chest",
+        "updatedAt": "2026-06-15T09:59:20.138Z"
       }
     ],
     "questItems": [
@@ -51298,17 +51757,160 @@
       {
         "id": "marker_fireball_chest",
         "mapId": "worldmap-main",
-        "x": 0.5,
-        "y": 0.5,
+        "x": 0.5709956192239188,
+        "y": 0.6911390254691522,
         "type": "quest_objective",
         "title": "Старый тайник",
         "linkedQuestId": "fireball_unlock_start",
         "linkedStepId": "step_find_chest",
-        "linkedObjectiveId": "obj_find_chest",
+        "linkedObjectiveId": "obj_open_chest",
         "visibleToPlayer": true,
         "conditionIds": [],
+        "requirements": [
+          {
+            "type": "quest_active",
+            "questId": "fireball_unlock_start"
+          },
+          {
+            "type": "objective_not_completed",
+            "questId": "fireball_unlock_start",
+            "objectiveId": "obj_open_chest"
+          }
+        ],
+        "hideAfterQuestCompleted": true,
+        "hideAfterObjectiveCompleted": true,
+        "hideAfterStepCompleted": true,
         "showOnWorldMap": true,
-        "showOnMiniMap": true
+        "showOnMiniMap": true,
+        "worldMapVisibility": "selectedQuestOnly",
+        "miniMapVisibility": "nearby"
+      },
+      {
+        "id": "marker_argos_identity_omtara",
+        "mapId": "worldmap-main",
+        "x": 0.43640380005318524,
+        "y": 0.6267716861394085,
+        "type": "quest_objective",
+        "title": "Ом’тара",
+        "linkedQuestId": "argos_quest_klinogorie_first_steps",
+        "linkedStepId": "step_find_omtara",
+        "linkedObjectiveId": "obj_reach_omtara",
+        "visibleToPlayer": true,
+        "conditionIds": [],
+        "requirements": [
+          {
+            "type": "quest_active",
+            "questId": "argos_quest_klinogorie_first_steps"
+          },
+          {
+            "type": "objective_not_completed",
+            "questId": "argos_quest_klinogorie_first_steps",
+            "objectiveId": "obj_reach_omtara"
+          }
+        ],
+        "hideAfterQuestCompleted": true,
+        "hideAfterObjectiveCompleted": true,
+        "hideAfterStepCompleted": true,
+        "showOnWorldMap": true,
+        "showOnMiniMap": true,
+        "worldMapVisibility": "selectedQuestOnly",
+        "miniMapVisibility": "nearby"
+      },
+      {
+        "id": "marker_argos_identity_guard",
+        "mapId": "worldmap-main",
+        "x": 0.43640380005318524,
+        "y": 0.6267716861394085,
+        "type": "npc_quest",
+        "title": "Страж Ом’тары",
+        "linkedQuestId": "argos_quest_klinogorie_first_steps",
+        "linkedStepId": "step_learn_about_documents",
+        "linkedObjectiveId": "obj_learn_about_documents",
+        "linkedNpcId": "npc_omtara_gate_guard_argos",
+        "visibleToPlayer": true,
+        "conditionIds": [],
+        "requirements": [
+          {
+            "type": "quest_active",
+            "questId": "argos_quest_klinogorie_first_steps"
+          },
+          {
+            "type": "objective_not_completed",
+            "questId": "argos_quest_klinogorie_first_steps",
+            "objectiveId": "obj_learn_about_documents"
+          }
+        ],
+        "hideAfterQuestCompleted": true,
+        "hideAfterObjectiveCompleted": true,
+        "hideAfterStepCompleted": true,
+        "showOnWorldMap": true,
+        "showOnMiniMap": true,
+        "worldMapVisibility": "selectedQuestOnly",
+        "miniMapVisibility": "nearby"
+      },
+      {
+        "id": "marker_argos_identity_orven",
+        "mapId": "worldmap-main",
+        "x": 0.508071011597535,
+        "y": 0.7140973945392182,
+        "type": "npc_quest",
+        "title": "Орвен Печать",
+        "linkedQuestId": "argos_quest_klinogorie_first_steps",
+        "linkedStepId": "step_talk_to_citizenship_magistrate",
+        "linkedObjectiveId": "obj_talk_to_citizenship_magistrate",
+        "linkedNpcId": "npc_argos_camp_citizenship_scribe_orven",
+        "visibleToPlayer": true,
+        "conditionIds": [],
+        "requirements": [
+          {
+            "type": "quest_active",
+            "questId": "argos_quest_klinogorie_first_steps"
+          },
+          {
+            "type": "objective_not_completed",
+            "questId": "argos_quest_klinogorie_first_steps",
+            "objectiveId": "obj_talk_to_citizenship_magistrate"
+          }
+        ],
+        "hideAfterQuestCompleted": true,
+        "hideAfterObjectiveCompleted": true,
+        "hideAfterStepCompleted": true,
+        "showOnWorldMap": true,
+        "showOnMiniMap": true,
+        "worldMapVisibility": "selectedQuestOnly",
+        "miniMapVisibility": "nearby"
+      },
+      {
+        "id": "marker_argos_identity_king",
+        "mapId": "worldmap-main",
+        "x": 0.508071011597535,
+        "y": 0.7140973945392182,
+        "type": "quest_finish",
+        "title": "Король Грамар",
+        "linkedQuestId": "argos_quest_klinogorie_first_steps",
+        "linkedStepId": "step_pass_king_citizenship_test",
+        "linkedObjectiveId": "obj_pass_king_citizenship_test",
+        "linkedNpcId": "npc_argos_king_gramar_fireblade",
+        "visibleToPlayer": true,
+        "conditionIds": [],
+        "requirements": [
+          {
+            "type": "quest_active",
+            "questId": "argos_quest_klinogorie_first_steps"
+          },
+          {
+            "type": "objective_not_completed",
+            "questId": "argos_quest_klinogorie_first_steps",
+            "objectiveId": "obj_pass_king_citizenship_test"
+          }
+        ],
+        "hideAfterQuestCompleted": true,
+        "hideAfterObjectiveCompleted": true,
+        "hideAfterStepCompleted": true,
+        "showOnWorldMap": true,
+        "showOnMiniMap": true,
+        "worldMapVisibility": "selectedQuestOnly",
+        "miniMapVisibility": "nearby"
       }
     ],
     "battleMaps": [
@@ -52650,7 +53252,18 @@
                 "x": 1,
                 "y": 6
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           },
           {
             "id": "spawn-enemy-default",
@@ -52673,7 +53286,18 @@
                 "x": 10,
                 "y": 6
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           }
         ],
         "description": "Default tactical test arena for Arklein.",
@@ -52692,7 +53316,10 @@
         "ambientAssetId": null,
         "ambientUrl": null,
         "linkedQuestId": null,
-        "linkedZoneId": null
+        "linkedZoneId": null,
+        "objectives": [],
+        "extractionZones": [],
+        "scriptEvents": []
       },
       {
         "id": "arklein_arena",
@@ -52711,7 +53338,26 @@
             "merchantId": null,
             "startsCombat": false,
             "avatarUrl": null,
-            "description": null
+            "description": null,
+            "sourceType": null,
+            "kingdomId": null,
+            "raceId": null,
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "npc-1780611273446",
@@ -52726,7 +53372,26 @@
             "merchantId": null,
             "startsCombat": false,
             "avatarUrl": null,
-            "description": null
+            "description": null,
+            "sourceType": null,
+            "kingdomId": null,
+            "raceId": null,
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           }
         ],
         "tags": [
@@ -54150,7 +54815,18 @@
                 "x": 9,
                 "y": 8
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           },
           {
             "id": "spawn-enemy-default",
@@ -54161,7 +54837,18 @@
                 "x": 14,
                 "y": 8
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           }
         ],
         "description": "Default tactical test arena for Arklein.",
@@ -54180,7 +54867,10 @@
         "ambientAssetId": null,
         "ambientUrl": null,
         "linkedQuestId": null,
-        "linkedZoneId": null
+        "linkedZoneId": null,
+        "objectives": [],
+        "extractionZones": [],
+        "scriptEvents": []
       },
       {
         "id": "battlemap_arklein_market",
@@ -59520,7 +60210,18 @@
                 "x": 15,
                 "y": 10
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           },
           {
             "id": "spawn-enemy-default",
@@ -59547,7 +60248,18 @@
                 "x": 23,
                 "y": 13
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           }
         ],
         "objects": [],
@@ -59568,7 +60280,10 @@
         "ambientAssetId": null,
         "ambientUrl": null,
         "linkedQuestId": null,
-        "linkedZoneId": null
+        "linkedZoneId": null,
+        "objectives": [],
+        "extractionZones": [],
+        "scriptEvents": []
       },
       {
         "id": "teramor_forest",
@@ -62804,7 +63519,18 @@
                 "x": 8,
                 "y": 23
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           },
           {
             "id": "spawn-enemy-teramor",
@@ -62851,7 +63577,18 @@
                 "x": 25,
                 "y": 8
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           }
         ],
         "objects": [],
@@ -63257,7 +63994,10 @@
         "ambientAssetId": null,
         "ambientUrl": null,
         "linkedQuestId": null,
-        "linkedZoneId": null
+        "linkedZoneId": null,
+        "objectives": [],
+        "extractionZones": [],
+        "scriptEvents": []
       },
       {
         "id": "battlemap_argos_artalon",
@@ -63273,8 +64013,8 @@
         "gridOpacity": 0.12,
         "width": 60,
         "height": 34,
-        "viewportWidth": 24,
-        "viewportHeight": 24,
+        "viewportWidth": 12,
+        "viewportHeight": 12,
         "cells": [
           {
             "x": 0,
@@ -71684,7 +72424,18 @@
                 "x": 1,
                 "y": 9
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           },
           {
             "id": "spawn-enemy-default",
@@ -71699,7 +72450,18 @@
                 "x": 20,
                 "y": 13
               }
-            ]
+            ],
+            "kingdomId": null,
+            "factionId": null,
+            "raceId": null,
+            "groupId": null,
+            "spawnMode": null,
+            "count": null,
+            "npcTemplateIds": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "objectiveTag": null
           }
         ],
         "objects": [],
@@ -71722,11 +72484,22 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
             "combatRole": "melee",
             "combatPresetId": "argos_soldier_melee",
             "loadoutPresetId": "argos_soldier_melee",
             "aiProfileId": "ai_melee_frontline",
-            "level": 1
+            "aiPersonality": null,
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "argos_archer_1",
@@ -71745,11 +72518,196 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
             "combatRole": "ranged",
             "combatPresetId": "argos_archer",
             "loadoutPresetId": "argos_archer",
             "aiProfileId": "ai_ranged_skirmisher",
-            "level": 1
+            "aiPersonality": null,
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "argos_melee_2",
+            "npcId": "",
+            "name": "Аргосский мечник",
+            "role": "ally",
+            "x": 9,
+            "y": 11,
+            "factionId": "argos_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Воин Аргоса с потемневшим от пыли клинком держит переднюю линию.",
+            "sourceType": "generated_npc",
+            "kingdomId": "argos",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "argos_soldier_melee",
+            "loadoutPresetId": "argos_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "argos_melee_3",
+            "npcId": "",
+            "name": "Аргосский копейщик",
+            "role": "ally",
+            "x": 11,
+            "y": 10,
+            "factionId": "argos_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Копейщик Аргоса давит строем и не пускает врага к раненым.",
+            "sourceType": "generated_npc",
+            "kingdomId": "argos",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "argos_soldier_melee",
+            "loadoutPresetId": "argos_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "argos_melee_4",
+            "npcId": "",
+            "name": "Аргосский ветеран",
+            "role": "ally",
+            "x": 13,
+            "y": 9,
+            "factionId": "argos_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Опытный рубака Аргоса первым врывается в гущу боя.",
+            "sourceType": "generated_npc",
+            "kingdomId": "argos",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "argos_soldier_melee",
+            "loadoutPresetId": "argos_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": {
+              "hp": 80,
+              "strength": 7,
+              "stamina": 78
+            },
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "argos_archer_2",
+            "npcId": "",
+            "name": "Аргосский лучник",
+            "role": "ally",
+            "x": 9,
+            "y": 13,
+            "factionId": "argos_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Лучник Аргоса ведет огонь из-за спин союзников.",
+            "sourceType": "generated_npc",
+            "kingdomId": "argos",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "ranged",
+            "combatPresetId": "argos_archer",
+            "loadoutPresetId": "argos_archer",
+            "aiProfileId": "ai_ranged_skirmisher",
+            "aiPersonality": "cautious",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "argos_archer_3",
+            "npcId": "",
+            "name": "Аргосский стрелок",
+            "role": "ally",
+            "x": 15,
+            "y": 10,
+            "factionId": "argos_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Меткий стрелок Аргоса прикрывает вынос раненых к знамени.",
+            "sourceType": "generated_npc",
+            "kingdomId": "argos",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "ranged",
+            "combatPresetId": "argos_archer",
+            "loadoutPresetId": "argos_archer",
+            "aiProfileId": "ai_ranged_skirmisher",
+            "aiPersonality": "cautious",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "artalon_melee_1",
@@ -71768,11 +72726,22 @@
             "sourceType": "generated_npc",
             "kingdomId": "artalon",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
             "combatRole": "melee",
             "combatPresetId": "artalon_soldier_melee",
             "loadoutPresetId": "artalon_soldier_melee",
             "aiProfileId": "ai_melee_frontline",
-            "level": 1
+            "aiPersonality": null,
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "artalon_archer_1",
@@ -71791,11 +72760,196 @@
             "sourceType": "generated_npc",
             "kingdomId": "artalon",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
             "combatRole": "ranged",
             "combatPresetId": "artalon_archer",
             "loadoutPresetId": "artalon_archer",
             "aiProfileId": "ai_ranged_skirmisher",
-            "level": 1
+            "aiPersonality": null,
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "artalon_melee_2",
+            "npcId": "",
+            "name": "Арталонский мечник",
+            "role": "enemy",
+            "x": 24,
+            "y": 13,
+            "factionId": "artalon_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Пехотинец Арталона ломится вперед, пытаясь смять строй Аргоса.",
+            "sourceType": "generated_npc",
+            "kingdomId": "artalon",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "artalon_soldier_melee",
+            "loadoutPresetId": "artalon_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "artalon_melee_3",
+            "npcId": "",
+            "name": "Арталонский рубака",
+            "role": "enemy",
+            "x": 26,
+            "y": 12,
+            "factionId": "artalon_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Тяжелый рубака Арталона идет напролом и ищет сильнейшую цель.",
+            "sourceType": "generated_npc",
+            "kingdomId": "artalon",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "artalon_soldier_melee",
+            "loadoutPresetId": "artalon_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "artalon_melee_4",
+            "npcId": "",
+            "name": "Арталонский ветеран",
+            "role": "enemy",
+            "x": 27,
+            "y": 14,
+            "factionId": "artalon_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Ветеран Арталона держит удар и координирует натиск передовой.",
+            "sourceType": "generated_npc",
+            "kingdomId": "artalon",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "melee",
+            "combatPresetId": "artalon_soldier_melee",
+            "loadoutPresetId": "artalon_soldier_melee",
+            "aiProfileId": "ai_melee_frontline",
+            "aiPersonality": "aggressive",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": {
+              "hp": 78,
+              "strength": 7,
+              "stamina": 76
+            },
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "artalon_archer_2",
+            "npcId": "",
+            "name": "Арталонский стрелок",
+            "role": "enemy",
+            "x": 27,
+            "y": 10,
+            "factionId": "artalon_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Стрелок Арталона выбирает цель на расстоянии и меняет позицию под прикрытием.",
+            "sourceType": "generated_npc",
+            "kingdomId": "artalon",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "ranged",
+            "combatPresetId": "artalon_archer",
+            "loadoutPresetId": "artalon_archer",
+            "aiProfileId": "ai_ranged_skirmisher",
+            "aiPersonality": "cautious",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
+          },
+          {
+            "id": "artalon_archer_3",
+            "npcId": "",
+            "name": "Арталонский лучник",
+            "role": "enemy",
+            "x": 29,
+            "y": 11,
+            "factionId": "artalon_soldiers",
+            "dialogueId": null,
+            "questId": null,
+            "merchantId": null,
+            "startsCombat": true,
+            "avatarUrl": null,
+            "description": "Лучник Арталона удерживает дистанцию и поддерживает фланговый обстрел.",
+            "sourceType": "generated_npc",
+            "kingdomId": "artalon",
+            "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": "ranged",
+            "combatPresetId": "artalon_archer",
+            "loadoutPresetId": "artalon_archer",
+            "aiProfileId": "ai_ranged_skirmisher",
+            "aiPersonality": "cautious",
+            "level": 1,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "artalon_mage_1",
@@ -71814,11 +72968,29 @@
             "sourceType": "generated_npc",
             "kingdomId": "artalon",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
             "combatRole": "mage",
             "combatPresetId": "artalon_fire_mage",
             "loadoutPresetId": "artalon_fire_mage",
             "aiProfileId": "ai_mage_backline",
-            "level": 1
+            "aiPersonality": "cautious",
+            "level": 1,
+            "equipment": null,
+            "skillIds": [
+              "skill_lightning_bolt_01",
+              "fireball"
+            ],
+            "statOverrides": {
+              "intelligence": 9,
+              "willpower": 8,
+              "mana": 56
+            },
+            "avatarPoolId": null,
+            "imageRef": null,
+            "canBeCarried": null,
+            "countsForObjective": null,
+            "objectiveTag": null
           },
           {
             "id": "argos_wounded_1",
@@ -71837,6 +73009,19 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
             "canBeCarried": true,
             "countsForObjective": true,
             "objectiveTag": "argos_wounded"
@@ -71858,6 +73043,19 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
             "canBeCarried": true,
             "countsForObjective": true,
             "objectiveTag": "argos_wounded"
@@ -71879,6 +73077,19 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
             "canBeCarried": true,
             "countsForObjective": true,
             "objectiveTag": "argos_wounded"
@@ -71900,6 +73111,19 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
             "canBeCarried": true,
             "countsForObjective": true,
             "objectiveTag": "argos_wounded"
@@ -71921,6 +73145,19 @@
             "sourceType": "generated_npc",
             "kingdomId": "argos",
             "raceId": "human",
+            "clanId": null,
+            "groupId": null,
+            "combatRole": null,
+            "combatPresetId": null,
+            "loadoutPresetId": null,
+            "aiProfileId": null,
+            "aiPersonality": null,
+            "level": null,
+            "equipment": null,
+            "skillIds": null,
+            "statOverrides": null,
+            "avatarPoolId": null,
+            "imageRef": null,
             "canBeCarried": true,
             "countsForObjective": true,
             "objectiveTag": "argos_wounded"
@@ -72668,6 +73905,8 @@
             "requiredCount": 5,
             "currentCount": 0,
             "sourceKingdomId": "argos",
+            "sourceFactionId": null,
+            "sourceGroupId": null,
             "sourceObjectiveTag": "argos_wounded",
             "targetZoneId": "extraction_argos_banner",
             "questId": "argos_quest_field_of_the_fallen",
@@ -72701,6 +73940,7 @@
             "allowedKingdomIds": [
               "argos"
             ],
+            "allowedFactionIds": null,
             "allowedObjectiveTags": [
               "argos_wounded"
             ],
@@ -72713,9 +73953,14 @@
             "id": "battle_start_officer_order",
             "type": "battle_start",
             "objectiveId": "obj_extract_argos_wounded_5",
+            "triggerAtCount": null,
+            "actorId": null,
+            "speakerNpcId": null,
             "speakerName": "Полевой офицер Аргоса",
+            "portraitImageRef": null,
             "message": "К знамени! Тащи наших к знамени! Мы удержим линию сколько сможем!",
             "pauseCombat": true,
+            "questEffect": null,
             "once": true
           },
           {
@@ -72723,16 +73968,24 @@
             "type": "objective_progress",
             "objectiveId": "obj_extract_argos_wounded_5",
             "triggerAtCount": 3,
+            "actorId": null,
+            "speakerNpcId": null,
             "speakerName": "Полевой лекарь",
+            "portraitImageRef": null,
             "message": "Ещё двое! Не дай им остаться в грязи!",
             "pauseCombat": false,
+            "questEffect": null,
             "once": true
           },
           {
             "id": "objective_completed_argos_wounded",
             "type": "objective_completed",
             "objectiveId": "obj_extract_argos_wounded_5",
+            "triggerAtCount": null,
+            "actorId": null,
+            "speakerNpcId": null,
             "speakerName": "Полевой офицер Аргоса",
+            "portraitImageRef": null,
             "message": "Пятеро у знамени. Живые или мёртвые, но мы их не бросили.",
             "pauseCombat": true,
             "questEffect": {
@@ -72751,7 +74004,7 @@
         ],
         "linkedLocationId": "",
         "createdAt": 1777589576513,
-        "updatedAt": 1781439022047,
+        "updatedAt": 1781525553007,
         "musicAssetId": null,
         "musicUrl": null,
         "ambientAssetId": null,
@@ -87367,10 +88620,28 @@
           "color": "#f2cf5b",
           "randomQuestPoolIds": [],
           "createdAt": 1777843856334,
-          "updatedAt": 1778765963453,
+          "updatedAt": "2026-06-15T09:59:20.138Z",
           "x": 0.5709956192239188,
           "y": 0.6911390254691522,
-          "radius": 0.02015942003277803
+          "radius": 0.02015942003277803,
+          "linkedQuestId": "fireball_unlock_start",
+          "requiredQuestId": "fireball_unlock_start",
+          "requiredQuestStatus": "active",
+          "requiredStepId": "step_find_chest",
+          "requiredObjectiveId": "obj_open_chest",
+          "hideAfterQuestCompleted": true,
+          "hideAfterObjectiveCompleted": true,
+          "hideAfterStepCompleted": true,
+          "visibilityConditions": {
+            "visibleWhenQuestId": "fireball_unlock_start",
+            "visibleWhenQuestStatus": "active",
+            "hideAfterQuestCompleted": true,
+            "hideAfterStepCompleted": true,
+            "hideAfterObjectiveCompleted": true,
+            "stepId": "step_find_chest",
+            "objectiveId": "obj_open_chest",
+            "adminAlwaysVisible": true
+          }
         },
         {
           "id": "city_grankor",
@@ -88024,7 +89295,7 @@
           "radius": 0.01732028596558401
         },
         {
-          "id": "argos_quest_field_of_the_fallen",
+          "id": "zone_argos_field_of_the_fallen",
           "name": "Поле павших",
           "type": "quest_area",
           "shape": "circle",
@@ -88066,10 +89337,17 @@
           "currentState": "active",
           "stateSprites": {},
           "createdAt": 1781459094943,
-          "updatedAt": 1781482717812,
+          "updatedAt": "2026-06-15T09:59:20.138Z",
           "x": 0.5507619557820082,
           "y": 0.7335835207348965,
-          "radius": 0.015888634473552654
+          "radius": 0.015888634473552654,
+          "linkedQuestId": "argos_quest_field_of_the_fallen",
+          "requiredQuestStatus": "active",
+          "requiredStepId": "step_extract_wounded",
+          "requiredObjectiveId": "obj_extract_argos_wounded",
+          "hideAfterQuestCompleted": true,
+          "hideAfterObjectiveCompleted": true,
+          "hideAfterStepCompleted": true
         }
       ],
       "regions": [

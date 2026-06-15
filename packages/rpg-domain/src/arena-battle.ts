@@ -2,7 +2,7 @@ import type { Race } from './races';
 import type { DamageCategory } from './damage';
 import type { ArenaCombatEquipmentModifiers } from './arena-combat-equipment';
 import { COMBAT_ACTION_COSTS } from './combat-costs';
-import type { BattleMapExtractionZone, BattleMapObjective, BattleMapPlacedNpc, ExitZone } from './battle-map';
+import type { BattleMapExtractionZone, BattleMapObjective, BattleMapPlacedNpc, BattleMapScriptEvent, ExitZone } from './battle-map';
 import {
   resolveActorIdentity,
   resolveCombatRelation,
@@ -393,6 +393,8 @@ export interface ArenaBattleState {
   carryingBody?: CarryingBodyState | null;
   battleObjectiveProgress?: Record<string, BattleObjectiveProgressState>;
   pendingQuestEffects?: BattleQuestObjectiveEffect[];
+  battleScriptEvents?: BattleMapScriptEvent[];
+  triggeredBattleScriptEventIds?: string[];
 }
 
 export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleState {
@@ -418,6 +420,8 @@ export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleS
     carryingBody: state.carryingBody ?? null,
     battleObjectiveProgress: state.battleObjectiveProgress ?? {},
     pendingQuestEffects: state.pendingQuestEffects ?? [],
+    battleScriptEvents: state.battleScriptEvents ?? [],
+    triggeredBattleScriptEventIds: state.triggeredBattleScriptEventIds ?? [],
   };
 }
 

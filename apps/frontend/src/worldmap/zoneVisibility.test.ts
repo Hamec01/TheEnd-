@@ -130,4 +130,50 @@ describe('zoneVisibility helpers', () => {
     expect(isWorldMapZoneVisibleForPlayer(resourceZone)).toBe(true);
     expect(isWorldMapZoneVisibleForPlayer(locationZone)).toBe(true);
   });
+
+  it('zone can require the current quest step and objective to stay visible', () => {
+    const zone = createBaseZone({
+      requiredQuestId: 'argos_quest_field_of_the_fallen',
+      requiredQuestStatus: 'active',
+      requiredStepId: 'step_extract_wounded',
+      requiredObjectiveId: 'obj_extract_argos_wounded',
+      visibilityConditions: {
+        visibleWhenQuestId: 'argos_quest_field_of_the_fallen',
+        visibleWhenQuestStatus: 'active',
+        stepId: 'step_extract_wounded',
+        objectiveId: 'obj_extract_argos_wounded',
+        hideAfterObjectiveCompleted: true,
+        hideAfterStepCompleted: true,
+      },
+    });
+
+    const wrongStep: PlayerQuestState = {
+      playerId: 'char_1',
+      questId: 'argos_quest_field_of_the_fallen',
+      status: 'active',
+      currentStepId: 'step_receive_order',
+      completedStepIds: [],
+      completedObjectiveIds: ['obj_receive_order'],
+      flags: {},
+    };
+
+    const rightStep: PlayerQuestState = {
+      playerId: 'char_1',
+      questId: 'argos_quest_field_of_the_fallen',
+      status: 'active',
+      currentStepId: 'step_extract_wounded',
+      completedStepIds: ['step_receive_order'],
+      completedObjectiveIds: ['obj_receive_order'],
+      flags: {},
+    };
+
+    const objectiveDone: PlayerQuestState = {
+      ...rightStep,
+      completedObjectiveIds: ['obj_receive_order', 'obj_extract_argos_wounded'],
+    };
+
+    expect(isWorldMapZoneVisibleForPlayer(zone, wrongStep)).toBe(false);
+    expect(isWorldMapZoneVisibleForPlayer(zone, rightStep)).toBe(true);
+    expect(isWorldMapZoneVisibleForPlayer(zone, objectiveDone)).toBe(false);
+  });
 });

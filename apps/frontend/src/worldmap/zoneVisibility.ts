@@ -28,14 +28,58 @@ export function isWorldMapZoneVisibleForPlayer(
   }
 
   const cond = zone.visibilityConditions;
-  if (!cond) {
+  if (!cond && !zone.requiredQuestId && !zone.requiredQuestStatus && !zone.requiredStepId && !zone.requiredObjectiveId) {
     return true;
   }
 
+  const effectiveQuestState = zone.requiredQuestId || zone.requiredQuestStatus || zone.requiredStepId || zone.requiredObjectiveId
+    ? questState
+    : questState;
+
+  if (zone.requiredQuestId) {
+    if (!effectiveQuestState) {
+      return false;
+    }
+  }
+
+  if (zone.requiredQuestStatus) {
+    const status = effectiveQuestState?.status ?? 'inactive';
+    if (zone.requiredQuestStatus === 'active' && status !== 'active') {
+      return false;
+    }
+    if (zone.requiredQuestStatus === 'completed' && status !== 'completed') {
+      return false;
+    }
+    if (zone.requiredQuestStatus === 'failed' && status !== 'failed') {
+      return false;
+    }
+  }
+
+  if (zone.requiredStepId) {
+    if (!effectiveQuestState || effectiveQuestState.status !== 'active') {
+      return false;
+    }
+    if (effectiveQuestState.currentStepId !== zone.requiredStepId) {
+      return false;
+    }
+    if (effectiveQuestState.completedStepIds?.includes(zone.requiredStepId)) {
+      return false;
+    }
+  }
+
+  if (zone.requiredObjectiveId) {
+    if (!effectiveQuestState || effectiveQuestState.status !== 'active') {
+      return false;
+    }
+    if (effectiveQuestState.completedObjectiveIds?.includes(zone.requiredObjectiveId)) {
+      return false;
+    }
+  }
+
   // 3. If there is visibleWhenQuestId, check quest status.
-  if (cond.visibleWhenQuestId) {
+  if (cond?.visibleWhenQuestId) {
     const status = questState?.status ?? 'inactive';
-    if (cond.visibleWhenQuestStatus) {
+    if (cond?.visibleWhenQuestStatus) {
       if (cond.visibleWhenQuestStatus === 'active' && status !== 'active') {
         return false;
       }
@@ -49,10 +93,28 @@ export function isWorldMapZoneVisibleForPlayer(
         return false;
       }
     }
+
+    if (cond.stepId) {
+      if (!questState || questState.status !== 'active') {
+        return false;
+      }
+      if (questState.currentStepId !== cond.stepId || questState.completedStepIds?.includes(cond.stepId)) {
+        return false;
+      }
+    }
+
+    if (cond.objectiveId) {
+      if (!questState || questState.status !== 'active') {
+        return false;
+      }
+      if (questState.completedObjectiveIds?.includes(cond.objectiveId)) {
+        return false;
+      }
+    }
   }
 
   // 4. If there is hideWhenQuestId, check quest status.
-  if (cond.hideWhenQuestId) {
+  if (cond?.hideWhenQuestId) {
     const status = questState?.status ?? 'inactive';
     if (cond.hideWhenQuestStatus) {
       if (cond.hideWhenQuestStatus === 'inactive' && status === 'inactive') {
@@ -68,21 +130,21 @@ export function isWorldMapZoneVisibleForPlayer(
   }
 
   // 5. If hideAfterQuestCompleted is true, hide if quest completed.
-  if (cond.hideAfterQuestCompleted === true) {
+  if (cond?.hideAfterQuestCompleted === true) {
     if (questState?.status === 'completed') {
       return false;
     }
   }
 
   // 6. If hideAfterObjectiveCompleted is true, hide if objective completed.
-  if (cond.hideAfterObjectiveCompleted === true && cond.objectiveId) {
+  if (cond?.hideAfterObjectiveCompleted === true && cond.objectiveId) {
     if (questState?.completedObjectiveIds?.includes(cond.objectiveId)) {
       return false;
     }
   }
 
   // 7. If hideAfterStepCompleted is true, hide if step completed.
-  if (cond.hideAfterStepCompleted === true && cond.stepId) {
+  if (cond?.hideAfterStepCompleted === true && cond.stepId) {
     if (questState?.completedStepIds?.includes(cond.stepId)) {
       return false;
     }

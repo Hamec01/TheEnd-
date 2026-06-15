@@ -1,5 +1,15 @@
 import type { NpcCombatData, NpcCondition, NpcDefinition, NpcInventoryData, NpcMapBinding, NpcTrainerData } from '../types/npc';
 
+function normalizeQuestBindingRole(rawRole: unknown): NpcDefinition['questBindings'][number]['role'] {
+  const role = typeof rawRole === 'string' ? rawRole.trim() : '';
+  switch (role) {
+    case 'quest_giver':
+      return 'giver';
+    default:
+      return (role || 'target') as NpcDefinition['questBindings'][number]['role'];
+  }
+}
+
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
@@ -64,7 +74,12 @@ export function normalizeNpcForAdmin(rawNpc: unknown): NpcAdminNormalizationResu
   }));
 
   const dialogues = asArray(raw.dialogues, issues, 'dialogues');
-  const questBindings = asArray(raw.questBindings, issues, 'questBindings');
+  const questBindings = asArray(raw.questBindings, issues, 'questBindings').map((entry) => ({
+    ...(entry as Record<string, unknown>),
+    questId: asString((entry as any)?.questId, ''),
+    role: normalizeQuestBindingRole((entry as any)?.role),
+    conditions: Array.isArray((entry as any)?.conditions) ? (entry as any).conditions as NpcCondition[] : (entry as any)?.conditions,
+  }));
 
   let conditions: NpcCondition[] | undefined;
   if (raw.conditions === undefined) {

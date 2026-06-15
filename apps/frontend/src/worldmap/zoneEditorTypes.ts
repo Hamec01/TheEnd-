@@ -142,6 +142,9 @@ export interface WorldMapZone {
   recommendedLevel?: number;
   requiredLevel?: number;
   requiredQuestId?: string;
+  requiredQuestStatus?: 'active' | 'completed' | 'failed';
+  requiredStepId?: string;
+  requiredObjectiveId?: string;
   requiredItemId?: string;
   requiredQuestItemId?: string;
   requiredFaction?: string;

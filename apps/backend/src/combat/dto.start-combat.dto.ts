@@ -468,6 +468,10 @@ class RuntimeBattleMapObjectiveDto {
   @IsOptional()
   @IsBoolean()
   completeQuestObjectiveOnDone?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  failOnAllSourceActorsDead?: boolean;
 }
 
 class RuntimeBattleMapExtractionZoneDto {
@@ -500,6 +504,19 @@ class RuntimeBattleMapExtractionZoneDto {
   @IsOptional()
   @IsString()
   description?: string;
+}
+
+class RuntimeBattleMapQuestEffectDto {
+  @IsString()
+  type!: 'start_quest' | 'complete_objective' | 'advance_quest' | 'complete_quest';
+
+  @IsOptional()
+  @IsString()
+  questId?: string;
+
+  @IsOptional()
+  @IsString()
+  objectiveId?: string;
 }
 
 class RuntimeBattleMapScriptEventDto {
@@ -539,6 +556,11 @@ class RuntimeBattleMapScriptEventDto {
   @IsOptional()
   @IsBoolean()
   pauseCombat?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RuntimeBattleMapQuestEffectDto)
+  questEffect?: RuntimeBattleMapQuestEffectDto;
 
   @IsOptional()
   @IsBoolean()

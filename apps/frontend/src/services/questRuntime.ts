@@ -243,6 +243,29 @@ function getAllQuestStatesForPlayer(playerId: string): PlayerQuestState[] {
   return getAllPlayerQuestStates().filter((entry) => entry.playerId === playerId);
 }
 
+function getStoredQuestStateForPlayer(player: Pick<QuestRuntimePlayer, 'id'>, questId: string): PlayerQuestState | null {
+  const normalizedPlayerId = String(player.id ?? '').trim();
+  const normalizedQuestId = String(questId ?? '').trim();
+  if (!normalizedPlayerId || !normalizedQuestId) {
+    return null;
+  }
+  return getQuestState(normalizedPlayerId, normalizedQuestId);
+}
+
+function isQuestCompletedForPlayer(player: QuestRuntimePlayer, questId: string): boolean {
+  if ((player.completedQuestIds ?? []).includes(questId)) {
+    return true;
+  }
+  return getStoredQuestStateForPlayer(player, questId)?.status === 'completed';
+}
+
+function isQuestActiveForPlayer(player: QuestRuntimePlayer, questId: string): boolean {
+  if ((player.activeQuestIds ?? []).includes(questId)) {
+    return true;
+  }
+  return getStoredQuestStateForPlayer(player, questId)?.status === 'active';
+}
+
 function saveQuestState(state: PlayerQuestState): PlayerQuestState {
   savePlayerQuestState(state);
   return state;
@@ -274,6 +297,10 @@ function compareNumber(actual: number, operator: QuestCondition['operator'], exp
   }
 }
 
+function resolvePlayerKingdomId(player: QuestRuntimePlayer): string {
+  return normalizeKingdomId(player.originId ?? player.kingdomId ?? player.citizenshipKingdomId ?? '');
+}
+
 function evaluateConditionsDetailed(
   player: QuestRuntimePlayer,
   conditions: QuestCondition[],
@@ -302,6 +329,26 @@ function evaluateConditionsDetailed(
           return false;
         }
         break;
+      case 'player_kingdom':
+        if (typeof value === 'string' && resolvePlayerKingdomId(player) !== normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_kingdom_not':
+        if (typeof value === 'string' && resolvePlayerKingdomId(player) === normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_origin':
+        if (typeof value === 'string' && normalizeKingdomId(player.originId) !== normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
+      case 'player_origin_not':
+        if (typeof value === 'string' && normalizeKingdomId(player.originId) === normalizeKingdomId(value)) {
+          return false;
+        }
+        break;
       case 'kingdom_reputation':
       case 'faction_reputation': {
         const rep = readRecord(PLAYER_REPUTATION_KEY);
@@ -316,17 +363,17 @@ function evaluateConditionsDetailed(
         break;
       }
       case 'quest_completed':
-        if (typeof value === 'string' && !(player.completedQuestIds ?? []).includes(value)) {
+        if (typeof value === 'string' && !isQuestCompletedForPlayer(player, value)) {
           return false;
         }
         break;
       case 'quest_not_completed':
-        if (typeof value === 'string' && (player.completedQuestIds ?? []).includes(value)) {
+        if (typeof value === 'string' && isQuestCompletedForPlayer(player, value)) {
           return false;
         }
         break;
       case 'quest_active':
-        if (typeof value === 'string' && !(player.activeQuestIds ?? []).includes(value)) {
+        if (typeof value === 'string' && !isQuestActiveForPlayer(player, value)) {
           return false;
         }
         break;

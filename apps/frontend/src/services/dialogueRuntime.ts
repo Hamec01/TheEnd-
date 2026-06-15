@@ -526,11 +526,11 @@ export function getAvailableChoices(
         }
         return !canStartQuest(player, quest);
       });
-      const effectiveValid = valid;
+      const effectiveValid = valid && !blockedByQuest;
       return {
         ...choice,
-        disabled: !effectiveValid && Boolean(choice.disabledIfConditionsFail),
-        hidden: !effectiveValid && Boolean(choice.hiddenIfConditionsFail),
+        disabled: !effectiveValid && !blockedByQuest && Boolean(choice.disabledIfConditionsFail),
+        hidden: blockedByQuest || (!valid && Boolean(choice.hiddenIfConditionsFail)),
       };
     })
     .filter((choice) => !choice.hidden);

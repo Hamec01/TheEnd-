@@ -1,7 +1,31 @@
-import { describe, expect, it } from 'vitest';
-import { executeDialogueActions, getChoiceExplicitActions } from './dialogueRuntime';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { executeDialogueActions, getAvailableChoices, getChoiceExplicitActions } from './dialogueRuntime';
+
+const getQuestByIdMock = vi.fn();
+const canStartQuestMock = vi.fn();
+
+vi.mock('./questRepository', async () => {
+  const actual = await vi.importActual<typeof import('./questRepository')>('./questRepository');
+  return {
+    ...actual,
+    getQuestById: (...args: unknown[]) => getQuestByIdMock(...args),
+  };
+});
+
+vi.mock('./questRuntime', async () => {
+  const actual = await vi.importActual<typeof import('./questRuntime')>('./questRuntime');
+  return {
+    ...actual,
+    canStartQuest: (...args: unknown[]) => canStartQuestMock(...args),
+  };
+});
 
 describe('dialogueRuntime training intents', () => {
+  beforeEach(() => {
+    getQuestByIdMock.mockReset();
+    canStartQuestMock.mockReset();
+  });
+
   it('emits OPEN_TRAINING for openTraining action', () => {
     const result = executeDialogueActions(
       'player_test',
@@ -90,5 +114,36 @@ describe('dialogueRuntime training intents', () => {
       type: 'HEAL_PLAYER_FULL',
       costGold: 75,
     });
+  });
+
+  it('hides a dialogue choice that would restart an active or completed quest', () => {
+    getQuestByIdMock.mockReturnValue({
+      id: 'argos_quest_klinogorie_first_steps',
+      status: 'active',
+    });
+    canStartQuestMock.mockReturnValue(false);
+
+    const available = getAvailableChoices(
+      { id: 'player_1', level: 1 },
+      null,
+      {
+        id: 'node_start',
+        text: 'test',
+        choices: [
+          {
+            id: 'choice_restart_quest',
+            text: 'Начать заново',
+            giveQuest: 'argos_quest_klinogorie_first_steps',
+          },
+          {
+            id: 'choice_leave',
+            text: 'Уйти',
+            end: true,
+          },
+        ],
+      } as any,
+    );
+
+    expect(available.map((choice) => choice.id)).toEqual(['choice_leave']);
   });
 });
