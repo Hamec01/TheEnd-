@@ -175,6 +175,51 @@ class RuntimeBattleMapSpawnZoneDto {
   @ValidateNested({ each: true })
   @Type(() => RuntimeBattleMapPointDto)
   cells!: RuntimeBattleMapPointDto[];
+
+  @IsOptional()
+  @IsString()
+  kingdomId?: string;
+
+  @IsOptional()
+  @IsString()
+  factionId?: string;
+
+  @IsOptional()
+  @IsString()
+  raceId?: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string;
+
+  @IsOptional()
+  @IsString()
+  spawnMode?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  count?: number;
+
+  @IsOptional()
+  @IsArray()
+  npcTemplateIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  combatPresetId?: string;
+
+  @IsOptional()
+  @IsString()
+  loadoutPresetId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiProfileId?: string;
+
+  @IsOptional()
+  @IsString()
+  objectiveTag?: string;
 }
 
 class RuntimeBattleMapObjectDto {
@@ -289,6 +334,215 @@ class RuntimeBattleMapPlacedNpcDto {
   @IsString()
   @Length(0, 500)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  kingdomId?: string;
+
+  @IsOptional()
+  @IsString()
+  raceId?: string;
+
+  @IsOptional()
+  @IsString()
+  clanId?: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string;
+
+  @IsOptional()
+  @IsString()
+  combatRole?: string;
+
+  @IsOptional()
+  @IsString()
+  combatPresetId?: string;
+
+  @IsOptional()
+  @IsString()
+  loadoutPresetId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiProfileId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiPersonality?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  level?: number;
+
+  @IsOptional()
+  equipment?: {
+    weaponItemId?: string;
+    offhandItemId?: string;
+    armorItemIds?: string[];
+  };
+
+  @IsOptional()
+  @IsArray()
+  skillIds?: string[];
+
+  @IsOptional()
+  statOverrides?: Record<string, number>;
+
+  @IsOptional()
+  @IsString()
+  avatarPoolId?: string;
+
+  @IsOptional()
+  @IsString()
+  imageRef?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  canBeCarried?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  countsForObjective?: boolean;
+
+  @IsOptional()
+  @IsString()
+  objectiveTag?: string;
+}
+
+class RuntimeBattleMapObjectiveDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  type!: string;
+
+  @IsString()
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsInt()
+  requiredCount?: number;
+
+  @IsOptional()
+  @IsInt()
+  currentCount?: number;
+
+  @IsOptional()
+  @IsString()
+  sourceKingdomId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceFactionId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceGroupId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceObjectiveTag?: string;
+
+  @IsOptional()
+  @IsString()
+  targetZoneId?: string;
+
+  @IsOptional()
+  @IsString()
+  questId?: string;
+
+  @IsOptional()
+  @IsString()
+  questObjectiveId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  completeQuestObjectiveOnDone?: boolean;
+}
+
+class RuntimeBattleMapExtractionZoneDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  name!: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapPointDto)
+  cells!: RuntimeBattleMapPointDto[];
+
+  @IsOptional()
+  @IsArray()
+  allowedKingdomIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  allowedFactionIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  allowedObjectiveTags?: string[];
+
+  @IsOptional()
+  @IsString()
+  objectiveId?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+class RuntimeBattleMapScriptEventDto {
+  @IsString()
+  id!: string;
+
+  @IsString()
+  type!: string;
+
+  @IsOptional()
+  @IsString()
+  objectiveId?: string;
+
+  @IsOptional()
+  @IsInt()
+  triggerAtCount?: number;
+
+  @IsOptional()
+  @IsString()
+  actorId?: string;
+
+  @IsOptional()
+  @IsString()
+  speakerNpcId?: string;
+
+  @IsOptional()
+  @IsString()
+  speakerName?: string;
+
+  @IsOptional()
+  @IsString()
+  portraitImageRef?: string;
+
+  @IsString()
+  message!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  pauseCombat?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  once?: boolean;
 }
 
 class RuntimeBattleMapTriggerDto {
@@ -446,6 +700,21 @@ export class RuntimeBattleMapDto {
   @IsOptional()
   @IsArray()
   exitZones?: unknown[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapObjectiveDto)
+  objectives?: RuntimeBattleMapObjectiveDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapExtractionZoneDto)
+  extractionZones?: RuntimeBattleMapExtractionZoneDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => RuntimeBattleMapScriptEventDto)
+  scriptEvents?: RuntimeBattleMapScriptEventDto[];
 }
 
 export class CustomCombatNpcDto {
@@ -498,4 +767,7 @@ export class StartCombatDto {
   @ValidateNested()
   @Type(() => RuntimeBattleMapDto)
   battleMap?: RuntimeBattleMapDto;
+
+  @IsOptional()
+  battleContext?: unknown;
 }

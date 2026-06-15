@@ -18,6 +18,7 @@ import {
   type ItemDefinition,
   type Merchant,
   type ArenaBattleState,
+  type BattleRuntimeContext,
   type Equipment,
   type InventoryState,
   type PlayerProfessionsState,
@@ -1448,6 +1449,7 @@ export function App({ currentPlayerRoute = '/', onNavigate }: AppProps) {
   const [selectedBattleMapId, setSelectedBattleMapId] = useState<string>(() => DEFAULT_BATTLE_MAP_ID);
   const [battleRenderer, setBattleRenderer] = useState<BattleRendererKind>(() => readBattleRendererSetting());
   const [pendingArenaBattleMapId, setPendingArenaBattleMapId] = useState<string | null>(null);
+  const [pendingArenaBattleContext, setPendingArenaBattleContext] = useState<BattleRuntimeContext | null>(null);
 
   const [character, setCharacter] = useState<ArenaCharacter | null>(null);
   const [inventory, setInventory] = useState<InventoryState>({ gold: 0, items: [] });
@@ -3558,8 +3560,9 @@ function applyHubState(hub: HubStatePayload): void {
     setStatus('Открыта арена. Настройте NPC и начинайте бой. Tactical Battle Map Editor доступен в боковой панели карты мира.');
   }
 
-  function openArenaSetup(battleMapId: string): void {
+  function openArenaSetup(battleMapId: string, battleContext?: BattleRuntimeContext): void {
     setPendingArenaBattleMapId(battleMapId);
+    setPendingArenaBattleContext(battleContext ?? null);
     setOverlayPanel('arena');
     setStatus('Арена готова. Выберите формат боя.');
   }
@@ -3698,6 +3701,22 @@ function applyHubState(hub: HubStatePayload): void {
     }
 
     try {
+      const pendingQuestEffects = Array.isArray((nextState as { pendingQuestEffects?: unknown }).pendingQuestEffects)
+        ? (nextState as { pendingQuestEffects?: Array<{ type: string; questId: string; objectiveId: string }> }).pendingQuestEffects ?? []
+        : [];
+      for (const effect of pendingQuestEffects) {
+        if (effect?.type !== 'complete_quest_objective' || !effect.questId || !effect.objectiveId) {
+          continue;
+        }
+        if (!getPlayerQuestState(character.id, effect.questId)) {
+          startQuest(character.id, effect.questId);
+        }
+        completeObjective(character.id, effect.questId, effect.objectiveId);
+        const questState = advanceQuest(character.id, effect.questId);
+        if (questState.status === 'completed') {
+          applyQuestRewards(character.id, effect.questId);
+        }
+      }
       const refreshedHub = resolvedHubState ?? await getArenaHubState(character.id);
       applyHubState(refreshedHub);
       setBattleSummary(buildBattleSummary(nextState, playerCombatId, battleStartSnapshotRef.current, refreshedHub.character));
@@ -3733,7 +3752,41 @@ function applyHubState(hub: HubStatePayload): void {
     };
   }
 
-  async function openCombat(battleMapIdOverride?: string, options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[] }): Promise<void> {
+  function buildQuestBattleContextForMap(map: ReturnType<typeof resolveBattleMapForCombat>): BattleRuntimeContext | undefined {
+    const objectiveIds = (map.objectives ?? [])
+      .map((entry) => String(entry.id ?? '').trim())
+      .filter(Boolean);
+    if (!map.linkedQuestId || objectiveIds.length === 0) {
+      return undefined;
+    }
+
+    const quest = getQuestById(map.linkedQuestId);
+    const matchingStep = quest?.steps.find((step) =>
+      (step.objectives ?? []).some((objective) => {
+        const raw = objective as unknown as Record<string, unknown>;
+        return String(raw.type ?? '').trim() === 'battle_objective'
+          && String(raw.battleMapId ?? '').trim() === map.id
+          && objectiveIds.includes(String(raw.battleObjectiveId ?? '').trim());
+      }));
+    const fallbackStep = quest?.steps.find((step) =>
+      (step.objectives ?? []).some((objective) => {
+        const raw = objective as unknown as Record<string, unknown>;
+        return String(raw.type ?? '').trim() === 'battle_objective'
+          && String(raw.battleMapId ?? '').trim() === map.id;
+      }));
+
+    return {
+      battleType: 'quest',
+      questId: map.linkedQuestId,
+      questStepId: matchingStep?.id ?? fallbackStep?.id ?? `quest_battle_${map.id}`,
+      battleMapId: map.id,
+      activeBattleObjectiveIds: objectiveIds,
+      allowArenaRewards: false,
+      allowArenaVictoryLogic: false,
+    };
+  }
+
+  async function openCombat(battleMapIdOverride?: string, options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[]; battleContext?: BattleRuntimeContext | null }): Promise<void> {
     if (!character) {
       return;
     }
@@ -3747,13 +3800,16 @@ function applyHubState(hub: HubStatePayload): void {
     };
 
     try {
-      const battleMapPayload = toRuntimeBattleMapPayload(battleMapIdOverride ? resolveBattleMapForCombat(battleMapIdOverride) : selectedBattleMap);
+      const selectedMap = battleMapIdOverride ? resolveBattleMapForCombat(battleMapIdOverride) : selectedBattleMap;
+      const battleMapPayload = toRuntimeBattleMapPayload(selectedMap);
+      const battleContext = options?.battleContext ?? pendingArenaBattleContext ?? buildQuestBattleContextForMap(selectedMap);
       const customEnemies = options?.customEnemies ?? (activeArenaNpcs.length > 0 ? activeArenaNpcs.map(toCustomNpcPayload) : null);
       const normalizedCustomEnemies = customEnemies?.slice(0, MAX_COMBAT_ENEMIES) ?? null;
       const started = normalizedCustomEnemies && normalizedCustomEnemies.length > 0
-        ? await startCustomCombat(character.id, normalizedCustomEnemies, battleMapPayload)
-        : await startCombat(character.id, Math.max(1, Math.min(MAX_COMBAT_ENEMIES, options?.enemyCount ?? 3)), battleMapPayload);
+        ? await startCustomCombat(character.id, normalizedCustomEnemies, battleMapPayload, battleContext)
+        : await startCombat(character.id, Math.max(1, Math.min(MAX_COMBAT_ENEMIES, options?.enemyCount ?? 3)), battleMapPayload, battleContext);
       setOverlayPanel(null);
+      setPendingArenaBattleContext(null);
       setCombatId(started.combatId);
       setPlayerCombatId(started.playerId);
       setCombatState(started.state);
@@ -3763,6 +3819,7 @@ function applyHubState(hub: HubStatePayload): void {
       battleStartSnapshotRef.current = null;
       setStatus(`Battle error: ${(error as Error).message}`);
     } finally {
+      setPendingArenaBattleContext(null);
       setCombatRoutePending(false);
     }
   }
@@ -6177,11 +6234,11 @@ function applyHubState(hub: HubStatePayload): void {
     const battleMapId = pendingArenaBattleMapId ?? selectedBattleMapId;
     if (mode === 'random') {
       const enemyCount = 1 + Math.floor(Math.random() * 3);
-      void openCombat(battleMapId, { customEnemies: Array.from({ length: enemyCount }, (_, index) => buildGeneratedArenaEnemy(index + 1)) });
+      void openCombat(battleMapId, { customEnemies: Array.from({ length: enemyCount }, (_, index) => buildGeneratedArenaEnemy(index + 1)), battleContext: pendingArenaBattleContext });
       return;
     }
     const enemyCount = mode === '1v1' ? 1 : mode === '1v3' ? 3 : 10;
-    void openCombat(battleMapId, { enemyCount });
+    void openCombat(battleMapId, { enemyCount, battleContext: pendingArenaBattleContext });
   }
 
   const freePointsLeft = character.freePoints - getAllocationCost(pendingStatAllocation);
@@ -6261,8 +6318,8 @@ function applyHubState(hub: HubStatePayload): void {
           onMineRunResourcesChange={handleMineRunResourcesChange}
           onPlayerProfessionsChange={handlePlayerProfessionsChange}
           onStartCombat={openCombat}
-          onStartBattleMap={(battleMapId) => {
-            openArenaSetup(battleMapId);
+          onStartBattleMap={(battleMapId, battleContext) => {
+            openArenaSetup(battleMapId, battleContext ?? undefined);
             return Promise.resolve();
           }}
           onStatus={setStatus}

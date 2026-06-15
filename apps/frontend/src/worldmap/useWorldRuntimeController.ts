@@ -21,6 +21,7 @@ interface UseWorldRuntimeControllerOptions {
   resolveSpeedMultiplier: MovementSpeedMultiplierResolver;
   playerTargetPosition?: { x: number; y: number } | null;
   playerTargetLocationId?: string | null;
+  onTargetCancelled?: (reason: 'blocked') => void;
   onPlayerPosition?: (x: number, y: number) => void;
   onPlayerState?: (state: PlayerWorldState) => void;
   onEnterZone?: (zone: Zone | null) => void;
@@ -109,6 +110,7 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
     resolveSpeedMultiplier,
     playerTargetPosition,
     playerTargetLocationId,
+    onTargetCancelled,
     onPlayerPosition,
     onPlayerState,
     onEnterZone,
@@ -253,6 +255,9 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
             ? tickPlayerDirectionalMovement(speedAdjusted, inputX, inputY, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current)
             : tickPlayerMovement(speedAdjusted, 0.0012, resolveCanMoveToRef.current, resolveSpeedMultiplierRef.current);
           playerStateRef.current = tick.state;
+          if (tick.cancelledReason === 'blocked' && speedAdjusted.targetX !== null && speedAdjusted.targetY !== null) {
+            onTargetCancelled?.('blocked');
+          }
           next = tick.player;
         }
       }
@@ -278,7 +283,7 @@ export function useWorldRuntimeController(options: UseWorldRuntimeControllerOpti
 
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [enabled]);
+  }, [enabled, onTargetCancelled]);
 
   useEffect(() => {
     if (!enabled) {

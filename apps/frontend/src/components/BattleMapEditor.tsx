@@ -1,7 +1,17 @@
+import {
+  inferRelationStance,
+  type GlobalRelation,
+  type DiplomaticActorDefinition,
+} from '@theend/rpg-domain';
 import type {
   BattleMapCellType,
   BattleMapDefinition,
+  BattleMapExtractionZone,
   BattleMapObjectType,
+  BattleMapObjective,
+  BattleMapObjectiveType,
+  BattleMapScriptEvent,
+  BattleScriptEventType,
   BattleMapSpawnZoneType,
   BattleMapTriggerType,
   BattleMapNpcRole,
@@ -26,7 +36,9 @@ import { ensureNpcsLoaded, getAllNpcs } from '../services/npcRepository';
 import { imageService } from '../services/content/imageService';
 import { buildUploadFolder } from '../services/content/uploadFolders';
 import { downloadCollectionJson, extractRawCollectionFromImportJson } from '../services/content/adminJsonImportExport';
+import { getContentCollection } from '../services/content/contentApi';
 import type { NpcDefinition } from '../types/npc';
+import type { AdminDialogue, AdminMerchant, AdminQuest } from '../services/content/models';
 
 const CELL_TOOL_OPTIONS: Array<{ value: BattleMapCellType | 'erase'; label: string; helpField: string }> = [
   { value: 'walkable', label: 'Walkable', helpField: 'walkable' },
@@ -49,10 +61,12 @@ const SPAWN_ZONE_OPTIONS: Array<{ value: BattleMapSpawnZoneType; label: string; 
 const OBJECT_TYPES: BattleMapObjectType[] = ['loot', 'container', 'door', 'lever', 'resource', 'questObject', 'decoration', 'cover', 'destructible'];
 const NPC_ROLES: BattleMapNpcRole[] = ['enemy', 'neutral', 'ally', 'merchant', 'questGiver', 'civilian'];
 const TRIGGER_TYPES: BattleMapTriggerType[] = ['quest', 'dialogue', 'ambush', 'trap', 'scene', 'exit', 'custom'];
+const OBJECTIVE_TYPES: BattleMapObjectiveType[] = ['extract_bodies', 'survive_rounds', 'defeat_group', 'protect_npc', 'reach_zone', 'hold_zone', 'custom'];
+const SCRIPT_EVENT_TYPES: BattleScriptEventType[] = ['battle_start', 'round_start', 'objective_progress', 'objective_completed', 'important_actor_down', 'battle_end'];
 const MIN_BOARD_ZOOM = 0.4;
 const MAX_BOARD_ZOOM = 4;
 
-type EditorLayer = 'cells' | 'spawns' | 'exitZones' | 'objects' | 'traps' | 'npcs' | 'triggers';
+type EditorLayer = 'cells' | 'spawns' | 'exitZones' | 'extractionZones' | 'objects' | 'traps' | 'npcs' | 'triggers';
 type CellTool = BattleMapCellType | 'erase';
 type ExitZoneTeam = 'player' | 'enemy' | 'any';
 
@@ -119,6 +133,103 @@ function ensureExitZone(map: BattleMapDefinition, zoneId?: string | null): ExitZ
   return created;
 }
 
+function nextExtractionZoneId(existing: BattleMapExtractionZone[] | undefined): string {
+  const zones = Array.isArray(existing) ? existing : [];
+  let index = zones.length + 1;
+  while (zones.some((zone) => zone.id === `extraction_zone_${String(index).padStart(3, '0')}`)) {
+    index += 1;
+  }
+  return `extraction_zone_${String(index).padStart(3, '0')}`;
+}
+
+function ensureExtractionZone(map: BattleMapDefinition, zoneId?: string | null): BattleMapExtractionZone {
+  const zones = Array.isArray(map.extractionZones) ? map.extractionZones : [];
+  const found = zoneId ? zones.find((zone) => zone.id === zoneId) : undefined;
+  if (found) {
+    return found;
+  }
+  const created: BattleMapExtractionZone = {
+    id: nextExtractionZoneId(zones),
+    name: 'New extraction zone',
+    cells: [],
+    allowedKingdomIds: [],
+    allowedFactionIds: [],
+    allowedObjectiveTags: [],
+    objectiveId: '',
+    description: '',
+  };
+  map.extractionZones = [...zones, created];
+  return created;
+}
+
+function nextObjectiveId(existing: BattleMapObjective[] | undefined): string {
+  const objectives = Array.isArray(existing) ? existing : [];
+  let index = objectives.length + 1;
+  while (objectives.some((objective) => objective.id === `battle_objective_${String(index).padStart(3, '0')}`)) {
+    index += 1;
+  }
+  return `battle_objective_${String(index).padStart(3, '0')}`;
+}
+
+function createObjectiveDraft(existing: BattleMapObjective[] | undefined): BattleMapObjective {
+  return {
+    id: nextObjectiveId(existing),
+    type: 'extract_bodies',
+    title: 'New objective',
+    description: '',
+    requiredCount: 1,
+    currentCount: 0,
+    sourceKingdomId: '',
+    sourceFactionId: '',
+    sourceGroupId: '',
+    sourceObjectiveTag: '',
+    targetZoneId: '',
+    questId: '',
+    questObjectiveId: '',
+    completeQuestObjectiveOnDone: false,
+    failOnAllSourceActorsDead: false,
+  };
+}
+
+function nextScriptEventId(existing: BattleMapScriptEvent[] | undefined): string {
+  const events = Array.isArray(existing) ? existing : [];
+  let index = events.length + 1;
+  while (events.some((event) => event.id === `battle_script_event_${String(index).padStart(3, '0')}`)) {
+    index += 1;
+  }
+  return `battle_script_event_${String(index).padStart(3, '0')}`;
+}
+
+function createScriptEventDraft(existing: BattleMapScriptEvent[] | undefined): BattleMapScriptEvent {
+  return {
+    id: nextScriptEventId(existing),
+    type: 'battle_start',
+    objectiveId: '',
+    actorId: '',
+    speakerNpcId: '',
+    speakerName: '',
+    portraitImageRef: '',
+    message: 'New battle comment',
+    pauseCombat: false,
+    once: true,
+  };
+}
+
+function parseListField(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatListField(values: string[] | undefined): string {
+  return Array.isArray(values) ? values.join(', ') : '';
+}
+
+function joinTruthy(parts: Array<string | null | undefined>): string {
+  return parts.filter((part): part is string => Boolean(part && part.trim())).join(' · ');
+}
+
 function replaceCellType(map: BattleMapDefinition, x: number, y: number, type: BattleMapCellType): BattleMapDefinition {
   const otherCells = map.cells.filter((cell) => !(cell.x === x && cell.y === y));
   return {
@@ -158,8 +269,16 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [selectedTriggerId, setSelectedTriggerId] = useState<string | null>(null);
   const [selectedExitZoneId, setSelectedExitZoneId] = useState<string | null>(null);
+  const [selectedExtractionZoneId, setSelectedExtractionZoneId] = useState<string | null>(null);
+  const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
+  const [selectedScriptEventId, setSelectedScriptEventId] = useState<string | null>(null);
   const [selectedNpcSourceId, setSelectedNpcSourceId] = useState('random');
   const [adminNpcs, setAdminNpcs] = useState<NpcDefinition[]>([]);
+  const [dialogues, setDialogues] = useState<AdminDialogue[]>([]);
+  const [quests, setQuests] = useState<AdminQuest[]>([]);
+  const [merchants, setMerchants] = useState<AdminMerchant[]>([]);
+  const [diplomaticActors, setDiplomaticActors] = useState<DiplomaticActorDefinition[]>([]);
+  const [globalRelations, setGlobalRelations] = useState<GlobalRelation[]>([]);
   const [undoStack, setUndoStack] = useState<BattleMapDefinition[]>([]);
   const [redoStack, setRedoStack] = useState<BattleMapDefinition[]>([]);
   const [canvasZoom, setCanvasZoom] = useState(1);
@@ -199,6 +318,31 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
         if (!disposed) {
           setAdminNpcs(getAllNpcs().sort((left, right) => left.name.localeCompare(right.name)));
         }
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    Promise.all([
+      getContentCollection<AdminDialogue>('dialogues'),
+      getContentCollection<AdminQuest>('quests'),
+      getContentCollection<AdminMerchant>('merchants'),
+      getContentCollection<DiplomaticActorDefinition>('diplomaticActors'),
+      getContentCollection<GlobalRelation>('globalRelations'),
+    ])
+      .then(([loadedDialogues, loadedQuests, loadedMerchants, actors, relations]) => {
+        if (disposed) {
+          return;
+        }
+        setDialogues(loadedDialogues);
+        setQuests(loadedQuests);
+        setMerchants(loadedMerchants);
+        setDiplomaticActors(actors);
+        setGlobalRelations(relations);
       })
       .catch(() => undefined);
     return () => {
@@ -285,6 +429,195 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
   const selectedNpc = draft.npcs.find((npc) => npc.id === selectedNpcId) ?? null;
   const selectedTrigger = draft.triggers.find((trigger) => trigger.id === selectedTriggerId) ?? null;
   const selectedExitZone = (draft.exitZones ?? []).find((zone) => zone.id === selectedExitZoneId) ?? null;
+  const selectedExtractionZone = (draft.extractionZones ?? []).find((zone) => zone.id === selectedExtractionZoneId) ?? null;
+  const selectedObjective = (draft.objectives ?? []).find((objective) => objective.id === selectedObjectiveId) ?? null;
+  const selectedScriptEvent = (draft.scriptEvents ?? []).find((event) => event.id === selectedScriptEventId) ?? null;
+  const actorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const actor of diplomaticActors) {
+      map.set(actor.id, actor.name || actor.id);
+    }
+    return map;
+  }, [diplomaticActors]);
+  const detectedRelationSummaries = useMemo(() => {
+    const detected = new Map<string, { id: string; label: string }>();
+    for (const npc of draft.npcs) {
+      if (npc.kingdomId?.trim()) {
+        const id = npc.kingdomId.trim();
+        detected.set(`kingdom:${id}`, { id, label: actorNameById.get(id) ?? `Kingdom ${id}` });
+      }
+      if (npc.factionId?.trim()) {
+        const id = npc.factionId.trim();
+        detected.set(`faction:${id}`, { id, label: actorNameById.get(id) ?? `Faction ${id}` });
+      }
+      if (npc.raceId?.trim()) {
+        const id = npc.raceId.trim();
+        detected.set(`race:${id}`, { id, label: actorNameById.get(id) ?? `Race ${id}` });
+      }
+      if (npc.groupId?.trim()) {
+        const id = npc.groupId.trim();
+        detected.set(`group:${id}`, { id, label: actorNameById.get(id) ?? `Group ${id}` });
+      }
+    }
+
+    const relationRows = globalRelations.filter((relation) => {
+      const sourceKey = `${relation.sourceActorType}:${relation.sourceActorId}`;
+      const targetKey = `${relation.targetActorType}:${relation.targetActorId}`;
+      return detected.has(sourceKey) && detected.has(targetKey);
+    });
+
+    return {
+      actors: [...detected.entries()].map(([key, value]) => ({ key, ...value })),
+      relations: relationRows.map((relation) => {
+        const sourceName = actorNameById.get(relation.sourceActorId) ?? relation.sourceActorId;
+        const targetName = actorNameById.get(relation.targetActorId) ?? relation.targetActorId;
+        const direction = relation.isMutual ? '↔' : '→';
+        const extras = [
+          relation.attackOnSight ? 'attack on sight' : null,
+          relation.assistInCombat ? 'assist in combat' : null,
+        ].filter(Boolean).join(', ');
+        return `${sourceName} ${direction} ${targetName}: ${(relation.stance ?? inferRelationStance(relation.value)).toUpperCase()} (${relation.value})${extras ? `, ${extras}` : ''}`;
+      }),
+    };
+  }, [actorNameById, draft.npcs, globalRelations]);
+  const kingdomOptions = useMemo(() => {
+    const dynamic = diplomaticActors
+      .filter((actor) => actor.actorType === 'kingdom')
+      .map((actor) => ({ id: actor.id, label: actor.name || actor.id }));
+    return dynamic.sort((left, right) => left.label.localeCompare(right.label));
+  }, [diplomaticActors]);
+  const factionSelectorOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const actor of diplomaticActors.filter((entry) => entry.actorType === 'faction')) {
+      map.set(actor.id, actor.name || actor.id);
+    }
+    for (const option of adminNpcs.flatMap((npc) => npc.factionId ? [{ id: npc.factionId, label: npc.factionId }] : [])) {
+      if (!map.has(option.id)) {
+        map.set(option.id, option.label);
+      }
+    }
+    return [...map.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [adminNpcs, diplomaticActors]);
+  const raceOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const actor of diplomaticActors.filter((entry) => entry.actorType === 'race')) {
+      map.set(actor.id, actor.name || actor.id);
+    }
+    for (const npc of adminNpcs) {
+      if (npc.race && !map.has(npc.race)) {
+        map.set(npc.race, npc.race);
+      }
+    }
+    return [...map.entries()].map(([id, label]) => ({ id, label })).sort((left, right) => left.label.localeCompare(right.label));
+  }, [adminNpcs, diplomaticActors]);
+  const existingBattleNpcSuggestions = useMemo(() => {
+    const combatPresetIds = new Set<string>();
+    const loadoutPresetIds = new Set<string>();
+    const aiProfileIds = new Set<string>();
+    for (const map of maps) {
+      for (const npc of map.npcs ?? []) {
+        if (npc.combatPresetId) combatPresetIds.add(npc.combatPresetId);
+        if (npc.loadoutPresetId) loadoutPresetIds.add(npc.loadoutPresetId);
+        if (npc.aiProfileId) aiProfileIds.add(npc.aiProfileId);
+      }
+      for (const zone of map.spawnZones ?? []) {
+        if (zone.combatPresetId) combatPresetIds.add(zone.combatPresetId);
+        if (zone.loadoutPresetId) loadoutPresetIds.add(zone.loadoutPresetId);
+        if (zone.aiProfileId) aiProfileIds.add(zone.aiProfileId);
+      }
+    }
+    for (const npc of adminNpcs) {
+      if (npc.combat?.aiProfileId) {
+        aiProfileIds.add(npc.combat.aiProfileId);
+      }
+    }
+    return {
+      combatPresetIds: [...combatPresetIds].sort(),
+      loadoutPresetIds: [...loadoutPresetIds].sort(),
+      aiProfileIds: [...aiProfileIds].sort(),
+    };
+  }, [adminNpcs, maps]);
+  const dialogueOptions = useMemo(() => dialogues.map((dialogue) => ({
+    id: dialogue.id,
+    label: dialogue.title || dialogue.id,
+  })).sort((left, right) => left.label.localeCompare(right.label)), [dialogues]);
+  const questOptions = useMemo(() => quests.map((quest) => ({
+    id: quest.id,
+    label: quest.title || quest.id,
+    objectives: quest.steps.flatMap((step) => (step.objectives ?? []).map((objective) => ({
+      id: objective.id,
+      label: `${step.title || step.id}: ${objective.text || objective.description || objective.id}`,
+    }))),
+  })).sort((left, right) => left.label.localeCompare(right.label)), [quests]);
+  const merchantOptions = useMemo(() => merchants.map((merchant) => ({
+    id: merchant.id,
+    label: merchant.name || merchant.id,
+  })).sort((left, right) => left.label.localeCompare(right.label)), [merchants]);
+  const clanOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const map of maps) {
+      for (const npc of map.npcs ?? []) {
+        if (npc.clanId?.trim()) {
+          ids.add(npc.clanId.trim());
+        }
+      }
+    }
+    return [...ids].sort().map((id) => ({ id, label: id }));
+  }, [maps]);
+  const groupOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const map of maps) {
+      for (const npc of map.npcs ?? []) {
+        if (npc.groupId?.trim()) {
+          ids.add(npc.groupId.trim());
+        }
+      }
+    }
+    return [...ids].sort().map((id) => ({ id, label: id }));
+  }, [maps]);
+  const selectedScriptEventQuestObjectives = useMemo(() => {
+    const questId = (draft.scriptEvents ?? []).find((event) => event.id === selectedScriptEventId)?.questEffect?.questId?.trim();
+    if (!questId) {
+      return [];
+    }
+    return questOptions.find((quest) => quest.id === questId)?.objectives ?? [];
+  }, [draft.scriptEvents, questOptions, selectedScriptEventId]);
+  const selectedScriptEventValidation = useMemo(() => {
+    if (!selectedScriptEvent) {
+      return [] as string[];
+    }
+
+    const issues: string[] = [];
+    const objectiveIds = new Set((draft.objectives ?? []).map((objective) => objective.id));
+    const npcIds = new Set(draft.npcs.map((npc) => npc.id));
+
+    if (selectedScriptEvent.objectiveId && !objectiveIds.has(selectedScriptEvent.objectiveId)) {
+      issues.push(`objectiveId ${selectedScriptEvent.objectiveId} не найден среди battle objectives.`);
+    }
+    if (selectedScriptEvent.speakerNpcId && !npcIds.has(selectedScriptEvent.speakerNpcId)) {
+      issues.push(`speakerNpcId ${selectedScriptEvent.speakerNpcId} не найден среди размещённых NPC.`);
+    }
+
+    const questEffect = selectedScriptEvent.questEffect;
+    if (questEffect?.type && !questEffect.questId) {
+      issues.push('questEffect.type задан, но questId не выбран.');
+    }
+    if (questEffect?.questId) {
+      const quest = questOptions.find((entry) => entry.id === questEffect.questId) ?? null;
+      if (!quest) {
+        issues.push(`questEffect.questId ${questEffect.questId} не найден в quests.`);
+      } else if (questEffect.objectiveId && !quest.objectives.some((objective) => objective.id === questEffect.objectiveId)) {
+        issues.push(`questEffect.objectiveId ${questEffect.objectiveId} не найден в выбранном quest.`);
+      }
+    }
+    if (questEffect?.type === 'complete_objective' && !questEffect.objectiveId) {
+      issues.push('complete_objective требует questEffect.objectiveId.');
+    }
+
+    return issues;
+  }, [draft.npcs, draft.objectives, questOptions, selectedScriptEvent]);
 
   const commitDraft = (updater: (current: BattleMapDefinition) => BattleMapDefinition, trackHistory = false) => {
     setDraft((current) => {
@@ -455,6 +788,25 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           return { ...entry, cells };
         });
         return { ...next, exitZones: zones, updatedAt: Date.now() };
+      }, true);
+      return;
+    }
+
+    if (layer === 'extractionZones') {
+      commitDraft((current) => {
+        const next = normalizeBattleMap(current);
+        const zone = ensureExtractionZone(next, selectedExtractionZoneId);
+        const key = getCellKey(x, y);
+        const zones = (next.extractionZones ?? []).map((entry) => {
+          if (entry.id !== zone.id) {
+            return entry;
+          }
+          const cells = entry.cells.some((cell) => getCellKey(cell.x, cell.y) === key)
+            ? entry.cells.filter((cell) => getCellKey(cell.x, cell.y) !== key)
+            : [...entry.cells, { x, y }];
+          return { ...entry, cells };
+        });
+        return { ...next, extractionZones: zones, updatedAt: Date.now() };
       }, true);
       return;
     }
@@ -743,6 +1095,50 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
     if (selectedTriggerId === id) setSelectedTriggerId(null);
   }
 
+  function deleteSelectedExtractionZone(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
+    commitDraft((current) => ({
+      ...current,
+      extractionZones: (current.extractionZones ?? []).filter((zone) => zone.id !== id),
+      objectives: (current.objectives ?? []).map((objective) => objective.targetZoneId === id ? { ...objective, targetZoneId: '' } : objective),
+      updatedAt: Date.now(),
+    }), true);
+    if (selectedExtractionZoneId === id) {
+      setSelectedExtractionZoneId(null);
+    }
+  }
+
+  function deleteSelectedObjective(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
+    commitDraft((current) => ({
+      ...current,
+      objectives: (current.objectives ?? []).filter((objective) => objective.id !== id),
+      extractionZones: (current.extractionZones ?? []).map((zone) => zone.objectiveId === id ? { ...zone, objectiveId: '' } : zone),
+      updatedAt: Date.now(),
+    }), true);
+    if (selectedObjectiveId === id) {
+      setSelectedObjectiveId(null);
+    }
+  }
+
+  function deleteSelectedScriptEvent(id: string) {
+    if (!window.confirm('Вы уверены? Это действие нельзя отменить.')) {
+      return;
+    }
+    commitDraft((current) => ({
+      ...current,
+      scriptEvents: (current.scriptEvents ?? []).filter((event) => event.id !== id),
+      updatedAt: Date.now(),
+    }), true);
+    if (selectedScriptEventId === id) {
+      setSelectedScriptEventId(null);
+    }
+  }
+
   function handleUndo() {
     const previous = undoStack[undoStack.length - 1];
     if (!previous) {
@@ -776,6 +1172,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           <button type="button" className={layer === 'cells' && cellTool === 'trap' ? 'is-active' : ''} onClick={() => { setLayer('cells'); setCellTool('trap'); setInteractionMode('paint'); }}>Paint Trap</button>
           <button type="button" className={layer === 'spawns' && spawnTool === 'player' ? 'is-active' : ''} onClick={() => { setLayer('spawns'); setSpawnTool('player'); setInteractionMode('paint'); }}>Player Spawn</button>
           <button type="button" className={layer === 'spawns' && spawnTool === 'enemy' ? 'is-active' : ''} onClick={() => { setLayer('spawns'); setSpawnTool('enemy'); setInteractionMode('paint'); }}>Enemy Spawn</button>
+          <button type="button" className={layer === 'extractionZones' ? 'is-active' : ''} onClick={() => { setLayer('extractionZones'); setInteractionMode('paint'); onStatusMessage?.('Extraction zone tool selected. Click cells to paint evacuation area.'); }}>Extraction Zone</button>
           <button type="button" className={layer === 'objects' ? 'is-active' : ''} onClick={() => { setLayer('objects'); setInteractionMode('paint'); onStatusMessage?.('Object tool selected. Click a map cell to place object.'); }}>Object Tool</button>
           <button type="button" className={layer === 'npcs' ? 'is-active' : ''} onClick={() => { setLayer('npcs'); setInteractionMode('paint'); onStatusMessage?.('NPC tool selected. Click a map cell to place NPC.'); }}>NPC Tool</button>
           <button type="button" className={layer === 'triggers' ? 'is-active' : ''} onClick={() => { setLayer('triggers'); setInteractionMode('paint'); onStatusMessage?.('Trigger tool selected. Click a map cell to place trigger.'); }}>Trigger Tool</button>
@@ -1112,7 +1509,7 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 label="Загрузка ambient-аудио"
                 hint="Дополнительный ambient-трек карты. Пока сохраняется в карте и доступен для дальнейшего расширения звуковой сцены."
               />
-              <div className="battle-map-editor-dimensions">
+                <div className="battle-map-editor-dimensions">
                 <div className="row">
                   <label>Width <AdminHelpTooltip section="battleMaps" field="width" /></label>
                   <input type="number" min={12} value={draft.width} onChange={(event) => handleLogicalColumnsChange(Number(event.target.value) || 12)} />
@@ -1174,6 +1571,61 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                   <input value={draft.linkedZoneId ?? ''} onChange={(event) => updateIdentityField('linkedZoneId', event.target.value)} />
                 </div>
               </div>
+
+              <div className="battle-map-editor-dimensions">
+                <div className="row">
+                  <label>Objectives</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextObjective = createObjectiveDraft(draft.objectives);
+                      commitDraft((current) => ({
+                        ...current,
+                        objectives: [...(current.objectives ?? []), nextObjective],
+                        updatedAt: Date.now(),
+                      }), true);
+                      setSelectedObjectiveId(nextObjective.id);
+                    }}
+                  >
+                    Add objective
+                  </button>
+                </div>
+                <div className="row">
+                  <label>Extraction zones</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const zone = ensureExtractionZone(normalizeBattleMap(draft), null);
+                      commitDraft((current) => ({
+                        ...current,
+                        extractionZones: [...(current.extractionZones ?? []), zone],
+                        updatedAt: Date.now(),
+                      }), true);
+                      setSelectedExtractionZoneId(zone.id);
+                      setLayer('extractionZones');
+                    }}
+                  >
+                    Add extraction zone
+                  </button>
+                </div>
+                <div className="row">
+                  <label>Script events</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextEvent = createScriptEventDraft(draft.scriptEvents);
+                      commitDraft((current) => ({
+                        ...current,
+                        scriptEvents: [...(current.scriptEvents ?? []), nextEvent],
+                        updatedAt: Date.now(),
+                      }), true);
+                      setSelectedScriptEventId(nextEvent.id);
+                    }}
+                  >
+                    Add script event
+                  </button>
+                </div>
+              </div>
             </section>
 
             <section className="battle-map-editor-section battle-map-editor-placed-panel battle-map-editor-side-section">
@@ -1181,6 +1633,20 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
                 <h4>Placed Data</h4>
               </div>
               <div className="battle-map-editor-side-grid">
+                <section className="battle-map-editor-list-card">
+              <h5>Relation Preview</h5>
+            <div className="battle-map-editor-form-grid">
+              <div className="muted">
+                Detected actors: {detectedRelationSummaries.actors.length > 0
+                  ? detectedRelationSummaries.actors.map((actor) => actor.label).join(', ')
+                  : 'none'}
+              </div>
+              {detectedRelationSummaries.relations.length > 0 ? detectedRelationSummaries.relations.map((summary) => (
+                <div key={summary} className="muted">{summary}</div>
+              )) : <div className="muted">No matching global relations found for placed battle actors yet.</div>}
+            </div>
+          </section>
+
                 <section className="battle-map-editor-list-card">
               <h5>Objects <AdminHelpTooltip section="battleMaps" field="objects" /></h5>
             {draft.objects.map((object) => (
@@ -1242,6 +1708,175 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
           </section>
 
                 <section className="battle-map-editor-list-card">
+              <h5>Objectives</h5>
+            {(draft.objectives ?? []).map((objective) => (
+              <button key={objective.id} type="button" className={selectedObjectiveId === objective.id ? 'is-active' : ''} onClick={() => setSelectedObjectiveId(objective.id)}>
+                {objective.title} [{objective.type}] {objective.currentCount ?? 0}/{objective.requiredCount ?? 0}
+              </button>
+            ))}
+            {selectedObjective ? (
+              <div className="battle-map-editor-form-grid">
+                <input value={selectedObjective.id} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, id: event.target.value } : objective) }))} placeholder="id" />
+                <select value={selectedObjective.type} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, type: event.target.value as BattleMapObjectiveType } : objective) }))}>
+                  {OBJECTIVE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <input value={selectedObjective.title} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, title: event.target.value } : objective) }))} placeholder="title" />
+                <textarea value={selectedObjective.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, description: event.target.value } : objective) }))} placeholder="description" rows={2} />
+                <div className="battle-map-editor-inline-grid">
+                  <input type="number" value={selectedObjective.requiredCount ?? 0} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, requiredCount: Number(event.target.value) || 0 } : objective) }))} placeholder="requiredCount" />
+                  <input type="number" value={selectedObjective.currentCount ?? 0} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, currentCount: Number(event.target.value) || 0 } : objective) }))} placeholder="currentCount" />
+                </div>
+                <input value={selectedObjective.sourceKingdomId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, sourceKingdomId: event.target.value } : objective) }))} placeholder="sourceKingdomId" />
+                <input value={selectedObjective.sourceFactionId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, sourceFactionId: event.target.value } : objective) }))} placeholder="sourceFactionId" />
+                <input value={selectedObjective.sourceGroupId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, sourceGroupId: event.target.value } : objective) }))} placeholder="sourceGroupId" />
+                <input value={selectedObjective.sourceObjectiveTag ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, sourceObjectiveTag: event.target.value } : objective) }))} placeholder="sourceObjectiveTag" />
+                <select value={selectedObjective.targetZoneId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, targetZoneId: event.target.value } : objective) }))}>
+                  <option value="">targetZoneId</option>
+                  {(draft.extractionZones ?? []).map((zone) => <option key={zone.id} value={zone.id}>{zone.name || zone.id}</option>)}
+                </select>
+                <input value={selectedObjective.questId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, questId: event.target.value } : objective) }))} placeholder="questId" />
+                <input value={selectedObjective.questObjectiveId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, questObjectiveId: event.target.value } : objective) }))} placeholder="questObjectiveId" />
+                <label><input type="checkbox" checked={selectedObjective.completeQuestObjectiveOnDone ?? false} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, completeQuestObjectiveOnDone: event.target.checked } : objective) }))} /> complete quest objective on done</label>
+                <label><input type="checkbox" checked={selectedObjective.failOnAllSourceActorsDead ?? false} onChange={(event) => commitDraft((current) => ({ ...current, objectives: (current.objectives ?? []).map((objective) => objective.id === selectedObjective.id ? { ...objective, failOnAllSourceActorsDead: event.target.checked } : objective) }))} /> fail on all source actors dead</label>
+                <button type="button" onClick={() => deleteSelectedObjective(selectedObjective.id)}>Remove objective</button>
+              </div>
+            ) : null}
+          </section>
+
+                <section className="battle-map-editor-list-card">
+              <h5>Extraction Zones</h5>
+            {(draft.extractionZones ?? []).map((zone) => (
+              <button key={zone.id} type="button" className={selectedExtractionZoneId === zone.id ? 'is-active' : ''} onClick={() => setSelectedExtractionZoneId(zone.id)}>
+                {zone.name} ({zone.cells.length} cells){zone.objectiveId ? ` -> ${zone.objectiveId}` : ''}
+              </button>
+            ))}
+            {selectedExtractionZone ? (
+              <div className="battle-map-editor-form-grid">
+                <div className="muted">Paint this zone on the map with the `Extraction Zone` tool.</div>
+                <input value={selectedExtractionZone.id} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, id: event.target.value } : zone) }))} placeholder="id" />
+                <input value={selectedExtractionZone.name} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, name: event.target.value } : zone) }))} placeholder="name" />
+                <select value={selectedExtractionZone.objectiveId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, objectiveId: event.target.value } : zone) }))}>
+                  <option value="">objectiveId</option>
+                  {(draft.objectives ?? []).map((objective) => <option key={objective.id} value={objective.id}>{objective.title || objective.id}</option>)}
+                </select>
+                <input value={formatListField(selectedExtractionZone.allowedKingdomIds)} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, allowedKingdomIds: parseListField(event.target.value) } : zone) }))} placeholder="allowedKingdomIds: argos, artalon" />
+                <input value={formatListField(selectedExtractionZone.allowedFactionIds)} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, allowedFactionIds: parseListField(event.target.value) } : zone) }))} placeholder="allowedFactionIds" />
+                <input value={formatListField(selectedExtractionZone.allowedObjectiveTags)} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, allowedObjectiveTags: parseListField(event.target.value) } : zone) }))} placeholder="allowedObjectiveTags" />
+                <textarea value={selectedExtractionZone.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, extractionZones: (current.extractionZones ?? []).map((zone) => zone.id === selectedExtractionZone.id ? { ...zone, description: event.target.value } : zone) }))} placeholder="description" rows={2} />
+                <div className="muted">Summary: {joinTruthy([
+                  selectedExtractionZone.allowedKingdomIds?.length ? `kingdoms ${selectedExtractionZone.allowedKingdomIds.join(', ')}` : null,
+                  selectedExtractionZone.allowedFactionIds?.length ? `factions ${selectedExtractionZone.allowedFactionIds.join(', ')}` : null,
+                  selectedExtractionZone.allowedObjectiveTags?.length ? `tags ${selectedExtractionZone.allowedObjectiveTags.join(', ')}` : null,
+                ]) || 'open extraction zone'}</div>
+                <button type="button" onClick={() => deleteSelectedExtractionZone(selectedExtractionZone.id)}>Remove extraction zone</button>
+              </div>
+            ) : null}
+          </section>
+
+                <section className="battle-map-editor-list-card">
+              <h5>Script Events</h5>
+            {(draft.scriptEvents ?? []).map((event) => (
+              <button key={event.id} type="button" className={selectedScriptEventId === event.id ? 'is-active' : ''} onClick={() => setSelectedScriptEventId(event.id)}>
+                {event.type} {event.speakerName || event.speakerNpcId || event.id}
+              </button>
+            ))}
+            {selectedScriptEvent ? (
+              <div className="battle-map-editor-form-grid">
+                <input value={selectedScriptEvent.id} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, id: event.target.value } : entry) }))} placeholder="id" />
+                <select value={selectedScriptEvent.type} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, type: event.target.value as BattleScriptEventType } : entry) }))}>
+                  {SCRIPT_EVENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <select value={selectedScriptEvent.objectiveId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, objectiveId: event.target.value || undefined } : entry) }))}>
+                  <option value="">objectiveId</option>
+                  {(draft.objectives ?? []).map((objective) => <option key={objective.id} value={objective.id}>{objective.title || objective.id}</option>)}
+                </select>
+                <select value={selectedScriptEvent.speakerNpcId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, speakerNpcId: event.target.value || undefined } : entry) }))}>
+                  <option value="">speakerNpcId</option>
+                  {draft.npcs.map((npc) => <option key={npc.id} value={npc.id}>{npc.name}</option>)}
+                </select>
+                <input value={selectedScriptEvent.speakerName ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, speakerName: event.target.value } : entry) }))} placeholder="speakerName" />
+                <input value={selectedScriptEvent.actorId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, actorId: event.target.value } : entry) }))} placeholder="actorId" />
+                <input type="number" value={selectedScriptEvent.triggerAtCount ?? 0} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, triggerAtCount: Number(event.target.value) || undefined } : entry) }))} placeholder="triggerAtCount" />
+                <input value={selectedScriptEvent.portraitImageRef ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, portraitImageRef: event.target.value } : entry) }))} placeholder="portraitImageRef" />
+                <div className="muted">Quest effect</div>
+                <select
+                  value={selectedScriptEvent.questEffect?.type ?? ''}
+                  onChange={(event) => commitDraft((current) => ({
+                    ...current,
+                    scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? {
+                      ...entry,
+                      questEffect: event.target.value
+                        ? {
+                          type: event.target.value as NonNullable<BattleMapScriptEvent['questEffect']>['type'],
+                          questId: entry.questEffect?.questId,
+                          objectiveId: entry.questEffect?.objectiveId,
+                        }
+                        : undefined,
+                    } : entry),
+                  }))}
+                >
+                  <option value="">questEffect.type</option>
+                  <option value="start_quest">start_quest</option>
+                  <option value="complete_objective">complete_objective</option>
+                  <option value="advance_quest">advance_quest</option>
+                  <option value="complete_quest">complete_quest</option>
+                </select>
+                <select
+                  value={selectedScriptEvent.questEffect?.questId ?? ''}
+                  onChange={(event) => commitDraft((current) => ({
+                    ...current,
+                    scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? {
+                      ...entry,
+                      questEffect: event.target.value
+                        ? {
+                          type: entry.questEffect?.type ?? 'advance_quest',
+                          questId: event.target.value,
+                          objectiveId: entry.questEffect?.objectiveId,
+                        }
+                        : entry.questEffect
+                          ? { ...entry.questEffect, questId: undefined, objectiveId: undefined }
+                          : undefined,
+                    } : entry),
+                  }))}
+                >
+                  <option value="">questEffect.questId</option>
+                  {questOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select
+                  value={selectedScriptEvent.questEffect?.objectiveId ?? ''}
+                  onChange={(event) => commitDraft((current) => ({
+                    ...current,
+                    scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? {
+                      ...entry,
+                      questEffect: entry.questEffect
+                        ? { ...entry.questEffect, objectiveId: event.target.value || undefined }
+                        : event.target.value
+                          ? { type: 'advance_quest', objectiveId: event.target.value }
+                          : undefined,
+                    } : entry),
+                  }))}
+                >
+                  <option value="">questEffect.objectiveId</option>
+                  {selectedScriptEventQuestObjectives.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <label><input type="checkbox" checked={selectedScriptEvent.pauseCombat ?? false} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, pauseCombat: event.target.checked } : entry) }))} /> pause combat</label>
+                <label><input type="checkbox" checked={selectedScriptEvent.once ?? false} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, once: event.target.checked } : entry) }))} /> once</label>
+                <textarea value={selectedScriptEvent.message ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, scriptEvents: (current.scriptEvents ?? []).map((entry) => entry.id === selectedScriptEvent.id ? { ...entry, message: event.target.value } : entry) }))} placeholder="message" rows={4} />
+                <div className="muted">Preview: {(selectedScriptEvent.speakerName || selectedScriptEvent.speakerNpcId || 'Narrator')} — {selectedScriptEvent.message || 'empty message'}</div>
+                {selectedScriptEventValidation.length > 0 ? (
+                  <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 4, padding: 10, border: '1px solid rgba(214, 182, 121, 0.22)', borderRadius: 8 }}>
+                    <strong>Script event validation</strong>
+                    {selectedScriptEventValidation.map((issue) => (
+                      <div key={issue} style={{ color: '#f6d680' }}>{issue}</div>
+                    ))}
+                  </div>
+                ) : null}
+                <button type="button" onClick={() => deleteSelectedScriptEvent(selectedScriptEvent.id)}>Remove script event</button>
+              </div>
+            ) : null}
+          </section>
+
+                <section className="battle-map-editor-list-card">
               <h5>NPCs <AdminHelpTooltip section="battleMaps" field="npcs" /></h5>
             {draft.npcs.map((npc) => (
               <button key={npc.id} type="button" className={selectedNpcId === npc.id ? 'is-active' : ''} onClick={() => setSelectedNpcId(npc.id)}>
@@ -1250,22 +1885,99 @@ export function BattleMapEditor({ selectedMapId, onSelectedMapIdChange, onStatus
             ))}
             {selectedNpc ? (
               <div className="battle-map-editor-form-grid">
+                <div className="muted">Basic</div>
                 <input value={selectedNpc.id} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, id: event.target.value } : npc) }))} placeholder="id" />
                 <input value={selectedNpc.npcId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, npcId: event.target.value } : npc) }))} placeholder="npcId" />
                 <input value={selectedNpc.name} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, name: event.target.value } : npc) }))} placeholder="name" />
                 <select value={selectedNpc.role} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, role: event.target.value as BattleMapNpcRole } : npc) }))}>
                   {NPC_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                 </select>
+                <select value={selectedNpc.sourceType ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, sourceType: (event.target.value || undefined) as typeof npc.sourceType } : npc) }))}>
+                  <option value="">sourceType</option>
+                  <option value="linked_npc">linked_npc</option>
+                  <option value="generated_npc">generated_npc</option>
+                  <option value="monster_template">monster_template</option>
+                  <option value="animal_template">animal_template</option>
+                </select>
                 <div className="battle-map-editor-inline-grid">
                   <input type="number" value={selectedNpc.x} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, x: Number(event.target.value) || 0 } : npc) }))} placeholder="x" />
                   <input type="number" value={selectedNpc.y} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, y: Number(event.target.value) || 0 } : npc) }))} placeholder="y" />
                 </div>
-                <input value={selectedNpc.factionId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, factionId: event.target.value } : npc) }))} placeholder="factionId" />
-                <input value={selectedNpc.dialogueId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, dialogueId: event.target.value } : npc) }))} placeholder="dialogueId" />
-                <input value={selectedNpc.questId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, questId: event.target.value } : npc) }))} placeholder="questId" />
-                <input value={selectedNpc.merchantId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, merchantId: event.target.value } : npc) }))} placeholder="merchantId" />
+                <div className="muted">Identity</div>
+                <select value={selectedNpc.kingdomId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, kingdomId: event.target.value || undefined } : npc) }))}>
+                  <option value="">kingdomId</option>
+                  {kingdomOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.factionId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, factionId: event.target.value || undefined } : npc) }))}>
+                  <option value="">factionId</option>
+                  {factionSelectorOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.raceId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, raceId: event.target.value || undefined } : npc) }))}>
+                  <option value="">raceId</option>
+                  {raceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.clanId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, clanId: event.target.value || undefined } : npc) }))}>
+                  <option value="">clanId</option>
+                  {clanOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.groupId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, groupId: event.target.value || undefined } : npc) }))}>
+                  <option value="">groupId</option>
+                  {groupOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <div className="muted">Combat</div>
+                <select value={selectedNpc.combatRole ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, combatRole: (event.target.value || undefined) as typeof npc.combatRole } : npc) }))}>
+                  <option value="">combatRole</option>
+                  <option value="melee">melee</option>
+                  <option value="ranged">ranged</option>
+                  <option value="mage">mage</option>
+                  <option value="healer">healer</option>
+                  <option value="tank">tank</option>
+                  <option value="assassin">assassin</option>
+                  <option value="beast">beast</option>
+                  <option value="support">support</option>
+                </select>
+                <select value={selectedNpc.combatPresetId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, combatPresetId: event.target.value || undefined } : npc) }))}>
+                  <option value="">combatPresetId</option>
+                  {existingBattleNpcSuggestions.combatPresetIds.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+                <select value={selectedNpc.loadoutPresetId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, loadoutPresetId: event.target.value || undefined } : npc) }))}>
+                  <option value="">loadoutPresetId</option>
+                  {existingBattleNpcSuggestions.loadoutPresetIds.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+                <select value={selectedNpc.aiProfileId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, aiProfileId: event.target.value || undefined } : npc) }))}>
+                  <option value="">aiProfileId</option>
+                  {existingBattleNpcSuggestions.aiProfileIds.map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+                <input value={selectedNpc.aiPersonality ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, aiPersonality: event.target.value } : npc) }))} placeholder="aiPersonality" />
+                <input type="number" value={selectedNpc.level ?? 1} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, level: Number(event.target.value) || 1 } : npc) }))} placeholder="level" />
+                <div className="muted">Links / Visual</div>
+                <select value={selectedNpc.dialogueId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, dialogueId: event.target.value || undefined } : npc) }))}>
+                  <option value="">dialogueId</option>
+                  {dialogueOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.questId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, questId: event.target.value || undefined } : npc) }))}>
+                  <option value="">questId</option>
+                  {questOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <select value={selectedNpc.merchantId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, merchantId: event.target.value || undefined } : npc) }))}>
+                  <option value="">merchantId</option>
+                  {merchantOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
                 <input value={selectedNpc.avatarUrl ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, avatarUrl: event.target.value } : npc) }))} placeholder="avatarUrl" />
+                <input value={selectedNpc.avatarPoolId ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, avatarPoolId: event.target.value } : npc) }))} placeholder="avatarPoolId" />
+                <input value={selectedNpc.imageRef ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, imageRef: event.target.value } : npc) }))} placeholder="imageRef" />
+                <div className="muted">Objective</div>
                 <label><input type="checkbox" checked={selectedNpc.startsCombat ?? false} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, startsCombat: event.target.checked } : npc) }))} /> starts combat</label>
+                <label><input type="checkbox" checked={selectedNpc.canBeCarried ?? false} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, canBeCarried: event.target.checked } : npc) }))} /> can be carried</label>
+                <label><input type="checkbox" checked={selectedNpc.countsForObjective ?? false} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, countsForObjective: event.target.checked } : npc) }))} /> counts for objective</label>
+                <input value={selectedNpc.objectiveTag ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, objectiveTag: event.target.value } : npc) }))} placeholder="objectiveTag" />
+                <div className="muted">Summary: {joinTruthy([
+                  selectedNpc.kingdomId ? `kingdom ${selectedNpc.kingdomId}` : null,
+                  selectedNpc.factionId ? `faction ${selectedNpc.factionId}` : null,
+                  selectedNpc.combatRole ? `role ${selectedNpc.combatRole}` : null,
+                  selectedNpc.objectiveTag ? `objective ${selectedNpc.objectiveTag}` : null,
+                  selectedNpc.canBeCarried ? 'carryable' : null,
+                ]) || 'basic placed NPC'}</div>
                 <textarea value={selectedNpc.description ?? ''} onChange={(event) => commitDraft((current) => ({ ...current, npcs: current.npcs.map((npc) => npc.id === selectedNpc.id ? { ...npc, description: event.target.value } : npc) }))} placeholder="description" rows={2} />
                 <button type="button" onClick={() => deleteSelectedNpc(selectedNpc.id)}>Remove NPC</button>
               </div>

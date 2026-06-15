@@ -94,6 +94,23 @@ export interface WorldAudioCue {
   fadeOutMs?: number;
 }
 
+export type WorldMapQuestLaunchAction = 'none' | 'start_quest_battle';
+export type WorldMapQuestLaunchTrigger = 'enter' | 'interact' | 'inspect';
+export type WorldMapQuestLaunchRequiredStatus = 'active' | 'completed' | 'available' | 'any';
+
+export interface WorldMapQuestLaunchConfig {
+  action: WorldMapQuestLaunchAction;
+  questId?: string;
+  questStepId?: string;
+  questObjectiveId?: string;
+  battleMapId?: string;
+  battleObjectiveIds?: string[];
+  requireQuestStatus?: WorldMapQuestLaunchRequiredStatus;
+  requireCurrentStep?: boolean;
+  triggerOn?: WorldMapQuestLaunchTrigger;
+  debugLabel?: string;
+}
+
 function parseListField(value: string | undefined | null): string[] {
   return String(value ?? '')
     .split(/\r?\n|,|;/)
@@ -163,6 +180,7 @@ export interface WorldMapZone {
   hidden?: boolean;
   requiresDiscovery?: boolean;
   locationSprite?: LocationSpriteConfig;
+
   stateSprites?: LocationStateSprites;
   music?: WorldAudioCue;
   ambientSound?: WorldAudioCue;
@@ -172,8 +190,23 @@ export interface WorldMapZone {
   woodcuttingTier?: number;
   requiresProfession?: string;
   isProfessionZone?: boolean;
+  questLaunch?: WorldMapQuestLaunchConfig;
+  visibilityConditions?: WorldMapZoneVisibilityConditions;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface WorldMapZoneVisibilityConditions {
+  visibleWhenQuestId?: string;
+  visibleWhenQuestStatus?: 'inactive' | 'active' | 'completed' | 'not_completed';
+  hideWhenQuestId?: string;
+  hideWhenQuestStatus?: 'inactive' | 'active' | 'completed';
+  hideAfterQuestCompleted?: boolean;
+  hideAfterStepCompleted?: boolean;
+  hideAfterObjectiveCompleted?: boolean;
+  stepId?: string;
+  objectiveId?: string;
+  adminAlwaysVisible?: boolean;
 }
 
 export interface ZoneEditorDraft {
@@ -243,6 +276,17 @@ export interface ZoneEditorDraft {
   woodcuttingTier: number | null;
   requiresProfession: string;
   isProfessionZone: boolean;
+  questLaunch?: WorldMapQuestLaunchConfig;
+  visibilityConditions_visibleWhenQuestId: string;
+  visibilityConditions_visibleWhenQuestStatus: 'inactive' | 'active' | 'completed' | 'not_completed' | '';
+  visibilityConditions_hideWhenQuestId: string;
+  visibilityConditions_hideWhenQuestStatus: 'inactive' | 'active' | 'completed' | '';
+  visibilityConditions_hideAfterQuestCompleted: boolean;
+  visibilityConditions_hideAfterStepCompleted: boolean;
+  visibilityConditions_hideAfterObjectiveCompleted: boolean;
+  visibilityConditions_stepId: string;
+  visibilityConditions_objectiveId: string;
+  visibilityConditions_adminAlwaysVisible: boolean;
   createdAt: number;
   updatedAt: number;
   selectedPointIndex: number | null;
@@ -365,6 +409,28 @@ export function createEmptyZoneDraft(tool: ZoneEditorTool = 'circle'): ZoneEdito
     woodcuttingTier: null,
     requiresProfession: '',
     isProfessionZone: false,
+    questLaunch: {
+      action: 'none',
+      questId: '',
+      questStepId: '',
+      questObjectiveId: '',
+      battleMapId: '',
+      battleObjectiveIds: [],
+      requireQuestStatus: 'active',
+      requireCurrentStep: true,
+      triggerOn: 'enter',
+      debugLabel: '',
+    },
+    visibilityConditions_visibleWhenQuestId: '',
+    visibilityConditions_visibleWhenQuestStatus: '',
+    visibilityConditions_hideWhenQuestId: '',
+    visibilityConditions_hideWhenQuestStatus: '',
+    visibilityConditions_hideAfterQuestCompleted: false,
+    visibilityConditions_hideAfterStepCompleted: false,
+    visibilityConditions_hideAfterObjectiveCompleted: false,
+    visibilityConditions_stepId: '',
+    visibilityConditions_objectiveId: '',
+    visibilityConditions_adminAlwaysVisible: false,
     createdAt: now,
     updatedAt: now,
     selectedPointIndex: null,
@@ -460,6 +526,41 @@ export function createDraftFromZone(zone: WorldMapZone): ZoneEditorDraft {
     woodcuttingTier: zone.woodcuttingTier ?? null,
     requiresProfession: zone.requiresProfession ?? '',
     isProfessionZone: zone.isProfessionZone === true,
+    questLaunch: zone.questLaunch
+      ? {
+        action: zone.questLaunch.action ?? 'none',
+        questId: zone.questLaunch.questId ?? '',
+        questStepId: zone.questLaunch.questStepId ?? '',
+        questObjectiveId: zone.questLaunch.questObjectiveId ?? '',
+        battleMapId: zone.questLaunch.battleMapId ?? '',
+        battleObjectiveIds: [...(zone.questLaunch.battleObjectiveIds ?? [])],
+        requireQuestStatus: zone.questLaunch.requireQuestStatus ?? 'active',
+        requireCurrentStep: zone.questLaunch.requireCurrentStep !== false,
+        triggerOn: zone.questLaunch.triggerOn ?? 'enter',
+        debugLabel: zone.questLaunch.debugLabel ?? '',
+      }
+      : {
+        action: 'none',
+        questId: '',
+        questStepId: '',
+        questObjectiveId: '',
+        battleMapId: '',
+        battleObjectiveIds: [],
+        requireQuestStatus: 'active',
+        requireCurrentStep: true,
+        triggerOn: 'enter',
+        debugLabel: '',
+      },
+    visibilityConditions_visibleWhenQuestId: zone.visibilityConditions?.visibleWhenQuestId ?? '',
+    visibilityConditions_visibleWhenQuestStatus: zone.visibilityConditions?.visibleWhenQuestStatus ?? '',
+    visibilityConditions_hideWhenQuestId: zone.visibilityConditions?.hideWhenQuestId ?? '',
+    visibilityConditions_hideWhenQuestStatus: zone.visibilityConditions?.hideWhenQuestStatus ?? '',
+    visibilityConditions_hideAfterQuestCompleted: zone.visibilityConditions?.hideAfterQuestCompleted === true,
+    visibilityConditions_hideAfterStepCompleted: zone.visibilityConditions?.hideAfterStepCompleted === true,
+    visibilityConditions_hideAfterObjectiveCompleted: zone.visibilityConditions?.hideAfterObjectiveCompleted === true,
+    visibilityConditions_stepId: zone.visibilityConditions?.stepId ?? '',
+    visibilityConditions_objectiveId: zone.visibilityConditions?.objectiveId ?? '',
+    visibilityConditions_adminAlwaysVisible: zone.visibilityConditions?.adminAlwaysVisible === true,
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
     selectedPointIndex: null,
@@ -559,6 +660,34 @@ export function createZoneFromDraft(draft: ZoneEditorDraft, existingCreatedAt?: 
     woodcuttingTier: draft.woodcuttingTier ?? undefined,
     requiresProfession: draft.requiresProfession.trim() || undefined,
     isProfessionZone: draft.isProfessionZone || undefined,
+    questLaunch: draft.questLaunch && draft.questLaunch.action !== 'none'
+      ? {
+        action: draft.questLaunch.action,
+        questId: draft.questLaunch.questId?.trim() || undefined,
+        questStepId: draft.questLaunch.questStepId?.trim() || undefined,
+        questObjectiveId: draft.questLaunch.questObjectiveId?.trim() || undefined,
+        battleMapId: draft.questLaunch.battleMapId?.trim() || undefined,
+        battleObjectiveIds: (draft.questLaunch.battleObjectiveIds ?? []).map((entry) => entry.trim()).filter(Boolean),
+        requireQuestStatus: draft.questLaunch.requireQuestStatus ?? undefined,
+        requireCurrentStep: draft.questLaunch.requireCurrentStep !== false ? true : undefined,
+        triggerOn: draft.questLaunch.triggerOn ?? undefined,
+        debugLabel: draft.questLaunch.debugLabel?.trim() || undefined,
+      }
+      : undefined,
+    visibilityConditions: draft.visibilityConditions_visibleWhenQuestId || draft.visibilityConditions_hideWhenQuestId || draft.visibilityConditions_hideAfterQuestCompleted || draft.visibilityConditions_hideAfterStepCompleted || draft.visibilityConditions_hideAfterObjectiveCompleted || draft.visibilityConditions_adminAlwaysVisible
+      ? {
+        visibleWhenQuestId: draft.visibilityConditions_visibleWhenQuestId.trim() || undefined,
+        visibleWhenQuestStatus: draft.visibilityConditions_visibleWhenQuestStatus || undefined,
+        hideWhenQuestId: draft.visibilityConditions_hideWhenQuestId.trim() || undefined,
+        hideWhenQuestStatus: draft.visibilityConditions_hideWhenQuestStatus || undefined,
+        hideAfterQuestCompleted: draft.visibilityConditions_hideAfterQuestCompleted || undefined,
+        hideAfterStepCompleted: draft.visibilityConditions_hideAfterStepCompleted || undefined,
+        hideAfterObjectiveCompleted: draft.visibilityConditions_hideAfterObjectiveCompleted || undefined,
+        stepId: draft.visibilityConditions_stepId.trim() || undefined,
+        objectiveId: draft.visibilityConditions_objectiveId.trim() || undefined,
+        adminAlwaysVisible: draft.visibilityConditions_adminAlwaysVisible || undefined,
+      }
+      : undefined,
     subtype: draft.subtype.trim() || undefined,
     currentState: draft.currentState.trim() || undefined,
     hidden: draft.hidden || undefined,

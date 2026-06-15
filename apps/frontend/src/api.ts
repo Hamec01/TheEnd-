@@ -266,6 +266,17 @@ export interface RuntimeBattleMapSpawnZonePayload {
   type: string;
   name: string;
   cells: Array<{ x: number; y: number }>;
+  kingdomId?: string;
+  factionId?: string;
+  raceId?: string;
+  groupId?: string;
+  spawnMode?: 'manual' | 'generated';
+  count?: number;
+  npcTemplateIds?: string[];
+  combatPresetId?: string;
+  loadoutPresetId?: string;
+  aiProfileId?: string;
+  objectiveTag?: string;
 }
 
 export interface RuntimeBattleMapObjectPayload {
@@ -314,6 +325,29 @@ export interface RuntimeBattleMapPlacedNpcPayload {
   startsCombat?: boolean;
   avatarUrl?: string;
   description?: string;
+  sourceType?: 'linked_npc' | 'generated_npc' | 'monster_template' | 'animal_template';
+  kingdomId?: string;
+  raceId?: string;
+  clanId?: string;
+  groupId?: string;
+  combatRole?: 'melee' | 'ranged' | 'mage' | 'healer' | 'tank' | 'assassin' | 'beast' | 'support';
+  combatPresetId?: string;
+  loadoutPresetId?: string;
+  aiProfileId?: string;
+  aiPersonality?: string;
+  level?: number;
+  equipment?: {
+    weaponItemId?: string;
+    offhandItemId?: string;
+    armorItemIds?: string[];
+  };
+  skillIds?: string[];
+  statOverrides?: Record<string, number>;
+  avatarPoolId?: string;
+  imageRef?: string;
+  canBeCarried?: boolean;
+  countsForObjective?: boolean;
+  objectiveTag?: string;
 }
 
 export interface RuntimeBattleMapTriggerPayload {
@@ -358,6 +392,9 @@ export interface RuntimeBattleMapPayload {
   npcs?: RuntimeBattleMapPlacedNpcPayload[];
   triggers?: RuntimeBattleMapTriggerPayload[];
   exitZones?: import('@theend/rpg-domain').ExitZone[];
+  objectives?: import('@theend/rpg-domain').BattleMapObjective[];
+  extractionZones?: import('@theend/rpg-domain').BattleMapExtractionZone[];
+  scriptEvents?: import('@theend/rpg-domain').BattleMapScriptEvent[];
 }
 
 export async function registerAccount(payload: RegisterRequest): Promise<RegisterResponse> {
@@ -792,6 +829,7 @@ export async function startCombat(
   characterId: string,
   enemyCount = 1,
   battleMap?: RuntimeBattleMapPayload,
+  battleContext?: import('@theend/rpg-domain').BattleRuntimeContext,
 ): Promise<{
   combatId: string;
   playerId: string;
@@ -801,7 +839,7 @@ export async function startCombat(
   const res = await fetch(`${API_BASE}/combat/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ characterId, enemyCount: normalizedEnemyCount, battleMap }),
+    body: JSON.stringify({ characterId, enemyCount: normalizedEnemyCount, battleMap, battleContext }),
   });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
@@ -813,6 +851,7 @@ export async function startCustomCombat(
   characterId: string,
   customEnemies: CustomArenaNpcPayload[],
   battleMap?: RuntimeBattleMapPayload,
+  battleContext?: import('@theend/rpg-domain').BattleRuntimeContext,
 ): Promise<{
   combatId: string;
   playerId: string;
@@ -827,6 +866,7 @@ export async function startCustomCombat(
       enemyCount: Math.max(1, normalizedCustomEnemies.length),
       customEnemies: normalizedCustomEnemies,
       battleMap,
+      battleContext,
     }),
   });
   if (!res.ok) {

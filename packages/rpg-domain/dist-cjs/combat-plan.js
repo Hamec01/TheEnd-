@@ -33,6 +33,8 @@ const COMMAND_ALLOWED_TARGETS = {
     weapon_swap: ['self'],
     place_trap: ['cell'],
     loot: ['cell', 'entity'],
+    pickup_objective_marker: ['cell'],
+    evacuate_objective_marker: ['cell'],
     start_retreat: ['self'],
     confirm_retreat: ['self'],
     wait: ['self'],
@@ -49,6 +51,8 @@ exports.COMBAT_COMMAND_PRIORITY = {
     basic_attack: 0,
     item_use: 0,
     skill_cast: 0,
+    pickup_objective_marker: 0,
+    evacuate_objective_marker: 0,
     heavy_attack: -5,
     throw_bomb: -5,
     start_retreat: -10,
@@ -293,6 +297,10 @@ function getBaseCostKey(command) {
         case 'loot':
             key = 'loot_adjacent';
             break;
+        case 'pickup_objective_marker':
+        case 'evacuate_objective_marker':
+            key = 'loot_adjacent';
+            break;
         case 'start_retreat':
             key = 'start_retreat';
             break;
@@ -355,6 +363,21 @@ function normalizeCommandPayload(command) {
             };
         case 'loot':
             return payload.lootContainerId ? { lootContainerId: payload.lootContainerId } : undefined;
+        case 'pickup_objective_marker':
+            return payload.markerId
+                ? {
+                    markerId: payload.markerId,
+                    ...(payload.objectiveId ? { objectiveId: payload.objectiveId } : {}),
+                }
+                : undefined;
+        case 'evacuate_objective_marker':
+            return payload.extractionZoneId
+                ? {
+                    extractionZoneId: payload.extractionZoneId,
+                    ...(payload.markerId ? { markerId: payload.markerId } : {}),
+                    ...(payload.objectiveId ? { objectiveId: payload.objectiveId } : {}),
+                }
+                : undefined;
         case 'move':
         case 'dash':
         case 'disengage':
@@ -450,6 +473,12 @@ function validateCombatCommand(params) {
     }
     if (params.command.type === 'weapon_swap' && !params.command.payload?.weaponItemId && !params.command.payload?.weaponInstanceId) {
         errors.push('WEAPON_ID_REQUIRED');
+    }
+    if (params.command.type === 'pickup_objective_marker' && !params.command.payload?.markerId) {
+        errors.push('INVALID_TARGET');
+    }
+    if (params.command.type === 'evacuate_objective_marker' && !params.command.payload?.extractionZoneId) {
+        errors.push('INVALID_TARGET');
     }
     const warnings = [];
     if (params.command.type === 'basic_attack' || params.command.type === 'heavy_attack') {

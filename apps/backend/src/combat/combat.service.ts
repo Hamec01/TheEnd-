@@ -28,6 +28,11 @@ import {
   normalizeArenaBattleState,
   normalizeCombatCommand,
   revalidateCombatCommandBeforeExecute,
+  shouldApplyArenaVictoryRewards,
+  createQuestBattleContext,
+  evacuateCarriedBodyAtZone,
+  pickUpBattleObjectiveMarker,
+  validateBattleContextForBattleMap,
   getRequiredExpForNextLevel,
   resolveRound,
   validateCombatTurnPlan,
@@ -68,11 +73,18 @@ import {
   type CombatRoundLimits,
   type CombatTurnPlan,
   type ArenaCombatEquipmentModifiers,
+  type BattleRuntimeContext,
+  type BattleObjectiveMarkerState,
+  type BattleQuestObjectiveEffect,
   type BattlefieldTile,
+  type BattleMapExtractionZone,
+  type BattleMapObjective,
+  type BattleMapPlacedNpc,
   type Equipment,
   type ExitZone,
   type Race,
   type StatBlock,
+  type GlobalRelation,
 } from '@theend/rpg-domain';
 import { randomUUID } from 'crypto';
 import { ArenaService } from '../arena/arena.service';
@@ -134,6 +146,45 @@ interface NormalizedItemEffect {
   statusId?: string;
   target?: string;
 }
+
+type RuntimeBattleNpcPayload = {
+  id: string;
+  npcId?: string;
+  name: string;
+  role: string;
+  x: number;
+  y: number;
+  factionId?: string;
+  dialogueId?: string;
+  questId?: string;
+  merchantId?: string;
+  startsCombat?: boolean;
+  avatarUrl?: string;
+  description?: string;
+  sourceType?: string;
+  kingdomId?: string;
+  raceId?: string;
+  clanId?: string;
+  groupId?: string;
+  combatRole?: string;
+  combatPresetId?: string;
+  loadoutPresetId?: string;
+  aiProfileId?: string;
+  aiPersonality?: string;
+  level?: number;
+  equipment?: {
+    weaponItemId?: string;
+    offhandItemId?: string;
+    armorItemIds?: string[];
+  };
+  skillIds?: string[];
+  statOverrides?: Record<string, number>;
+  avatarPoolId?: string;
+  imageRef?: string;
+  canBeCarried?: boolean;
+  countsForObjective?: boolean;
+  objectiveTag?: string;
+};
 
 export interface CombatActionResult {
   state: ArenaBattleState;
@@ -2665,6 +2716,76 @@ export class CombatService {
     state.phase = state.isFinished ? 'finished' : 'acting';
   }
 
+  private appendQuestEffects(state: ArenaBattleState, effects: BattleQuestObjectiveEffect[]): void {
+    if (effects.length === 0) {
+      return;
+    }
+    state.pendingQuestEffects ??= [];
+    for (const effect of effects) {
+      const duplicate = state.pendingQuestEffects.some((entry) =>
+        entry.type === effect.type
+        && entry.questId === effect.questId
+        && entry.objectiveId === effect.objectiveId
+        && entry.battleObjectiveId === effect.battleObjectiveId);
+      if (!duplicate) {
+        state.pendingQuestEffects.push(effect);
+      }
+    }
+  }
+
+  private finishQuestBattleIfCompleted(state: ArenaBattleState): void {
+    if (state.questBattleResultState !== 'objective_completed') {
+      return;
+    }
+    state.isFinished = true;
+    state.phase = 'finished';
+    state.winner = TeamSide.Left;
+  }
+
+  private tryAutoEvacuateObjectiveCarrier(params: {
+    state: ArenaBattleState;
+    actor: ArenaBattleState['entities'][number];
+    stepIndex: number;
+    orderIndex: number;
+  }): void {
+    const { state, actor, stepIndex, orderIndex } = params;
+    if (!actor.isPlayer || !state.carryingBody || !state.battleExtractionZones?.length) {
+      return;
+    }
+    const actorX = actor.battlefieldX ?? -1;
+    const actorY = actor.battlefieldY ?? -1;
+    const zone = state.battleExtractionZones.find((entry) => entry.cells.some((cell) => cell.x === actorX && cell.y === actorY));
+    if (!zone) {
+      return;
+    }
+    const carriedMarkerId = state.carryingBody.markerId;
+    const result = evacuateCarriedBodyAtZone(state, state.battleObjectives ?? [], zone);
+    if (!result.ok) {
+      return;
+    }
+    const marker = state.battleObjectiveMarkers?.find((entry) => entry.id === carriedMarkerId);
+    if (marker) {
+      marker.status = 'evacuated';
+    }
+    this.appendQuestEffects(state, result.questEffects);
+    this.addCombatEvent(state, {
+      id: randomUUID(),
+      roundNumber: state.roundNumber,
+      stepIndex,
+      orderIndex,
+      type: 'effect_triggered',
+      actorId: actor.id,
+      message: `${actor.name} доставляет раненого в зону эвакуации.`,
+      data: {
+        objectiveId: result.progress?.objectiveId,
+        currentCount: result.progress?.currentCount,
+        requiredCount: result.progress?.requiredCount,
+        extractionZoneId: zone.id,
+      },
+    });
+    this.finishQuestBattleIfCompleted(state);
+  }
+
   private async executeResolveCommand(params: {
     session: CombatSession;
     actor: ArenaBattleState['entities'][number];
@@ -2785,6 +2906,134 @@ export class CombatService {
             movementType,
           },
         );
+        this.tryAutoEvacuateObjectiveCarrier({
+          state,
+          actor,
+          stepIndex,
+          orderIndex,
+        });
+        break;
+      }
+      case 'pickup_objective_marker': {
+        if (command.target.kind !== 'cell') {
+          break;
+        }
+        const markerId = command.payload?.markerId;
+        const marker = state.battleObjectiveMarkers?.find((entry) => entry.id === markerId && entry.status === 'available');
+        const actorX = actor.battlefieldX ?? 0;
+        const actorY = actor.battlefieldY ?? 0;
+        const distanceToMarker = marker ? Math.abs(actorX - marker.x) + Math.abs(actorY - marker.y) : Number.MAX_SAFE_INTEGER;
+        if (!marker || distanceToMarker > 1) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может поднять цель.`,
+            data: { reason: !marker ? 'marker_missing' : 'marker_too_far', markerId },
+          });
+          break;
+        }
+        const result = pickUpBattleObjectiveMarker(state, {
+          id: marker.id,
+          npcId: marker.sourceNpcId,
+          name: marker.name,
+          role: 'ally',
+          x: marker.x,
+          y: marker.y,
+          factionId: marker.factionId,
+          kingdomId: marker.kingdomId,
+          groupId: marker.groupId,
+          canBeCarried: marker.canBeCarried,
+          countsForObjective: marker.countsForObjective,
+          objectiveTag: marker.objectiveTag,
+        }, state.battleObjectives ?? []);
+        if (!result.ok) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может поднять раненого.`,
+            data: { reason: result.reason, markerId: marker.id },
+          });
+          break;
+        }
+        marker.status = 'carried';
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex,
+          orderIndex,
+          type: 'effect_triggered',
+          actorId: actor.id,
+          commandId: command.id,
+          message: `${actor.name} поднимает ${marker.name}.`,
+          data: { markerId: marker.id, objectiveId: result.progress?.objectiveId },
+        });
+        break;
+      }
+      case 'evacuate_objective_marker': {
+        const extractionZoneId = command.payload?.extractionZoneId;
+        const zone = state.battleExtractionZones?.find((entry) => entry.id === extractionZoneId);
+        if (!zone) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не находит зону эвакуации.`,
+            data: { reason: 'extraction_zone_missing', extractionZoneId },
+          });
+          break;
+        }
+        const carriedMarkerId = state.carryingBody?.markerId;
+        const result = evacuateCarriedBodyAtZone(state, state.battleObjectives ?? [], zone);
+        if (!result.ok) {
+          this.addCombatEvent(state, {
+            id: randomUUID(),
+            roundNumber: state.roundNumber,
+            stepIndex,
+            orderIndex,
+            type: 'command_failed',
+            actorId: actor.id,
+            commandId: command.id,
+            message: `${actor.name} не может сдать раненого.`,
+            data: { reason: result.reason, extractionZoneId },
+          });
+          break;
+        }
+        const marker = state.battleObjectiveMarkers?.find((entry) => entry.id === carriedMarkerId);
+        if (marker) {
+          marker.status = 'evacuated';
+        }
+        this.appendQuestEffects(state, result.questEffects);
+        this.addCombatEvent(state, {
+          id: randomUUID(),
+          roundNumber: state.roundNumber,
+          stepIndex,
+          orderIndex,
+          type: 'effect_triggered',
+          actorId: actor.id,
+          commandId: command.id,
+          message: `${actor.name} передаёт раненого в зону эвакуации.`,
+          data: {
+            extractionZoneId,
+            objectiveId: result.progress?.objectiveId,
+            currentCount: result.progress?.currentCount,
+            requiredCount: result.progress?.requiredCount,
+          },
+        });
+        this.finishQuestBattleIfCompleted(state);
         break;
       }
       case 'guard': {
@@ -4107,7 +4356,7 @@ export class CombatService {
       .reduce((sum, entry) => sum + Math.max(0, entry.amount ?? 0), 0);
     session.damageContribution += roundDamage;
 
-    if (state.isFinished && state.winner === TeamSide.Left) {
+    if (state.isFinished && state.winner === TeamSide.Left && shouldApplyArenaVictoryRewards(state)) {
       const rewards = await this.applyVictoryRewards(session.playerId, state, session.damageContribution);
 
       if (rewards.progression.gainedExp > 0) {
@@ -4169,7 +4418,7 @@ export class CombatService {
       this.primeRoundPlanning(session);
       this.syncTurnPlanState(session);
     } else {
-      if (state.winner === TeamSide.Left) {
+      if (state.winner === TeamSide.Left && shouldApplyArenaVictoryRewards(state)) {
         await this.claimAllAvailableLootForActor(state, session.playerId);
       }
       state.roundPhase = undefined;
@@ -4659,6 +4908,9 @@ export class CombatService {
     entity.activeWeaponInstanceId = character.equipmentState?.slots?.weapon?.itemInstanceId ?? null;
     entity.offHandInstanceId = character.equipmentState?.slots?.shield?.itemInstanceId ?? null;
     entity.hasShield = Boolean(equipment.shield);
+    entity.isPlayer = true;
+    entity.raceId = String(character.race ?? '').toLowerCase();
+    entity.citizenshipKingdomId = String((character as unknown as { citizenshipKingdomId?: string | null }).citizenshipKingdomId ?? '').trim() || undefined;
 
     return entity;
   }
@@ -4807,6 +5059,116 @@ export class CombatService {
       splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
       combatModifiers,
     });
+  }
+
+  private isQuestObjectiveMarker(npc: RuntimeBattleNpcPayload | undefined): boolean {
+    return Boolean(
+      npc
+      && npc.canBeCarried === true
+      && npc.countsForObjective === true
+      && typeof npc.objectiveTag === 'string'
+      && npc.objectiveTag.trim().length > 0
+      && npc.startsCombat !== true,
+    );
+  }
+
+  private shouldMaterializeBattleNpcAsCombatant(npc: RuntimeBattleNpcPayload | undefined): boolean {
+    if (!npc) {
+      return false;
+    }
+    if (this.isQuestObjectiveMarker(npc)) {
+      return false;
+    }
+    return npc.startsCombat === true || npc.role === 'enemy' || npc.role === 'ally';
+  }
+
+  private toBattleNpcEquipment(npc: RuntimeBattleNpcPayload | undefined): Equipment {
+    if (!npc?.equipment) {
+      return this.normalizeEquipment({});
+    }
+    const armorItems = Array.isArray(npc.equipment.armorItemIds)
+      ? npc.equipment.armorItemIds.filter((entry: string) => typeof entry === 'string' && entry.trim().length > 0)
+      : [];
+    return this.normalizeEquipment({
+      weapon: npc.equipment.weaponItemId ?? undefined,
+      shield: npc.equipment.offhandItemId ?? undefined,
+      armor: armorItems[0] ?? undefined,
+      helmet: armorItems[1] ?? undefined,
+      gloves: armorItems[2] ?? undefined,
+      boots: armorItems[3] ?? undefined,
+    });
+  }
+
+  private materializeBattleMapNpc(params: {
+    npc: RuntimeBattleNpcPayload;
+    playerStats: StatBlock;
+    fallbackRace: Race;
+    position: number;
+  }): ArenaCombatEntity {
+    const { npc, playerStats, fallbackRace, position } = params;
+    const team = npc.role === 'enemy' ? TeamSide.Right : TeamSide.Left;
+    const baseStats: StatBlock = {
+      hp: Math.max(20, Math.round(npc.statOverrides?.hp ?? playerStats.hp * (team === TeamSide.Right ? 0.9 : 0.82))),
+      mp: Math.max(0, Math.round(npc.statOverrides?.mana ?? npc.statOverrides?.mp ?? playerStats.mp * 0.45)),
+      stamina: Math.max(10, Math.round(npc.statOverrides?.stamina ?? playerStats.stamina * 0.9)),
+      strength: Math.max(1, Math.round(npc.statOverrides?.strength ?? playerStats.strength)),
+      constitution: Math.max(1, Math.round(npc.statOverrides?.endurance ?? npc.statOverrides?.constitution ?? playerStats.constitution)),
+      dexterity: Math.max(1, Math.round(npc.statOverrides?.agility ?? npc.statOverrides?.dexterity ?? playerStats.dexterity)),
+      intelligence: Math.max(1, Math.round(npc.statOverrides?.intellect ?? npc.statOverrides?.intelligence ?? playerStats.intelligence)),
+      luck: Math.max(1, Math.round(npc.statOverrides?.luck ?? playerStats.luck)),
+      perception: Math.max(1, Math.round(npc.statOverrides?.perception ?? playerStats.perception)),
+      willpower: Math.max(1, Math.round(npc.statOverrides?.willpower ?? playerStats.willpower)),
+    };
+    const equipment = this.toBattleNpcEquipment(npc);
+    const activeStats = this.contentService.getStatsWithEquipment(baseStats, equipment);
+    const weaponProfile = this.resolveWeaponCombatProfile(equipment);
+    const combatModifiers = this.contentService.getArenaCombatEquipmentModifiers(equipment);
+    const raceValue = String(npc.raceId ?? '').trim().toUpperCase();
+    const entity = this.toCombatEntityFromStats({
+      id: npc.id,
+      name: npc.name,
+      race: (raceValue || fallbackRace) as Race,
+      team,
+      position,
+      stats: activeStats,
+      avatarUrl: npc.avatarUrl,
+      combatStyleHint: weaponProfile.combatStyleHint,
+      attackRange: npc.statOverrides?.attackRange ?? weaponProfile.attackRange,
+      pierceTargets: weaponProfile.pierceTargets,
+      splashRadius: weaponProfile.splashRadius,
+      splashCenterMultiplier: weaponProfile.splashCenterMultiplier,
+      splashOuterMultiplier: weaponProfile.splashOuterMultiplier,
+      combatModifiers,
+    });
+    entity.battlefieldX = npc.x;
+    entity.battlefieldY = npc.y;
+    entity.isNpc = true;
+    entity.factionId = npc.factionId;
+    entity.kingdomId = npc.kingdomId;
+    entity.raceId = npc.raceId;
+    entity.clanId = npc.clanId;
+    entity.groupId = npc.groupId;
+    entity.activeWeaponItemId = equipment.weapon ?? null;
+    entity.offHandItemId = equipment.shield ?? null;
+    entity.hasShield = Boolean(equipment.shield);
+    return entity;
+  }
+
+  private materializeObjectiveMarker(npc: RuntimeBattleNpcPayload): BattleObjectiveMarkerState {
+    return {
+      id: npc.id,
+      sourceNpcId: npc.npcId,
+      name: npc.name,
+      x: npc.x,
+      y: npc.y,
+      kingdomId: npc.kingdomId,
+      factionId: npc.factionId,
+      groupId: npc.groupId,
+      objectiveTag: npc.objectiveTag,
+      canBeCarried: npc.canBeCarried === true,
+      countsForObjective: npc.countsForObjective === true,
+      status: 'available',
+    };
   }
 
   private cellKey(x: number, y: number): string {
@@ -4999,11 +5361,32 @@ export class CombatService {
     const leftTeam = entities.filter((entity) => entity.team === TeamSide.Left && entity.isAlive).sort((left, right) => left.position - right.position);
     const rightTeam = entities.filter((entity) => entity.team === TeamSide.Right && entity.isAlive).sort((left, right) => left.position - right.position);
 
+    for (const entity of entities) {
+      if (!entity.isAlive || !Number.isInteger(entity.battlefieldX) || !Number.isInteger(entity.battlefieldY)) {
+        continue;
+      }
+      const key = this.cellKey(entity.battlefieldX ?? 0, entity.battlefieldY ?? 0);
+      const tile = tileByKey.get(key);
+      const inside = (entity.battlefieldX ?? -1) >= 0
+        && (entity.battlefieldX ?? -1) < width
+        && (entity.battlefieldY ?? -1) >= 0
+        && (entity.battlefieldY ?? -1) < height;
+      if (!inside || this.isMovementBlocked(tile) || occupied.has(key)) {
+        entity.battlefieldX = undefined;
+        entity.battlefieldY = undefined;
+        continue;
+      }
+      occupied.add(key);
+    }
+
     for (const [teamEntities, seeds, team] of [
       [leftTeam, playerSeeds, TeamSide.Left],
       [rightTeam, enemySeeds, TeamSide.Right],
     ] as const) {
       for (const entity of teamEntities) {
+        if (Number.isInteger(entity.battlefieldX) && Number.isInteger(entity.battlefieldY)) {
+          continue;
+        }
         const candidate = this.findNearestValidCell(
           seeds.length > 0 ? seeds : fallbackSeedsByTeam(team, teamEntities.length),
           width,
@@ -5074,12 +5457,51 @@ export class CombatService {
     };
   }
 
+  private normalizeBattleRuntimeContext(payload: unknown, battleMap?: RuntimeBattleMapDto): BattleRuntimeContext | undefined {
+    if (!payload || typeof payload !== 'object') {
+      return undefined;
+    }
+    const raw = payload as {
+      battleType?: unknown;
+      questId?: unknown;
+      questStepId?: unknown;
+      battleMapId?: unknown;
+      activeBattleObjectiveIds?: unknown;
+      battleObjectiveIds?: unknown;
+    };
+    if (raw.battleType !== 'quest') {
+      return undefined;
+    }
+    const activeBattleObjectiveIds = Array.isArray(raw.activeBattleObjectiveIds)
+      ? raw.activeBattleObjectiveIds
+      : Array.isArray(raw.battleObjectiveIds)
+        ? raw.battleObjectiveIds
+        : [];
+    const context = createQuestBattleContext({
+      questId: String(raw.questId ?? '').trim(),
+      questStepId: String(raw.questStepId ?? '').trim(),
+      battleMapId: String(raw.battleMapId ?? battleMap?.id ?? '').trim(),
+      activeBattleObjectiveIds: activeBattleObjectiveIds
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean),
+    });
+    const validation = validateBattleContextForBattleMap(context, battleMap as { id?: string; objectives?: Array<{ id: string }> } | undefined);
+    if (!validation.ok) {
+      throw new BadRequestException({
+        message: 'Invalid quest battle context.',
+        errors: validation.errors,
+      });
+    }
+    return context;
+  }
+
   async startCombat(
     characterId: string,
     enemyCount = 1,
     customEnemies: CustomCombatNpcDto[] = [],
     battleMap?: RuntimeBattleMapDto,
     blockedTiles: Array<{ x: number; y: number }> = [],
+    battleContextPayload?: unknown,
   ) {
     const character = await this.loadCharacterForCombat(characterId);
 
@@ -5116,13 +5538,28 @@ export class CombatService {
     const count = normalizedCustomEnemies.length > 0
       ? normalizedCustomEnemies.length
       : Math.max(1, Math.min(MAX_COMBAT_ENEMIES, enemyCount));
-
-    const enemies = normalizedCustomEnemies.length > 0
-      ? normalizedCustomEnemies.map((enemy, index) => this.createCustomEnemy(enemy, 3 + index))
-      : Array.from({ length: count }, (_, index) => this.createGeneratedEnemy(playerStats, character.race as Race, 3 + index, index, count));
+    const battleMapNpcs = Array.isArray(battleMap?.npcs) ? battleMap.npcs : [];
+    const mapCombatants = battleMapNpcs
+      .filter((npc) => this.shouldMaterializeBattleNpcAsCombatant(npc))
+      .map((npc, index) => this.materializeBattleMapNpc({
+        npc,
+        playerStats,
+        fallbackRace: character.race as Race,
+        position: 3 + index,
+      }));
+    const objectiveMarkers = battleMapNpcs
+      .filter((npc) => this.isQuestObjectiveMarker(npc))
+      .map((npc) => this.materializeObjectiveMarker(npc));
+    const enemies = mapCombatants.length > 0
+      ? mapCombatants
+      : normalizedCustomEnemies.length > 0
+        ? normalizedCustomEnemies.map((enemy, index) => this.createCustomEnemy(enemy, 3 + index))
+        : Array.from({ length: count }, (_, index) => this.createGeneratedEnemy(playerStats, character.race as Race, 3 + index, index, count));
 
     const battlefieldTiles = this.buildBattlefieldTiles(battleMap, blockedTiles);
     this.assignSpawnPositions([player, ...enemies], battleMap, battlefieldTiles);
+    const battleContext = this.normalizeBattleRuntimeContext(battleContextPayload, battleMap);
+    const globalRelations = this.contentService.listCollection('globalRelations') as GlobalRelation[];
 
     const combatId = randomUUID();
     const state = createInitialBattleState({
@@ -5137,6 +5574,11 @@ export class CombatService {
       battlefieldTiles,
       battlefieldTraps: this.buildBattlefieldTraps(battleMap),
       exitZones: battleMap?.exitZones as ExitZone[] | undefined,
+      battleContext,
+      globalRelations,
+      battleObjectives: (battleMap?.objectives ?? []) as BattleMapObjective[],
+      battleExtractionZones: (battleMap?.extractionZones ?? []) as BattleMapExtractionZone[],
+      battleObjectiveMarkers: objectiveMarkers,
     });
     state.roundDurationSeconds = DEFAULT_ROUND_DURATION_SECONDS;
     state.turnDurationSeconds = ACTIVE_TURN_DURATION_SECONDS;
@@ -5155,7 +5597,12 @@ export class CombatService {
     );
     for (let i = 0; i < enemies.length; i++) {
       const enemy = enemies[i]!;
-      if (normalizedCustomEnemies.length > 0) {
+      const placedNpc = mapCombatants.find((entry) => entry.id === enemy.id);
+      if (placedNpc) {
+        const sourceNpc = battleMapNpcs.find((entry) => entry.id === enemy.id);
+        equipmentByActorId.set(enemy.id, this.toBattleNpcEquipment(sourceNpc));
+        effectiveEquippedItemsByActorId.set(enemy.id, {});
+      } else if (normalizedCustomEnemies.length > 0) {
         const tpl = normalizedCustomEnemies[i];
         equipmentByActorId.set(enemy.id, this.normalizeEquipment(tpl?.equipment));
         effectiveEquippedItemsByActorId.set(enemy.id, {});
@@ -5402,7 +5849,7 @@ export class CombatService {
       }
 
       const stateAny = session.state as unknown as { rewardsApplied?: boolean; victoryRewards?: unknown };
-      if (session.state.winner === TeamSide.Left && !stateAny.rewardsApplied) {
+      if (session.state.winner === TeamSide.Left && !stateAny.rewardsApplied && shouldApplyArenaVictoryRewards(session.state)) {
         const rewards = await this.applyVictoryRewards(session.playerId, session.state, session.damageContribution);
         stateAny.rewardsApplied = true;
         stateAny.victoryRewards = {
@@ -6039,7 +6486,7 @@ export class CombatService {
     let finishedHubState: Awaited<ReturnType<ArenaService['getHubState']>> | undefined;
     let victoryRewards: Awaited<ReturnType<CombatService['applyVictoryRewards']>> | undefined;
 
-    if (nextState.isFinished && nextState.winner === TeamSide.Left) {
+    if (nextState.isFinished && nextState.winner === TeamSide.Left && shouldApplyArenaVictoryRewards(nextState)) {
       victoryRewards = await this.applyVictoryRewards(playerId, nextState, session.damageContribution);
       const rewards = victoryRewards;
       if (rewards.progression.gainedExp > 0) {

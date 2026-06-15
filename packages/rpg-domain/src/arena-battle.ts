@@ -2,7 +2,14 @@ import type { Race } from './races';
 import type { DamageCategory } from './damage';
 import type { ArenaCombatEquipmentModifiers } from './arena-combat-equipment';
 import { COMBAT_ACTION_COSTS } from './combat-costs';
-import type { ExitZone } from './battle-map';
+import type { BattleMapExtractionZone, BattleMapObjective, BattleMapPlacedNpc, ExitZone } from './battle-map';
+import {
+  resolveActorIdentity,
+  resolveCombatRelation,
+  type BattleRelationOverride,
+  type DiplomaticActorRef,
+  type GlobalRelation,
+} from './diplomacy';
 import type {
   CombatAnimationEvent,
   CombatBattlePhase,
@@ -138,6 +145,17 @@ export interface ArenaCombatEntity {
   offHandItemId?: string | null;
   /** Currently equipped unique off-hand instance id when combat is driven by item instances. */
   offHandInstanceId?: string | null;
+  isPlayer?: boolean;
+  isNpc?: boolean;
+  kingdomId?: string;
+  citizenshipKingdomId?: string;
+  factionId?: string;
+  factionIds?: string[];
+  raceId?: string;
+  clanId?: string;
+  guildId?: string;
+  groupId?: string;
+  diplomaticActorIds?: DiplomaticActorRef[];
   /** Пассивные модификаторы из экипировки и сетов (агрегируются на бэкенде). */
   combatModifiers?: ArenaCombatEquipmentModifiers;
   /** Наложенные статусы (яд, оглушение и т.д.). */
@@ -210,6 +228,36 @@ export type CombatBattleType =
   | 'wild'
   | 'random_encounter';
 
+export type QuestBattleResultState =
+  | 'objective_completed'
+  | 'player_defeated'
+  | 'quest_failed'
+  | 'aborted/debug_exit';
+
+export interface ArenaBattleRuntimeContext {
+  battleType: 'arena';
+  allowArenaRewards: true;
+  allowArenaVictoryLogic: true;
+}
+
+export interface QuestBattleRuntimeContext {
+  battleType: 'quest';
+  questId: string;
+  questStepId: string;
+  battleMapId: string;
+  activeBattleObjectiveIds: string[];
+  allowArenaRewards: false;
+  allowArenaVictoryLogic: false;
+  resultState?: QuestBattleResultState;
+}
+
+export type BattleRuntimeContext = ArenaBattleRuntimeContext | QuestBattleRuntimeContext;
+
+export interface BattleContextValidationResult {
+  ok: boolean;
+  errors: string[];
+}
+
 export type CombatActorLifeState = 'alive' | 'downed' | 'defeated' | 'dead' | 'escaped';
 
 export interface LootItem {
@@ -234,6 +282,50 @@ export interface CombatLootContainer {
   claimed?: boolean;
   claimedByActorId?: string;
   claimedAt?: string;
+}
+
+export interface CarryingBodyState {
+  markerId: string;
+  objectiveId: string;
+  sourceActorName?: string;
+  objectiveTag?: string;
+}
+
+export interface BattleObjectiveProgressState {
+  objectiveId: string;
+  currentCount: number;
+  requiredCount: number;
+  evacuatedMarkerIds: string[];
+  completed?: boolean;
+}
+
+export interface BattleQuestObjectiveEffect {
+  type: 'complete_quest_objective';
+  questId: string;
+  objectiveId: string;
+  battleObjectiveId: string;
+}
+
+export interface BattleObjectiveMarkerState {
+  id: string;
+  sourceNpcId?: string;
+  name: string;
+  x: number;
+  y: number;
+  kingdomId?: string;
+  factionId?: string;
+  groupId?: string;
+  objectiveTag?: string;
+  canBeCarried: boolean;
+  countsForObjective: boolean;
+  status: 'available' | 'carried' | 'evacuated';
+}
+
+export interface BattleObjectiveEmitterResult {
+  ok: boolean;
+  reason?: string;
+  progress?: BattleObjectiveProgressState;
+  questEffects: BattleQuestObjectiveEffect[];
 }
 
 // ExitZone lives in `battle-map.ts` and is referenced by combat runtime state.
@@ -288,9 +380,19 @@ export interface ArenaBattleState {
   winner?: TeamSide;
   // --- Escape/exit zone additions ---
   battleType?: CombatBattleType;
+  battleContext?: BattleRuntimeContext;
+  questBattleResultState?: QuestBattleResultState;
+  globalRelations?: GlobalRelation[];
+  relationOverrides?: BattleRelationOverride[];
   exitZones?: ExitZone[];
+  battleObjectives?: BattleMapObjective[];
+  battleExtractionZones?: BattleMapExtractionZone[];
+  battleObjectiveMarkers?: BattleObjectiveMarkerState[];
   escapeStates?: Record<string, EscapeState>;
   lootContainers?: CombatLootContainer[];
+  carryingBody?: CarryingBodyState | null;
+  battleObjectiveProgress?: Record<string, BattleObjectiveProgressState>;
+  pendingQuestEffects?: BattleQuestObjectiveEffect[];
 }
 
 export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleState {
@@ -304,8 +406,18 @@ export function normalizeArenaBattleState(state: ArenaBattleState): ArenaBattleS
     turnIndex: typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex) ? Math.max(0, Math.floor(state.turnIndex)) : 0,
     currentTurnAp: typeof state.currentTurnAp === 'number' && Number.isFinite(state.currentTurnAp) ? Math.max(0, Math.floor(state.currentTurnAp)) : 0,
     skillCooldowns: Array.isArray(state.skillCooldowns) ? state.skillCooldowns : [],
+    battleType: state.battleContext?.battleType ?? state.battleType,
+    questBattleResultState: state.battleContext?.battleType === 'quest' ? state.battleContext.resultState : state.questBattleResultState,
+    globalRelations: state.globalRelations ?? [],
+    relationOverrides: state.relationOverrides ?? [],
+    battleObjectives: state.battleObjectives ?? [],
+    battleExtractionZones: state.battleExtractionZones ?? [],
+    battleObjectiveMarkers: state.battleObjectiveMarkers ?? [],
     escapeStates: state.escapeStates ?? {},
     lootContainers: state.lootContainers ?? [],
+    carryingBody: state.carryingBody ?? null,
+    battleObjectiveProgress: state.battleObjectiveProgress ?? {},
+    pendingQuestEffects: state.pendingQuestEffects ?? [],
   };
 }
 
@@ -545,6 +657,44 @@ function selectNearestEnemy(actor: ArenaCombatEntity, enemies: ArenaCombatEntity
   return [...enemies].sort((left, right) => getTacticalDistance(actor, left) - getTacticalDistance(actor, right))[0] ?? enemies[0]!;
 }
 
+function hasCombatRelationContext(state: ArenaBattleState): boolean {
+  return (state.globalRelations?.length ?? 0) > 0 || (state.relationOverrides?.length ?? 0) > 0;
+}
+
+export function isCombatHostileTarget(state: ArenaBattleState, actor: ArenaCombatEntity, target: ArenaCombatEntity): boolean {
+  if (!target.isAlive || actor.id === target.id) {
+    return false;
+  }
+
+  if (!hasCombatRelationContext(state)) {
+    return target.team !== actor.team;
+  }
+
+  const relation = resolveCombatRelation(
+    resolveActorIdentity(actor as unknown as Record<string, unknown>),
+    resolveActorIdentity(target as unknown as Record<string, unknown>),
+    state.globalRelations ?? [],
+    state.relationOverrides ?? [],
+  );
+
+  if (relation.isHostile) {
+    return true;
+  }
+
+  return target.team !== actor.team && relation.source === 'default';
+}
+
+export function getHostileEntities(state: ArenaBattleState, actor: ArenaCombatEntity): ArenaCombatEntity[] {
+  return state.entities.filter((item) => isCombatHostileTarget(state, actor, item));
+}
+
+function shouldUseNpcFallback(state: ArenaBattleState, actor: ArenaCombatEntity): boolean {
+  if (hasCombatRelationContext(state)) {
+    return actor.isPlayer !== true;
+  }
+  return actor.team === TeamSide.Right;
+}
+
 function classifyCombatStyle(actor: ArenaCombatEntity): CombatStyle {
   if (actor.combatStyleHint) {
     return actor.combatStyleHint;
@@ -737,6 +887,12 @@ export function createInitialBattleState(params: {
   viewportWidth?: number;
   viewportHeight?: number;
   exitZones?: ExitZone[];
+  battleContext?: BattleRuntimeContext;
+  globalRelations?: GlobalRelation[];
+  relationOverrides?: BattleRelationOverride[];
+  battleObjectives?: BattleMapObjective[];
+  battleExtractionZones?: BattleMapExtractionZone[];
+  battleObjectiveMarkers?: BattleObjectiveMarkerState[];
 }): ArenaBattleState {
   const battleMapWidth = Math.max(1, params.battleMapWidth ?? BATTLEFIELD_GRID_SIZE);
   const battleMapHeight = Math.max(1, params.battleMapHeight ?? BATTLEFIELD_GRID_SIZE);
@@ -758,12 +914,223 @@ export function createInitialBattleState(params: {
     recentCombatEvents: [],
     recentAnimationEvents: [],
     exitZones: params.exitZones ?? [],
+    battleContext: params.battleContext,
+    battleType: params.battleContext?.battleType,
+    questBattleResultState: params.battleContext?.battleType === 'quest' ? params.battleContext.resultState : undefined,
+    globalRelations: params.globalRelations ?? [],
+    relationOverrides: params.relationOverrides ?? [],
+    battleObjectives: params.battleObjectives ?? [],
+    battleExtractionZones: params.battleExtractionZones ?? [],
+    battleObjectiveMarkers: params.battleObjectiveMarkers ?? [],
+    carryingBody: null,
+    battleObjectiveProgress: {},
+    pendingQuestEffects: [],
     isFinished: false,
   };
 
   syncBattlefieldPositions(state.entities, state.distance, battleMapWidth, battleMapHeight);
   updateBattleDistance(state);
   return state;
+}
+
+export function createQuestBattleContext(params: {
+  questId: string;
+  questStepId: string;
+  battleMapId: string;
+  activeBattleObjectiveIds: string[];
+}): QuestBattleRuntimeContext {
+  return {
+    battleType: 'quest',
+    questId: params.questId,
+    questStepId: params.questStepId,
+    battleMapId: params.battleMapId,
+    activeBattleObjectiveIds: [...new Set(params.activeBattleObjectiveIds.filter(Boolean))],
+    allowArenaRewards: false,
+    allowArenaVictoryLogic: false,
+  };
+}
+
+export function validateBattleContextForBattleMap(
+  context: BattleRuntimeContext | undefined,
+  battleMap: { id?: string; objectives?: Array<{ id: string }> } | undefined,
+): BattleContextValidationResult {
+  const errors: string[] = [];
+  if (!context) {
+    return { ok: true, errors };
+  }
+  if (context.battleType !== 'quest') {
+    return { ok: true, errors };
+  }
+
+  if (!context.questId) {
+    errors.push('Quest battle requires questId.');
+  }
+  if (!context.questStepId) {
+    errors.push('Quest battle requires questStepId.');
+  }
+  if (!context.battleMapId) {
+    errors.push('Quest battle requires battleMapId.');
+  }
+  if (context.allowArenaRewards || context.allowArenaVictoryLogic) {
+    errors.push('Quest battle cannot use arena rewards or arena victory logic.');
+  }
+  if (!battleMap || battleMap.id !== context.battleMapId) {
+    errors.push('Quest battle context must match selected battleMapId.');
+  }
+
+  const objectiveIds = new Set((battleMap?.objectives ?? []).map((objective) => objective.id).filter(Boolean));
+  if (context.activeBattleObjectiveIds.length === 0) {
+    errors.push('Quest battle requires at least one active battle objective.');
+  }
+  for (const objectiveId of context.activeBattleObjectiveIds) {
+    if (!objectiveIds.has(objectiveId)) {
+      errors.push(`Quest battle objective "${objectiveId}" does not exist on selected battle map.`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function shouldApplyArenaVictoryRewards(state: Pick<ArenaBattleState, 'battleContext' | 'battleType'>): boolean {
+  if (state.battleContext) {
+    return state.battleContext.allowArenaRewards;
+  }
+  return state.battleType !== 'quest';
+}
+
+export function shouldUseArenaVictoryLogic(state: Pick<ArenaBattleState, 'battleContext' | 'battleType'>): boolean {
+  if (state.battleContext) {
+    return state.battleContext.allowArenaVictoryLogic;
+  }
+  return state.battleType !== 'quest';
+}
+
+function getBattleObjectiveProgress(state: ArenaBattleState, objective: BattleMapObjective): BattleObjectiveProgressState {
+  state.battleObjectiveProgress ??= {};
+  const current = state.battleObjectiveProgress[objective.id];
+  if (current) {
+    return current;
+  }
+  const next: BattleObjectiveProgressState = {
+    objectiveId: objective.id,
+    currentCount: Math.max(0, Math.floor(objective.currentCount ?? 0)),
+    requiredCount: Math.max(1, Math.floor(objective.requiredCount ?? 1)),
+    evacuatedMarkerIds: [],
+    completed: false,
+  };
+  state.battleObjectiveProgress[objective.id] = next;
+  return next;
+}
+
+function markerMatchesObjective(marker: BattleMapPlacedNpc, objective: BattleMapObjective): boolean {
+  if (objective.type !== 'extract_bodies') {
+    return false;
+  }
+  if (marker.canBeCarried !== true || marker.countsForObjective !== true) {
+    return false;
+  }
+  if (objective.sourceObjectiveTag && marker.objectiveTag !== objective.sourceObjectiveTag) {
+    return false;
+  }
+  if (objective.sourceKingdomId && marker.kingdomId !== objective.sourceKingdomId) {
+    return false;
+  }
+  if (objective.sourceFactionId && marker.factionId !== objective.sourceFactionId) {
+    return false;
+  }
+  if (objective.sourceGroupId && marker.groupId !== objective.sourceGroupId) {
+    return false;
+  }
+  return true;
+}
+
+function markerAlreadyEvacuated(state: ArenaBattleState, markerId: string): boolean {
+  return Object.values(state.battleObjectiveProgress ?? {}).some((progress) => progress.evacuatedMarkerIds.includes(markerId));
+}
+
+function refreshQuestBattleObjectiveResult(state: ArenaBattleState): void {
+  if (state.battleContext?.battleType !== 'quest') {
+    return;
+  }
+  const progress = state.battleObjectiveProgress ?? {};
+  const allActiveCompleted = state.battleContext.activeBattleObjectiveIds.every((objectiveId) => progress[objectiveId]?.completed === true);
+  if (allActiveCompleted) {
+    state.questBattleResultState = 'objective_completed';
+    state.battleContext.resultState = 'objective_completed';
+  }
+}
+
+export function pickUpBattleObjectiveMarker(
+  state: ArenaBattleState,
+  marker: BattleMapPlacedNpc,
+  objectives: BattleMapObjective[],
+): BattleObjectiveEmitterResult {
+  if (state.carryingBody) {
+    return { ok: false, reason: 'already_carrying_body', questEffects: [] };
+  }
+  if (markerAlreadyEvacuated(state, marker.id)) {
+    return { ok: false, reason: 'marker_already_evacuated', questEffects: [] };
+  }
+  const objective = objectives.find((candidate) => markerMatchesObjective(marker, candidate));
+  if (!objective) {
+    return { ok: false, reason: 'no_matching_extract_objective', questEffects: [] };
+  }
+
+  state.carryingBody = {
+    markerId: marker.id,
+    objectiveId: objective.id,
+    sourceActorName: marker.name,
+    objectiveTag: marker.objectiveTag,
+  };
+  return {
+    ok: true,
+    progress: getBattleObjectiveProgress(state, objective),
+    questEffects: [],
+  };
+}
+
+export function evacuateCarriedBodyAtZone(
+  state: ArenaBattleState,
+  objectives: BattleMapObjective[],
+  zone: BattleMapExtractionZone,
+): BattleObjectiveEmitterResult {
+  const carrying = state.carryingBody;
+  if (!carrying) {
+    return { ok: false, reason: 'not_carrying_body', questEffects: [] };
+  }
+  const objective = objectives.find((candidate) => candidate.id === carrying.objectiveId);
+  if (!objective) {
+    return { ok: false, reason: 'objective_missing', questEffects: [] };
+  }
+  if (objective.targetZoneId && zone.id !== objective.targetZoneId) {
+    return { ok: false, reason: 'wrong_extraction_zone', questEffects: [] };
+  }
+  if (zone.objectiveId && zone.objectiveId !== objective.id) {
+    return { ok: false, reason: 'zone_objective_mismatch', questEffects: [] };
+  }
+  if (zone.allowedObjectiveTags?.length && carrying.objectiveTag && !zone.allowedObjectiveTags.includes(carrying.objectiveTag)) {
+    return { ok: false, reason: 'objective_tag_not_allowed', questEffects: [] };
+  }
+
+  const progress = getBattleObjectiveProgress(state, objective);
+  if (!progress.evacuatedMarkerIds.includes(carrying.markerId)) {
+    progress.evacuatedMarkerIds.push(carrying.markerId);
+    progress.currentCount = Math.min(progress.requiredCount, progress.currentCount + 1);
+  }
+  progress.completed = progress.currentCount >= progress.requiredCount;
+  state.carryingBody = null;
+
+  const questEffects: BattleQuestObjectiveEffect[] = [];
+  if (progress.completed && objective.completeQuestObjectiveOnDone && objective.questId && objective.questObjectiveId) {
+    questEffects.push({
+      type: 'complete_quest_objective',
+      questId: objective.questId,
+      objectiveId: objective.questObjectiveId,
+      battleObjectiveId: objective.id,
+    });
+  }
+  refreshQuestBattleObjectiveResult(state);
+  return { ok: true, progress, questEffects };
 }
 
 function normalizeMovementType(action: ArenaCombatAction): MovementType | undefined {
@@ -1070,7 +1437,7 @@ function applyMovement(
   }
 
   const adjacentMeleeEnemies = state.entities.filter((entity) =>
-    entity.isAlive && entity.team !== actor.team && classifyCombatStyle(entity) === 'MELEE' && getBattlefieldDistance(actor, entity) <= 1,
+    isCombatHostileTarget(state, actor, entity) && classifyCombatStyle(entity) === 'MELEE' && getBattlefieldDistance(actor, entity) <= 1,
   );
 
   actor.battlefieldX = destination.x;
@@ -1458,7 +1825,7 @@ function defaultWaitAction(actor: ArenaCombatEntity, enemy: ArenaCombatEntity): 
 
 export function createNpcAction(state: ArenaBattleState, actorId: string): ArenaCombatAction {
   const actor = getEntity(state, actorId);
-  const enemies = state.entities.filter((item) => item.team !== actor.team && item.isAlive);
+  const enemies = getHostileEntities(state, actor);
   if (enemies.length === 0) {
     return defaultWaitAction(actor, actor);
   }
@@ -1598,7 +1965,7 @@ export function resolveRound(params: {
       continue;
     }
 
-    const enemies = state.entities.filter((item) => item.team !== actor.team && item.isAlive);
+    const enemies = getHostileEntities(state, actor);
     if (enemies.length === 0) {
       break;
     }
@@ -1613,7 +1980,7 @@ export function resolveRound(params: {
       continue;
     }
 
-    const fallback = actor.team === TeamSide.Right
+    const fallback = shouldUseNpcFallback(state, actor)
       ? createNpcAction(state, actorId)
       : defaultWaitAction(actor, enemies[0]!);
     const actorAction = byActor.get(actorId) ?? fallback;

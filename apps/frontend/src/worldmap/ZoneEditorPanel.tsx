@@ -19,9 +19,11 @@ import type {
   WorldMapValidationSeverity,
 } from './worldMapValidation';
 import type { QuestMarkerDefinition } from '../types/quest';
+import type { QuestDefinition } from '../types/quest';
 import type { NpcDefinition } from '../types/npc';
 import type { WorldLocation } from '../types/location';
 import type { StoredImage, BiomeDefinition, TreeDefinition } from '../services/content/models';
+import type { BattleMapDefinition } from '@theend/rpg-domain';
 import { AdminHelpTooltip } from '../admin/help/AdminHelpTooltip';
 import { loadMinesFromStorage } from '../services/miningRepository';
 import { audioService } from '../services/content/audioService';
@@ -196,6 +198,8 @@ interface ZoneEditorPanelProps {
   locationPreviewImages?: StoredImage[];
   biomes?: BiomeDefinition[];
   trees?: TreeDefinition[];
+  questDefinitions?: QuestDefinition[];
+  battleMaps?: BattleMapDefinition[];
   selectedNpcIdForPlacement?: string;
   onSelectNpcForPlacement?: (id: string) => void;
   onPlaceNpcAtCursor?: () => void;
@@ -315,6 +319,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     locationPreviewImages = [],
     biomes = [],
     trees = [],
+    questDefinitions = [],
+    battleMaps = [],
     selectedNpcIdForPlacement = '',
     onSelectNpcForPlacement,
     onPlaceNpcAtCursor,
@@ -525,6 +531,8 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     ? validationIssues.filter((issue) => issue.zoneId === selectedZoneEffectiveId)
     : [];
   const selectedZonePriorityIssues = selectedZoneValidationIssues.filter((issue) => issue.severity === 'error' || issue.severity === 'warning');
+  const selectedQuestLaunchIssues = selectedZoneValidationIssues.filter((issue) => issue.field?.startsWith('questLaunch'));
+  const selectedVisibilityIssues = selectedZoneValidationIssues.filter((issue) => issue.field?.startsWith('visibilityConditions'));
 
   const severityCounts = {
     error: validationIssues.filter((issue) => issue.severity === 'error').length,
@@ -593,6 +601,109 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
     () => enabledBiomes.find((biome) => biome.id === draft?.biomeId) ?? null,
     [draft?.biomeId, enabledBiomes],
   );
+  const selectedQuestDefinition = useMemo(
+    () => questDefinitions.find((quest) => quest.id === draft?.questLaunch?.questId) ?? null,
+    [draft?.questLaunch?.questId, questDefinitions],
+  );
+  const selectedBattleMap = useMemo(
+    () => battleMaps.find((map) => map.id === draft?.questLaunch?.battleMapId) ?? null,
+    [battleMaps, draft?.questLaunch?.battleMapId],
+  );
+  const selectedQuestLaunchStep = useMemo(
+    () => selectedQuestDefinition?.steps.find((step) => step.id === draft?.questLaunch?.questStepId) ?? null,
+    [draft?.questLaunch?.questStepId, selectedQuestDefinition],
+  );
+  const selectedQuestLaunchObjective = useMemo(
+    () => selectedQuestLaunchStep?.objectives?.find((objective) => objective.id === draft?.questLaunch?.questObjectiveId) ?? null,
+    [draft?.questLaunch?.questObjectiveId, selectedQuestLaunchStep],
+  );
+  const selectedVisibilityQuestDefinition = useMemo(
+    () => questDefinitions.find((quest) => quest.id === draft?.visibilityConditions_visibleWhenQuestId) ?? null,
+    [draft?.visibilityConditions_visibleWhenQuestId, questDefinitions],
+  );
+  const selectedVisibilityStep = useMemo(
+    () => selectedVisibilityQuestDefinition?.steps.find((step) => step.id === draft?.visibilityConditions_stepId) ?? null,
+    [draft?.visibilityConditions_stepId, selectedVisibilityQuestDefinition],
+  );
+  const questLaunchStatus = useMemo(() => {
+    const action = draft?.questLaunch?.action ?? 'none';
+    const status = {
+      summary: action === 'start_quest_battle'
+        ? 'Quest battle launcher configured.'
+        : 'Quest battle launcher is disabled for this zone.',
+      errors: [] as string[],
+      warnings: [] as string[],
+      details: [] as string[],
+    };
+
+    if (action !== 'start_quest_battle') {
+      return status;
+    }
+
+    const battleObjectiveIds = draft?.questLaunch?.battleObjectiveIds ?? [];
+    const missingObjectiveIds = battleObjectiveIds.filter((objectiveId) => !selectedBattleMap?.objectives?.some((objective) => objective.id === objectiveId));
+
+    if (!selectedQuestDefinition) {
+      status.errors.push('Quest not selected or not found.');
+    }
+    if (!selectedQuestLaunchStep) {
+      status.errors.push('Quest step not selected or not found.');
+    }
+    if (!selectedQuestLaunchObjective) {
+      status.errors.push('Quest objective not selected or not found in the chosen step.');
+    }
+    if (!selectedBattleMap) {
+      status.errors.push('Battle map not selected or not found.');
+    }
+    if (battleObjectiveIds.length === 0) {
+      status.errors.push('Choose at least one battle objective for quest battle mode.');
+    }
+    if (missingObjectiveIds.length > 0) {
+      status.errors.push(`Missing battle objectives on selected map: ${missingObjectiveIds.join(', ')}`);
+    }
+
+    status.details.push(`Trigger: ${draft?.questLaunch?.triggerOn ?? 'enter'}`);
+    status.details.push(`Required quest status: ${draft?.questLaunch?.requireQuestStatus ?? 'active'}`);
+    status.details.push(`Require current step: ${(draft?.questLaunch?.requireCurrentStep ?? true) ? 'yes' : 'no'}`);
+
+    if (selectedQuestDefinition) {
+      status.details.push(`Quest: ${selectedQuestDefinition.title || selectedQuestDefinition.id}`);
+    }
+    if (selectedQuestLaunchStep) {
+      status.details.push(`Step: ${selectedQuestLaunchStep.title || selectedQuestLaunchStep.id}`);
+    }
+    if (selectedQuestLaunchObjective) {
+      status.details.push(`Objective: ${selectedQuestLaunchObjective.text || selectedQuestLaunchObjective.description || selectedQuestLaunchObjective.id}`);
+    }
+    if (selectedBattleMap) {
+      status.details.push(`Battle map: ${selectedBattleMap.name || selectedBattleMap.id}`);
+    }
+    if (battleObjectiveIds.length > 0 && selectedBattleMap) {
+      const selectedObjectiveLabels = battleObjectiveIds.map((objectiveId) => {
+        const objective = selectedBattleMap.objectives?.find((entry) => entry.id === objectiveId);
+        return objective?.title || objective?.id || objectiveId;
+      });
+      status.details.push(`Battle objectives: ${selectedObjectiveLabels.join(', ')}`);
+    }
+
+    if (status.errors.length === 0) {
+      status.summary = `Ready: zone can launch ${selectedBattleMap?.name || selectedBattleMap?.id || 'quest battle'} on ${draft?.questLaunch?.triggerOn ?? 'enter'}.`;
+    } else {
+      status.summary = 'Quest battle launcher has broken references and will fail at runtime.';
+    }
+
+    return status;
+  }, [
+    draft?.questLaunch?.action,
+    draft?.questLaunch?.battleObjectiveIds,
+    draft?.questLaunch?.requireCurrentStep,
+    draft?.questLaunch?.requireQuestStatus,
+    draft?.questLaunch?.triggerOn,
+    selectedBattleMap,
+    selectedQuestDefinition,
+    selectedQuestLaunchObjective,
+    selectedQuestLaunchStep,
+  ]);
 
   const resolvedBiomeTreeIds = useMemo(() => {
     if (!selectedBiome) {
@@ -1521,6 +1632,321 @@ export function ZoneEditorPanel(props: ZoneEditorPanelProps) {
           <span>Blocked Entry Message</span>
           <input disabled={!draft} value={draft?.blockedEntryMessage ?? ''} onChange={(event) => updateDraft({ blockedEntryMessage: event.target.value })} />
         </label>
+        <div style={{ gridColumn: '1 / -1', border: '1px solid rgba(214, 182, 121, 0.22)', borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
+          <strong>Quest Launch / Запуск квеста</strong>
+          <label>
+            <span>Action</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.action ?? 'none'}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  action: event.target.value as NonNullable<ZoneEditorDraft['questLaunch']>['action'],
+                },
+              })}
+            >
+              <option value="none">none</option>
+              <option value="start_quest_battle">start_quest_battle</option>
+            </select>
+          </label>
+          <label>
+            <span>Quest</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.questId ?? ''}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  questId: event.target.value,
+                  questStepId: '',
+                  questObjectiveId: '',
+                },
+              })}
+            >
+              <option value="">Select quest...</option>
+              {questDefinitions.map((quest) => <option key={quest.id} value={quest.id}>{quest.title || quest.id}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Step</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.questStepId ?? ''}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  questStepId: event.target.value,
+                  questObjectiveId: '',
+                },
+              })}
+            >
+              <option value="">Select step...</option>
+              {(selectedQuestDefinition?.steps ?? []).map((step) => <option key={step.id} value={step.id}>{step.title || step.id}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Objective</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.questObjectiveId ?? ''}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  questObjectiveId: event.target.value,
+                },
+              })}
+            >
+              <option value="">Select objective...</option>
+              {(selectedQuestDefinition?.steps.find((step) => step.id === draft?.questLaunch?.questStepId)?.objectives ?? []).map((objective) => (
+                <option key={objective.id} value={objective.id}>{objective.text || objective.description || objective.id}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Battle Map</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.battleMapId ?? ''}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  battleMapId: event.target.value,
+                  battleObjectiveIds: [],
+                },
+              })}
+            >
+              <option value="">Select battle map...</option>
+              {battleMaps.map((map) => <option key={map.id} value={map.id}>{map.name || map.id}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Battle Objectives</span>
+            <select
+              multiple
+              disabled={!draft}
+              value={draft?.questLaunch?.battleObjectiveIds ?? []}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true, triggerOn: 'enter' }),
+                  battleObjectiveIds: Array.from(event.target.selectedOptions).map((option) => option.value),
+                },
+              })}
+            >
+              {(selectedBattleMap?.objectives ?? []).map((objective) => <option key={objective.id} value={objective.id}>{objective.title || objective.id}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Require Quest Status</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.requireQuestStatus ?? 'active'}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireCurrentStep: true, triggerOn: 'enter' }),
+                  requireQuestStatus: event.target.value as NonNullable<ZoneEditorDraft['questLaunch']>['requireQuestStatus'],
+                },
+              })}
+            >
+              <option value="active">active</option>
+              <option value="completed">completed</option>
+              <option value="available">available</option>
+              <option value="any">any</option>
+            </select>
+          </label>
+          <label>
+            <span>Trigger On</span>
+            <select
+              disabled={!draft}
+              value={draft?.questLaunch?.triggerOn ?? 'enter'}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', requireCurrentStep: true }),
+                  triggerOn: event.target.value as NonNullable<ZoneEditorDraft['questLaunch']>['triggerOn'],
+                },
+              })}
+            >
+              <option value="enter">enter</option>
+              <option value="interact">interact</option>
+              <option value="inspect">inspect</option>
+            </select>
+          </label>
+          <label className="zone-editor-checkbox">
+            <input
+              disabled={!draft}
+              type="checkbox"
+              checked={draft?.questLaunch?.requireCurrentStep ?? true}
+              onChange={(event) => updateDraft({
+                questLaunch: {
+                  ...(draft?.questLaunch ?? { action: 'none', battleObjectiveIds: [], requireQuestStatus: 'active', triggerOn: 'enter' }),
+                  requireCurrentStep: event.target.checked,
+                },
+              })}
+            />
+            <span>requireCurrentStep</span>
+          </label>
+          <div style={{ gridColumn: '1 / -1', border: '1px solid rgba(214, 182, 121, 0.22)', borderRadius: 10, padding: 12, display: 'grid', gap: 8, background: 'rgba(255,255,255,0.02)' }}>
+            <strong>Launcher status</strong>
+            <div className="muted">{questLaunchStatus.summary}</div>
+            {questLaunchStatus.details.length > 0 ? (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {questLaunchStatus.details.map((detail) => (
+                  <div key={detail} className="muted">• {detail}</div>
+                ))}
+              </div>
+            ) : null}
+            {questLaunchStatus.errors.length > 0 ? (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {questLaunchStatus.errors.map((error) => (
+                  <div key={error} style={{ color: '#ff9b9b' }}>Error: {error}</div>
+                ))}
+              </div>
+            ) : null}
+            {selectedQuestLaunchIssues.length > 0 ? (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {selectedQuestLaunchIssues.map((issue) => (
+                  <div key={issue.id} style={{ color: issue.severity === 'error' ? '#ff9b9b' : '#f6d680' }}>
+                    {issue.severity.toUpperCase()}: {issue.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div style={{ gridColumn: '1 / -1', border: '1px solid rgba(214, 182, 121, 0.22)', borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
+            <strong>Visibility Conditions / Условия видимости</strong>
+            <label>
+              <span>Visible when quest:</span>
+              <select
+                disabled={!draft}
+                value={draft?.visibilityConditions_visibleWhenQuestId ?? ''}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_visibleWhenQuestId: event.target.value,
+                  visibilityConditions_stepId: '',
+                  visibilityConditions_objectiveId: '',
+                })}
+              >
+                <option value="">-- None --</option>
+                {questDefinitions.map((quest) => (
+                  <option key={quest.id} value={quest.id}>
+                    {quest.title || quest.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Visible when quest status:</span>
+              <select
+                disabled={!draft}
+                value={draft?.visibilityConditions_visibleWhenQuestStatus ?? ''}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_visibleWhenQuestStatus: event.target.value as any,
+                })}
+              >
+                <option value="">-- Any --</option>
+                <option value="inactive">inactive</option>
+                <option value="active">active</option>
+                <option value="completed">completed</option>
+                <option value="not_completed">not_completed</option>
+              </select>
+            </label>
+
+            <label className="zone-editor-checkbox">
+              <input
+                disabled={!draft}
+                type="checkbox"
+                checked={draft?.visibilityConditions_hideAfterQuestCompleted ?? false}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_hideAfterQuestCompleted: event.target.checked,
+                })}
+              />
+              <span>Hide after quest completed</span>
+            </label>
+
+            <label className="zone-editor-checkbox">
+              <input
+                disabled={!draft}
+                type="checkbox"
+                checked={draft?.visibilityConditions_hideAfterStepCompleted ?? false}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_hideAfterStepCompleted: event.target.checked,
+                })}
+              />
+              <span>Hide after step completed</span>
+            </label>
+
+            <label className="zone-editor-checkbox">
+              <input
+                disabled={!draft}
+                type="checkbox"
+                checked={draft?.visibilityConditions_hideAfterObjectiveCompleted ?? false}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_hideAfterObjectiveCompleted: event.target.checked,
+                })}
+              />
+              <span>Hide after objective completed</span>
+            </label>
+
+            <label>
+              <span>Step:</span>
+              <select
+                disabled={!draft || !selectedVisibilityQuestDefinition}
+                value={draft?.visibilityConditions_stepId ?? ''}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_stepId: event.target.value,
+                  visibilityConditions_objectiveId: '',
+                })}
+              >
+                <option value="">-- Select Step --</option>
+                {selectedVisibilityQuestDefinition?.steps.map((step) => (
+                  <option key={step.id} value={step.id}>
+                    {step.title || step.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Objective:</span>
+              <select
+                disabled={!draft || !selectedVisibilityStep}
+                value={draft?.visibilityConditions_objectiveId ?? ''}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_objectiveId: event.target.value,
+                })}
+              >
+                <option value="">-- Select Objective --</option>
+                {(selectedVisibilityStep?.objectives ?? []).map((objective) => (
+                  <option key={objective.id} value={objective.id}>
+                    {objective.text || objective.description || objective.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="zone-editor-checkbox">
+              <input
+                disabled={!draft}
+                type="checkbox"
+                checked={draft?.visibilityConditions_adminAlwaysVisible ?? false}
+                onChange={(event) => updateDraft({
+                  visibilityConditions_adminAlwaysVisible: event.target.checked,
+                })}
+              />
+              <span>Admin always visible</span>
+            </label>
+
+            {selectedVisibilityIssues.length > 0 ? (
+              <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+                {selectedVisibilityIssues.map((issue) => (
+                  <div key={issue.id} style={{ color: issue.severity === 'error' ? '#ff9b9b' : '#f6d680' }}>
+                    {issue.severity.toUpperCase()}: {issue.message}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
         <label className="zone-editor-checkbox">
           <input disabled={!draft} type="checkbox" checked={draft?.allowPvP ?? false} onChange={(event) => updateDraft({ allowPvP: event.target.checked })} />
           <span>allowPvP</span>

@@ -435,6 +435,60 @@ export function normalizeZone(input: unknown): WorldMapZone | null {
     woodcuttingTier: isFiniteNumber(zone.woodcuttingTier) ? zone.woodcuttingTier : undefined,
     requiresProfession: zone.requiresProfession ? String(zone.requiresProfession) : undefined,
     isProfessionZone: zone.isProfessionZone === true || undefined,
+    questLaunch:
+      zone.questLaunch && typeof zone.questLaunch === 'object'
+        ? {
+          action: (zone.questLaunch as Record<string, unknown>).action === 'start_quest_battle' ? 'start_quest_battle' : 'none',
+          questId: typeof (zone.questLaunch as Record<string, unknown>).questId === 'string' ? (zone.questLaunch as Record<string, unknown>).questId as string : undefined,
+          questStepId: typeof (zone.questLaunch as Record<string, unknown>).questStepId === 'string' ? (zone.questLaunch as Record<string, unknown>).questStepId as string : undefined,
+          questObjectiveId: typeof (zone.questLaunch as Record<string, unknown>).questObjectiveId === 'string' ? (zone.questLaunch as Record<string, unknown>).questObjectiveId as string : undefined,
+          battleMapId: typeof (zone.questLaunch as Record<string, unknown>).battleMapId === 'string' ? (zone.questLaunch as Record<string, unknown>).battleMapId as string : undefined,
+          battleObjectiveIds: Array.isArray((zone.questLaunch as Record<string, unknown>).battleObjectiveIds)
+            ? ((zone.questLaunch as Record<string, unknown>).battleObjectiveIds as unknown[]).filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+            : undefined,
+          requireQuestStatus:
+            (zone.questLaunch as Record<string, unknown>).requireQuestStatus === 'active'
+            || (zone.questLaunch as Record<string, unknown>).requireQuestStatus === 'completed'
+            || (zone.questLaunch as Record<string, unknown>).requireQuestStatus === 'available'
+            || (zone.questLaunch as Record<string, unknown>).requireQuestStatus === 'any'
+              ? (zone.questLaunch as Record<string, unknown>).requireQuestStatus as 'active' | 'completed' | 'available' | 'any'
+              : undefined,
+          requireCurrentStep: typeof (zone.questLaunch as Record<string, unknown>).requireCurrentStep === 'boolean' ? (zone.questLaunch as Record<string, unknown>).requireCurrentStep as boolean : undefined,
+          triggerOn:
+            (zone.questLaunch as Record<string, unknown>).triggerOn === 'enter'
+            || (zone.questLaunch as Record<string, unknown>).triggerOn === 'interact'
+            || (zone.questLaunch as Record<string, unknown>).triggerOn === 'inspect'
+              ? (zone.questLaunch as Record<string, unknown>).triggerOn as 'enter' | 'interact' | 'inspect'
+              : undefined,
+          debugLabel: typeof (zone.questLaunch as Record<string, unknown>).debugLabel === 'string' ? (zone.questLaunch as Record<string, unknown>).debugLabel as string : undefined,
+        }
+        : undefined,
+    visibilityConditions:
+      zone.visibilityConditions && typeof zone.visibilityConditions === 'object'
+        ? {
+          visibleWhenQuestId: typeof (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestId === 'string' ? (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestId as string : undefined,
+          visibleWhenQuestStatus:
+            (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestStatus === 'inactive'
+            || (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestStatus === 'active'
+            || (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestStatus === 'completed'
+            || (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestStatus === 'not_completed'
+              ? (zone.visibilityConditions as Record<string, unknown>).visibleWhenQuestStatus as 'inactive' | 'active' | 'completed' | 'not_completed'
+              : undefined,
+          hideWhenQuestId: typeof (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestId === 'string' ? (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestId as string : undefined,
+          hideWhenQuestStatus:
+            (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestStatus === 'inactive'
+            || (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestStatus === 'active'
+            || (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestStatus === 'completed'
+              ? (zone.visibilityConditions as Record<string, unknown>).hideWhenQuestStatus as 'inactive' | 'active' | 'completed'
+              : undefined,
+          hideAfterQuestCompleted: typeof (zone.visibilityConditions as Record<string, unknown>).hideAfterQuestCompleted === 'boolean' ? (zone.visibilityConditions as Record<string, unknown>).hideAfterQuestCompleted as boolean : undefined,
+          hideAfterStepCompleted: typeof (zone.visibilityConditions as Record<string, unknown>).hideAfterStepCompleted === 'boolean' ? (zone.visibilityConditions as Record<string, unknown>).hideAfterStepCompleted as boolean : undefined,
+          hideAfterObjectiveCompleted: typeof (zone.visibilityConditions as Record<string, unknown>).hideAfterObjectiveCompleted === 'boolean' ? (zone.visibilityConditions as Record<string, unknown>).hideAfterObjectiveCompleted as boolean : undefined,
+          stepId: typeof (zone.visibilityConditions as Record<string, unknown>).stepId === 'string' ? (zone.visibilityConditions as Record<string, unknown>).stepId as string : undefined,
+          objectiveId: typeof (zone.visibilityConditions as Record<string, unknown>).objectiveId === 'string' ? (zone.visibilityConditions as Record<string, unknown>).objectiveId as string : undefined,
+          adminAlwaysVisible: typeof (zone.visibilityConditions as Record<string, unknown>).adminAlwaysVisible === 'boolean' ? (zone.visibilityConditions as Record<string, unknown>).adminAlwaysVisible as boolean : undefined,
+        }
+        : undefined,
     respawnSeconds: isFiniteNumber(zone.respawnSeconds) ? zone.respawnSeconds : undefined,
     cooldownSeconds: isFiniteNumber(zone.cooldownSeconds) ? zone.cooldownSeconds : undefined,
     editorLayer:

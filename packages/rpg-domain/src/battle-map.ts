@@ -41,6 +41,23 @@ export type BattleMapNpcRole =
   | 'questGiver'
   | 'civilian';
 
+export type BattleMapObjectiveType =
+  | 'extract_bodies'
+  | 'survive_rounds'
+  | 'defeat_group'
+  | 'protect_npc'
+  | 'reach_zone'
+  | 'hold_zone'
+  | 'custom';
+
+export type BattleScriptEventType =
+  | 'battle_start'
+  | 'round_start'
+  | 'objective_progress'
+  | 'objective_completed'
+  | 'important_actor_down'
+  | 'battle_end';
+
 export type BattleMapZoneType =
   | 'blocked'
   | 'walkable'
@@ -75,6 +92,17 @@ export interface BattleMapSpawnZone {
   type: BattleMapSpawnZoneType;
   name: string;
   cells: Array<{ x: number; y: number }>;
+  kingdomId?: string;
+  factionId?: string;
+  raceId?: string;
+  groupId?: string;
+  spawnMode?: 'manual' | 'generated';
+  count?: number;
+  npcTemplateIds?: string[];
+  combatPresetId?: string;
+  loadoutPresetId?: string;
+  aiProfileId?: string;
+  objectiveTag?: string;
 }
 
 export interface BattleMapPlacedObject {
@@ -123,6 +151,77 @@ export interface BattleMapPlacedNpc {
   startsCombat?: boolean;
   avatarUrl?: string;
   description?: string;
+  sourceType?: 'linked_npc' | 'generated_npc' | 'monster_template' | 'animal_template';
+  kingdomId?: string;
+  raceId?: string;
+  clanId?: string;
+  groupId?: string;
+  combatRole?: 'melee' | 'ranged' | 'mage' | 'healer' | 'tank' | 'assassin' | 'beast' | 'support';
+  combatPresetId?: string;
+  loadoutPresetId?: string;
+  aiProfileId?: string;
+  aiPersonality?: string;
+  level?: number;
+  equipment?: {
+    weaponItemId?: string;
+    offhandItemId?: string;
+    armorItemIds?: string[];
+  };
+  skillIds?: string[];
+  statOverrides?: Record<string, number>;
+  avatarPoolId?: string;
+  imageRef?: string;
+  canBeCarried?: boolean;
+  countsForObjective?: boolean;
+  objectiveTag?: string;
+}
+
+export interface BattleMapObjective {
+  id: string;
+  type: BattleMapObjectiveType;
+  title: string;
+  description?: string;
+  requiredCount?: number;
+  currentCount?: number;
+  sourceKingdomId?: string;
+  sourceFactionId?: string;
+  sourceGroupId?: string;
+  sourceObjectiveTag?: string;
+  targetZoneId?: string;
+  questId?: string;
+  questObjectiveId?: string;
+  completeQuestObjectiveOnDone?: boolean;
+  failOnAllSourceActorsDead?: boolean;
+}
+
+export interface BattleMapExtractionZone {
+  id: string;
+  name: string;
+  cells: Array<{ x: number; y: number }>;
+  allowedKingdomIds?: string[];
+  allowedFactionIds?: string[];
+  allowedObjectiveTags?: string[];
+  objectiveId?: string;
+  description?: string;
+}
+
+export interface BattleMapScriptEvent {
+  id: string;
+  type: BattleScriptEventType;
+  objectiveId?: string;
+  triggerAtCount?: number;
+  actorId?: string;
+  speakerNpcId?: string;
+  speakerName?: string;
+  portraitImageRef?: string;
+  message: string;
+  pauseCombat?: boolean;
+  questEffect?: {
+    type: 'start_quest' | 'complete_objective' | 'advance_quest' | 'complete_quest';
+    questId?: string;
+    objectiveId?: string;
+  };
+  once?: boolean;
 }
 
 export interface BattleMapTrigger {
@@ -167,6 +266,9 @@ export interface BattleMapDefinition {
   npcs: BattleMapPlacedNpc[];
   triggers: BattleMapTrigger[];
   exitZones?: ExitZone[];
+  objectives?: BattleMapObjective[];
+  extractionZones?: BattleMapExtractionZone[];
+  scriptEvents?: BattleMapScriptEvent[];
   tags?: string[];
   linkedLocationId?: string;
   linkedQuestId?: string;

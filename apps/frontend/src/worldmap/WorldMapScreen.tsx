@@ -4,6 +4,7 @@ import type {
   InventoryState,
   ItemDefinition,
   StatBlock,
+  BattleRuntimeContext,
 } from "@theend/rpg-domain";
 import { addProfessionXp, getPlayerProfession, normalizePlayerProfessionsState, PROFESSION_DEFINITIONS, Race, type ProfessionId } from "@theend/rpg-domain";
 import type { ArenaCharacter } from "../arena/types";
@@ -294,6 +295,7 @@ import type { WorldSceneCommand, WorldSceneSnapshot } from "./worldSceneTypes";
 import { useWorldRuntimeController } from "./useWorldRuntimeController";
 import { resolveNpcReaction, resolveZoneReaction } from "../services/reputationRuntime";
 import { fixMojibake } from "../utils/fixMojibake";
+import { resolveQuestBattleLaunchFromZone } from "./questBattleResolver";
 
 const PhaserWorldMapCanvas = lazy(() =>
   import("./PhaserWorldMapCanvas").then((module) => ({
@@ -489,6 +491,11 @@ type ActiveWorldModal =
     customEnemies?: CustomArenaNpcPayload[];
     introLine: string;
     demandLine: string;
+  }
+  | {
+    type: "quest_launch_failure";
+    zoneId: string;
+    reason: string;
   }
   | null;
 
@@ -1269,9 +1276,9 @@ interface WorldMapScreenProps {
   onExit: () => void;
   onStartCombat: (
     battleMapIdOverride?: string,
-    options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[] },
+    options?: { enemyCount?: number; customEnemies?: CustomArenaNpcPayload[]; battleContext?: BattleRuntimeContext | null },
   ) => Promise<void>;
-  onStartBattleMap?: (battleMapId: string) => Promise<void>;
+  onStartBattleMap?: (battleMapId: string, battleContext?: BattleRuntimeContext | null) => Promise<void>;
   onOpenMerchant: (merchantId?: string) => void;
   onOpenSkills: (trainerNpcId?: string, trainerSkillIds?: unknown, trainerNpcName?: string) => void;
   onGrantSkill?: (skillId: string, sourceNpcId?: string) => Promise<void>;
@@ -4818,6 +4825,21 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
     [contentSnapshot, dialogueRunner, discoverMapEntity, onStartCombat, onStatus, rememberCurrentMapPosition, worldMapMode, zones],
   );
 
+  const handleQuestLaunchFailure = useCallback(
+    (zone: WorldMapZone, reason: string) => {
+      if (showAdminShortcuts) {
+        setActiveWorldModal({
+          type: "quest_launch_failure",
+          zoneId: zone.id,
+          reason,
+        });
+      } else {
+        onStatus("Сейчас здесь нечего делать.");
+      }
+    },
+    [showAdminShortcuts, setActiveWorldModal, onStatus],
+  );
+
   const handleZoneEnterMemoized = useCallback(
     (zone: Zone | null) => {
       setCurrentZone(zone as WorldMapZone | null);
@@ -4912,6 +4934,30 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       if (shouldAutoInteractOnEntry) {
         const [zoneCenterX, zoneCenterY] = getZoneCenter(worldZone);
         handleRuntimeZoneInteractRef.current?.(worldZone, { x: zoneCenterX, y: zoneCenterY });
+      }
+
+      if (worldZone.questLaunch?.action === "start_quest_battle") {
+        const launch = resolveQuestBattleLaunchFromZone({
+          zone: worldZone,
+          questDefinitions,
+          playerQuestStates,
+          characterId: character.id,
+          trigger: "enter",
+          battleMaps: contentSnapshot?.battleMaps,
+        });
+        if (launch.ok) {
+          onStartCombat(launch.battleMapId, { battleContext: launch.battleContext })
+            .catch((err) => {
+              handleQuestLaunchFailure(worldZone, String(err));
+            });
+          return;
+        } else {
+          const triggerOn = worldZone.questLaunch.triggerOn ?? "enter";
+          if (triggerOn === "enter") {
+            handleQuestLaunchFailure(worldZone, launch.reason);
+            return;
+          }
+        }
       }
 
       const targetScene = worldZone.targetScene?.trim();
@@ -5040,12 +5086,15 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       character.id,
       character.level,
       character.race,
+      contentSnapshot,
       handleOpenLocationMemoized,
+      handleQuestLaunchFailure,
       inventory.items,
       onStartBattleMap,
       onStartCombat,
       onStatus,
       playerQuestStates,
+      questDefinitions,
       questInteractions,
       questRuntimeProfessionCompat,
       appendQuestRuntimeLogsToSystemChat,
@@ -5061,6 +5110,27 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       }
 
       setLastRuntimeClickPoint(point);
+
+      if (zone.questLaunch?.action === "start_quest_battle") {
+        const launch = resolveQuestBattleLaunchFromZone({
+          zone,
+          questDefinitions,
+          playerQuestStates,
+          characterId: character.id,
+          trigger: "interact",
+          battleMaps: contentSnapshot?.battleMaps,
+        });
+        if (launch.ok) {
+          onStartCombat(launch.battleMapId, { battleContext: launch.battleContext })
+            .catch((err) => {
+              handleQuestLaunchFailure(zone, String(err));
+            });
+          return;
+        } else {
+          handleQuestLaunchFailure(zone, launch.reason);
+          return;
+        }
+      }
 
       const isMineZone = isMineResourceZone(zone);
       const interactionMode = zone.interactionMode ?? getDefaultInteractionMode(zone.type);
@@ -5100,7 +5170,18 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
       setActiveWorldModal({ type: "zone", zoneId: zone.id });
       setContextMode("location");
     },
-    [onStatus, setActiveWorldModal, setContextMode, worldMapMode],
+    [
+      character.id,
+      contentSnapshot,
+      handleQuestLaunchFailure,
+      onStartCombat,
+      onStatus,
+      playerQuestStates,
+      questDefinitions,
+      setActiveWorldModal,
+      setContextMode,
+      worldMapMode,
+    ],
   );
 
   useEffect(() => {
@@ -11175,6 +11256,32 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           <button onClick={closeModal}>{"\u0423\u0439\u0442\u0438"}</button>
         </>
       ) : <button onClick={closeModal}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}</button>;
+    } else if (activeWorldModal.type === "quest_launch_failure") {
+      const worldZone = zones.find((z) => z.id === activeWorldModal.zoneId) ?? null;
+      title = "Quest Launch Error Diagnostics";
+      subtitle = `Zone: ${worldZone?.name ?? activeWorldModal.zoneId} (${activeWorldModal.zoneId})`;
+      const config = worldZone?.questLaunch;
+      content = (
+        <div style={{ marginTop: 16, display: "grid", gap: 10, textAlign: "left", fontSize: "0.9rem" }}>
+          <div style={{ color: "#ef4444", fontWeight: "bold", borderBottom: "1px solid #ef4444", paddingBottom: 6 }}>
+            Reason: {activeWorldModal.reason}
+          </div>
+          <div className="wm-stat-block" style={{ padding: 10, background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
+            <div style={{ marginBottom: 4 }}><strong>Quest ID:</strong> {config?.questId ?? "undefined"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Quest Step ID:</strong> {config?.questStepId ?? "undefined"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Quest Objective ID:</strong> {config?.questObjectiveId ?? "undefined"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Battle Map ID:</strong> {config?.battleMapId ?? "undefined"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Battle Objective IDs:</strong> {config?.battleObjectiveIds ? JSON.stringify(config.battleObjectiveIds) : "undefined"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Trigger On:</strong> {config?.triggerOn ?? "enter"}</div>
+            <div style={{ marginBottom: 4 }}><strong>Require Quest Status:</strong> {config?.requireQuestStatus ?? "active"}</div>
+            <div><strong>Require Current Step:</strong> {config?.requireCurrentStep !== false ? "true" : "false"}</div>
+          </div>
+          <div style={{ color: "#9ca3af", fontStyle: "italic" }}>
+            This diagnostic modal is only visible in Admin/God mode.
+          </div>
+        </div>
+      );
+      buttons = <button onClick={closeModal}>Dismiss</button>;
     } else {
       const _exhaustive: never = activeWorldModal;
       title = modalLocation?.name ?? String((_exhaustive as any)?.locationId ?? "");
@@ -12833,6 +12940,8 @@ export function WorldMapScreen(props: WorldMapScreenProps) {
           locationPreviewImages={validationSnapshot?.images ?? []}
           biomes={contentSnapshot?.biomes ?? []}
           trees={contentSnapshot?.trees ?? []}
+          questDefinitions={questDefinitions}
+          battleMaps={contentSnapshot?.battleMaps ?? []}
           selectedNpcIdForPlacement={selectedNpcIdForPlacement}
           onSelectNpcForPlacement={setSelectedNpcIdForPlacement}
           onPlaceNpcAtCursor={handlePlaceNpcAtCursor}

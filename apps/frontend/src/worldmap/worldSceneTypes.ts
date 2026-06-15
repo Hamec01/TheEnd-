@@ -68,7 +68,7 @@ export interface WorldSceneSnapshot {
 }
 
 export type WorldSceneCommand =
-  | { type: 'move_to_point'; point: { x: number; y: number }; pendingLocationId?: string | null }
+  | { type: 'move_to_point'; point: { x: number; y: number }; pendingLocationId?: string | null; zoneId?: string | null }
   | { type: 'move_directional'; direction: 'up' | 'down' | 'left' | 'right'; active: boolean }
   | { type: 'stop_movement' }
   | { type: 'hover_point'; point: { x: number; y: number } | null }

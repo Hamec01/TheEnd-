@@ -316,6 +316,31 @@ export function BattlePanel({
     () => (state.activeActorId ? state.entities.find((e) => e.id === state.activeActorId) ?? null : null),
     [state.activeActorId, state.entities],
   );
+  const questObjectiveMarkers = useMemo(
+    () => (state as ArenaBattleState & { battleObjectiveMarkers?: import('@theend/rpg-domain').BattleObjectiveMarkerState[] }).battleObjectiveMarkers ?? [],
+    [state],
+  );
+  const questObjectives = useMemo(
+    () => (state as ArenaBattleState & { battleObjectives?: import('@theend/rpg-domain').BattleMapObjective[] }).battleObjectives ?? [],
+    [state],
+  );
+  const questExtractionZones = useMemo(
+    () => (state as ArenaBattleState & { battleExtractionZones?: import('@theend/rpg-domain').BattleMapExtractionZone[] }).battleExtractionZones ?? [],
+    [state],
+  );
+  const carryingBody = state.carryingBody ?? null;
+  const objectiveHudRows = useMemo(() => questObjectives.map((objective) => {
+    const progress = state.battleObjectiveProgress?.[objective.id];
+    const currentCount = progress?.currentCount ?? Math.max(0, Math.floor(objective.currentCount ?? 0));
+    const requiredCount = progress?.requiredCount ?? Math.max(1, Math.floor(objective.requiredCount ?? 1));
+    return {
+      id: objective.id,
+      title: objective.title,
+      description: objective.description,
+      currentCount,
+      requiredCount,
+    };
+  }), [questObjectives, state.battleObjectiveProgress]);
 
   // ── Timer ───────────────────────────────────────────────────────────────
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -996,6 +1021,19 @@ export function BattlePanel({
     waitForPlaybackCompletion,
   ]);
 
+  const pickupObjectiveMarker = useCallback(async (markerId: string): Promise<void> => {
+    const marker = questObjectiveMarkers.find((entry) => entry.id === markerId && entry.status === 'available');
+    if (!marker) {
+      onStatus('Цель уже недоступна.');
+      return;
+    }
+    await executeAction(createCombatCommandFromType({
+      type: 'pickup_objective_marker',
+      target: { kind: 'cell', x: marker.x, y: marker.y },
+      payload: { markerId },
+    }));
+  }, [executeAction, onStatus, questObjectiveMarkers]);
+
   // End turn (wait — 0 AP, 0 stamina)
   const endTurn = useCallback(async () => {
     await executeAction(createCombatCommandFromType({ type: 'wait', target: { kind: 'self' } }));
@@ -1337,6 +1375,26 @@ export function BattlePanel({
           </div>
         </div>
 
+        {objectiveHudRows.length > 0 && (
+          <div
+            className="battle-detail-popover"
+            style={{ marginBottom: 12, display: 'grid', gap: 6 }}
+          >
+            <strong>Цели боя</strong>
+            {objectiveHudRows.map((objective) => (
+              <div key={objective.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <span>{objective.title}</span>
+                <span>{objective.currentCount}/{objective.requiredCount}</span>
+              </div>
+            ))}
+            {carryingBody ? (
+              <span style={{ color: '#d6b679' }}>
+                Вы несёте: {carryingBody.sourceActorName ?? 'раненого Аргоса'}
+              </span>
+            ) : null}
+          </div>
+        )}
+
         {/* ── Main grid ── */}
         <div className="battle-main-grid">
 
@@ -1542,6 +1600,10 @@ export function BattlePanel({
                 battlefieldTraps={state.battlefieldTraps}
                 exitZones={state.exitZones}
                 lootContainers={state.lootContainers}
+                objectiveMarkers={questObjectiveMarkers}
+                extractionZones={questExtractionZones}
+                carryingBody={carryingBody}
+                onPickupObjectiveMarker={(markerId) => { void pickupObjectiveMarker(markerId); }}
                 visualPositions={playback.isPlaying && battleRenderer === 'react' ? playback.visualPositions : undefined}
                 selectedSource={selectedContextSource}
                 buildContextActions={(clickedTarget) => {

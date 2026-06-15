@@ -73,7 +73,7 @@ export function ZoneEditorPage() {
         onOpenEquipment={() => setStatus('Admin editor mode: equipment panel disabled.')}
         onOpenClan={() => setStatus('Admin editor mode: clan panel disabled.')}
         onExit={() => setStatus('Admin editor mode active.')}
-        onStartCombat={async () => {
+        onStartCombat={async (battleMapIdOverride, options) => {
           setStatus('Admin editor mode: combat disabled.');
         }}
         onOpenMerchant={() => setStatus('Admin editor mode: merchants disabled.')}

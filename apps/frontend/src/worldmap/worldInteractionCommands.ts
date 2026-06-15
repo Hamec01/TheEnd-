@@ -34,6 +34,7 @@ export interface WorldClickInteractionResolution {
   moveTarget: {
     point: { x: number; y: number };
     pendingLocationId: string | null;
+    zoneId?: string | null;
   } | null;
 }
 
@@ -108,13 +109,14 @@ export function resolveWorldClickInteraction(input: ResolveWorldClickInteraction
       pendingLocationId: clickedSpriteZone.type === 'city' || clickedSpriteZone.type === 'location'
         ? clickedSpriteZone.id
         : null,
+      zoneId: clickedSpriteZone.id,
     };
     return {
       clickedZone: clickedSpriteZone,
       clickedEntity: null,
       commands: [
         { type: 'interact_zone', zoneId: clickedSpriteZone.id, point: input.point },
-        { type: 'move_to_point', point: moveTarget.point, pendingLocationId: moveTarget.pendingLocationId },
+        { type: 'move_to_point', point: moveTarget.point, pendingLocationId: moveTarget.pendingLocationId, zoneId: moveTarget.zoneId },
       ],
       moveTarget,
     };
@@ -125,10 +127,11 @@ export function resolveWorldClickInteraction(input: ResolveWorldClickInteraction
     return {
       clickedZone: null,
       clickedEntity: null,
-      commands: [{ type: 'move_to_point', point: input.point, pendingLocationId: null }],
+      commands: [{ type: 'move_to_point', point: input.point, pendingLocationId: null, zoneId: null }],
       moveTarget: {
         point: input.point,
         pendingLocationId: null,
+        zoneId: null,
       },
     };
   }
@@ -139,15 +142,16 @@ export function resolveWorldClickInteraction(input: ResolveWorldClickInteraction
     pendingLocationId: clickedZone.type === 'city' || clickedZone.type === 'location'
       ? clickedZone.id
       : null,
+    zoneId: clickedZone.id,
   };
 
   return {
     clickedZone,
     clickedEntity: null,
-    commands: [
-      { type: 'interact_zone', zoneId: clickedZone.id, point: input.point },
-        { type: 'move_to_point', point: moveTarget.point, pendingLocationId: moveTarget.pendingLocationId },
-    ],
-    moveTarget,
-  };
-}
+      commands: [
+        { type: 'interact_zone', zoneId: clickedZone.id, point: input.point },
+        { type: 'move_to_point', point: moveTarget.point, pendingLocationId: moveTarget.pendingLocationId, zoneId: moveTarget.zoneId },
+      ],
+      moveTarget,
+    };
+  }

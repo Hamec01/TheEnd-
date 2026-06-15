@@ -1,4 +1,12 @@
-import type { ActorBattleVisualConfig, AdminSkillDefinition, BattleMapDefinition, PrimaryStat, VisualFxDefinition } from '@theend/rpg-domain';
+import type {
+  ActorBattleVisualConfig,
+  AdminSkillDefinition,
+  BattleMapDefinition,
+  DiplomaticActorDefinition,
+  GlobalRelation,
+  PrimaryStat,
+  VisualFxDefinition,
+} from '@theend/rpg-domain';
 import type { WorldSimConfig } from '../worldsim/types/world-simulation.types';
 
 export type StatKey = PrimaryStat;
@@ -1659,6 +1667,18 @@ export interface WorldMapZone {
   stateSprites?: Partial<Record<'active' | 'hidden' | 'destroyed' | 'restored' | 'captured' | 'locked', string>>;
   music?: AudioCueConfig;
   ambientSound?: AudioCueConfig;
+  questLaunch?: {
+    action: 'none' | 'start_quest_battle';
+    questId?: string;
+    questStepId?: string;
+    questObjectiveId?: string;
+    battleMapId?: string;
+    battleObjectiveIds?: string[];
+    requireQuestStatus?: 'active' | 'completed' | 'available' | 'any';
+    requireCurrentStep?: boolean;
+    triggerOn?: 'enter' | 'interact' | 'inspect';
+    debugLabel?: string;
+  };
   createdAt: number;
   updatedAt: number;
 }
@@ -2130,6 +2150,8 @@ export interface ContentDatabase {
   questItems: QuestItemDefinition[];
   questMarkers: QuestMarkerDefinition[];
   battleMaps: BattleMapDefinition[];
+  diplomaticActors?: DiplomaticActorDefinition[];
+  globalRelations?: GlobalRelation[];
   craftingRecipes?: CraftingRecipe[];
   recipeVisualProfiles?: RecipeVisualProfile[];
   itemSets?: ItemSet[];
@@ -2227,6 +2249,8 @@ export type ContentCollectionName =
   | 'questItems'
   | 'questMarkers'
   | 'battleMaps'
+  | 'diplomaticActors'
+  | 'globalRelations'
   | 'craftingRecipes'
   | 'recipeVisualProfiles'
   | 'itemSets'
@@ -2264,6 +2288,8 @@ export interface ContentCollectionMap {
   questItems: QuestItemDefinition;
   questMarkers: QuestMarkerDefinition;
   battleMaps: BattleMapDefinition;
+  diplomaticActors: DiplomaticActorDefinition;
+  globalRelations: GlobalRelation;
   craftingRecipes: CraftingRecipe;
   recipeVisualProfiles: RecipeVisualProfile;
   itemSets: ItemSet;

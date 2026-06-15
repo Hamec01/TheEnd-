@@ -5,6 +5,8 @@ exports.normalizeArenaBattleState = normalizeArenaBattleState;
 exports.getDistanceBandForGap = getDistanceBandForGap;
 exports.getBattlefieldDistance = getBattlefieldDistance;
 exports.getDistanceBandBetweenEntities = getDistanceBandBetweenEntities;
+exports.isCombatHostileTarget = isCombatHostileTarget;
+exports.getHostileEntities = getHostileEntities;
 exports.getReachableBattlefieldTiles = getReachableBattlefieldTiles;
 exports.getThreatenedTiles = getThreatenedTiles;
 exports.getBattlefieldTilePlacements = getBattlefieldTilePlacements;
@@ -14,9 +16,16 @@ exports.getStaminaRegen = getStaminaRegen;
 exports.getManaRegen = getManaRegen;
 exports.createArenaCombatEntity = createArenaCombatEntity;
 exports.createInitialBattleState = createInitialBattleState;
+exports.createQuestBattleContext = createQuestBattleContext;
+exports.validateBattleContextForBattleMap = validateBattleContextForBattleMap;
+exports.shouldApplyArenaVictoryRewards = shouldApplyArenaVictoryRewards;
+exports.shouldUseArenaVictoryLogic = shouldUseArenaVictoryLogic;
+exports.pickUpBattleObjectiveMarker = pickUpBattleObjectiveMarker;
+exports.evacuateCarriedBodyAtZone = evacuateCarriedBodyAtZone;
 exports.createNpcAction = createNpcAction;
 exports.resolveRound = resolveRound;
 const combat_costs_1 = require("./combat-costs");
+const diplomacy_1 = require("./diplomacy");
 var TargetZone;
 (function (TargetZone) {
     TargetZone["Head"] = "HEAD";
@@ -83,8 +92,18 @@ function normalizeArenaBattleState(state) {
         turnIndex: typeof state.turnIndex === 'number' && Number.isFinite(state.turnIndex) ? Math.max(0, Math.floor(state.turnIndex)) : 0,
         currentTurnAp: typeof state.currentTurnAp === 'number' && Number.isFinite(state.currentTurnAp) ? Math.max(0, Math.floor(state.currentTurnAp)) : 0,
         skillCooldowns: Array.isArray(state.skillCooldowns) ? state.skillCooldowns : [],
+        battleType: state.battleContext?.battleType ?? state.battleType,
+        questBattleResultState: state.battleContext?.battleType === 'quest' ? state.battleContext.resultState : state.questBattleResultState,
+        globalRelations: state.globalRelations ?? [],
+        relationOverrides: state.relationOverrides ?? [],
+        battleObjectives: state.battleObjectives ?? [],
+        battleExtractionZones: state.battleExtractionZones ?? [],
+        battleObjectiveMarkers: state.battleObjectiveMarkers ?? [],
         escapeStates: state.escapeStates ?? {},
         lootContainers: state.lootContainers ?? [],
+        carryingBody: state.carryingBody ?? null,
+        battleObjectiveProgress: state.battleObjectiveProgress ?? {},
+        pendingQuestEffects: state.pendingQuestEffects ?? [],
     };
 }
 const DEFENSIVE_ZONES = [TargetZone.Chest, TargetZone.Abdomen];
@@ -263,6 +282,31 @@ function getTacticalDistance(left, right) {
 function selectNearestEnemy(actor, enemies) {
     return [...enemies].sort((left, right) => getTacticalDistance(actor, left) - getTacticalDistance(actor, right))[0] ?? enemies[0];
 }
+function hasCombatRelationContext(state) {
+    return (state.globalRelations?.length ?? 0) > 0 || (state.relationOverrides?.length ?? 0) > 0;
+}
+function isCombatHostileTarget(state, actor, target) {
+    if (!target.isAlive || actor.id === target.id) {
+        return false;
+    }
+    if (!hasCombatRelationContext(state)) {
+        return target.team !== actor.team;
+    }
+    const relation = (0, diplomacy_1.resolveCombatRelation)((0, diplomacy_1.resolveActorIdentity)(actor), (0, diplomacy_1.resolveActorIdentity)(target), state.globalRelations ?? [], state.relationOverrides ?? []);
+    if (relation.isHostile) {
+        return true;
+    }
+    return target.team !== actor.team && relation.source === 'default';
+}
+function getHostileEntities(state, actor) {
+    return state.entities.filter((item) => isCombatHostileTarget(state, actor, item));
+}
+function shouldUseNpcFallback(state, actor) {
+    if (hasCombatRelationContext(state)) {
+        return actor.isPlayer !== true;
+    }
+    return actor.team === TeamSide.Right;
+}
 function classifyCombatStyle(actor) {
     if (actor.combatStyleHint) {
         return actor.combatStyleHint;
@@ -418,11 +462,190 @@ function createInitialBattleState(params) {
         recentCombatEvents: [],
         recentAnimationEvents: [],
         exitZones: params.exitZones ?? [],
+        battleContext: params.battleContext,
+        battleType: params.battleContext?.battleType,
+        questBattleResultState: params.battleContext?.battleType === 'quest' ? params.battleContext.resultState : undefined,
+        globalRelations: params.globalRelations ?? [],
+        relationOverrides: params.relationOverrides ?? [],
+        battleObjectives: params.battleObjectives ?? [],
+        battleExtractionZones: params.battleExtractionZones ?? [],
+        battleObjectiveMarkers: params.battleObjectiveMarkers ?? [],
+        carryingBody: null,
+        battleObjectiveProgress: {},
+        pendingQuestEffects: [],
         isFinished: false,
     };
     syncBattlefieldPositions(state.entities, state.distance, battleMapWidth, battleMapHeight);
     updateBattleDistance(state);
     return state;
+}
+function createQuestBattleContext(params) {
+    return {
+        battleType: 'quest',
+        questId: params.questId,
+        questStepId: params.questStepId,
+        battleMapId: params.battleMapId,
+        activeBattleObjectiveIds: [...new Set(params.activeBattleObjectiveIds.filter(Boolean))],
+        allowArenaRewards: false,
+        allowArenaVictoryLogic: false,
+    };
+}
+function validateBattleContextForBattleMap(context, battleMap) {
+    const errors = [];
+    if (!context) {
+        return { ok: true, errors };
+    }
+    if (context.battleType !== 'quest') {
+        return { ok: true, errors };
+    }
+    if (!context.questId) {
+        errors.push('Quest battle requires questId.');
+    }
+    if (!context.questStepId) {
+        errors.push('Quest battle requires questStepId.');
+    }
+    if (!context.battleMapId) {
+        errors.push('Quest battle requires battleMapId.');
+    }
+    if (context.allowArenaRewards || context.allowArenaVictoryLogic) {
+        errors.push('Quest battle cannot use arena rewards or arena victory logic.');
+    }
+    if (!battleMap || battleMap.id !== context.battleMapId) {
+        errors.push('Quest battle context must match selected battleMapId.');
+    }
+    const objectiveIds = new Set((battleMap?.objectives ?? []).map((objective) => objective.id).filter(Boolean));
+    if (context.activeBattleObjectiveIds.length === 0) {
+        errors.push('Quest battle requires at least one active battle objective.');
+    }
+    for (const objectiveId of context.activeBattleObjectiveIds) {
+        if (!objectiveIds.has(objectiveId)) {
+            errors.push(`Quest battle objective "${objectiveId}" does not exist on selected battle map.`);
+        }
+    }
+    return { ok: errors.length === 0, errors };
+}
+function shouldApplyArenaVictoryRewards(state) {
+    if (state.battleContext) {
+        return state.battleContext.allowArenaRewards;
+    }
+    return state.battleType !== 'quest';
+}
+function shouldUseArenaVictoryLogic(state) {
+    if (state.battleContext) {
+        return state.battleContext.allowArenaVictoryLogic;
+    }
+    return state.battleType !== 'quest';
+}
+function getBattleObjectiveProgress(state, objective) {
+    state.battleObjectiveProgress ??= {};
+    const current = state.battleObjectiveProgress[objective.id];
+    if (current) {
+        return current;
+    }
+    const next = {
+        objectiveId: objective.id,
+        currentCount: Math.max(0, Math.floor(objective.currentCount ?? 0)),
+        requiredCount: Math.max(1, Math.floor(objective.requiredCount ?? 1)),
+        evacuatedMarkerIds: [],
+        completed: false,
+    };
+    state.battleObjectiveProgress[objective.id] = next;
+    return next;
+}
+function markerMatchesObjective(marker, objective) {
+    if (objective.type !== 'extract_bodies') {
+        return false;
+    }
+    if (marker.canBeCarried !== true || marker.countsForObjective !== true) {
+        return false;
+    }
+    if (objective.sourceObjectiveTag && marker.objectiveTag !== objective.sourceObjectiveTag) {
+        return false;
+    }
+    if (objective.sourceKingdomId && marker.kingdomId !== objective.sourceKingdomId) {
+        return false;
+    }
+    if (objective.sourceFactionId && marker.factionId !== objective.sourceFactionId) {
+        return false;
+    }
+    if (objective.sourceGroupId && marker.groupId !== objective.sourceGroupId) {
+        return false;
+    }
+    return true;
+}
+function markerAlreadyEvacuated(state, markerId) {
+    return Object.values(state.battleObjectiveProgress ?? {}).some((progress) => progress.evacuatedMarkerIds.includes(markerId));
+}
+function refreshQuestBattleObjectiveResult(state) {
+    if (state.battleContext?.battleType !== 'quest') {
+        return;
+    }
+    const progress = state.battleObjectiveProgress ?? {};
+    const allActiveCompleted = state.battleContext.activeBattleObjectiveIds.every((objectiveId) => progress[objectiveId]?.completed === true);
+    if (allActiveCompleted) {
+        state.questBattleResultState = 'objective_completed';
+        state.battleContext.resultState = 'objective_completed';
+    }
+}
+function pickUpBattleObjectiveMarker(state, marker, objectives) {
+    if (state.carryingBody) {
+        return { ok: false, reason: 'already_carrying_body', questEffects: [] };
+    }
+    if (markerAlreadyEvacuated(state, marker.id)) {
+        return { ok: false, reason: 'marker_already_evacuated', questEffects: [] };
+    }
+    const objective = objectives.find((candidate) => markerMatchesObjective(marker, candidate));
+    if (!objective) {
+        return { ok: false, reason: 'no_matching_extract_objective', questEffects: [] };
+    }
+    state.carryingBody = {
+        markerId: marker.id,
+        objectiveId: objective.id,
+        sourceActorName: marker.name,
+        objectiveTag: marker.objectiveTag,
+    };
+    return {
+        ok: true,
+        progress: getBattleObjectiveProgress(state, objective),
+        questEffects: [],
+    };
+}
+function evacuateCarriedBodyAtZone(state, objectives, zone) {
+    const carrying = state.carryingBody;
+    if (!carrying) {
+        return { ok: false, reason: 'not_carrying_body', questEffects: [] };
+    }
+    const objective = objectives.find((candidate) => candidate.id === carrying.objectiveId);
+    if (!objective) {
+        return { ok: false, reason: 'objective_missing', questEffects: [] };
+    }
+    if (objective.targetZoneId && zone.id !== objective.targetZoneId) {
+        return { ok: false, reason: 'wrong_extraction_zone', questEffects: [] };
+    }
+    if (zone.objectiveId && zone.objectiveId !== objective.id) {
+        return { ok: false, reason: 'zone_objective_mismatch', questEffects: [] };
+    }
+    if (zone.allowedObjectiveTags?.length && carrying.objectiveTag && !zone.allowedObjectiveTags.includes(carrying.objectiveTag)) {
+        return { ok: false, reason: 'objective_tag_not_allowed', questEffects: [] };
+    }
+    const progress = getBattleObjectiveProgress(state, objective);
+    if (!progress.evacuatedMarkerIds.includes(carrying.markerId)) {
+        progress.evacuatedMarkerIds.push(carrying.markerId);
+        progress.currentCount = Math.min(progress.requiredCount, progress.currentCount + 1);
+    }
+    progress.completed = progress.currentCount >= progress.requiredCount;
+    state.carryingBody = null;
+    const questEffects = [];
+    if (progress.completed && objective.completeQuestObjectiveOnDone && objective.questId && objective.questObjectiveId) {
+        questEffects.push({
+            type: 'complete_quest_objective',
+            questId: objective.questId,
+            objectiveId: objective.questObjectiveId,
+            battleObjectiveId: objective.id,
+        });
+    }
+    refreshQuestBattleObjectiveResult(state);
+    return { ok: true, progress, questEffects };
 }
 function normalizeMovementType(action) {
     if (action.movementType) {
@@ -663,7 +886,7 @@ function applyMovement(state, actor, action, target) {
     if (!Number.isFinite(cellsMoved) || cellsMoved > maxDistance) {
         return { moved: false, cellsMoved: 0, opportunityEnemies: [], reason: 'Destination is not reachable.' };
     }
-    const adjacentMeleeEnemies = state.entities.filter((entity) => entity.isAlive && entity.team !== actor.team && classifyCombatStyle(entity) === 'MELEE' && getBattlefieldDistance(actor, entity) <= 1);
+    const adjacentMeleeEnemies = state.entities.filter((entity) => isCombatHostileTarget(state, actor, entity) && classifyCombatStyle(entity) === 'MELEE' && getBattlefieldDistance(actor, entity) <= 1);
     actor.battlefieldX = destination.x;
     actor.battlefieldY = destination.y;
     updateBattleDistance(state);
@@ -978,7 +1201,7 @@ function defaultWaitAction(actor, enemy) {
 }
 function createNpcAction(state, actorId) {
     const actor = getEntity(state, actorId);
-    const enemies = state.entities.filter((item) => item.team !== actor.team && item.isAlive);
+    const enemies = getHostileEntities(state, actor);
     if (enemies.length === 0) {
         return defaultWaitAction(actor, actor);
     }
@@ -1098,7 +1321,7 @@ function resolveRound(params) {
         if (!actor.isAlive) {
             continue;
         }
-        const enemies = state.entities.filter((item) => item.team !== actor.team && item.isAlive);
+        const enemies = getHostileEntities(state, actor);
         if (enemies.length === 0) {
             break;
         }
@@ -1111,7 +1334,7 @@ function resolveRound(params) {
             });
             continue;
         }
-        const fallback = actor.team === TeamSide.Right
+        const fallback = shouldUseNpcFallback(state, actor)
             ? createNpcAction(state, actorId)
             : defaultWaitAction(actor, enemies[0]);
         const actorAction = byActor.get(actorId) ?? fallback;

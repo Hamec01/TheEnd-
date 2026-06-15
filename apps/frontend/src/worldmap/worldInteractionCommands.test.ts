@@ -80,8 +80,8 @@ describe('world interaction command mapping', () => {
 
     expect(resolution.clickedZone).toBeNull();
     expect(resolution.clickedEntity).toBeNull();
-    expect(resolution.commands).toEqual([{ type: 'move_to_point', point: { x: 0.2, y: 0.3 }, pendingLocationId: null }]);
-    expect(resolution.moveTarget).toEqual({ point: { x: 0.2, y: 0.3 }, pendingLocationId: null });
+    expect(resolution.commands).toEqual([{ type: 'move_to_point', point: { x: 0.2, y: 0.3 }, pendingLocationId: null, zoneId: null }]);
+    expect(resolution.moveTarget).toEqual({ point: { x: 0.2, y: 0.3 }, pendingLocationId: null, zoneId: null });
   });
 
   it('maps regular zone clicks to interact plus move-to-center', () => {
@@ -105,9 +105,9 @@ describe('world interaction command mapping', () => {
     expect(resolution.clickedZone?.id).toBe('camp');
     expect(resolution.commands).toEqual([
       { type: 'interact_zone', zoneId: 'camp', point: { x: 0.39, y: 0.61 } },
-      { type: 'move_to_point', point: { x: 0.4, y: 0.6 }, pendingLocationId: null },
+      { type: 'move_to_point', point: { x: 0.4, y: 0.6 }, pendingLocationId: null, zoneId: 'camp' },
     ]);
-    expect(resolution.moveTarget).toEqual({ point: { x: 0.4, y: 0.6 }, pendingLocationId: null });
+    expect(resolution.moveTarget).toEqual({ point: { x: 0.4, y: 0.6 }, pendingLocationId: null, zoneId: 'camp' });
   });
 
   it('maps city clicks to interact plus move-to-center with pending location gate', () => {
@@ -133,9 +133,9 @@ describe('world interaction command mapping', () => {
     expect(resolution.clickedZone?.id).toBe('city_arklein');
     expect(resolution.commands).toEqual([
       { type: 'interact_zone', zoneId: 'city_arklein', point: { x: 0.45, y: 0.5 } },
-      { type: 'move_to_point', point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein' },
+      { type: 'move_to_point', point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein', zoneId: 'city_arklein' },
     ]);
-    expect(resolution.moveTarget).toEqual({ point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein' });
+    expect(resolution.moveTarget).toEqual({ point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein', zoneId: 'city_arklein' });
   });
 
   it('prefers active world entity interaction over zone movement when click is in entity radius', () => {
@@ -237,7 +237,7 @@ describe('world interaction command mapping', () => {
     expect(resolution.clickedZone?.id).toBe('city_arklein');
     expect(resolution.commands).toEqual([
       { type: 'interact_zone', zoneId: 'city_arklein', point: { x: 0.44, y: 0.5 } },
-      { type: 'move_to_point', point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein' },
+      { type: 'move_to_point', point: { x: 0.44, y: 0.5 }, pendingLocationId: 'city_arklein', zoneId: 'city_arklein' },
     ]);
   });
 
@@ -324,7 +324,7 @@ describe('world interaction command mapping', () => {
     });
 
     expect(resolution.clickedEntity).toBeNull();
-    expect(resolution.commands).toEqual([{ type: 'move_to_point', point: { x: 0.523, y: 0.5 }, pendingLocationId: null }]);
+    expect(resolution.commands).toEqual([{ type: 'move_to_point', point: { x: 0.523, y: 0.5 }, pendingLocationId: null, zoneId: null }]);
   });
 
   it('keeps city priority when a click is inside the city but outside the overlapping entity marker', () => {
@@ -381,6 +381,6 @@ describe('world interaction command mapping', () => {
 
     expect(resolution.clickedEntity).toBeNull();
     expect(resolution.clickedZone?.id).toBe('city_arklein');
-    expect(resolution.moveTarget).toEqual({ point: { x: 0.5, y: 0.5 }, pendingLocationId: 'city_arklein' });
+    expect(resolution.moveTarget).toEqual({ point: { x: 0.5, y: 0.5 }, pendingLocationId: 'city_arklein', zoneId: 'city_arklein' });
   });
 });

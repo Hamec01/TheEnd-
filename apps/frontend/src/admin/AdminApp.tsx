@@ -9,6 +9,7 @@ import { BattleMapsPage } from './pages/BattleMapsPage';
 import { CitiesPage } from './pages/CitiesPage';
 import { CraftingRecipesPage } from './pages/CraftingRecipesPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { DiplomacyPage } from './pages/DiplomacyPage';
 import { DialoguesPage } from './pages/DialoguesPage';
 import { ImagesPage } from './pages/ImagesPage';
 import { ItemInstancesPage } from './pages/ItemInstancesPage';
@@ -58,6 +59,7 @@ type AdminRoute =
   | '/admin/locations'
   | '/admin/backup'
   | '/admin/world-sim'
+  | '/admin/diplomacy'
   | '/admin/sounds'
   | '/admin/biomes'
   | '/admin/trees'
@@ -87,6 +89,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     '/admin/locations',
     '/admin/backup',
     '/admin/world-sim',
+    '/admin/diplomacy',
     '/admin/sounds',
     '/admin/biomes',
     '/admin/trees',
@@ -143,6 +146,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Локации';
       case '/admin/backup':
         return 'Backup / Content Tools';
+      case '/admin/diplomacy':
+        return 'ОТНОШЕНИЯ / ДИПЛОМАТИЯ';
       case '/admin/world-sim':
         return '🌍 Симуляция мира';
       case '/admin/sounds':
@@ -279,6 +284,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       break;
     case '/admin/backup':
       page = <BackupPage />;
+      break;
+    case '/admin/diplomacy':
+      page = <DiplomacyPage />;
       break;
     case '/admin/world-sim':
       page = <WorldSimulationAdmin />;

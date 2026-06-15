@@ -43,6 +43,7 @@ __exportStar(require("./professions"), exports);
 __exportStar(require("./blacksmith-session"), exports);
 __exportStar(require("./shop"), exports);
 __exportStar(require("./battle-map"), exports);
+__exportStar(require("./diplomacy"), exports);
 __exportStar(require("./visual-effects"), exports);
 __exportStar(require("./progression"), exports);
 var arena_battle_1 = require("./arena-battle");

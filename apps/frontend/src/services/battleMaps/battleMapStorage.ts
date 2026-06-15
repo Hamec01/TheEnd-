@@ -2,8 +2,11 @@ import type {
   BattleMapCell,
   BattleMapCellType,
   BattleMapDefinition,
+  BattleMapExtractionZone,
+  BattleMapObjective,
   BattleMapPlacedNpc,
   BattleMapPlacedObject,
+  BattleMapScriptEvent,
   BattleMapSpawnZone,
   BattleMapTrap,
   BattleMapTrigger,
@@ -106,6 +109,17 @@ function normalizeSpawnZones(spawnZones: unknown, width: number, height: number)
         type,
         name: typeof candidate.name === 'string' && candidate.name.trim().length > 0 ? candidate.name : `${type} spawn`,
         cells: uniqueCells(Array.isArray(candidate.cells) ? candidate.cells : [], width, height),
+        kingdomId: typeof candidate.kingdomId === 'string' ? candidate.kingdomId : undefined,
+        factionId: typeof candidate.factionId === 'string' ? candidate.factionId : undefined,
+        raceId: typeof candidate.raceId === 'string' ? candidate.raceId : undefined,
+        groupId: typeof candidate.groupId === 'string' ? candidate.groupId : undefined,
+        spawnMode: candidate.spawnMode === 'generated' ? 'generated' : candidate.spawnMode === 'manual' ? 'manual' : undefined,
+        count: Number.isInteger(candidate.count) ? Math.max(0, candidate.count!) : undefined,
+        npcTemplateIds: Array.isArray(candidate.npcTemplateIds) ? candidate.npcTemplateIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : undefined,
+        combatPresetId: typeof candidate.combatPresetId === 'string' ? candidate.combatPresetId : undefined,
+        loadoutPresetId: typeof candidate.loadoutPresetId === 'string' ? candidate.loadoutPresetId : undefined,
+        aiProfileId: typeof candidate.aiProfileId === 'string' ? candidate.aiProfileId : undefined,
+        objectiveTag: typeof candidate.objectiveTag === 'string' ? candidate.objectiveTag : undefined,
       };
     });
 }
@@ -185,6 +199,117 @@ function normalizeNpcs(npcs: unknown, width: number, height: number): BattleMapP
         startsCombat: typeof npc.startsCombat === 'boolean' ? npc.startsCombat : undefined,
         avatarUrl: typeof npc.avatarUrl === 'string' ? npc.avatarUrl : undefined,
         description: typeof npc.description === 'string' ? npc.description : undefined,
+        sourceType: npc.sourceType,
+        kingdomId: typeof npc.kingdomId === 'string' ? npc.kingdomId : undefined,
+        raceId: typeof npc.raceId === 'string' ? npc.raceId : undefined,
+        clanId: typeof npc.clanId === 'string' ? npc.clanId : undefined,
+        groupId: typeof npc.groupId === 'string' ? npc.groupId : undefined,
+        combatRole: npc.combatRole,
+        combatPresetId: typeof npc.combatPresetId === 'string' ? npc.combatPresetId : undefined,
+        loadoutPresetId: typeof npc.loadoutPresetId === 'string' ? npc.loadoutPresetId : undefined,
+        aiProfileId: typeof npc.aiProfileId === 'string' ? npc.aiProfileId : undefined,
+        aiPersonality: typeof npc.aiPersonality === 'string' ? npc.aiPersonality : undefined,
+        level: Number.isInteger(npc.level) ? Math.max(1, npc.level!) : undefined,
+        equipment: npc.equipment && typeof npc.equipment === 'object'
+          ? {
+            weaponItemId: typeof npc.equipment.weaponItemId === 'string' ? npc.equipment.weaponItemId : undefined,
+            offhandItemId: typeof npc.equipment.offhandItemId === 'string' ? npc.equipment.offhandItemId : undefined,
+            armorItemIds: Array.isArray(npc.equipment.armorItemIds) ? npc.equipment.armorItemIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : undefined,
+          }
+          : undefined,
+        skillIds: Array.isArray(npc.skillIds) ? npc.skillIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : undefined,
+        statOverrides: npc.statOverrides && typeof npc.statOverrides === 'object'
+          ? Object.fromEntries(
+            Object.entries(npc.statOverrides)
+              .filter(([, value]) => typeof value === 'number' && Number.isFinite(value)),
+          )
+          : undefined,
+        avatarPoolId: typeof npc.avatarPoolId === 'string' ? npc.avatarPoolId : undefined,
+        imageRef: typeof npc.imageRef === 'string' ? npc.imageRef : undefined,
+        canBeCarried: typeof npc.canBeCarried === 'boolean' ? npc.canBeCarried : undefined,
+        countsForObjective: typeof npc.countsForObjective === 'boolean' ? npc.countsForObjective : undefined,
+        objectiveTag: typeof npc.objectiveTag === 'string' ? npc.objectiveTag : undefined,
+      };
+    });
+}
+
+function normalizeObjectives(objectives: unknown): BattleMapObjective[] {
+  if (!Array.isArray(objectives)) {
+    return [];
+  }
+  return objectives
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, index) => {
+      const objective = entry as Partial<BattleMapObjective>;
+      return {
+        id: typeof objective.id === 'string' && objective.id.trim().length > 0 ? objective.id : `objective-${index + 1}`,
+        type: objective.type ?? 'custom',
+        title: typeof objective.title === 'string' && objective.title.trim().length > 0 ? objective.title : `Objective ${index + 1}`,
+        description: typeof objective.description === 'string' ? objective.description : undefined,
+        requiredCount: Number.isInteger(objective.requiredCount) ? Math.max(1, objective.requiredCount!) : undefined,
+        currentCount: Number.isInteger(objective.currentCount) ? Math.max(0, objective.currentCount!) : undefined,
+        sourceKingdomId: typeof objective.sourceKingdomId === 'string' ? objective.sourceKingdomId : undefined,
+        sourceFactionId: typeof objective.sourceFactionId === 'string' ? objective.sourceFactionId : undefined,
+        sourceGroupId: typeof objective.sourceGroupId === 'string' ? objective.sourceGroupId : undefined,
+        sourceObjectiveTag: typeof objective.sourceObjectiveTag === 'string' ? objective.sourceObjectiveTag : undefined,
+        targetZoneId: typeof objective.targetZoneId === 'string' ? objective.targetZoneId : undefined,
+        questId: typeof objective.questId === 'string' ? objective.questId : undefined,
+        questObjectiveId: typeof objective.questObjectiveId === 'string' ? objective.questObjectiveId : undefined,
+        completeQuestObjectiveOnDone: typeof objective.completeQuestObjectiveOnDone === 'boolean' ? objective.completeQuestObjectiveOnDone : undefined,
+        failOnAllSourceActorsDead: typeof objective.failOnAllSourceActorsDead === 'boolean' ? objective.failOnAllSourceActorsDead : undefined,
+      };
+    });
+}
+
+function normalizeExtractionZones(extractionZones: unknown, width: number, height: number): BattleMapExtractionZone[] {
+  if (!Array.isArray(extractionZones)) {
+    return [];
+  }
+  return extractionZones
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, index) => {
+      const zone = entry as Partial<BattleMapExtractionZone>;
+      return {
+        id: typeof zone.id === 'string' && zone.id.trim().length > 0 ? zone.id : `extraction-zone-${index + 1}`,
+        name: typeof zone.name === 'string' && zone.name.trim().length > 0 ? zone.name : `Extraction zone ${index + 1}`,
+        cells: uniqueCells(Array.isArray(zone.cells) ? zone.cells : [], width, height),
+        allowedKingdomIds: Array.isArray(zone.allowedKingdomIds) ? zone.allowedKingdomIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : undefined,
+        allowedFactionIds: Array.isArray(zone.allowedFactionIds) ? zone.allowedFactionIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : undefined,
+        allowedObjectiveTags: Array.isArray(zone.allowedObjectiveTags) ? zone.allowedObjectiveTags.filter((value): value is string => typeof value === 'string' && value.trim().length > 0) : undefined,
+        objectiveId: typeof zone.objectiveId === 'string' ? zone.objectiveId : undefined,
+        description: typeof zone.description === 'string' ? zone.description : undefined,
+      };
+    })
+    .filter((zone) => zone.cells.length > 0);
+}
+
+function normalizeScriptEvents(scriptEvents: unknown): BattleMapScriptEvent[] {
+  if (!Array.isArray(scriptEvents)) {
+    return [];
+  }
+  return scriptEvents
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, index) => {
+      const event = entry as Partial<BattleMapScriptEvent>;
+      return {
+        id: typeof event.id === 'string' && event.id.trim().length > 0 ? event.id : `script-event-${index + 1}`,
+        type: event.type ?? 'battle_start',
+        objectiveId: typeof event.objectiveId === 'string' ? event.objectiveId : undefined,
+        triggerAtCount: Number.isInteger(event.triggerAtCount) ? Math.max(0, event.triggerAtCount!) : undefined,
+        actorId: typeof event.actorId === 'string' ? event.actorId : undefined,
+        speakerNpcId: typeof event.speakerNpcId === 'string' ? event.speakerNpcId : undefined,
+        speakerName: typeof event.speakerName === 'string' ? event.speakerName : undefined,
+        portraitImageRef: typeof event.portraitImageRef === 'string' ? event.portraitImageRef : undefined,
+        message: typeof event.message === 'string' ? event.message : '',
+        pauseCombat: typeof event.pauseCombat === 'boolean' ? event.pauseCombat : undefined,
+        questEffect: event.questEffect && typeof event.questEffect === 'object'
+          ? {
+            type: event.questEffect.type ?? 'advance_quest',
+            questId: typeof event.questEffect.questId === 'string' ? event.questEffect.questId : undefined,
+            objectiveId: typeof event.questEffect.objectiveId === 'string' ? event.questEffect.objectiveId : undefined,
+          }
+          : undefined,
+        once: typeof event.once === 'boolean' ? event.once : undefined,
       };
     });
 }
@@ -339,6 +464,9 @@ export function normalizeBattleMap(map: Partial<BattleMapDefinition>): BattleMap
     npcs: normalizeNpcs(map.npcs, width, height),
     triggers: normalizeTriggers(map.triggers, width, height),
     exitZones: normalizeExitZones((map as Partial<BattleMapDefinition>).exitZones, width, height),
+    objectives: normalizeObjectives((map as Partial<BattleMapDefinition>).objectives),
+    extractionZones: normalizeExtractionZones((map as Partial<BattleMapDefinition>).extractionZones, width, height),
+    scriptEvents: normalizeScriptEvents((map as Partial<BattleMapDefinition>).scriptEvents),
     tags: Array.isArray(map.tags) ? map.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0) : fallback.tags,
     linkedLocationId: typeof map.linkedLocationId === 'string' ? map.linkedLocationId : fallback.linkedLocationId,
     linkedQuestId: typeof map.linkedQuestId === 'string' ? map.linkedQuestId : undefined,

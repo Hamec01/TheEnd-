@@ -106,7 +106,7 @@ export class CharactersService {
     const data = {
       name: dto.name,
       race: dto.race,
-      level: 0,
+      level: 1,
       exp: 0,
       freePoints: Math.max(0, startingFreePoints - spent),
       gold: finalStartingGold,

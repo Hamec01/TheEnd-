@@ -1,4 +1,4 @@
-import type { BattleMapDefinition } from '@theend/rpg-domain';
+import type { BattleMapDefinition, DiplomaticActorDefinition, GlobalRelation } from '@theend/rpg-domain';
 import type { PaintedRegion, WorldMapZone } from '../../worldmap/zoneEditorTypes';
 import type { City } from '../../types/city';
 import type { WorldLocation } from '../../types/location';
@@ -60,6 +60,8 @@ export type ContentCollectionName =
   | 'questItems'
   | 'questMarkers'
   | 'battleMaps'
+  | 'diplomaticActors'
+  | 'globalRelations'
   | 'craftingRecipes'
   | 'recipeVisualProfiles'
   | 'itemSets'
@@ -149,6 +151,8 @@ export interface ContentSnapshot {
   questItems: AdminQuestItem[];
   questMarkers: AdminQuestMarker[];
   battleMaps: BattleMapDefinition[];
+  diplomaticActors: DiplomaticActorDefinition[];
+  globalRelations: GlobalRelation[];
   craftingRecipes: CraftingRecipe[];
   recipeVisualProfiles: RecipeVisualProfile[];
   itemSets: ItemSet[];

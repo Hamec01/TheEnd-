@@ -466,6 +466,8 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
   const npcs = (Array.isArray(args.npcs) ? args.npcs : []).filter(isRecord) as unknown as NpcDefinition[];
 
   const questsById = toIdSet(quests);
+  const questDefinitions = quests as unknown as QuestDefinition[];
+  const questDefinitionById = new Map<string, QuestDefinition>(questDefinitions.map((quest) => [quest.id, quest]));
   const citiesByReference = buildCityReferenceSet(cities);
   const lootTableIds = toIdSet(lootTables as unknown as Record<string, unknown>[]);
   const itemIds = toIdSet(items as unknown as Record<string, unknown>[]);
@@ -973,6 +975,102 @@ export function validateWorldMapContent(args: ValidateWorldMapContentArgs): Worl
             field: 'randomQuestPoolIds',
           });
         }
+      }
+    }
+
+    const visibilityConditions = zone.visibilityConditions;
+    if (visibilityConditions) {
+      const visibleWhenQuestId = asNonEmptyString(visibilityConditions.visibleWhenQuestId);
+      const hideWhenQuestId = asNonEmptyString(visibilityConditions.hideWhenQuestId);
+      const stepId = asNonEmptyString(visibilityConditions.stepId);
+      const objectiveId = asNonEmptyString(visibilityConditions.objectiveId);
+
+      // Validate visibleWhenQuestId not found
+      if (visibleWhenQuestId && questsById.size > 0 && !questsById.has(visibleWhenQuestId)) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.visibilityConditions.visibleWhenQuestId.notFound',
+          message: 'visibleWhenQuestId not found',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'visibilityConditions.visibleWhenQuestId',
+        });
+      }
+
+      // Validate hideWhenQuestId not found
+      if (hideWhenQuestId && questsById.size > 0 && !questsById.has(hideWhenQuestId)) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.visibilityConditions.hideWhenQuestId.notFound',
+          message: 'hideWhenQuestId not found',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'visibilityConditions.hideWhenQuestId',
+        });
+      }
+
+      // Get quest details if visibleWhenQuestId (or hideWhenQuestId) is present and known
+      const targetQuestId = visibleWhenQuestId || hideWhenQuestId;
+      const targetQuest = targetQuestId ? questDefinitionById.get(targetQuestId) ?? null : null;
+
+      // Validate stepId not found in quest
+      if (stepId && targetQuest) {
+        const step = targetQuest.steps.find((s: any) => s.id === stepId);
+        if (!step) {
+          pushIssue(issues, nextId, {
+            severity: 'warning',
+            code: 'zone.visibilityConditions.stepId.notFound',
+            message: 'stepId not found in quest',
+            zoneId: zone.id,
+            zoneName: zone.name,
+            editorLayer: zoneLayer,
+            field: 'visibilityConditions.stepId',
+          });
+        } else {
+          // Validate objectiveId not found in step
+          if (objectiveId) {
+            const objective = (step.objectives ?? []).find((obj: any) => obj.id === objectiveId);
+            if (!objective) {
+              pushIssue(issues, nextId, {
+                severity: 'warning',
+                code: 'zone.visibilityConditions.objectiveId.notFound',
+                message: 'objectiveId not found in step',
+                zoneId: zone.id,
+                zoneName: zone.name,
+                editorLayer: zoneLayer,
+                field: 'visibilityConditions.objectiveId',
+              });
+            }
+          }
+        }
+      }
+
+      // Validate hideAfterObjectiveCompleted is true but objectiveId is empty
+      if (visibilityConditions.hideAfterObjectiveCompleted === true && !objectiveId) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.visibilityConditions.hideAfterObjectiveCompleted.empty',
+          message: 'hideAfterObjectiveCompleted is true but objectiveId is empty',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'visibilityConditions.objectiveId',
+        });
+      }
+
+      // Validate hideAfterStepCompleted is true but stepId is empty
+      if (visibilityConditions.hideAfterStepCompleted === true && !stepId) {
+        pushIssue(issues, nextId, {
+          severity: 'warning',
+          code: 'zone.visibilityConditions.hideAfterStepCompleted.empty',
+          message: 'hideAfterStepCompleted is true but stepId is empty',
+          zoneId: zone.id,
+          zoneName: zone.name,
+          editorLayer: zoneLayer,
+          field: 'visibilityConditions.stepId',
+        });
       }
     }
   }

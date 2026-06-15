@@ -32,7 +32,8 @@ export type QuestObjectiveType =
   | 'read_book'
   | 'inspect_object'
   | 'survive_battle'
-  | 'escort_npc';
+  | 'escort_npc'
+  | 'battle_objective';
 
 export type QuestTriggerType =
   | 'npc_dialogue'

@@ -47,6 +47,8 @@ export type CombatCommandType =
   | 'weapon_swap'
   | 'place_trap'
   | 'loot'
+  | 'pickup_objective_marker'
+  | 'evacuate_objective_marker'
   | 'start_retreat'
   | 'confirm_retreat'
   | 'wait';
@@ -71,6 +73,9 @@ export interface CombatCommandPayload {
   weaponInstanceId?: string;
   movementType?: 'walk' | 'dash' | 'disengage';
   lootContainerId?: string;
+  markerId?: string;
+  extractionZoneId?: string;
+  objectiveId?: string;
   trapItemId?: string;
   trapItemInstanceId?: string;
   targetZone?: TargetZone;
@@ -396,6 +401,8 @@ const COMMAND_ALLOWED_TARGETS: Record<CombatCommandType, ReadonlyArray<CombatTar
   weapon_swap: ['self'],
   place_trap: ['cell'],
   loot: ['cell', 'entity'],
+  pickup_objective_marker: ['cell'],
+  evacuate_objective_marker: ['cell'],
   start_retreat: ['self'],
   confirm_retreat: ['self'],
   wait: ['self'],
@@ -413,6 +420,8 @@ export const COMBAT_COMMAND_PRIORITY = {
   basic_attack: 0,
   item_use: 0,
   skill_cast: 0,
+  pickup_objective_marker: 0,
+  evacuate_objective_marker: 0,
   heavy_attack: -5,
   throw_bomb: -5,
   start_retreat: -10,
@@ -693,6 +702,10 @@ function getBaseCostKey(command: CombatCommand): CombatActionCostKey {
     case 'loot':
       key = 'loot_adjacent';
       break;
+    case 'pickup_objective_marker':
+    case 'evacuate_objective_marker':
+      key = 'loot_adjacent';
+      break;
     case 'start_retreat':
       key = 'start_retreat';
       break;
@@ -763,6 +776,21 @@ function normalizeCommandPayload(command: CombatCommand): CombatCommandPayload |
       };
     case 'loot':
       return payload.lootContainerId ? { lootContainerId: payload.lootContainerId } : undefined;
+    case 'pickup_objective_marker':
+      return payload.markerId
+        ? {
+          markerId: payload.markerId,
+          ...(payload.objectiveId ? { objectiveId: payload.objectiveId } : {}),
+        }
+        : undefined;
+    case 'evacuate_objective_marker':
+      return payload.extractionZoneId
+        ? {
+          extractionZoneId: payload.extractionZoneId,
+          ...(payload.markerId ? { markerId: payload.markerId } : {}),
+          ...(payload.objectiveId ? { objectiveId: payload.objectiveId } : {}),
+        }
+        : undefined;
     case 'move':
     case 'dash':
     case 'disengage':
@@ -879,6 +907,12 @@ export function validateCombatCommand(params: {
   }
   if (params.command.type === 'weapon_swap' && !params.command.payload?.weaponItemId && !params.command.payload?.weaponInstanceId) {
     errors.push('WEAPON_ID_REQUIRED');
+  }
+  if (params.command.type === 'pickup_objective_marker' && !params.command.payload?.markerId) {
+    errors.push('INVALID_TARGET');
+  }
+  if (params.command.type === 'evacuate_objective_marker' && !params.command.payload?.extractionZoneId) {
+    errors.push('INVALID_TARGET');
   }
 
   const warnings: CombatPlanWarningCode[] = [];

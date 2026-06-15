@@ -12,6 +12,7 @@ export interface MovementTickResult {
   player: MapPlayer;
   state: PlayerWorldState;
   reachedTarget: boolean;
+  cancelledReason?: 'blocked';
 }
 
 export type MovementValidator = (x: number, y: number) => boolean;
@@ -76,6 +77,7 @@ export function tickPlayerMovement(
       },
       state: 'idle',
       reachedTarget: false,
+      cancelledReason: 'blocked',
     };
   }
 
@@ -107,6 +109,7 @@ export function tickPlayerDirectionalMovement(
       },
       state: 'idle',
       reachedTarget: false,
+      cancelledReason: 'blocked',
     };
   }
 

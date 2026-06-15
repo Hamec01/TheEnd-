@@ -7,9 +7,12 @@ import {
   getCombatStatusDefinition,
   type AdminSkillDefinition,
   type ArenaCombatEntity,
+  type BattleMapExtractionZone,
+  type BattleObjectiveMarkerState,
   type CombatAnimationEvent,
   type CombatLootContainer,
   type CombatLogEntry,
+  type CarryingBodyState,
   type ExitZone,
   type BattlefieldTile,
   type BattlefieldTrapState,
@@ -78,6 +81,10 @@ export interface BattleFieldProps {
   battlefieldTraps?: BattlefieldTrapState[];
   exitZones?: ExitZone[];
   lootContainers?: CombatLootContainer[];
+  objectiveMarkers?: BattleObjectiveMarkerState[];
+  extractionZones?: BattleMapExtractionZone[];
+  carryingBody?: CarryingBodyState | null;
+  onPickupObjectiveMarker?: (markerId: string) => void;
   isPlaybackActive?: boolean;
   playbackPhases?: BattlePlaybackPhase[];
   playbackRunId?: number;
@@ -173,6 +180,10 @@ export function BattleField({
   battlefieldTraps = [],
   exitZones = [],
   lootContainers = [],
+  objectiveMarkers = [],
+  extractionZones = [],
+  carryingBody = null,
+  onPickupObjectiveMarker,
 }: BattleFieldProps) {
     function getRacePortrait(entity: ArenaCombatEntity): string {
       if (entity.avatarUrl) {
@@ -534,6 +545,12 @@ export function BattleField({
       return;
     }
 
+    const marker = objectiveMarkerByCoord.get(`${x}:${y}`);
+    if (marker && selectedSource.kind === 'none' && onPickupObjectiveMarker) {
+      onPickupObjectiveMarker(marker.id);
+      return;
+    }
+
     if (movablePositions.has(`${x}:${y}`)) {
       planMoveTo(x, y, false);
     }
@@ -750,6 +767,14 @@ export function BattleField({
     [battlefieldTiles],
   );
 
+  const objectiveMarkerByCoord = useMemo(() => (
+    new Map(
+      objectiveMarkers
+        .filter((marker) => marker.status === 'available')
+        .map((marker) => [`${marker.x}:${marker.y}`, marker] as const),
+    )
+  ), [objectiveMarkers]);
+
   const visibleTrapByCoord = useMemo(() => {
     const traps = new Map<string, BattlefieldTrapState>();
     const trapById = new Map(battlefieldTraps.map((trap) => [trap.id, trap]));
@@ -775,6 +800,16 @@ export function BattleField({
     }
     return zones;
   }, [exitZones]);
+
+  const extractionZoneByCoord = useMemo(() => {
+    const zones = new Map<string, BattleMapExtractionZone>();
+    for (const zone of extractionZones) {
+      for (const cell of zone.cells) {
+        zones.set(`${cell.x}:${cell.y}`, zone);
+      }
+    }
+    return zones;
+  }, [extractionZones]);
 
   const lootByCoord = useMemo(() => {
     const loot = new Map<string, CombatLootContainer>();
@@ -902,7 +937,9 @@ export function BattleField({
               const tile = tileByCoord.get(`${x}:${y}`);
               const trap = visibleTrapByCoord.get(`${x}:${y}`) ?? null;
               const exitZone = exitZoneByCoord.get(`${x}:${y}`) ?? null;
+              const extractionZone = extractionZoneByCoord.get(`${x}:${y}`) ?? null;
               const lootContainer = lootByCoord.get(`${x}:${y}`) ?? null;
+              const objectiveMarker = objectiveMarkerByCoord.get(`${x}:${y}`) ?? null;
               const mapObjectGlyph = tile?.type === BattlefieldTileType.HighCover
                 ? '▦'
                 : tile?.type === BattlefieldTileType.LowCover
@@ -951,7 +988,7 @@ export function BattleField({
                   role="button"
                   tabIndex={-1}
                 >
-                  {mapObjectGlyph || trap || exitZone || lootContainer ? (
+                  {mapObjectGlyph || trap || exitZone || extractionZone || lootContainer || objectiveMarker ? (
                     <div
                       style={{
                         position: 'absolute',
@@ -970,6 +1007,8 @@ export function BattleField({
                         mapObjectGlyph ? `Map object: ${tile?.type ?? 'unknown'}` : null,
                         trap ? `Trap: ${trap.name}` : null,
                         exitZone ? `Exit zone: ${exitZone.label ?? exitZone.id}` : null,
+                        extractionZone ? `Extraction zone: ${extractionZone.name}` : null,
+                        objectiveMarker ? `Objective marker: ${objectiveMarker.name}` : null,
                         lootContainer ? `Loot: ${lootContainer.sourceName}` : null,
                       ].filter(Boolean).join(' | ')}
                     >
@@ -977,6 +1016,41 @@ export function BattleField({
                       {trap ? <span style={{ color: '#ff7a7a' }}>⚠</span> : null}
                       {exitZone ? <span style={{ color: '#66e2ff' }}>⇱</span> : null}
                       {lootContainer ? <span style={{ color: '#f6d47b' }}>◈</span> : null}
+                    </div>
+                  ) : null}
+                  {!entity && objectiveMarker ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: Math.max(12, Math.floor(sceneCellSize * 0.34)),
+                        color: carryingBody ? '#ffcf7a' : '#ffd36a',
+                        textShadow: '0 0 6px rgba(0, 0, 0, 0.8)',
+                        pointerEvents: 'none',
+                        zIndex: 1,
+                      }}
+                      title={objectiveMarker.name}
+                    >
+                      +
+                    </div>
+                  ) : null}
+                  {!entity && extractionZone ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: 4,
+                        bottom: 3,
+                        fontSize: Math.max(10, Math.floor(sceneCellSize * 0.24)),
+                        color: '#76f0a2',
+                        textShadow: '0 0 6px rgba(0, 0, 0, 0.8)',
+                        pointerEvents: 'none',
+                        zIndex: 1,
+                      }}
+                      title={extractionZone.name}
+                    >
+                      X
                     </div>
                   ) : null}
                    {entity ? (() => {
