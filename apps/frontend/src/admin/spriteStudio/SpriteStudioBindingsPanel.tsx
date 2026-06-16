@@ -5,6 +5,12 @@ import type {
   SpriteProfileDefinition,
 } from '@theend/rpg-domain';
 import type { AdminItem, AdminNpc, AdminSkill } from '../../services/content/models';
+import { GameImageView } from '../components/GameImageView';
+import {
+  buildSpriteStudioSelectionWarning,
+  classifySpriteStudioAsset,
+  describeSpriteStudioAssetKind,
+} from './spriteStudioAssetKinds';
 
 function formatLegacyVisualValue(value: unknown): string {
   if (!value) {
@@ -49,6 +55,22 @@ export function SpriteStudioBindingsPanel({
   const selectedNpc = useMemo(() => npcs.find((entry) => entry.id === selectedNpcId) ?? null, [npcs, selectedNpcId]);
   const selectedItem = useMemo(() => items.find((entry) => entry.id === selectedItemId) ?? null, [items, selectedItemId]);
   const selectedSkill = useMemo(() => skills.find((entry) => entry.id === selectedSkillId) ?? null, [skills, selectedSkillId]);
+  const selectedNpcReferenceKind = useMemo(
+    () => classifySpriteStudioAsset({
+      imageRef: selectedNpc?.portraitImageRef ?? selectedNpc?.combatImageRef ?? selectedNpc?.iconImageRef,
+      legacyImagePath: selectedNpc?.portraitUrl ?? selectedNpc?.combatImageUrl ?? selectedNpc?.iconUrl,
+      label: selectedNpc?.name,
+    }),
+    [selectedNpc],
+  );
+  const selectedItemReferenceKind = useMemo(
+    () => classifySpriteStudioAsset({
+      imageRef: selectedItem?.imageRef,
+      legacyImagePath: selectedItem?.imagePath,
+      label: selectedItem?.name,
+    }),
+    [selectedItem],
+  );
 
   const unboundNpcCount = npcs.filter((entry) => !entry.spriteProfileId).length;
   const unboundItemCount = items.filter((entry) => !entry.defaultEquipmentVisualBindingId).length;
@@ -59,16 +81,16 @@ export function SpriteStudioBindingsPanel({
       <section className="card admin-item-preview">
         <h4>Soft links</h4>
         <p className="muted">
-          NPC без `spriteProfileId`, item без `defaultEquipmentVisualBindingId` и skill без `skillAnimationBindingId`
-          продолжают жить через legacy fallback. Здесь мы только аккуратно добавляем новые связи.
+          NPC without `spriteProfileId`, item without `defaultEquipmentVisualBindingId`, and skill without
+          `skillAnimationBindingId` still keep their legacy fallback behavior. This panel only adds the new links safely.
         </p>
         <p className="muted">
-          NPC без sprite profile: {unboundNpcCount} · Items без visual binding: {unboundItemCount} · Skills без animation binding: {unboundSkillCount}
+          NPCs without sprite profile: {unboundNpcCount} · Items without visual binding: {unboundItemCount} · Skills without animation binding: {unboundSkillCount}
         </p>
       </section>
 
       <section className="admin-form-panel">
-        <h4>NPC → Sprite Profile</h4>
+        <h4>NPC {'->'} Sprite Profile</h4>
         <div className="admin-form-grid">
           <label>
             <span>NPC</span>
@@ -96,21 +118,42 @@ export function SpriteStudioBindingsPanel({
           </label>
         </div>
         {selectedNpc ? (
-          <p className="muted">
-            Current legacy portrait fallback: {formatLegacyVisualValue(
-              selectedNpc.portraitImageRef
-              || selectedNpc.portraitUrl
-              || selectedNpc.combatImageRef
-              || selectedNpc.combatImageUrl
-              || selectedNpc.iconImageRef
-              || selectedNpc.iconUrl,
-            )}
-          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              Current legacy portrait fallback: {formatLegacyVisualValue(
+                selectedNpc.portraitImageRef
+                || selectedNpc.portraitUrl
+                || selectedNpc.combatImageRef
+                || selectedNpc.combatImageUrl
+                || selectedNpc.iconImageRef
+                || selectedNpc.iconUrl,
+              )}
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <GameImageView
+                imageRef={selectedNpc.portraitImageRef ?? selectedNpc.combatImageRef ?? selectedNpc.iconImageRef}
+                legacyImagePath={selectedNpc.portraitUrl ?? selectedNpc.combatImageUrl ?? selectedNpc.iconUrl}
+                alt={`${selectedNpc.name} reference`}
+                size={64}
+                fallbackText="N/A"
+              />
+              <div style={{ display: 'grid', gap: 6 }}>
+                <strong>Game reference image</strong>
+                <span className="muted">{describeSpriteStudioAssetKind(selectedNpcReferenceKind)}</span>
+                <span style={{ color: '#f0d6a4' }}>Reference only</span>
+              </div>
+            </div>
+            {!selectedNpc.spriteProfileId && (selectedNpc.portraitImageRef || selectedNpc.portraitUrl || selectedNpc.combatImageRef || selectedNpc.combatImageUrl) ? (
+              <p style={{ margin: 0, color: '#ffb6b6' }}>
+                This NPC has a portrait, but no Sprite Studio visual profile yet. Create or link sprite profile.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
       <section className="admin-form-panel">
-        <h4>Item → Default Equipment Visual Binding</h4>
+        <h4>Item {'->'} Default Equipment Visual Binding</h4>
         <div className="admin-form-grid">
           <label>
             <span>Item</span>
@@ -145,14 +188,40 @@ export function SpriteStudioBindingsPanel({
           </label>
         </div>
         {selectedItem ? (
-          <p className="muted">
-            Legacy image fallback: {selectedItem.imageRef ? 'imageRef present' : selectedItem.imagePath || 'none'} · Slot: {selectedItem.slot || 'none'}
-          </p>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              Legacy image fallback: {selectedItem.imageRef ? 'imageRef present' : selectedItem.imagePath || 'none'} · Slot: {selectedItem.slot || 'none'}
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <GameImageView
+                imageRef={selectedItem.imageRef}
+                legacyImagePath={selectedItem.imagePath}
+                alt={`${selectedItem.name} icon`}
+                size={64}
+                fallbackText="N/A"
+              />
+              <div style={{ display: 'grid', gap: 6 }}>
+                <strong>Item UI icon</strong>
+                <span className="muted">{describeSpriteStudioAssetKind(selectedItemReferenceKind)}</span>
+                <span style={{ color: '#f0d6a4' }}>Reference only</span>
+              </div>
+            </div>
+            {!selectedItem.defaultEquipmentVisualBindingId && (selectedItem.imageRef || selectedItem.imagePath) ? (
+              <p style={{ margin: 0, color: '#ffb6b6' }}>
+                This item has an inventory icon, but no equipped visual sprite binding.
+              </p>
+            ) : null}
+            {buildSpriteStudioSelectionWarning(selectedItemReferenceKind) ? (
+              <p className="muted" style={{ margin: 0 }}>
+                Equipped appearance should come from `defaultEquipmentVisualBindingId`, not from the item icon itself.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
       <section className="admin-form-panel">
-        <h4>Skill → Skill Animation Binding</h4>
+        <h4>Skill {'->'} Skill Animation Binding</h4>
         <div className="admin-form-grid">
           <label>
             <span>Skill</span>

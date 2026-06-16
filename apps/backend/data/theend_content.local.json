@@ -107446,6 +107446,1210 @@
         }
       ],
       "updatedAt": "2026-06-15T00:18:41.859Z"
-    }
+    },
+    "spriteBodyTemplates": [
+      {
+        "id": "body_human_male_base",
+        "schemaVersion": 1,
+        "name": "Human Male Base",
+        "description": "Starter body template for Human Male Base.",
+        "bodyType": "humanoid",
+        "compatibleRaceIds": [
+          "human",
+          "HUMAN"
+        ],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "supportedSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchors": {
+          "headAnchor": {
+            "x": 64,
+            "y": 20
+          },
+          "chestAnchor": {
+            "x": 64,
+            "y": 50
+          },
+          "rightHandAnchor": {
+            "x": 90,
+            "y": 68
+          },
+          "leftHandAnchor": {
+            "x": 38,
+            "y": 68
+          },
+          "offhandAnchor": {
+            "x": 34,
+            "y": 66
+          },
+          "shieldAnchor": {
+            "x": 28,
+            "y": 64
+          },
+          "backAnchor": {
+            "x": 52,
+            "y": 54
+          },
+          "weaponTipAnchor": {
+            "x": 106,
+            "y": 42
+          },
+          "projectileSpawnAnchor": {
+            "x": 96,
+            "y": 42
+          },
+          "castFxAnchor": {
+            "x": 80,
+            "y": 34
+          },
+          "hitFxAnchor": {
+            "x": 64,
+            "y": 42
+          },
+          "feetAnchor": {
+            "x": 64,
+            "y": 110
+          },
+          "shadowAnchor": {
+            "x": 64,
+            "y": 118
+          }
+        },
+        "tags": [
+          "starter",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "body_human_female_base",
+        "schemaVersion": 1,
+        "name": "Human Female Base",
+        "description": "Starter body template for Human Female Base.",
+        "bodyType": "humanoid",
+        "compatibleRaceIds": [
+          "human",
+          "HUMAN"
+        ],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "supportedSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchors": {
+          "headAnchor": {
+            "x": 64,
+            "y": 20
+          },
+          "chestAnchor": {
+            "x": 64,
+            "y": 50
+          },
+          "rightHandAnchor": {
+            "x": 90,
+            "y": 68
+          },
+          "leftHandAnchor": {
+            "x": 38,
+            "y": 68
+          },
+          "offhandAnchor": {
+            "x": 34,
+            "y": 66
+          },
+          "shieldAnchor": {
+            "x": 28,
+            "y": 64
+          },
+          "backAnchor": {
+            "x": 52,
+            "y": 54
+          },
+          "weaponTipAnchor": {
+            "x": 106,
+            "y": 42
+          },
+          "projectileSpawnAnchor": {
+            "x": 96,
+            "y": 42
+          },
+          "castFxAnchor": {
+            "x": 80,
+            "y": 34
+          },
+          "hitFxAnchor": {
+            "x": 64,
+            "y": 42
+          },
+          "feetAnchor": {
+            "x": 64,
+            "y": 110
+          },
+          "shadowAnchor": {
+            "x": 64,
+            "y": 118
+          }
+        },
+        "tags": [
+          "starter",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "body_elf_male_base",
+        "schemaVersion": 1,
+        "name": "Elf Male Base",
+        "description": "Starter body template for Elf Male Base.",
+        "bodyType": "humanoid",
+        "compatibleRaceIds": [
+          "high_elf",
+          "forest_elf",
+          "elf",
+          "HIGH_ELF",
+          "WOOD_ELF"
+        ],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "supportedSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/high_elf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/high_elf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/high_elf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchors": {
+          "headAnchor": {
+            "x": 64,
+            "y": 20
+          },
+          "chestAnchor": {
+            "x": 64,
+            "y": 50
+          },
+          "rightHandAnchor": {
+            "x": 90,
+            "y": 68
+          },
+          "leftHandAnchor": {
+            "x": 38,
+            "y": 68
+          },
+          "offhandAnchor": {
+            "x": 34,
+            "y": 66
+          },
+          "shieldAnchor": {
+            "x": 28,
+            "y": 64
+          },
+          "backAnchor": {
+            "x": 52,
+            "y": 54
+          },
+          "weaponTipAnchor": {
+            "x": 106,
+            "y": 42
+          },
+          "projectileSpawnAnchor": {
+            "x": 96,
+            "y": 42
+          },
+          "castFxAnchor": {
+            "x": 80,
+            "y": 34
+          },
+          "hitFxAnchor": {
+            "x": 64,
+            "y": 42
+          },
+          "feetAnchor": {
+            "x": 64,
+            "y": 110
+          },
+          "shadowAnchor": {
+            "x": 64,
+            "y": 118
+          }
+        },
+        "tags": [
+          "starter",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "body_dwarf_male_base",
+        "schemaVersion": 1,
+        "name": "Dwarf Male Base",
+        "description": "Starter body template for Dwarf Male Base.",
+        "bodyType": "humanoid",
+        "compatibleRaceIds": [
+          "dwarf",
+          "DWARF"
+        ],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "supportedSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/dwarf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/dwarf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/dwarf_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchors": {
+          "headAnchor": {
+            "x": 64,
+            "y": 20
+          },
+          "chestAnchor": {
+            "x": 64,
+            "y": 50
+          },
+          "rightHandAnchor": {
+            "x": 90,
+            "y": 68
+          },
+          "leftHandAnchor": {
+            "x": 38,
+            "y": 68
+          },
+          "offhandAnchor": {
+            "x": 34,
+            "y": 66
+          },
+          "shieldAnchor": {
+            "x": 28,
+            "y": 64
+          },
+          "backAnchor": {
+            "x": 52,
+            "y": 54
+          },
+          "weaponTipAnchor": {
+            "x": 106,
+            "y": 42
+          },
+          "projectileSpawnAnchor": {
+            "x": 96,
+            "y": 42
+          },
+          "castFxAnchor": {
+            "x": 80,
+            "y": 34
+          },
+          "hitFxAnchor": {
+            "x": 64,
+            "y": 42
+          },
+          "feetAnchor": {
+            "x": 64,
+            "y": 110
+          },
+          "shadowAnchor": {
+            "x": 64,
+            "y": 118
+          }
+        },
+        "tags": [
+          "starter",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "body_orc_male_base",
+        "schemaVersion": 1,
+        "name": "Orc Male Base",
+        "description": "Starter body template for Orc Male Base.",
+        "bodyType": "humanoid",
+        "compatibleRaceIds": [
+          "orc"
+        ],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "supportedSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/actor/human_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchors": {
+          "headAnchor": {
+            "x": 64,
+            "y": 20
+          },
+          "chestAnchor": {
+            "x": 64,
+            "y": 50
+          },
+          "rightHandAnchor": {
+            "x": 90,
+            "y": 68
+          },
+          "leftHandAnchor": {
+            "x": 38,
+            "y": 68
+          },
+          "offhandAnchor": {
+            "x": 34,
+            "y": 66
+          },
+          "shieldAnchor": {
+            "x": 28,
+            "y": 64
+          },
+          "backAnchor": {
+            "x": 52,
+            "y": 54
+          },
+          "weaponTipAnchor": {
+            "x": 106,
+            "y": 42
+          },
+          "projectileSpawnAnchor": {
+            "x": 96,
+            "y": 42
+          },
+          "castFxAnchor": {
+            "x": 80,
+            "y": 34
+          },
+          "hitFxAnchor": {
+            "x": 64,
+            "y": 42
+          },
+          "feetAnchor": {
+            "x": 64,
+            "y": 110
+          },
+          "shadowAnchor": {
+            "x": 64,
+            "y": 118
+          }
+        },
+        "tags": [
+          "starter",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      }
+    ],
+    "spriteAnimationSets": [
+      {
+        "id": "animset_humanoid_basic_paperdoll",
+        "schemaVersion": 1,
+        "name": "Humanoid Basic Paperdoll",
+        "description": "Starter paperdoll animation set.",
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll"
+        ],
+        "clips": [
+          {
+            "action": "idle",
+            "label": "idle",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 0,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "walk",
+            "label": "walk",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 10,
+            "row": 1,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "attack_melee",
+            "label": "attack_melee",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 2,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "hit",
+            "label": "hit",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 3,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "death",
+            "label": "death",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 4,
+            "loop": false,
+            "legacyAliases": [
+              "die"
+            ],
+            "notes": "Starter default clip."
+          }
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "animset_humanoid_basic_world",
+        "schemaVersion": 1,
+        "name": "Humanoid Basic World",
+        "description": "Starter world animation set.",
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "world"
+        ],
+        "clips": [
+          {
+            "action": "idle",
+            "label": "idle",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 0,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "walk",
+            "label": "walk",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 10,
+            "row": 1,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "attack_melee",
+            "label": "attack_melee",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 2,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "hit",
+            "label": "hit",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 3,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "death",
+            "label": "death",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 4,
+            "loop": false,
+            "legacyAliases": [
+              "die"
+            ],
+            "notes": "Starter default clip."
+          }
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "animset_humanoid_basic_battle",
+        "schemaVersion": 1,
+        "name": "Humanoid Basic Battle",
+        "description": "Starter battle animation set.",
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "battle"
+        ],
+        "clips": [
+          {
+            "action": "idle",
+            "label": "idle",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 0,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "walk",
+            "label": "walk",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 10,
+            "row": 1,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "attack_melee",
+            "label": "attack_melee",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 2,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "hit",
+            "label": "hit",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 3,
+            "loop": true,
+            "legacyAliases": [],
+            "notes": "Starter default clip."
+          },
+          {
+            "action": "death",
+            "label": "death",
+            "frameWidth": 128,
+            "frameHeight": 128,
+            "frameCount": 1,
+            "fps": 8,
+            "row": 4,
+            "loop": false,
+            "legacyAliases": [
+              "die"
+            ],
+            "notes": "Starter default clip."
+          }
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      }
+    ],
+    "equipmentVisualBindings": [
+      {
+        "id": "equipment_visual_binding_wpn_axe_wood_01",
+        "schemaVersion": 1,
+        "name": "Wood Axe Binding",
+        "itemId": "wpn_axe_wood_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "rightHand",
+        "weaponGripType": "one_handed",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_axe_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_axe_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_axe_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_wpn_bow_wood_01",
+        "schemaVersion": 1,
+        "name": "Wood Bow Binding",
+        "itemId": "wpn_bow_wood_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "rightHand",
+        "weaponGripType": "bow",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_bow_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_bow_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/wpn_bow_wood_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_arm_head_cloth_01",
+        "schemaVersion": 1,
+        "name": "Cloth Hood Binding",
+        "itemId": "arm_head_cloth_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "head",
+        "weaponGripType": "none",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_head_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_head_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_head_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_arm_chest_cloth_01",
+        "schemaVersion": 1,
+        "name": "Cloth Vest Binding",
+        "itemId": "arm_chest_cloth_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "chest",
+        "weaponGripType": "none",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_cloth_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_arm_chest_leather_01",
+        "schemaVersion": 1,
+        "name": "Leather Chestplate Binding",
+        "itemId": "arm_chest_leather_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "chest",
+        "weaponGripType": "none",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_leather_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_leather_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/arm_chest_leather_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_shield_argos_private_01",
+        "schemaVersion": 1,
+        "name": "Argos Shield Binding",
+        "itemId": "shield_argos_private_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "offHand",
+        "weaponGripType": "shield",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/shield_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/shield_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/shield_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "equipment_visual_binding_helmet_argos_private_01",
+        "schemaVersion": 1,
+        "name": "Argos Helmet Binding",
+        "itemId": "helmet_argos_private_01",
+        "defaultForItem": true,
+        "compatibleBodyTemplateIds": [],
+        "compatibleRaceIds": [],
+        "compatibleBodyTypes": [
+          "humanoid"
+        ],
+        "compatibleSurfaces": [
+          "paperdoll",
+          "world",
+          "battle"
+        ],
+        "equipmentSlot": "head",
+        "weaponGripType": "none",
+        "paperdoll": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/helmet_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "world": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/helmet_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "battle": {
+          "imageRef": {
+            "type": "image",
+            "src": "/sprites/equipment/helmet_argos_private_01.png"
+          },
+          "scale": 1.0,
+          "offsetX": 0,
+          "offsetY": 0
+        },
+        "anchorOverrides": {},
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      }
+    ],
+    "spriteProfiles": [
+      {
+        "id": "profile_regal_paladin",
+        "schemaVersion": 1,
+        "name": "🛡️ Regal Paladin",
+        "bodyTemplateId": "body_human_male_base",
+        "animationSetId": "animset_humanoid_basic_battle",
+        "defaultSurface": "battle",
+        "defaultEquipmentItemIds": [
+          "starter_sword_01",
+          "shield_argos_private_01",
+          "helmet_argos_private_01"
+        ],
+        "previewSkillIds": [],
+        "previewFxIds": [],
+        "tags": [
+          "reference",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "profile_emerald_ranger",
+        "schemaVersion": 1,
+        "name": "🏹 Emerald Ranger",
+        "bodyTemplateId": "body_elf_male_base",
+        "animationSetId": "animset_humanoid_basic_battle",
+        "defaultSurface": "battle",
+        "defaultEquipmentItemIds": [
+          "wpn_bow_wood_01",
+          "arm_chest_cloth_01"
+        ],
+        "previewSkillIds": [],
+        "previewFxIds": [],
+        "tags": [
+          "reference",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      },
+      {
+        "id": "profile_dwarven_blacksmith",
+        "schemaVersion": 1,
+        "name": "🪓 Dwarven Blacksmith",
+        "bodyTemplateId": "body_dwarf_male_base",
+        "animationSetId": "animset_humanoid_basic_battle",
+        "defaultSurface": "battle",
+        "defaultEquipmentItemIds": [
+          "wpn_axe_wood_01",
+          "arm_chest_leather_01"
+        ],
+        "previewSkillIds": [],
+        "previewFxIds": [],
+        "tags": [
+          "reference",
+          "legacy"
+        ],
+        "notes": "",
+        "createdAt": "2026-06-16T11:59:13.002450Z",
+        "updatedAt": "2026-06-16T11:59:13.002450Z"
+      }
+    ],
+    "skillAnimationBindings": [],
+    "runtimeAssemblyRules": []
   }
 }

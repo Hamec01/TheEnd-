@@ -15,7 +15,7 @@ import type {
   StoredImage,
 } from '../../services/content/models';
 
-export type SpriteStudioTab = 'control' | 'playground' | 'spritesheet' | 'import' | 'itemForge' | 'bindings' | 'export';
+export type SpriteStudioTab = 'control' | 'playground' | 'spritesheet' | 'import' | 'itemForge' | 'bindings' | 'export' | 'notes';
 
 export interface SpriteStudioDraftState {
   bodyTemplates: SpriteBodyTemplateDefinition[];

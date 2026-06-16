@@ -15,6 +15,14 @@ import {
 } from '../../services/content/gameImageRefs';
 import { imageSheetsService } from '../../services/content/imageSheetsService';
 import { GameImageView } from './GameImageView';
+import {
+  buildSpriteStudioSelectionWarning,
+  canUseAsReference,
+  canUseAsSpriteLayer,
+  classifySpriteStudioAsset,
+  describeSpriteStudioAssetKind,
+  type SpriteStudioAssetSelectionMode,
+} from '../spriteStudio/spriteStudioAssetKinds';
 
 export interface ImageSheetPickerProps {
   label?: string;
@@ -31,6 +39,7 @@ export interface ImageSheetPickerProps {
   uploadSuggestedId?: string;
   uploadSuggestedName?: string;
   uploadFolder?: string;
+  selectionMode?: SpriteStudioAssetSelectionMode;
   onStatus?: (message: string) => void;
   onChange: (next: GameImageRef | undefined) => void;
 }
@@ -63,6 +72,7 @@ export function ImageSheetPicker({
   uploadSuggestedId,
   uploadSuggestedName,
   uploadFolder,
+  selectionMode = 'mixed',
   onStatus,
   onChange,
 }: ImageSheetPickerProps) {
@@ -80,6 +90,7 @@ export function ImageSheetPicker({
   });
   const [tilesetName, setTilesetName] = useState('');
   const [uiSourceType, setUiSourceType] = useState<'image' | 'tileset'>(() => (value?.type === 'tileset' ? 'tileset' : 'image'));
+  const [manualImageInput, setManualImageInput] = useState('');
 
   const normalized = useMemo(
     () => normalizeGameImageRef(value, legacyImagePath),
@@ -106,10 +117,76 @@ export function ImageSheetPicker({
     }
   }, [normalized]);
 
+  useEffect(() => {
+    setManualImageInput(imageSrc);
+  }, [imageSrc]);
+
   const canUpload = showUploadForImage && Boolean(uploadPresetId);
+  const currentAssetKind = useMemo(
+    () => classifySpriteStudioAsset({
+      imageRef: normalized,
+      legacyImagePath,
+      runtimeImages,
+      imageSheet: normalized?.type === 'tileset' ? activeSheet : undefined,
+      label,
+      uploadPresetId,
+      uploadFolder,
+    }),
+    [activeSheet, label, legacyImagePath, normalized, runtimeImages, uploadFolder, uploadPresetId],
+  );
+  const hasCurrentSelection = Boolean(normalized || legacyImagePath);
+  const currentSelectionAllowed = !hasCurrentSelection
+    ? true
+    : selectionMode === 'sprite-layer'
+      ? canUseAsSpriteLayer(currentAssetKind)
+      : selectionMode === 'reference-only'
+        ? canUseAsReference(currentAssetKind)
+        : true;
+  const currentSelectionWarning = !hasCurrentSelection || selectionMode === 'mixed'
+    ? null
+    : buildSpriteStudioSelectionWarning(currentAssetKind);
 
   function isDirectImageSource(valueToCheck: string): boolean {
     return valueToCheck.startsWith('data:') || valueToCheck.startsWith('/') || valueToCheck.startsWith('http://') || valueToCheck.startsWith('https://');
+  }
+
+  function shouldAllowSelection(next: GameImageRef | undefined): boolean {
+    if (!next || selectionMode === 'mixed') {
+      return true;
+    }
+
+    const nextSheet = next.type === 'tileset' ? getImageSheet(next.sheetId) : undefined;
+    const nextKind = classifySpriteStudioAsset({
+      imageRef: next,
+      runtimeImages,
+      imageSheet: nextSheet,
+      label,
+      uploadPresetId,
+      uploadFolder,
+    });
+    const allowed = selectionMode === 'sprite-layer'
+      ? canUseAsSpriteLayer(nextKind)
+      : canUseAsReference(nextKind);
+    if (allowed) {
+      return true;
+    }
+
+    const warning = buildSpriteStudioSelectionWarning(nextKind)
+      ?? `Asset kind "${describeSpriteStudioAssetKind(nextKind)}" is not allowed in this picker.`;
+    setInlineStatus(warning);
+    onStatus?.(warning);
+    return false;
+  }
+
+  function commitSelection(next: GameImageRef | undefined) {
+    if (next?.type === 'image' && !next.src.trim()) {
+      onChange(undefined);
+      return;
+    }
+    if (!shouldAllowSelection(next)) {
+      return;
+    }
+    onChange(next);
   }
 
   async function handleUploadImage(event: React.ChangeEvent<HTMLInputElement>) {
@@ -148,7 +225,7 @@ export function ImageSheetPicker({
       const uploadedSrc = uploaded.dataUrl?.trim().startsWith('/assets/upload/')
         ? uploaded.dataUrl.trim()
         : uploaded.id;
-      onChange({
+      commitSelection({
         type: 'image',
         src: uploadedSrc,
       });
@@ -207,7 +284,7 @@ export function ImageSheetPicker({
         // Local sheet registration still allows editing in this session.
       }
 
-      onChange({ type: 'tileset', sheetId: registeredSheet.id, frame: 0 });
+      commitSelection({ type: 'tileset', sheetId: registeredSheet.id, frame: 0 });
       setSheetsVersion((current) => current + 1);
       const message = `Tilesheet uploaded: ${registeredSheet.name} (${columns}x${rows}, ${frameCount} frames).`;
       setInlineStatus(message);
@@ -290,10 +367,10 @@ export function ImageSheetPicker({
                 if (!defaultSheet) {
                   return;
                 }
-                onChange({ type: 'tileset', sheetId: defaultSheet.id, frame: 0 });
+                commitSelection({ type: 'tileset', sheetId: defaultSheet.id, frame: 0 });
                 return;
               }
-              onChange({ type: 'image', src: imageSrc });
+              commitSelection({ type: 'image', src: imageSrc });
             }}
           >
             <option value="image">Single Image</option>
@@ -319,8 +396,21 @@ export function ImageSheetPicker({
               <label>
                 <span className="muted">Путь / URL / image ID</span>
                 <input
-                  value={imageSrc}
-                  onChange={(event) => onChange({ type: 'image', src: event.target.value })}
+                  value={selectionMode === 'mixed' ? imageSrc : manualImageInput}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    if (selectionMode === 'mixed') {
+                      onChange({ type: 'image', src: nextValue });
+                      return;
+                    }
+                    setManualImageInput(nextValue);
+                  }}
+                  onBlur={() => {
+                    if (selectionMode === 'mixed') {
+                      return;
+                    }
+                    commitSelection({ type: 'image', src: manualImageInput });
+                  }}
                   placeholder="/assets/... or uploaded image id"
                 />
               </label>
@@ -343,7 +433,7 @@ export function ImageSheetPicker({
                   if (!nextSheet) {
                     return;
                   }
-                  onChange({ type: 'tileset', sheetId: nextSheet.id, frame: 0 });
+                  commitSelection({ type: 'tileset', sheetId: nextSheet.id, frame: 0 });
                 }}
               >
                 {!sheets.length ? <option value="">Сначала загрузите tilesheet</option> : null}
@@ -364,7 +454,7 @@ export function ImageSheetPicker({
                   if (!activeSheet || !Number.isInteger(nextFrame) || nextFrame < 0) {
                     return;
                   }
-                  onChange({
+                  commitSelection({
                     type: 'tileset',
                     sheetId: activeSheet.id,
                     frame: Math.min(nextFrame, Math.max(0, getImageSheetTotalFrames(activeSheet) - 1)),
@@ -423,10 +513,33 @@ export function ImageSheetPicker({
           size={66}
           fallbackText="N/A"
         />
-        <p className="muted" style={{ margin: 0 }}>{formatGameImageRefLabel(normalized)}</p>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <p className="muted" style={{ margin: 0 }}>{formatGameImageRefLabel(normalized)}</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                borderRadius: 999,
+                padding: '3px 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                background: currentSelectionAllowed ? 'rgba(93, 187, 255, 0.16)' : 'rgba(230, 120, 120, 0.16)',
+                color: currentSelectionAllowed ? '#9ed7ff' : '#ffb6b6',
+              }}
+            >
+              {describeSpriteStudioAssetKind(currentAssetKind)}
+            </span>
+            {selectionMode === 'sprite-layer' ? <span className="muted" style={{ fontSize: 12 }}>Sprite-layer picker</span> : null}
+            {selectionMode === 'reference-only' ? <span className="muted" style={{ fontSize: 12 }}>Reference-only picker</span> : null}
+          </div>
+        </div>
       </div>
 
       {inlineStatus ? <p className="muted" style={{ marginTop: 8 }}>{inlineStatus}</p> : null}
+      {!currentSelectionAllowed && currentSelectionWarning ? (
+        <p style={{ marginTop: 8, color: '#ffb6b6' }}>{currentSelectionWarning}</p>
+      ) : null}
 
       {sourceType === 'tileset' && activeSheet ? (
         <div style={{ marginTop: 10 }}>
@@ -445,7 +558,7 @@ export function ImageSheetPicker({
                     outline: isActive ? '2px solid #5dbbff' : 'none',
                   }}
                   title={`frame ${index}`}
-                  onClick={() => onChange({ type: 'tileset', sheetId: activeSheet.id, frame: index })}
+                  onClick={() => commitSelection({ type: 'tileset', sheetId: activeSheet.id, frame: index })}
                 >
                   <GameImageView
                     imageRef={{ type: 'tileset', sheetId: activeSheet.id, frame: index }}

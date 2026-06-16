@@ -7,7 +7,11 @@ import type {
   SpriteProfileDefinition,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { validateSpriteStudioState } from '../../sprite-studio-core';
+import {
+  createStarterSpriteStudioContentIfMissing,
+  createStarterSpriteStudioVisualContentIfMissing,
+  validateSpriteStudioState,
+} from '../../sprite-studio-core';
 import {
   createContentEntry,
   deleteContentEntry,
@@ -24,11 +28,14 @@ import type {
   ImageSheetDefinition,
   StoredImage,
 } from '../../services/content/models';
-import { AdminSaveStatus } from '../AdminSaveStatus';
 import { runSaveWithFeedback, useAdminSaveShortcut, type AdminSaveViewModel } from '../adminSaveTools';
-import { SpriteStudioValidationPanel } from '../spriteStudio/SpriteStudioValidationPanel';
 import { SpriteStudioWorkspace } from '../spriteStudio/SpriteStudioWorkspace';
+import {
+  describeMaterializedStarterVisuals,
+  materializeStarterSpriteStudioVisualAssets,
+} from '../spriteStudio/v0StarterVisualGenerator';
 import type { SpriteStudioDraftState, SpriteStudioReferenceData } from '../spriteStudio/types';
+import '../spriteStudio/spriteStudio.css';
 
 interface OriginalSpriteStudioState {
   bodyTemplateIds: string[];
@@ -87,6 +94,7 @@ export function SpriteStudioPage() {
   const [status, setStatus] = useState('Загрузка Sprite Studio...');
   const [saveState, setSaveState] = useState<AdminSaveViewModel>({ state: 'idle', message: 'Готово.' });
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingStarterVisuals, setIsGeneratingStarterVisuals] = useState(false);
 
   const validation = useMemo(
     () => validateSpriteStudioState({
@@ -195,6 +203,21 @@ export function SpriteStudioPage() {
     }
   }
 
+  async function upsertEntries<T extends { id: string }>(
+    collectionName: ContentCollectionName,
+    entries: T[],
+    existingIds: string[],
+  ): Promise<void> {
+    const existingIdSet = new Set(existingIds);
+    for (const entry of entries) {
+      if (existingIdSet.has(entry.id)) {
+        await updateContentEntry<T>(collectionName, entry.id, entry);
+        continue;
+      }
+      await createContentEntry<T>(collectionName, entry);
+    }
+  }
+
   async function syncSoftLinks<T extends { id: string }>(params: {
     collection: ContentCollectionName;
     entries: T[];
@@ -277,28 +300,120 @@ export function SpriteStudioPage() {
     successMessage: 'Sprite Studio сохранён.',
   });
 
-  return (
-    <div className="admin-editor-page" style={{ display: 'grid', gap: 16 }}>
-      <section className="card admin-item-preview">
-        <h3 style={{ marginTop: 0 }}>Sprite Studio Phase 1</h3>
-        <p className="muted">
-          Этот слой добавляет только admin + bindings + persistence + preview. Combat/world runtime не трогаем,
-          `enableSpriteRuntimeAssembly` остаётся `false`, а старые NPC/items/skills продолжают жить через legacy fallback.
-        </p>
-        <p className="muted">{status}</p>
-      </section>
+  const handleCreateStarterTemplates = useCallback(() => {
+    setDraft((current) => {
+      const starter = createStarterSpriteStudioContentIfMissing({
+        bodyTemplates: current.bodyTemplates,
+        animationSets: current.animationSets,
+      });
+      const nextDraft = {
+        ...current,
+        bodyTemplates: starter.bodyTemplates,
+        animationSets: starter.animationSets,
+      };
+      const createdCount = starter.createdBodyTemplateIds.length + starter.createdAnimationSetIds.length;
+      setStatus(
+        createdCount > 0
+          ? `Starter templates added to draft: ${createdCount}. Save when ready.`
+          : 'Starter templates already exist. No duplicates were created.',
+      );
+      return nextDraft;
+    });
+  }, []);
 
+  const handleGenerateStarterVisuals = useCallback(async () => {
+    if (isGeneratingStarterVisuals) {
+      return;
+    }
+    setIsGeneratingStarterVisuals(true);
+    setStatus('Generating V0 starter visuals from legacy sprite engine...');
+    try {
+      const starterDraft = createStarterSpriteStudioContentIfMissing({
+        bodyTemplates: draft.bodyTemplates,
+        animationSets: draft.animationSets,
+      });
+      const materialized = await materializeStarterSpriteStudioVisualAssets({
+        existingImages: referenceData.images,
+      });
+      const visualDraft = createStarterSpriteStudioVisualContentIfMissing({
+        bodyTemplates: starterDraft.bodyTemplates,
+        animationSets: starterDraft.animationSets,
+        equipmentBindings: draft.equipmentBindings,
+        spriteProfiles: draft.spriteProfiles,
+        items: draft.items,
+        assets: materialized.refs,
+      });
+
+      await upsertEntries<SpriteBodyTemplateDefinition>(
+        'spriteBodyTemplates',
+        visualDraft.bodyTemplates.filter((entry) => visualDraft.touchedBodyTemplateIds.includes(entry.id)),
+        originalState.bodyTemplateIds,
+      );
+      await upsertEntries<SpriteAnimationSetDefinition>(
+        'spriteAnimationSets',
+        visualDraft.animationSets.filter((entry) => visualDraft.touchedAnimationSetIds.includes(entry.id)),
+        originalState.animationSetIds,
+      );
+      await upsertEntries<EquipmentVisualBindingDefinition>(
+        'equipmentVisualBindings',
+        visualDraft.equipmentBindings.filter((entry) => visualDraft.touchedEquipmentBindingIds.includes(entry.id)),
+        originalState.equipmentBindingIds,
+      );
+      await upsertEntries<SpriteProfileDefinition>(
+        'spriteProfiles',
+        visualDraft.spriteProfiles.filter((entry) => visualDraft.touchedSpriteProfileIds.includes(entry.id)),
+        originalState.spriteProfileIds,
+      );
+
+      for (const item of visualDraft.items.filter((entry) => visualDraft.touchedItemIds.includes(entry.id))) {
+        await updateContentEntry<AdminItem>('items', item.id, {
+          defaultEquipmentVisualBindingId: item.defaultEquipmentVisualBindingId,
+        });
+      }
+
+      await loadAll();
+      setStatus(describeMaterializedStarterVisuals(materialized));
+      setSaveState({
+        state: 'saved',
+        message: 'V0 starter visuals generated and registered through content APIs.',
+      });
+    } catch (error) {
+      const message = `Starter visual generation failed: ${(error as Error).message}`;
+      setStatus(message);
+      setSaveState({ state: 'error', message });
+    } finally {
+      setIsGeneratingStarterVisuals(false);
+    }
+  }, [
+    draft.animationSets,
+    draft.bodyTemplates,
+    draft.equipmentBindings,
+    draft.items,
+    draft.spriteProfiles,
+    isGeneratingStarterVisuals,
+    loadAll,
+    originalState.animationSetIds,
+    originalState.bodyTemplateIds,
+    originalState.equipmentBindingIds,
+    originalState.spriteProfileIds,
+    referenceData.images,
+  ]);
+
+  return (
+    <div className="sprite-studio-page-root">
       <SpriteStudioWorkspace
         draft={draft}
         setDraft={setDraft}
         referenceData={referenceData}
         onStatus={setStatus}
         onRefreshAssets={loadAll}
+        statusMessage={status}
+        saveState={saveState}
+        validation={validation}
+        onCreateStarterTemplates={handleCreateStarterTemplates}
+        onGenerateStarterVisuals={handleGenerateStarterVisuals}
+        isGeneratingStarterVisuals={isGeneratingStarterVisuals}
       />
-
-      <SpriteStudioValidationPanel validation={validation} />
-      <AdminSaveStatus value={saveState} />
     </div>
   );
 }
-

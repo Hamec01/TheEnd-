@@ -16,6 +16,7 @@ function flagEnabled(value: string | undefined, fallback: boolean): boolean {
 
 export const featureFlags = {
   enableSpriteStudioAdmin: flagEnabled(env.VITE_ENABLE_SPRITE_STUDIO_ADMIN, true),
+  enableSpriteAssemblyPreview: flagEnabled(env.VITE_ENABLE_SPRITE_ASSEMBLY_PREVIEW, true),
   enableSpriteRuntimeAssembly: flagEnabled(env.VITE_ENABLE_SPRITE_RUNTIME_ASSEMBLY, false),
 } as const;
 

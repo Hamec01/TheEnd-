@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { featureFlags } from '../config/featureFlags';
 import type { ContentAutosaveStatus } from '../services/content/contentApi';
 import { AdminSaveToast } from './AdminSaveToast';
@@ -14,6 +14,36 @@ interface AdminLayoutProps {
   isEditorRoute?: boolean;
   children: ReactNode;
 }
+
+const LINK_ICONS: Record<string, string> = {
+  '/admin': '📊',
+  '/admin/backup': '💾',
+  '/admin/diplomacy': '🤝',
+  '/admin/sounds': '🎵',
+  '/admin/world-sim': '🌍',
+  '/admin/items': '⚔️',
+  '/admin/item-instances': '📦',
+  '/admin/materials': '🪵',
+  '/admin/loot-tables': '🪙',
+  '/admin/crafting-recipes': '🛠️',
+  '/admin/item-sets': '🛡️',
+  '/admin/skills': '✨',
+  '/admin/visual-fx': '🎇',
+  '/admin/quests': '📜',
+  '/admin/quest-items': '🗝️',
+  '/admin/quest-interactions': '⚙️',
+  '/admin/npcs': '👥',
+  '/admin/dialogues': '💬',
+  '/admin/merchants': '⚖️',
+  '/admin/images': '🖼️',
+  '/admin/sprite-studio': '🎞️',
+  '/admin/cities': '🏰',
+  '/admin/locations': '📍',
+  '/admin/zone-editor': '🗺️',
+  '/admin/battle-maps': '⚔️',
+  '/admin/biomes': '🌍',
+  '/admin/professions': '🔨',
+};
 
 const LINK_GROUPS: Array<{ title: string; links: Array<{ path: string; label: string }> }> = [
   {
@@ -103,6 +133,25 @@ export function AdminLayout({
   isEditorRoute = false,
   children,
 }: AdminLayoutProps) {
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem('theend.admin.sidebarCollapsed') === 'true';
+  });
+
+  useEffect(() => {
+    const handleEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<boolean>;
+      setCollapsed(customEvent.detail);
+    };
+    window.addEventListener('theend-admin-sidebar-collapse', handleEvent);
+    return () => window.removeEventListener('theend-admin-sidebar-collapse', handleEvent);
+  }, []);
+
+  const toggleCollapsed = () => {
+    const nextValue = !collapsed;
+    setCollapsed(nextValue);
+    localStorage.setItem('theend.admin.sidebarCollapsed', String(nextValue));
+  };
+
   const autosaveMessage = formatAutosaveStatus(autosaveStatus);
   const autosaveColor = autosaveStatus?.lastError
     ? '#ff8f8f'
@@ -111,27 +160,44 @@ export function AdminLayout({
       : '#7ed28f';
 
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell ${collapsed ? 'is-sidebar-collapsed' : ''}`}>
       <AdminSaveToast />
-      <aside className="admin-sidebar card">
-        <h2>АДМИН-ПАНЕЛЬ</h2>
+      <aside className={`admin-sidebar card ${collapsed ? 'is-collapsed' : ''}`}>
+        <div className="admin-sidebar-header">
+          <h2 className="admin-sidebar-title">{collapsed ? 'АД' : 'АДМИН-ПАНЕЛЬ'}</h2>
+          <button
+            type="button"
+            className="admin-sidebar-toggle"
+            onClick={toggleCollapsed}
+            title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          >
+            {collapsed ? '▶' : '◀'}
+          </button>
+        </div>
         <nav>
           {FILTERED_LINK_GROUPS.map((group) => (
             <section key={group.title} className="admin-nav-group">
-              <h3>{group.title}</h3>
-              {group.links.map((link) => (
-                <button
-                  key={link.path}
-                  className={currentPath === link.path ? 'is-active' : ''}
-                  onClick={() => onNavigate(link.path)}
-                >
-                  {link.label}
-                </button>
-              ))}
+              <h3 className="admin-section-title">{group.title}</h3>
+              {group.links.map((link) => {
+                const icon = LINK_ICONS[link.path] || '📂';
+                return (
+                  <button
+                    key={link.path}
+                    className={currentPath === link.path ? 'is-active' : ''}
+                    onClick={() => onNavigate(link.path)}
+                    title={link.label}
+                  >
+                    <span style={{ marginRight: collapsed ? 0 : 8 }}>{icon}</span>
+                    <span className="admin-link-label">{link.label}</span>
+                  </button>
+                );
+              })}
             </section>
           ))}
         </nav>
-        <button className="admin-logout" onClick={onLogout}>ВЫЙТИ</button>
+        <button className="admin-logout" onClick={onLogout}>
+          {collapsed ? '🚪' : 'ВЫЙТИ'}
+        </button>
       </aside>
 
       <section className="admin-main">

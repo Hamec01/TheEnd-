@@ -15,15 +15,30 @@ import {
   SPRITE_BODY_TYPE_OPTIONS,
   SPRITE_SURFACE_OPTIONS,
   WEAPON_GRIP_OPTIONS,
+  resolveCharacterVisual,
+  type CharacterVisualIssue,
+  type ResolvedCharacterVisual,
+  type SpriteStudioValidationResult,
 } from '../../sprite-studio-core';
 import { downloadCollectionJson, extractRawCollectionFromImportJson, formatExportStamp, type JsonImportMode } from '../../services/content/adminJsonImportExport';
 import type { AdminItem, AdminNpc, AdminSkill, AdminVisualFx } from '../../services/content/models';
 import { buildUploadFolder } from '../../services/content/uploadFolders';
 import { ImageSheetPicker } from '../components/ImageSheetPicker';
+import { GameImageView } from '../components/GameImageView';
 import { SpriteStudioBindingsPanel } from './SpriteStudioBindingsPanel';
 import { SpriteStudioExportPanel } from './SpriteStudioExportPanel';
 import { SpriteStudioTabs } from './SpriteStudioTabs';
+import {
+  buildSpriteStudioSelectionWarning,
+  describeAssetEligibility,
+  classifySpriteStudioAsset,
+  describeSpriteStudioAssetKind,
+  getBodyLayerEligibility,
+  getEquipmentOverlayEligibility,
+} from './spriteStudioAssetKinds';
 import type { SpriteStudioDraftState, SpriteStudioReferenceData, SpriteStudioTab } from './types';
+import type { AdminSaveViewModel } from '../adminSaveTools';
+import { AdminSaveStatus } from '../AdminSaveStatus';
 
 interface SpriteStudioWorkspaceProps {
   draft: SpriteStudioDraftState;
@@ -31,6 +46,12 @@ interface SpriteStudioWorkspaceProps {
   referenceData: SpriteStudioReferenceData;
   onStatus: (message: string) => void;
   onRefreshAssets: () => Promise<void>;
+  onCreateStarterTemplates: () => void;
+  onGenerateStarterVisuals: () => Promise<void>;
+  isGeneratingStarterVisuals?: boolean;
+  statusMessage?: string;
+  saveState?: AdminSaveViewModel;
+  validation?: SpriteStudioValidationResult;
 }
 
 type DraftCollectionKey =
@@ -118,12 +139,62 @@ function surfaceAssetFor<T extends {
   return entry.battle;
 }
 
+interface SpriteStudioReferenceCardEntry {
+  label: string;
+  imageRef?: SpriteImageRef;
+  legacyImagePath?: string;
+  description: string;
+}
+
+interface PreviewLayerInspection {
+  layer: ResolvedCharacterVisual['layers'][number];
+  asset: string;
+  kind: import('./spriteStudioAssetKinds').SpriteStudioAssetKind;
+  eligibility: ReturnType<typeof getBodyLayerEligibility>;
+  warning: string | null;
+}
+
+function mapItemSlotToPreviewSlot(slot: string | undefined): keyof NonNullable<import('../../sprite-studio-core').PlayerLikeVisualEntity['equippedItemIds']> | null {
+  switch (slot) {
+    case 'head':
+      return 'head';
+    case 'chest':
+      return 'chest';
+    case 'gloves':
+      return 'gloves';
+    case 'legs':
+      return 'legs';
+    case 'boots':
+      return 'boots';
+    case 'rightHand':
+      return 'mainHand';
+    case 'leftHand':
+      return 'offHand';
+    case 'outerwear':
+      return 'cloak';
+    case 'belt':
+      return 'back';
+    default:
+      return null;
+  }
+}
+
+function isBodyLikeLayerGroup(group: string): boolean {
+  return group === 'body_torso' || group === 'body_legs' || group === 'head' || group === 'hair' || group === 'arms';
+}
+
 export function SpriteStudioWorkspace({
   draft,
   setDraft,
   referenceData,
   onStatus,
   onRefreshAssets,
+  onCreateStarterTemplates,
+  onGenerateStarterVisuals,
+  isGeneratingStarterVisuals = false,
+  statusMessage,
+  saveState,
+  validation,
 }: SpriteStudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<SpriteStudioTab>('control');
   const [importMode, setImportMode] = useState<JsonImportMode>('merge');
@@ -133,12 +204,24 @@ export function SpriteStudioWorkspace({
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [selectedSkillBindingId, setSelectedSkillBindingId] = useState('');
   const [selectedRuntimeRuleId, setSelectedRuntimeRuleId] = useState('');
+  const [selectedItemForgeItemId, setSelectedItemForgeItemId] = useState('');
+  const [itemForgeExistingBindingId, setItemForgeExistingBindingId] = useState('');
+  const [itemForgePreviewBindingId, setItemForgePreviewBindingId] = useState('');
   const [activeSurface, setActiveSurface] = useState<SpriteSurface>('battle');
   const [activeAction, setActiveAction] = useState<string>('idle');
   const [selectedPreviewSkillBindingId, setSelectedPreviewSkillBindingId] = useState('');
   const [selectedPreviewFxId, setSelectedPreviewFxId] = useState('');
+  const [previewEquippedItemIds, setPreviewEquippedItemIds] = useState<Record<string, string> | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const exportCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isBottomCollapsed, setIsBottomCollapsed] = useState(false);
+  const [bottomTab, setBottomTab] = useState<'spritesheet' | 'import' | 'export'>('spritesheet');
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('theend-admin-sidebar-collapse', { detail: isFocusMode }));
+  }, [isFocusMode]);
 
   useEffect(() => {
     setSelectedBodyTemplateId((current) => ensureSelection(current, draft.bodyTemplates));
@@ -147,7 +230,8 @@ export function SpriteStudioWorkspace({
     setSelectedProfileId((current) => ensureSelection(current, draft.spriteProfiles));
     setSelectedSkillBindingId((current) => ensureSelection(current, draft.skillBindings));
     setSelectedRuntimeRuleId((current) => ensureSelection(current, draft.runtimeRules));
-  }, [draft.animationSets, draft.bodyTemplates, draft.equipmentBindings, draft.runtimeRules, draft.skillBindings, draft.spriteProfiles]);
+    setSelectedItemForgeItemId((current) => ensureSelection(current, draft.items));
+  }, [draft.animationSets, draft.bodyTemplates, draft.equipmentBindings, draft.items, draft.runtimeRules, draft.skillBindings, draft.spriteProfiles]);
 
   const raceOptions = useMemo(
     () => Object.values(Race).map((race) => ({ id: race, label: RACE_DEFINITIONS[race].label })),
@@ -165,6 +249,10 @@ export function SpriteStudioWorkspace({
   const selectedEquipmentBinding = useMemo(
     () => draft.equipmentBindings.find((entry) => entry.id === selectedEquipmentBindingId) ?? null,
     [draft.equipmentBindings, selectedEquipmentBindingId],
+  );
+  const selectedItemForgeItem = useMemo(
+    () => draft.items.find((entry) => entry.id === selectedItemForgeItemId) ?? null,
+    [draft.items, selectedItemForgeItemId],
   );
   const selectedProfile = useMemo(
     () => draft.spriteProfiles.find((entry) => entry.id === selectedProfileId) ?? null,
@@ -204,6 +292,76 @@ export function SpriteStudioWorkspace({
       ?? selectedAnimationSet,
     [draft.animationSets, selectedAnimationSet, selectedProfile],
   );
+  const selectedProfileNpc = useMemo(
+    () => draft.npcs.find((entry) => entry.id === selectedProfile?.npcId) ?? null,
+    [draft.npcs, selectedProfile],
+  );
+  const selectedEquipmentItem = useMemo(
+    () => draft.items.find((entry) => entry.id === selectedEquipmentBinding?.itemId) ?? null,
+    [draft.items, selectedEquipmentBinding],
+  );
+  const itemForgeBindings = useMemo(
+    () => selectedItemForgeItem
+      ? draft.equipmentBindings.filter((entry) => entry.itemId === selectedItemForgeItem.id)
+      : [],
+    [draft.equipmentBindings, selectedItemForgeItem],
+  );
+  const itemForgeCurrentDefaultBinding = useMemo(
+    () => selectedItemForgeItem?.defaultEquipmentVisualBindingId
+      ? draft.equipmentBindings.find((entry) => entry.id === selectedItemForgeItem.defaultEquipmentVisualBindingId) ?? null
+      : null,
+    [draft.equipmentBindings, selectedItemForgeItem],
+  );
+  const profileReferenceImages = useMemo<SpriteStudioReferenceCardEntry[]>(
+    () => selectedProfileNpc ? [
+      {
+        label: 'Portrait',
+        imageRef: selectedProfileNpc.portraitImageRef,
+        legacyImagePath: selectedProfileNpc.portraitUrl,
+        description: 'Reference only',
+      },
+      {
+        label: 'Battle image',
+        imageRef: selectedProfileNpc.combatImageRef,
+        legacyImagePath: selectedProfileNpc.combatImageUrl,
+        description: 'Reference only',
+      },
+      {
+        label: 'Card / icon',
+        imageRef: selectedProfileNpc.iconImageRef,
+        legacyImagePath: selectedProfileNpc.iconUrl,
+        description: 'Reference only',
+      },
+    ].filter((entry) => entry.imageRef || entry.legacyImagePath) : [],
+    [selectedProfileNpc],
+  );
+  const selectedEquipmentItemReference = useMemo<SpriteStudioReferenceCardEntry | null>(
+    () => selectedEquipmentItem && (selectedEquipmentItem.imageRef || selectedEquipmentItem.imagePath)
+      ? {
+        label: 'Item UI icon',
+        imageRef: selectedEquipmentItem.imageRef,
+        legacyImagePath: selectedEquipmentItem.imagePath,
+        description: 'Reference only',
+      }
+      : null,
+    [selectedEquipmentItem],
+  );
+
+  useEffect(() => {
+    const nextBindingId = itemForgeCurrentDefaultBinding?.id
+      ?? itemForgeBindings[0]?.id
+      ?? '';
+    setItemForgeExistingBindingId((current) => (
+      current && itemForgeBindings.some((entry) => entry.id === current)
+        ? current
+        : nextBindingId
+    ));
+    setItemForgePreviewBindingId((current) => (
+      current && itemForgeBindings.some((entry) => entry.id === current)
+        ? current
+        : nextBindingId
+    ));
+  }, [itemForgeBindings, itemForgeCurrentDefaultBinding]);
 
   const resolvedProfileBindings = useMemo(
     () => listProfileBindings({
@@ -216,6 +374,195 @@ export function SpriteStudioWorkspace({
     [activeSurface, draft.bodyTemplates, draft.equipmentBindings, draft.npcs, selectedProfile],
   );
 
+  const previewSanitizedDraft = useMemo(() => {
+    const issues: CharacterVisualIssue[] = [];
+
+    function sanitizeSurfaceAsset(
+      ownerType: 'body_template' | 'equipment_binding' | 'animation_clip',
+      ownerId: string,
+      label: string,
+      asset: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number } | undefined,
+    ) {
+      if (!asset?.imageRef && !asset?.imagePath) {
+        return asset;
+      }
+      const sheetId = asset?.imageRef && asset.imageRef.type === 'tileset'
+        ? asset.imageRef.sheetId
+        : undefined;
+      const imageSheet = sheetId
+        ? referenceData.imageSheets.find((entry) => entry.id === sheetId)
+        : undefined;
+      const kind = classifySpriteStudioAsset({
+        imageRef: asset?.imageRef,
+        legacyImagePath: asset?.imagePath,
+        runtimeImages: referenceData.images,
+        imageSheet,
+        label,
+      });
+      const eligibility = ownerType === 'equipment_binding'
+        ? getEquipmentOverlayEligibility(kind)
+        : getBodyLayerEligibility(kind);
+      const warning = buildSpriteStudioSelectionWarning(kind)
+        ?? (eligibility === 'warning'
+          ? 'Body template uses an image that looks like a portrait/reference image. It may not be a valid body/paperdoll sprite.'
+          : null);
+      if (eligibility !== 'blocked') {
+        return asset;
+      }
+      issues.push({
+        severity: 'warning',
+        code: `sprite_studio_preview_filtered_${ownerType}`,
+        message: `${warning} Sprite Studio preview filtered it out for '${label}'.`,
+        entityId: ownerId,
+        refId: label,
+      });
+      return {
+        ...asset,
+        imageRef: undefined,
+        imagePath: undefined,
+      };
+    }
+
+    return {
+      bodyTemplates: draft.bodyTemplates.map((entry) => ({
+        ...entry,
+        paperdoll: sanitizeSurfaceAsset('body_template', entry.id, `${entry.name} paperdoll`, entry.paperdoll),
+        world: sanitizeSurfaceAsset('body_template', entry.id, `${entry.name} world`, entry.world),
+        battle: sanitizeSurfaceAsset('body_template', entry.id, `${entry.name} battle`, entry.battle),
+      })),
+      animationSets: draft.animationSets.map((entry) => ({
+        ...entry,
+        clips: entry.clips.map((clip, index) => {
+          const sanitized = sanitizeSurfaceAsset(
+            'animation_clip',
+            entry.id,
+            `${entry.name} ${clip.action} clip ${index + 1}`,
+            clip,
+          );
+          return sanitized ? { ...clip, ...sanitized } : clip;
+        }),
+      })),
+      equipmentBindings: draft.equipmentBindings.map((entry) => ({
+        ...entry,
+        paperdoll: sanitizeSurfaceAsset('equipment_binding', entry.id, `${entry.name} paperdoll`, entry.paperdoll),
+        world: sanitizeSurfaceAsset('equipment_binding', entry.id, `${entry.name} world`, entry.world),
+        battle: sanitizeSurfaceAsset('equipment_binding', entry.id, `${entry.name} battle`, entry.battle),
+      })),
+      issues,
+    };
+  }, [draft.animationSets, draft.bodyTemplates, draft.equipmentBindings, referenceData.imageSheets, referenceData.images]);
+
+  const previewEquipmentBindings = useMemo(() => {
+    if (!selectedItemForgeItem || !itemForgePreviewBindingId || !previewEquippedItemIds) {
+      return previewSanitizedDraft.equipmentBindings;
+    }
+    return previewSanitizedDraft.equipmentBindings.filter((entry) => (
+      entry.itemId !== selectedItemForgeItem.id || entry.id === itemForgePreviewBindingId
+    ));
+  }, [itemForgePreviewBindingId, previewEquippedItemIds, previewSanitizedDraft.equipmentBindings, selectedItemForgeItem]);
+
+  function inspectResolvedLayer(layer: ResolvedCharacterVisual['layers'][number]): PreviewLayerInspection {
+    const asset = layer.imageRef?.type === 'image'
+      ? layer.imageRef.src
+      : layer.imageRef?.type === 'tileset'
+        ? `${layer.imageRef.sheetId}#${layer.imageRef.frame}`
+        : layer.imagePath || 'none';
+    const sheetId = layer.imageRef?.type === 'tileset' ? layer.imageRef.sheetId : undefined;
+    const imageSheet = sheetId
+      ? referenceData.imageSheets.find((entry) => entry.id === sheetId)
+      : undefined;
+    const kind = classifySpriteStudioAsset({
+      imageRef: layer.imageRef,
+      legacyImagePath: layer.imagePath,
+      runtimeImages: referenceData.images,
+      imageSheet,
+      label: `${layer.group} ${layer.bindingId || layer.id}`,
+    });
+
+    const eligibility = isBodyLikeLayerGroup(layer.group)
+      ? getBodyLayerEligibility(kind)
+      : getEquipmentOverlayEligibility(kind);
+    const warning = isBodyLikeLayerGroup(layer.group) && eligibility !== 'ok'
+      ? `${resolvedPreview.bodyTemplateId || 'Selected body template'} uses ${asset}. This asset is not confirmed as a Sprite Studio body sprite. Create/link a proper body sprite asset before using this profile as animation source.`
+      : buildSpriteStudioSelectionWarning(kind)
+        ?? (eligibility === 'warning' && isBodyLikeLayerGroup(layer.group)
+          ? 'Body template uses an image that looks like a portrait/reference image. It may not be a valid body/paperdoll sprite.'
+          : null);
+
+    return { layer, asset, kind, eligibility, warning };
+  }
+
+  const resolvedPreview = useMemo(() => {
+    const resolved = resolveCharacterVisual({
+      surface: activeSurface,
+      entityType: 'npc',
+      spriteProfileId: selectedProfileId || undefined,
+      equippedItemIds: previewEquippedItemIds ?? undefined,
+      preferredAction: activeAction || undefined,
+      skillBindingId: selectedPreviewSkillBindingId || undefined,
+      visualFxId: selectedPreviewFxId || undefined,
+      content: {
+        spriteProfiles: draft.spriteProfiles,
+        spriteBodyTemplates: previewSanitizedDraft.bodyTemplates,
+        spriteAnimationSets: previewSanitizedDraft.animationSets,
+        equipmentVisualBindings: previewEquipmentBindings,
+        skillAnimationBindings: draft.skillBindings,
+        runtimeAssemblyRules: draft.runtimeRules,
+        items: draft.items,
+        skills: draft.skills,
+        visualFx: referenceData.visualFx,
+        images: referenceData.images,
+        imageSheets: referenceData.imageSheets,
+      },
+    });
+
+    const sanitizedLayers = resolved.layers
+      .map((layer) => (
+        layer.source !== 'fx' && !layer.imageRef && !layer.imagePath
+          ? { ...layer, visible: false }
+          : layer
+      ))
+      .filter((layer) => layer.visible || layer.source === 'fx');
+
+    return {
+      ...resolved,
+      layers: sanitizedLayers,
+      warnings: [...resolved.warnings, ...previewSanitizedDraft.issues],
+    } satisfies ResolvedCharacterVisual;
+  }, [
+    activeAction,
+    activeSurface,
+    draft,
+    previewEquippedItemIds,
+    previewEquipmentBindings,
+    previewSanitizedDraft,
+    referenceData,
+    selectedPreviewFxId,
+    selectedPreviewSkillBindingId,
+    selectedProfileId,
+  ]);
+
+  const previewLayerInspections = useMemo(
+    () => resolvedPreview.layers
+      .filter((layer) => layer.source !== 'fx')
+      .map((layer) => inspectResolvedLayer(layer)),
+    [resolvedPreview, referenceData.imageSheets, referenceData.images],
+  );
+  const invalidBodyInspection = useMemo(
+    () => previewLayerInspections.find((entry) => isBodyLikeLayerGroup(entry.layer.group) && entry.eligibility !== 'ok') ?? null,
+    [previewLayerInspections],
+  );
+  const guardedPreview = useMemo<ResolvedCharacterVisual>(
+    () => invalidBodyInspection
+      ? {
+        ...resolvedPreview,
+        layers: [],
+        anchors: {},
+      }
+      : resolvedPreview,
+    [invalidBodyInspection, resolvedPreview],
+  );
+
   useEffect(() => {
     const canvases = [previewCanvasRef.current, exportCanvasRef.current].filter((entry): entry is HTMLCanvasElement => Boolean(entry));
     if (canvases.length === 0) {
@@ -223,18 +570,11 @@ export function SpriteStudioWorkspace({
     }
     void Promise.all(canvases.map((canvas) => drawSpriteStudioPreview({
       canvas,
-      profile: selectedProfile,
-      bodyTemplate: previewBodyTemplate,
-      animationSet: previewAnimationSet,
-      equipmentBindings: resolvedProfileBindings,
-      skillBinding: previewSkillBinding,
-      visualFx: previewFx,
-      surface: activeSurface,
+      resolved: guardedPreview,
       runtimeImages: referenceData.images,
       imageSheets: referenceData.imageSheets,
-      selectedAction: activeAction,
     })));
-  }, [activeAction, activeSurface, previewAnimationSet, previewBodyTemplate, previewFx, previewSkillBinding, referenceData.imageSheets, referenceData.images, resolvedProfileBindings, selectedProfile]);
+  }, [guardedPreview, referenceData.imageSheets, referenceData.images]);
 
   function patchCollectionEntry<K extends DraftCollectionKey>(
     key: K,
@@ -380,6 +720,109 @@ export function SpriteStudioWorkspace({
     onStatus(`Экспортирован ${collectionKey}.`);
   }
 
+  function renderReferenceCard(entry: SpriteStudioReferenceCardEntry) {
+    return (
+      <section key={entry.label} className="card admin-item-preview" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <GameImageView
+            imageRef={entry.imageRef}
+            legacyImagePath={entry.legacyImagePath}
+            runtimeImages={referenceData.images}
+            alt={entry.label}
+            size={72}
+            fallbackText="N/A"
+          />
+          <div style={{ display: 'grid', gap: 6 }}>
+            <strong>{entry.label}</strong>
+            <span
+              style={{
+                display: 'inline-flex',
+                width: 'fit-content',
+                borderRadius: 999,
+                padding: '3px 10px',
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'rgba(213, 180, 122, 0.18)',
+                color: '#f0d6a4',
+              }}
+            >
+              {entry.description}
+            </span>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderAssetClassificationNotice(
+    label: string,
+    asset: { imageRef?: SpriteImageRef; imagePath?: string } | undefined,
+  ) {
+    const sheetId = asset?.imageRef && asset.imageRef.type === 'tileset'
+      ? asset.imageRef.sheetId
+      : undefined;
+    const imageSheet = sheetId
+      ? referenceData.imageSheets.find((entry) => entry.id === sheetId)
+      : undefined;
+    const kind = classifySpriteStudioAsset({
+      imageRef: asset?.imageRef,
+      legacyImagePath: asset?.imagePath,
+      runtimeImages: referenceData.images,
+      imageSheet,
+      label,
+    });
+    const eligibility = label.toLowerCase().includes('clip')
+      ? getBodyLayerEligibility(kind)
+      : label.toLowerCase().includes('paperdoll') || label.toLowerCase().includes('body')
+        ? getBodyLayerEligibility(kind)
+        : getEquipmentOverlayEligibility(kind);
+    const warning = buildSpriteStudioSelectionWarning(kind)
+      ?? (eligibility === 'warning'
+        ? 'Body template uses an image that looks like a portrait/reference image. It may not be a valid body/paperdoll sprite.'
+        : null);
+    if (!warning) {
+      return null;
+    }
+    return (
+      <p style={{ margin: '8px 0 0', color: '#ffb6b6' }}>
+        {warning} Current asset kind: {describeSpriteStudioAssetKind(kind)}. Eligibility: {describeAssetEligibility(eligibility)}.
+      </p>
+    );
+  }
+
+  function renderAssetSourcesSection() {
+    return (
+      <section className="card admin-item-preview" style={{ display: 'grid', gap: 8 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          Profile: {selectedProfileId || 'none'}
+        </p>
+        <p className="muted" style={{ margin: 0 }}>
+          Body template: {resolvedPreview.bodyTemplateId || 'none'} · Profile defaults: {selectedProfile?.defaultEquipmentItemIds.join(', ') || 'none'}
+        </p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {previewLayerInspections.map((entry) => (
+            <div key={entry.layer.id} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(213, 180, 122, 0.14)' }}>
+              <strong>{entry.layer.group}</strong>
+              <p className="muted" style={{ margin: '4px 0 0' }}>
+                source: {entry.layer.source} · binding: {entry.layer.bindingId || 'none'} · item: {entry.layer.itemId || 'none'}
+              </p>
+              <p className="muted" style={{ margin: '4px 0 0', wordBreak: 'break-all' }}>
+                asset: {entry.asset}
+              </p>
+              <p className="muted" style={{ margin: '4px 0 0' }}>
+                kind: {describeSpriteStudioAssetKind(entry.kind)} · eligibility: {describeAssetEligibility(entry.eligibility)}
+              </p>
+              {entry.warning ? <p style={{ margin: '4px 0 0', color: '#ffb6b6' }}>{entry.warning}</p> : null}
+            </div>
+          ))}
+          {previewLayerInspections.length === 0 ? (
+            <p className="muted">No drawable body/equipment layers resolved.</p>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   function renderSurfaceAssetEditor(params: {
     title: string;
     asset: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number } | undefined;
@@ -402,6 +845,7 @@ export function SpriteStudioWorkspace({
           uploadSuggestedId={params.uploadSuggestedId}
           uploadSuggestedName={params.uploadSuggestedName}
           uploadFolder={params.uploadFolder}
+          selectionMode="sprite-layer"
           onStatus={onStatus}
           onChange={(next) => params.onPatch({
             ...params.asset,
@@ -409,6 +853,7 @@ export function SpriteStudioWorkspace({
             imagePath: next?.type === 'image' ? next.src : params.asset?.imagePath,
           })}
         />
+        {renderAssetClassificationNotice(params.title, params.asset)}
         <div className="admin-form-grid" style={{ marginTop: 12 }}>
           <label>
             <span>Scale</span>
@@ -447,6 +892,9 @@ export function SpriteStudioWorkspace({
           <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
             <h4 style={{ margin: 0 }}>Sprite Body Templates</h4>
             <div className="admin-actions-row">
+              <button type="button" onClick={onCreateStarterTemplates}>
+                Create starter templates
+              </button>
               <button type="button" onClick={() => {
                 const next = createEmptyBodyTemplate();
                 addCollectionEntry('bodyTemplates', next);
@@ -994,6 +1442,7 @@ export function SpriteStudioWorkspace({
                 uploadSuggestedId={`${selectedAnimationSet?.id || 'animation_set'}_${clip.action}_${index}`}
                 uploadSuggestedName={`${selectedAnimationSet?.name || 'animation'} ${clip.action}`}
                 uploadFolder={buildUploadFolder('images', 'sprite-studio', selectedAnimationSet?.id || 'animation-set', clip.action)}
+                selectionMode="sprite-layer"
                 onStatus={onStatus}
                 onChange={(next) => patchClip(index, (current) => ({
                   ...current,
@@ -1001,6 +1450,7 @@ export function SpriteStudioWorkspace({
                   imagePath: next?.type === 'image' ? next.src : current.imagePath,
                 }))}
               />
+              {renderAssetClassificationNotice(`Clip ${clip.action}`, clip)}
               <label>
                 <span>Legacy aliases (csv)</span>
                 <input value={formatCsv(clip.legacyAliases)} onChange={(event) => patchClip(index, (current) => ({ ...current, legacyAliases: parseCsv(event.target.value) }))} />
@@ -1202,30 +1652,235 @@ export function SpriteStudioWorkspace({
         </section>
 
         <section className="admin-form-panel">
-          <h4>Default binding helper</h4>
+          <h4>Item visual workflow</h4>
           <p className="muted">
-            Item остаётся канонической сущностью игры. Binding хранит `itemId`, а у item есть только soft default:
-            `defaultEquipmentVisualBindingId`.
+            Item stats stay canonical gameplay data. `defaultEquipmentVisualBindingId` only controls equipped appearance in Sprite Studio and future runtime assembly.
           </p>
-          <label>
-            <span>Preview current item defaults</span>
-            <select
-              value={selectedEquipmentBinding?.itemId ?? ''}
-              onChange={(event) => {
-                const candidate = draft.equipmentBindings.find((entry) => entry.itemId === event.target.value);
-                if (candidate) {
-                  setSelectedEquipmentBindingId(candidate.id);
+          <div className="admin-form-grid">
+            <label>
+              <span>Item</span>
+              <select value={selectedItemForgeItemId} onChange={(event) => setSelectedItemForgeItemId(event.target.value)}>
+                {draft.items.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name} ({entry.slot || entry.type})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Current default binding</span>
+              <input
+                readOnly
+                value={selectedItemForgeItem?.defaultEquipmentVisualBindingId ?? 'none'}
+              />
+            </label>
+            <label>
+              <span>Link existing binding</span>
+              <select value={itemForgeExistingBindingId} onChange={(event) => setItemForgeExistingBindingId(event.target.value)}>
+                <option value="">No binding selected</option>
+                {itemForgeBindings.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name} ({entry.id})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Preview binding</span>
+              <select value={itemForgePreviewBindingId} onChange={(event) => setItemForgePreviewBindingId(event.target.value)}>
+                <option value="">Use linked/default choice</option>
+                {itemForgeBindings.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name} ({entry.equipmentSlot || entry.itemId})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="admin-actions-row" style={{ flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedItemForgeItem) {
+                  return;
+                }
+                const next = createEmptyEquipmentBinding();
+                const nextSlot = selectedItemForgeItem.slot === 'leftHand'
+                  ? 'offHand'
+                  : selectedItemForgeItem.slot === 'rightHand'
+                    ? 'mainHand'
+                    : selectedItemForgeItem.slot || next.equipmentSlot;
+                addCollectionEntry('equipmentBindings', {
+                  ...next,
+                  name: `${selectedItemForgeItem.name} visual`,
+                  itemId: selectedItemForgeItem.id,
+                  equipmentSlot: nextSlot,
+                });
+                setSelectedEquipmentBindingId(next.id);
+                setItemForgeExistingBindingId(next.id);
+                setItemForgePreviewBindingId(next.id);
+              }}
+            >
+              Create Equipment Visual Binding
+            </button>
+            <button
+              type="button"
+              disabled={!selectedItemForgeItem || !itemForgeExistingBindingId}
+              onClick={() => {
+                if (!selectedItemForgeItem || !itemForgeExistingBindingId) {
+                  return;
+                }
+                patchItem(selectedItemForgeItem.id, { defaultEquipmentVisualBindingId: itemForgeExistingBindingId });
+                const linkedBinding = draft.equipmentBindings.find((entry) => entry.id === itemForgeExistingBindingId);
+                if (linkedBinding) {
+                  setSelectedEquipmentBindingId(linkedBinding.id);
                 }
               }}
             >
-              <option value="">Select item</option>
-              {draft.items.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name} ({entry.defaultEquipmentVisualBindingId || 'no default'})
-                </option>
-              ))}
-            </select>
-          </label>
+              Link Existing Equipment Visual Binding
+            </button>
+            <button
+              type="button"
+              disabled={!selectedItemForgeItem || !selectedProfileId}
+              onClick={() => {
+                if (!selectedItemForgeItem) {
+                  return;
+                }
+                const previewSlot = mapItemSlotToPreviewSlot(
+                  draft.equipmentBindings.find((entry) => entry.id === (itemForgePreviewBindingId || itemForgeExistingBindingId || selectedItemForgeItem.defaultEquipmentVisualBindingId))?.equipmentSlot
+                  || selectedItemForgeItem.slot,
+                );
+                if (!previewSlot) {
+                  onStatus(`Cannot preview '${selectedItemForgeItem.name}' on character: item slot is not previewable in Sprite Studio.`);
+                  return;
+                }
+                setPreviewEquippedItemIds({ [previewSlot]: selectedItemForgeItem.id });
+                if (itemForgePreviewBindingId) {
+                  setSelectedEquipmentBindingId(itemForgePreviewBindingId);
+                } else if (itemForgeExistingBindingId) {
+                  setSelectedEquipmentBindingId(itemForgeExistingBindingId);
+                }
+                onStatus(`Previewing '${selectedItemForgeItem.name}' on '${selectedProfile?.name || selectedProfileId}'.`);
+              }}
+            >
+              Preview Equipped On Character
+            </button>
+            <button
+              type="button"
+              disabled={!selectedItemForgeItem?.defaultEquipmentVisualBindingId}
+              onClick={() => {
+                if (!selectedItemForgeItem) {
+                  return;
+                }
+                patchItem(selectedItemForgeItem.id, { defaultEquipmentVisualBindingId: undefined });
+                onStatus(`Unlinked equipment visual binding from '${selectedItemForgeItem.name}'.`);
+              }}
+            >
+              Unlink Visual Binding
+            </button>
+            <button
+              type="button"
+              disabled={!previewEquippedItemIds}
+              onClick={() => setPreviewEquippedItemIds(null)}
+            >
+              Clear Equipped Preview
+            </button>
+          </div>
+          {selectedItemForgeItem ? (
+            <section className="card admin-item-preview" style={{ marginTop: 12 }}>
+              <h5 style={{ marginTop: 0 }}>Item data</h5>
+              <div className="admin-form-grid">
+                <label>
+                  <span>Type</span>
+                  <input readOnly value={selectedItemForgeItem.type} />
+                </label>
+                <label>
+                  <span>Slot</span>
+                  <input readOnly value={selectedItemForgeItem.slot || 'none'} />
+                </label>
+                <label>
+                  <span>Rarity</span>
+                  <input readOnly value={selectedItemForgeItem.rarity} />
+                </label>
+                <label>
+                  <span>Damage / Armor</span>
+                  <input
+                    readOnly
+                    value={selectedItemForgeItem.damageMin || selectedItemForgeItem.damageMax
+                      ? `${selectedItemForgeItem.damageMin ?? 0}-${selectedItemForgeItem.damageMax ?? 0}`
+                      : String(selectedItemForgeItem.armorValue ?? 0)}
+                  />
+                </label>
+                <label>
+                  <span>Durability</span>
+                  <input
+                    readOnly
+                    value={selectedItemForgeItem.durability ?? selectedItemForgeItem.maxDurability ?? 'n/a'}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>Gameplay description</span>
+                <textarea readOnly rows={2} value={selectedItemForgeItem.gameplayDescription ?? ''} />
+              </label>
+              {selectedItemForgeItem.imageRef || selectedItemForgeItem.imagePath ? renderReferenceCard({
+                label: 'Inventory icon',
+                imageRef: selectedItemForgeItem.imageRef,
+                legacyImagePath: selectedItemForgeItem.imagePath,
+                description: 'Reference only',
+              }) : <p className="muted">Selected item has no inventory or merchant icon yet.</p>}
+              {selectedItemForgeItem.imageRef || selectedItemForgeItem.imagePath ? renderReferenceCard({
+                label: 'Merchant icon',
+                imageRef: selectedItemForgeItem.imageRef,
+                legacyImagePath: selectedItemForgeItem.imagePath,
+                description: 'Reference only',
+              }) : null}
+              <p style={{ marginTop: 8, color: selectedItemForgeItem.defaultEquipmentVisualBindingId ? '#d7e2f7' : '#ffb6b6' }}>
+                {selectedItemForgeItem.defaultEquipmentVisualBindingId
+                  ? 'Inventory icon stays reference-only. Equipped appearance comes from the linked visual binding.'
+                  : 'This item has an inventory icon, but no equipped visual sprite binding.'}
+              </p>
+              <h5 style={{ marginBottom: 8 }}>Equipment visual</h5>
+              <div className="admin-form-grid">
+                <label>
+                  <span>equipmentVisualBindingId</span>
+                  <input readOnly value={itemForgeCurrentDefaultBinding?.id ?? itemForgeExistingBindingId ?? 'none'} />
+                </label>
+                <label>
+                  <span>Visual sprite</span>
+                  <input
+                    readOnly
+                    value={itemForgeCurrentDefaultBinding?.battle?.imageRef?.type === 'image'
+                      ? itemForgeCurrentDefaultBinding.battle.imageRef.src
+                      : itemForgeCurrentDefaultBinding?.battle?.imagePath || 'none'}
+                  />
+                </label>
+                <label>
+                  <span>Slot</span>
+                  <input readOnly value={itemForgeCurrentDefaultBinding?.equipmentSlot || 'none'} />
+                </label>
+                <label>
+                  <span>Z-layer</span>
+                  <input readOnly value={itemForgeCurrentDefaultBinding?.weaponGripType || 'default'} />
+                </label>
+              </div>
+              <p className="muted" style={{ marginTop: 8 }}>
+                Existing bindings for item: {itemForgeBindings.length}. Preview profile: {selectedProfile?.name || 'none selected'}.
+              </p>
+            </section>
+          ) : null}
+          <section className="card admin-item-preview" style={{ marginTop: 12 }}>
+            <h5 style={{ marginTop: 0 }}>Legacy Sprite Assets</h5>
+            <p className="muted" style={{ marginBottom: 8 }}>
+              Legacy import stays deferred in Phase 2.7. This section is a controlled report/stub only.
+            </p>
+            <p className="muted" style={{ margin: 0 }}>
+              Local reference folder: `C:\theend\sprite+engine`
+            </p>
+            <p className="muted" style={{ margin: '8px 0 0' }}>
+              Next step later: scan/list old engine assets, classify them, and import only confirmed Sprite Visual Assets.
+            </p>
+          </section>
         </section>
       </div>
     );
@@ -1527,16 +2182,361 @@ export function SpriteStudioWorkspace({
   }
 
   return (
-    <div className="sprite-studio-page">
-      <canvas ref={exportCanvasRef} width={256} height={256} style={{ display: 'none' }} />
-      <SpriteStudioTabs activeTab={activeTab} onChange={setActiveTab} />
-      {activeTab === 'control' ? renderControlTab() : null}
-      {activeTab === 'playground' ? renderPlaygroundTab() : null}
-      {activeTab === 'spritesheet' ? renderSpritesheetTab() : null}
-      {activeTab === 'import' ? renderImportTab() : null}
-      {activeTab === 'itemForge' ? renderItemForgeTab() : null}
-      {activeTab === 'bindings' ? renderBindingsTab() : null}
-      {activeTab === 'export' ? renderExportTab() : null}
+    <div className="sprite-studio-shell">
+      <canvas ref={exportCanvasRef} width={384} height={384} style={{ display: 'none' }} />
+
+      {/* Topbar с заголовком и статусом */}
+      <div className="sprite-studio-topbar card">
+        <div className="sprite-studio-topbar-main">
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>🎞️ Sprite Studio</h2>
+          </div>
+          <div className="sprite-studio-topbar-side">
+            <div className="sprite-studio-chip-row">
+              <span className="sprite-studio-chip">Phase 2 Engine active</span>
+              <span className="sprite-studio-chip">Preview: resolveCharacterVisual</span>
+              <button
+                type="button"
+                onClick={() => { void onGenerateStarterVisuals(); }}
+                className="sprite-studio-refresh-button"
+                disabled={isGeneratingStarterVisuals}
+              >
+                {isGeneratingStarterVisuals ? 'Generating starter visuals...' : 'Generate V0 starter visuals'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFocusMode(!isFocusMode)}
+                className="sprite-studio-refresh-button"
+                style={{
+                  background: isFocusMode ? 'rgba(213, 180, 122, 0.25)' : 'rgba(255, 255, 255, 0.02)',
+                  borderColor: isFocusMode ? 'rgba(213, 180, 122, 0.5)' : 'rgba(213, 180, 122, 0.18)'
+                }}
+              >
+                {isFocusMode ? 'Exit focus' : 'Focus mode'}
+              </button>
+            </div>
+            {statusMessage && (
+              <div className="sprite-studio-status-box">
+                <p>{statusMessage}</p>
+              </div>
+            )}
+            {saveState && <AdminSaveStatus value={saveState} />}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Grid: Left sidebar, Center stage, Right validation */}
+      <div className="sprite-studio-main">
+
+        {/* Left column (sidebar panel) */}
+        <div className="sprite-studio-panel sprite-studio-left">
+          <div className="sprite-studio-tabbar">
+            <SpriteStudioTabs activeTab={activeTab} onChange={setActiveTab} />
+          </div>
+          <div className="sprite-studio-panel-body sprite-studio-left-body sprite-studio-scroll-region">
+            {activeTab === 'control' ? renderControlTab() : null}
+            {activeTab === 'playground' ? renderPlaygroundTab() : null}
+            {activeTab === 'itemForge' ? renderItemForgeTab() : null}
+            {activeTab === 'bindings' ? renderBindingsTab() : null}
+          </div>
+        </div>
+
+        {/* Center column (stage & canvas preview) */}
+        <div className="sprite-studio-panel sprite-studio-preview">
+          <div className="sprite-studio-panel-header">
+            <h3>Visual Preview</h3>
+            <div className="sprite-studio-toolbar">
+              <button type="button" className="sprite-studio-refresh-button" onClick={() => { void onRefreshAssets(); }}>
+                Refresh Assets
+              </button>
+            </div>
+          </div>
+          <div className="sprite-studio-panel-body sprite-studio-preview-body">
+            <div className="sprite-studio-preview-stage">
+              <div className="card sprite-studio-preview-card" style={{ position: 'relative' }}>
+                <canvas
+                  ref={previewCanvasRef}
+                  width={384}
+                  height={384}
+                  style={{
+                    width: 384,
+                    height: 384,
+                    border: '1px solid rgba(215, 178, 103, 0.25)',
+                    borderRadius: 12,
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    imageRendering: 'pixelated'
+                  }}
+                />
+                {invalidBodyInspection ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      padding: 24,
+                      textAlign: 'center',
+                      background: 'rgba(10, 8, 6, 0.74)',
+                      borderRadius: 12,
+                    }}
+                  >
+                    <div style={{ display: 'grid', gap: 8, maxWidth: 280 }}>
+                      <strong style={{ color: '#f0d6a4' }}>Assembly preview disabled</strong>
+                      <p style={{ margin: 0, color: '#ffb6b6' }}>
+                        {invalidBodyInspection.warning || 'Invalid body asset: this looks like a portrait/reference image, not a body sprite.'}
+                      </p>
+                      <p className="muted" style={{ margin: 0 }}>
+                        No valid body sprite selected. Create or link proper body/paperdoll sprite.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="sprite-studio-preview-meta">
+              <div className="sprite-studio-metric-strip">
+                <div>
+                  <span>Active Surface</span>
+                  <strong>{activeSurface}</strong>
+                </div>
+                <div>
+                  <span>Active Action</span>
+                  <strong>{resolvedPreview.resolvedAction || 'idle'}</strong>
+                </div>
+                <div>
+                  <span>Body Template</span>
+                  <strong>{resolvedPreview.bodyTemplateId || 'none'}</strong>
+                </div>
+                <div>
+                  <span>Z-layers</span>
+                  <strong>{resolvedPreview.layers.length}</strong>
+                </div>
+              </div>
+              <div className="sprite-studio-summary-card">
+                <p>
+                  <strong>Profile:</strong> {selectedProfile?.name || 'none'} ({selectedProfileId || 'none'})
+                </p>
+                {resolvedPreview.fallback.used && (
+                  <p style={{ color: 'var(--sprite-studio-accent)' }}>
+                    <em>Using legacy fallback rendering for this entity.</em>
+                  </p>
+                )}
+                {invalidBodyInspection ? (
+                  <p style={{ color: '#ffb6b6' }}>
+                    <em>Body invalid {'->'} assembly preview disabled. Resolved equipment remains listed below.</em>
+                  </p>
+                ) : null}
+              </div>
+              <div className="sprite-studio-debug-details" style={{ marginTop: 12 }}>
+                <div className="sprite-studio-eyebrow">Asset Sources / Resolved Layers</div>
+                {renderAssetSourcesSection()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right column (validation panel) */}
+        <div className="sprite-studio-panel sprite-studio-right">
+          <div className="sprite-studio-panel-header">
+            <h3>Validation & Issues</h3>
+          </div>
+          <div className="sprite-studio-panel-body sprite-studio-scroll-region">
+            {validation && (validation.errors.length > 0 || validation.warnings.length > 0) ? (
+              <ul className="sprite-studio-issue-list">
+                {validation.errors.map((error, idx) => (
+                  <li key={`error-${idx}`} className="severity-error">
+                    <strong>[ERROR]</strong>
+                    <p>{error}</p>
+                  </li>
+                ))}
+                {validation.warnings.map((warning, idx) => (
+                  <li key={`warning-${idx}`} className="severity-warning">
+                    <strong>[WARNING]</strong>
+                    <p>{warning}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No issues found. Validation clean.</p>
+            )}
+
+            <div className="sprite-studio-debug-details" style={{ marginTop: 20 }}>
+              <div className="sprite-studio-eyebrow">Debug Data</div>
+              <section className="card admin-item-preview">
+                <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                  Profile: {selectedProfileId || 'none'}
+                </p>
+                <div className="admin-form-grid">
+                  <label>
+                    <span>Surface Select</span>
+                    <select value={activeSurface} onChange={(event) => setActiveSurface(event.target.value as SpriteSurface)}>
+                      {SPRITE_SURFACE_OPTIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Action Select</span>
+                    <select value={activeAction} onChange={(event) => setActiveAction(event.target.value)}>
+                      {SPRITE_ACTION_OPTIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </section>
+            </div>
+
+            <div className="sprite-studio-debug-details" style={{ marginTop: 20 }}>
+              <div className="sprite-studio-eyebrow">Game Reference Images</div>
+              {profileReferenceImages.length ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {profileReferenceImages.map((entry) => renderReferenceCard(entry))}
+                </div>
+              ) : (
+                <p className="muted">Linked NPC has no portrait/avatar/card references.</p>
+              )}
+              {selectedEquipmentItemReference ? (
+                <div style={{ marginTop: 12 }}>
+                  {renderReferenceCard(selectedEquipmentItemReference)}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="sprite-studio-debug-details" style={{ marginTop: 20 }}>
+              <div className="sprite-studio-eyebrow">Asset Sources</div>
+              <section className="card admin-item-preview">
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Body template: {resolvedPreview.bodyTemplateId || 'none'} · Profile defaults: {selectedProfile?.defaultEquipmentItemIds.join(', ') || 'none'}
+                </p>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {resolvedPreview.layers.filter((layer) => layer.source !== 'fx').map((layer) => (
+                    <div key={layer.id} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(213, 180, 122, 0.14)' }}>
+                      <strong>{layer.group}</strong>
+                      <p className="muted" style={{ margin: '4px 0 0' }}>
+                        source: {layer.source} · binding: {layer.bindingId || 'none'} · item: {layer.itemId || 'none'}
+                      </p>
+                      <p className="muted" style={{ margin: '4px 0 0', wordBreak: 'break-all' }}>
+                        asset: {layer.imageRef?.type === 'image'
+                          ? layer.imageRef.src
+                          : layer.imageRef?.type === 'tileset'
+                            ? `${layer.imageRef.sheetId}#${layer.imageRef.frame}`
+                            : layer.imagePath || 'none'}
+                      </p>
+                      {(() => {
+                        const sheetId = layer.imageRef?.type === 'tileset' ? layer.imageRef.sheetId : undefined;
+                        const imageSheet = sheetId
+                          ? referenceData.imageSheets.find((entry) => entry.id === sheetId)
+                          : undefined;
+                        const kind = classifySpriteStudioAsset({
+                          imageRef: layer.imageRef,
+                          legacyImagePath: layer.imagePath,
+                          runtimeImages: referenceData.images,
+                          imageSheet,
+                          label: `${layer.group} ${layer.bindingId || layer.id}`,
+                        });
+                        const eligibility = isBodyLikeLayerGroup(layer.group)
+                          ? getBodyLayerEligibility(kind)
+                          : getEquipmentOverlayEligibility(kind);
+                        const warning = buildSpriteStudioSelectionWarning(kind)
+                          ?? (eligibility === 'warning' && isBodyLikeLayerGroup(layer.group)
+                            ? 'Body template uses an image that looks like a portrait/reference image. It may not be a valid body/paperdoll sprite.'
+                            : null);
+                        return (
+                          <>
+                            <p className="muted" style={{ margin: '4px 0 0' }}>
+                              kind: {describeSpriteStudioAssetKind(kind)} · eligibility: {describeAssetEligibility(eligibility)}
+                            </p>
+                            {warning ? <p style={{ margin: '4px 0 0', color: '#ffb6b6' }}>{warning}</p> : null}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                  {resolvedPreview.layers.filter((layer) => layer.source !== 'fx').length === 0 ? (
+                    <p className="muted">No drawable body/equipment layers resolved.</p>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Bottom Deck Panel */}
+      <div className={`sprite-studio-panel sprite-studio-bottom-deck ${isBottomCollapsed ? 'is-collapsed' : ''}`}>
+        <div className="sprite-studio-panel-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <h3 style={{ margin: 0 }}>Bottom Deck</h3>
+            <div className="sprite-studio-toolbar">
+              <button
+                type="button"
+                className={bottomTab === 'spritesheet' ? 'is-active' : ''}
+                onClick={() => { setBottomTab('spritesheet'); setIsBottomCollapsed(false); }}
+              >
+                🎬 Spritesheet
+              </button>
+              <button
+                type="button"
+                className={bottomTab === 'import' ? 'is-active' : ''}
+                onClick={() => { setBottomTab('import'); setIsBottomCollapsed(false); }}
+              >
+                📥 Import
+              </button>
+              <button
+                type="button"
+                className={bottomTab === 'export' ? 'is-active' : ''}
+                onClick={() => { setBottomTab('export'); setIsBottomCollapsed(false); }}
+              >
+                📤 Export
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="sprite-studio-refresh-button"
+              onClick={() => setIsBottomCollapsed(!isBottomCollapsed)}
+            >
+              {isBottomCollapsed ? 'Expand Deck' : 'Collapse Deck'}
+            </button>
+          </div>
+        </div>
+        {!isBottomCollapsed && (
+          <div className="sprite-studio-panel-body sprite-studio-scroll-region">
+            {bottomTab === 'spritesheet' ? renderSpritesheetTab() : null}
+            {bottomTab === 'import' ? renderImportTab() : null}
+            {bottomTab === 'export' ? renderExportTab() : null}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom panel with engine controls */}
+      <div className="sprite-studio-panel sprite-studio-panel-compact sprite-studio-bottom" style={{ gridColumn: '1 / -1' }}>
+        <div className="sprite-studio-panel-header">
+          <h3>Quick Engine Playground Tools</h3>
+        </div>
+        <div className="sprite-studio-panel-body">
+          <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            <label>
+              <span>Preview skill binding</span>
+              <select value={selectedPreviewSkillBindingId} onChange={(event) => setSelectedPreviewSkillBindingId(event.target.value)}>
+                <option value="">Auto from profile</option>
+                {draft.skillBindings.map((entry) => (
+                  <option key={entry.id} value={entry.id}>{entry.name} ({entry.skillId})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Preview FX</span>
+              <select value={selectedPreviewFxId} onChange={(event) => setSelectedPreviewFxId(event.target.value)}>
+                <option value="">Auto from profile</option>
+                {referenceData.visualFx.map((entry) => (
+                  <option key={entry.id} value={entry.id}>{entry.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

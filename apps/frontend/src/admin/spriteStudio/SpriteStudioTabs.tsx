@@ -3,11 +3,8 @@ import type { SpriteStudioTab } from './types';
 const TAB_OPTIONS: Array<{ id: SpriteStudioTab; label: string }> = [
   { id: 'control', label: 'Control' },
   { id: 'playground', label: 'Playground' },
-  { id: 'spritesheet', label: 'Spritesheet' },
-  { id: 'import', label: 'Import' },
   { id: 'itemForge', label: 'Item Forge' },
   { id: 'bindings', label: 'Bindings' },
-  { id: 'export', label: 'Export' },
 ];
 
 interface SpriteStudioTabsProps {
