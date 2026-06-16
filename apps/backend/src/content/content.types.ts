@@ -3,8 +3,14 @@ import type {
   AdminSkillDefinition,
   BattleMapDefinition,
   DiplomaticActorDefinition,
+  EquipmentVisualBindingDefinition,
   GlobalRelation,
   PrimaryStat,
+  RuntimeAssemblyRuleDefinition,
+  SkillAnimationBindingDefinition,
+  SpriteAnimationSetDefinition,
+  SpriteBodyTemplateDefinition,
+  SpriteProfileDefinition,
   VisualFxDefinition,
 } from '@theend/rpg-domain';
 import type { WorldSimConfig } from '../worldsim/types/world-simulation.types';
@@ -802,6 +808,7 @@ export interface AdminItem {
   loreDescription: string;
   imagePath?: string;
   imageRef?: GameImageRef;
+  defaultEquipmentVisualBindingId?: string;
   battleVisuals?: ActorBattleVisualConfig;
   professionItem?: boolean;
   professionId?: string;
@@ -1305,6 +1312,7 @@ export interface NpcDefinition {
   iconUrl?: string;
   iconImageRef?: GameImageRef;
   battleSpriteAssetId?: string;
+  spriteProfileId?: string;
   deathEffectId?: string;
   hitEffectPreset?: string;
   dialogueStartVoiceAssetId?: string;
@@ -2171,6 +2179,12 @@ export interface ContentDatabase {
   biomes?: BiomeDefinition[];
   imageSheets?: ImageSheetDefinition[];
   professionSkills?: ProfessionSkillDefinition[];
+  spriteBodyTemplates?: SpriteBodyTemplateDefinition[];
+  spriteAnimationSets?: SpriteAnimationSetDefinition[];
+  equipmentVisualBindings?: EquipmentVisualBindingDefinition[];
+  spriteProfiles?: SpriteProfileDefinition[];
+  skillAnimationBindings?: SkillAnimationBindingDefinition[];
+  runtimeAssemblyRules?: RuntimeAssemblyRuleDefinition[];
   worldMap: WorldMapContent;
   worldSim?: WorldSimConfig;
 }
@@ -2269,7 +2283,13 @@ export type ContentCollectionName =
   | 'trees'
   | 'biomes'
   | 'imageSheets'
-  | 'professionSkills';
+  | 'professionSkills'
+  | 'spriteBodyTemplates'
+  | 'spriteAnimationSets'
+  | 'equipmentVisualBindings'
+  | 'spriteProfiles'
+  | 'skillAnimationBindings'
+  | 'runtimeAssemblyRules';
 
 export interface ContentCollectionMap {
   items: AdminItem;
@@ -2309,6 +2329,12 @@ export interface ContentCollectionMap {
   biomes: BiomeDefinition;
   imageSheets: ImageSheetDefinition;
   professionSkills: ProfessionSkillDefinition;
+  spriteBodyTemplates: SpriteBodyTemplateDefinition;
+  spriteAnimationSets: SpriteAnimationSetDefinition;
+  equipmentVisualBindings: EquipmentVisualBindingDefinition;
+  spriteProfiles: SpriteProfileDefinition;
+  skillAnimationBindings: SkillAnimationBindingDefinition;
+  runtimeAssemblyRules: RuntimeAssemblyRuleDefinition;
 }
 
 export type LocationStatus = 'draft' | 'active' | 'disabled' | 'archived';

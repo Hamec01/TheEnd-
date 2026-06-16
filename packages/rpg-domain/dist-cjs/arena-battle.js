@@ -104,6 +104,8 @@ function normalizeArenaBattleState(state) {
         carryingBody: state.carryingBody ?? null,
         battleObjectiveProgress: state.battleObjectiveProgress ?? {},
         pendingQuestEffects: state.pendingQuestEffects ?? [],
+        battleScriptEvents: state.battleScriptEvents ?? [],
+        triggeredBattleScriptEventIds: state.triggeredBattleScriptEventIds ?? [],
     };
 }
 const DEFENSIVE_ZONES = [TargetZone.Chest, TargetZone.Abdomen];

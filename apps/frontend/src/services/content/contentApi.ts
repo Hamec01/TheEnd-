@@ -26,11 +26,17 @@ import type {
   BlacksmithItemWorkAction,
   CraftingRecipe,
   RecipeVisualProfile,
+  RuntimeAssemblyRuleDefinition,
+  SkillAnimationBindingDefinition,
   ItemSet,
   LootTable,
   Material,
   RuneComplex,
   SoundDefinition,
+  SpriteAnimationSetDefinition,
+  SpriteBodyTemplateDefinition,
+  SpriteProfileDefinition,
+  EquipmentVisualBindingDefinition,
   StoredImage,
   TreeDefinition,
   BiomeDefinition,
@@ -80,7 +86,13 @@ export type ContentCollectionName =
   | 'biomes'
   | 'imageSheets'
   | 'professionSkills'
-  | 'professionWorkshops';
+  | 'professionWorkshops'
+  | 'spriteBodyTemplates'
+  | 'spriteAnimationSets'
+  | 'equipmentVisualBindings'
+  | 'spriteProfiles'
+  | 'skillAnimationBindings'
+  | 'runtimeAssemblyRules';
 
 export interface ItemPreviewQueryBody {
   activationContexts?: string[];
@@ -172,6 +184,12 @@ export interface ContentSnapshot {
   biomes?: BiomeDefinition[];
   imageSheets?: import('./models').ImageSheetDefinition[];
   professionSkills?: import('../../types/profession').ProfessionSkill[];
+  spriteBodyTemplates?: SpriteBodyTemplateDefinition[];
+  spriteAnimationSets?: SpriteAnimationSetDefinition[];
+  equipmentVisualBindings?: EquipmentVisualBindingDefinition[];
+  spriteProfiles?: SpriteProfileDefinition[];
+  skillAnimationBindings?: SkillAnimationBindingDefinition[];
+  runtimeAssemblyRules?: RuntimeAssemblyRuleDefinition[];
   worldMap: WorldMapContent;
 }
 

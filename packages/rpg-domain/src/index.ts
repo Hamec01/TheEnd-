@@ -27,6 +27,7 @@ export * from './blacksmith-session';
 export * from './shop';
 export * from './battle-map';
 export * from './diplomacy';
+export * from './sprite-studio';
 export * from './visual-effects';
 export * from './progression';
 export { TargetZone } from './arena-battle';

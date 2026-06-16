@@ -1,5 +1,15 @@
-import type { AdminSkillDefinition, PrimaryStat, VisualFxDefinition } from '@theend/rpg-domain';
-import type { ActorBattleVisualConfig } from '@theend/rpg-domain';
+import type {
+  ActorBattleVisualConfig,
+  AdminSkillDefinition,
+  EquipmentVisualBindingDefinition,
+  PrimaryStat,
+  RuntimeAssemblyRuleDefinition,
+  SkillAnimationBindingDefinition,
+  SpriteAnimationSetDefinition,
+  SpriteBodyTemplateDefinition,
+  SpriteProfileDefinition,
+  VisualFxDefinition,
+} from '@theend/rpg-domain';
 import type { DialogueDefinition } from '../../types/dialogue';
 import type { NpcDefinition } from '../../types/npc';
 import type {
@@ -8,6 +18,25 @@ import type {
   QuestItemDefinition,
   QuestMarkerDefinition,
 } from '../../types/quest';
+
+export type {
+  EquipmentVisualBindingDefinition,
+  RuntimeAssemblyRuleDefinition,
+  SkillAnimationBindingDefinition,
+  SpriteActionType,
+  SpriteAnchorKey,
+  SpriteAnchorPoint,
+  SpriteAnchorSet,
+  SpriteAnimationClipDefinition,
+  SpriteAnimationSetDefinition,
+  SpriteBodyTemplateDefinition,
+  SpriteBodyType,
+  SpriteImageRef,
+  SpriteProfileDefinition,
+  SpriteSurface,
+  SpriteSurfaceAssetDefinition,
+  WeaponGripType,
+} from '@theend/rpg-domain';
 
 export type StatKey = PrimaryStat;
 
@@ -812,6 +841,7 @@ export interface AdminItem {
   loreDescription: string;
   imagePath?: string;
   imageRef?: GameImageRef;
+  defaultEquipmentVisualBindingId?: string;
   battleVisuals?: ActorBattleVisualConfig;
   professionItem?: boolean;
   professionId?: string;

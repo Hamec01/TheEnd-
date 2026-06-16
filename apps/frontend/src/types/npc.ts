@@ -94,6 +94,7 @@ export interface NpcDefinition {
   iconUrl?: string;
   iconImageRef?: GameImageRef;
   battleSpriteAssetId?: string;
+  spriteProfileId?: string;
   deathEffectId?: string;
   hitEffectPreset?: string;
   dialogueStartVoiceAssetId?: string;

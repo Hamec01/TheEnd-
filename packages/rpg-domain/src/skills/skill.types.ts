@@ -323,6 +323,7 @@ export interface SkillDefinition {
   requiredClassIds?: string[];
   requiredRaceIds?: string[];
   requiredKnownSkillIds?: string[];
+  skillAnimationBindingId?: string;
 
   adminNotes?: string;
   createdAt: string;

@@ -1,0 +1,6 @@
+{
+  "name": "Wolf 2D Spritesheet Generator",
+  "description": "An interactive procedurally-drawn 2D spritesheet engine and playable RPG sandbox covering five customizable characters: wolf, crimson knight, elf archer, wizard mage, and epic mutant monsters with custom interactive combat moves.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

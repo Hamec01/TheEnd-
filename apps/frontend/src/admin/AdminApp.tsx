@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isAdminAuthenticated, loginAdmin, logoutAdmin } from '../services/adminAuth';
+import { featureFlags } from '../config/featureFlags';
 import type { ContentAutosaveStatus } from '../services/content/contentApi';
 import { getContentAutosaveStatus, triggerContentAutosave } from '../services/content/contentApi';
 import { AdminLayout } from './AdminLayout';
@@ -26,6 +27,7 @@ import { QuestItemsPage } from './pages/QuestItemsPage';
 import { QuestsPage } from './pages/QuestsPage';
 import { SkillsPage } from './pages/SkillsPage';
 import { SoundsPage } from './pages/SoundsPage';
+import { SpriteStudioPage } from './pages/SpriteStudioPage';
 import { VisualFxPage } from './pages/VisualFxPage';
 import { WorldSimulationAdmin } from './pages/WorldSimulationAdmin';
 import { ZoneEditorPage } from './pages/ZoneEditorPage';
@@ -60,6 +62,7 @@ type AdminRoute =
   | '/admin/backup'
   | '/admin/world-sim'
   | '/admin/diplomacy'
+  | '/admin/sprite-studio'
   | '/admin/sounds'
   | '/admin/biomes'
   | '/admin/trees'
@@ -90,6 +93,7 @@ function normalizeAdminPath(path: string): AdminRoute {
     '/admin/backup',
     '/admin/world-sim',
     '/admin/diplomacy',
+    '/admin/sprite-studio',
     '/admin/sounds',
     '/admin/biomes',
     '/admin/trees',
@@ -148,6 +152,8 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
         return 'Backup / Content Tools';
       case '/admin/diplomacy':
         return 'ОТНОШЕНИЯ / ДИПЛОМАТИЯ';
+      case '/admin/sprite-studio':
+        return 'SPRITE STUDIO';
       case '/admin/world-sim':
         return '🌍 Симуляция мира';
       case '/admin/sounds':
@@ -288,6 +294,9 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
     case '/admin/diplomacy':
       page = <DiplomacyPage />;
       break;
+    case '/admin/sprite-studio':
+      page = featureFlags.enableSpriteStudioAdmin ? <SpriteStudioPage /> : <DashboardPage />;
+      break;
     case '/admin/world-sim':
       page = <WorldSimulationAdmin />;
       break;
@@ -317,7 +326,7 @@ export function AdminApp({ currentPath, onNavigate }: AdminAppProps) {
       autosaveStatus={autosaveStatus}
       autosaveState={autosaveState}
       onSaveNow={() => { void handleSaveNow(); }}
-      isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor' || route === '/admin/cities'}
+      isEditorRoute={route === '/admin/battle-maps' || route === '/admin/zone-editor' || route === '/admin/cities' || route === '/admin/sprite-studio'}
     >
       {page}
     </AdminLayout>

@@ -10,11 +10,24 @@ import {
   type AdminSkillDefinition,
   type BattleMapDefinition,
   type DiplomaticActorDefinition,
+  type EquipmentVisualBindingDefinition,
   type ArenaCombatEquipmentModifiers,
   type Equipment,
   type GlobalRelation,
   type ItemDefinition,
   type Merchant,
+  type RuntimeAssemblyRuleDefinition,
+  type SkillAnimationBindingDefinition,
+  type SpriteActionType,
+  type SpriteAnchorPoint,
+  type SpriteAnchorSet,
+  type SpriteAnimationClipDefinition,
+  type SpriteAnimationSetDefinition,
+  type SpriteBodyTemplateDefinition,
+  type SpriteImageRef,
+  type SpriteProfileDefinition,
+  type SpriteSurface,
+  type SpriteSurfaceAssetDefinition,
   type StatBlock,
   type VisualFxDefinition,
 } from '@theend/rpg-domain';
@@ -132,6 +145,12 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'biomes',
   'imageSheets',
   'professionSkills',
+  'spriteBodyTemplates',
+  'spriteAnimationSets',
+  'equipmentVisualBindings',
+  'spriteProfiles',
+  'skillAnimationBindings',
+  'runtimeAssemblyRules',
 ];
 const BUILTIN_MERCHANT_IDS = new Set(MERCHANTS.map((merchant) => merchant.id));
 const CONTENT_DB_BACKUP_DIR = 'backups';
@@ -229,6 +248,12 @@ function countContent(db: ContentDatabase): Record<string, number> {
     biomes: (db.biomes ?? []).length,
     imageSheets: (db.imageSheets ?? []).length,
     professionSkills: (db.professionSkills ?? []).length,
+    spriteBodyTemplates: (db.spriteBodyTemplates ?? []).length,
+    spriteAnimationSets: (db.spriteAnimationSets ?? []).length,
+    equipmentVisualBindings: (db.equipmentVisualBindings ?? []).length,
+    spriteProfiles: (db.spriteProfiles ?? []).length,
+    skillAnimationBindings: (db.skillAnimationBindings ?? []).length,
+    runtimeAssemblyRules: (db.runtimeAssemblyRules ?? []).length,
     maps: db.battleMaps.length,
     zones: db.worldMap.zones.length,
     markers: db.questMarkers.length + (db.worldMap.questMarkers?.length ?? 0),
@@ -603,6 +628,12 @@ function createEmptyDatabase(): ContentDatabase {
     biomes: [],
     imageSheets: [],
     professionSkills: [],
+    spriteBodyTemplates: [],
+    spriteAnimationSets: [],
+    equipmentVisualBindings: [],
+    spriteProfiles: [],
+    skillAnimationBindings: [],
+    runtimeAssemblyRules: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -1113,6 +1144,12 @@ function createSeedDatabase(): ContentDatabase {
     blacksmithItemTemplates: seedBlacksmithItemTemplates(),
     carpenterItemTemplates: [],
     blacksmithItemWorkActions: seedBlacksmithItemWorkActions(),
+    spriteBodyTemplates: [],
+    spriteAnimationSets: [],
+    equipmentVisualBindings: [],
+    spriteProfiles: [],
+    skillAnimationBindings: [],
+    runtimeAssemblyRules: [],
     worldMap: {
       zones: [],
       regions: [],
@@ -2256,6 +2293,7 @@ export function normalizeItemInput(input: AdminItem): AdminItem {
     loreDescription: input.loreDescription ?? '',
     imagePath: toLegacyImagePath(imageRef, input.imagePath),
     imageRef,
+    defaultEquipmentVisualBindingId: input.defaultEquipmentVisualBindingId?.trim() || undefined,
     isEnabled: input.isEnabled !== false,
     createdAt: input.createdAt || nowIso(),
     updatedAt: input.updatedAt || nowIso(),
@@ -2379,6 +2417,7 @@ function normalizeSkillInput(input: AdminSkillDefinition): AdminSkillDefinition 
     requiredKnownSkillIds: Array.isArray(input.requiredKnownSkillIds)
       ? input.requiredKnownSkillIds.map((entry) => String(entry).trim()).filter(Boolean)
       : [],
+    skillAnimationBindingId: input.skillAnimationBindingId?.trim() || undefined,
     adminNotes: input.adminNotes?.trim() || undefined,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
@@ -2507,6 +2546,7 @@ function normalizeNpcInput(input: NpcDefinition): NpcDefinition {
     iconUrl: toLegacyImagePath(iconImageRef, input.iconUrl),
     iconImageRef,
     battleSpriteAssetId: input.battleSpriteAssetId ? String(input.battleSpriteAssetId).trim() : undefined,
+    spriteProfileId: input.spriteProfileId ? String(input.spriteProfileId).trim() : undefined,
     deathEffectId: input.deathEffectId ? String(input.deathEffectId).trim() : undefined,
     hitEffectPreset: input.hitEffectPreset ? String(input.hitEffectPreset).trim() : undefined,
     dialogueStartVoiceAssetId: input.dialogueStartVoiceAssetId ? String(input.dialogueStartVoiceAssetId).trim() : undefined,
@@ -2613,6 +2653,324 @@ function normalizeBiomeInput(input: BiomeDefinition): BiomeDefinition {
     },
     description: String(input.description ?? '').trim(),
     enabled: input.enabled !== false,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+const SPRITE_STUDIO_SCHEMA_VERSION = 1;
+const SPRITE_SURFACES: SpriteSurface[] = ['paperdoll', 'world', 'battle'];
+const SPRITE_ACTIONS: SpriteActionType[] = [
+  'idle',
+  'walk',
+  'run',
+  'attack_melee',
+  'attack_ranged',
+  'cast',
+  'block',
+  'hit',
+  'death',
+  'interact',
+  'work',
+  'carry',
+  'roll',
+  'jump',
+];
+
+function containsEmbeddedSpriteData(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase().startsWith('data:');
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsEmbeddedSpriteData(entry));
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some((entry) => containsEmbeddedSpriteData(entry));
+  }
+  return false;
+}
+
+function assertNoEmbeddedSpriteData(value: unknown, label: string): void {
+  if (containsEmbeddedSpriteData(value)) {
+    throw new BadRequestException(`${label} cannot persist base64/data URLs. Upload images through the content image pipeline.`);
+  }
+}
+
+function normalizeSpriteSurfaceList(value: unknown, fallback: SpriteSurface[] = ['paperdoll']): SpriteSurface[] {
+  if (!Array.isArray(value)) {
+    return [...fallback];
+  }
+  const normalized = value
+    .map((entry) => String(entry ?? '').trim())
+    .filter((entry): entry is SpriteSurface => SPRITE_SURFACES.includes(entry as SpriteSurface));
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : [...fallback];
+}
+
+function normalizeSpriteAction(value: unknown): SpriteActionType {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'die') {
+    return 'death';
+  }
+  return SPRITE_ACTIONS.includes(normalized as SpriteActionType)
+    ? normalized as SpriteActionType
+    : 'idle';
+}
+
+function normalizeSpriteAnchorPoint(value: unknown, fallbackX = 50, fallbackY = 50): SpriteAnchorPoint {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { x: fallbackX, y: fallbackY };
+  }
+  const raw = value as Record<string, unknown>;
+  const x = typeof raw.x === 'number' && Number.isFinite(raw.x) ? Math.max(0, Math.min(100, raw.x)) : fallbackX;
+  const y = typeof raw.y === 'number' && Number.isFinite(raw.y) ? Math.max(0, Math.min(100, raw.y)) : fallbackY;
+  return { x, y };
+}
+
+function normalizeSpriteAnchorSet(value: unknown): SpriteAnchorSet {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return {
+    headAnchor: normalizeSpriteAnchorPoint(raw.headAnchor, 50, 12),
+    chestAnchor: normalizeSpriteAnchorPoint(raw.chestAnchor, 50, 34),
+    rightHandAnchor: normalizeSpriteAnchorPoint(raw.rightHandAnchor, 66, 46),
+    leftHandAnchor: normalizeSpriteAnchorPoint(raw.leftHandAnchor, 34, 46),
+    offhandAnchor: normalizeSpriteAnchorPoint(raw.offhandAnchor, 28, 46),
+    shieldAnchor: normalizeSpriteAnchorPoint(raw.shieldAnchor, 22, 42),
+    backAnchor: normalizeSpriteAnchorPoint(raw.backAnchor, 52, 40),
+    weaponTipAnchor: normalizeSpriteAnchorPoint(raw.weaponTipAnchor, 82, 42),
+    projectileSpawnAnchor: normalizeSpriteAnchorPoint(raw.projectileSpawnAnchor, 70, 34),
+    castFxAnchor: normalizeSpriteAnchorPoint(raw.castFxAnchor, 56, 26),
+    hitFxAnchor: normalizeSpriteAnchorPoint(raw.hitFxAnchor, 50, 28),
+    feetAnchor: normalizeSpriteAnchorPoint(raw.feetAnchor, 50, 88),
+    shadowAnchor: normalizeSpriteAnchorPoint(raw.shadowAnchor, 50, 94),
+  };
+}
+
+function normalizeSpriteImageRefInput(value: unknown, legacyImagePath?: string | null): SpriteImageRef | undefined {
+  return normalizeGameImageRefInput(value, legacyImagePath) as SpriteImageRef | undefined;
+}
+
+function normalizeSpriteSurfaceAsset(value: unknown): SpriteSurfaceAssetDefinition | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const imageRef = normalizeSpriteImageRefInput(raw.imageRef, typeof raw.imagePath === 'string' ? raw.imagePath : undefined);
+  const scale = typeof raw.scale === 'number' && Number.isFinite(raw.scale)
+    ? Math.max(0.01, Math.min(8, raw.scale))
+    : undefined;
+  const offsetX = typeof raw.offsetX === 'number' && Number.isFinite(raw.offsetX) ? raw.offsetX : undefined;
+  const offsetY = typeof raw.offsetY === 'number' && Number.isFinite(raw.offsetY) ? raw.offsetY : undefined;
+  const defaultAnimationSetId = typeof raw.defaultAnimationSetId === 'string' && raw.defaultAnimationSetId.trim()
+    ? raw.defaultAnimationSetId.trim()
+    : undefined;
+  if (!imageRef && scale === undefined && offsetX === undefined && offsetY === undefined && !defaultAnimationSetId) {
+    return undefined;
+  }
+  return {
+    imageRef,
+    imagePath: imageRef?.type === 'image' ? imageRef.src.trim() || undefined : undefined,
+    scale,
+    offsetX,
+    offsetY,
+    defaultAnimationSetId,
+  };
+}
+
+function normalizeSpriteAnimationClip(value: unknown, fallbackIndex: number): SpriteAnimationClipDefinition {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const imageRef = normalizeSpriteImageRefInput(raw.imageRef, typeof raw.imagePath === 'string' ? raw.imagePath : undefined);
+  return {
+    action: normalizeSpriteAction(raw.action),
+    label: typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim() : undefined,
+    imageRef,
+    imagePath: imageRef?.type === 'image' ? imageRef.src.trim() || undefined : undefined,
+    frameWidth: typeof raw.frameWidth === 'number' && Number.isFinite(raw.frameWidth) ? Math.max(1, Math.round(raw.frameWidth)) : 128,
+    frameHeight: typeof raw.frameHeight === 'number' && Number.isFinite(raw.frameHeight) ? Math.max(1, Math.round(raw.frameHeight)) : 128,
+    frameCount: typeof raw.frameCount === 'number' && Number.isFinite(raw.frameCount) ? Math.max(1, Math.round(raw.frameCount)) : 1,
+    fps: typeof raw.fps === 'number' && Number.isFinite(raw.fps) ? Math.max(1, Math.round(raw.fps)) : 8,
+    row: typeof raw.row === 'number' && Number.isFinite(raw.row) ? Math.max(0, Math.round(raw.row)) : fallbackIndex,
+    loop: raw.loop !== false,
+    legacyAliases: normalizeOptionalStringList(raw.legacyAliases),
+    notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : undefined,
+  };
+}
+
+function normalizeSpriteBodyTemplateInput(input: SpriteBodyTemplateDefinition): SpriteBodyTemplateDefinition {
+  assertNoEmbeddedSpriteData(input, 'Sprite body template');
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    bodyType: typeof input.bodyType === 'string' && input.bodyType.trim() ? input.bodyType : 'humanoid',
+    compatibleRaceIds: normalizeStringList(input.compatibleRaceIds),
+    compatibleBodyTypes: normalizeStringList(input.compatibleBodyTypes),
+    supportedSurfaces: normalizeSpriteSurfaceList(input.supportedSurfaces),
+    paperdoll: normalizeSpriteSurfaceAsset(input.paperdoll),
+    world: normalizeSpriteSurfaceAsset(input.world),
+    battle: normalizeSpriteSurfaceAsset(input.battle),
+    anchors: normalizeSpriteAnchorSet(input.anchors),
+    tags: normalizeOptionalStringList(input.tags),
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeSpriteAnimationSetInput(input: SpriteAnimationSetDefinition): SpriteAnimationSetDefinition {
+  assertNoEmbeddedSpriteData(input, 'Sprite animation set');
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : undefined,
+    compatibleBodyTemplateIds: normalizeStringList(input.compatibleBodyTemplateIds),
+    compatibleRaceIds: normalizeStringList(input.compatibleRaceIds),
+    compatibleBodyTypes: normalizeStringList(input.compatibleBodyTypes),
+    compatibleSurfaces: normalizeSpriteSurfaceList(input.compatibleSurfaces),
+    clips: Array.isArray(input.clips)
+      ? input.clips.map((entry, index) => normalizeSpriteAnimationClip(entry, index))
+      : [],
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeEquipmentVisualBindingInput(input: EquipmentVisualBindingDefinition): EquipmentVisualBindingDefinition {
+  assertNoEmbeddedSpriteData(input, 'Equipment visual binding');
+  const now = nowIso();
+  const normalizeGrip = (value: unknown): EquipmentVisualBindingDefinition['weaponGripType'] => {
+    const normalized = String(value ?? '').trim();
+    return normalized === 'one_handed'
+      || normalized === 'two_handed'
+      || normalized === 'main_hand'
+      || normalized === 'off_hand'
+      || normalized === 'dual_wield'
+      || normalized === 'shield'
+      || normalized === 'bow'
+      || normalized === 'staff'
+      || normalized === 'spear'
+      || normalized === 'thrown'
+      || normalized === 'none'
+      ? normalized
+      : 'none';
+  };
+  const anchorOverridesRaw = input.anchorOverrides && typeof input.anchorOverrides === 'object' && !Array.isArray(input.anchorOverrides)
+    ? input.anchorOverrides as Record<string, unknown>
+    : {};
+  const anchorOverrides = Object.fromEntries(
+    Object.entries(anchorOverridesRaw)
+      .map(([key, value]) => [key, normalizeSpriteAnchorPoint(value)])
+      .filter(([key]) => Boolean(key)),
+  ) as Partial<SpriteAnchorSet>;
+
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    itemId: String(input.itemId ?? '').trim(),
+    defaultForItem: input.defaultForItem === true,
+    compatibleBodyTemplateIds: normalizeStringList(input.compatibleBodyTemplateIds),
+    compatibleRaceIds: normalizeStringList(input.compatibleRaceIds),
+    compatibleBodyTypes: normalizeStringList(input.compatibleBodyTypes),
+    compatibleSurfaces: normalizeSpriteSurfaceList(input.compatibleSurfaces),
+    equipmentSlot: String(input.equipmentSlot ?? '').trim(),
+    weaponGripType: normalizeGrip(input.weaponGripType),
+    paperdoll: normalizeSpriteSurfaceAsset(input.paperdoll),
+    world: normalizeSpriteSurfaceAsset(input.world),
+    battle: normalizeSpriteSurfaceAsset(input.battle),
+    anchorOverrides: Object.keys(anchorOverrides).length > 0 ? anchorOverrides : undefined,
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeSpriteProfileInput(input: SpriteProfileDefinition): SpriteProfileDefinition {
+  assertNoEmbeddedSpriteData(input, 'Sprite profile');
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    npcId: typeof input.npcId === 'string' && input.npcId.trim() ? input.npcId.trim() : undefined,
+    bodyTemplateId: String(input.bodyTemplateId ?? '').trim(),
+    animationSetId: String(input.animationSetId ?? '').trim(),
+    defaultSurface: normalizeSpriteSurfaceList([input.defaultSurface], ['paperdoll'])[0],
+    defaultEquipmentItemIds: normalizeStringList(input.defaultEquipmentItemIds),
+    previewSkillIds: normalizeStringList(input.previewSkillIds),
+    previewFxIds: normalizeStringList(input.previewFxIds),
+    tags: normalizeOptionalStringList(input.tags),
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeSkillAnimationBindingInput(input: SkillAnimationBindingDefinition): SkillAnimationBindingDefinition {
+  assertNoEmbeddedSpriteData(input, 'Skill animation binding');
+  const now = nowIso();
+  const normalizeAnchorKey = (value: unknown): SkillAnimationBindingDefinition['sourceAnchor'] => {
+    const normalized = String(value ?? '').trim();
+    return normalized === 'headAnchor'
+      || normalized === 'chestAnchor'
+      || normalized === 'rightHandAnchor'
+      || normalized === 'leftHandAnchor'
+      || normalized === 'offhandAnchor'
+      || normalized === 'shieldAnchor'
+      || normalized === 'backAnchor'
+      || normalized === 'weaponTipAnchor'
+      || normalized === 'projectileSpawnAnchor'
+      || normalized === 'castFxAnchor'
+      || normalized === 'hitFxAnchor'
+      || normalized === 'feetAnchor'
+      || normalized === 'shadowAnchor'
+      ? normalized
+      : undefined;
+  };
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    skillId: String(input.skillId ?? '').trim(),
+    action: normalizeSpriteAction(input.action),
+    animationSetId: typeof input.animationSetId === 'string' && input.animationSetId.trim() ? input.animationSetId.trim() : undefined,
+    castFxId: typeof input.castFxId === 'string' && input.castFxId.trim() ? input.castFxId.trim() : undefined,
+    projectileFxId: typeof input.projectileFxId === 'string' && input.projectileFxId.trim() ? input.projectileFxId.trim() : undefined,
+    hitFxId: typeof input.hitFxId === 'string' && input.hitFxId.trim() ? input.hitFxId.trim() : undefined,
+    sourceAnchor: normalizeAnchorKey(input.sourceAnchor),
+    projectileAnchor: normalizeAnchorKey(input.projectileAnchor),
+    hitAnchor: normalizeAnchorKey(input.hitAnchor),
+    compatibleSurfaces: normalizeSpriteSurfaceList(input.compatibleSurfaces),
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeRuntimeAssemblyRuleInput(input: RuntimeAssemblyRuleDefinition): RuntimeAssemblyRuleDefinition {
+  assertNoEmbeddedSpriteData(input, 'Runtime assembly rule');
+  const now = nowIso();
+  return {
+    ...input,
+    id: String(input.id ?? '').trim(),
+    schemaVersion: Math.max(1, Math.round(Number(input.schemaVersion) || SPRITE_STUDIO_SCHEMA_VERSION)),
+    name: String(input.name ?? '').trim(),
+    raceId: typeof input.raceId === 'string' && input.raceId.trim() ? input.raceId.trim() : undefined,
+    bodyTemplateId: typeof input.bodyTemplateId === 'string' && input.bodyTemplateId.trim() ? input.bodyTemplateId.trim() : undefined,
+    animationSetId: typeof input.animationSetId === 'string' && input.animationSetId.trim() ? input.animationSetId.trim() : undefined,
+    profileId: typeof input.profileId === 'string' && input.profileId.trim() ? input.profileId.trim() : undefined,
+    compatibleSurfaces: normalizeSpriteSurfaceList(input.compatibleSurfaces),
+    allowLegacyFallback: input.allowLegacyFallback !== false,
+    notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
     createdAt: input.createdAt || now,
     updatedAt: input.updatedAt || now,
   };
@@ -4047,6 +4405,24 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       biomes: sanitizeIdObjectArray<BiomeDefinition>(raw.biomes).map((entry) => normalizeBiomeInput(entry)).filter((entry) => Boolean(entry.id)),
       imageSheets: clone(sanitizeIdObjectArray<ImageSheetDefinition>(raw.imageSheets)),
       professionSkills: clone(sanitizeIdObjectArray<ProfessionSkillDefinition>(raw.professionSkills)),
+      spriteBodyTemplates: sanitizeIdObjectArray<SpriteBodyTemplateDefinition>(raw.spriteBodyTemplates)
+        .map((entry) => normalizeSpriteBodyTemplateInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      spriteAnimationSets: sanitizeIdObjectArray<SpriteAnimationSetDefinition>(raw.spriteAnimationSets)
+        .map((entry) => normalizeSpriteAnimationSetInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      equipmentVisualBindings: sanitizeIdObjectArray<EquipmentVisualBindingDefinition>(raw.equipmentVisualBindings)
+        .map((entry) => normalizeEquipmentVisualBindingInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      spriteProfiles: sanitizeIdObjectArray<SpriteProfileDefinition>(raw.spriteProfiles)
+        .map((entry) => normalizeSpriteProfileInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      skillAnimationBindings: sanitizeIdObjectArray<SkillAnimationBindingDefinition>(raw.skillAnimationBindings)
+        .map((entry) => normalizeSkillAnimationBindingInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      runtimeAssemblyRules: sanitizeIdObjectArray<RuntimeAssemblyRuleDefinition>(raw.runtimeAssemblyRules)
+        .map((entry) => normalizeRuntimeAssemblyRuleInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       worldMap: raw.worldMap && typeof raw.worldMap === 'object'
         ? {
             zones: clone(sanitizeIdObjectArray<WorldMapZone>(raw.worldMap.zones)),
@@ -4149,6 +4525,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       battleMaps: mergeById(existing.battleMaps, incoming.battleMaps),
       diplomaticActors: mergeById(existing.diplomaticActors ?? [], incoming.diplomaticActors ?? []),
       globalRelations: mergeById(existing.globalRelations ?? [], incoming.globalRelations ?? []),
+      spriteBodyTemplates: mergeById(existing.spriteBodyTemplates ?? [], incoming.spriteBodyTemplates ?? []),
+      spriteAnimationSets: mergeById(existing.spriteAnimationSets ?? [], incoming.spriteAnimationSets ?? []),
+      equipmentVisualBindings: mergeById(existing.equipmentVisualBindings ?? [], incoming.equipmentVisualBindings ?? []),
+      spriteProfiles: mergeById(existing.spriteProfiles ?? [], incoming.spriteProfiles ?? []),
+      skillAnimationBindings: mergeById(existing.skillAnimationBindings ?? [], incoming.skillAnimationBindings ?? []),
+      runtimeAssemblyRules: mergeById(existing.runtimeAssemblyRules ?? [], incoming.runtimeAssemblyRules ?? []),
       craftingRecipes: mergeById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
       recipeVisualProfiles: mergeById(existing.recipeVisualProfiles ?? [], incoming.recipeVisualProfiles ?? []),
       itemSets: mergeById(existing.itemSets ?? [], incoming.itemSets ?? []),
@@ -4202,6 +4584,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       battleMaps: addMissingById(existing.battleMaps, incoming.battleMaps),
       diplomaticActors: addMissingById(existing.diplomaticActors ?? [], incoming.diplomaticActors ?? []),
       globalRelations: addMissingById(existing.globalRelations ?? [], incoming.globalRelations ?? []),
+      spriteBodyTemplates: addMissingById(existing.spriteBodyTemplates ?? [], incoming.spriteBodyTemplates ?? []),
+      spriteAnimationSets: addMissingById(existing.spriteAnimationSets ?? [], incoming.spriteAnimationSets ?? []),
+      equipmentVisualBindings: addMissingById(existing.equipmentVisualBindings ?? [], incoming.equipmentVisualBindings ?? []),
+      spriteProfiles: addMissingById(existing.spriteProfiles ?? [], incoming.spriteProfiles ?? []),
+      skillAnimationBindings: addMissingById(existing.skillAnimationBindings ?? [], incoming.skillAnimationBindings ?? []),
+      runtimeAssemblyRules: addMissingById(existing.runtimeAssemblyRules ?? [], incoming.runtimeAssemblyRules ?? []),
       craftingRecipes: addMissingById(existing.craftingRecipes ?? [], incoming.craftingRecipes ?? []),
       recipeVisualProfiles: addMissingById(existing.recipeVisualProfiles ?? [], incoming.recipeVisualProfiles ?? []),
       itemSets: addMissingById(existing.itemSets ?? [], incoming.itemSets ?? []),
@@ -4298,6 +4686,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         battleMaps: filterCollection('battleMaps', incoming.battleMaps, existing.battleMaps) as BattleMapDefinition[] | undefined,
         diplomaticActors: filterCollection('diplomaticActors', incoming.diplomaticActors, existing.diplomaticActors ?? []) as DiplomaticActorDefinition[] | undefined,
         globalRelations: filterCollection('globalRelations', incoming.globalRelations, existing.globalRelations ?? []) as GlobalRelation[] | undefined,
+        spriteBodyTemplates: filterCollection('spriteBodyTemplates', incoming.spriteBodyTemplates, existing.spriteBodyTemplates ?? []) as SpriteBodyTemplateDefinition[] | undefined,
+        spriteAnimationSets: filterCollection('spriteAnimationSets', incoming.spriteAnimationSets, existing.spriteAnimationSets ?? []) as SpriteAnimationSetDefinition[] | undefined,
+        equipmentVisualBindings: filterCollection('equipmentVisualBindings', incoming.equipmentVisualBindings, existing.equipmentVisualBindings ?? []) as EquipmentVisualBindingDefinition[] | undefined,
+        spriteProfiles: filterCollection('spriteProfiles', incoming.spriteProfiles, existing.spriteProfiles ?? []) as SpriteProfileDefinition[] | undefined,
+        skillAnimationBindings: filterCollection('skillAnimationBindings', incoming.skillAnimationBindings, existing.skillAnimationBindings ?? []) as SkillAnimationBindingDefinition[] | undefined,
+        runtimeAssemblyRules: filterCollection('runtimeAssemblyRules', incoming.runtimeAssemblyRules, existing.runtimeAssemblyRules ?? []) as RuntimeAssemblyRuleDefinition[] | undefined,
         craftingRecipes: filterCollection('craftingRecipes', incoming.craftingRecipes, existing.craftingRecipes ?? []) as CraftingRecipe[] | undefined,
         recipeVisualProfiles: filterCollection('recipeVisualProfiles', incoming.recipeVisualProfiles, existing.recipeVisualProfiles ?? []) as RecipeVisualProfile[] | undefined,
         itemSets: filterCollection('itemSets', incoming.itemSets, existing.itemSets ?? []) as ItemSet[] | undefined,
@@ -4765,6 +5159,18 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeQuestItemInput(payload as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       nextEntry = normalizeQuestMarkerInput(payload as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteBodyTemplates') {
+      nextEntry = normalizeSpriteBodyTemplateInput(payload as unknown as SpriteBodyTemplateDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteAnimationSets') {
+      nextEntry = normalizeSpriteAnimationSetInput(payload as unknown as SpriteAnimationSetDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'equipmentVisualBindings') {
+      nextEntry = normalizeEquipmentVisualBindingInput(payload as unknown as EquipmentVisualBindingDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteProfiles') {
+      nextEntry = normalizeSpriteProfileInput(payload as unknown as SpriteProfileDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'skillAnimationBindings') {
+      nextEntry = normalizeSkillAnimationBindingInput(payload as unknown as SkillAnimationBindingDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'runtimeAssemblyRules') {
+      nextEntry = normalizeRuntimeAssemblyRuleInput(payload as unknown as RuntimeAssemblyRuleDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'craftingRecipes') {
       nextEntry = normalizeCraftingRecipeInput(payload as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'recipeVisualProfiles') {
@@ -4843,6 +5249,18 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeQuestItemInput(mergedBase as unknown as QuestItemDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'questMarkers') {
       merged = normalizeQuestMarkerInput(mergedBase as unknown as QuestMarkerDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteBodyTemplates') {
+      merged = normalizeSpriteBodyTemplateInput(mergedBase as unknown as SpriteBodyTemplateDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteAnimationSets') {
+      merged = normalizeSpriteAnimationSetInput(mergedBase as unknown as SpriteAnimationSetDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'equipmentVisualBindings') {
+      merged = normalizeEquipmentVisualBindingInput(mergedBase as unknown as EquipmentVisualBindingDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteProfiles') {
+      merged = normalizeSpriteProfileInput(mergedBase as unknown as SpriteProfileDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'skillAnimationBindings') {
+      merged = normalizeSkillAnimationBindingInput(mergedBase as unknown as SkillAnimationBindingDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'runtimeAssemblyRules') {
+      merged = normalizeRuntimeAssemblyRuleInput(mergedBase as unknown as RuntimeAssemblyRuleDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'craftingRecipes') {
       merged = normalizeCraftingRecipeInput(mergedBase as unknown as CraftingRecipe) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'recipeVisualProfiles') {
@@ -5006,6 +5424,30 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     }
     if (Array.isArray(payload.battleMaps) && payload.battleMaps.length > 0) {
       db.battleMaps = mergeById(db.battleMaps, clone(payload.battleMaps as BattleMapDefinition[]));
+    }
+    if (Array.isArray(payload.spriteBodyTemplates) && payload.spriteBodyTemplates.length > 0) {
+      const normalized = payload.spriteBodyTemplates.map((entry) => normalizeSpriteBodyTemplateInput(entry as SpriteBodyTemplateDefinition));
+      db.spriteBodyTemplates = mergeById(db.spriteBodyTemplates ?? [], normalized);
+    }
+    if (Array.isArray(payload.spriteAnimationSets) && payload.spriteAnimationSets.length > 0) {
+      const normalized = payload.spriteAnimationSets.map((entry) => normalizeSpriteAnimationSetInput(entry as SpriteAnimationSetDefinition));
+      db.spriteAnimationSets = mergeById(db.spriteAnimationSets ?? [], normalized);
+    }
+    if (Array.isArray(payload.equipmentVisualBindings) && payload.equipmentVisualBindings.length > 0) {
+      const normalized = payload.equipmentVisualBindings.map((entry) => normalizeEquipmentVisualBindingInput(entry as EquipmentVisualBindingDefinition));
+      db.equipmentVisualBindings = mergeById(db.equipmentVisualBindings ?? [], normalized);
+    }
+    if (Array.isArray(payload.spriteProfiles) && payload.spriteProfiles.length > 0) {
+      const normalized = payload.spriteProfiles.map((entry) => normalizeSpriteProfileInput(entry as SpriteProfileDefinition));
+      db.spriteProfiles = mergeById(db.spriteProfiles ?? [], normalized);
+    }
+    if (Array.isArray(payload.skillAnimationBindings) && payload.skillAnimationBindings.length > 0) {
+      const normalized = payload.skillAnimationBindings.map((entry) => normalizeSkillAnimationBindingInput(entry as SkillAnimationBindingDefinition));
+      db.skillAnimationBindings = mergeById(db.skillAnimationBindings ?? [], normalized);
+    }
+    if (Array.isArray(payload.runtimeAssemblyRules) && payload.runtimeAssemblyRules.length > 0) {
+      const normalized = payload.runtimeAssemblyRules.map((entry) => normalizeRuntimeAssemblyRuleInput(entry as RuntimeAssemblyRuleDefinition));
+      db.runtimeAssemblyRules = mergeById(db.runtimeAssemblyRules ?? [], normalized);
     }
     if (Array.isArray(payload.craftingRecipes) && payload.craftingRecipes.length > 0) {
       const normalized = payload.craftingRecipes.map((entry) => normalizeCraftingRecipeInput(entry as CraftingRecipe));
