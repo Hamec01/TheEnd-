@@ -92,8 +92,6 @@ export function classifySpriteStudioAsset(descriptor: SpriteStudioAssetDescripto
     || uploadFolderProbe.includes('sprite-studio')
     || uploadPresetProbe.includes('sprite-studio')
     || storedImageName.includes('sprite-studio');
-  const isEquipmentOverlayImage = imagePath.startsWith(EQUIPMENT_VISUAL_ROOT)
-    || legacyPath.startsWith(EQUIPMENT_VISUAL_ROOT);
   const isActorReferenceImage = imagePath.startsWith(ACTOR_REFERENCE_ROOT)
     || legacyPath.startsWith(ACTOR_REFERENCE_ROOT);
   const probe = buildKeywordProbe([
@@ -110,6 +108,9 @@ export function classifySpriteStudioAsset(descriptor: SpriteStudioAssetDescripto
     imageSheet?.src,
     imageSheet?.category,
   ]);
+  const isEquipmentOverlayImage = imagePath.startsWith(EQUIPMENT_VISUAL_ROOT)
+    || legacyPath.startsWith(EQUIPMENT_VISUAL_ROOT)
+    || (isSpriteStudioManagedImage && probe.includes('equipment'));
 
   if (!probe) {
     return 'unknown';

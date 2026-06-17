@@ -7,6 +7,8 @@ import type {
   SpriteAnimationSetDefinition,
   SpriteBodyTemplateDefinition,
   SpriteImageRef,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
   SpriteProfileDefinition,
 } from '@theend/rpg-domain';
 import type { AdminItem, AdminNpc, AdminSkill, AdminVisualFx, ImageSheetDefinition, StoredImage } from '../services/content/models';
@@ -14,6 +16,8 @@ import type { AdminItem, AdminNpc, AdminSkill, AdminVisualFx, ImageSheetDefiniti
 export interface SpriteStudioValidationState {
   bodyTemplates: SpriteBodyTemplateDefinition[];
   animationSets: SpriteAnimationSetDefinition[];
+  vectorDocuments?: SpriteVectorDocument[];
+  visualAssets?: SpriteVisualAssetDefinition[];
   equipmentBindings: EquipmentVisualBindingDefinition[];
   spriteProfiles: SpriteProfileDefinition[];
   skillBindings: SkillAnimationBindingDefinition[];

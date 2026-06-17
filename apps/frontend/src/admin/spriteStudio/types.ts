@@ -4,6 +4,8 @@ import type {
   SkillAnimationBindingDefinition,
   SpriteAnimationSetDefinition,
   SpriteBodyTemplateDefinition,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
   SpriteProfileDefinition,
 } from '@theend/rpg-domain';
 import type {
@@ -20,6 +22,8 @@ export type SpriteStudioTab = 'control' | 'playground' | 'spritesheet' | 'import
 export interface SpriteStudioDraftState {
   bodyTemplates: SpriteBodyTemplateDefinition[];
   animationSets: SpriteAnimationSetDefinition[];
+  vectorDocuments: SpriteVectorDocument[];
+  visualAssets: SpriteVisualAssetDefinition[];
   equipmentBindings: EquipmentVisualBindingDefinition[];
   spriteProfiles: SpriteProfileDefinition[];
   skillBindings: SkillAnimationBindingDefinition[];

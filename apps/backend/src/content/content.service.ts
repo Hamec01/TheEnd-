@@ -28,6 +28,8 @@ import {
   type SpriteProfileDefinition,
   type SpriteSurface,
   type SpriteSurfaceAssetDefinition,
+  type SpriteVectorDocument,
+  type SpriteVisualAssetDefinition,
   type StatBlock,
   type VisualFxDefinition,
 } from '@theend/rpg-domain';
@@ -147,6 +149,8 @@ const CONTENT_COLLECTIONS: ContentCollectionName[] = [
   'professionSkills',
   'spriteBodyTemplates',
   'spriteAnimationSets',
+  'spriteVectorDocuments',
+  'spriteVisualAssets',
   'equipmentVisualBindings',
   'spriteProfiles',
   'skillAnimationBindings',
@@ -250,6 +254,8 @@ function countContent(db: ContentDatabase): Record<string, number> {
     professionSkills: (db.professionSkills ?? []).length,
     spriteBodyTemplates: (db.spriteBodyTemplates ?? []).length,
     spriteAnimationSets: (db.spriteAnimationSets ?? []).length,
+    spriteVectorDocuments: (db.spriteVectorDocuments ?? []).length,
+    spriteVisualAssets: (db.spriteVisualAssets ?? []).length,
     equipmentVisualBindings: (db.equipmentVisualBindings ?? []).length,
     spriteProfiles: (db.spriteProfiles ?? []).length,
     skillAnimationBindings: (db.skillAnimationBindings ?? []).length,
@@ -630,6 +636,8 @@ function createEmptyDatabase(): ContentDatabase {
     professionSkills: [],
     spriteBodyTemplates: [],
     spriteAnimationSets: [],
+    spriteVectorDocuments: [],
+    spriteVisualAssets: [],
     equipmentVisualBindings: [],
     spriteProfiles: [],
     skillAnimationBindings: [],
@@ -1146,6 +1154,8 @@ function createSeedDatabase(): ContentDatabase {
     blacksmithItemWorkActions: seedBlacksmithItemWorkActions(),
     spriteBodyTemplates: [],
     spriteAnimationSets: [],
+    spriteVectorDocuments: [],
+    spriteVisualAssets: [],
     equipmentVisualBindings: [],
     spriteProfiles: [],
     skillAnimationBindings: [],
@@ -2849,6 +2859,35 @@ function normalizeSpriteAnimationSetInput(input: SpriteAnimationSetDefinition): 
   };
 }
 
+function normalizeSpriteVectorDocumentInput(input: SpriteVectorDocument): SpriteVectorDocument {
+  assertNoEmbeddedSpriteData(input, 'Sprite vector document');
+  const now = nowIso();
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    kind: input.kind === 'equipment' ? 'equipment' : 'body',
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
+function normalizeSpriteVisualAssetInput(input: SpriteVisualAssetDefinition): SpriteVisualAssetDefinition {
+  assertNoEmbeddedSpriteData(input, 'Sprite visual asset');
+  const now = nowIso();
+  return {
+    ...clone(input),
+    id: String(input.id ?? '').trim(),
+    name: String(input.name ?? '').trim(),
+    kind: input.kind === 'equipment' ? 'equipment' : 'body',
+    vectorDocumentId: typeof input.vectorDocumentId === 'string' && input.vectorDocumentId.trim() ? input.vectorDocumentId.trim() : undefined,
+    previewImageRef: normalizeSpriteImageRefInput(input.previewImageRef, input.previewImagePath),
+    previewImagePath: undefined,
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now,
+  };
+}
+
 function normalizeEquipmentVisualBindingInput(input: EquipmentVisualBindingDefinition): EquipmentVisualBindingDefinition {
   assertNoEmbeddedSpriteData(input, 'Equipment visual binding');
   const now = nowIso();
@@ -2890,9 +2929,20 @@ function normalizeEquipmentVisualBindingInput(input: EquipmentVisualBindingDefin
     compatibleSurfaces: normalizeSpriteSurfaceList(input.compatibleSurfaces),
     equipmentSlot: String(input.equipmentSlot ?? '').trim(),
     weaponGripType: normalizeGrip(input.weaponGripType),
+    visualAssetId: typeof input.visualAssetId === 'string' && input.visualAssetId.trim() ? input.visualAssetId.trim() : undefined,
+    vectorDocumentId: typeof input.vectorDocumentId === 'string' && input.vectorDocumentId.trim() ? input.vectorDocumentId.trim() : undefined,
     paperdoll: normalizeSpriteSurfaceAsset(input.paperdoll),
     world: normalizeSpriteSurfaceAsset(input.world),
     battle: normalizeSpriteSurfaceAsset(input.battle),
+    supportedActions: Array.isArray(input.supportedActions)
+      ? input.supportedActions.map((entry) => normalizeSpriteAction(entry)).filter(Boolean)
+      : [],
+    preferredAnchor: typeof input.preferredAnchor === 'string' && input.preferredAnchor.trim() ? input.preferredAnchor.trim() as EquipmentVisualBindingDefinition['preferredAnchor'] : undefined,
+    secondaryAnchor: typeof input.secondaryAnchor === 'string' && input.secondaryAnchor.trim() ? input.secondaryAnchor.trim() as EquipmentVisualBindingDefinition['secondaryAnchor'] : undefined,
+    twoHanded: input.twoHanded === true,
+    bodyRelativeScale: typeof input.bodyRelativeScale === 'number' && Number.isFinite(input.bodyRelativeScale) ? input.bodyRelativeScale : undefined,
+    bodyRelativeWidth: typeof input.bodyRelativeWidth === 'number' && Number.isFinite(input.bodyRelativeWidth) ? input.bodyRelativeWidth : undefined,
+    bodyRelativeHeight: typeof input.bodyRelativeHeight === 'number' && Number.isFinite(input.bodyRelativeHeight) ? input.bodyRelativeHeight : undefined,
     anchorOverrides: Object.keys(anchorOverrides).length > 0 ? anchorOverrides : undefined,
     notes: typeof input.notes === 'string' && input.notes.trim() ? input.notes.trim() : undefined,
     createdAt: input.createdAt || now,
@@ -4419,6 +4469,12 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       spriteAnimationSets: sanitizeIdObjectArray<SpriteAnimationSetDefinition>(raw.spriteAnimationSets)
         .map((entry) => normalizeSpriteAnimationSetInput(entry))
         .filter((entry) => Boolean(entry.id)),
+      spriteVectorDocuments: sanitizeIdObjectArray<SpriteVectorDocument>(raw.spriteVectorDocuments)
+        .map((entry) => normalizeSpriteVectorDocumentInput(entry))
+        .filter((entry) => Boolean(entry.id)),
+      spriteVisualAssets: sanitizeIdObjectArray<SpriteVisualAssetDefinition>(raw.spriteVisualAssets)
+        .map((entry) => normalizeSpriteVisualAssetInput(entry))
+        .filter((entry) => Boolean(entry.id)),
       equipmentVisualBindings: sanitizeIdObjectArray<EquipmentVisualBindingDefinition>(raw.equipmentVisualBindings)
         .map((entry) => normalizeEquipmentVisualBindingInput(entry))
         .filter((entry) => Boolean(entry.id)),
@@ -4535,6 +4591,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       globalRelations: mergeById(existing.globalRelations ?? [], incoming.globalRelations ?? []),
       spriteBodyTemplates: mergeById(existing.spriteBodyTemplates ?? [], incoming.spriteBodyTemplates ?? []),
       spriteAnimationSets: mergeById(existing.spriteAnimationSets ?? [], incoming.spriteAnimationSets ?? []),
+      spriteVectorDocuments: mergeById(existing.spriteVectorDocuments ?? [], incoming.spriteVectorDocuments ?? []),
+      spriteVisualAssets: mergeById(existing.spriteVisualAssets ?? [], incoming.spriteVisualAssets ?? []),
       equipmentVisualBindings: mergeById(existing.equipmentVisualBindings ?? [], incoming.equipmentVisualBindings ?? []),
       spriteProfiles: mergeById(existing.spriteProfiles ?? [], incoming.spriteProfiles ?? []),
       skillAnimationBindings: mergeById(existing.skillAnimationBindings ?? [], incoming.skillAnimationBindings ?? []),
@@ -4594,6 +4652,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       globalRelations: addMissingById(existing.globalRelations ?? [], incoming.globalRelations ?? []),
       spriteBodyTemplates: addMissingById(existing.spriteBodyTemplates ?? [], incoming.spriteBodyTemplates ?? []),
       spriteAnimationSets: addMissingById(existing.spriteAnimationSets ?? [], incoming.spriteAnimationSets ?? []),
+      spriteVectorDocuments: addMissingById(existing.spriteVectorDocuments ?? [], incoming.spriteVectorDocuments ?? []),
+      spriteVisualAssets: addMissingById(existing.spriteVisualAssets ?? [], incoming.spriteVisualAssets ?? []),
       equipmentVisualBindings: addMissingById(existing.equipmentVisualBindings ?? [], incoming.equipmentVisualBindings ?? []),
       spriteProfiles: addMissingById(existing.spriteProfiles ?? [], incoming.spriteProfiles ?? []),
       skillAnimationBindings: addMissingById(existing.skillAnimationBindings ?? [], incoming.skillAnimationBindings ?? []),
@@ -4696,6 +4756,8 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
         globalRelations: filterCollection('globalRelations', incoming.globalRelations, existing.globalRelations ?? []) as GlobalRelation[] | undefined,
         spriteBodyTemplates: filterCollection('spriteBodyTemplates', incoming.spriteBodyTemplates, existing.spriteBodyTemplates ?? []) as SpriteBodyTemplateDefinition[] | undefined,
         spriteAnimationSets: filterCollection('spriteAnimationSets', incoming.spriteAnimationSets, existing.spriteAnimationSets ?? []) as SpriteAnimationSetDefinition[] | undefined,
+        spriteVectorDocuments: filterCollection('spriteVectorDocuments', incoming.spriteVectorDocuments, existing.spriteVectorDocuments ?? []) as SpriteVectorDocument[] | undefined,
+        spriteVisualAssets: filterCollection('spriteVisualAssets', incoming.spriteVisualAssets, existing.spriteVisualAssets ?? []) as SpriteVisualAssetDefinition[] | undefined,
         equipmentVisualBindings: filterCollection('equipmentVisualBindings', incoming.equipmentVisualBindings, existing.equipmentVisualBindings ?? []) as EquipmentVisualBindingDefinition[] | undefined,
         spriteProfiles: filterCollection('spriteProfiles', incoming.spriteProfiles, existing.spriteProfiles ?? []) as SpriteProfileDefinition[] | undefined,
         skillAnimationBindings: filterCollection('skillAnimationBindings', incoming.skillAnimationBindings, existing.skillAnimationBindings ?? []) as SkillAnimationBindingDefinition[] | undefined,
@@ -5171,6 +5233,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       nextEntry = normalizeSpriteBodyTemplateInput(payload as unknown as SpriteBodyTemplateDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'spriteAnimationSets') {
       nextEntry = normalizeSpriteAnimationSetInput(payload as unknown as SpriteAnimationSetDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteVectorDocuments') {
+      nextEntry = normalizeSpriteVectorDocumentInput(payload as unknown as SpriteVectorDocument) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteVisualAssets') {
+      nextEntry = normalizeSpriteVisualAssetInput(payload as unknown as SpriteVisualAssetDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'equipmentVisualBindings') {
       nextEntry = normalizeEquipmentVisualBindingInput(payload as unknown as EquipmentVisualBindingDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'spriteProfiles') {
@@ -5261,6 +5327,10 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
       merged = normalizeSpriteBodyTemplateInput(mergedBase as unknown as SpriteBodyTemplateDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'spriteAnimationSets') {
       merged = normalizeSpriteAnimationSetInput(mergedBase as unknown as SpriteAnimationSetDefinition) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteVectorDocuments') {
+      merged = normalizeSpriteVectorDocumentInput(mergedBase as unknown as SpriteVectorDocument) as unknown as ContentCollectionMap[K];
+    } else if (collectionName === 'spriteVisualAssets') {
+      merged = normalizeSpriteVisualAssetInput(mergedBase as unknown as SpriteVisualAssetDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'equipmentVisualBindings') {
       merged = normalizeEquipmentVisualBindingInput(mergedBase as unknown as EquipmentVisualBindingDefinition) as unknown as ContentCollectionMap[K];
     } else if (collectionName === 'spriteProfiles') {
@@ -5440,6 +5510,14 @@ export class ContentService implements OnModuleInit, OnModuleDestroy {
     if (Array.isArray(payload.spriteAnimationSets) && payload.spriteAnimationSets.length > 0) {
       const normalized = payload.spriteAnimationSets.map((entry) => normalizeSpriteAnimationSetInput(entry as SpriteAnimationSetDefinition));
       db.spriteAnimationSets = mergeById(db.spriteAnimationSets ?? [], normalized);
+    }
+    if (Array.isArray(payload.spriteVectorDocuments) && payload.spriteVectorDocuments.length > 0) {
+      const normalized = payload.spriteVectorDocuments.map((entry) => normalizeSpriteVectorDocumentInput(entry as SpriteVectorDocument));
+      db.spriteVectorDocuments = mergeById(db.spriteVectorDocuments ?? [], normalized);
+    }
+    if (Array.isArray(payload.spriteVisualAssets) && payload.spriteVisualAssets.length > 0) {
+      const normalized = payload.spriteVisualAssets.map((entry) => normalizeSpriteVisualAssetInput(entry as SpriteVisualAssetDefinition));
+      db.spriteVisualAssets = mergeById(db.spriteVisualAssets ?? [], normalized);
     }
     if (Array.isArray(payload.equipmentVisualBindings) && payload.equipmentVisualBindings.length > 0) {
       const normalized = payload.equipmentVisualBindings.map((entry) => normalizeEquipmentVisualBindingInput(entry as EquipmentVisualBindingDefinition));

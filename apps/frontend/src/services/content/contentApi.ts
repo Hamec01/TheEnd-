@@ -35,6 +35,8 @@ import type {
   SoundDefinition,
   SpriteAnimationSetDefinition,
   SpriteBodyTemplateDefinition,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
   SpriteProfileDefinition,
   EquipmentVisualBindingDefinition,
   StoredImage,
@@ -89,6 +91,8 @@ export type ContentCollectionName =
   | 'professionWorkshops'
   | 'spriteBodyTemplates'
   | 'spriteAnimationSets'
+  | 'spriteVectorDocuments'
+  | 'spriteVisualAssets'
   | 'equipmentVisualBindings'
   | 'spriteProfiles'
   | 'skillAnimationBindings'
@@ -186,6 +190,8 @@ export interface ContentSnapshot {
   professionSkills?: import('../../types/profession').ProfessionSkill[];
   spriteBodyTemplates?: SpriteBodyTemplateDefinition[];
   spriteAnimationSets?: SpriteAnimationSetDefinition[];
+  spriteVectorDocuments?: SpriteVectorDocument[];
+  spriteVisualAssets?: SpriteVisualAssetDefinition[];
   equipmentVisualBindings?: EquipmentVisualBindingDefinition[];
   spriteProfiles?: SpriteProfileDefinition[];
   skillAnimationBindings?: SkillAnimationBindingDefinition[];

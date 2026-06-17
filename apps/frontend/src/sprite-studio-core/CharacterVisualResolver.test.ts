@@ -365,6 +365,53 @@ describe('resolveCharacterVisual', () => {
     ]));
   });
 
+  it('keeps bow bindings with secondary anchor drawable in preview resolution', () => {
+    const content = createResolverContent({
+      bindings: [
+        createSwordBinding({
+          id: 'binding_bow_battle',
+          itemId: 'hunter_bow',
+          name: 'Bow Battle Binding',
+          equipmentSlot: 'mainHand',
+          weaponGripType: 'bow',
+          preferredAnchor: 'right_hand',
+          secondaryAnchor: 'left_hand',
+          twoHanded: true,
+          battle: { imageRef: { type: 'image', src: 'img_sword' }, scale: 1, offsetX: 0, offsetY: 0 },
+        }),
+      ],
+      items: [
+        createItem({ id: 'hunter_bow', name: 'Hunter Bow', type: 'weapon', slot: 'rightHand' }),
+      ],
+      profiles: [
+        createProfile({
+          defaultEquipmentItemIds: ['hunter_bow'],
+        }),
+      ],
+    });
+
+    const resolved = resolveCharacterVisual({
+      surface: 'battle',
+      entityType: 'player',
+      spriteProfileId: 'profile_human_guard',
+      player: {
+        id: 'player_bow',
+        race: 'human',
+        bodyType: 'humanoid',
+        spriteProfileId: 'profile_human_guard',
+        equippedItemIds: {
+          mainHand: 'hunter_bow',
+        },
+      },
+      content,
+    });
+
+    expect(resolved.layers.map((entry) => entry.group)).toEqual(['body_torso', 'main_hand_weapon']);
+    expect(resolved.debug.equipment[0]).toEqual(expect.objectContaining({
+      chosenBindingId: 'binding_bow_battle',
+    }));
+  });
+
   it('emits warning for missing layer image refs', () => {
     const content = createResolverContent({
       bodyTemplates: [

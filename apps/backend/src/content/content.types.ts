@@ -10,6 +10,8 @@ import type {
   SkillAnimationBindingDefinition,
   SpriteAnimationSetDefinition,
   SpriteBodyTemplateDefinition,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
   SpriteProfileDefinition,
   VisualFxDefinition,
 } from '@theend/rpg-domain';
@@ -2181,6 +2183,8 @@ export interface ContentDatabase {
   professionSkills?: ProfessionSkillDefinition[];
   spriteBodyTemplates?: SpriteBodyTemplateDefinition[];
   spriteAnimationSets?: SpriteAnimationSetDefinition[];
+  spriteVectorDocuments?: SpriteVectorDocument[];
+  spriteVisualAssets?: SpriteVisualAssetDefinition[];
   equipmentVisualBindings?: EquipmentVisualBindingDefinition[];
   spriteProfiles?: SpriteProfileDefinition[];
   skillAnimationBindings?: SkillAnimationBindingDefinition[];
@@ -2286,6 +2290,8 @@ export type ContentCollectionName =
   | 'professionSkills'
   | 'spriteBodyTemplates'
   | 'spriteAnimationSets'
+  | 'spriteVectorDocuments'
+  | 'spriteVisualAssets'
   | 'equipmentVisualBindings'
   | 'spriteProfiles'
   | 'skillAnimationBindings'
@@ -2331,6 +2337,8 @@ export interface ContentCollectionMap {
   professionSkills: ProfessionSkillDefinition;
   spriteBodyTemplates: SpriteBodyTemplateDefinition;
   spriteAnimationSets: SpriteAnimationSetDefinition;
+  spriteVectorDocuments: SpriteVectorDocument;
+  spriteVisualAssets: SpriteVisualAssetDefinition;
   equipmentVisualBindings: EquipmentVisualBindingDefinition;
   spriteProfiles: SpriteProfileDefinition;
   skillAnimationBindings: SkillAnimationBindingDefinition;

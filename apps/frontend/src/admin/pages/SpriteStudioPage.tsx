@@ -4,6 +4,9 @@ import type {
   SkillAnimationBindingDefinition,
   SpriteAnimationSetDefinition,
   SpriteBodyTemplateDefinition,
+  SpriteImageRef,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
   SpriteProfileDefinition,
 } from '@theend/rpg-domain';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -17,6 +20,7 @@ import {
   deleteContentEntry,
   getContentCollection,
   updateContentEntry,
+  uploadContentImage,
   type ContentCollectionName,
 } from '../../services/content/contentApi';
 import { hydrateImageSheetsFromContent } from '../../services/content/gameImageRefs';
@@ -40,6 +44,8 @@ import '../spriteStudio/spriteStudio.css';
 interface OriginalSpriteStudioState {
   bodyTemplateIds: string[];
   animationSetIds: string[];
+  vectorDocumentIds: string[];
+  visualAssetIds: string[];
   equipmentBindingIds: string[];
   spriteProfileIds: string[];
   skillBindingIds: string[];
@@ -52,6 +58,8 @@ interface OriginalSpriteStudioState {
 const EMPTY_DRAFT: SpriteStudioDraftState = {
   bodyTemplates: [],
   animationSets: [],
+  vectorDocuments: [],
+  visualAssets: [],
   equipmentBindings: [],
   spriteProfiles: [],
   skillBindings: [],
@@ -70,6 +78,8 @@ const EMPTY_REFERENCE_DATA: SpriteStudioReferenceData = {
 const EMPTY_ORIGINAL_STATE: OriginalSpriteStudioState = {
   bodyTemplateIds: [],
   animationSetIds: [],
+  vectorDocumentIds: [],
+  visualAssetIds: [],
   equipmentBindingIds: [],
   spriteProfileIds: [],
   skillBindingIds: [],
@@ -87,6 +97,10 @@ function captureLinkMap<T extends { id: string }>(entries: T[], key: keyof T): R
   return Object.fromEntries(entries.map((entry) => [entry.id, normalizeLinkValue(String(entry[key] ?? ''))]));
 }
 
+function isDataUrl(value: string | undefined): boolean {
+  return String(value ?? '').trim().startsWith('data:');
+}
+
 export function SpriteStudioPage() {
   const [draft, setDraft] = useState<SpriteStudioDraftState>(EMPTY_DRAFT);
   const [referenceData, setReferenceData] = useState<SpriteStudioReferenceData>(EMPTY_REFERENCE_DATA);
@@ -100,6 +114,8 @@ export function SpriteStudioPage() {
     () => validateSpriteStudioState({
       bodyTemplates: draft.bodyTemplates,
       animationSets: draft.animationSets,
+      vectorDocuments: draft.vectorDocuments,
+      visualAssets: draft.visualAssets,
       equipmentBindings: draft.equipmentBindings,
       spriteProfiles: draft.spriteProfiles,
       skillBindings: draft.skillBindings,
@@ -118,6 +134,8 @@ export function SpriteStudioPage() {
     const [
       bodyTemplates,
       animationSets,
+      vectorDocuments,
+      visualAssets,
       equipmentBindings,
       spriteProfiles,
       skillBindings,
@@ -131,6 +149,8 @@ export function SpriteStudioPage() {
     ] = await Promise.all([
       getContentCollection<SpriteBodyTemplateDefinition>('spriteBodyTemplates'),
       getContentCollection<SpriteAnimationSetDefinition>('spriteAnimationSets'),
+      getContentCollection<SpriteVectorDocument>('spriteVectorDocuments'),
+      getContentCollection<SpriteVisualAssetDefinition>('spriteVisualAssets'),
       getContentCollection<EquipmentVisualBindingDefinition>('equipmentVisualBindings'),
       getContentCollection<SpriteProfileDefinition>('spriteProfiles'),
       getContentCollection<SkillAnimationBindingDefinition>('skillAnimationBindings'),
@@ -148,6 +168,8 @@ export function SpriteStudioPage() {
     setDraft({
       bodyTemplates,
       animationSets,
+      vectorDocuments,
+      visualAssets,
       equipmentBindings,
       spriteProfiles,
       skillBindings,
@@ -164,6 +186,8 @@ export function SpriteStudioPage() {
     setOriginalState({
       bodyTemplateIds: bodyTemplates.map((entry) => entry.id),
       animationSetIds: animationSets.map((entry) => entry.id),
+      vectorDocumentIds: vectorDocuments.map((entry) => entry.id),
+      visualAssetIds: visualAssets.map((entry) => entry.id),
       equipmentBindingIds: equipmentBindings.map((entry) => entry.id),
       spriteProfileIds: spriteProfiles.map((entry) => entry.id),
       skillBindingIds: skillBindings.map((entry) => entry.id),
@@ -253,6 +277,79 @@ async function upsertEntries<T extends { id: string }>(
     }
   }
 
+  const materializeTransientSpriteImages = useCallback(async (state: SpriteStudioDraftState): Promise<SpriteStudioDraftState> => {
+    const uploadedByDataUrl = new Map<string, SpriteImageRef>();
+
+    async function uploadGeneratedImage(id: string, name: string, dataUrl: string): Promise<SpriteImageRef> {
+      const cached = uploadedByDataUrl.get(dataUrl);
+      if (cached) {
+        return cached;
+      }
+      const uploaded = await uploadContentImage({
+        id,
+        name,
+        folder: 'sprite-studio/generated',
+        dataUrl,
+      });
+      const ref: SpriteImageRef = { type: 'image', src: uploaded.id };
+      uploadedByDataUrl.set(dataUrl, ref);
+      return ref;
+    }
+
+    async function materializeSurfaceAsset(
+      ownerId: string,
+      label: string,
+      asset: { imageRef?: SpriteImageRef; imagePath?: string } | undefined,
+    ) {
+      if (!asset?.imagePath || !isDataUrl(asset.imagePath)) {
+        return asset;
+      }
+      const imageRef = await uploadGeneratedImage(`${ownerId}_${label}`, `${ownerId} ${label}`, asset.imagePath);
+      return {
+        ...asset,
+        imageRef,
+        imagePath: imageRef.type === 'image' ? imageRef.src : asset.imagePath,
+      };
+    }
+
+    const bodyTemplates = await Promise.all(state.bodyTemplates.map(async (entry) => ({
+      ...entry,
+      paperdoll: await materializeSurfaceAsset(entry.id, 'paperdoll', entry.paperdoll),
+      world: await materializeSurfaceAsset(entry.id, 'world', entry.world),
+      battle: await materializeSurfaceAsset(entry.id, 'battle', entry.battle),
+    })));
+
+    const equipmentBindings = await Promise.all(state.equipmentBindings.map(async (entry) => ({
+      ...entry,
+      paperdoll: await materializeSurfaceAsset(entry.id, 'paperdoll', entry.paperdoll),
+      world: await materializeSurfaceAsset(entry.id, 'world', entry.world),
+      battle: await materializeSurfaceAsset(entry.id, 'battle', entry.battle),
+    })));
+
+    const visualAssets = await Promise.all(state.visualAssets.map(async (entry) => {
+      const previewImageRef = entry.previewImagePath && isDataUrl(entry.previewImagePath)
+        ? await uploadGeneratedImage(`${entry.id}_preview`, `${entry.name} preview`, entry.previewImagePath)
+        : entry.previewImageRef;
+      const spritesheetImageRef = entry.spritesheetImagePath && isDataUrl(entry.spritesheetImagePath)
+        ? await uploadGeneratedImage(`${entry.id}_spritesheet`, `${entry.name} spritesheet`, entry.spritesheetImagePath)
+        : entry.spritesheetImageRef;
+      return {
+        ...entry,
+        previewImageRef,
+        previewImagePath: previewImageRef?.type === 'image' ? previewImageRef.src : entry.previewImagePath,
+        spritesheetImageRef,
+        spritesheetImagePath: spritesheetImageRef?.type === 'image' ? spritesheetImageRef.src : entry.spritesheetImagePath,
+      };
+    }));
+
+    return {
+      ...state,
+      bodyTemplates,
+      equipmentBindings,
+      visualAssets,
+    };
+  }, []);
+
   const saveAll = useCallback(async (): Promise<boolean> => {
     if (isSaving) {
       return false;
@@ -268,30 +365,33 @@ async function upsertEntries<T extends { id: string }>(
       setState: setSaveState,
       saveLabel: 'sprite-studio',
       onSave: async () => {
-        await syncCollection('spriteBodyTemplates', draft.bodyTemplates, originalState.bodyTemplateIds);
-        await syncCollection('spriteAnimationSets', draft.animationSets, originalState.animationSetIds);
-        await syncCollection('equipmentVisualBindings', draft.equipmentBindings, originalState.equipmentBindingIds);
-        await syncCollection('spriteProfiles', draft.spriteProfiles, originalState.spriteProfileIds);
-        await syncCollection('skillAnimationBindings', draft.skillBindings, originalState.skillBindingIds);
-        await syncCollection('runtimeAssemblyRules', draft.runtimeRules, originalState.runtimeRuleIds);
+        const materializedDraft = await materializeTransientSpriteImages(draft);
+        await syncCollection('spriteBodyTemplates', materializedDraft.bodyTemplates, originalState.bodyTemplateIds);
+        await syncCollection('spriteAnimationSets', materializedDraft.animationSets, originalState.animationSetIds);
+        await syncCollection('spriteVectorDocuments', materializedDraft.vectorDocuments, originalState.vectorDocumentIds);
+        await syncCollection('spriteVisualAssets', materializedDraft.visualAssets, originalState.visualAssetIds);
+        await syncCollection('equipmentVisualBindings', materializedDraft.equipmentBindings, originalState.equipmentBindingIds);
+        await syncCollection('spriteProfiles', materializedDraft.spriteProfiles, originalState.spriteProfileIds);
+        await syncCollection('skillAnimationBindings', materializedDraft.skillBindings, originalState.skillBindingIds);
+        await syncCollection('runtimeAssemblyRules', materializedDraft.runtimeRules, originalState.runtimeRuleIds);
 
         await syncSoftLinks<AdminNpc>({
           collection: 'npcs',
-          entries: draft.npcs,
+          entries: materializedDraft.npcs,
           originalLinks: originalState.npcLinks,
           readValue: (entry) => normalizeLinkValue(entry.spriteProfileId),
           buildPatch: (value) => ({ spriteProfileId: value || undefined }),
         });
         await syncSoftLinks<AdminItem>({
           collection: 'items',
-          entries: draft.items,
+          entries: materializedDraft.items,
           originalLinks: originalState.itemLinks,
           readValue: (entry) => normalizeLinkValue(entry.defaultEquipmentVisualBindingId),
           buildPatch: (value) => ({ defaultEquipmentVisualBindingId: value || undefined }),
         });
         await syncSoftLinks<AdminSkill>({
           collection: 'skills',
-          entries: draft.skills,
+          entries: materializedDraft.skills,
           originalLinks: originalState.skillLinks,
           readValue: (entry) => normalizeLinkValue(entry.skillAnimationBindingId),
           buildPatch: (value) => ({ skillAnimationBindingId: value || undefined }),
@@ -309,7 +409,7 @@ async function upsertEntries<T extends { id: string }>(
       setStatus('Sprite Studio сохранён. Runtime не переключался.');
     }
     return Boolean(saved);
-  }, [draft, isSaving, loadAll, originalState, validation.errors]);
+  }, [draft, isSaving, loadAll, materializeTransientSpriteImages, originalState, validation.errors]);
 
   useAdminSaveShortcut({
     enabled: true,

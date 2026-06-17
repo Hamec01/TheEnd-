@@ -7,10 +7,16 @@ import type {
   SpriteAnchorSet,
   SpriteAnimationClipDefinition,
   SpriteAnimationSetDefinition,
+  SpriteBodyAuthoringDefinition,
   SpriteBodyTemplateDefinition,
   SpriteBodyType,
+  SpriteEquipmentVisualAuthoringDefinition,
+  SpriteEquipmentVisualCategory,
   SpriteProfileDefinition,
   SpriteSurface,
+  SpriteVectorDocument,
+  SpriteVisualAssetDefinition,
+  SpriteVisualFittingAnchor,
   WeaponGripType,
 } from '@theend/rpg-domain';
 
@@ -18,6 +24,8 @@ export const SPRITE_SURFACE_OPTIONS: SpriteSurface[] = ['paperdoll', 'world', 'b
 export const SPRITE_BODY_TYPE_OPTIONS: SpriteBodyType[] = ['humanoid', 'quadruped', 'monster', 'beast', 'undead', 'spirit', 'custom'];
 export const WEAPON_GRIP_OPTIONS: WeaponGripType[] = ['none', 'one_handed', 'two_handed', 'main_hand', 'off_hand', 'dual_wield', 'shield', 'bow', 'staff', 'spear', 'thrown'];
 export const SPRITE_ACTION_OPTIONS: SpriteActionType[] = ['idle', 'walk', 'run', 'attack_melee', 'attack_ranged', 'cast', 'block', 'hit', 'death', 'interact', 'work', 'carry', 'roll', 'jump'];
+export const SPRITE_VISUAL_FITTING_ANCHORS: SpriteVisualFittingAnchor[] = ['head', 'torso', 'back', 'left_hand', 'right_hand', 'left_forearm', 'right_forearm', 'left_foot', 'right_foot'];
+export const SPRITE_EQUIPMENT_VISUAL_CATEGORIES: SpriteEquipmentVisualCategory[] = ['sword', 'dagger', 'axe', 'bow', 'staff', 'spear', 'helmet', 'chest_armor', 'shield', 'gloves', 'boots'];
 export const SPRITE_ANCHOR_KEYS: SpriteAnchorKey[] = [
   'headAnchor',
   'chestAnchor',
@@ -64,6 +72,9 @@ export function createEmptyBodyTemplate(seed = Date.now()): SpriteBodyTemplateDe
     name: 'New body template',
     description: '',
     bodyType: 'humanoid',
+    visualAssetId: `sprite_visual_asset_body_${seed}`,
+    vectorDocumentId: `sprite_vector_document_body_${seed}`,
+    authoring: createDefaultBodyAuthoring(),
     compatibleRaceIds: [],
     compatibleBodyTypes: ['humanoid'],
     supportedSurfaces: [...SPRITE_SURFACE_OPTIONS],
@@ -119,16 +130,111 @@ export function createEmptyEquipmentBinding(seed = Date.now()): EquipmentVisualB
     name: 'New equipment visual binding',
     itemId: '',
     defaultForItem: false,
+    visualAssetId: '',
+    vectorDocumentId: '',
     compatibleBodyTemplateIds: [],
     compatibleRaceIds: [],
     compatibleBodyTypes: ['humanoid'],
     compatibleSurfaces: [...SPRITE_SURFACE_OPTIONS],
+    supportedActions: ['idle', 'walk', 'attack_melee', 'attack_ranged'],
     equipmentSlot: 'rightHand',
     weaponGripType: 'none',
+    preferredAnchor: 'right_hand',
+    secondaryAnchor: undefined,
+    twoHanded: false,
+    bodyRelativeScale: 1,
+    bodyRelativeWidth: 1,
+    bodyRelativeHeight: 1,
     paperdoll: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     world: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     battle: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     anchorOverrides: {},
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function createDefaultBodyAuthoring(): SpriteBodyAuthoringDefinition {
+  return {
+    raceId: 'human',
+    bodyPresentation: 'male',
+    skinColor: '#d8b08a',
+    underwearColor: '#5a3a54',
+    bodyHeight: 1,
+    shoulderWidth: 1,
+    torsoWidth: 1,
+    bellySize: 0.2,
+    armSize: 1,
+    legSize: 1,
+    headSize: 1,
+    neckLength: 0.5,
+  };
+}
+
+export function createDefaultEquipmentVisualAuthoring(category: SpriteEquipmentVisualCategory = 'sword'): SpriteEquipmentVisualAuthoringDefinition {
+  return {
+    category,
+    primaryColor: '#c9d1d9',
+    secondaryColor: '#5f4933',
+    accentColor: '#d4a85f',
+    outlineColor: '#1d130d',
+    outlineEnabled: true,
+    width: 0.9,
+    height: 0.9,
+    length: 1,
+    thickness: 0.35,
+    shapePreset: category,
+    materialPreset: category === 'bow' ? 'wood' : category === 'staff' ? 'oak' : 'steel',
+    rotation: 0,
+    scale: 1,
+  };
+}
+
+export function createEmptyVectorDocument(params?: {
+  id?: string;
+  name?: string;
+  kind?: SpriteVisualAssetDefinition['kind'];
+  width?: number;
+  height?: number;
+}): SpriteVectorDocument {
+  const now = nowIso();
+  const seed = Date.now();
+  return {
+    id: params?.id ?? `sprite_vector_document_${seed}`,
+    schemaVersion: 1,
+    name: params?.name ?? 'New vector document',
+    kind: params?.kind ?? 'equipment',
+    width: params?.width ?? 128,
+    height: params?.height ?? 128,
+    layers: [],
+    anchors: undefined,
+    parameterValues: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function createEmptyVisualAsset(params?: {
+  id?: string;
+  name?: string;
+  kind?: SpriteVisualAssetDefinition['kind'];
+  category?: SpriteEquipmentVisualCategory;
+}): SpriteVisualAssetDefinition {
+  const now = nowIso();
+  const seed = Date.now();
+  const kind = params?.kind ?? 'equipment';
+  return {
+    id: params?.id ?? `sprite_visual_asset_${seed}`,
+    schemaVersion: 1,
+    name: params?.name ?? 'New visual asset',
+    kind,
+    vectorDocumentId: `sprite_vector_document_${seed}`,
+    bodyAuthoring: kind === 'body' ? createDefaultBodyAuthoring() : undefined,
+    equipmentAuthoring: kind === 'equipment' ? createDefaultEquipmentVisualAuthoring(params?.category) : undefined,
+    width: 128,
+    height: 128,
+    tags: [],
     notes: '',
     createdAt: now,
     updatedAt: now,

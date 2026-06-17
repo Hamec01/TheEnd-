@@ -1,5 +1,31 @@
 export type SpriteSurface = 'paperdoll' | 'world' | 'battle';
 
+export type SpriteVisualAssetKind = 'body' | 'equipment';
+
+export type SpriteEquipmentVisualCategory =
+  | 'sword'
+  | 'dagger'
+  | 'axe'
+  | 'bow'
+  | 'staff'
+  | 'spear'
+  | 'helmet'
+  | 'chest_armor'
+  | 'shield'
+  | 'gloves'
+  | 'boots';
+
+export type SpriteVisualFittingAnchor =
+  | 'head'
+  | 'torso'
+  | 'back'
+  | 'left_hand'
+  | 'right_hand'
+  | 'left_forearm'
+  | 'right_forearm'
+  | 'left_foot'
+  | 'right_foot';
+
 export type SpriteBodyType =
   | 'humanoid'
   | 'quadruped'
@@ -96,6 +122,107 @@ export interface SpriteSurfaceAssetDefinition {
   defaultAnimationSetId?: string;
 }
 
+export interface SpriteVectorPoint {
+  x: number;
+  y: number;
+}
+
+export interface SpriteVectorStroke {
+  color: string;
+  width: number;
+  enabled?: boolean;
+}
+
+export interface SpriteVectorTransform {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  scaleX?: number;
+  scaleY?: number;
+  points?: SpriteVectorPoint[];
+}
+
+export interface SpriteVectorLayer {
+  id: string;
+  name: string;
+  shape: 'ellipse' | 'rect' | 'rounded_rect' | 'line' | 'polygon';
+  fill: string;
+  stroke?: SpriteVectorStroke;
+  opacity?: number;
+  visible?: boolean;
+  zIndex?: number;
+  transform: SpriteVectorTransform;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface SpriteVectorDocument {
+  id: string;
+  schemaVersion: number;
+  name: string;
+  kind: SpriteVisualAssetKind;
+  width: number;
+  height: number;
+  layers: SpriteVectorLayer[];
+  anchors?: Partial<SpriteAnchorSet>;
+  parameterValues?: Record<string, string | number | boolean>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpriteBodyAuthoringDefinition {
+  raceId?: string;
+  bodyPresentation: 'male' | 'female';
+  skinColor: string;
+  underwearColor: string;
+  bodyHeight: number;
+  shoulderWidth: number;
+  torsoWidth: number;
+  bellySize: number;
+  armSize: number;
+  legSize: number;
+  headSize: number;
+  neckLength: number;
+}
+
+export interface SpriteEquipmentVisualAuthoringDefinition {
+  category: SpriteEquipmentVisualCategory;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  outlineColor: string;
+  outlineEnabled: boolean;
+  width: number;
+  height: number;
+  length: number;
+  thickness: number;
+  shapePreset: string;
+  materialPreset: string;
+  rotation: number;
+  scale: number;
+}
+
+export interface SpriteVisualAssetDefinition {
+  id: string;
+  schemaVersion: number;
+  name: string;
+  kind: SpriteVisualAssetKind;
+  vectorDocumentId?: string;
+  bodyAuthoring?: SpriteBodyAuthoringDefinition;
+  equipmentAuthoring?: SpriteEquipmentVisualAuthoringDefinition;
+  previewImageRef?: SpriteImageRef;
+  previewImagePath?: string;
+  spritesheetImageRef?: SpriteImageRef;
+  spritesheetImagePath?: string;
+  width: number;
+  height: number;
+  tags?: string[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SpriteAnimationClipDefinition {
   action: SpriteActionType;
   label?: string;
@@ -117,6 +244,9 @@ export interface SpriteBodyTemplateDefinition {
   name: string;
   description?: string;
   bodyType: SpriteBodyType;
+  visualAssetId?: string;
+  vectorDocumentId?: string;
+  authoring?: SpriteBodyAuthoringDefinition;
   compatibleRaceIds: string[];
   compatibleBodyTypes: string[];
   supportedSurfaces: SpriteSurface[];
@@ -151,12 +281,21 @@ export interface EquipmentVisualBindingDefinition {
   name: string;
   itemId: string;
   defaultForItem?: boolean;
+  visualAssetId?: string;
+  vectorDocumentId?: string;
   compatibleBodyTemplateIds: string[];
   compatibleRaceIds: string[];
   compatibleBodyTypes: string[];
   compatibleSurfaces: SpriteSurface[];
+  supportedActions?: SpriteActionType[];
   equipmentSlot: string;
   weaponGripType: WeaponGripType;
+  preferredAnchor?: SpriteVisualFittingAnchor;
+  secondaryAnchor?: SpriteVisualFittingAnchor;
+  twoHanded?: boolean;
+  bodyRelativeScale?: number;
+  bodyRelativeWidth?: number;
+  bodyRelativeHeight?: number;
   paperdoll?: SpriteSurfaceAssetDefinition;
   world?: SpriteSurfaceAssetDefinition;
   battle?: SpriteSurfaceAssetDefinition;

@@ -1,6 +1,11 @@
-import { Race, RACE_DEFINITIONS, type EquipmentVisualBindingDefinition, type RuntimeAssemblyRuleDefinition, type SkillAnimationBindingDefinition, type SpriteAnchorKey, type SpriteAnimationClipDefinition, type SpriteAnimationSetDefinition, type SpriteBodyTemplateDefinition, type SpriteImageRef, type SpriteProfileDefinition, type SpriteSurface } from '@theend/rpg-domain';
+import { Race, RACE_DEFINITIONS, type EquipmentVisualBindingDefinition, type RuntimeAssemblyRuleDefinition, type SkillAnimationBindingDefinition, type SpriteActionType, type SpriteAnchorKey, type SpriteAnimationClipDefinition, type SpriteAnimationSetDefinition, type SpriteBodyAuthoringDefinition, type SpriteBodyTemplateDefinition, type SpriteEquipmentVisualAuthoringDefinition, type SpriteImageRef, type SpriteProfileDefinition, type SpriteSurface, type SpriteVectorDocument, type SpriteVisualAssetDefinition, type SpriteVisualFittingAnchor } from '@theend/rpg-domain';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  buildBodyVectorDocument,
+  buildEquipmentVectorDocument,
+  createDefaultAnchorSet,
+  createDefaultBodyAuthoring,
+  createDefaultEquipmentVisualAuthoring,
   createEmptyAnimationClip,
   createEmptyAnimationSet,
   createEmptyBodyTemplate,
@@ -8,12 +13,21 @@ import {
   createEmptyRuntimeAssemblyRule,
   createEmptySkillAnimationBinding,
   createEmptySpriteProfile,
+  createEmptyVectorDocument,
+  createEmptyVisualAsset,
   drawSpriteStudioPreview,
+  fittingAnchorToSpriteAnchor,
   listProfileBindings,
+  normalizeBindingFitting,
+  normalizeBodyAuthoring,
+  normalizeEquipmentVisualAuthoring,
+  renderVectorDocumentToDataUrl,
   SPRITE_ACTION_OPTIONS,
   SPRITE_ANCHOR_KEYS,
   SPRITE_BODY_TYPE_OPTIONS,
+  SPRITE_EQUIPMENT_VISUAL_CATEGORIES,
   SPRITE_SURFACE_OPTIONS,
+  SPRITE_VISUAL_FITTING_ANCHORS,
   WEAPON_GRIP_OPTIONS,
   resolveCharacterVisual,
   type CharacterVisualIssue,
@@ -57,6 +71,8 @@ interface SpriteStudioWorkspaceProps {
 type DraftCollectionKey =
   | 'bodyTemplates'
   | 'animationSets'
+  | 'vectorDocuments'
+  | 'visualAssets'
   | 'equipmentBindings'
   | 'spriteProfiles'
   | 'skillBindings'
@@ -210,6 +226,7 @@ export function SpriteStudioWorkspace({
   const [importMode, setImportMode] = useState<JsonImportMode>('merge');
   const [selectedBodyTemplateId, setSelectedBodyTemplateId] = useState('');
   const [selectedAnimationSetId, setSelectedAnimationSetId] = useState('');
+  const [selectedVisualAssetId, setSelectedVisualAssetId] = useState('');
   const [selectedEquipmentBindingId, setSelectedEquipmentBindingId] = useState('');
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [selectedSkillBindingId, setSelectedSkillBindingId] = useState('');
@@ -240,12 +257,13 @@ export function SpriteStudioWorkspace({
   useEffect(() => {
     setSelectedBodyTemplateId((current) => ensureSelection(current, draft.bodyTemplates));
     setSelectedAnimationSetId((current) => ensureSelection(current, draft.animationSets));
+    setSelectedVisualAssetId((current) => ensureSelection(current, draft.visualAssets));
     setSelectedEquipmentBindingId((current) => ensureSelection(current, draft.equipmentBindings));
     setSelectedProfileId((current) => ensureSelection(current, draft.spriteProfiles));
     setSelectedSkillBindingId((current) => ensureSelection(current, draft.skillBindings));
     setSelectedRuntimeRuleId((current) => ensureSelection(current, draft.runtimeRules));
     setSelectedItemForgeItemId((current) => ensureSelection(current, draft.items));
-  }, [draft.animationSets, draft.bodyTemplates, draft.equipmentBindings, draft.items, draft.runtimeRules, draft.skillBindings, draft.spriteProfiles]);
+  }, [draft.animationSets, draft.bodyTemplates, draft.equipmentBindings, draft.items, draft.runtimeRules, draft.skillBindings, draft.spriteProfiles, draft.visualAssets]);
 
   const raceOptions = useMemo(
     () => Object.values(Race).map((race) => ({ id: race, label: RACE_DEFINITIONS[race].label })),
@@ -259,6 +277,10 @@ export function SpriteStudioWorkspace({
   const selectedAnimationSet = useMemo(
     () => draft.animationSets.find((entry) => entry.id === selectedAnimationSetId) ?? null,
     [draft.animationSets, selectedAnimationSetId],
+  );
+  const selectedVisualAsset = useMemo(
+    () => draft.visualAssets.find((entry) => entry.id === selectedVisualAssetId) ?? null,
+    [draft.visualAssets, selectedVisualAssetId],
   );
   const selectedEquipmentBinding = useMemo(
     () => draft.equipmentBindings.find((entry) => entry.id === selectedEquipmentBindingId) ?? null,
@@ -314,6 +336,14 @@ export function SpriteStudioWorkspace({
     () => draft.items.find((entry) => entry.id === selectedEquipmentBinding?.itemId) ?? null,
     [draft.items, selectedEquipmentBinding],
   );
+  const selectedBodyVectorDocument = useMemo(
+    () => draft.vectorDocuments.find((entry) => entry.id === selectedBodyTemplate?.vectorDocumentId) ?? null,
+    [draft.vectorDocuments, selectedBodyTemplate],
+  );
+  const selectedVisualVectorDocument = useMemo(
+    () => draft.vectorDocuments.find((entry) => entry.id === selectedVisualAsset?.vectorDocumentId) ?? null,
+    [draft.vectorDocuments, selectedVisualAsset],
+  );
   const itemForgeBindings = useMemo(
     () => selectedItemForgeItem
       ? draft.equipmentBindings.filter((entry) => entry.itemId === selectedItemForgeItem.id)
@@ -360,6 +390,8 @@ export function SpriteStudioWorkspace({
       : null,
     [selectedEquipmentItem],
   );
+  const selectedBodyAuthoringSignature = JSON.stringify(selectedBodyTemplate?.authoring ?? null);
+  const selectedVisualAuthoringSignature = JSON.stringify(selectedVisualAsset?.equipmentAuthoring ?? null);
 
   useEffect(() => {
     const nextBindingId = itemForgeCurrentDefaultBinding?.id
@@ -376,6 +408,20 @@ export function SpriteStudioWorkspace({
         : nextBindingId
     ));
   }, [itemForgeBindings, itemForgeCurrentDefaultBinding]);
+
+  useEffect(() => {
+    if (!selectedBodyTemplate?.authoring) {
+      return;
+    }
+    void saveBodyAuthoringToDraft();
+  }, [selectedBodyAuthoringSignature, selectedBodyTemplate?.id]);
+
+  useEffect(() => {
+    if (!selectedVisualAsset?.equipmentAuthoring) {
+      return;
+    }
+    void saveEquipmentVisualAssetToDraft();
+  }, [selectedVisualAsset?.id, selectedVisualAuthoringSignature]);
 
   const resolvedProfileBindings = useMemo(
     () => listProfileBindings({
@@ -687,6 +733,17 @@ export function SpriteStudioWorkspace({
     patchCollectionEntry('animationSets', selectedAnimationSet.id, updater);
   }
 
+  function patchVectorDocument(id: string, updater: (current: SpriteVectorDocument) => SpriteVectorDocument) {
+    patchCollectionEntry('vectorDocuments', id, updater);
+  }
+
+  function patchVisualAsset(updater: (current: SpriteVisualAssetDefinition) => SpriteVisualAssetDefinition) {
+    if (!selectedVisualAsset) {
+      return;
+    }
+    patchCollectionEntry('visualAssets', selectedVisualAsset.id, updater);
+  }
+
   function patchEquipmentBinding(updater: (current: EquipmentVisualBindingDefinition) => EquipmentVisualBindingDefinition) {
     if (!selectedEquipmentBinding) {
       return;
@@ -715,6 +772,149 @@ export function SpriteStudioWorkspace({
     patchCollectionEntry('runtimeRules', selectedRuntimeRule.id, updater);
   }
 
+  async function saveBodyAuthoringToDraft() {
+    if (!selectedBodyTemplate) {
+      return;
+    }
+    const authoring = normalizeBodyAuthoring(selectedBodyTemplate.authoring);
+    const normalizedTemplate: SpriteBodyTemplateDefinition = {
+      ...selectedBodyTemplate,
+      authoring,
+      vectorDocumentId: selectedBodyTemplate.vectorDocumentId || `${selectedBodyTemplate.id}_vector`,
+      visualAssetId: selectedBodyTemplate.visualAssetId || `${selectedBodyTemplate.id}_asset`,
+      anchors: buildBodyVectorDocument({ ...selectedBodyTemplate, authoring }).anchors as SpriteBodyTemplateDefinition['anchors'],
+    };
+    const vectorDocument = buildBodyVectorDocument(normalizedTemplate);
+    const previewDataUrl = await renderVectorDocumentToDataUrl(vectorDocument, 128);
+    const visualAsset: SpriteVisualAssetDefinition = {
+      id: normalizedTemplate.visualAssetId || `${normalizedTemplate.id}_asset`,
+      schemaVersion: 1,
+      name: `${normalizedTemplate.name} visual`,
+      kind: 'body',
+      vectorDocumentId: vectorDocument.id,
+      bodyAuthoring: authoring,
+      previewImagePath: previewDataUrl,
+      previewImageRef: undefined,
+      width: vectorDocument.width,
+      height: vectorDocument.height,
+      tags: normalizedTemplate.tags,
+      notes: normalizedTemplate.notes,
+      createdAt: selectedVisualAsset?.createdAt || normalizedTemplate.createdAt,
+      updatedAt: normalizedTemplate.updatedAt,
+    };
+    setDraft((current) => {
+      const nextVectorDocuments = current.vectorDocuments.some((entry) => entry.id === vectorDocument.id)
+        ? current.vectorDocuments.map((entry) => (entry.id === vectorDocument.id ? vectorDocument : entry))
+        : [...current.vectorDocuments, vectorDocument];
+      const nextVisualAssets = current.visualAssets.some((entry) => entry.id === visualAsset.id)
+        ? current.visualAssets.map((entry) => (entry.id === visualAsset.id ? visualAsset : entry))
+        : [...current.visualAssets, visualAsset];
+      return {
+        ...current,
+        vectorDocuments: nextVectorDocuments,
+        visualAssets: nextVisualAssets,
+        bodyTemplates: current.bodyTemplates.map((entry) => (
+          entry.id === normalizedTemplate.id
+            ? {
+              ...normalizedTemplate,
+              paperdoll: { ...(entry.paperdoll ?? {}), imageRef: undefined, imagePath: previewDataUrl },
+              world: { ...(entry.world ?? {}), imageRef: undefined, imagePath: previewDataUrl },
+              battle: { ...(entry.battle ?? {}), imageRef: undefined, imagePath: previewDataUrl },
+              anchors: vectorDocument.anchors as SpriteBodyTemplateDefinition['anchors'],
+            }
+            : entry
+        )),
+      };
+    });
+    setSelectedVisualAssetId(visualAsset.id);
+    onStatus(`Body template '${selectedBodyTemplate.name}' regenerated from authoring controls.`);
+  }
+
+  async function saveEquipmentVisualAssetToDraft() {
+    if (!selectedVisualAsset) {
+      return;
+    }
+    const equipmentAuthoring = normalizeEquipmentVisualAuthoring(selectedVisualAsset.equipmentAuthoring);
+    const normalizedAsset: SpriteVisualAssetDefinition = {
+      ...selectedVisualAsset,
+      equipmentAuthoring,
+      vectorDocumentId: selectedVisualAsset.vectorDocumentId || `${selectedVisualAsset.id}_vector`,
+    };
+    const vectorDocument = buildEquipmentVectorDocument(normalizedAsset);
+    const previewDataUrl = await renderVectorDocumentToDataUrl(vectorDocument, 128);
+    setDraft((current) => ({
+      ...current,
+      vectorDocuments: current.vectorDocuments.some((entry) => entry.id === vectorDocument.id)
+        ? current.vectorDocuments.map((entry) => (entry.id === vectorDocument.id ? vectorDocument : entry))
+        : [...current.vectorDocuments, vectorDocument],
+      visualAssets: current.visualAssets.map((entry) => (
+        entry.id === normalizedAsset.id
+          ? {
+            ...normalizedAsset,
+            previewImagePath: previewDataUrl,
+            previewImageRef: undefined,
+            width: vectorDocument.width,
+            height: vectorDocument.height,
+          }
+          : entry
+      )),
+    }));
+    onStatus(`Visual asset '${selectedVisualAsset.name}' regenerated from forge controls.`);
+  }
+
+  function createBindingFromSelectedVisualAsset() {
+    if (!selectedVisualAsset) {
+      return;
+    }
+    const nowId = `${selectedVisualAsset.id}_binding`;
+    const authoring = normalizeEquipmentVisualAuthoring(selectedVisualAsset.equipmentAuthoring);
+    const next = {
+      ...createEmptyEquipmentBinding(),
+      id: nowId,
+      name: `${selectedVisualAsset.name} binding`,
+      visualAssetId: selectedVisualAsset.id,
+      vectorDocumentId: selectedVisualAsset.vectorDocumentId,
+      equipmentSlot: authoring.category === 'shield'
+        ? 'offHand'
+        : authoring.category === 'helmet'
+          ? 'head'
+          : authoring.category === 'chest_armor'
+            ? 'chest'
+            : authoring.category === 'gloves'
+              ? 'gloves'
+              : authoring.category === 'boots'
+                ? 'boots'
+                : 'mainHand',
+      weaponGripType: authoring.category === 'bow'
+        ? 'bow'
+        : authoring.category === 'staff'
+          ? 'staff'
+          : authoring.category === 'spear'
+            ? 'spear'
+            : authoring.category === 'shield'
+              ? 'shield'
+              : 'one_handed',
+      preferredAnchor: authoring.category === 'shield'
+        ? 'left_hand'
+        : authoring.category === 'helmet'
+          ? 'head'
+          : authoring.category === 'chest_armor'
+            ? 'torso'
+            : authoring.category === 'boots'
+              ? 'right_foot'
+              : 'right_hand',
+      secondaryAnchor: authoring.category === 'bow' ? 'left_hand' : undefined,
+      twoHanded: authoring.category === 'bow' || authoring.category === 'staff' || authoring.category === 'spear',
+      paperdoll: { scale: 1, offsetX: 0, offsetY: 0, rotation: authoring.rotation, zLayer: 0, imagePath: selectedVisualAsset.previewImagePath, imageRef: selectedVisualAsset.previewImageRef },
+      world: { scale: 1, offsetX: 0, offsetY: 0, rotation: authoring.rotation, zLayer: 0, imagePath: selectedVisualAsset.previewImagePath, imageRef: selectedVisualAsset.previewImageRef },
+      battle: { scale: 1, offsetX: 0, offsetY: 0, rotation: authoring.rotation, zLayer: 0, imagePath: selectedVisualAsset.previewImagePath, imageRef: selectedVisualAsset.previewImageRef },
+      supportedActions: ['idle', 'walk', 'attack_melee', 'attack_ranged'] as SpriteActionType[],
+    } satisfies EquipmentVisualBindingDefinition;
+    addCollectionEntry('equipmentBindings', normalizeBindingFitting(next));
+    setSelectedEquipmentBindingId(next.id);
+    onStatus(`Created binding '${next.name}' from visual asset '${selectedVisualAsset.name}'.`);
+  }
+
   function handleCollectionImport<K extends DraftCollectionKey>(
     key: K,
     file: File | undefined,
@@ -729,6 +929,8 @@ export function SpriteStudioWorkspace({
         const collectionKey = ({
           bodyTemplates: 'spriteBodyTemplates',
           animationSets: 'spriteAnimationSets',
+          vectorDocuments: 'spriteVectorDocuments',
+          visualAssets: 'spriteVisualAssets',
           equipmentBindings: 'equipmentVisualBindings',
           spriteProfiles: 'spriteProfiles',
           skillBindings: 'skillAnimationBindings',
@@ -755,6 +957,8 @@ export function SpriteStudioWorkspace({
     const collectionKey = ({
       bodyTemplates: 'spriteBodyTemplates',
       animationSets: 'spriteAnimationSets',
+      vectorDocuments: 'spriteVectorDocuments',
+      visualAssets: 'spriteVisualAssets',
       equipmentBindings: 'equipmentVisualBindings',
       spriteProfiles: 'spriteProfiles',
       skillBindings: 'skillAnimationBindings',
@@ -952,9 +1156,246 @@ export function SpriteStudioWorkspace({
     );
   }
 
+  function renderBodyAuthoringPanel() {
+    const authoring = normalizeBodyAuthoring(selectedBodyTemplate?.authoring);
+    const linkedAsset = draft.visualAssets.find((entry) => entry.id === selectedBodyTemplate?.visualAssetId) ?? null;
+    const bodySliderFields: Array<{ key: keyof Pick<SpriteBodyAuthoringDefinition, 'bodyHeight' | 'shoulderWidth' | 'torsoWidth' | 'bellySize' | 'armSize' | 'legSize' | 'headSize' | 'neckLength'>; label: string; min: number; max: number }> = [
+      { key: 'bodyHeight', label: 'Body height', min: 0.6, max: 1.5 },
+      { key: 'shoulderWidth', label: 'Shoulder width', min: 0.6, max: 1.5 },
+      { key: 'torsoWidth', label: 'Torso width', min: 0.6, max: 1.5 },
+      { key: 'bellySize', label: 'Belly size', min: 0, max: 1.2 },
+      { key: 'armSize', label: 'Arm size', min: 0.6, max: 1.5 },
+      { key: 'legSize', label: 'Leg size', min: 0.6, max: 1.5 },
+      { key: 'headSize', label: 'Head size', min: 0.6, max: 1.5 },
+      { key: 'neckLength', label: 'Neck length', min: 0.1, max: 1.2 },
+    ];
+
+    return (
+      <section className="card admin-item-preview" style={{ display: 'grid', gap: 12 }}>
+        <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
+          <h5 style={{ margin: 0 }}>Body Authoring</h5>
+          <div className="admin-actions-row">
+            <button
+              type="button"
+              onClick={() => {
+                const bodyTemplate = createEmptyBodyTemplate();
+                const vectorDocument = createEmptyVectorDocument({ id: bodyTemplate.vectorDocumentId, name: `${bodyTemplate.name} vector`, kind: 'body' });
+                const visualAsset = createEmptyVisualAsset({ id: bodyTemplate.visualAssetId, name: `${bodyTemplate.name} visual`, kind: 'body' });
+                addCollectionEntry('bodyTemplates', bodyTemplate);
+                addCollectionEntry('vectorDocuments', vectorDocument);
+                addCollectionEntry('visualAssets', visualAsset);
+                setSelectedBodyTemplateId(bodyTemplate.id);
+                setSelectedVisualAssetId(visualAsset.id);
+              }}
+            >
+              New Body
+            </button>
+            <button type="button" disabled={!selectedBodyTemplate} onClick={() => { void saveBodyAuthoringToDraft(); }}>
+              Save Body Template
+            </button>
+            <button
+              type="button"
+              disabled={!selectedBodyTemplate}
+              onClick={() => patchBodyTemplate((current) => ({ ...current, authoring: createDefaultBodyAuthoring(), anchors: createDefaultAnchorSet() }))}
+            >
+              Reset Parameters
+            </button>
+          </div>
+        </div>
+        <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <label>
+            <span>Race</span>
+            <select value={authoring.raceId ?? 'human'} onChange={(event) => patchBodyTemplate((current) => ({ ...current, authoring: { ...authoring, raceId: event.target.value } }))}>
+              {raceOptions.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Sex / body type</span>
+            <select value={authoring.bodyPresentation} onChange={(event) => patchBodyTemplate((current) => ({ ...current, authoring: { ...authoring, bodyPresentation: event.target.value as SpriteBodyAuthoringDefinition['bodyPresentation'] } }))}>
+              <option value="male">male</option>
+              <option value="female">female</option>
+            </select>
+          </label>
+          <label>
+            <span>Skin color</span>
+            <input type="color" value={authoring.skinColor} onChange={(event) => patchBodyTemplate((current) => ({ ...current, authoring: { ...authoring, skinColor: event.target.value } }))} />
+          </label>
+          <label>
+            <span>Underwear color</span>
+            <input type="color" value={authoring.underwearColor} onChange={(event) => patchBodyTemplate((current) => ({ ...current, authoring: { ...authoring, underwearColor: event.target.value } }))} />
+          </label>
+        </div>
+        <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          {bodySliderFields.map(({ key, label, min, max }) => (
+            <label key={key}>
+              <span>{label}</span>
+              <input
+                type="range"
+                min={min}
+                max={max}
+                step="0.01"
+                value={String(authoring[key])}
+                onChange={(event) => patchBodyTemplate((current) => ({
+                  ...current,
+                  authoring: {
+                    ...authoring,
+                    [key]: Number(event.target.value),
+                  },
+                }))}
+              />
+              <div className="muted">{authoring[key].toFixed(2)}</div>
+            </label>
+          ))}
+        </div>
+        <p className="muted" style={{ margin: 0 }}>
+          Linked vector: {selectedBodyVectorDocument?.id || 'pending'} | linked visual asset: {linkedAsset?.id || selectedBodyTemplate?.visualAssetId || 'pending'}
+        </p>
+      </section>
+    );
+  }
+
+  function renderEquipmentVisualForgePanel() {
+    const authoring = normalizeEquipmentVisualAuthoring(selectedVisualAsset?.equipmentAuthoring);
+    const colorFields: Array<{ key: keyof Pick<SpriteEquipmentVisualAuthoringDefinition, 'primaryColor' | 'secondaryColor' | 'accentColor' | 'outlineColor'>; label: string }> = [
+      { key: 'primaryColor', label: 'Primary' },
+      { key: 'secondaryColor', label: 'Secondary' },
+      { key: 'accentColor', label: 'Accent' },
+      { key: 'outlineColor', label: 'Outline' },
+    ];
+    const numericFields: Array<{ key: keyof Pick<SpriteEquipmentVisualAuthoringDefinition, 'width' | 'height' | 'length' | 'thickness' | 'rotation' | 'scale'>; label: string; min: number; max: number }> = [
+      { key: 'width', label: 'Width', min: 0.3, max: 2 },
+      { key: 'height', label: 'Height', min: 0.3, max: 2 },
+      { key: 'length', label: 'Length', min: 0.3, max: 2.2 },
+      { key: 'thickness', label: 'Thickness', min: 0.1, max: 1.5 },
+      { key: 'rotation', label: 'Rotation', min: -180, max: 180 },
+      { key: 'scale', label: 'Scale', min: 0.4, max: 2 },
+    ];
+
+    return (
+      <section className="card admin-item-preview" style={{ display: 'grid', gap: 12 }}>
+        <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
+          <h5 style={{ margin: 0 }}>Equipment Visual Forge</h5>
+          <div className="admin-actions-row">
+            <button
+              type="button"
+              onClick={() => {
+                const next = createEmptyVisualAsset();
+                const vectorDocument = createEmptyVectorDocument({ id: next.vectorDocumentId, name: `${next.name} vector`, kind: 'equipment' });
+                addCollectionEntry('visualAssets', next);
+                addCollectionEntry('vectorDocuments', vectorDocument);
+                setSelectedVisualAssetId(next.id);
+              }}
+            >
+              New Equipment Visual
+            </button>
+            <button type="button" disabled={!selectedVisualAsset} onClick={() => { void saveEquipmentVisualAssetToDraft(); }}>
+              Save Visual Asset
+            </button>
+            <button
+              type="button"
+              disabled={!selectedVisualAsset}
+              onClick={() => {
+                if (!selectedVisualAsset) {
+                  return;
+                }
+                const duplicate = {
+                  ...selectedVisualAsset,
+                  id: `${selectedVisualAsset.id}_copy_${Date.now()}`,
+                  name: `${selectedVisualAsset.name} Copy`,
+                  vectorDocumentId: `${selectedVisualAsset.vectorDocumentId || selectedVisualAsset.id}_copy_${Date.now()}`,
+                };
+                addCollectionEntry('visualAssets', duplicate);
+                addCollectionEntry('vectorDocuments', {
+                  ...(selectedVisualVectorDocument ?? createEmptyVectorDocument({ kind: 'equipment' })),
+                  id: duplicate.vectorDocumentId || `${duplicate.id}_vector`,
+                  name: `${duplicate.name} vector`,
+                });
+                setSelectedVisualAssetId(duplicate.id);
+              }}
+            >
+              Duplicate Visual
+            </button>
+            <button
+              type="button"
+              disabled={!selectedVisualAsset}
+              onClick={() => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: createDefaultEquipmentVisualAuthoring(current.equipmentAuthoring?.category) }))}
+            >
+              Reset Parameters
+            </button>
+          </div>
+        </div>
+        <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <label>
+            <span>Visual asset</span>
+            <select value={selectedVisualAssetId} onChange={(event) => setSelectedVisualAssetId(event.target.value)}>
+              {draft.visualAssets.map((entry) => (
+                <option key={entry.id} value={entry.id}>{entry.name} ({entry.kind})</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Name</span>
+            <input value={selectedVisualAsset?.name ?? ''} onChange={(event) => patchVisualAsset((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label>
+            <span>Category</span>
+            <select value={authoring.category} onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, category: event.target.value as SpriteEquipmentVisualAuthoringDefinition['category'], shapePreset: event.target.value } }))}>
+              {SPRITE_EQUIPMENT_VISUAL_CATEGORIES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Shape preset</span>
+            <input value={authoring.shapePreset} onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, shapePreset: event.target.value } }))} />
+          </label>
+          <label>
+            <span>Material preset</span>
+            <input value={authoring.materialPreset} onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, materialPreset: event.target.value } }))} />
+          </label>
+        </div>
+        <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+          {colorFields.map(({ key, label }) => (
+            <label key={key}>
+              <span>{label}</span>
+              <input type="color" value={authoring[key]} onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, [key]: event.target.value } }))} />
+            </label>
+          ))}
+          <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={authoring.outlineEnabled} onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, outlineEnabled: event.target.checked } }))} />
+            <span>Outline enabled</span>
+          </label>
+        </div>
+        <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          {numericFields.map(({ key, label, min, max }) => (
+            <label key={key}>
+              <span>{label}</span>
+              <input
+                type="range"
+                min={String(min)}
+                max={String(max)}
+                step="0.01"
+                value={String(authoring[key])}
+                onChange={(event) => patchVisualAsset((current) => ({ ...current, equipmentAuthoring: { ...authoring, [key]: Number(event.target.value) } }))}
+              />
+              <div className="muted">{authoring[key].toFixed(2)}</div>
+            </label>
+          ))}
+        </div>
+        <div className="admin-actions-row">
+          <button type="button" disabled={!selectedVisualAsset} onClick={createBindingFromSelectedVisualAsset}>
+            Create Binding
+          </button>
+        </div>
+        <p className="muted" style={{ margin: 0 }}>
+          Linked vector: {selectedVisualVectorDocument?.id || selectedVisualAsset?.vectorDocumentId || 'pending'}
+        </p>
+      </section>
+    );
+  }
+
   function renderControlTab() {
     return (
       <div className="admin-editor-page" style={{ display: 'grid', gap: 16 }}>
+        {renderBodyAuthoringPanel()}
         <section className="admin-form-panel">
           <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
             <h4 style={{ margin: 0 }}>Sprite Body Templates</h4>
@@ -1537,6 +1978,8 @@ export function SpriteStudioWorkspace({
   function renderItemForgeTab() {
     return (
       <div className="admin-editor-page" style={{ display: 'grid', gap: 16 }}>
+        {renderEquipmentVisualForgePanel()}
+
         <section className="admin-form-panel">
           <div className="admin-actions-row" style={{ justifyContent: 'space-between' }}>
             <h4 style={{ margin: 0 }}>Equipment Visual Bindings</h4>
@@ -1594,7 +2037,71 @@ export function SpriteStudioWorkspace({
               <input type="checkbox" checked={selectedEquipmentBinding?.defaultForItem ?? false} onChange={(event) => patchEquipmentBinding((current) => ({ ...current, defaultForItem: event.target.checked }))} />
               defaultForItem
             </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={selectedEquipmentBinding?.twoHanded ?? false} onChange={(event) => patchEquipmentBinding((current) => ({ ...current, twoHanded: event.target.checked }))} />
+              twoHanded
+            </label>
           </div>
+          <div className="admin-form-grid">
+            <label>
+              <span>Visual asset</span>
+              <select
+                value={selectedEquipmentBinding?.visualAssetId ?? ''}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, visualAssetId: event.target.value || undefined }))}
+              >
+                <option value="">No linked visual asset</option>
+                {draft.visualAssets.map((entry) => (
+                  <option key={entry.id} value={entry.id}>{entry.name} ({entry.kind})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Vector document</span>
+              <select
+                value={selectedEquipmentBinding?.vectorDocumentId ?? ''}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, vectorDocumentId: event.target.value || undefined }))}
+              >
+                <option value="">No linked vector document</option>
+                {draft.vectorDocuments.map((entry) => (
+                  <option key={entry.id} value={entry.id}>{entry.name} ({entry.kind})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Preferred anchor</span>
+              <select
+                value={selectedEquipmentBinding?.preferredAnchor ?? 'right_hand'}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, preferredAnchor: event.target.value as SpriteVisualFittingAnchor }))}
+              >
+                {SPRITE_VISUAL_FITTING_ANCHORS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Secondary anchor</span>
+              <select
+                value={selectedEquipmentBinding?.secondaryAnchor ?? ''}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, secondaryAnchor: (event.target.value || undefined) as SpriteVisualFittingAnchor | undefined }))}
+              >
+                <option value="">None</option>
+                {SPRITE_VISUAL_FITTING_ANCHORS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>Supported actions</span>
+            <select
+              multiple
+              value={selectedEquipmentBinding?.supportedActions ?? []}
+              onChange={(event) => {
+                const values = Array.from(event.target.selectedOptions).map((option) => option.value as SpriteActionType);
+                patchEquipmentBinding((current) => ({ ...current, supportedActions: values }));
+              }}
+            >
+              {SPRITE_ACTION_OPTIONS.map((entry) => (
+                <option key={entry} value={entry}>{entry}</option>
+              ))}
+            </select>
+          </label>
           <label>
             <span>Compatible body templates</span>
             <select
@@ -1629,6 +2136,33 @@ export function SpriteStudioWorkspace({
             <label>
               <span>Compatible body types (csv)</span>
               <input value={formatCsv(selectedEquipmentBinding?.compatibleBodyTypes)} onChange={(event) => patchEquipmentBinding((current) => ({ ...current, compatibleBodyTypes: parseCsv(event.target.value) }))} />
+            </label>
+            <label>
+              <span>Relative scale</span>
+              <input
+                type="number"
+                step="0.01"
+                value={selectedEquipmentBinding?.bodyRelativeScale ?? 1}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, bodyRelativeScale: Number(event.target.value) || 1 }))}
+              />
+            </label>
+            <label>
+              <span>Relative width</span>
+              <input
+                type="number"
+                step="0.01"
+                value={selectedEquipmentBinding?.bodyRelativeWidth ?? 1}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, bodyRelativeWidth: Number(event.target.value) || 1 }))}
+              />
+            </label>
+            <label>
+              <span>Relative height</span>
+              <input
+                type="number"
+                step="0.01"
+                value={selectedEquipmentBinding?.bodyRelativeHeight ?? 1}
+                onChange={(event) => patchEquipmentBinding((current) => ({ ...current, bodyRelativeHeight: Number(event.target.value) || 1 }))}
+              />
             </label>
           </div>
           <div className="admin-actions-row">
@@ -1804,7 +2338,7 @@ export function SpriteStudioWorkspace({
                 }
               }}
             >
-              Link Existing Equipment Visual Binding
+              Link To Item
             </button>
             <button
               type="button"
@@ -2067,6 +2601,8 @@ export function SpriteStudioWorkspace({
     const entries: Array<{ key: DraftCollectionKey; label: string; count: number }> = [
       { key: 'bodyTemplates', label: 'spriteBodyTemplates', count: draft.bodyTemplates.length },
       { key: 'animationSets', label: 'spriteAnimationSets', count: draft.animationSets.length },
+      { key: 'vectorDocuments', label: 'spriteVectorDocuments', count: draft.vectorDocuments.length },
+      { key: 'visualAssets', label: 'spriteVisualAssets', count: draft.visualAssets.length },
       { key: 'equipmentBindings', label: 'equipmentVisualBindings', count: draft.equipmentBindings.length },
       { key: 'spriteProfiles', label: 'spriteProfiles', count: draft.spriteProfiles.length },
       { key: 'skillBindings', label: 'skillAnimationBindings', count: draft.skillBindings.length },

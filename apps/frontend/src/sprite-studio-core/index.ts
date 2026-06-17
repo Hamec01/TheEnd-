@@ -6,4 +6,5 @@ export * from './resolver';
 export * from './starterContent';
 export * from './starterVisualContent';
 export * from './validation';
+export * from './vectorForge';
 

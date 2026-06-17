@@ -16,6 +16,7 @@ import type {
   SkillAnimationBindingDefinition,
 } from '../services/content/models';
 import { normalizeLegacySpriteAction } from './legacyAdapter';
+import { fittingAnchorToSpriteAnchor, normalizeBindingFitting } from './vectorForge';
 import type {
   CharacterVisualIssue,
   CharacterVisualResolverInput,
@@ -434,6 +435,11 @@ function mapLayerGroup(binding: EquipmentVisualBindingDefinition, preferredSlot:
 }
 
 function inferAnchorName(binding: EquipmentVisualBindingDefinition, preferredSlot: string | undefined): SpriteAnchorKey | undefined {
+  const normalizedBinding = normalizeBindingFitting(binding);
+  const explicitAnchor = fittingAnchorToSpriteAnchor(normalizedBinding.preferredAnchor);
+  if (explicitAnchor) {
+    return explicitAnchor;
+  }
   if (binding.weaponGripType === 'shield') {
     return 'shieldAnchor';
   }
