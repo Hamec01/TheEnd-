@@ -203,20 +203,38 @@ export function SpriteStudioPage() {
     }
   }
 
-  async function upsertEntries<T extends { id: string }>(
-    collectionName: ContentCollectionName,
-    entries: T[],
-    existingIds: string[],
-  ): Promise<void> {
-    const existingIdSet = new Set(existingIds);
-    for (const entry of entries) {
+async function upsertEntries<T extends { id: string }>(
+  collectionName: ContentCollectionName,
+  entries: T[],
+  existingIds: string[],
+): Promise<void> {
+  const existingIdSet = new Set(existingIds);
+  for (const entry of entries) {
+    try {
       if (existingIdSet.has(entry.id)) {
         await updateContentEntry<T>(collectionName, entry.id, entry);
         continue;
       }
       await createContentEntry<T>(collectionName, entry);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown content save error';
+      const duplicateCreate =
+        !existingIdSet.has(entry.id)
+        && /duplicate\b/i.test(message);
+      if (duplicateCreate) {
+        try {
+          await updateContentEntry<T>(collectionName, entry.id, entry);
+          existingIdSet.add(entry.id);
+          continue;
+        } catch (updateError) {
+          const updateMessage = updateError instanceof Error ? updateError.message : 'Unknown content update error';
+          throw new Error(`Failed to recover duplicate upsert for ${collectionName}/${entry.id}: ${updateMessage}`);
+        }
+      }
+      throw new Error(`Failed to upsert ${collectionName}/${entry.id}: ${message}`);
     }
   }
+}
 
   async function syncSoftLinks<T extends { id: string }>(params: {
     collection: ContentCollectionName;
@@ -326,15 +344,17 @@ export function SpriteStudioPage() {
       return;
     }
     setIsGeneratingStarterVisuals(true);
-    setStatus('Generating V0 starter visuals from legacy sprite engine...');
+    setStatus('Generating V0 starter visuals from internal TheEnd generator...');
     try {
       const starterDraft = createStarterSpriteStudioContentIfMissing({
         bodyTemplates: draft.bodyTemplates,
         animationSets: draft.animationSets,
       });
+      setStatus('Generating V0 starter visuals: uploading rendered body/equipment assets...');
       const materialized = await materializeStarterSpriteStudioVisualAssets({
         existingImages: referenceData.images,
       });
+      setStatus('Generating V0 starter visuals: preparing sprite body/binding/profile content...');
       const visualDraft = createStarterSpriteStudioVisualContentIfMissing({
         bodyTemplates: starterDraft.bodyTemplates,
         animationSets: starterDraft.animationSets,
@@ -344,33 +364,44 @@ export function SpriteStudioPage() {
         assets: materialized.refs,
       });
 
+      setStatus('Generating V0 starter visuals: saving body templates...');
       await upsertEntries<SpriteBodyTemplateDefinition>(
         'spriteBodyTemplates',
         visualDraft.bodyTemplates.filter((entry) => visualDraft.touchedBodyTemplateIds.includes(entry.id)),
         originalState.bodyTemplateIds,
       );
+      setStatus('Generating V0 starter visuals: saving animation sets...');
       await upsertEntries<SpriteAnimationSetDefinition>(
         'spriteAnimationSets',
         visualDraft.animationSets.filter((entry) => visualDraft.touchedAnimationSetIds.includes(entry.id)),
         originalState.animationSetIds,
       );
+      setStatus('Generating V0 starter visuals: saving equipment bindings...');
       await upsertEntries<EquipmentVisualBindingDefinition>(
         'equipmentVisualBindings',
         visualDraft.equipmentBindings.filter((entry) => visualDraft.touchedEquipmentBindingIds.includes(entry.id)),
         originalState.equipmentBindingIds,
       );
+      setStatus('Generating V0 starter visuals: saving sprite profiles...');
       await upsertEntries<SpriteProfileDefinition>(
         'spriteProfiles',
         visualDraft.spriteProfiles.filter((entry) => visualDraft.touchedSpriteProfileIds.includes(entry.id)),
         originalState.spriteProfileIds,
       );
 
+      setStatus('Generating V0 starter visuals: linking starter items to equipment bindings...');
       for (const item of visualDraft.items.filter((entry) => visualDraft.touchedItemIds.includes(entry.id))) {
-        await updateContentEntry<AdminItem>('items', item.id, {
-          defaultEquipmentVisualBindingId: item.defaultEquipmentVisualBindingId,
-        });
+        try {
+          await updateContentEntry<AdminItem>('items', item.id, {
+            defaultEquipmentVisualBindingId: item.defaultEquipmentVisualBindingId,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown item link error';
+          throw new Error(`Failed to link items/${item.id} -> ${item.defaultEquipmentVisualBindingId ?? 'none'}: ${message}`);
+        }
       }
 
+      setStatus('Generating V0 starter visuals: reloading Sprite Studio state...');
       await loadAll();
       setStatus(describeMaterializedStarterVisuals(materialized));
       setSaveState({

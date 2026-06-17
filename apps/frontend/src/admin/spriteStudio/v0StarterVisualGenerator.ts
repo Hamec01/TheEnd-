@@ -8,29 +8,10 @@ import {
   STARTER_V0_EQUIPMENT_BINDING_IDS,
   type StarterSpriteStudioVisualAssetRefs,
 } from '../../sprite-studio-core';
-import type {
-  AnimationDefinition,
-  CharacterType,
-  ElfAnimationType,
-  MonsterAnimationType,
-  WarriorAnimationType,
-  WolfAnimationType,
-  WolfConfig,
-} from '../../../../../sprite+engine/src/types';
-import {
-  ELF_ANIMATIONS,
-  MONSTER_ANIMATIONS,
-  WARRIOR_ANIMATIONS,
-  WOLF_ANIMATIONS,
-} from '../../../../../sprite+engine/src/types';
-import { drawElf } from '../../../../../sprite+engine/src/utils/elfDrawing';
-import { drawHumanoid } from '../../../../../sprite+engine/src/utils/humanoidDrawing';
-import { drawMonster } from '../../../../../sprite+engine/src/utils/monsterDrawing';
-import { drawWarrior } from '../../../../../sprite+engine/src/utils/warriorDrawing';
-import { drawWolf } from '../../../../../sprite+engine/src/utils/wolfDrawing';
-
-const FRAME_SIZE = 128;
-const SPRITESHEET_COLUMNS = 8;
+import { generateEquipmentOverlay, generateHumanoidBody } from './generators/humanoid/humanoidGenerator';
+import { generateMonsterSprite, generateWolfSprite } from './generators/monsters/monsterGenerator';
+import { FRAME_SIZE, SPRITESHEET_COLUMNS } from './generators/shared/canvasUtils';
+import { buildSpritesheet } from './generators/shared/spritesheetGenerator';
 
 interface GeneratedImageSpec {
   id: string;
@@ -47,150 +28,11 @@ interface RenderedStarterVisualPack {
   refs: StarterSpriteStudioVisualAssetRefs;
 }
 
-function createBaseConfig(overrides: Partial<WolfConfig>): WolfConfig {
-  return {
-    characterType: 'humanoid',
-    primaryColor: '#7b2230',
-    secondaryColor: '#cfb26f',
-    accentColor: '#7ea1c8',
-    eyeColor: '#38bdf8',
-    eyeGlow: false,
-    equipHelmet: false,
-    equipChestplate: false,
-    equipGloves: false,
-    equipBoots: false,
-    equipBelt: false,
-    equipShield: false,
-    equipWeapon: 'none',
-    equipWeaponLeft: 'none',
-    skinColor: '#f2d0b1',
-    hairColor: '#6b3b1d',
-    underwearColor: '#365f9b',
-    humanoidRace: 'human',
-    bodyHeight: 1,
-    armSize: 1,
-    bellySize: 1,
-    hairStyle: 'short',
-    fxType: 'none',
-    fxColor: '#38bdf8',
-    fxScale: 1,
-    fxFrame: 0,
-    tailLength: 1,
-    earSize: 1,
-    snoutLength: 1,
-    bodySize: 1,
-    resolution: FRAME_SIZE,
-    fps: 8,
-    outlineColor: '#111827',
-    showOutline: false,
-    uploadedBodyPng: undefined,
-    uploadedFxPng: undefined,
-    uploadedBodyMode: 'static',
-    hideBaseBody: false,
-    customBodyScale: 1,
-    customBodyOffsetX: 0,
-    customBodyOffsetY: 0,
-    bakeFxInExport: false,
-    customFxScale: 1,
-    customFxOffsetX: 0,
-    customFxOffsetY: 0,
-    customFxRotation: 0,
-    customFxFrameCount: 1,
-    customFxTriggerFrame: 0,
-    theendSkillClass: 'custom',
-    theendDamageCategory: 'physical',
-    theendDamageType: 'slash',
-    theendElementType: 'none',
-    theendSoundPreset: 'none',
-    ...overrides,
-  };
-}
-
-function createFrameCanvas(size = FRAME_SIZE): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  return canvas;
-}
-
-function clearCanvas(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Canvas 2D context is unavailable.');
-  }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  return ctx;
-}
-
-function drawCharacterFrame(params: {
-  config: WolfConfig;
-  animationType: string;
-  frame: number;
-  flipX?: boolean;
-}): HTMLCanvasElement {
-  const canvas = createFrameCanvas();
-  const ctx = clearCanvas(canvas);
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2 + 15;
-  const flipX = params.flipX ?? false;
-  const character = params.config.characterType;
-
-  if (character === 'warrior' || character === 'dwarf') {
-    drawWarrior(ctx, params.config, params.animationType as WarriorAnimationType, params.frame, centerX, centerY, flipX);
-    return canvas;
-  }
-  if (character === 'elf') {
-    drawElf(ctx, params.config, params.animationType as ElfAnimationType, params.frame, centerX, centerY, flipX);
-    return canvas;
-  }
-  if (character === 'monster') {
-    drawMonster(ctx, params.config, params.animationType as MonsterAnimationType, params.frame, centerX, centerY);
-    return canvas;
-  }
-  if (character === 'wolf') {
-    drawWolf(ctx, params.config, params.animationType as WolfAnimationType, params.frame, centerX, centerY);
-    return canvas;
-  }
-  drawHumanoid(ctx, params.config, params.animationType, params.frame, centerX, centerY, flipX);
-  return canvas;
-}
-
-function diffOverlayCanvas(baseCanvas: HTMLCanvasElement, equippedCanvas: HTMLCanvasElement): HTMLCanvasElement {
-  const next = createFrameCanvas();
-  const baseCtx = baseCanvas.getContext('2d');
-  const equippedCtx = equippedCanvas.getContext('2d');
-  const nextCtx = next.getContext('2d');
-  if (!baseCtx || !equippedCtx || !nextCtx) {
-    throw new Error('Canvas 2D context is unavailable.');
-  }
-
-  const baseData = baseCtx.getImageData(0, 0, baseCanvas.width, baseCanvas.height);
-  const equippedData = equippedCtx.getImageData(0, 0, equippedCanvas.width, equippedCanvas.height);
-  const result = nextCtx.createImageData(next.width, next.height);
-
-  for (let index = 0; index < equippedData.data.length; index += 4) {
-    const same =
-      baseData.data[index] === equippedData.data[index]
-      && baseData.data[index + 1] === equippedData.data[index + 1]
-      && baseData.data[index + 2] === equippedData.data[index + 2]
-      && baseData.data[index + 3] === equippedData.data[index + 3];
-
-    if (same) {
-      result.data[index] = 0;
-      result.data[index + 1] = 0;
-      result.data[index + 2] = 0;
-      result.data[index + 3] = 0;
-      continue;
-    }
-
-    result.data[index] = equippedData.data[index];
-    result.data[index + 1] = equippedData.data[index + 1];
-    result.data[index + 2] = equippedData.data[index + 2];
-    result.data[index + 3] = equippedData.data[index + 3];
-  }
-
-  nextCtx.putImageData(result, 0, 0);
-  return next;
+export interface MaterializedStarterVisualAssetsResult {
+  refs: StarterSpriteStudioVisualAssetRefs;
+  uploadedImageIds: string[];
+  imageSheetIds: string[];
+  generatedImageIds: string[];
 }
 
 function buildImageSpec(params: {
@@ -207,49 +49,6 @@ function buildImageSpec(params: {
     height: params.canvas.height,
     dataUrl: params.canvas.toDataURL('image/png'),
   };
-}
-
-function createTransparentCanvas(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  return canvas;
-}
-
-function buildSpritesheet(params: {
-  id: string;
-  name: string;
-  folder: string;
-  config: WolfConfig;
-  actions: Array<{
-    sourceAction: string;
-    frameCount: number;
-  }>;
-}): GeneratedImageSpec {
-  const rows = params.actions.length;
-  const canvas = createTransparentCanvas(SPRITESHEET_COLUMNS * FRAME_SIZE, rows * FRAME_SIZE);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Canvas 2D context is unavailable.');
-  }
-
-  for (const [rowIndex, action] of params.actions.entries()) {
-    for (let frame = 0; frame < action.frameCount; frame += 1) {
-      const frameCanvas = drawCharacterFrame({
-        config: params.config,
-        animationType: action.sourceAction,
-        frame,
-      });
-      ctx.drawImage(frameCanvas, frame * FRAME_SIZE, rowIndex * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE);
-    }
-  }
-
-  return buildImageSpec({
-    id: params.id,
-    name: params.name,
-    folder: params.folder,
-    canvas,
-  });
 }
 
 function buildSheetDefinition(params: {
@@ -282,97 +81,11 @@ function getStarterVisualFolders() {
 function renderStarterVisualPack(): RenderedStarterVisualPack {
   const folders = getStarterVisualFolders();
 
-  const humanBaseConfig = createBaseConfig({
-    characterType: 'humanoid',
-    humanoidRace: 'human',
-    hairStyle: 'short',
-    equipWeapon: 'none',
-    equipShield: false,
-    equipHelmet: false,
-    equipChestplate: false,
-    equipBelt: true,
-  });
-  const humanBodyCanvas = drawCharacterFrame({ config: humanBaseConfig, animationType: 'idle', frame: 0 });
-  const humanSwordCanvas = diffOverlayCanvas(
-    humanBodyCanvas,
-    drawCharacterFrame({
-      config: createBaseConfig({ ...humanBaseConfig, equipWeapon: 'sword' }),
-      animationType: 'idle',
-      frame: 0,
-    }),
-  );
-  const humanShieldCanvas = diffOverlayCanvas(
-    humanBodyCanvas,
-    drawCharacterFrame({
-      config: createBaseConfig({ ...humanBaseConfig, equipShield: true, equipWeaponLeft: 'shield' }),
-      animationType: 'idle',
-      frame: 0,
-    }),
-  );
-  const humanHelmetCanvas = diffOverlayCanvas(
-    humanBodyCanvas,
-    drawCharacterFrame({
-      config: createBaseConfig({ ...humanBaseConfig, equipHelmet: true }),
-      animationType: 'idle',
-      frame: 0,
-    }),
-  );
-  const humanChestCanvas = diffOverlayCanvas(
-    humanBodyCanvas,
-    drawCharacterFrame({
-      config: createBaseConfig({ ...humanBaseConfig, equipChestplate: true }),
-      animationType: 'idle',
-      frame: 0,
-    }),
-  );
-
-  const elfBodyCanvas = drawCharacterFrame({
-    config: createBaseConfig({
-      characterType: 'elf',
-      equipWeapon: 'none',
-      equipChestplate: false,
-      equipHelmet: false,
-      equipShield: false,
-    }),
-    animationType: 'idle',
-    frame: 0,
-  });
-
-  const dwarfBodyCanvas = drawCharacterFrame({
-    config: createBaseConfig({
-      characterType: 'dwarf',
-      equipWeapon: 'none',
-      equipChestplate: false,
-      equipHelmet: false,
-      equipShield: false,
-    }),
-    animationType: 'idle',
-    frame: 0,
-  });
-
-  const wolfBodyCanvas = drawCharacterFrame({
-    config: createBaseConfig({
-      characterType: 'wolf',
-      primaryColor: '#6f5b44',
-      secondaryColor: '#bca17a',
-      accentColor: '#4a4a4a',
-      eyeColor: '#f8fafc',
-    }),
-    animationType: 'idle',
-    frame: 0,
-  });
-
-  const monsterBodyCanvas = drawCharacterFrame({
-    config: createBaseConfig({
-      characterType: 'monster',
-      primaryColor: '#365c47',
-      secondaryColor: '#7ab47e',
-      accentColor: '#c3d16b',
-      eyeColor: '#f97316',
-    }),
-    animationType: 'idle',
-    frame: 0,
-  });
+  const humanBodyCanvas = generateHumanoidBody({ race: 'human', pose: 'idle', frame: 0 });
+  const elfBodyCanvas = generateHumanoidBody({ race: 'elf', pose: 'idle', frame: 0 });
+  const dwarfBodyCanvas = generateHumanoidBody({ race: 'dwarf', pose: 'idle', frame: 0 });
+  const wolfBodyCanvas = generateWolfSprite(0);
+  const monsterBodyCanvas = generateMonsterSprite(0);
 
   const images: GeneratedImageSpec[] = [
     buildImageSpec({
@@ -409,109 +122,98 @@ function renderStarterVisualPack(): RenderedStarterVisualPack {
       id: 'img_sprite_studio_equipment_starter_sword_visual',
       name: 'sprite-studio-equipment-starter-sword-visual',
       folder: folders.equipment,
-      canvas: humanSwordCanvas,
+      canvas: generateEquipmentOverlay('sword'),
     }),
     buildImageSpec({
       id: 'img_sprite_studio_equipment_starter_shield_visual',
       name: 'sprite-studio-equipment-starter-shield-visual',
       folder: folders.equipment,
-      canvas: humanShieldCanvas,
+      canvas: generateEquipmentOverlay('shield'),
     }),
     buildImageSpec({
       id: 'img_sprite_studio_equipment_starter_helmet_visual',
       name: 'sprite-studio-equipment-starter-helmet-visual',
       folder: folders.equipment,
-      canvas: humanHelmetCanvas,
+      canvas: generateEquipmentOverlay('helmet'),
     }),
     buildImageSpec({
       id: 'img_sprite_studio_equipment_starter_chest_armor_visual',
       name: 'sprite-studio-equipment-starter-chest-armor-visual',
       folder: folders.equipment,
-      canvas: humanChestCanvas,
+      canvas: generateEquipmentOverlay('chestArmor'),
     }),
   ];
 
-  const humanoidSheet = buildSpritesheet({
+  const humanoidSheetImage = buildImageSpec({
     id: 'img_sprite_studio_sheet_humanoid_basic_battle',
     name: 'sprite-studio-sheet-humanoid-basic-battle',
     folder: folders.sheets,
-    config: humanBaseConfig,
-    actions: [
-      { sourceAction: 'idle', frameCount: WARRIOR_ANIMATIONS.idle.frameCount },
-      { sourceAction: 'walk', frameCount: WARRIOR_ANIMATIONS.walk.frameCount },
-      { sourceAction: 'attack', frameCount: 6 },
-    ],
+    canvas: buildSpritesheet([
+      { key: 'idle', frameCount: 6, renderFrame: (frame) => generateHumanoidBody({ race: 'human', pose: 'idle', frame }) },
+      { key: 'walk', frameCount: 8, renderFrame: (frame) => generateHumanoidBody({ race: 'human', pose: 'walk', frame }) },
+      { key: 'attack', frameCount: 6, renderFrame: (frame) => generateHumanoidBody({ race: 'human', pose: 'attack', frame }) },
+    ]),
   });
-  const elfSheet = buildSpritesheet({
+  const elfSheetImage = buildImageSpec({
     id: 'img_sprite_studio_sheet_elf_basic_battle',
     name: 'sprite-studio-sheet-elf-basic-battle',
     folder: folders.sheets,
-    config: createBaseConfig({ characterType: 'elf', equipWeapon: 'bow' }),
-    actions: [
-      { sourceAction: 'idle', frameCount: ELF_ANIMATIONS.idle.frameCount },
-      { sourceAction: 'walk', frameCount: ELF_ANIMATIONS.walk.frameCount },
-      { sourceAction: 'shoot_bow', frameCount: ELF_ANIMATIONS.shoot_bow.frameCount },
-    ],
+    canvas: buildSpritesheet([
+      { key: 'idle', frameCount: 6, renderFrame: (frame) => generateHumanoidBody({ race: 'elf', pose: 'idle', frame }) },
+      { key: 'walk', frameCount: 8, renderFrame: (frame) => generateHumanoidBody({ race: 'elf', pose: 'walk', frame }) },
+      { key: 'attack_ranged', frameCount: 6, renderFrame: (frame) => generateHumanoidBody({ race: 'elf', pose: 'attack', frame }) },
+    ]),
   });
-  const wolfSheet = buildSpritesheet({
+  const wolfSheetImage = buildImageSpec({
     id: 'img_sprite_studio_sheet_wolf_basic_battle',
     name: 'sprite-studio-sheet-wolf-basic-battle',
     folder: folders.sheets,
-    config: createBaseConfig({ characterType: 'wolf', primaryColor: '#6f5b44', secondaryColor: '#bca17a', accentColor: '#4a4a4a' }),
-    actions: [
-      { sourceAction: 'idle', frameCount: WOLF_ANIMATIONS.idle.frameCount },
-      { sourceAction: 'run_right', frameCount: WOLF_ANIMATIONS.run_right.frameCount },
-      { sourceAction: 'bite', frameCount: WOLF_ANIMATIONS.bite.frameCount },
-    ],
+    canvas: buildSpritesheet([
+      { key: 'idle', frameCount: 6, renderFrame: (frame) => generateWolfSprite(frame) },
+      { key: 'walk', frameCount: 8, renderFrame: (frame) => generateWolfSprite(frame) },
+      { key: 'attack', frameCount: 6, renderFrame: (frame) => generateWolfSprite(frame) },
+    ]),
   });
-  const monsterSheet = buildSpritesheet({
+  const monsterSheetImage = buildImageSpec({
     id: 'img_sprite_studio_sheet_monster_basic_battle',
     name: 'sprite-studio-sheet-monster-basic-battle',
     folder: folders.sheets,
-    config: createBaseConfig({ characterType: 'monster', primaryColor: '#365c47', secondaryColor: '#7ab47e', accentColor: '#c3d16b' }),
-    actions: [
-      { sourceAction: 'idle', frameCount: MONSTER_ANIMATIONS.idle.frameCount },
-      { sourceAction: 'walk', frameCount: MONSTER_ANIMATIONS.walk.frameCount },
-      { sourceAction: 'claws_slash', frameCount: MONSTER_ANIMATIONS.claws_slash.frameCount },
-    ],
+    canvas: buildSpritesheet([
+      { key: 'idle', frameCount: 6, renderFrame: (frame) => generateMonsterSprite(frame) },
+      { key: 'walk', frameCount: 8, renderFrame: (frame) => generateMonsterSprite(frame) },
+      { key: 'attack', frameCount: 6, renderFrame: (frame) => generateMonsterSprite(frame) },
+    ]),
   });
 
-  const sheetImages = [humanoidSheet, elfSheet, wolfSheet, monsterSheet];
-  const allImages = [...images, ...sheetImages];
-
-  const humanoidSheetDefinition = buildSheetDefinition({
+  const sheetImages = [humanoidSheetImage, elfSheetImage, wolfSheetImage, monsterSheetImage];
+  const humanoidSheet = buildSheetDefinition({
     id: 'sheet_sprite_studio_humanoid_basic_battle',
     name: 'Sprite Studio Humanoid Basic Battle',
-    src: humanoidSheet.id,
+    src: humanoidSheetImage.id,
     rows: 3,
   });
-  const elfSheetDefinition = buildSheetDefinition({
+  const elfSheet = buildSheetDefinition({
     id: 'sheet_sprite_studio_elf_basic_battle',
     name: 'Sprite Studio Elf Basic Battle',
-    src: elfSheet.id,
+    src: elfSheetImage.id,
     rows: 3,
   });
-  const wolfSheetDefinition = buildSheetDefinition({
+  const wolfSheet = buildSheetDefinition({
     id: 'sheet_sprite_studio_wolf_basic_battle',
     name: 'Sprite Studio Wolf Basic Battle',
-    src: wolfSheet.id,
+    src: wolfSheetImage.id,
     rows: 3,
   });
-  const monsterSheetDefinition = buildSheetDefinition({
+  const monsterSheet = buildSheetDefinition({
     id: 'sheet_sprite_studio_monster_basic_battle',
     name: 'Sprite Studio Monster Basic Battle',
-    src: monsterSheet.id,
+    src: monsterSheetImage.id,
     rows: 3,
   });
 
   return {
-    images: allImages,
-    sheets: [
-      humanoidSheetDefinition,
-      elfSheetDefinition,
-      wolfSheetDefinition,
-      monsterSheetDefinition,
-    ],
+    images: [...images, ...sheetImages],
+    sheets: [humanoidSheet, elfSheet, wolfSheet, monsterSheet],
     refs: {
       bodyImageIds: {
         humanMale: 'img_sprite_studio_body_human_male_basic_body',
@@ -527,10 +229,10 @@ function renderStarterVisualPack(): RenderedStarterVisualPack {
         chestArmor: 'img_sprite_studio_equipment_starter_chest_armor_visual',
       },
       animationSheets: {
-        humanoidBattle: humanoidSheetDefinition,
-        elfBattle: elfSheetDefinition,
-        wolfBattle: wolfSheetDefinition,
-        monsterBattle: monsterSheetDefinition,
+        humanoidBattle: humanoidSheet,
+        elfBattle: elfSheet,
+        wolfBattle: wolfSheet,
+        monsterBattle: monsterSheet,
       },
     },
   };
@@ -559,13 +261,6 @@ async function upsertStoredImage(existingImages: StoredImage[], spec: GeneratedI
   });
 }
 
-export interface MaterializedStarterVisualAssetsResult {
-  refs: StarterSpriteStudioVisualAssetRefs;
-  uploadedImageIds: string[];
-  imageSheetIds: string[];
-  generatedImageIds: string[];
-}
-
 export async function materializeStarterSpriteStudioVisualAssets(params: {
   existingImages: StoredImage[];
 }): Promise<MaterializedStarterVisualAssetsResult> {
@@ -575,7 +270,6 @@ export async function materializeStarterSpriteStudioVisualAssets(params: {
   for (const image of rendered.images) {
     uploadedImages.push(await upsertStoredImage(params.existingImages, image));
   }
-
   for (const sheet of rendered.sheets) {
     await imageSheetsService.upsert(sheet);
   }
@@ -591,8 +285,8 @@ export async function materializeStarterSpriteStudioVisualAssets(params: {
 export function describeMaterializedStarterVisuals(result: MaterializedStarterVisualAssetsResult): string {
   return [
     `Generated V0 starter visuals: ${result.generatedImageIds.length} images`,
-    `stored ids: ${result.uploadedImageIds.join(', ')}`,
-    `sheets: ${result.imageSheetIds.join(', ')}`,
+    `stored ids: ${result.uploadedImageIds.join(', ') || 'none'}`,
+    `sheets: ${result.imageSheetIds.join(', ') || 'none'}`,
     `demo body: ${STARTER_V0_BODY_TEMPLATE_IDS.humanMale}`,
     `demo bindings: ${STARTER_V0_EQUIPMENT_BINDING_IDS.starterSword}, ${STARTER_V0_EQUIPMENT_BINDING_IDS.starterShield}, ${STARTER_V0_EQUIPMENT_BINDING_IDS.starterHelmet}, ${STARTER_V0_EQUIPMENT_BINDING_IDS.starterChestArmor}`,
     `demo animation set: ${STARTER_V0_ANIMATION_SET_IDS.humanoidBattle}`,

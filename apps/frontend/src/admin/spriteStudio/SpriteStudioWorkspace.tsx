@@ -64,6 +64,16 @@ type DraftCollectionKey =
 
 type DraftCollectionEntry<K extends DraftCollectionKey> = SpriteStudioDraftState[K] extends Array<infer T> ? T : never;
 
+type SpriteSurfaceDraftAsset = {
+  imageRef?: SpriteImageRef;
+  imagePath?: string;
+  scale?: number;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number;
+  zLayer?: number;
+};
+
 function formatCsv(values: string[] | undefined): string {
   return (values ?? []).join(', ');
 }
@@ -126,9 +136,9 @@ function selectAnchorLabel(key: SpriteAnchorKey): string {
 }
 
 function surfaceAssetFor<T extends {
-  paperdoll?: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
-  world?: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
-  battle?: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
+  paperdoll?: SpriteSurfaceDraftAsset;
+  world?: SpriteSurfaceDraftAsset;
+  battle?: SpriteSurfaceDraftAsset;
 }>(entry: T, surface: SpriteSurface) {
   if (surface === 'paperdoll') {
     return entry.paperdoll;
@@ -212,6 +222,10 @@ export function SpriteStudioWorkspace({
   const [selectedPreviewSkillBindingId, setSelectedPreviewSkillBindingId] = useState('');
   const [selectedPreviewFxId, setSelectedPreviewFxId] = useState('');
   const [previewEquippedItemIds, setPreviewEquippedItemIds] = useState<Record<string, string> | null>(null);
+  const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [isPreviewLooping, setIsPreviewLooping] = useState(true);
+  const [showPreviewAnchors, setShowPreviewAnchors] = useState(true);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const exportCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -381,7 +395,7 @@ export function SpriteStudioWorkspace({
       ownerType: 'body_template' | 'equipment_binding' | 'animation_clip',
       ownerId: string,
       label: string,
-      asset: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number } | undefined,
+      asset: SpriteSurfaceDraftAsset | undefined,
     ) {
       if (!asset?.imageRef && !asset?.imagePath) {
         return asset;
@@ -563,6 +577,39 @@ export function SpriteStudioWorkspace({
     [invalidBodyInspection, resolvedPreview],
   );
 
+  const previewFrameCount = Math.max(1, guardedPreview.clip?.frameCount ?? 1);
+  const previewFps = Math.max(1, guardedPreview.clip?.fps ?? 8);
+  const previewCanAnimate = previewFrameCount > 1;
+
+  useEffect(() => {
+    setPreviewFrameIndex((current) => Math.min(current, Math.max(0, previewFrameCount - 1)));
+  }, [previewFrameCount]);
+
+  useEffect(() => {
+    setPreviewFrameIndex(0);
+  }, [activeAction, activeSurface, selectedProfileId, selectedPreviewSkillBindingId, selectedPreviewFxId]);
+
+  useEffect(() => {
+    if (!isPreviewPlaying || !previewCanAnimate) {
+      return undefined;
+    }
+    const frameDurationMs = Math.max(50, Math.round(1000 / previewFps));
+    const timer = window.setTimeout(() => {
+      setPreviewFrameIndex((current) => {
+        const next = current + 1;
+        if (next < previewFrameCount) {
+          return next;
+        }
+        if (isPreviewLooping && guardedPreview.clip?.loop !== false) {
+          return 0;
+        }
+        setIsPreviewPlaying(false);
+        return Math.max(0, previewFrameCount - 1);
+      });
+    }, frameDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [guardedPreview.clip?.loop, isPreviewLooping, isPreviewPlaying, previewCanAnimate, previewFps, previewFrameCount, previewFrameIndex]);
+
   useEffect(() => {
     const canvases = [previewCanvasRef.current, exportCanvasRef.current].filter((entry): entry is HTMLCanvasElement => Boolean(entry));
     if (canvases.length === 0) {
@@ -573,8 +620,10 @@ export function SpriteStudioWorkspace({
       resolved: guardedPreview,
       runtimeImages: referenceData.images,
       imageSheets: referenceData.imageSheets,
+      showAnchors: showPreviewAnchors,
+      frameIndex: previewFrameIndex,
     })));
-  }, [guardedPreview, referenceData.imageSheets, referenceData.images]);
+  }, [guardedPreview, previewFrameIndex, referenceData.imageSheets, referenceData.images, showPreviewAnchors]);
 
   function patchCollectionEntry<K extends DraftCollectionKey>(
     key: K,
@@ -825,11 +874,11 @@ export function SpriteStudioWorkspace({
 
   function renderSurfaceAssetEditor(params: {
     title: string;
-    asset: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number } | undefined;
+    asset: SpriteSurfaceDraftAsset | undefined;
     uploadSuggestedId: string;
     uploadSuggestedName: string;
     uploadFolder: string | undefined;
-    onPatch: (next: { imageRef?: SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number }) => void;
+    onPatch: (next: SpriteSurfaceDraftAsset) => void;
   }) {
     return (
       <section className="card admin-item-preview" key={params.title}>
@@ -878,6 +927,24 @@ export function SpriteStudioWorkspace({
               type="number"
               value={params.asset?.offsetY ?? 0}
               onChange={(event) => params.onPatch({ ...params.asset, offsetY: Number(event.target.value) || 0 })}
+            />
+          </label>
+          <label>
+            <span>Rotation</span>
+            <input
+              type="number"
+              step="1"
+              value={params.asset?.rotation ?? 0}
+              onChange={(event) => params.onPatch({ ...params.asset, rotation: Number(event.target.value) || 0 })}
+            />
+          </label>
+          <label>
+            <span>zLayer</span>
+            <input
+              type="number"
+              step="1"
+              value={params.asset?.zLayer ?? 0}
+              onChange={(event) => params.onPatch({ ...params.asset, zLayer: Number(event.target.value) || 0 })}
             />
           </label>
         </div>
@@ -1875,7 +1942,7 @@ export function SpriteStudioWorkspace({
               Legacy import stays deferred in Phase 2.7. This section is a controlled report/stub only.
             </p>
             <p className="muted" style={{ margin: 0 }}>
-              Local reference folder: `C:\theend\sprite+engine`
+              Local reference folder: `Sprite+engine/` (optional, legacy source only)
             </p>
             <p className="muted" style={{ margin: '8px 0 0' }}>
               Next step later: scan/list old engine assets, classify them, and import only confirmed Sprite Visual Assets.
@@ -1918,6 +1985,20 @@ export function SpriteStudioWorkspace({
               </select>
             </label>
             <label>
+              <span>Frame scrubber</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, previewFrameCount - 1)}
+                value={Math.min(previewFrameIndex, Math.max(0, previewFrameCount - 1))}
+                onChange={(event) => {
+                  setIsPreviewPlaying(false);
+                  setPreviewFrameIndex(Number(event.target.value) || 0);
+                }}
+                disabled={!previewCanAnimate}
+              />
+            </label>
+            <label>
               <span>Preview skill binding</span>
               <select value={selectedPreviewSkillBindingId} onChange={(event) => setSelectedPreviewSkillBindingId(event.target.value)}>
                 <option value="">Auto from profile</option>
@@ -1936,19 +2017,36 @@ export function SpriteStudioWorkspace({
               </select>
             </label>
           </div>
+          <div className="admin-actions-row">
+            <button type="button" onClick={() => setIsPreviewPlaying((current) => !current)} disabled={!previewCanAnimate}>
+              {isPreviewPlaying ? 'Pause preview' : 'Play preview'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsPreviewPlaying(false);
+                setPreviewFrameIndex(0);
+              }}
+            >
+              Reset preview
+            </button>
+            <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={isPreviewLooping} onChange={(event) => setIsPreviewLooping(event.target.checked)} />
+              <span>Loop</span>
+            </label>
+            <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+              <input type="checkbox" checked={showPreviewAnchors} onChange={(event) => setShowPreviewAnchors(event.target.checked)} />
+              <span>Show anchors</span>
+            </label>
+          </div>
         </section>
 
         <section className="card admin-item-preview" style={{ display: 'grid', gap: 16 }}>
-          <canvas
-            ref={previewCanvasRef}
-            width={256}
-            height={256}
-            style={{ width: 256, height: 256, border: '1px solid rgba(215, 178, 103, 0.25)', borderRadius: 12, background: 'rgba(0, 0, 0, 0.3)' }}
-          />
           <div>
             <p><strong>Profile:</strong> {selectedProfile?.name || 'none'}</p>
             <p><strong>Body template:</strong> {previewBodyTemplate?.name || 'none'}</p>
             <p><strong>Animation set:</strong> {previewAnimationSet?.name || 'none'}</p>
+            <p><strong>Clip:</strong> {guardedPreview.clip?.action || 'static'} · frame {Math.min(previewFrameCount, previewFrameIndex + 1)}/{previewFrameCount} · fps {previewFps}</p>
             <p><strong>Resolved equipment bindings:</strong> {resolvedProfileBindings.length}</p>
             <ul>
               {resolvedProfileBindings.map((binding) => (
@@ -2292,6 +2390,70 @@ export function SpriteStudioWorkspace({
                   </div>
                 ) : null}
               </div>
+              <section className="card admin-item-preview" style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+                <div className="admin-actions-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>Animation Player</strong>
+                  <div className="admin-actions-row">
+                    <button
+                      type="button"
+                      onClick={() => setIsPreviewPlaying((current) => !current)}
+                      disabled={!previewCanAnimate}
+                    >
+                      {isPreviewPlaying ? 'Pause' : 'Play'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPreviewPlaying(false);
+                        setPreviewFrameIndex(0);
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="admin-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                  <label>
+                    <span>Action</span>
+                    <select value={activeAction} onChange={(event) => setActiveAction(event.target.value)}>
+                      {SPRITE_ACTION_OPTIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Surface</span>
+                    <select value={activeSurface} onChange={(event) => setActiveSurface(event.target.value as SpriteSurface)}>
+                      {SPRITE_SURFACE_OPTIONS.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={isPreviewLooping} onChange={(event) => setIsPreviewLooping(event.target.checked)} />
+                    <span>Loop clip</span>
+                  </label>
+                  <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={showPreviewAnchors} onChange={(event) => setShowPreviewAnchors(event.target.checked)} />
+                    <span>Show anchors</span>
+                  </label>
+                </div>
+                <label>
+                  <span>Frame scrubber</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, previewFrameCount - 1)}
+                    value={Math.min(previewFrameIndex, Math.max(0, previewFrameCount - 1))}
+                    onChange={(event) => {
+                      setIsPreviewPlaying(false);
+                      setPreviewFrameIndex(Number(event.target.value) || 0);
+                    }}
+                    disabled={!previewCanAnimate}
+                  />
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    Frame {Math.min(previewFrameCount, previewFrameIndex + 1)} / {previewFrameCount}
+                    {' · '}fps {previewFps}
+                    {' · '}loop {guardedPreview.clip?.loop === false ? 'off' : 'on'}
+                  </div>
+                </label>
+              </section>
             </div>
             <div className="sprite-studio-preview-meta">
               <div className="sprite-studio-metric-strip">
@@ -2302,6 +2464,10 @@ export function SpriteStudioWorkspace({
                 <div>
                   <span>Active Action</span>
                   <strong>{resolvedPreview.resolvedAction || 'idle'}</strong>
+                </div>
+                <div>
+                  <span>Frame</span>
+                  <strong>{Math.min(previewFrameCount, previewFrameIndex + 1)} / {previewFrameCount}</strong>
                 </div>
                 <div>
                   <span>Body Template</span>

@@ -487,6 +487,142 @@ describe('createStarterSpriteStudioVisualContentIfMissing', () => {
     expect(second.spriteProfiles.find((entry) => entry.id === 'profile_regal_paladin')?.bodyTemplateId).toBe('body_human_male_base');
     expect(second.items.find((entry) => entry.id === 'starter_sword_01')?.defaultEquipmentVisualBindingId).toBe('equipment_visual_binding_starter_sword_01');
   });
+
+  it('upgrades stale starter animation sets to multi-frame generated clips', () => {
+    const refs = {
+      bodyImageIds: {
+        humanMale: 'img_sprite_studio_body_human_male_basic_body',
+        elfMale: 'img_sprite_studio_body_elf_male_basic_body',
+        dwarf: 'img_sprite_studio_body_dwarf_basic_body',
+        wolf: 'img_sprite_studio_monster_wolf_basic_sprite',
+        monster: 'img_sprite_studio_monster_basic_sprite',
+      },
+      equipmentImageIds: {
+        sword: 'img_sprite_studio_equipment_starter_sword_visual',
+        shield: 'img_sprite_studio_equipment_starter_shield_visual',
+        helmet: 'img_sprite_studio_equipment_starter_helmet_visual',
+        chestArmor: 'img_sprite_studio_equipment_starter_chest_armor_visual',
+      },
+      animationSheets: {
+        humanoidBattle: { id: 'sheet_sprite_studio_humanoid_basic_battle', name: 'Humanoid', category: 'other', src: 'img_sheet_humanoid', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        elfBattle: { id: 'sheet_sprite_studio_elf_basic_battle', name: 'Elf', category: 'other', src: 'img_sheet_elf', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        wolfBattle: { id: 'sheet_sprite_studio_wolf_basic_battle', name: 'Wolf', category: 'other', src: 'img_sheet_wolf', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        monsterBattle: { id: 'sheet_sprite_studio_monster_basic_battle', name: 'Monster', category: 'other', src: 'img_sheet_monster', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+      },
+    } as const;
+
+    const stale = createAnimationSet({
+      id: 'animset_humanoid_basic_battle',
+      name: 'Humanoid Basic Battle',
+      clips: [
+        { action: 'idle', frameWidth: 128, frameHeight: 128, frameCount: 1, fps: 8, row: 0, loop: true },
+        { action: 'walk', frameWidth: 128, frameHeight: 128, frameCount: 1, fps: 8, row: 1, loop: true },
+        { action: 'attack_melee', frameWidth: 128, frameHeight: 128, frameCount: 1, fps: 8, row: 2, loop: false },
+      ],
+    });
+
+    const result = createStarterSpriteStudioVisualContentIfMissing({
+      bodyTemplates: [],
+      animationSets: [stale],
+      equipmentBindings: [],
+      spriteProfiles: [],
+      items: [
+        createItem({ id: 'starter_sword_01', name: 'Starter Sword', type: 'weapon', slot: 'rightHand' }),
+        createItem({ id: 'starter_leather_armor_01', name: 'Starter Leather Armor', type: 'armor', slot: 'chest' }),
+        createItem({ id: 'shield_argos_private_01', name: 'Argos Shield', type: 'armor', slot: 'leftHand' }),
+        createItem({ id: 'helmet_argos_private_01', name: 'Argos Helmet', type: 'armor', slot: 'head' }),
+      ],
+      assets: refs,
+    });
+
+    const updated = result.animationSets.find((entry) => entry.id === 'animset_humanoid_basic_battle');
+    expect(updated).toBeDefined();
+    expect(updated?.clips.find((entry) => entry.action === 'idle')?.frameCount).toBe(6);
+    expect(updated?.clips.find((entry) => entry.action === 'walk')?.frameCount).toBe(8);
+    expect(updated?.clips.find((entry) => entry.action === 'attack_melee')?.frameCount).toBe(6);
+    expect(updated?.clips.find((entry) => entry.action === 'idle')?.imageRef).toEqual({
+      type: 'tileset',
+      sheetId: 'sheet_sprite_studio_humanoid_basic_battle',
+      frame: 0,
+    });
+    expect(result.touchedAnimationSetIds).toContain('animset_humanoid_basic_battle');
+  });
+
+  it('resolves starter demo profile with body and equipment overlays', () => {
+    const refs = {
+      bodyImageIds: {
+        humanMale: 'img_sprite_studio_body_human_male_basic_body',
+        elfMale: 'img_sprite_studio_body_elf_male_basic_body',
+        dwarf: 'img_sprite_studio_body_dwarf_basic_body',
+        wolf: 'img_sprite_studio_monster_wolf_basic_sprite',
+        monster: 'img_sprite_studio_monster_basic_sprite',
+      },
+      equipmentImageIds: {
+        sword: 'img_sprite_studio_equipment_starter_sword_visual',
+        shield: 'img_sprite_studio_equipment_starter_shield_visual',
+        helmet: 'img_sprite_studio_equipment_starter_helmet_visual',
+        chestArmor: 'img_sprite_studio_equipment_starter_chest_armor_visual',
+      },
+      animationSheets: {
+        humanoidBattle: { id: 'sheet_sprite_studio_humanoid_basic_battle', name: 'Humanoid', category: 'other', src: 'img_sheet_humanoid', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        elfBattle: { id: 'sheet_sprite_studio_elf_basic_battle', name: 'Elf', category: 'other', src: 'img_sheet_elf', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        wolfBattle: { id: 'sheet_sprite_studio_wolf_basic_battle', name: 'Wolf', category: 'other', src: 'img_sheet_wolf', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+        monsterBattle: { id: 'sheet_sprite_studio_monster_basic_battle', name: 'Monster', category: 'other', src: 'img_sheet_monster', frameWidth: 128, frameHeight: 128, columns: 8, rows: 3 },
+      },
+    } as const;
+
+    const starter = createStarterSpriteStudioVisualContentIfMissing({
+      bodyTemplates: [],
+      animationSets: [],
+      equipmentBindings: [],
+      spriteProfiles: [],
+      items: [
+        createItem({ id: 'starter_sword_01', name: 'Starter Sword', type: 'weapon', slot: 'rightHand' }),
+        createItem({ id: 'starter_leather_armor_01', name: 'Starter Leather Armor', type: 'armor', slot: 'chest' }),
+        createItem({ id: 'shield_argos_private_01', name: 'Argos Shield', type: 'armor', slot: 'leftHand' }),
+        createItem({ id: 'helmet_argos_private_01', name: 'Argos Helmet', type: 'armor', slot: 'head' }),
+      ],
+      assets: refs,
+    });
+
+    const resolved = resolveCharacterVisual({
+      surface: 'battle',
+      entityType: 'npc',
+      spriteProfileId: 'profile_regal_paladin',
+      preferredAction: 'walk',
+      content: {
+        spriteProfiles: starter.spriteProfiles,
+        spriteBodyTemplates: starter.bodyTemplates,
+        spriteAnimationSets: starter.animationSets,
+        equipmentVisualBindings: starter.equipmentBindings,
+        skillAnimationBindings: [],
+        runtimeAssemblyRules: [],
+        items: starter.items,
+        skills: [],
+        visualFx: [],
+        images: [
+          { id: 'img_sprite_studio_body_human_male_basic_body', name: 'sprite-studio-body-human-male-basic-body', mimeType: 'image/png', width: 128, height: 128, dataUrl: 'data:image/png;base64,body', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sprite_studio_equipment_starter_sword_visual', name: 'sprite-studio-equipment-starter-sword-visual', mimeType: 'image/png', width: 128, height: 128, dataUrl: 'data:image/png;base64,sword', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sprite_studio_equipment_starter_shield_visual', name: 'sprite-studio-equipment-starter-shield-visual', mimeType: 'image/png', width: 128, height: 128, dataUrl: 'data:image/png;base64,shield', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sprite_studio_equipment_starter_helmet_visual', name: 'sprite-studio-equipment-starter-helmet-visual', mimeType: 'image/png', width: 128, height: 128, dataUrl: 'data:image/png;base64,helmet', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sprite_studio_equipment_starter_chest_armor_visual', name: 'sprite-studio-equipment-starter-chest-armor-visual', mimeType: 'image/png', width: 128, height: 128, dataUrl: 'data:image/png;base64,chest', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sheet_humanoid', name: 'sheet-humanoid', mimeType: 'image/png', width: 1024, height: 384, dataUrl: 'data:image/png;base64,sheet', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sheet_elf', name: 'sheet-elf', mimeType: 'image/png', width: 1024, height: 384, dataUrl: 'data:image/png;base64,sheet', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sheet_wolf', name: 'sheet-wolf', mimeType: 'image/png', width: 1024, height: 384, dataUrl: 'data:image/png;base64,sheet', createdAt: 'now', updatedAt: 'now' },
+          { id: 'img_sheet_monster', name: 'sheet-monster', mimeType: 'image/png', width: 1024, height: 384, dataUrl: 'data:image/png;base64,sheet', createdAt: 'now', updatedAt: 'now' },
+        ],
+        imageSheets: Object.values(refs.animationSheets),
+      },
+    });
+
+    expect(resolved.layers.map((entry) => entry.group)).toEqual([
+      'body_torso',
+      'chest_armor',
+      'helmet',
+      'main_hand_weapon',
+      'offhand_shield',
+    ]);
+  });
 });
 
 describe('validateSpriteStudioState', () => {

@@ -107,10 +107,30 @@ export interface ResolvedCharacterVisualLayer {
   imageId?: string;
   imageSheetId?: string;
   zIndex: number;
+  transform?: {
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+    rotation: number;
+    zLayer: number;
+  };
   slot?: string;
   anchorName?: SpriteAnchorKey;
   opacity?: number;
   visible: boolean;
+  notes?: string;
+}
+
+export interface ResolvedCharacterAnimationClip {
+  action: SpriteActionType;
+  imageRef?: SpriteImageRef;
+  imagePath?: string;
+  frameWidth: number;
+  frameHeight: number;
+  frameCount: number;
+  fps: number;
+  row: number;
+  loop: boolean;
   notes?: string;
 }
 
@@ -168,6 +188,7 @@ export interface ResolvedCharacterVisual {
     width: number;
     height: number;
   };
+  clip?: ResolvedCharacterAnimationClip;
   fallback: ResolvedCharacterVisualFallback;
   layers: ResolvedCharacterVisualLayer[];
   anchors: Partial<Record<SpriteAnchorKey, SpriteAnchorPoint>>;

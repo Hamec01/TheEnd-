@@ -67,9 +67,9 @@ export function createEmptyBodyTemplate(seed = Date.now()): SpriteBodyTemplateDe
     compatibleRaceIds: [],
     compatibleBodyTypes: ['humanoid'],
     supportedSurfaces: [...SPRITE_SURFACE_OPTIONS],
-    paperdoll: { scale: 1, offsetX: 0, offsetY: 0 },
-    world: { scale: 1, offsetX: 0, offsetY: 0 },
-    battle: { scale: 1, offsetX: 0, offsetY: 0 },
+    paperdoll: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    world: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    battle: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     anchors: createDefaultAnchorSet(),
     tags: [],
     notes: '',
@@ -125,9 +125,9 @@ export function createEmptyEquipmentBinding(seed = Date.now()): EquipmentVisualB
     compatibleSurfaces: [...SPRITE_SURFACE_OPTIONS],
     equipmentSlot: 'rightHand',
     weaponGripType: 'none',
-    paperdoll: { scale: 1, offsetX: 0, offsetY: 0 },
-    world: { scale: 1, offsetX: 0, offsetY: 0 },
-    battle: { scale: 1, offsetX: 0, offsetY: 0 },
+    paperdoll: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    world: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    battle: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     anchorOverrides: {},
     notes: '',
     createdAt: now,
@@ -194,4 +194,3 @@ export function createEmptyRuntimeAssemblyRule(seed = Date.now()): RuntimeAssemb
     updatedAt: now,
   };
 }
-

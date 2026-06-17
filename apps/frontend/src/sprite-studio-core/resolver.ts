@@ -456,9 +456,9 @@ function inferAnchorName(binding: EquipmentVisualBindingDefinition, preferredSlo
 }
 
 function surfaceAssetFor<T extends {
-  paperdoll?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
-  world?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
-  battle?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number };
+  paperdoll?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number; rotation?: number; zLayer?: number };
+  world?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number; rotation?: number; zLayer?: number };
+  battle?: { imageRef?: import('@theend/rpg-domain').SpriteImageRef; imagePath?: string; scale?: number; offsetX?: number; offsetY?: number; rotation?: number; zLayer?: number };
 }>(entry: T | null | undefined, surface: SpriteSurface) {
   if (!entry) {
     return undefined;
@@ -571,6 +571,7 @@ function resolveFrame(input: CharacterVisualResolverInput, animationSet: SpriteA
   width: number;
   height: number;
   action?: SpriteActionType;
+  clip?: ResolvedCharacterVisual['clip'];
 } {
   const preferredAction = normalizePreferredAction(input);
   const availableActions = uniqueActions(animationSet?.clips.map((entry) => entry.action) ?? []);
@@ -586,6 +587,20 @@ function resolveFrame(input: CharacterVisualResolverInput, animationSet: SpriteA
     width: clip?.frameWidth ?? 128,
     height: clip?.frameHeight ?? 128,
     action: clip?.action ?? availableActions[0],
+    clip: clip
+      ? {
+        action: clip.action,
+        imageRef: clip.imageRef,
+        imagePath: clip.imagePath,
+        frameWidth: clip.frameWidth,
+        frameHeight: clip.frameHeight,
+        frameCount: clip.frameCount,
+        fps: clip.fps,
+        row: clip.row ?? 0,
+        loop: clip.loop !== false,
+        notes: clip.notes,
+      }
+      : undefined,
   };
 }
 
@@ -673,7 +688,14 @@ export function resolveCharacterVisual(input: CharacterVisualResolverInput): Res
       imagePath: bodySurface?.imagePath,
       imageId: imageIdFromRef(bodySurface?.imageRef),
       imageSheetId: imageSheetIdFromRef(bodySurface?.imageRef),
-      zIndex: LAYER_Z_INDEX.body_torso,
+      zIndex: LAYER_Z_INDEX.body_torso + (bodySurface?.zLayer ?? 0),
+      transform: {
+        scale: bodySurface?.scale ?? 1,
+        offsetX: bodySurface?.offsetX ?? 0,
+        offsetY: bodySurface?.offsetY ?? 0,
+        rotation: bodySurface?.rotation ?? 0,
+        zLayer: bodySurface?.zLayer ?? 0,
+      },
       visible: true,
       opacity: 1,
       notes: bodySurface?.imageRef || bodySurface?.imagePath ? undefined : 'No body art configured.',
@@ -697,7 +719,14 @@ export function resolveCharacterVisual(input: CharacterVisualResolverInput): Res
       imagePath: asset?.imagePath,
       imageId: imageIdFromRef(asset?.imageRef),
       imageSheetId: imageSheetIdFromRef(asset?.imageRef),
-      zIndex: LAYER_Z_INDEX[group],
+      zIndex: LAYER_Z_INDEX[group] + (asset?.zLayer ?? 0),
+      transform: {
+        scale: asset?.scale ?? 1,
+        offsetX: asset?.offsetX ?? 0,
+        offsetY: asset?.offsetY ?? 0,
+        rotation: asset?.rotation ?? 0,
+        zLayer: asset?.zLayer ?? 0,
+      },
       slot: entry.preferredSlot ?? entry.item?.slot ?? entry.binding.equipmentSlot,
       anchorName,
       opacity: 1,
@@ -754,6 +783,7 @@ export function resolveCharacterVisual(input: CharacterVisualResolverInput): Res
       width: frame.width,
       height: frame.height,
     },
+    clip: frame.clip,
     fallback,
     layers: [...layers].sort((left, right) => left.zIndex - right.zIndex || left.id.localeCompare(right.id)),
     anchors,

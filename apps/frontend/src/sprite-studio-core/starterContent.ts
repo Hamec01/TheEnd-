@@ -47,9 +47,9 @@ function createStarterBodyTemplate(definition: (typeof STARTER_BODY_TEMPLATE_DEF
         ? ['monster']
         : ['humanoid'],
     supportedSurfaces: ['paperdoll', 'world', 'battle'],
-    paperdoll: { scale: 1, offsetX: 0, offsetY: 0 },
-    world: { scale: 1, offsetX: 0, offsetY: 0 },
-    battle: { scale: 1, offsetX: 0, offsetY: 0 },
+    paperdoll: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    world: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
+    battle: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 },
     anchors: createDefaultAnchorSet(),
     tags: ['starter'],
     notes: definition.notes,

@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title TheEnd Local Dev Launcher
 
-set "PROJECT_DIR=C:\theend"
+set "PROJECT_DIR=C:\Users\ham\Documents\TheEnd"
 set "BACKEND_DIR=%PROJECT_DIR%\apps\backend"
 set "FRONTEND_DIR=%PROJECT_DIR%\apps\frontend"
 
@@ -36,7 +36,7 @@ if not exist "%FRONTEND_DIR%\package.json" (
 )
 
 echo [1/3] Starting backend in new window...
-start "TheEnd Backend :3000" cmd /k "cd /d "%BACKEND_DIR%" && npm run start:dev"
+start "TheEnd Backend :3001" cmd /k "cd /d "%BACKEND_DIR%" && npm run start:dev"
 
 timeout /t 3 /nobreak >nul
 
@@ -47,14 +47,14 @@ timeout /t 5 /nobreak >nul
 
 echo [3/3] Opening browser...
 start "" "http://localhost:5173"
-start "" "http://localhost:3000/api/health"
+start "" "http://localhost:3001/api/health"
 
 echo.
 echo Done.
 echo.
-echo Backend:  http://localhost:3000
+echo Backend:  http://localhost:3001
 echo Frontend: http://localhost:5173
-echo Health:   http://localhost:3000/api/health
+echo Health:   http://localhost:3001/api/health
 echo.
 echo IMPORTANT:
 echo - Do not close backend/frontend terminal windows while working.

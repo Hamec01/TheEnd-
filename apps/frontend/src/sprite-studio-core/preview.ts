@@ -143,10 +143,132 @@ export interface SpriteStudioPreviewInput {
   runtimeImages: StoredImage[];
   imageSheets: ImageSheetDefinition[];
   showAnchors?: boolean;
+  frameIndex?: number;
+}
+
+function resolveFrameCrop(
+  clip: NonNullable<ResolvedCharacterVisual['clip']>,
+  frameIndex: number,
+  imageSheets: ImageSheetDefinition[],
+) {
+  if (clip.imageRef?.type !== 'tileset') {
+    return undefined;
+  }
+  const sheetId = clip.imageRef.sheetId;
+  const sheet = imageSheets.find((entry) => entry.id === sheetId);
+  if (!sheet) {
+    return undefined;
+  }
+  const safeFrameCount = Math.max(1, clip.frameCount || 1);
+  const localFrame = Math.max(0, frameIndex % safeFrameCount);
+  const frame = clip.row * sheet.columns + localFrame;
+  const col = frame % sheet.columns;
+  const row = Math.floor(frame / sheet.columns);
+  return {
+    x: col * sheet.frameWidth,
+    y: row * sheet.frameHeight,
+    width: sheet.frameWidth,
+    height: sheet.frameHeight,
+  };
+}
+
+async function resolveLayerSource(
+  layer: ResolvedCharacterVisual['layers'][number],
+  resolved: ResolvedCharacterVisual,
+  runtimeImages: StoredImage[],
+  imageSheets: ImageSheetDefinition[],
+  frameIndex: number,
+) {
+  if (layer.source === 'body' && resolved.clip) {
+    const clipSource = resolveImageSource(
+      {
+        ...layer,
+        imageRef: resolved.clip.imageRef ?? layer.imageRef,
+        imagePath: resolved.clip.imagePath ?? layer.imagePath,
+      },
+      runtimeImages,
+      imageSheets,
+    );
+    return {
+      ...clipSource,
+      crop: resolveFrameCrop(resolved.clip, frameIndex, imageSheets) ?? clipSource.crop,
+    };
+  }
+  return resolveImageSource(layer, runtimeImages, imageSheets);
+}
+
+function drawLayerFallback(
+  ctx: CanvasRenderingContext2D,
+  layer: ResolvedCharacterVisual['layers'][number],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  ctx.fillStyle = 'rgba(212, 165, 98, 0.35)';
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = '#1c140b';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(layer.group, x + width / 2, y + height / 2);
+}
+
+function drawLayerImage(
+  ctx: CanvasRenderingContext2D,
+  layer: ResolvedCharacterVisual['layers'][number],
+  image: HTMLImageElement | null,
+  source: { src: string; crop?: { x: number; y: number; width: number; height: number } },
+  resolved: ResolvedCharacterVisual,
+  originX: number,
+  originY: number,
+  frameScale: number,
+) {
+  const transform = layer.transform ?? { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, zLayer: 0 };
+  const sourceWidth = source.crop?.width ?? image?.width ?? resolved.frame.width;
+  const sourceHeight = source.crop?.height ?? image?.height ?? resolved.frame.height;
+  const drawWidth = sourceWidth * frameScale * transform.scale;
+  const drawHeight = sourceHeight * frameScale * transform.scale;
+  const anchorPoint = layer.anchorName ? resolved.anchors[layer.anchorName] : undefined;
+  const anchorX = anchorPoint ? originX + anchorPoint.x * frameScale : originX + (resolved.frame.width * frameScale) / 2;
+  const anchorY = anchorPoint ? originY + anchorPoint.y * frameScale : originY + (resolved.frame.height * frameScale) / 2;
+  const drawX = layer.source === 'body'
+    ? originX + transform.offsetX * frameScale
+    : anchorX + transform.offsetX * frameScale - drawWidth / 2;
+  const drawY = layer.source === 'body'
+    ? originY + transform.offsetY * frameScale
+    : anchorY + transform.offsetY * frameScale - drawHeight / 2;
+
+  ctx.save();
+  ctx.globalAlpha = layer.opacity ?? 1;
+  if (transform.rotation) {
+    ctx.translate(drawX + drawWidth / 2, drawY + drawHeight / 2);
+    ctx.rotate((transform.rotation * Math.PI) / 180);
+    ctx.translate(-(drawX + drawWidth / 2), -(drawY + drawHeight / 2));
+  }
+  if (image) {
+    if (source.crop) {
+      ctx.drawImage(
+        image,
+        source.crop.x,
+        source.crop.y,
+        source.crop.width,
+        source.crop.height,
+        drawX,
+        drawY,
+        drawWidth,
+        drawHeight,
+      );
+    } else {
+      ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    }
+  } else {
+    drawLayerFallback(ctx, layer, drawX, drawY, drawWidth, drawHeight);
+  }
+  ctx.restore();
 }
 
 export async function drawSpriteStudioPreview(input: SpriteStudioPreviewInput): Promise<void> {
-  const { canvas, resolved, runtimeImages, imageSheets, showAnchors = true } = input;
+  const { canvas, resolved, runtimeImages, imageSheets, showAnchors = true, frameIndex = 0 } = input;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
@@ -176,36 +298,9 @@ export async function drawSpriteStudioPreview(input: SpriteStudioPreviewInput): 
       continue;
     }
 
-    const source = resolveImageSource(layer, runtimeImages, imageSheets);
+    const source = await resolveLayerSource(layer, resolved, runtimeImages, imageSheets, frameIndex);
     const image = await loadImage(source.src);
-    const opacity = layer.opacity ?? 1;
-    ctx.save();
-    ctx.globalAlpha = opacity;
-    if (image) {
-      if (source.crop) {
-        ctx.drawImage(
-          image,
-          source.crop.x,
-          source.crop.y,
-          source.crop.width,
-          source.crop.height,
-          originX,
-          originY,
-          source.crop.width * scale,
-          source.crop.height * scale,
-        );
-      } else {
-        ctx.drawImage(image, originX, originY, frameWidth * scale, frameHeight * scale);
-      }
-    } else {
-      ctx.fillStyle = 'rgba(212, 165, 98, 0.35)';
-      ctx.fillRect(originX, originY, frameWidth * scale, frameHeight * scale);
-      ctx.fillStyle = '#1c140b';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(layer.group, originX + (frameWidth * scale) / 2, originY + (frameHeight * scale) / 2);
-    }
-    ctx.restore();
+    drawLayerImage(ctx, layer, image, source, resolved, originX, originY, scale);
   }
 
   if (showAnchors) {
@@ -215,5 +310,6 @@ export async function drawSpriteStudioPreview(input: SpriteStudioPreviewInput): 
   ctx.fillStyle = '#e8d2a8';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`${resolved.surface.toUpperCase()} | ${resolved.resolvedAction ?? 'static'}`, 12, 18);
+  const frameCount = resolved.clip?.frameCount ?? 1;
+  ctx.fillText(`${resolved.surface.toUpperCase()} | ${resolved.resolvedAction ?? 'static'} | frame ${Math.min(frameCount, frameIndex + 1)}/${frameCount}`, 12, 18);
 }

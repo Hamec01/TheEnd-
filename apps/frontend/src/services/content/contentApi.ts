@@ -297,6 +297,13 @@ async function requestJson<T>(path: string, init?: RequestInit, options?: { time
     return undefined as T;
   }
 
+  const normalized = raw.trimStart();
+  if (normalized.startsWith('<!doctype') || normalized.startsWith('<html')) {
+    throw new Error(
+      `Expected JSON from ${API_BASE}${path}, but received HTML instead. Check that the TheEnd backend is running and that the Vite /api proxy points to the correct backend port.`,
+    );
+  }
+
   return JSON.parse(raw) as T;
 }
 

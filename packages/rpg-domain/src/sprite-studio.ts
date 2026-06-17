@@ -91,6 +91,8 @@ export interface SpriteSurfaceAssetDefinition {
   scale?: number;
   offsetX?: number;
   offsetY?: number;
+  rotation?: number;
+  zLayer?: number;
   defaultAnimationSetId?: string;
 }
 

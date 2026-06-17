@@ -2760,10 +2760,16 @@ function normalizeSpriteSurfaceAsset(value: unknown): SpriteSurfaceAssetDefiniti
     : undefined;
   const offsetX = typeof raw.offsetX === 'number' && Number.isFinite(raw.offsetX) ? raw.offsetX : undefined;
   const offsetY = typeof raw.offsetY === 'number' && Number.isFinite(raw.offsetY) ? raw.offsetY : undefined;
+  const rotation = typeof raw.rotation === 'number' && Number.isFinite(raw.rotation)
+    ? Math.max(-360, Math.min(360, raw.rotation))
+    : undefined;
+  const zLayer = typeof raw.zLayer === 'number' && Number.isFinite(raw.zLayer)
+    ? Math.round(raw.zLayer)
+    : undefined;
   const defaultAnimationSetId = typeof raw.defaultAnimationSetId === 'string' && raw.defaultAnimationSetId.trim()
     ? raw.defaultAnimationSetId.trim()
     : undefined;
-  if (!imageRef && scale === undefined && offsetX === undefined && offsetY === undefined && !defaultAnimationSetId) {
+  if (!imageRef && scale === undefined && offsetX === undefined && offsetY === undefined && rotation === undefined && zLayer === undefined && !defaultAnimationSetId) {
     return undefined;
   }
   return {
@@ -2772,6 +2778,8 @@ function normalizeSpriteSurfaceAsset(value: unknown): SpriteSurfaceAssetDefiniti
     scale,
     offsetX,
     offsetY,
+    rotation,
+    zLayer,
     defaultAnimationSetId,
   };
 }
